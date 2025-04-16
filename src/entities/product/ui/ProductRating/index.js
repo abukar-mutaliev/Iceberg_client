@@ -1,0 +1,1 @@
+export { ProductRating }  from './ui/ProductRating'

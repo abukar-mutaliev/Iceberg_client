@@ -1,0 +1,5 @@
+export { MainSearchBar } from './ui/MainSearchBar'
+export { ScreenSearchBar } from './ui/ScreenSearchBar'
+export { PopularTags } from './ui/PopularTags/'
+export { ProductSuggestions } from './ui/ProductSuggestions'
+export { SearchHistory } from './ui/SearchHistory'

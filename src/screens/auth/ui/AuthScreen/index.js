@@ -1,0 +1,1 @@
+export {AuthScreen} from '@/screens/auth/ui/AuthScreen/ui/AuthScreen';

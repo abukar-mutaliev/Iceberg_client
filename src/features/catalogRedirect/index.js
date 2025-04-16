@@ -1,0 +1,1 @@
+export { CatalogButton } from './ui/CatalogRedirect'

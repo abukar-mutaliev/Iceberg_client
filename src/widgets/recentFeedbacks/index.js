@@ -1,0 +1,1 @@
+export { RecentFeedbacks } from './ui/RecentFeedbacks'

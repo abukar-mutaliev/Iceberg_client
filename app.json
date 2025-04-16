@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "jsEngine": "jsc",
+    "name": "mobile",
+    "slug": "mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./src/assets/logo/logo.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./src/assets/logo/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "plugins": [
+      "@react-native-community/datetimepicker"
+    ],
+    "ios": {
+      "jsEngine": "jsc",
+      "supportsTablet": true
+    },
+    "android": {
+      "jsEngine": "jsc",
+      "softwareKeyboardLayoutMode": "resize",
+      "adaptiveIcon": {
+        "foregroundImage": "./src/assets/logo/logo.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.abuingush.mobile"
+    },
+    "extra": {
+      "hostType": "lan",
+      "eas": {
+        "projectId": "your-project-id"
+      }
+    },
+    "server": {
+      "url": "http://10.8.1.4:8081"
+    },
+    "owner": "abuingush",
+    "sdkVersion": "48.0.0",
+    "packagerOpts": {
+      "hostType": "lan",
+      "lanType": "ip",
+      "dev": true,
+      "minify": false
+    }
+  }
+}

@@ -1,0 +1,1 @@
+export { baseStyles } from './styles/auth.styles';
