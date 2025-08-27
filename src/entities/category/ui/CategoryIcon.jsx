@@ -1,7 +1,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import Svg, { Path, G } from 'react-native-svg';
-import {Color, Color as GlobalColor} from '@app/styles/GlobalStyles';
+import {Color as GlobalColor} from '@app/styles/GlobalStyles';
 
 const ConeIcon = ({ style, size = 49, color = GlobalColor.categoriesIconBlue }) => {
     const scale = size / 49;
@@ -113,7 +113,7 @@ const CategoriesMenuIcon = ({ style, size = 49, color = GlobalColor.categoriesIc
     );
 };
 
-const DefaultIcon = ({ style, size = 48, color = Color.categoriesIconBlue }) => {
+const DefaultIcon = ({ style, size = 48, color = GlobalColor.categoriesIconBlue }) => {
     const scale = size / 48;
     const width = 48 * scale;
     const height = 48 * scale;
@@ -150,7 +150,7 @@ const DefaultIcon = ({ style, size = 48, color = Color.categoriesIconBlue }) => 
     );
 };
 
-export const CategoryIcon = ({ type, style, size = 39, color = Color.categoriesIconBlue }) => {
+export const CategoryIcon = ({ type, style, size = 39, color = GlobalColor.categoriesIconBlue }) => {
     switch (type) {
         case 'рожок':
             return <ConeIcon style={style} size={size} color={color} />;

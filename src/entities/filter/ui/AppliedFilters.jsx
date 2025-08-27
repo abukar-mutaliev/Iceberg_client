@@ -11,7 +11,7 @@ import {
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 import { X } from 'lucide-react-native';
-import { FontFamily } from '@/app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
 
 // Импорт действий и селекторов
 import {
@@ -19,7 +19,7 @@ import {
     selectAppliedFilters,
     setFilterCriteria,
     clearFilterCriteria
-} from '@/entities/filter';
+} from '@entities/filter';
 
 // Адаптивные размеры
 const { width: SCREEN_WIDTH } = Dimensions.get('window');

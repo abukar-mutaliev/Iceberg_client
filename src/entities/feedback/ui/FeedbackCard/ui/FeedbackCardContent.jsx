@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { FontFamily } from '@/app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
 
 /**
  * Упрощенный компонент содержимого отзыва

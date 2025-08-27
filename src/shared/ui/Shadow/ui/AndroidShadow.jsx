@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Platform, StyleSheet } from 'react-native';
-import { Color } from '@/app/styles/GlobalStyles';
+import { Color } from '@app/styles/GlobalStyles';
 
 /**
  * Компонент для создания выраженных теней на Android.

@@ -2,10 +2,116 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView } from 'react-native';
 import { useSelector } from 'react-redux';
 import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
-import BackArrowIcon from "@shared/ui/Icon/BackArrowIcon/BackArrowIcon";
-import MapView, { Marker } from 'react-native-maps';
+import UniversalMapView, { Marker } from '@shared/ui/Map/UniversalMapView';
+import { PROVIDER_GOOGLE } from 'react-native-maps';
 import { selectUser } from '@entities/auth/model/selectors';
 import { formatTimeRange } from "@shared/lib/dateFormatters";
+import { getBaseUrl } from '@shared/api/api';
+import { logData } from '@shared/lib/logger';
+import {BackButton} from "@shared/ui/Button/BackButton";
+
+const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
+
+const getPhotoUrl = (photoPath) => {
+    if (!photoPath) return null;
+
+    if (typeof photoPath !== 'string') {
+        return photoPath.uri;
+    }
+
+    if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) {
+        const url = photoPath.replace('https://', 'http://');
+        logData('Используем полный URL фото', url, 'StopDetailsContent');
+        return url;
+    }
+
+    const baseUrl = getBaseUrl();
+    const fullUrl = `${baseUrl}${photoPath}`;
+    logData('Формируем полный URL фото', {
+        baseUrl,
+        photoPath,
+        fullUrl
+    }, 'StopDetailsContent');
+    return fullUrl;
+};
+
+// Безопасная функция для парсинга координат
+const parseMapLocation = (mapLocation) => {
+    if (!mapLocation) {
+        return null;
+    }
+
+    try {
+        // Если это уже объект с координатами
+        if (typeof mapLocation === 'object' && mapLocation.latitude && mapLocation.longitude) {
+            const lat = parseFloat(mapLocation.latitude);
+            const lng = parseFloat(mapLocation.longitude);
+            if (!isNaN(lat) && !isNaN(lng)) {
+                return { latitude: lat, longitude: lng };
+            }
+        }
+
+        // Если это строка
+        if (typeof mapLocation === 'string') {
+            const trimmed = mapLocation.trim();
+
+            // Пробуем парсить как JSON
+            if ((trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+                (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+                try {
+                    const parsed = JSON.parse(trimmed);
+
+                    // Если это массив [lat, lng]
+                    if (Array.isArray(parsed) && parsed.length >= 2) {
+                        const lat = parseFloat(parsed[0]);
+                        const lng = parseFloat(parsed[1]);
+                        if (!isNaN(lat) && !isNaN(lng)) {
+                            return { latitude: lat, longitude: lng };
+                        }
+                    }
+
+                    // Если это объект с latitude/longitude
+                    if (parsed && typeof parsed === 'object') {
+                        const lat = parseFloat(parsed.latitude || parsed.lat);
+                        const lng = parseFloat(parsed.longitude || parsed.lng);
+                        if (!isNaN(lat) && !isNaN(lng)) {
+                            return { latitude: lat, longitude: lng };
+                        }
+                    }
+                } catch (jsonError) {
+                    console.log('JSON парсинг не удался, пробуем другие форматы');
+                }
+            }
+
+            // Пробуем формат "lat,lng"
+            if (trimmed.includes(',')) {
+                const parts = trimmed.split(',');
+                if (parts.length >= 2) {
+                    const lat = parseFloat(parts[0].trim());
+                    const lng = parseFloat(parts[1].trim());
+                    if (!isNaN(lat) && !isNaN(lng)) {
+                        return { latitude: lat, longitude: lng };
+                    }
+                }
+            }
+
+            // Пробуем извлечь координаты с помощью регулярного выражения
+            const regex = /latitude"?:\s*(-?\d+\.?\d*),?\s*"?longitude"?:\s*(-?\d+\.?\d*)/i;
+            const match = trimmed.match(regex);
+            if (match && match[1] && match[2]) {
+                const lat = parseFloat(match[1]);
+                const lng = parseFloat(match[2]);
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    return { latitude: lat, longitude: lng };
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Ошибка при парсинге координат:', error);
+    }
+
+    return null;
+};
 
 export const StopDetailsContent = ({ stop, navigation }) => {
     const user = useSelector(selectUser);
@@ -14,21 +120,39 @@ export const StopDetailsContent = ({ stop, navigation }) => {
 
     const canEdit = ['DRIVER', 'ADMIN', 'EMPLOYEE'].includes(user?.role);
 
+    // Добавляем проверку на существование остановки
     if (!stop) {
-        return null;
+        console.error('Stop data is null or undefined');
+        return (
+            <View style={styles.container}>
+                <Text style={styles.errorText}>Данные остановки не найдены</Text>
+            </View>
+        );
     }
 
     const formatDate = (dateString) => {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        if (!dateString) return 'Не указано';
+        try {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        } catch (error) {
+            console.error('Ошибка форматирования даты:', error);
+            return 'Неверная дата';
+        }
     };
 
     const formatTime = (dateString) => {
-        const date = new Date(dateString);
-        return date.toLocaleTimeString('ru-RU', {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
+        if (!dateString) return 'Не указано';
+        try {
+            const date = new Date(dateString);
+            return date.toLocaleTimeString('ru-RU', {
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        } catch (error) {
+            console.error('Ошибка форматирования времени:', error);
+            return 'Неверное время';
+        }
     };
 
     const formatDateTime = (dateString) => {
@@ -40,39 +164,32 @@ export const StopDetailsContent = ({ stop, navigation }) => {
     };
 
     useEffect(() => {
-        if (!stop) return;
-
-        if (stop.mapLocation) {
-            try {
-                const parsed = JSON.parse(stop.mapLocation);
-                if (parsed && typeof parsed === 'object' && 'latitude' in parsed && 'longitude' in parsed) {
-                    setMapCoordinates({
-                        latitude: parsed.latitude,
-                        longitude: parsed.longitude
-                    });
-                    return;
-                }
-            } catch (error) {
-                console.log('Ошибка при парсинге JSON координат:', error.message);
-
-                try {
-                    const regex = /latitude"?:\s*(-?\d+\.?\d*),\s*"?longitude"?:\s*(-?\d+\.?\d*)/;
-                    const match = stop.mapLocation.match(regex);
-                    if (match && match[1] && match[2]) {
-                        const latitude = parseFloat(match[1]);
-                        const longitude = parseFloat(match[2]);
-
-                        if (!isNaN(latitude) && !isNaN(longitude)) {
-                            setMapCoordinates({ latitude, longitude });
-                            return;
-                        }
-                    }
-                } catch (regexError) {
-                    console.log('Ошибка при извлечении координат:', regexError.message);
-                }
-            }
+        if (!stop) {
+            console.error('Stop is null in useEffect');
+            return;
         }
 
+        // Логируем данные остановки для отладки
+        logData('Детали остановки', {
+            id: stop.id,
+            photo: stop.photo,
+            photoType: typeof stop.photo,
+            hasPhoto: !!stop.photo,
+            mapLocation: stop.mapLocation,
+            mapLocationType: typeof stop.mapLocation
+        }, 'StopDetailsContent');
+
+        // Парсим координаты
+        const parsedCoords = parseMapLocation(stop.mapLocation);
+
+        if (parsedCoords) {
+            console.log('Успешно распарсены координаты:', parsedCoords);
+            setMapCoordinates(parsedCoords);
+        } else {
+            console.log('Не удалось распарсить координаты, используем координаты по умолчанию');
+            console.log('Исходные данные mapLocation:', stop.mapLocation);
+            setMapCoordinates(defaultCoords);
+        }
     }, [stop]);
 
     return (
@@ -82,11 +199,13 @@ export const StopDetailsContent = ({ stop, navigation }) => {
                     style={styles.backButton}
                     onPress={() => navigation.goBack()}
                 >
-                    <BackArrowIcon size={20} color="#3478F6" />
+                    <BackButton />
                 </TouchableOpacity>
 
                 <View style={styles.titleContainer}>
-                    <Text style={styles.districtName}>{stop.district?.name || ''}</Text>
+                    <Text style={styles.districtName}>
+                        {stop.district?.name || 'Район не указан'}
+                    </Text>
                 </View>
 
                 {/* Пустой элемент для баланса с кнопкой назад */}
@@ -95,21 +214,27 @@ export const StopDetailsContent = ({ stop, navigation }) => {
 
             <View style={styles.content}>
                 <View style={styles.addressContainer}>
-                    <Text style={styles.address}>{stop.address}</Text>
+                    <Text style={styles.address}>{stop.address || 'Адрес не указан'}</Text>
                 </View>
 
                 <View style={styles.dateTimeContainer}>
                     <Text style={styles.dateTime}>
-                        {formatTimeRange(stop.startTime, stop.endTime)}
+                        {stop.startTime && stop.endTime
+                            ? formatTimeRange(stop.startTime, stop.endTime)
+                            : 'Время не указано'
+                        }
                     </Text>
                 </View>
 
                 {stop.photo && (
                     <Image
-                        source={{ uri: typeof stop.photo === 'string' ? stop.photo : stop.photo.uri }}
+                        source={{ uri: getPhotoUrl(stop.photo) }}
                         style={styles.photo}
                         resizeMode="cover"
-                        defaultSource={require('@assets/images/placeholder.png')}
+                        defaultSource={placeholderImage}
+                        onError={(error) => {
+                            console.log('Ошибка загрузки изображения:', error);
+                        }}
                     />
                 )}
 
@@ -155,7 +280,8 @@ export const StopDetailsContent = ({ stop, navigation }) => {
                 )}
 
                 <View style={styles.mapContainer}>
-                    <MapView
+                    <Text style={styles.mapTitle}>Местоположение</Text>
+                    <UniversalMapView
                         style={styles.map}
                         initialRegion={{
                             latitude: mapCoordinates.latitude,
@@ -163,15 +289,25 @@ export const StopDetailsContent = ({ stop, navigation }) => {
                             latitudeDelta: 0.005,
                             longitudeDelta: 0.005,
                         }}
+                        onError={(error) => {
+                            console.log('[StopDetailsContent] Ошибка карты:', error);
+                        }}
+                        onMapReady={() => {
+                            console.log('[StopDetailsContent] Карта готова');
+                        }}
+                        showsUserLocation={false}
+                        showsMyLocationButton={false}
+                        toolbarEnabled={false}
+                        provider={PROVIDER_GOOGLE}
                     >
                         <Marker
                             coordinate={{
                                 latitude: mapCoordinates.latitude,
                                 longitude: mapCoordinates.longitude,
                             }}
-                            title={stop.address}
+                            title={stop.address || 'Остановка'}
                         />
-                    </MapView>
+                    </UniversalMapView>
                 </View>
 
                 {canEdit && (
@@ -191,6 +327,13 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: Color.colorLightMode,
+    },
+    errorText: {
+        fontSize: FontSize.size_md,
+        color: 'red',
+        textAlign: 'center',
+        marginTop: 50,
+        fontFamily: FontFamily.sFProText || "system",
     },
     header: {
         flexDirection: 'row',
@@ -303,6 +446,14 @@ const styles = StyleSheet.create({
         marginBottom: 16,
         borderRadius: 8,
         overflow: 'hidden',
+        backgroundColor: '#f0f0f0',
+    },
+    mapTitle: {
+        fontSize: FontSize.size_md,
+        fontFamily: FontFamily.sFProText,
+        color: Color.dark,
+        marginBottom: 8,
+        fontWeight: '500',
     },
     map: {
         ...StyleSheet.absoluteFillObject,

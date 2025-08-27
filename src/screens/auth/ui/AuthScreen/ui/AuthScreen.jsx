@@ -12,56 +12,121 @@ import {
     StatusBar,
     PixelRatio,
     Keyboard,
-    Animated, TouchableWithoutFeedback, ScrollView
+    Animated,
+    TouchableWithoutFeedback,
+    ScrollView
 } from 'react-native';
-import { CommonActions, useFocusEffect } from '@react-navigation/native';
-import { useSelector } from 'react-redux';
+import { CommonActions, useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useDispatch, useSelector } from 'react-redux';
 import { LoginForm } from '@features/auth/ui/LoginForm';
 import { RegisterForm } from '@features/auth/ui/RegisterForm';
 import { VerificationForm } from '@features/auth/ui/VerificationForm';
-import BackIcon from '@shared/ui/Icon/BackArrowIcon/BackArrowIcon';
-import {Color} from "@app/styles/GlobalStyles";
+import { Color } from "@app/styles/GlobalStyles";
+import { useAuth } from "@entities/auth/hooks/useAuth";
+import { selectRequiresTwoFactor, selectTempToken } from "@entities/auth";
+import { BackButton } from "@shared/ui/Button/BackButton";
+import { ProfileIcon } from '@shared/ui/Icon/TabBarIcons';
 
-export const AuthScreen = ({ navigation, route }) => {
-    const { isAuthenticated, requiresTwoFactor, tempToken } = useSelector((state) => state.auth);
+const { width, height } = Dimensions.get('window');
+const scale = width / 430;
+
+const normalize = (size) => {
+    const newSize = size * scale;
+    return Math.round(PixelRatio.roundToNearestPixel(newSize));
+};
+
+const normalizeFont = (size) => {
+    const isSmallDevice = height < 700;
+    const isLargeDevice = height > 800;
+
+    let newSize = size * scale;
+    if (isSmallDevice) {
+        newSize = newSize * 0.9;
+    } else if (isLargeDevice) {
+        newSize = newSize * 1.1;
+    }
+    return Math.round(PixelRatio.roundToNearestPixel(newSize));
+};
+
+const statusBarHeight = StatusBar.currentHeight || 0;
+const safeTopMargin = Platform.OS === 'android' ? statusBarHeight + normalize(10) : normalize(50);
+
+export const AuthScreen = ({ navigation: routeNavigation, route }) => {
+    const dispatch = useDispatch();
+    const navigation = useNavigation();
+    const { isAuthenticated } = useAuth();
+    const requiresTwoFactor = useSelector(selectRequiresTwoFactor);
+    const tempToken = useSelector(selectTempToken);
+
     const [activeTab, setActiveTab] = useState('login');
     const [formState, setFormState] = useState('register');
     const [currentTempToken, setCurrentTempToken] = useState(null);
     const [keyboardVisible, setKeyboardVisible] = useState(false);
+    const scrollViewRef = useRef(null);
+    const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
     const headerPosition = useRef(new Animated.Value(0)).current;
     const headerHeight = useRef(new Animated.Value(normalize(240))).current;
     const tabsPosition = useRef(new Animated.Value(normalize(62))).current;
     const logoPosition = useRef(new Animated.Value(safeTopMargin + normalize(15))).current;
+    const [extraScrollHeight, setExtraScrollHeight] = useState(0);
 
-    // Обработка событий клавиатуры
+    const tabBarPosition = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        dispatch({ type: 'profile/clearProfile' });
+
+        const timer = setTimeout(() => {
+            setIsCheckingAuth(false);
+        }, 100);
+
+        return () => clearTimeout(timer);
+    }, [dispatch]);
+
+    useEffect(() => {
+        if (!isCheckingAuth && isAuthenticated) {
+            navigation.dispatch(
+                CommonActions.reset({
+                    index: 0,
+                    routes: [{ name: 'Main' }],
+                })
+            );
+        }
+
+        if (!isCheckingAuth && requiresTwoFactor) {
+            navigation.navigate('TwoFactorAuth', { tempToken });
+        }
+    }, [isAuthenticated, requiresTwoFactor, tempToken, navigation, isCheckingAuth]);
+
     useEffect(() => {
         const keyboardWillShowListener = Keyboard.addListener(
             Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
             (event) => {
                 setKeyboardVisible(true);
-                // Анимируем перемещение хедера вверх и уменьшение его высоты
+                const keyboardHeight = event.endCoordinates.height;
+                setExtraScrollHeight(keyboardHeight + normalize(100));
+
                 Animated.parallel([
                     Animated.timing(headerPosition, {
-                        toValue: -normalize(100),
+                        toValue: -normalize(120),
                         duration: Platform.OS === 'ios' ? event.duration : 300,
                         useNativeDriver: false
                     }),
                     Animated.timing(headerHeight, {
-                        toValue: normalize(160), // Уменьшенная высота хедера
+                        toValue: normalize(160),
                         duration: Platform.OS === 'ios' ? event.duration : 300,
                         useNativeDriver: false
                     }),
                     Animated.timing(tabsPosition, {
-                        toValue: normalize(20), // Новая позиция табов в сжатом состоянии
+                        toValue: normalize(23),
                         duration: Platform.OS === 'ios' ? event.duration : 300,
                         useNativeDriver: false
                     }),
                     Animated.timing(logoPosition, {
-                        toValue: safeTopMargin - normalize(20), // Поднимаем логотип выше
+                        toValue: safeTopMargin - normalize(20),
                         duration: Platform.OS === 'ios' ? event.duration : 300,
                         useNativeDriver: false
-                    })
+                    }),
                 ]).start();
             }
         );
@@ -70,7 +135,8 @@ export const AuthScreen = ({ navigation, route }) => {
             Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
             (event) => {
                 setKeyboardVisible(false);
-                // Анимируем возвращение хедера на место и восстановление его высоты
+                setExtraScrollHeight(0);
+
                 Animated.parallel([
                     Animated.timing(headerPosition, {
                         toValue: 0,
@@ -78,20 +144,20 @@ export const AuthScreen = ({ navigation, route }) => {
                         useNativeDriver: false
                     }),
                     Animated.timing(headerHeight, {
-                        toValue: normalize(240), // Исходная высота хедера
+                        toValue: normalize(240),
                         duration: Platform.OS === 'ios' ? event.duration : 300,
                         useNativeDriver: false
                     }),
                     Animated.timing(tabsPosition, {
-                        toValue: normalize(62), // Исходная позиция табов
+                        toValue: normalize(62),
                         duration: Platform.OS === 'ios' ? event.duration : 300,
                         useNativeDriver: false
                     }),
                     Animated.timing(logoPosition, {
-                        toValue: safeTopMargin + normalize(15), // Исходная позиция логотипа
+                        toValue: safeTopMargin + normalize(15),
                         duration: Platform.OS === 'ios' ? event.duration : 300,
                         useNativeDriver: false
-                    })
+                    }),
                 ]).start();
             }
         );
@@ -100,7 +166,7 @@ export const AuthScreen = ({ navigation, route }) => {
             keyboardWillShowListener.remove();
             keyboardWillHideListener.remove();
         };
-    }, []);
+    }, [headerPosition, headerHeight, tabsPosition, logoPosition, tabBarPosition]);
 
     useEffect(() => {
         if (route?.params?.activeTab) {
@@ -135,6 +201,11 @@ export const AuthScreen = ({ navigation, route }) => {
                     return true;
                 }
 
+                if (!isAuthenticated && navigation) {
+                    navigation.navigate('Main');
+                    return true;
+                }
+
                 return false;
             };
 
@@ -147,7 +218,7 @@ export const AuthScreen = ({ navigation, route }) => {
                     BackHandler.removeEventListener('hardwareBackPress', onBackPress);
                 }
             };
-        }, [formState])
+        }, [formState, isAuthenticated, navigation])
     );
 
     const handleVerification = (tempToken) => {
@@ -174,6 +245,16 @@ export const AuthScreen = ({ navigation, route }) => {
         Keyboard.dismiss();
     };
 
+    const handleBackPress = () => {
+        if (formState === 'verification') {
+            handleBackToRegister();
+        } else if (!isAuthenticated && navigation) {
+            navigation.navigate('Main');
+        } else if (navigation) {
+            navigation.goBack();
+        }
+    };
+
     if (isAuthenticated === undefined) {
         return (
             <View style={styles.container}>
@@ -185,150 +266,122 @@ export const AuthScreen = ({ navigation, route }) => {
     return (
         <KeyboardAvoidingView
             style={styles.container}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardShouldPersistTaps="never"
-            enableOnAndroid={true}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+            enabled={Platform.OS === 'ios'}
         >
-            <TouchableWithoutFeedback onPress={dismissKeyboard}>
-                <View style={styles.innerContainer}>
+            <View style={styles.innerContainer}>
+                <Animated.View
+                    style={[
+                        styles.containerView,
+                        {
+                            transform: [{ translateY: headerPosition }],
+                            height: headerHeight,
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            zIndex: 10,
+                        }
+                    ]}
+                >
+                    <View style={styles.header}>
+                        <BackButton
+                            onPress={handleBackPress}
+                            style={styles.backButton}
+                        />
+                    </View>
+
                     <Animated.View
                         style={[
-                            styles.containerView,
-                            {
-                                transform: [{ translateY: headerPosition }],
-                                height: headerHeight,
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                zIndex: 10,
-                            }
+                            styles.logoContainer,
+                            { marginTop: logoPosition }
                         ]}
                     >
-                        <View style={styles.header}>
-                            <TouchableOpacity
-                                onPress={() => navigation.goBack()}
-                                hitSlop={{top: 20, bottom: 20, left: 20, right: 20}}
-                            >
-                                <View style={styles.backIcon}>
-                                    <BackIcon />
-                                </View>
-                            </TouchableOpacity>
-                        </View>
-
-                        <Animated.View
-                            style={[
-                                styles.logoContainer,
-                                { marginTop: logoPosition }
-                            ]}
-                        >
-                            <Image
-                                source={require('@/assets/logo/logo.png')}
-                                style={styles.logo}
-                                resizeMode="contain"
-                            />
-                        </Animated.View>
-
-                        <Animated.View
-                            style={[
-                                styles.tabContainer,
-                                { marginTop: tabsPosition }
-                            ]}
-                        >
-                            <TouchableOpacity
-                                style={styles.tab}
-                                onPress={handleLoginTab}
-                                activeOpacity={0.7}
-                            >
-                                <Text
-                                    style={[
-                                        styles.tabText,
-                                        activeTab === 'login' && styles.activeTabText,
-                                    ]}
-                                >
-                                    Войти
-                                </Text>
-                                {activeTab === 'login' && <View style={styles.activeTabIndicator} />}
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                                style={styles.tab}
-                                onPress={handleRegisterTab}
-                                activeOpacity={0.7}
-                            >
-                                <Text
-                                    style={[
-                                        styles.tabText,
-                                        activeTab === 'register' && styles.activeTabText,
-                                    ]}
-                                >
-                                    Регистрация
-                                </Text>
-                                {activeTab === 'register' && <View style={styles.activeTabIndicator} />}
-                            </TouchableOpacity>
-                        </Animated.View>
+                        <Image
+                            source={require('@assets/logo/logo-image.jpg')}
+                            style={styles.logo}
+                            resizeMode="contain"
+                        />
                     </Animated.View>
 
-                    <ScrollView
+                    <Animated.View
                         style={[
-                            styles.scrollView,
-                            // Динамически изменяем отступ scrollView в зависимости от видимости клавиатуры
-                            keyboardVisible
-                                ? { paddingTop: normalize(60) }
-                                : { paddingTop: normalize(240) }
+                            styles.tabContainer,
+                            { marginTop: tabsPosition }
                         ]}
-                        contentContainerStyle={styles.scrollViewContent}
-                        keyboardShouldPersistTaps="handled"
-                        showsVerticalScrollIndicator={false}
-                        scrollEnabled={true} // Явно включаем скролл
                     >
-                        {activeTab === 'login' ? (
-                            <LoginForm navigation={navigation} />
-                        ) : formState === 'verification' ? (
-                            <VerificationForm
-                                tempToken={currentTempToken}
-                                onBack={handleBackToRegister}
-                            />
-                        ) : (
-                            <RegisterForm
-                                navigation={navigation}
-                                onVerification={handleVerification}
-                            />
-                        )}
+                        <TouchableOpacity
+                            style={styles.tab}
+                            onPress={handleLoginTab}
+                            activeOpacity={0.7}
+                        >
+                            <Text
+                                style={[
+                                    styles.tabText,
+                                    activeTab === 'login' && styles.activeTabText,
+                                ]}
+                            >
+                                Войти
+                            </Text>
+                            {activeTab === 'login' && <View style={styles.activeTabIndicator} />}
+                        </TouchableOpacity>
 
-                        {/* Добавляем дополнительное пространство снизу для обеспечения скролла */}
-                        <View style={{ height: normalize(100) }} />
-                    </ScrollView>
-                </View>
-            </TouchableWithoutFeedback>
+                        <TouchableOpacity
+                            style={styles.tab}
+                            onPress={handleRegisterTab}
+                            activeOpacity={0.7}
+                        >
+                            <Text
+                                style={[
+                                    styles.tabText,
+                                    activeTab === 'register' && styles.activeTabText,
+                                ]}
+                            >
+                                Регистрация
+                            </Text>
+                            {activeTab === 'register' && <View style={styles.activeTabIndicator} />}
+                        </TouchableOpacity>
+                    </Animated.View>
+                </Animated.View>
+
+                <ScrollView
+                    ref={scrollViewRef}
+                    style={[
+                        styles.scrollView,
+                        { marginTop: keyboardVisible ? normalize(60) : normalize(240) }
+                    ]}
+                    contentContainerStyle={[
+                        styles.scrollViewContent,
+                        { paddingBottom: extraScrollHeight + 100 }
+                    ]}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={true}
+                    scrollEnabled={true}
+                >
+                    <TouchableWithoutFeedback onPress={dismissKeyboard}>
+                        <View>
+                            {activeTab === 'login' ? (
+                                <LoginForm navigation={navigation} />
+                            ) : formState === 'verification' ? (
+                                <VerificationForm
+                                    tempToken={currentTempToken}
+                                    onBack={handleBackToRegister}
+                                />
+                            ) : (
+                                <RegisterForm
+                                    navigation={navigation}
+                                    onVerification={handleVerification}
+                                />
+                            )}
+                            <View style={styles.bottomPadding} />
+                        </View>
+                    </TouchableWithoutFeedback>
+                </ScrollView>
+            </View>
         </KeyboardAvoidingView>
     );
 };
-
-
-const { width, height } = Dimensions.get('window');
-const scale = width / 430;
-
-const normalize = (size) => {
-    const newSize = size * scale;
-    return Math.round(PixelRatio.roundToNearestPixel(newSize));
-};
-
-const normalizeFont = (size) => {
-    const isSmallDevice = height < 700;
-    const isLargeDevice = height > 800;
-
-    let newSize = size * scale;
-    if (isSmallDevice) {
-        newSize = newSize * 0.9;
-    } else if (isLargeDevice) {
-        newSize = newSize * 1.1;
-    }
-    return Math.round(PixelRatio.roundToNearestPixel(newSize));
-};
-
-const statusBarHeight = StatusBar.currentHeight || 0;
-const safeTopMargin = Platform.OS === 'android' ? statusBarHeight + normalize(10) : normalize(50);
 
 const styles = StyleSheet.create({
     container: {
@@ -338,16 +391,14 @@ const styles = StyleSheet.create({
     innerContainer: {
         flex: 1,
     },
-    contentContainer: {
-        flexGrow: 1,
-        paddingBottom: normalize(60),
-    },
     scrollView: {
         flex: 1,
     },
     scrollViewContent: {
         flexGrow: 1,
-        paddingBottom: normalize(80),
+    },
+    bottomPadding: {
+        height: normalize(200),
     },
     containerView: {
         shadowColor: 'rgba(0, 0, 0, 0.06)',
@@ -362,7 +413,6 @@ const styles = StyleSheet.create({
         borderBottomLeftRadius: 30,
         backgroundColor: '#FFFFFF',
         width: '100%',
-        // высота теперь управляется через анимацию
     },
     header: {
         position: 'absolute',
@@ -374,15 +424,14 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-start',
         zIndex: 1,
     },
-    backIcon: {
-        width: normalize(34),
-        height: normalize(34),
-        paddingVertical: normalize(20)
+    backButton: {
+        backgroundColor: 'transparent',
+        padding: 0,
     },
+
     logoContainer: {
         alignItems: 'center',
         marginBottom: normalize(15),
-        // marginTop теперь управляется через анимацию
     },
     logo: {
         width: normalize(89),
@@ -394,7 +443,6 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         paddingBottom: normalize(5),
         width: '100%',
-        // marginTop теперь управляется через анимацию
     },
     tab: {
         marginHorizontal: normalize(10),
@@ -423,5 +471,12 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(16),
         textAlign: 'center',
         marginTop: normalize(20),
+    },
+    customTabBarContainer: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        zIndex: 10,
     },
 });

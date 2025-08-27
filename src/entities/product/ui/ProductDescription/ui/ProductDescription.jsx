@@ -1,19 +1,21 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { useTheme } from '@/app/providers/themeProvider/ThemeProvider';
-import { FontFamily } from '@/app/styles/GlobalStyles';
-
+import { FontFamily, Color } from '@app/styles/GlobalStyles';
+import { HighlightChange } from '@shared/ui/HighlightChange/HighlightChange';
 export const ProductDescription = ({ shortDescription, fullDescription }) => {
-    const { colors } = useTheme();
 
     return (
         <View style={styles.container}>
-            <Text style={[styles.shortDescription, { color: colors.primary }]}>
-                {shortDescription}
-            </Text>
-            <Text style={[styles.fullDescription, { color: colors.text }]}>
-                {fullDescription}
-            </Text>
+            <HighlightChange value={shortDescription}>
+                <Text style={[styles.shortDescription, { color: Color.purpleSoft }]}>
+                    {shortDescription}
+                </Text>
+            </HighlightChange>
+            <HighlightChange value={fullDescription}>
+                <Text style={[styles.fullDescription, { color: Color.dark }]}>
+                    {fullDescription}
+                </Text>
+            </HighlightChange>
         </View>
     );
 };

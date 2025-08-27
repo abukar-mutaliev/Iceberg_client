@@ -16,7 +16,7 @@ import {
     selectProfileLoading,
     selectProfileError
 } from '@entities/profile';
-import { useAuth } from '@entities/auth/model/hooks/useAuth';
+import { useAuth } from '@entities/auth/hooks/useAuth';
 import { suppliersApi } from '@entities/supplier/api/suppliersApi';
 
 /**

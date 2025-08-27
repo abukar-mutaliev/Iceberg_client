@@ -9,7 +9,7 @@ import { View, TouchableOpacity, Image, StyleSheet } from 'react-native';
  * @param {Function} props.onPhotoPress - Обработчик нажатия на фото
  */
 export const FeedbackCardPhotos = ({ photoUrls = [], onPhotoPress }) => {
-    if (!photoUrls || photoUrls.length === 0) {
+    if (!photoUrls || !Array.isArray(photoUrls) || photoUrls.length === 0) {
         return null;
     }
 

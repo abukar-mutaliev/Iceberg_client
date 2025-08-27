@@ -7,11 +7,12 @@ import {
     Modal,
     FlatList,
     ActivityIndicator,
-    TextInput
+    TextInput,
+    TouchableWithoutFeedback
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Color, FontFamily } from "@app/styles/GlobalStyles";
-import { useSuppliers } from '@entities/supplier/model/hooks/useSuppliers';
+import { useSuppliers } from '@entities/supplier/hooks/useSuppliers';
 
 const SupplierPicker = ({ selectedSupplier, onSelectSupplier, error }) => {
     const [modalVisible, setModalVisible] = useState(false);
@@ -115,6 +116,11 @@ const SupplierPicker = ({ selectedSupplier, onSelectSupplier, error }) => {
         setModalVisible(false);
     };
 
+    const closeModal = () => {
+        setModalVisible(false);
+        setSearchText(''); // Сбрасываем поиск при закрытии
+    };
+
     const renderSupplierItem = ({ item }) => (
         <TouchableOpacity
             style={styles.supplierItem}
@@ -161,15 +167,20 @@ const SupplierPicker = ({ selectedSupplier, onSelectSupplier, error }) => {
                 visible={modalVisible}
                 transparent={true}
                 animationType="slide"
-                onRequestClose={() => setModalVisible(false)}
+                onRequestClose={closeModal}
             >
                 <View style={styles.modalContainer}>
+                    {/* Добавлен TouchableWithoutFeedback для закрытия по нажатию на фон */}
+                    <TouchableWithoutFeedback onPress={closeModal}>
+                        <View style={styles.modalOverlay} />
+                    </TouchableWithoutFeedback>
+
                     <View style={styles.modalContent}>
                         <View style={styles.modalHeader}>
                             <Text style={styles.modalTitle}>Выберите поставщика</Text>
                             <TouchableOpacity
                                 style={styles.closeButton}
-                                onPress={() => setModalVisible(false)}
+                                onPress={closeModal}
                             >
                                 <Ionicons name="close" size={24} color="#000" />
                             </TouchableOpacity>
@@ -210,6 +221,16 @@ const SupplierPicker = ({ selectedSupplier, onSelectSupplier, error }) => {
                                 }
                             />
                         )}
+
+                        {/* Добавлена кнопка закрытия в нижней части модального окна */}
+                        <View style={styles.buttonContainer}>
+                            <TouchableOpacity
+                                style={styles.cancelButton}
+                                onPress={closeModal}
+                            >
+                                <Text style={styles.cancelButtonText}>Закрыть</Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 </View>
             </Modal>
@@ -264,8 +285,15 @@ const styles = StyleSheet.create({
     },
     modalContainer: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
         justifyContent: 'flex-end',
+    },
+    modalOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
     },
     modalContent: {
         backgroundColor: 'white',
@@ -308,7 +336,7 @@ const styles = StyleSheet.create({
     },
     listContainer: {
         paddingHorizontal: 16,
-        paddingBottom: 16,
+        paddingBottom: 80, // Увеличиваем отступ для размещения кнопки закрытия
     },
     supplierItem: {
         paddingVertical: 12,
@@ -348,6 +376,29 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
     },
+    // Стили для кнопки закрытия в нижней части
+    buttonContainer: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        padding: 16,
+        backgroundColor: 'white',
+        borderTopWidth: 1,
+        borderTopColor: '#eee',
+    },
+    cancelButton: {
+        backgroundColor: '#3B43A2',
+        borderRadius: 8,
+        paddingVertical: 12,
+        alignItems: 'center',
+    },
+    cancelButtonText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: '600',
+        fontFamily: FontFamily.sFProText,
+    }
 });
 
 export { SupplierPicker };

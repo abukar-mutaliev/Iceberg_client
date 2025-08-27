@@ -9,9 +9,9 @@ import {
     PixelRatio
 } from 'react-native';
 import { X } from 'lucide-react-native';
-import { FontFamily } from '@/app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
 import { useSelector, useDispatch } from 'react-redux';
-import { selectFilterCriteria, setFilterCriteria } from '@/entities/filter';
+import { selectFilterCriteria, setFilterCriteria } from '@entities/filter';
 
 // Адаптивные размеры
 const { width: SCREEN_WIDTH } = Dimensions.get('window');

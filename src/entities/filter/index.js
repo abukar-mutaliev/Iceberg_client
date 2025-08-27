@@ -5,6 +5,8 @@ export {
     saveFilters
 } from './model/slice';
 
+export { default as filterReducer } from './model/slice';
+
 export {
     selectFilterCriteria,
     selectIsFilterActive,
@@ -13,4 +15,3 @@ export {
 } from './model/selectors';
 
 export { applyFiltersToProducts } from './lib/applyFiltersToProducts';
-export { default as filterReducer } from './model/slice';

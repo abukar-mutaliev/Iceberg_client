@@ -1,37 +1,45 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { normalize, normalizeFont } from '@/shared/lib/normalize';
-import BackArrowIcon from '@shared/ui/Icon/BackArrowIcon/BackArrowIcon';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, PixelRatio } from 'react-native';
+import { normalize, normalizeFont } from '@shared/lib/normalize';
+import {BackButton} from "@shared/ui/Button/BackButton";
 
-export const ProfileHeader = ({ onGoBack }) => {
+export const ProfileHeader = ({ title, onGoBack }) => {
     return (
-        <View style={[styles.header, { height: normalize(76) }]}>
-            <Pressable style={[styles.backButton, { padding: normalize(8) }]} onPress={onGoBack}>
-                <BackArrowIcon width={normalize(20)} height={normalize(20)} />
-            </Pressable>
-            <Text style={[styles.headerTitle, { fontSize: normalizeFont(18) }]}>Мой кабинет</Text>
+        <View style={styles.header}>
+            {onGoBack ? (
+                    <BackButton />
+            ) : (
+                <View style={styles.placeholder} />
+            )}
+            <Text style={styles.title}>{title}</Text>
+            <View style={styles.placeholder} />
         </View>
     );
 };
 
 const styles = StyleSheet.create({
     header: {
-        height: 76,
+        height: normalize(76),
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 16,
+        paddingHorizontal: normalize(16),
         backgroundColor: '#FFFFFF',
+        borderBottomColor: '#F5F5F5',
+        paddingTop: normalize(25),
     },
     backButton: {
-        padding: 8,
+        padding: normalize(8),
     },
-    headerTitle: {
-        fontSize: 18,
+    placeholder: {
+        width: normalize(32),
+    },
+    title: {
+        fontSize: normalizeFont(18),
         fontWeight: '500',
         color: '#000000',
         textAlign: 'center',
         flex: 1,
-        marginRight: 32,
     },
 });
 
+export default ProfileHeader;

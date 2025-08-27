@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, Image, TouchableOpacity, ActivityIndicator, Linking } from 'react-native';
+import { View, StyleSheet, Image, TouchableOpacity, Linking } from 'react-native';
 import { useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
-import { selectActiveMainBanners, selectBannerStatus } from '@/entities/banner';
+import { selectActiveMainBanners, selectBannerStatus } from '@entities/banner';
 import { Border } from '@app/styles/GlobalStyles';
-import { getBaseUrl } from '@/shared/api/api';
+import { getBaseUrl } from '@shared/api/api';
 
-export const PromoBanner = () => {
+export const PromoBanner = ({ hideLoader = true }) => {
     const navigation = useNavigation();
     const activeBanners = useSelector(selectActiveMainBanners);
     const status = useSelector(selectBannerStatus);
@@ -37,13 +37,7 @@ export const PromoBanner = () => {
         }
     };
 
-    if (status === 'loading' && activeBanners.length === 0) {
-        return (
-            <View style={styles.container}>
-                <ActivityIndicator size="large" color="#0066CC" />
-            </View>
-        );
-    }
+    // Никогда не показываем спиннер — либо баннеры, либо ничего
 
     if (activeBanners.length === 0) {
         return null;
@@ -65,7 +59,7 @@ export const PromoBanner = () => {
                         ? currentBanner.image
                         : `${getBaseUrl()}${currentBanner.image}`
                 }}
-                defaultSource={require('@/assets/promo-banner.png')}
+                defaultSource={require('@assets/promo-banner.png')}
             />
         </TouchableOpacity>
     );

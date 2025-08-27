@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Pressable, Text, StyleSheet } from 'react-native';
-import { FontFamily, FontSize } from '@/app/styles/GlobalStyles';
+import { FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import {useTheme} from "@react-navigation/native";
 
 export const TabsContainer = ({ tabs, activeTab, onTabChange }) => {
@@ -42,7 +42,7 @@ const styles = StyleSheet.create({
     container: {
         flexDirection: 'row',
         marginTop: 20,
-        marginBottom: 16,
+        marginBottom: 0,
         height: 33,
         position: 'relative',
     },

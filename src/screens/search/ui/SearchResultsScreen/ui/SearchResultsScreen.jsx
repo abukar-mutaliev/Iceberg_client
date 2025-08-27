@@ -16,31 +16,26 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-// Импорт компонентов и стилей
-import { ScreenSearchBar } from '@/features/search/ui/ScreenSearchBar';
-import { Border, Color, FontFamily, FontSize } from '@/app/styles/GlobalStyles';
-import BackArrowIcon from "@shared/ui/Icon/BackArrowIcon/BackArrowIcon";
-import { FilterIcon } from '@/shared/ui/Icon/SearchIcons/FilterIcon';
-import { AppliedFilters } from '@/features/filter/AppliedFilters';
+import { ScreenSearchBar } from '@features/search/ui/ScreenSearchBar';
+import { Border, FontFamily } from '@app/styles/GlobalStyles';
+import { FilterIcon } from '@shared/ui/Icon/SearchIcons/FilterIcon';
+import { AppliedFilters } from '@features/filter/AppliedFilters';
 
-// Импорт действий и селекторов
 import {
     fetchProducts,
     selectProducts,
     selectProductsLoading,
-    selectProductsError,
     ProductTile
-} from '@/entities/product';
+} from '@entities/product';
 
 import {
-    selectFilterCriteria,
     selectIsFilterActive,
-    selectFilteredProductsBySearch // Используем имя вашего селектора
-} from '@/entities/filter';
+    selectFilteredProductsBySearch
+} from '@entities/filter';
 
-import { addSearchQuery } from '@/entities/search';
+import { addSearchQuery } from '@entities/search';
+import {BackButton} from "@shared/ui/Button/BackButton";
 
-// Адаптивные размеры
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = SCREEN_WIDTH / 440;
 
@@ -68,34 +63,28 @@ export const SearchResultsScreen = () => {
     const [searchText, setSearchText] = useState(searchQuery);
     const searchInputRef = useRef(null);
     const [isLoading, setIsLoading] = useState(false);
-    const [forceUpdate, setForceUpdate] = useState(0); // Для принудительного обновления списка
+    const [forceUpdate, setForceUpdate] = useState(0);
 
-    // Получаем продукты и фильтры из состояния Redux
     const products = useSelector(selectProducts);
-    const filterCriteria = useSelector(selectFilterCriteria);
     const isFilterActive = useSelector(selectIsFilterActive);
     const isProductsLoading = useSelector(selectProductsLoading);
 
-    // Используем селектор для получения отфильтрованных продуктов
     const filteredProducts = useSelector(state =>
         selectFilteredProductsBySearch(state, searchText)
     );
 
-    // Загружаем продукты, если их еще нет
     useEffect(() => {
         if (!products?.length) {
             dispatch(fetchProducts());
         }
     }, [dispatch, products]);
 
-    // Обновляем поисковый запрос при изменении параметра route
     useEffect(() => {
         if (searchQuery) {
             setSearchText(searchQuery);
         }
     }, [searchQuery]);
 
-    // Кратковременная загрузка при применении фильтров для лучшего UX
     useEffect(() => {
         if (filterApplied) {
             setIsLoading(true);
@@ -107,7 +96,6 @@ export const SearchResultsScreen = () => {
         }
     }, [filterApplied]);
 
-    // Обработчики событий
     const handleClearSearch = () => {
         setSearchText('');
         setForceUpdate(prev => prev + 1);
@@ -132,12 +120,18 @@ export const SearchResultsScreen = () => {
     };
 
     const handleProductPress = useCallback((product) => {
+        console.log('SearchResults: handleProductPress called with product:', product);
         if (product) {
+            console.log('SearchResults: Navigating to ProductDetail with ID:', product.id);
             dispatch(addSearchQuery(product.name));
+            
+            // Используем прямую навигацию внутри SearchStack
             navigation.navigate('ProductDetail', {
                 productId: product.id,
                 fromScreen: 'SearchResults'
             });
+        } else {
+            console.warn('SearchResults: Product is null or undefined');
         }
     }, [dispatch, navigation]);
 
@@ -145,9 +139,15 @@ export const SearchResultsScreen = () => {
         const isEven = index % 2 === 0;
         const marginRight = isEven ? GRID_SPACING : 0;
 
+        console.log('SearchResults: Rendering item with ID:', item?.id);
+
         return (
             <View style={[styles.itemContainer, { marginRight }]}>
-                <ProductTile product={item} onPress={() => handleProductPress(item)} />
+                <ProductTile 
+                    product={item} 
+                    onPress={handleProductPress} 
+                    testID={`search-product-${item?.id || index}`}
+                />
             </View>
         );
     };
@@ -177,9 +177,8 @@ export const SearchResultsScreen = () => {
                             <TouchableOpacity
                                 style={styles.backButton}
                                 onPress={handleGoBack}
-                                activeOpacity={0.7}
                             >
-                                <BackArrowIcon size={normalize(24)} color="rgba(51, 57, 176, 1)" />
+                                <BackButton />
                             </TouchableOpacity>
 
                             <Text style={styles.headerTitle}>Поиск</Text>
@@ -230,7 +229,7 @@ export const SearchResultsScreen = () => {
                         contentContainerStyle={styles.listContent}
                         showsVerticalScrollIndicator={false}
                         columnWrapperStyle={styles.columnWrapper}
-                        extraData={forceUpdate} // Для обновления при изменении фильтров или поиска
+                        extraData={forceUpdate}
                     />
                 ) : (
                     <View style={styles.emptyResultsContainer}>
@@ -292,13 +291,16 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingTop: Platform.OS === 'ios' ? normalize(15) : normalize(45),
+        paddingTop: Platform.OS === 'ios' ? normalize(15) : normalize(15),
         paddingBottom: normalize(8),
         paddingHorizontal: normalize(16),
     },
     backButton: {
-        padding: normalize(5),
-        width: normalize(30),
+        padding: 15,
+        width: 50,
+        height: 50,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     headerTitle: {
         fontFamily: FontFamily.sFProText,

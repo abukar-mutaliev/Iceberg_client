@@ -1,11 +1,10 @@
 import React, { useMemo } from 'react';
 import { View, StyleSheet, Text, ActivityIndicator } from 'react-native';
-import { useTheme } from '@/app/providers/themeProvider/ThemeProvider';
-import { FeedbackCard } from "@entities/feedback";
-
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { FeedbackCard } from "@entities/feedback/ui/FeedbackCard";
 
 export const RecentFeedbacks = ({
-                                    feedbacks,
+                                    feedbacks = [],
                                     productId,
                                     isLoading = false,
                                     limit = 2
@@ -13,7 +12,7 @@ export const RecentFeedbacks = ({
     const { colors } = useTheme();
 
     const recentFeedbacks = useMemo(() => {
-        if (isLoading || !feedbacks || !Array.isArray(feedbacks)) return [];
+        if (isLoading || !Array.isArray(feedbacks)) return [];
 
         let validFeedbacks = feedbacks.filter(feedback =>
             feedback && feedback.id &&
@@ -24,35 +23,21 @@ export const RecentFeedbacks = ({
             ? validFeedbacks.filter(feedback => feedback.productId === productId)
             : validFeedbacks;
 
-        filteredFeedbacks = filteredFeedbacks.sort((a, b) => {
-            // Сначала по дате (новые сверху)
-            const dateA = new Date(a.createdAt || 0);
-            const dateB = new Date(b.createdAt || 0);
-
-            if (dateB - dateA !== 0) {
-                return dateB - dateA;
-            }
-
-            // Затем по рейтингу (убывание)
-            if (b.rating !== a.rating) {
-                return b.rating - a.rating;
-            }
-
-            // Если рейтинги равны, сортируем по наличию фотографий
-            const aHasPhotos = a.photoUrls && a.photoUrls.length > 0;
-            const bHasPhotos = b.photoUrls && b.photoUrls.length > 0;
-
-            if (aHasPhotos !== bHasPhotos) {
-                return aHasPhotos ? -1 : 1;
-            }
-
-            // Наконец, по длине комментария (убывание)
-            const aCommentLength = a.comment ? a.comment.length : 0;
-            const bCommentLength = b.comment ? b.comment.length : 0;
-            return bCommentLength - aCommentLength;
-        });
-
-        return filteredFeedbacks.slice(0, limit);
+        // Сортируем по рейтингу и дате
+        return filteredFeedbacks
+            .sort((a, b) => {
+                const aRating = typeof a.rating === 'number' ? a.rating : 0;
+                const bRating = typeof b.rating === 'number' ? b.rating : 0;
+                
+                if (bRating !== aRating) {
+                    return bRating - aRating;
+                }
+                
+                const aDate = a.createdAt ? new Date(a.createdAt) : new Date(0);
+                const bDate = b.createdAt ? new Date(b.createdAt) : new Date(0);
+                return bDate - aDate;
+            })
+            .slice(0, limit);
     }, [feedbacks, productId, isLoading, limit]);
 
     if (isLoading) {
@@ -66,7 +51,7 @@ export const RecentFeedbacks = ({
         );
     }
 
-    if (recentFeedbacks.length === 0) {
+    if (!recentFeedbacks || recentFeedbacks.length === 0) {
         return null;
     }
 

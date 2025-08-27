@@ -14,11 +14,11 @@ import {
     fetchProducts,
     selectProducts,
     selectProductsLoading,
-    selectProductsError
-} from '@/entities/product';
-import { Loader } from '@/shared/ui/Loader';
-import { Color, FontFamily, FontSize } from '@/app/styles/GlobalStyles';
-import LogoSvg from '@/assets/logo/Logo';
+    selectProductsError, resetCurrentProduct
+} from '@entities/product';
+import { Loader } from '@shared/ui/Loader';
+import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
+import LogoSvg from '@assets/logo/Logo';
 import { useFocusEffect } from '@react-navigation/native';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -33,13 +33,15 @@ const normalize = (size) => {
 import {
     loadSearchHistory,
     addSearchQuery,
-    selectSearchHistoryItems
-} from '@/entities/search';
+} from '@entities/search';
 
-import {ScreenSearchBar} from "src/features/search/ui/ScreenSearchBar";
-import {SearchHistory} from "@features/search/ui/SearchHistory";
-import {ProductSuggestions} from "@features/search/ui/ProductSuggestions/ui/ProductSuggestions";
-import {PopularTags} from "@features/search/ui/PopularTags";
+
+import {
+    PopularTags,
+    ScreenSearchBar,
+    ProductSuggestions,
+    SearchHistory
+} from "@features/search";
 
 export const SearchScreen = ({ navigation }) => {
     const [filteredProducts, setFilteredProducts] = useState([]);
@@ -196,8 +198,18 @@ export const SearchScreen = ({ navigation }) => {
     }, [searchQuery, products]);
 
     const handleProductPress = (product) => {
+        console.log('SearchScreen: handleProductPress called with product:', product);
+
+        if (!product || !product.id) {
+            console.warn('SearchScreen: Product is null or missing ID');
+            return;
+        }
+
+        console.log('SearchScreen: Navigating to ProductDetail with ID:', product.id);
+        dispatch(resetCurrentProduct());
         dispatch(addSearchQuery(product.name));
 
+        // Используем прямую навигацию внутри SearchStack
         navigation.navigate('ProductDetail', {
             productId: product.id,
             fromScreen: 'Search'

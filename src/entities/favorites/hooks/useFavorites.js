@@ -7,7 +7,7 @@ import {
     checkIsFavorite,
     toggleFavoriteOptimistic,
     clearFavoritesError
-} from '../slice';
+} from '../model/slice';
 import {
     selectFavorites,
     selectFavoritesLoading,
@@ -16,8 +16,8 @@ import {
     selectIsFavorite,
     selectProductStatus,
     selectFavoritesWithDetails
-} from '../selectors';
-import { useAuth } from '@entities/auth/model/hooks/useAuth';
+} from '../model/selectors';
+import { useAuth } from '@entities/auth/hooks/useAuth';
 
 /**
  * Оптимизированный хук для работы с избранными товарами

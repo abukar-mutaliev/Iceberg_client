@@ -1,41 +1,66 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import {
     View,
     Text,
     StyleSheet,
     TouchableOpacity,
-    ScrollView,
-    ActivityIndicator,
+    ActivityIndicator, Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useSelector } from 'react-redux';
+import {useDispatch, useSelector} from 'react-redux';
 import {
-    selectProfile,
     selectProfileLoading,
-    selectProfileError
-} from '@/entities/profile';
-import { ProfileHeader } from '@shared/ui/ProfileHeader';
-import { ProfileAvatar } from '@/entities/profile/ui/ProfileAvatar';
-import { normalize, normalizeFont } from '@/shared/lib/normalize';
-import {useProfileInfo} from "@features/profile/ui/ProfileInfo/model/useProfileInfo";
+    selectProfileError,
+    selectProfile
+} from '@entities/profile';
+import { normalize, normalizeFont } from '@shared/lib/normalize';
+import { useProfileInfo } from "@features/profile/ui/ProfileInfo/model/useProfileInfo";
+import { Color, FontFamily } from "@app/styles/GlobalStyles";
+import IconRight from "@shared/ui/Icon/Profile/IconRight";
+import JoinTeamIcon from "@shared/ui/Icon/Profile/JoinTeamIcon";
+import CustomButton from "@shared/ui/Button/CustomButton";
+import { AddProductModal } from "@widgets/product/AddProductModal";
+import { useAuth } from "@entities/auth/hooks/useAuth";
+// Импортируем только функцию тестирования авторизации
+import { testAuth } from '@shared/api/api';
 
 export const ProfileInfo = ({ onProductPress }) => {
     const navigation = useNavigation();
-
-    const profile = useSelector(selectProfile);
+    const dispatch = useDispatch();
     const isLoading = useSelector(selectProfileLoading);
     const profileError = useSelector(selectProfileError);
-    const { user, isAuthenticated, tokens } = useSelector((state) => state.auth);
+    const profile = useSelector(selectProfile);
+
+    // Используем хук useAuth для получения данных авторизации
+    const { isAuthenticated, currentUser, logout } = useAuth();
+
+    // Получаем токены отдельно
+    const tokens = useSelector(state => state.auth.tokens);
+
+    const [isAddProductModalVisible, setAddProductModalVisible] = useState(false);
+    const [activeButtonId, setActiveButtonId] = useState(null);
+    // Упрощенные состояния для диагностики
+    const [authTestResult, setAuthTestResult] = useState(null);
+    const [isTestingAuth, setIsTestingAuth] = useState(false);
+    const [lastTestTime, setLastTestTime] = useState(null);
 
     const {
         setRetryCount,
         activeItemId,
         setActiveItemId,
-        handleGoBack,
-        handleLogout,
+        handleLogout: logoutFromProfile,
         navigateToLogin,
-        menuItems
-    } = useProfileInfo(isAuthenticated, tokens, user, navigation);
+        menuItems,
+    } = useProfileInfo(isAuthenticated, tokens, currentUser, navigation);
+
+    // Мемоизируем проверки ролей
+    const roleChecks = useMemo(() => ({
+        isAdmin: currentUser?.role === 'ADMIN',
+        isEmployee: currentUser?.role === 'EMPLOYEE',
+        isSupplier: currentUser?.role === 'SUPPLIER',
+        isDriver: currentUser?.role === 'DRIVER',
+        isClient: currentUser?.role === 'CLIENT'
+    }), [currentUser?.role]);
 
     const handleMenuItemPress = (itemId, callback) => {
         setActiveItemId(itemId);
@@ -45,6 +70,77 @@ export const ProfileInfo = ({ onProductPress }) => {
         }, 150);
     };
 
+    const handleJoinTeamPress = () => {
+        navigation.navigate('JoinTeam');
+    };
+
+    const handleLogoutPress = () => {
+        try {
+            console.log('Выполняем выход...');
+
+            // Сначала отправляем действие для полного сброса состояния
+            dispatch({ type: 'RESET_APP_STATE' });
+
+            // Затем выполняем выход
+            logout().then(() => {
+                console.log('Выход выполнен, переходим на экран авторизации');
+
+                // Сбрасываем стек навигации на экран авторизации
+                navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'Auth' }],
+                });
+            }).catch(error => {
+                console.error('Ошибка при выходе:', error);
+                Alert.alert('Ошибка', 'Не удалось выйти из системы. Попробуйте еще раз.');
+            });
+        } catch (error) {
+            console.error('Необработанная ошибка при выходе:', error);
+            Alert.alert('Ошибка', 'Произошла неизвестная ошибка при выходе из системы.');
+        }
+    };
+
+    // Упрощенная функция для тестирования авторизации
+    const handleTestAuth = async () => {
+        try {
+            setIsTestingAuth(true);
+            setAuthTestResult(null);
+
+            console.log('Запускаем диагностику авторизации...');
+            const result = await testAuth();
+
+            console.log('Результат диагностики:', result);
+            setAuthTestResult(result);
+            setLastTestTime(new Date());
+
+        } catch (error) {
+            console.error('Ошибка при тестировании авторизации:', error);
+            Alert.alert('Ошибка диагностики', error.message || 'Не удалось выполнить проверку авторизации');
+        } finally {
+            setIsTestingAuth(false);
+        }
+    };
+
+    const handleProductSuccess = (product) => {
+        console.log('Продукт добавлен:', product);
+        if (onProductPress) {
+            onProductPress(product);
+        }
+    };
+
+    const handleManageProducts = () => {
+        // Используем глобальную навигацию к MainStack
+        navigation.navigate('MainTab', {
+            screen: 'ProductManagement',
+            params: { fromScreen: 'Profile' }
+        });
+    };
+
+    const handlePushNotificationTest = () => {
+        navigation.navigate('PushNotificationTest');
+    };
+
+    // Проверка на авторизацию и наличие токена
     if (!isAuthenticated || !tokens?.accessToken) {
         return (
             <View style={styles.centered}>
@@ -66,90 +162,131 @@ export const ProfileInfo = ({ onProductPress }) => {
         );
     }
 
-    if (profileError) {
+    const isAdminProfileError = profileError &&
+        roleChecks.isAdmin &&
+        profileError.includes('Профиль admin не найден');
+
+    if (profileError && !isAdminProfileError) {
         return (
             <View style={styles.centered}>
                 <Text style={styles.error}>{profileError}</Text>
-                <TouchableOpacity style={styles.retryButton} onPress={() => setRetryCount((prev) => prev + 1)}>
-                    <Text style={styles.retryButtonText}>Повторить</Text>
-                </TouchableOpacity>
+                <CustomButton
+                    title="Повторить"
+                    onPress={() => setRetryCount((prev) => prev + 1)}
+                    outlined={false}
+                    color="#007AFF"
+                    activeColor="#FFFFFF"
+                    height={40}
+                    style={styles.retryButtonStyle}
+                    textStyle={styles.retryButtonTextStyle}
+                />
             </View>
         );
     }
 
     return (
         <View style={styles.container}>
-            <ProfileHeader title="Мой кабинет" onGoBack={handleGoBack} />
-
-            <ScrollView>
-                <View style={styles.profileContainer}>
-                    <ProfileAvatar
-                        profile={profile}
-                        size={118}
-                        centered={true}
-                        editable={false}
-                    />
-
-                    <View style={styles.nameContainer}>
-                        <Text style={styles.profileName}>{profile?.name || user?.name || 'Пользователь'}</Text>
-                    </View>
-                </View>
-
-                <View style={styles.menuContainer}>
-                    {menuItems.map((item, index) => (
-                        <TouchableOpacity
-                            key={item.id}
-                            style={[styles.menuItem, { borderTopWidth: index === 0 ? 0.5 : 0 }]}
-                            onPress={() => handleMenuItemPress(item.id, item.onPress)}
-                            activeOpacity={0.7}
-                        >
-                            <View style={styles.menuIconContainer}>
-                                {React.cloneElement(item.icon, {
-                                    color: activeItemId === item.id ? '#007AFF' : '#000000',
-                                })}
-                            </View>
-                            <Text
-                                style={[
-                                    styles.menuItemText,
-                                    activeItemId === item.id && styles.menuItemTextActive
-                                ]}
-                            >
-                                {item.title}
-                            </Text>
-                            <View style={styles.arrowIcon}>
-                            </View>
-                        </TouchableOpacity>
-                    ))}
-                </View>
-
-                {user?.role && (user.role === 'ADMIN' || user.role === 'SUPPLIER' || user.role === 'EMPLOYEE') && (
-                    <View style={styles.specialFunctionsContainer}>
-                        <TouchableOpacity
-                            style={styles.addProductButton}
-                            onPress={() => navigation.navigate('AddProduct')}
-                        >
-                            <Text style={styles.addProductButtonText}>Добавить продукт</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={styles.viewProductsButton}
-                            onPress={() => navigation.navigate('ProductList')}
-                        >
-                            <Text style={styles.viewProductsButtonText}>Управление продуктами</Text>
-                        </TouchableOpacity>
-                    </View>
-                )}
-
-                <View style={styles.logoutContainer}>
-                    <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-                        <Text style={styles.logoutButtonText}>Выйти из аккаунта</Text>
+            <View style={styles.menuContainer}>
+                {menuItems.map((item) => (
+                    <TouchableOpacity
+                        key={item.id}
+                        style={[
+                            styles.menuItem,
+                            activeItemId === item.id && styles.activeMenuItem
+                        ]}
+                        onPress={() => handleMenuItemPress(item.id, item.onPress)}
+                    >
+                        <View style={styles.menuItemIcon}>
+                            {React.isValidElement(item.icon)
+                                ? React.cloneElement(item.icon, {
+                                    color: activeItemId === item.id ? '#fff' : undefined
+                                })
+                                : item.icon
+                            }
+                        </View>
+                        <Text style={[
+                            styles.menuItemText,
+                            activeItemId === item.id && styles.activeMenuItemText
+                        ]}>
+                            {item.title}
+                        </Text>
+                        <IconRight color={activeItemId === item.id ? '#fff' : undefined} />
                     </TouchableOpacity>
+                ))}
+            </View>
+
+            {/* Кнопки для разных ролей */}
+            {roleChecks.isClient && (
+                <View style={styles.buttonContainer}>
+                    <CustomButton
+                        title="Стать частью команды"
+                        icon={<JoinTeamIcon />}
+                        onPress={handleJoinTeamPress}
+                        outlined={true}
+                        color={Color.blue2}
+                    />
                 </View>
-            </ScrollView>
+            )}
+
+            {roleChecks.isSupplier && (
+                <View style={styles.buttonContainer}>
+                    <CustomButton
+                        title="Добавить продукт"
+                        onPress={() => setAddProductModalVisible(true)}
+                        outlined={true}
+                        color={Color.blue2}
+                        activeColor="#FFFFFF"
+                        style={styles.buttonMargin}
+                    />
+                    <CustomButton
+                        title="Управление продуктами"
+                        onPress={handleManageProducts}
+                        outlined={true}
+                        color={Color.blue2}
+                        activeColor="#FFFFFF"
+                    />
+                </View>
+            )}
+
+            {roleChecks.isDriver && (
+                <View style={styles.buttonContainer}>
+                    <CustomButton
+                        title="Добавить остановку"
+                        onPress={() => navigation.navigate('AddStop')}
+                        outlined={true}
+                        color={Color.blue2}
+                        style={styles.buttonMargin}
+                    />
+                    <CustomButton
+                        title="Управление остановками"
+                        onPress={() => navigation.navigate('StopsList')}
+                        outlined={true}
+                        color={Color.blue2}
+                    />
+                </View>
+            )}
+
+            <View style={styles.logoutContainer}>
+                <CustomButton
+                    title="Выйти"
+                    onPress={handleLogoutPress}
+                    outlined={false}
+                    color={Color.red}
+                    activeColor="#FFFFFF"
+                />
+            </View>
+
+            <AddProductModal
+                visible={isAddProductModalVisible}
+                onClose={() => setAddProductModalVisible(false)}
+                onSuccess={handleProductSuccess}
+            />
         </View>
     );
 };
 
 const styles = StyleSheet.create({
+    // Существующие стили
     container: {
         flex: 1,
         backgroundColor: '#FFFFFF',
@@ -160,97 +297,54 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         padding: normalize(20),
     },
-    profileContainer: {
-        alignItems: 'center',
-        marginTop: normalize(30),
-        marginBottom: normalize(30),
-    },
-    nameContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: normalize(15),
-    },
-    profileName: {
-        fontSize: normalizeFont(20),
-        fontWeight: '500',
-        marginRight: normalize(10),
-        color: '#000000',
-    },
     menuContainer: {
-        marginHorizontal: normalize(15),
+        marginTop: normalize(16),
+        marginHorizontal: normalize(20),
         borderColor: '#E5E5E5',
         borderBottomWidth: 0.5,
     },
     menuItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        height: normalize(70),
+        paddingVertical: normalize(15),
         borderColor: '#E5E5E5',
-        borderBottomWidth: 0.8,
+        borderBottomWidth: 0.5,
+        backgroundColor: '#FFFFFF',
         position: 'relative',
+        paddingHorizontal: normalize(10),
     },
-    menuIconContainer: {
-        marginLeft: normalize(15),
+    menuItemIcon: {
         width: normalize(24),
         alignItems: 'center',
-        zIndex: 1,
+        justifyContent: 'center',
     },
     menuItemText: {
-        fontSize: normalizeFont(16),
-        marginLeft: normalize(15),
         flex: 1,
-        color: '#000000',
-        zIndex: 1,
+        marginLeft: normalize(15),
+        fontSize: normalizeFont(16),
+        color: '#222222',
+        fontFamily: FontFamily.sFProText,
     },
-    menuItemTextActive: {
-        color: '#007AFF',
+    activeMenuItem: {
+        backgroundColor: Color.blue2,
+        width: '100%',
+        paddingHorizontal: normalize(10),
     },
-    arrowIcon: {
-        marginRight: normalize(15),
-        zIndex: 1,
+    activeMenuItemText: {
+        color: '#fff',
     },
-    specialFunctionsContainer: {
+    buttonContainer: {
         marginTop: normalize(20),
         marginHorizontal: normalize(15),
+        marginBottom: normalize(15),
     },
-    addProductButton: {
-        backgroundColor: '#007AFF',
-        paddingVertical: normalize(12),
-        borderRadius: normalize(8),
-        alignItems: 'center',
+    buttonMargin: {
         marginBottom: normalize(10),
-    },
-    addProductButtonText: {
-        color: '#fff',
-        fontSize: normalizeFont(16),
-        fontWeight: '600',
-    },
-    viewProductsButton: {
-        backgroundColor: '#3949ab',
-        paddingVertical: normalize(12),
-        borderRadius: normalize(8),
-        alignItems: 'center',
-    },
-    viewProductsButtonText: {
-        color: '#fff',
-        fontSize: normalizeFont(16),
-        fontWeight: '600',
     },
     logoutContainer: {
         margin: normalize(15),
-        marginTop: normalize(20),
+        marginTop: normalize(50),
         marginBottom: normalize(30),
-    },
-    logoutButton: {
-        backgroundColor: '#ff3b30',
-        paddingVertical: normalize(12),
-        borderRadius: normalize(8),
-        alignItems: 'center',
-    },
-    logoutButtonText: {
-        color: '#fff',
-        fontSize: normalizeFont(16),
-        fontWeight: '600',
     },
     loginMessage: {
         fontSize: normalizeFont(16),
@@ -273,17 +367,61 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         marginBottom: normalize(20),
     },
-    retryButton: {
-        backgroundColor: '#007AFF',
-        paddingVertical: normalize(10),
+    retryButtonStyle: {
+        width: 'auto',
         paddingHorizontal: normalize(20),
+    },
+    retryButtonTextStyle: {
+        fontSize: normalizeFont(14),
+    },
+
+    // Стили для секции диагностики
+    debugContainer: {
+        marginHorizontal: normalize(15),
+        marginTop: normalize(10),
+        marginBottom: normalize(10),
+        paddingTop: normalize(10),
+        paddingBottom: normalize(10),
+        borderTopWidth: 0.5,
+        borderBottomWidth: 0.5,
+        borderColor: '#E5E5E5',
+    },
+    debugButton: {
+        backgroundColor: 'rgba(102, 102, 102, 0.1)',
+    },
+    testResultContainer: {
+        marginTop: normalize(10),
+        padding: normalize(10),
+        backgroundColor: '#F5F5F5',
         borderRadius: normalize(8),
     },
-    retryButtonText: {
-        color: '#fff',
+    testResultTitle: {
         fontSize: normalizeFont(14),
-        fontWeight: '600',
+        fontWeight: 'bold',
+        marginBottom: normalize(5),
+        color: '#333',
+    },
+    testResultItem: {
+        fontSize: normalizeFont(12),
+        marginVertical: normalize(2),
+        color: '#666',
+    },
+    testResultValue: {
+        fontWeight: 'bold',
+    },
+    validToken: {
+        color: 'green',
+    },
+    invalidToken: {
+        color: 'red',
+    },
+    testResultStatus: {
+        fontSize: normalizeFont(13),
+        marginTop: normalize(5),
+        paddingTop: normalize(5),
+        borderTopWidth: 0.5,
+        borderTopColor: '#E0E0E0',
+        fontWeight: 'bold',
+        color: '#333',
     },
 });
-
-export default ProfileInfo;

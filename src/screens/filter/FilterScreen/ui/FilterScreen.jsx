@@ -14,7 +14,7 @@ import {
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation, useRoute } from '@react-navigation/native';
 
-import { ScrollableBackgroundGradient } from '@/shared/ui/BackgroundGradient';
+import { ScrollableBackgroundGradient } from '@shared/ui/BackgroundGradient';
 
 import { PriceRangeFilter } from './PriceRangeFilter';
 import { CategoryFilter } from './CategoryFilter';
@@ -23,16 +23,15 @@ import { RatingFilter } from './RatingFilter';
 import { QuantityFilter } from './QuantityFilter';
 import { SupplierFilter } from './SupplierFilter';
 
-import { Border, Color, FontFamily, FontSize } from '@/app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
 
 import {
     setFilterCriteria,
-    clearFilterCriteria,
     saveFilters,
     selectFilterCriteria
-} from '@/entities/filter';
+} from '@entities/filter';
 
-import { selectProducts } from '@/entities/product';
+import { selectProducts } from '@entities/product';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = SCREEN_WIDTH / 440;

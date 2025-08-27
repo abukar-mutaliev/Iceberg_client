@@ -1,1 +1,1 @@
-export { ProductDetailScreen  } from './ui/ProductDetailScreen'
+export { default as ProductDetailScreen } from './ui/ProductDetailScreen'

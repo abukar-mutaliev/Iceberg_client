@@ -1,31 +1,50 @@
-import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, SafeAreaView, Alert, ActivityIndicator, Dimensions, TouchableOpacity, Text } from 'react-native';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { View, StyleSheet, SafeAreaView, Alert, TouchableOpacity, Text } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
-import { useFocusEffect, useRoute } from '@react-navigation/native';
-import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
+import { useFocusEffect } from '@react-navigation/native';
+
+import { Color, FontFamily } from '@app/styles/GlobalStyles';
 import {
-    fetchDriverDistricts,
-    selectDriverDistricts,
     selectDriverError,
     selectDriverLoading,
     clearDriverError,
-    fetchAllDrivers // Добавляем импорт для получения всех водителей
+    fetchAllDrivers
 } from "@entities/driver";
+
+import {
+    selectDistricts,
+    selectDistrictLoading,
+    selectDistrictError,
+    selectDistrictsForDropdown
+} from "@entities/district";
+
+import { fetchAllDistricts } from "@entities/district";
 import { AddStopHeader } from './AddStopHeader';
 import { LoadingState } from '@shared/ui/states/LoadingState';
 import { StopForm } from "@features/driver/addDriverStop";
 import { logData } from '@shared/lib/logger';
 import { ReusableModal } from '@shared/ui/Modal';
 import MapView, { Marker } from 'react-native-maps';
+import { parseCoordinates } from '@/shared/lib/coordinatesHelper';
 
 export const AddStopScreen = ({ navigation, route }) => {
+    // Рефы для отслеживания состояния и предотвращения лишних перерисовок
+    const prevRouteParamsRef = useRef(null);
+    const isProcessingRouteParams = useRef(false);
+    const isInitialized = useRef(false);
+    const lastUpdateTime = useRef(0);
+
     const dispatch = useDispatch();
     const isLoading = useSelector(selectDriverLoading);
+    const isDistrictLoading = useSelector(selectDistrictLoading);
     const error = useSelector(selectDriverError);
-    const districts = useSelector(selectDriverDistricts);
+    const districts = useSelector(selectDistricts);
+    const districtsForDropdown = useSelector(selectDistrictsForDropdown);
     const userRole = useSelector(state => state.auth?.user?.role || 'DRIVER');
+
     const [formSubmitted, setFormSubmitted] = useState(false);
     const [mapModalVisible, setMapModalVisible] = useState(false);
+    const [isLocationLoading, setIsLocationLoading] = useState(false);
     const [locationData, setLocationData] = useState({
         mapRegion: {
             latitude: 55.751244,
@@ -36,38 +55,38 @@ export const AddStopScreen = ({ navigation, route }) => {
         markerPosition: null,
         mapLocation: '',
     });
+    const [addressFromMap, setAddressFromMap] = useState('');
 
-    const isAdminOrEmployee = userRole === 'ADMIN' || userRole === 'EMPLOYEE';
+    const isAdminOrEmployee = useMemo(() =>
+            userRole === 'ADMIN' || userRole === 'EMPLOYEE',
+        [userRole]
+    );
 
-    // Отслеживаем параметры навигации для получения координат от MapScreen
-    useEffect(() => {
-        if (route.params?.selectedLocation) {
-            const locationString = route.params.selectedLocation;
-            logData('AddStopScreen: Получены координаты из параметров навигации', locationString);
+    const handleLocationUpdate = useCallback((coordinates) => {
+        if (!coordinates) return;
 
-            handleLocationUpdate(locationString);
+        const now = Date.now();
+        if (now - lastUpdateTime.current < 300) return;
+        lastUpdateTime.current = now;
 
-            // Очищаем параметры, чтобы избежать повторной обработки
-            navigation.setParams({ selectedLocation: undefined, timestamp: undefined });
-        }
-    }, [route.params?.selectedLocation, route.params?.timestamp]);
-
-    // Функция для обновления координат
-    const handleLocationUpdate = (coordinates) => {
         try {
             const [lat, lng] = coordinates.split(',').map(coord => parseFloat(coord.trim()));
 
             if (!isNaN(lat) && !isNaN(lng)) {
-                setLocationData(prev => ({
-                    ...prev,
-                    mapLocation: coordinates,
-                    markerPosition: { latitude: lat, longitude: lng },
-                    mapRegion: {
-                        ...prev.mapRegion,
-                        latitude: lat,
-                        longitude: lng
-                    }
-                }));
+                setLocationData(prev => {
+                    if (prev.mapLocation === coordinates) return prev;
+
+                    return {
+                        ...prev,
+                        mapLocation: coordinates,
+                        markerPosition: { latitude: lat, longitude: lng },
+                        mapRegion: {
+                            ...prev.mapRegion,
+                            latitude: lat,
+                            longitude: lng
+                        }
+                    };
+                });
                 logData('AddStopScreen: Координаты успешно обновлены', coordinates);
             } else {
                 logData('AddStopScreen: Неверный формат координат', coordinates);
@@ -75,16 +94,91 @@ export const AddStopScreen = ({ navigation, route }) => {
         } catch (error) {
             logData('AddStopScreen: Ошибка при обработке координат', error);
         }
-    };
+    }, []);
 
-    // Загружаем районы и список водителей (если пользователь админ или сотрудник)
     useEffect(() => {
-        dispatch(fetchDriverDistricts());
+        const shouldProcessRouteParams =
+            route.params?.selectedLocation &&
+            route.params?.timestamp &&
+            !isProcessingRouteParams.current;
 
-        // Если пользователь админ или сотрудник, загружаем список всех водителей
-        if (isAdminOrEmployee) {
-            dispatch(fetchAllDrivers());
+        if (!shouldProcessRouteParams) {
+            return;
         }
+
+        const isSameParams =
+            prevRouteParamsRef.current?.selectedLocation === route.params.selectedLocation &&
+            prevRouteParamsRef.current?.timestamp === route.params.timestamp;
+
+        if (isSameParams) {
+            return;
+        }
+
+        // Блокируем повторную обработку
+        isProcessingRouteParams.current = true;
+
+        // Сохраняем текущие параметры для сравнения в будущем
+        prevRouteParamsRef.current = { ...route.params };
+
+        // Получаем и обрабатываем параметры маршрута
+        const locationString = route.params.selectedLocation;
+        const addressString = route.params.addressString;
+        
+        logData('AddStopScreen: Получены координаты из параметров навигации', {
+            locationString,
+            addressString,
+            timestamp: route.params.timestamp
+        });
+
+        // Обновляем состояние с координатами
+        if (locationString) {
+            handleLocationUpdate(locationString);
+        }
+        
+        if (addressString) {
+            setAddressFromMap(addressString);
+            logData('AddStopScreen: Получен адрес из параметров навигации', addressString);
+        }
+
+
+        setTimeout(() => {
+            navigation.setParams({
+                selectedLocation: undefined,
+                addressString: undefined,
+                timestamp: undefined
+            });
+
+            isProcessingRouteParams.current = false;
+            
+            logData('AddStopScreen: Проверка передачи адреса в форму', {
+                addressPassedToForm: addressFromMap,
+                coordinates: locationData.mapLocation
+            });
+        }, 300);
+    }, [route.params, handleLocationUpdate, navigation, addressFromMap, locationData.mapLocation]);
+
+    useEffect(() => {
+        if (isInitialized.current) return;
+        isInitialized.current = true;
+
+        const loadInitialData = async () => {
+            try {
+                logData('AddStopScreen: Загрузка начальных данных');
+                const promises = [dispatch(fetchAllDistricts())];
+
+                if (isAdminOrEmployee) {
+                    promises.push(dispatch(fetchAllDrivers()));
+                }
+
+                await Promise.all(promises);
+
+                logData('AddStopScreen: Начальные данные загружены успешно');
+            } catch (error) {
+                logData('AddStopScreen: Ошибка при загрузке начальных данных', error);
+            }
+        };
+
+        loadInitialData();
     }, [dispatch, isAdminOrEmployee]);
 
     // Очистка ошибок при фокусе на экране
@@ -100,37 +194,41 @@ export const AddStopScreen = ({ navigation, route }) => {
         }, [dispatch, error])
     );
 
-    // Обработчики для карты
-    const handleMapModalOpen = (existingLocation) => {
+    // Обработчики для карты - мемоизируем
+    const handleMapModalOpen = useCallback((existingLocation) => {
         if (existingLocation) {
-            const [lat, lng] = existingLocation.split(',').map(coord => parseFloat(coord.trim()));
-            if (!isNaN(lat) && !isNaN(lng)) {
-                setLocationData(prev => ({
-                    ...prev,
-                    markerPosition: { latitude: lat, longitude: lng },
-                    mapRegion: {
-                        ...prev.mapRegion,
-                        latitude: lat,
-                        longitude: lng
-                    }
-                }));
+            try {
+                const [lat, lng] = existingLocation.split(',').map(coord => parseFloat(coord.trim()));
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    setLocationData(prev => ({
+                        ...prev,
+                        markerPosition: { latitude: lat, longitude: lng },
+                        mapRegion: {
+                            ...prev.mapRegion,
+                            latitude: lat,
+                            longitude: lng
+                        }
+                    }));
+                }
+            } catch (error) {
+                logData('AddStopScreen: Ошибка при обработке существующих координат', error);
             }
         }
         setMapModalVisible(true);
-    };
+    }, []);
 
-    const handleLocationConfirm = (coordinates, address) => {
+    const handleLocationConfirm = useCallback((coordinates) => {
         handleLocationUpdate(coordinates);
         setMapModalVisible(false);
-    };
+    }, [handleLocationUpdate]);
 
-    // Отображение загрузки
-    if (isLoading && !formSubmitted && districts.length === 0) {
+    // Отображение загрузки только во время инициализации данных
+    if ((isLoading || isDistrictLoading) && !formSubmitted && districts.length === 0) {
         return <LoadingState />;
     }
 
-    // Компонент карты для модального окна
-    const MapContent = () => (
+    // Компонент карты для модального окна - выносим в отдельный компонент
+    const MapContent = React.memo(() => (
         <View style={mapStyles.container}>
             <MapView
                 style={mapStyles.map}
@@ -161,23 +259,25 @@ export const AddStopScreen = ({ navigation, route }) => {
                 </TouchableOpacity>
             </View>
         </View>
-    );
+    ));
 
     return (
         <SafeAreaView style={styles.container}>
             <AddStopHeader />
 
             <StopForm
-                districts={districts}
+                districts={districtsForDropdown}
                 onMapOpen={handleMapModalOpen}
                 locationData={locationData}
                 setLocationData={setLocationData}
                 formSubmitted={formSubmitted}
                 setFormSubmitted={setFormSubmitted}
                 userRole={userRole}
+                isLocationLoading={isLocationLoading}
+                setIsLocationLoading={setIsLocationLoading}
+                addressFromMap={addressFromMap}
             />
 
-            {/* Используем ReusableModal вместо MapModalContainer */}
             <ReusableModal
                 visible={mapModalVisible}
                 onClose={() => setMapModalVisible(false)}
@@ -217,7 +317,7 @@ const mapStyles = StyleSheet.create({
         right: 20,
     },
     confirmButton: {
-        backgroundColor: Color.main,
+        backgroundColor: Color.success,
         padding: 15,
         borderRadius: 8,
         alignItems: 'center',

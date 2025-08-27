@@ -1,7 +1,8 @@
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity, Image, Platform, Dimensions } from 'react-native';
-import Text from '@/shared/ui/Text/Text';
+import Text from '@shared/ui/Text/Text';
 import LinesIceCream from './assets/LinesIceCream.png';
+import { SafeFonts, getSafePlatformFont } from '@shared/lib/fontUtils';
 
 const { width, height } = Dimensions.get('window');
 
@@ -99,12 +100,12 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     title: {
-        fontFamily: 'BezierSans',
+        fontFamily: SafeFonts.BezierSans,
         color: '#fff',
         textAlign: 'center',
     },
     subtitle: {
-        fontFamily: 'BezierSans',
+        fontFamily: SafeFonts.BezierSans,
         fontWeight: '500',
         color: '#fff',
         textAlign: 'center',
@@ -126,7 +127,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     buttonText: {
-        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+        fontFamily: getSafePlatformFont('SFProText'),
         fontWeight: '500',
         textTransform: 'uppercase',
         color: '#3339B0',

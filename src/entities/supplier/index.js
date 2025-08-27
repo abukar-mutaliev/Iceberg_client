@@ -9,6 +9,7 @@ export {
     clearSupplierCache,
     setSupplierRating,
     clearRatings,
+    fetchSupplierRating
 } from './model/slice';
 
 export {
@@ -23,16 +24,19 @@ export {
     selectSuppliersError,
     selectSupplierById,
     selectCurrentSupplier,
-    selectSupplierProductsBySupplierId,
     selectCurrentSupplierProducts,
     selectSupplierWithProducts,
     selectIsUserSupplier,
     selectCurrentUserSupplierId,
     selectBestFeedbacks,
-    selectSupplierRating
+    selectSupplierRating,
+    selectSupplierTotalFeedbacks,
+    selectAllSupplierFeedbacks
 
 } from './model/selectors';
 import suppliersReducer from './model/slice';
+export { SupplierRatingFromRedux } from './ui/SupplierRating';
+export { useSupplierData } from '@entities/supplier/hooks/useSupplierData';
 
 export { suppliersReducer };
 

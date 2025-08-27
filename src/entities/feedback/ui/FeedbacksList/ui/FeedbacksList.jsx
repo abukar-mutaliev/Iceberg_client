@@ -1,48 +1,74 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Text, TouchableOpacity, ActivityIndicator, RefreshControl, ScrollView, Alert } from 'react-native';
-import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
-import { FontFamily } from '@app/styles/GlobalStyles';
-import { useSelector, useDispatch } from 'react-redux';
-import { selectIsAuthenticated, selectUser } from '@entities/auth';
-import { deleteFeedback, selectHasUserLeftFeedback } from '@entities/feedback';
-import { FeedbackCard } from '@entities/feedback';
-import { FeedbackAddModal } from '@features/feedback';
+// FeedbacksList.jsx
+import React, {useState, useEffect, useCallback, useRef} from 'react';
+import {
+    View,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    ActivityIndicator,
+    RefreshControl,
+    ScrollView,
+    Alert
+} from 'react-native';
+import {useTheme} from '@app/providers/themeProvider/ThemeProvider';
+import {FontFamily} from '@app/styles/GlobalStyles';
+import {useSelector, useDispatch} from 'react-redux';
+import {selectIsAuthenticated, selectUser} from '@entities/auth';
+import {deleteFeedback, selectHasUserLeftFeedbackSafe} from '@entities/feedback';
+import {FeedbackCard} from '@entities/feedback/ui/FeedbackCard';
+import {FeedbackAddModal} from '@features/feedback';
+import {useAuth} from "@entities/auth/hooks/useAuth";
 
 export const FeedbacksList = React.memo(({
-                                  productId,
-                                  feedbacks,
-                                  isLoading,
-                                  error,
-                                  isDataLoaded,
-                                  showAddForm: initialShowForm = false,
-                                  onFormClosed,
-                                  style, onRefresh
-                              }) => {
-    const { colors } = useTheme();
+                                             productId,
+                                             feedbacks = [],
+                                             isLoading,
+                                             error,
+                                             isDataLoaded,
+                                             showAddForm: initialShowForm = false,
+                                             onFormClosed,
+                                             style, onRefresh
+                                         }) => {
+    const {colors} = useTheme();
     const dispatch = useDispatch();
-    const isAuthenticated = useSelector(selectIsAuthenticated);
+    const { isAuthenticated } = useAuth();
     const currentUser = useSelector(selectUser);
+
+    // Проверяем, является ли пользователь клиентом
+    const isClient = currentUser?.role === 'CLIENT';
 
     const [showAddForm, setShowAddForm] = useState(initialShowForm);
     const [refreshing, setRefreshing] = useState(false);
 
-    const hasLeftFeedback = useSelector(
-        currentUser?.profile?.id
-            ? state => selectHasUserLeftFeedback(currentUser.profile.id)(state, productId)
-            : () => false
-    );
+    const hasLeftFeedback = useSelector(selectHasUserLeftFeedbackSafe(currentUser?.profile?.id));
 
     useEffect(() => {
         setShowAddForm(initialShowForm);
     }, [initialShowForm]);
 
-    const handleRefresh = async () => {
+    const handleRefresh = useCallback(async () => {
+        if (refreshing || isLoading) return;
+
         setRefreshing(true);
-        if (onRefresh) {
-            await onRefresh();
+        try {
+            if (onRefresh) {
+                await onRefresh();
+            }
+        } finally {
+            setRefreshing(false);
         }
-        setRefreshing(false);
-    };
+    }, [onRefresh, refreshing, isLoading]);
+
+    const isLoadingRef = useRef(false);
+
+    useEffect(() => {
+        if (!isDataLoaded && !isLoadingRef.current && productId) {
+            isLoadingRef.current = true;
+            onRefresh?.().finally(() => {
+                isLoadingRef.current = false;
+            });
+        }
+    }, [isDataLoaded, productId, onRefresh]);
 
     const handleFeedbackAdded = () => {
         setShowAddForm(false);
@@ -62,7 +88,7 @@ export const FeedbacksList = React.memo(({
                 },
                 {
                     text: "Удалить",
-                    onPress: () => dispatch(deleteFeedback({ id: reviewId, productId })),
+                    onPress: () => dispatch(deleteFeedback({id: reviewId, productId})),
                     style: "destructive",
                 },
             ]
@@ -70,19 +96,21 @@ export const FeedbacksList = React.memo(({
     };
 
     const renderAddReviewButton = () => {
-        if (hasLeftFeedback) {
+        // Отображаем кнопку только если пользователь аутентифицирован,
+        // является клиентом и еще не оставил отзыв
+        if (!isAuthenticated || !isClient || hasLeftFeedback) {
             return null;
         }
 
         return (
             <TouchableOpacity
-                style={[styles.addButton, { backgroundColor: colors.primary }]}
+                style={[styles.addButton, {backgroundColor: colors.primary}]}
                 onPress={() => {
                     if (hasLeftFeedback) {
                         Alert.alert(
                             "Уведомление",
                             "Вы уже оставили отзыв к этому продукту.",
-                            [{ text: "OK" }]
+                            [{text: "OK"}]
                         );
                     } else {
                         setShowAddForm(true);
@@ -96,10 +124,13 @@ export const FeedbacksList = React.memo(({
         );
     };
 
+    // Обеспечиваем, что feedbacks всегда массив
+    const safeFeedbacks = Array.isArray(feedbacks) ? feedbacks : [];
+
     if (isLoading && !refreshing && !isDataLoaded) {
         return (
             <View style={styles.centered}>
-                <ActivityIndicator size="large" color={colors.primary} />
+                <ActivityIndicator size="large" color={colors.primary}/>
             </View>
         );
     }
@@ -107,11 +138,11 @@ export const FeedbacksList = React.memo(({
     if (error) {
         return (
             <View style={styles.centered}>
-                <Text style={[styles.errorText, { color: colors.error }]}>
+                <Text style={[styles.errorText, {color: colors.error}]}>
                     {error}
                 </Text>
                 <TouchableOpacity
-                    style={[styles.retryButton, { backgroundColor: colors.primary }]}
+                    style={[styles.retryButton, {backgroundColor: colors.primary}]}
                     onPress={handleRefresh}
                 >
                     <Text style={styles.retryButtonText}>Повторить</Text>
@@ -148,17 +179,11 @@ export const FeedbacksList = React.memo(({
                 <>
                     {renderAddReviewButton()}
 
-                    {!feedbacks || feedbacks.length === 0 ? (
-                        <View style={styles.centered}>
-                            <Text style={[styles.noFeedbacksText, { color: colors.textSecondary }]}>
-                                Отзывов пока нет
-                            </Text>
-                        </View>
-                    ) : (
+                    {safeFeedbacks.length > 0 ? (
                         <View style={styles.feedbacksContainer}>
-                            {feedbacks.map((feedback, index) => (
+                            {safeFeedbacks.map((feedback, index) => (
                                 <View
-                                    key={`${feedback.id}-${index}`}
+                                    key={`${feedback.id || index}-${index}`}
                                     style={index > 0 ? styles.cardContainer : styles.firstCardContainer}
                                 >
                                     <FeedbackCard
@@ -172,6 +197,12 @@ export const FeedbacksList = React.memo(({
                                 </View>
                             ))}
                         </View>
+                    ) : (
+                        <View style={styles.centered}>
+                            <Text style={[styles.noFeedbacksText, {color: colors.textSecondary}]}>
+                                Отзывов пока нет
+                            </Text>
+                        </View>
                     )}
                 </>
             )}
@@ -179,13 +210,13 @@ export const FeedbacksList = React.memo(({
     );
 });
 
+
 const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
     contentContainer: {
         paddingBottom: 16,
-        paddingHorizontal: 10,
     },
     feedbacksContainer: {
         width: '100%',
@@ -212,6 +243,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: 16,
+        marginTop: 16,
         marginHorizontal: 16,
     },
     addButtonText: {

@@ -1,33 +1,41 @@
 module.exports = function (api) {
     api.cache(true);
     return {
-        presets: [['module:metro-react-native-babel-preset', { loose: true }]],
+        presets: ['babel-preset-expo'],
         plugins: [
             [
                 'module-resolver',
                 {
-                    root: ['.'],
+                    root: ['./src'],
                     extensions: [
                         '.ios.js',
                         '.android.js',
                         '.js',
                         '.jsx',
-                        '.json'
+                        '.ts',
+                        '.tsx',
+                        '.json',
+                        '.png',
+                        '.jpg',
+                        '.jpeg',
+                        '.gif',
+                        '.webp',
+                        '.svg'
                     ],
                     alias: {
                         '@': './src',
                         '@app': './src/app',
                         '@shared': './src/shared',
-                        '@assets': './src/assets',
+                        '@assets': './assets',
                         '@features': './src/features',
                         '@widgets': './src/widgets',
-                        '@pages': './src/pages',
+                        '@screens': './src/screens',
                         '@entities': './src/entities',
-                        '@services': './src/services'
+                        '@services': './src/services',
+                        '@styles': './src/styles'
                     }
                 }
             ],
-            ['@babel/plugin-transform-private-methods', { loose: true }],
             'react-native-reanimated/plugin'
         ]
     };

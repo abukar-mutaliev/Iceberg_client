@@ -1,11 +1,61 @@
-export const selectCategories = (state) => state.category?.categories || [];
-export const selectCurrentCategory = (state) => state.category?.currentCategory || null;
-export const selectCategoriesLoading = (state) => state.category?.isLoading || false;
-export const selectCategoriesError = (state) => state.category?.error || null;
+import { createSelector } from '@reduxjs/toolkit';
 
-export const selectProductsByCategory = (state, categoryId) =>
-    state.category?.productsByCategory?.[categoryId] || [];
-export const selectProductsByCategoryLoading = (state) =>
-    state.category?.productsLoading || false;
-export const selectProductsByCategoryError = (state) =>
-    state.category?.productsError || null;
+// Базовый селектор состояния категорий
+const selectCategoryState = (state) => state.category || {};
+
+// Мемоизированные селекторы для избежания лишних ререндеров
+export const selectCategories = createSelector(
+    [selectCategoryState],
+    (categoryState) => categoryState.categories || []
+);
+
+export const selectCurrentCategory = createSelector(
+    [selectCategoryState],
+    (categoryState) => categoryState.currentCategory || null
+);
+
+export const selectCategoriesLoading = createSelector(
+    [selectCategoryState],
+    (categoryState) => categoryState.isLoading || false
+);
+
+export const selectCategoriesError = createSelector(
+    [selectCategoryState],
+    (categoryState) => categoryState.error || null
+);
+
+// Мемоизированный селектор для продуктов по категориям
+export const selectProductsByCategory = createSelector(
+    [selectCategoryState, (state, categoryId) => categoryId],
+    (categoryState, categoryId) => {
+        if (!categoryId) return [];
+        return categoryState.productsByCategory?.[categoryId] || [];
+    }
+);
+
+export const selectProductsByCategoryLoading = createSelector(
+    [selectCategoryState],
+    (categoryState) => categoryState.productsLoading || false
+);
+
+export const selectProductsByCategoryError = createSelector(
+    [selectCategoryState],
+    (categoryState) => categoryState.productsError || null
+);
+
+// Селектор для получения категории по ID
+export const selectCategoryById = createSelector(
+    [selectCategories, (state, categoryId) => categoryId],
+    (categories, categoryId) => {
+        if (!categoryId || !Array.isArray(categories)) return null;
+        return categories.find(category => category.id === categoryId) || null;
+    }
+);
+
+// Селектор для проверки наличия продуктов в категории
+export const selectHasProductsInCategory = createSelector(
+    [selectProductsByCategory],
+    (products) => {
+        return Array.isArray(products) && products.length > 0;
+    }
+);

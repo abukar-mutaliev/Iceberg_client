@@ -12,8 +12,8 @@ import {
     Pressable
 } from 'react-native';
 import { X } from 'lucide-react-native';
-import { Color, FontFamily, FontSize, Border } from '@/app/styles/GlobalStyles';
-import { AndroidShadow } from '@/shared/ui/Shadow';
+import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
+import { AndroidShadow } from '@shared/ui/Shadow';
 
 // Настройка масштабирования для адаптивности
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -107,7 +107,7 @@ export const ScreenSearchBar = forwardRef(({
         <View style={styles.container}>
             <View style={[
                 styles.searchBarWrapper,
-                { width: showFullWidth ? "100%" : "75%" }
+                { width: showFullWidth ? "100%" : 270 } // Исправлено с "75%" на числовое значение
             ]}>
                 {Platform.OS === 'android' ? (
                     <AndroidShadow

@@ -1,0 +1,1 @@
+export { AdminProductHeader } from './ui/AdminProductHeader';

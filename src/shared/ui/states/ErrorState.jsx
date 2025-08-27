@@ -1,79 +1,50 @@
-import { View, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
-import { useTheme } from '@/app/providers/themeProvider/ThemeProvider';
-import Text from '@/shared/ui/Text/Text';
-import { ScrollableBackgroundGradient } from '@/shared/ui/BackgroundGradient';
+import React from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-export const ErrorState = ({
-                               message = 'Произошла ошибка при загрузке данных',
-                               error = null,
-                               onRetry = () => {},
-                               buttonText = 'Обновить'
-                           }) => {
-    const { colors } = useTheme();
-
+/**
+ * Компонент для отображения состояния ошибки
+ *
+ * @param {Object} props - Свойства компонента
+ * @param {string} props.message - Текст сообщения об ошибке
+ * @param {Function} props.onRetry - Функция, вызываемая при нажатии на кнопку повтора
+ * @param {string} [props.buttonText="Повторить"] - Текст кнопки
+ * @returns {JSX.Element}
+ */
+export const ErrorState = ({ message, onRetry, buttonText = "Повторить" }) => {
     return (
-        <View style={styles.fullScreenContainer}>
-            <ScrollableBackgroundGradient />
-            <View style={styles.errorContainer}>
-                <Text style={[styles.errorText, { color: colors.text }]}>
-                    {message}
-                </Text>
-                {error && typeof error === 'string' && (
-                    <Text style={[styles.errorDetails, { color: colors.textSecondary }]}>
-                        {error}
-                    </Text>
-                )}
-                <TouchableOpacity
-                    style={[styles.actionButton, { backgroundColor: colors.primary }]}
-                    onPress={onRetry}
-                >
-                    <Text style={styles.actionButtonText}>{buttonText}</Text>
-                </TouchableOpacity>
-            </View>
+        <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>{message}</Text>
+            <TouchableOpacity
+                style={styles.retryButton}
+                onPress={onRetry}
+            >
+                <Text style={styles.retryButtonText}>{buttonText}</Text>
+            </TouchableOpacity>
         </View>
     );
 };
 
-
 const styles = StyleSheet.create({
-    fullScreenContainer: {
-        flex: 1,
-        width: '100%',
-        height: '100%',
-    },
     errorContainer: {
-        flex: 1,
-        justifyContent: 'center',
+        padding: 20,
         alignItems: 'center',
-        padding: SCREEN_WIDTH * 0.047,
-        backgroundColor: 'transparent',
-    },
-    loaderContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
+        backgroundColor: '#ffeeee'
     },
     errorText: {
-        fontSize: SCREEN_WIDTH * 0.037,
-        textAlign: 'center',
-        marginBottom: SCREEN_WIDTH * 0.023,
-        fontWeight: '500',
+        color: Color.blue2,
+        fontSize: 14,
+        marginBottom: 10,
+        textAlign: 'center'
     },
-    errorDetails: {
-        fontSize: SCREEN_WIDTH * 0.032,
-        textAlign: 'center',
-        marginBottom: SCREEN_WIDTH * 0.047,
+    retryButton: {
+        backgroundColor: Color.blue2,
+        paddingHorizontal: 20,
+        paddingVertical: 8,
+        borderRadius: 4
     },
-    actionButton: {
-        paddingVertical: SCREEN_WIDTH * 0.023,
-        paddingHorizontal: SCREEN_WIDTH * 0.047,
-        borderRadius: SCREEN_WIDTH * 0.023,
-    },
-    actionButtonText: {
+    retryButtonText: {
         color: 'white',
-        fontSize: SCREEN_WIDTH * 0.037,
-        fontWeight: '500',
-    },
+        fontWeight: '500'
+    }
 });

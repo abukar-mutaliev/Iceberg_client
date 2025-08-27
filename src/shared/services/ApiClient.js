@@ -1,14 +1,30 @@
-// shared/api/ApiClient.js
-import { createProtectedRequest } from '@shared/api/api';
+import { createProtectedRequest, createPublicRequest, authService } from '@shared/api/api';
 
 export const apiClient = {
-    // Базовый метод для всех HTTP запросов - использует ваш createProtectedRequest
+    // Базовый метод для всех HTTP запросов - автоматически выбирает защищенный или публичный запрос
     request: async (method, endpoint, data = null, config = {}) => {
         try {
-            const response = await createProtectedRequest(method, endpoint, data, config);
-            return response;
+            // Проверяем, есть ли токены для защищенного запроса
+            const tokens = await authService.getStoredTokens();
+            const hasValidTokens = tokens?.accessToken || tokens?.refreshToken;
+
+            // Если есть токены - используем защищенный запрос, иначе - публичный
+            if (hasValidTokens) {
+                return await createProtectedRequest(method, endpoint, data, config);
+            } else {
+                return await createPublicRequest(method, endpoint, data, config);
+            }
         } catch (error) {
-            console.error(`API ${method.toUpperCase()} request failed:`, endpoint, error);
+            // Если ошибка связана с авторизацией (401), пробуем публичный запрос
+            if (error.response?.status === 401 || error.message?.includes('токены')) {
+                try {
+                    return await createPublicRequest(method, endpoint, data, config);
+                } catch (publicError) {
+                    // Если и публичный запрос не работает, выбрасываем исходную ошибку
+                    throw error;
+                }
+            }
+
             throw error;
         }
     },

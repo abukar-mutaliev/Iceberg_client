@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, Pressable, ActivityIndicator, Text, ScrollView } from 'react-native';
+import { View, StyleSheet, Pressable, Text, ScrollView } from 'react-native';
 import { useSelector } from 'react-redux';
 import {
     selectCategories,
@@ -10,6 +10,7 @@ import { CategoryIcon } from '@entities/category/ui/CategoryIcon';
 import { Color, Padding, Gap, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { AndroidShadow } from "@shared/ui/Shadow";
 import { useNavigation } from '@react-navigation/native';
+import {normalize} from "@shared/lib/normalize";
 
 const CATEGORY_ICON_MAP = {
     'Рожок': 'рожок',
@@ -19,19 +20,13 @@ const CATEGORY_ICON_MAP = {
     'Стандартный': 'стандартный'
 };
 
-export const CategoriesBar = () => {
+export const CategoriesBar = ({ hideLoader = true }) => {
     const categories = useSelector(selectCategories);
     const isLoading = useSelector(selectCategoriesLoading);
     const error = useSelector(selectCategoriesError);
     const navigation = useNavigation();
 
-    if (isLoading) {
-        return (
-            <View style={styles.loaderContainer}>
-                <ActivityIndicator size="large" color={Color.purpleSoft} />
-            </View>
-        );
-    }
+    // Не показываем спиннер — просто вернём пустое место, если нет категорий
 
     if (error) {
         return (
@@ -116,6 +111,7 @@ const getButtonStyle = (iconType) => {
 
 const styles = StyleSheet.create({
     scrollContainer: {
+        marginTop: normalize(10),
         paddingVertical: Padding.p_9xs,
         paddingHorizontal: 6,
         paddingBottom: Padding.p_3xs,

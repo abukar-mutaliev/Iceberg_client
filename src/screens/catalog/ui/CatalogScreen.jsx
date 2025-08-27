@@ -9,8 +9,8 @@ import {
     Pressable
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
-import { useRoute } from '@react-navigation/native'; // Добавляем хук useRoute
-import { fetchProducts } from '@entities/product/model/slice';
+import { useRoute } from '@react-navigation/native';
+import {fetchProducts, resetCurrentProduct} from '@entities/product/model/slice';
 import {
     selectProducts,
     selectProductsLoading,
@@ -18,15 +18,13 @@ import {
 } from '@entities/product/model/selectors';
 import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { ProductCard } from "@entities/product";
-
-
 import BackIcon from '@shared/ui/Icon/BackArrowIcon/BackArrowIcon';
+import {BackButton} from "@shared/ui/Button/BackButton";
 
-
-import defaultImage from '@/assets/images/chocolate-icecream.png';
+// Заменяем изображение на простой серый блок
+const defaultProductImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
 
 export const CatalogScreen = ({ navigation }) => {
-    const route = useRoute(); // Получаем route через хук
     const dispatch = useDispatch();
     const products = useSelector(selectProducts);
     const isLoading = useSelector(selectProductsLoading);
@@ -61,11 +59,13 @@ export const CatalogScreen = ({ navigation }) => {
         price: product.price.toString(),
         image: product.images && product.images.length > 0
             ? { uri: product.images[0] }
-            : defaultImage,
+            : defaultProductImage,
         originalData: product
     });
 
     const handleProductPress = (product) => {
+        dispatch(resetCurrentProduct());
+
         navigation.navigate('MainTab', {
             screen: 'ProductDetail',
             params: {
@@ -120,11 +120,7 @@ export const CatalogScreen = ({ navigation }) => {
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
-                <Pressable onPress={handleBackPress} style={styles.backButton}>
-                    <View style={styles.backButton}>
-                        <BackIcon />
-                    </View>
-                </Pressable>
+                    <BackButton />
                 <Text style={styles.title}>Каталог</Text>
             </View>
 
@@ -161,8 +157,11 @@ const styles = StyleSheet.create({
         paddingBottom: 5,
     },
     backButton: {
-        marginRight: 16,
-        marginVertical: 10
+        padding: 15,
+        width: 50,
+        height: 50,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     title: {
         fontFamily: FontFamily.sFProText,

@@ -1,21 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
-import { useTheme } from '@/app/providers/themeProvider/ThemeProvider';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { FeedbackAddModal } from '@features/feedback/FeedbackAddModal/ui/FeedbackAddModal';
-import { createFeedback } from '@/entities/feedback';
-import { FontFamily } from '@/app/styles/GlobalStyles';
-import { selectUser } from "@entities/auth";
+import { createFeedback, fetchProductFeedbacks, selectFeedbacksByProductId } from '@entities/feedback';
+import { fetchProductById, selectProductById, selectProductAverageRating } from '@entities/product';
+import { FontFamily, Color } from '@app/styles/GlobalStyles';
 import RatingStarSvg from "@shared/ui/Icon/SupplierScreenIcons/RatingStarSvg";
+import { useAuth } from "@entities/auth/hooks/useAuth";
 
-export const ProductRating = ({ rating = 0, feedbackCount = 0, productId }) => {
+export const ProductRating = ({
+                                  rating = 0,
+                                  feedbackCount = 0,
+                                  productId,
+                                  canRate = true
+                              }) => {
     const { colors } = useTheme();
     const dispatch = useDispatch();
-    const isAuthenticated = useSelector(selectUser);
+    const { isAuthenticated } = useAuth();
 
     const [modalVisible, setModalVisible] = useState(false);
 
-    const formattedRating = rating ? parseFloat(rating).toFixed(1) : '0.0';
+    const productFeedbacks = useSelector(state => selectFeedbacksByProductId(state, productId)) || [];
+    const calculatedRating = useSelector(state => selectProductAverageRating(state, productId)) || 0;
+    const product = useSelector(state => selectProductById(state, productId));
+
+    const safeProduct = product || {};
+    
+    const effectiveRating = safeProduct.averageRating || calculatedRating || rating || 0;
+    
+    const effectiveFeedbackCount = safeProduct.feedbackCount ||
+                                  (Array.isArray(productFeedbacks) ? productFeedbacks.length : 0) || 
+                                  feedbackCount || 0;
+
+    const formattedRating = (typeof effectiveRating === 'number' && !isNaN(effectiveRating))
+                           ? parseFloat(effectiveRating).toFixed(1) 
+                           : '0.0';
 
     const handleRateClick = () => {
         if (!isAuthenticated) {
@@ -26,11 +46,21 @@ export const ProductRating = ({ rating = 0, feedbackCount = 0, productId }) => {
         setModalVisible(true);
     };
 
-    const handleSubmitFeedback = (feedbackData) => {
-        dispatch(createFeedback({
-            ...feedbackData,
-            productId
-        }));
+    const handleSubmitFeedback = async (feedbackData) => {
+        try {
+            const resultAction = await dispatch(createFeedback({
+                ...feedbackData,
+                productId
+            }));
+
+            if (createFeedback.fulfilled.match(resultAction)) {
+                await dispatch(fetchProductFeedbacks(productId));
+
+                await dispatch(fetchProductById(productId));
+            }
+        } catch (error) {
+            console.error('Error submitting feedback:', error);
+        }
 
         setModalVisible(false);
     };
@@ -40,8 +70,11 @@ export const ProductRating = ({ rating = 0, feedbackCount = 0, productId }) => {
             <View style={styles.ratingContainer}>
                 <View style={styles.starsContainer}>
                     {[1, 2, 3, 4, 5].map((star) => {
-                        const isFilled = star <= Math.floor(rating);
-                        const isHalfFilled = !isFilled && star === Math.ceil(rating) && rating % 1 >= 0.25 && rating % 1 <= 0.75;
+                        const isFilled = star <= Math.floor(effectiveRating);
+                        const isHalfFilled = !isFilled &&
+                            star === Math.ceil(effectiveRating) &&
+                            effectiveRating % 1 >= 0.25 &&
+                            effectiveRating % 1 <= 0.75;
 
                         return (
                             <RatingStarSvg
@@ -56,17 +89,15 @@ export const ProductRating = ({ rating = 0, feedbackCount = 0, productId }) => {
                     })}
                 </View>
 
-                <Text style={[styles.ratingText, { color: colors.text }]}>
+                <Text style={[styles.ratingText, { color: Color.colorBlue }]}>
                     {formattedRating}
                 </Text>
-
-
             </View>
 
             <FeedbackAddModal
                 visible={modalVisible}
                 onClose={() => setModalVisible(false)}
-                onSubmit={handleSubmitFeedback}
+                onSuccess={handleSubmitFeedback}
                 productId={productId}
             />
         </View>
@@ -88,7 +119,7 @@ const styles = StyleSheet.create({
     },
     ratingText: {
         fontFamily: FontFamily.sFProText,
-        fontSize: 14,
+        fontSize: 15,
         fontWeight: '500',
         marginRight: 4,
     },

@@ -12,7 +12,7 @@ import {
     selectSuppliersError,
     selectIsUserSupplier,
     selectCurrentUserSupplierId
-} from '../selectors';
+} from '../model/selectors';
 
 import {
     fetchSuppliersList,
@@ -25,7 +25,7 @@ import {
     setSupplierRating,
     clearRatings,
     clearSupplierCache
-} from '../slice';
+} from '../model/slice';
 import {useCallback} from "react";
 
 export const useSuppliers = () => {

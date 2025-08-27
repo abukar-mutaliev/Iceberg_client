@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, PixelRatio } from 'react-native';
 import { ChevronRight } from 'lucide-react-native';
-import { Color, FontFamily, FontSize } from '@/app/styles/GlobalStyles';
+import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const scale = SCREEN_WIDTH / 440;
@@ -37,7 +37,10 @@ export const ProductSuggestions = ({ products, searchQuery, onProductPress }) =>
                 <TouchableOpacity
                     key={index}
                     style={styles.suggestionItem}
-                    onPress={() => onProductPress(product)}
+                    onPress={() => {
+                        console.log('ProductSuggestions: Нажатие на продукт:', product);
+                        onProductPress(product);
+                    }}
                 >
                     <Text style={styles.suggestionText}>{product.name}</Text>
                     <ChevronRight size={normalize(25)} color={Color.blue2} />

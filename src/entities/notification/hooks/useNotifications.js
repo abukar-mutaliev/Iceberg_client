@@ -1,8 +1,9 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { useStopsNavigation } from '@entities/stop/hooks/useStopsNavigation';
 import { useNavigation } from '@react-navigation/native';
-import { useAuth } from '@entities/auth/model/hooks/useAuth';
+import { useAuth } from '@entities/auth/hooks/useAuth';
 import pushNotificationService from "@shared/services/PushNotificationService";
-import {useStopsNavigation} from "@entities/stop";
 
 export const useNotifications = () => {
     let navigation = null;
@@ -28,39 +29,48 @@ export const useNotifications = () => {
     const { user } = useAuth();
 
     const initializePushNotifications = () => {
-        if (user && user.role === 'CLIENT' && navigateToStops) {
-            console.log('🔔 Initializing push notifications for user:', user.id);
+        // УБИРАЕМ: Дублирующая инициализация - уже есть в AppContainer
+        // if (user && user.role === 'CLIENT' && navigateToStops) {
+        //     console.log('🔔 Initializing push notifications for user:', user.id);
 
+        //     pushNotificationService.navigateToStops = navigateToStops;
+
+        //     // Можете добавить функцию навигации к заказам если есть
+        //     // pushNotificationService.navigateToOrder = navigateToOrder;
+
+        //     pushNotificationService.setNavigationReady();
+
+        //     pushNotificationService.initializeForUser(user)
+        //         .then(initialized => {
+        //             if (initialized) {
+        //                 console.log('✅ Push notifications initialized successfully');
+        //             } else {
+        //                 console.log('❌ Failed to initialize push notifications');
+        //             }
+        //         })
+        //         .catch(error => {
+        //             console.error('❌ Error initializing push notifications:', error);
+        //         });
+        // }
+
+        // Только настройка навигационных обработчиков
+        if (user && navigateToStops) {
+            console.log('🔔 Setting up navigation handlers for push notifications');
             pushNotificationService.navigateToStops = navigateToStops;
-
-            // Можете добавить функцию навигации к заказам если есть
-            // pushNotificationService.navigateToOrder = navigateToOrder;
-
             pushNotificationService.setNavigationReady();
-
-            pushNotificationService.initializeForUser(user)
-                .then(initialized => {
-                    if (initialized) {
-                        console.log('✅ Push notifications initialized successfully');
-                    } else {
-                        console.log('❌ Failed to initialize push notifications');
-                    }
-                })
-                .catch(error => {
-                    console.error('❌ Error initializing push notifications:', error);
-                });
         }
     };
 
     useEffect(() => {
-        if (user && user.role === 'CLIENT' && navigateToStops) {
+        if (user && navigateToStops) {
             initializePushNotifications();
         }
 
         return () => {
-            if (user && user.role === 'CLIENT') {
+            if (user) {
                 console.log('🧹 Cleaning up push notifications');
-                pushNotificationService.navigationReady = false;
+                // ИСПРАВЛЕНО: Не сбрасываем navigationReady, так как это мешает работе навигации
+                // pushNotificationService.navigationReady = false;
             }
         };
     }, [user, navigateToStops]);

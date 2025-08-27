@@ -1,1 +1,1 @@
-export { CustomDatePicker, CustomTimePicker } from './ui/CustomDatePicker'
+export { CustomDatePicker, CustomTimePicker } from '@shared/ui/Pickers/CustomDatePicker/ui/CustomDatePicker'

@@ -1,152 +1,223 @@
-import React, {useState, useRef, useCallback, useMemo, useEffect} from 'react';
-import { View, StyleSheet, Dimensions, RefreshControl } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, StyleSheet, Dimensions, RefreshControl, Text as RNText } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
-import {useDispatch, useSelector} from 'react-redux';
-import { selectSupplierRating, selectSupplierProducts } from '@/entities/supplier';
-import { useTheme } from '@/app/providers/themeProvider/ThemeProvider';
-import Text from '@/shared/ui/Text/Text';
-import { ProductsSlider, SupplierHeader, BestFeedbacks } from '@features/supplier/ui';
-import { calculateSupplierRating } from '@/services/supplierRatingService';
-import { selectAllSupplierFeedbacks } from "@entities/supplier/model/selectors";
-import { ScrollableBackgroundGradient } from '@/shared/ui/BackgroundGradient';
-import {fetchSupplierFeedbacks} from "@entities/feedback/model/slice";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import Text from '@shared/ui/Text/Text';
+import { ProductsSlider } from '@features/supplier/ui/ProductsSlider/ProductsSlider';
+import { SupplierHeader } from '@features/supplier/ui/SupplierHeader/SupplierHeader';
+import { BestFeedbacks } from '@features/supplier/ui/BestFeedbacks/BestFeedbacks';
+import { ScrollableBackgroundGradient } from '@shared/ui/BackgroundGradient';
+import { resetCurrentProduct } from "@entities/product";
+import { useDispatch } from 'react-redux';
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
-const SupplierContent = ({ supplierId, supplier, navigation, onRefresh }) => {
+/**
+ * Полностью переработанный компонент контента экрана поставщика,
+ * исправляющий проблемы с рендерингом и отображением отзывов
+ */
+const SupplierContent = React.memo(({
+                                        supplierId,
+                                        supplier,
+                                        supplierProducts = [],
+                                        feedbacks = [],
+                                        navigation,
+                                        onRefresh,
+                                        isRefreshing = false,
+                                        productsLoaded = false,
+                                        fromScreen = null,
+                                        previousProductId = null
+                                    }) => {
+    const renderCount = useRef(0);
+    const dataLogged = useRef(false);
+
     const { colors } = useTheme();
     const scrollViewRef = useRef(null);
     const dispatch = useDispatch();
 
-    const [contentHeight, setContentHeight] = useState(SCREEN_HEIGHT * 2);
-    const [isRefreshing, setIsRefreshing] = useState(false);
+    const contentHeight = SCREEN_HEIGHT * 2;
 
-    const supplierProducts = useSelector((state) => selectSupplierProducts(state, supplierId)) || [];
-    const allFeedbacks = useSelector((state) => selectAllSupplierFeedbacks(state, supplierId)) || [];
-    const storedSupplierRating = useSelector((state) => selectSupplierRating(state, supplierId)) || 0;
-
-    const supplierProductsCount = supplierProducts.map(product => product);
-
-
-
-    const hasProducts = supplierProducts.length > 0;
+    const enrichedSupplier = useMemo(() => {
+        if (!supplier) return null;
+        
+        return {
+            ...supplier,
+            id: supplier.id || supplierId || (supplier.supplier?.id)
+        };
+    }, [supplier, supplierId]);
 
     useEffect(() => {
-        if (supplierId && hasProducts) {
-            dispatch(fetchSupplierFeedbacks(supplierId));
+        if (process.env.NODE_ENV === 'development') {
+            console.log('SupplierContent - supplier данные:', {
+                supplierId,
+                'supplier.id': supplier?.id,
+                'supplier.supplier?.id': supplier?.supplier?.id,
+                'enrichedSupplier.id': enrichedSupplier?.id
+            });
         }
-    }, [supplierId, hasProducts, dispatch]);
-    const calculatedRating = useMemo(() => {
-        if (storedSupplierRating > 0) {
-            return storedSupplierRating;
-        }
+    }, [supplierId, supplier, enrichedSupplier]);
 
-        if (!supplierId || !supplierProducts || !Array.isArray(supplierProducts)) {
-            return 0;
-        }
-
-        const enrichedProducts = supplierProducts.map(p => {
-            const productFeedbacks = allFeedbacks.filter(f => f.productId === p.id);
-            const ratings = productFeedbacks.map(f => f.rating).filter(r => r !== undefined && r !== null);
-            const avgRating = ratings.length > 0
-                ? ratings.reduce((sum, r) => sum + r, 0) / ratings.length
-                : 0;
-
-            return {
-                ...p,
-                averageRating: avgRating,
-                feedbackCount: ratings.length
-            };
-        });
-
-        const { rating } = calculateSupplierRating(enrichedProducts);
-        return rating;
-    }, [supplierId, supplierProducts, allFeedbacks, storedSupplierRating]);
-
-    const supplierRating = storedSupplierRating > 0 ? storedSupplierRating : calculatedRating;
-
-
-    const handleContentSizeChange = useCallback((width, height) => {
-        setContentHeight(height + 100);
-    }, []);
-
-    const handleGoBack = useCallback(() => {
-        navigation.goBack();
-    }, [navigation]);
-
-    const handleProductPress = useCallback(
-        (productId) => {
-            if (productId) {
-                navigation.navigate('ProductDetail', {
-                    productId,
-                    fromScreen: 'SupplierScreen',
-                });
-            }
-        },
-        [navigation]
+    const products = useMemo(() =>
+            Array.isArray(supplierProducts) ? supplierProducts : [],
+        [supplierProducts]
     );
 
-    const handleRefresh = useCallback(async () => {
-        setIsRefreshing(true);
-        await onRefresh();
-        setIsRefreshing(false);
-    }, [onRefresh]);
+    const reviews = useMemo(() =>
+            Array.isArray(feedbacks) ? feedbacks : [],
+        [feedbacks]
+    );
 
+    const productsCount = useMemo(() => products.length, [products]);
+    const hasProducts = useMemo(() => productsCount > 0, [productsCount]);
+
+    const feedbacksCount = useMemo(() => reviews.length, [reviews]);
+    const hasFeedbacks = useMemo(() => feedbacksCount > 0, [feedbacksCount]);
+
+    const supplierName = useMemo(() => {
+        if (!enrichedSupplier) return 'Неизвестный поставщик';
+        return enrichedSupplier.supplier?.companyName ||
+            enrichedSupplier.companyName ||
+            enrichedSupplier.user?.supplier?.companyName ||
+            'Неизвестный поставщик';
+    }, [enrichedSupplier]);
+
+    useEffect(() => {
+        renderCount.current += 1;
+
+        if (process.env.NODE_ENV === 'development' && !dataLogged.current && hasProducts) {
+            console.log('SupplierContent - Итоговые данные:', {
+                supplierId,
+                supplierName,
+                productsCount,
+                hasProducts,
+                feedbacksCount,
+                hasFeedbacks,
+                fromScreen,
+                previousProductId,
+                renderCount: renderCount.current
+            });
+            dataLogged.current = true;
+        }
+    }, [supplierId, supplierName, productsCount, hasProducts, feedbacksCount, hasFeedbacks, fromScreen, previousProductId]);
+
+    const handleGoBack = useCallback(() => {
+        console.log('SupplierContent handleGoBack called with fromScreen:', fromScreen);
+        
+        // Если пришли из чата, возвращаемся к чату
+        if (fromScreen === 'ChatRoom') {
+            console.log('Returning to chat from supplier screen...');
+            // Простой возврат назад - теперь SupplierScreen в ChatStack с анимацией
+            navigation.goBack();
+        } else {
+            console.log('Regular goBack navigation...');
+            // Обычный возврат назад
+            navigation.goBack();
+        }
+    }, [navigation, fromScreen]);
+
+
+    const handleProductPress = (productId) => {
+        navigation.navigate('ProductDetail', {
+            productId: productId,
+            fromScreen: 'SupplierScreen',
+            supplierId: supplierId,
+            previousScreen: fromScreen
+        });
+
+        if (process.env.NODE_ENV === 'development') {
+            console.log('SupplierContent - Переход к товару:', {
+                productId,
+                fromScreen: 'SupplierScreen',
+                supplierId,
+                previousScreen: fromScreen
+            });
+        }
+    };
+
+    const noProductsContainerStyle = useMemo(() => [
+        styles.noProductsContainer,
+        { backgroundColor: colors.cardBackground }
+    ], [colors.cardBackground]);
+
+    const noProductsTextStyle = useMemo(() => [
+        styles.noProductsText,
+        { color: colors.textSecondary }
+    ], [colors.textSecondary]);
+
+    const refreshControlProps = useMemo(() => ({
+        refreshing: isRefreshing,
+        onRefresh: onRefresh,
+        colors: [colors.primary || '#5e00ff'],
+        tintColor: colors.primary || '#5e00ff'
+    }), [isRefreshing, onRefresh, colors.primary]);
+
+    // Функции рендеринга компонентов
+    const renderProducts = useCallback(() => {
+        if (!hasProducts) {
+            return (
+                <View style={noProductsContainerStyle}>
+                    <Text style={noProductsTextStyle}>
+                        У поставщика нет продуктов
+                    </Text>
+                </View>
+            );
+        }
+
+        return (
+            <View style={styles.productsContainer}>
+                <ProductsSlider
+                    products={products}
+                    onProductPress={handleProductPress}
+                />
+            </View>
+        );
+    }, [hasProducts, products, handleProductPress, noProductsContainerStyle, noProductsTextStyle]);
+
+    const renderFeedbacks = useCallback(() => {
+        if (!hasFeedbacks) return null;
+
+        return (
+            <View style={styles.feedbacksContainer}>
+                <BestFeedbacks
+                    feedbacks={reviews}
+                    onProductPress={handleProductPress}
+                />
+            </View>
+        );
+    }, [hasFeedbacks, reviews, handleProductPress]);
+
+    // Рендерим компонент
     return (
-        <View style={[styles.container, { backgroundColor: 'transparent' }]}>
+        <View style={styles.container}>
             <ScrollView
                 ref={scrollViewRef}
                 style={styles.contentScrollView}
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.scrollContent}
-                onContentSizeChange={handleContentSizeChange}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={isRefreshing}
-                        onRefresh={handleRefresh}
-                        colors={[colors.primary || '#5e00ff']}
-                        tintColor={colors.primary || '#5e00ff'}
-                    />
-                }
+                refreshControl={<RefreshControl {...refreshControlProps} />}
                 overScrollMode="never"
                 bounces={true}
                 horizontal={false}
-                waitFor={[]}
-                simultaneousHandlers={[]}
             >
                 <ScrollableBackgroundGradient
                     contentHeight={contentHeight}
                     showOverlayGradient={false}
                     showShadowGradient={false}
                 />
+
                 <SupplierHeader
-                    supplier={supplier}
-                    supplierRating={supplierRating}
+                    supplier={enrichedSupplier}
+                    supplierProducts={productsCount}
                     onGoBack={handleGoBack}
-                    supplierProducts={supplierProductsCount}
                 />
 
-                {hasProducts ? (
-                    <View style={styles.productsContainer}>
-                        <ProductsSlider products={supplierProducts} onProductPress={handleProductPress} />
-                    </View>
-                ) : (
-                    <View style={[styles.noProductsContainer, { backgroundColor: colors.cardBackground }]}>
-                        <Text style={[styles.noProductsText, { color: colors.textSecondary }]}>
-                            У поставщика нет продуктов
-                        </Text>
-                    </View>
-                )}
+                {renderProducts()}
+                {renderFeedbacks()}
 
-                {allFeedbacks.length > 0 && (
-                    <View style={styles.feedbacksContainer}>
-                        <BestFeedbacks feedbacks={allFeedbacks} onProductPress={handleProductPress} />
-                    </View>
-                )}
             </ScrollView>
         </View>
     );
-};
+});
 
 const styles = StyleSheet.create({
     container: {
@@ -176,6 +247,17 @@ const styles = StyleSheet.create({
     noProductsText: {
         fontSize: SCREEN_WIDTH * 0.037,
     },
+    debugContainer: {
+        padding: 10,
+        backgroundColor: 'rgba(0,0,0,0.05)',
+        marginTop: 10,
+        alignItems: 'center'
+    },
+    debugText: {
+        fontSize: 10,
+        color: '#777'
+    }
 });
+
 
 export { SupplierContent };

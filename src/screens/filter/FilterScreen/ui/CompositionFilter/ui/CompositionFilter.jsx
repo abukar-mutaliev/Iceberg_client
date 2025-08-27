@@ -12,7 +12,7 @@ import {
     PixelRatio
 } from 'react-native';
 import { ChevronRight } from 'lucide-react-native';
-import { FontFamily } from '@/app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
 
 // Адаптивные размеры
 const { width: SCREEN_WIDTH } = Dimensions.get('window');

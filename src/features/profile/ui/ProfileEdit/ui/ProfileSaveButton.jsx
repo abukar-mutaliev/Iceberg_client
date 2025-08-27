@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { normalize, normalizeFont } from '@/shared/lib/normalize';
+import { normalize, normalizeFont } from '@shared/lib/normalize';
+import {Color} from "@app/styles/GlobalStyles";
 
 export const ProfileSaveButton = ({ onPress, isSaving }) => {
     return (
@@ -11,7 +12,7 @@ export const ProfileSaveButton = ({ onPress, isSaving }) => {
                 disabled={isSaving}
             >
                 <Text style={[styles.saveButtonText, { fontSize: normalizeFont(16) }]}>
-                    {isSaving ? 'Сохранение...' : 'Сохранить изменения'}
+                    {isSaving ? 'Сохранение...' : 'Готово'}
                 </Text>
             </TouchableOpacity>
         </View>
@@ -20,11 +21,13 @@ export const ProfileSaveButton = ({ onPress, isSaving }) => {
 
 const styles = StyleSheet.create({
     saveButtonContainer: {
+        alignItems: 'center',
         marginHorizontal: 40,
         marginTop: 20,
     },
     saveButton: {
-        backgroundColor: '#007AFF',
+        backgroundColor: Color.blue2,
+        width: '75%',
         height: 50,
         justifyContent: 'center',
         alignItems: 'center',

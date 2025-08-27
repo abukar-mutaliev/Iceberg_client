@@ -1,5 +1,3 @@
-// Обновленный код для CategoryPicker.js
-
 import React, {useCallback, useEffect, useState} from "react";
 import {useSelector, useDispatch} from "react-redux";
 import {selectCategories, selectCategoriesLoading, fetchCategories} from "@entities/category";
@@ -15,21 +13,30 @@ import {
 import {Feather} from '@expo/vector-icons';
 import {Color, FontFamily} from "@app/styles/GlobalStyles";
 
-export const CategoryPicker = ({ selectedCategory, onSelectCategory, error }) => {
+export const CategoryPicker = ({ 
+    selectedCategory, 
+    onSelectCategory, 
+    selectedCategories, 
+    onSelectCategories, 
+    error, 
+    allowMultiple = false 
+}) => {
     const [showDropdown, setShowDropdown] = useState(false);
     const [selectedCategoryName, setSelectedCategoryName] = useState('');
     const categories = useSelector(selectCategories) || [];
     const isLoading = useSelector(selectCategoriesLoading) || false;
     const dispatch = useDispatch();
 
-    // Загружаем категории при инициализации
+    // Определяем, используем ли мы множественный выбор
+    const isMultiple = allowMultiple && selectedCategories !== undefined && onSelectCategories !== undefined;
+    const currentSelectedIds = isMultiple ? (selectedCategories || []) : (selectedCategory ? [selectedCategory] : []);
+
     useEffect(() => {
         if (categories.length === 0 && !isLoading) {
             dispatch(fetchCategories());
         }
     }, []);
 
-    // Приведение ID категории к стандартному формату (число если возможно, иначе строка)
     const normalizeCategoryId = useCallback((id) => {
         if (id === null || id === undefined) return null;
 
@@ -47,38 +54,47 @@ export const CategoryPicker = ({ selectedCategory, onSelectCategory, error }) =>
         return id;
     }, []);
 
-    // Обновление отображаемого имени категории при изменении selectedCategory или categories
     useEffect(() => {
         if (!categories || categories.length === 0) return;
 
-        const normalizedSelectedId = normalizeCategoryId(selectedCategory);
-        console.log('Нормализованный ID категории:', normalizedSelectedId, 'Тип:', typeof normalizedSelectedId);
-
-        if (normalizedSelectedId !== null && normalizedSelectedId !== undefined) {
-            // Ищем категорию в списке по ID
-            const foundCategory = categories.find(cat => {
-                const catId = normalizeCategoryId(cat.id);
-                const isMatch = catId === normalizedSelectedId ||
-                    String(catId) === String(normalizedSelectedId);
-
-                if (isMatch) {
-                    console.log('Найдена категория:', cat.name, 'с ID:', catId);
-                }
-                return isMatch;
-            });
-
-            if (foundCategory) {
-                setSelectedCategoryName(foundCategory.name);
+        if (isMultiple) {
+            // Множественный выбор
+            if (currentSelectedIds.length === 0) {
+                setSelectedCategoryName('');
+            } else if (currentSelectedIds.length === 1) {
+                const foundCategory = categories.find(cat => {
+                    const catId = normalizeCategoryId(cat.id);
+                    const selectedId = normalizeCategoryId(currentSelectedIds[0]);
+                    return catId === selectedId || String(catId) === String(selectedId);
+                });
+                setSelectedCategoryName(foundCategory ? foundCategory.name : `${currentSelectedIds[0]}`);
             } else {
-                console.log('Категория с ID', normalizedSelectedId, 'не найдена в списке');
-                setSelectedCategoryName(`${normalizedSelectedId}`);
+                setSelectedCategoryName(`Выбрано: ${currentSelectedIds.length}`);
             }
         } else {
-            setSelectedCategoryName('');
-        }
-    }, [selectedCategory, categories, normalizeCategoryId]);
+            // Одиночный выбор
+            const normalizedSelectedId = normalizeCategoryId(selectedCategory);
 
-    // Закрываем дропдаун при показе клавиатуры
+            if (normalizedSelectedId !== null && normalizedSelectedId !== undefined) {
+                const foundCategory = categories.find(cat => {
+                    const catId = normalizeCategoryId(cat.id);
+                    const isMatch = catId === normalizedSelectedId ||
+                        String(catId) === String(normalizedSelectedId);
+                    return isMatch;
+                });
+
+                if (foundCategory) {
+                    setSelectedCategoryName(foundCategory.name);
+                } else {
+                    console.log('Категория с ID', normalizedSelectedId, 'не найдена в списке');
+                    setSelectedCategoryName(`${normalizedSelectedId}`);
+                }
+            } else {
+                setSelectedCategoryName('');
+            }
+        }
+    }, [selectedCategory, selectedCategories, categories, normalizeCategoryId, isMultiple, currentSelectedIds]);
+
     useEffect(() => {
         const keyboardDidShowListener = Keyboard.addListener(
             'keyboardDidShow',
@@ -92,30 +108,56 @@ export const CategoryPicker = ({ selectedCategory, onSelectCategory, error }) =>
         };
     }, []);
 
-    // Обработчик выбора категории
     const handleSelectCategory = (categoryId) => {
-        // Нормализуем ID перед использованием
         const normalizedId = normalizeCategoryId(categoryId);
-        console.log('Выбрана категория с ID:', normalizedId, 'Тип:', typeof normalizedId);
 
-        // Находим категорию в списке
-        const categoryObj = categories.find(c => normalizeCategoryId(c.id) === normalizedId);
-
-        if (categoryObj) {
-            console.log('Выбрана категория:', categoryObj.name, 'с ID:', normalizedId);
-            setSelectedCategoryName(categoryObj.name);
+        if (isMultiple) {
+            // Множественный выбор
+            const currentIds = currentSelectedIds.map(id => normalizeCategoryId(id));
+            let newSelectedIds;
+            
+            if (currentIds.includes(normalizedId)) {
+                // Убираем из выбранных
+                newSelectedIds = currentIds.filter(id => id !== normalizedId);
+            } else {
+                // Добавляем к выбранным
+                newSelectedIds = [...currentIds, normalizedId];
+            }
+            
+            onSelectCategories(newSelectedIds);
+            // Не закрываем dropdown при множественном выборе
         } else {
-            console.warn('Категория не найдена в списке:', normalizedId);
+            // Одиночный выбор
+            const categoryObj = categories.find(c => normalizeCategoryId(c.id) === normalizedId);
+
+            if (categoryObj) {
+                setSelectedCategoryName(categoryObj.name);
+            } else {
+                console.warn('Категория не найдена в списке:', normalizedId);
+            }
+
+            onSelectCategory(normalizedId);
+            setShowDropdown(false);
         }
-
-        // ВАЖНО: Передаем нормализованное значение ID родительскому компоненту
-        onSelectCategory(normalizedId);
-
-        // Закрываем дропдаун
-        setShowDropdown(false);
     };
 
-    // Рендер списка категорий
+    // Вычисляем оптимальную высоту для dropdown
+    const getDropdownHeight = () => {
+        if (isLoading || !categories || categories.length === 0) {
+            return 60; // минимальная высота для сообщений
+        }
+        
+        const itemHeight = 44;
+        const doneButtonHeight = isMultiple ? 50 : 0;
+        const padding = 10;
+        const maxVisibleItems = 6; // максимум видимых элементов без прокрутки
+        
+        const visibleItems = Math.min(categories.length, maxVisibleItems);
+        const scrollViewHeight = visibleItems * itemHeight;
+        
+        return scrollViewHeight + doneButtonHeight + padding;
+    };
+
     const renderCategories = () => {
         if (isLoading) {
             return <ActivityIndicator size="small" color="#3B43A2" style={styles.loadingIndicator} />;
@@ -125,11 +167,11 @@ export const CategoryPicker = ({ selectedCategory, onSelectCategory, error }) =>
             return <Text style={styles.noDataText}>Нет доступных категорий</Text>;
         }
 
-        const normalizedSelectedId = normalizeCategoryId(selectedCategory);
+        const normalizedSelectedIds = currentSelectedIds.map(id => normalizeCategoryId(id));
 
         return categories.map(item => {
             const normalizedItemId = normalizeCategoryId(item.id);
-            const isSelected = normalizedItemId === normalizedSelectedId;
+            const isSelected = normalizedSelectedIds.includes(normalizedItemId);
 
             return (
                 <TouchableOpacity
@@ -140,12 +182,20 @@ export const CategoryPicker = ({ selectedCategory, onSelectCategory, error }) =>
                     ]}
                     onPress={() => handleSelectCategory(item.id)}
                 >
-                    <Text style={[
-                        styles.dropdownItemText,
-                        isSelected && styles.selectedItem
-                    ]}>
-                        {item.name}
-                    </Text>
+                    <View style={styles.dropdownItemContent}>
+                        {isMultiple && (
+                            <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                                {isSelected && <Text style={styles.checkmark}>✓</Text>}
+                            </View>
+                        )}
+                        <Text style={[
+                            styles.dropdownItemText,
+                            isSelected && styles.selectedItem,
+                            isMultiple && styles.dropdownItemTextMultiple
+                        ]}>
+                            {item.name}
+                        </Text>
+                    </View>
                 </TouchableOpacity>
             );
         });
@@ -153,7 +203,9 @@ export const CategoryPicker = ({ selectedCategory, onSelectCategory, error }) =>
 
     return (
         <View style={styles.inputGroup}>
-            <Text style={styles.label}>Выберите категорию *</Text>
+            <Text style={styles.label}>
+                {isMultiple ? 'Выберите категории *' : 'Выберите категорию *'}
+            </Text>
             <TouchableOpacity
                 style={[styles.pickerContainer, error ? styles.inputError : null]}
                 onPress={() => setShowDropdown(!showDropdown)}
@@ -162,7 +214,7 @@ export const CategoryPicker = ({ selectedCategory, onSelectCategory, error }) =>
                     styles.pickerText,
                     !selectedCategoryName && styles.placeholderText
                 ]}>
-                    {selectedCategoryName || 'Выберите категорию'}
+                    {selectedCategoryName || (isMultiple ? 'Выберите категории' : 'Выберите категорию')}
                 </Text>
                 <Feather name={showDropdown ? "chevron-up" : "chevron-down"} size={13} color="#888" />
             </TouchableOpacity>
@@ -170,14 +222,26 @@ export const CategoryPicker = ({ selectedCategory, onSelectCategory, error }) =>
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
             {showDropdown && (
-                <View style={styles.dropdownContainer}>
+                <View style={[
+                    styles.dropdownContainer,
+                    { height: getDropdownHeight() }
+                ]}>
                     <ScrollView
                         style={styles.dropdownList}
                         keyboardShouldPersistTaps="handled"
                         nestedScrollEnabled={true}
+                        showsVerticalScrollIndicator={categories.length > 6}
                     >
                         {renderCategories()}
                     </ScrollView>
+                    {isMultiple && (
+                        <TouchableOpacity
+                            style={styles.doneButton}
+                            onPress={() => setShowDropdown(false)}
+                        >
+                            <Text style={styles.doneButtonText}>Готово</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
             )}
         </View>
@@ -247,15 +311,17 @@ const styles = StyleSheet.create({
         shadowOffset: {width: 0, height: 2},
         shadowOpacity: 0.1,
         shadowRadius: 2,
-        maxHeight: 150,
+        // убираем фиксированную maxHeight - теперь она динамическая
     },
     dropdownList: {
-        maxHeight: 150,
+        flex: 1, // занимает доступное пространство в контейнере
     },
     dropdownItem: {
-        padding: 10,
+        paddingVertical: 12,
+        paddingHorizontal: 10,
         borderBottomWidth: 1,
         borderBottomColor: '#EBEBF0',
+        minHeight: 44, // фиксированная минимальная высота для точного расчета
     },
     selectedDropdownItem: {
         backgroundColor: 'rgba(59, 67, 162, 0.1)',
@@ -277,5 +343,44 @@ const styles = StyleSheet.create({
     },
     loadingIndicator: {
         padding: 10,
+    },
+    dropdownItemContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    dropdownItemTextMultiple: {
+        marginLeft: 8,
+    },
+    checkbox: {
+        width: 16,
+        height: 16,
+        borderWidth: 1,
+        borderColor: '#CCCCCC',
+        borderRadius: 3,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'white',
+    },
+    checkboxSelected: {
+        backgroundColor: '#3B43A2',
+        borderColor: '#3B43A2',
+    },
+    checkmark: {
+        color: 'white',
+        fontSize: 10,
+        fontWeight: 'bold',
+    },
+    doneButton: {
+        backgroundColor: '#3B43A2',
+        padding: 10,
+        alignItems: 'center',
+        borderTopWidth: 1,
+        borderTopColor: '#EBEBF0',
+    },
+    doneButtonText: {
+        color: 'white',
+        fontSize: 14,
+        fontWeight: '500',
+        fontFamily: FontFamily.sFProText,
     },
 });

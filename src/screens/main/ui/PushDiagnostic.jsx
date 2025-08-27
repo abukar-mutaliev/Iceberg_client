@@ -1,4 +1,3 @@
-// Диагностический компонент для отладки push-уведомлений
 import React, { useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useSelector } from 'react-redux';

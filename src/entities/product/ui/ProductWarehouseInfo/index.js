@@ -1,0 +1,1 @@
+export { ProductWarehouseInfo } from './ui/ProductWarehouseInfo';

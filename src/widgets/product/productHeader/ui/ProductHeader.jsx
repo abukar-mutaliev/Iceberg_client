@@ -1,15 +1,37 @@
-import React, {useMemo} from 'react';
+import React, {useEffect, useMemo, useRef} from 'react';
 import {View, Animated, Text, StyleSheet, Dimensions, ScrollView} from 'react-native';
 import { BackButton } from '@shared/ui/Button/BackButton';
 import { ProductImage } from '@entities/product/ui/ProductImage';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { ProductFavoriteButton } from "@features/productFavorite";
+import {checkIsFavorite} from "@entities/favorites";
+import {useDispatch} from "react-redux";
+import {Colors} from "react-native/Libraries/NewAppScreen";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-export const ProductHeader = ({ product, scrollY, onGoBack, isFavorite, onToggleFavorite }) => {
+export const ProductHeader = React.memo(({ product, scrollY, onGoBack }) => {
     const { colors } = useTheme();
+    const dispatch = useDispatch();
+    const checkedFavoriteRef = useRef(false);
+
+
+    const productId = useMemo(() => product?.id || 0, [product?.id]);
+
+    useEffect(() => {
+        if (productId && !checkedFavoriteRef.current) {
+            checkedFavoriteRef.current = true;
+            dispatch(checkIsFavorite(productId));
+        }
+
+        return () => {
+            if (productId) {
+                checkedFavoriteRef.current = false;
+            }
+        };
+    }, [dispatch, productId]);
+
 
     const headerOpacity = scrollY.interpolate({
         inputRange: [0, 200],
@@ -26,32 +48,38 @@ export const ProductHeader = ({ product, scrollY, onGoBack, isFavorite, onToggle
         weight: product?.weight || '',
         averageRating: product?.averageRating || 0,
         description: product?.description || '',
-        id: product?.id || null,
+        id: productId,
         categories: product?.categories || [],
-    }), [product]);
+    }), [product, productId]);
 
-    const prepareImages = () => {
+    const prepareImages = useMemo(() => {
         if (!product) return [];
 
-        if (Array.isArray(product.images) && product.images.length > 0) {
-            return product.images;
-        }
-
-        if (typeof product.images === 'string') {
-            return [product.images];
-        }
-
-        if (product.image) {
-            if (Array.isArray(product.image)) {
-                return product.image;
+        // Сначала проверяем массив images
+        if (product.images) {
+            if (Array.isArray(product.images) && product.images.length > 0) {
+                return product.images.filter(img => img && typeof img === 'string' && img.trim() !== '');
+            } else if (typeof product.images === 'string' && product.images.trim() !== '') {
+                return [product.images];
             }
-            return [product.image];
         }
 
-        return [];
-    };
+        // Затем проверяем поле image
+        if (product.image) {
+            if (Array.isArray(product.image) && product.image.length > 0) {
+                return product.image.filter(img => img && typeof img === 'string' && img.trim() !== '');
+            } else if (typeof product.image === 'string' && product.image.trim() !== '') {
+                return [product.image];
+            } else if (product.image.uri && typeof product.image.uri === 'string') {
+                return [product.image.uri];
+            }
+        }
 
-    const productImages = prepareImages();
+        // Если ничего не найдено, используем пустой массив - изображение-заполнитель будет показано в ProductImage
+        return [];
+    }, [product]);
+
+    const productImages = prepareImages;
 
     return (
         <View style={styles.container}>
@@ -62,18 +90,18 @@ export const ProductHeader = ({ product, scrollY, onGoBack, isFavorite, onToggle
 
             <View style={styles.overlayGradient} >
                 <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.categoriesContainer}
-            >
-                {safeProduct.categories.map((category, index) => (
-                    <View key={`category-${category.id || index}`} style={styles.categoryItem}>
-                        <Text style={styles.categoryTitle}>
-                            {category.name}
-                        </Text>
-                    </View>
-                ))}
-            </ScrollView>
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.categoriesContainer}
+                >
+                    {safeProduct.categories.map((category, index) => (
+                        <View key={`category-${category.id || index}`} style={styles.categoryItem}>
+                            <Text style={styles.categoryTitle}>
+                                {category.name}
+                            </Text>
+                        </View>
+                    ))}
+                </ScrollView>
             </View>
 
             <BackButton
@@ -82,24 +110,24 @@ export const ProductHeader = ({ product, scrollY, onGoBack, isFavorite, onToggle
             />
 
             <View style={styles.favoriteButtonContainer}>
+                {/* Ключевое изменение: передаем productId */}
                 <ProductFavoriteButton
-                    isFavorite={isFavorite}
-                    onToggleFavorite={onToggleFavorite}
+                    productId={productId}
                 />
             </View>
             <Animated.View style={[styles.floatingHeader, { opacity: headerOpacity }]}>
                 <Text style={[styles.floatingTitle, {
-                    color: colors.text,
+                    color: Colors.purpleSoft,
                     backgroundColor: colors.theme === 'light'
                         ? 'rgba(255, 255, 255, 0.8)'
                         : 'rgba(30, 30, 30, 0.8)'
                 }]}>
-                    {product.name}
+                    {safeProduct.name}
                 </Text>
             </Animated.View>
         </View>
     );
-};
+});
 
 const styles = StyleSheet.create({
     container: {
@@ -166,3 +194,5 @@ const styles = StyleSheet.create({
         borderRadius: 20,
     },
 });
+
+export default React.memo(ProductHeader);

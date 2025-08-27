@@ -9,3 +9,7 @@ export * from './IconHelp';
 export * from './IconOrders';
 export * from './IconEdit';
 export * from './DropdownArrowIcon';
+export { default as IconNotification } from './IconNotification';
+export { default as IconChange } from './IconChange';
+export { default as IconDelete } from './IconDelete';
+export { default as IconSupplier } from './IconSupplier';

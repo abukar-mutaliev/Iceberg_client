@@ -1,28 +1,46 @@
 import { createSelector } from "@reduxjs/toolkit";
 
-export const selectProducts = (state) => state.products?.items || [];
+const EMPTY_ARRAY = [];
+
+export const selectProducts = (state) => state.products?.items || EMPTY_ARRAY;
+export const selectProductsById = (state) => state.products?.byId || {};
 export const selectCurrentProduct = (state) => state.products?.currentProduct || null;
 export const selectProductsLoading = (state) => state.products?.loading || false;
+export const selectProductsLoadingMore = (state) => state.products?.loadingMore || false;
 export const selectProductsError = (state) => state.products?.error || null;
+
+export const selectFetchCompleted = (state) => state.products?.fetchCompleted || false;
+
+export const selectProductsHasMore = (state) => state.products?.hasMore || false;
+export const selectProductsCurrentPage = (state) => state.products?.currentPage || 1;
+export const selectProductsTotalPages = (state) => state.products?.totalPages || 1;
+export const selectProductsTotalItems = (state) => state.products?.totalItems || 0;
 
 export const selectProductById = createSelector(
     [selectProducts, (state, productId) => productId],
-    (products, productId) => products.find(product => product.id === productId) || null
+    (products, productId) => {
+        if (!productId || !Array.isArray(products)) return null;
+
+        const numericId = parseInt(productId, 10);
+        if (isNaN(numericId)) return null;
+
+        return products.find(product => product && product.id === numericId) || null;
+    }
 );
 
 export const selectSimilarProducts = createSelector(
     [selectProducts, selectCurrentProduct, (state, productId) => productId],
     (products, currentProductInState, productId) => {
         const currentProduct = currentProductInState ||
-            products.find(p => p.id === productId);
+            products.find(p => p && p.id === parseInt(productId, 10));
 
         if (!currentProduct || !Array.isArray(products) || products.length === 0) {
-            return [];
+            return EMPTY_ARRAY;
         }
 
         return products
             .filter(product => {
-                if (product.id === currentProduct.id) {
+                if (!product || product.id === currentProduct.id) {
                     return false;
                 }
 
@@ -55,18 +73,20 @@ export const selectFilteredProducts = createSelector(
         if (!filterCriteria) return products;
 
         return products.filter(product => {
+            if (!product) return false;
+
             let match = true;
 
             if (filterCriteria.name) {
-                match = match && product.name.toLowerCase().includes(filterCriteria.name.toLowerCase());
+                match = match && product.name && product.name.toLowerCase().includes(filterCriteria.name.toLowerCase());
             }
 
             if (filterCriteria.minPrice !== undefined) {
-                match = match && product.price >= filterCriteria.minPrice;
+                match = match && product.price && product.price >= filterCriteria.minPrice;
             }
 
             if (filterCriteria.maxPrice !== undefined) {
-                match = match && product.price <= filterCriteria.maxPrice;
+                match = match && product.price && product.price <= filterCriteria.maxPrice;
             }
 
             if (filterCriteria.category) {
@@ -79,16 +99,28 @@ export const selectFilteredProducts = createSelector(
 );
 
 export const selectProductFeedbacks = createSelector(
-    [(state, productId) => state.feedback?.items?.[productId] || []],
-    (feedbacks) => feedbacks
+    [
+        (state, productId) => state.feedback?.items?.[productId] || EMPTY_ARRAY,
+        (state, productId) => productId,
+    ],
+    (feedbacks, productId) => {
+        if (!Array.isArray(feedbacks)) return EMPTY_ARRAY;
+        return feedbacks.map((feedback) => ({
+            ...feedback,
+            id: feedback?.id || null,
+            rating: parseFloat(feedback?.rating || 0),
+            createdAt: feedback?.createdAt || null,
+            productId,
+        }));
+    }
 );
 
 export const selectProductAverageRating = createSelector(
     [selectProductFeedbacks],
     (feedbacks) => {
-        if (feedbacks.length === 0) return 0;
+        if (!Array.isArray(feedbacks) || feedbacks.length === 0) return 0;
 
-        const sum = feedbacks.reduce((total, feedback) => total + feedback.rating, 0);
+        const sum = feedbacks.reduce((total, feedback) => total + (feedback.rating || 0), 0);
         return sum / feedbacks.length;
     }
 );

@@ -1,25 +1,55 @@
-export { userApi } from './api/userApi';
-export {
+import userReducer from './model/slice';
+import {
+    fetchAllUsers,
     fetchUserById,
     fetchClients,
     fetchEmployees,
-    fetchAllUsers,
-    createUser,
-    updateUser,
-    deleteUser,
-    clearError,
-    setCurrentUser,
-    clearCurrentUser
+    fetchSuppliers,
+    fetchSupplierById,
+    fetchDrivers,
+    fetchAllDrivers,
+    fetchDriverById,
+    fetchDriverStops,
+    clearCurrentUser,
+    clearCurrentSupplier,
+    clearCurrentDriver,
+    clearUserErrors,
+    clearUserState
 } from './model/slice';
+import { userApi, employeeApi } from './api/userApi';
+import { userSelectors } from './model/selectors';
+import { useUsers } from '@entities/user/hooks/useUsers';
+export { UserCard } from './ui/UserCard';
+export { EmployeeDistrictsModal } from './ui/EmployeeDistrictsModal';
+
 export {
-    selectAllUsers,
-    selectClients,
-    selectEmployees,
-    selectCurrentUser,
-    selectUserLoading,
-    selectUserError,
-    selectUserById
-} from './model/selectors';
+    // Редьюсер
+    userReducer,
 
-export { default as userReducer } from './model/slice';
+    // Actions
+    fetchAllUsers,
+    fetchUserById,
+    fetchClients,
+    fetchEmployees,
+    fetchSuppliers,
+    fetchSupplierById,
+    fetchDrivers,
+    fetchAllDrivers,
+    fetchDriverById,
+    fetchDriverStops,
+    clearCurrentUser,
+    clearCurrentSupplier,
+    clearCurrentDriver,
+    clearUserErrors,
+    clearUserState,
 
+    // API
+    userApi,
+    employeeApi,
+
+    // Селекторы
+    userSelectors,
+
+    // Хук
+    useUsers
+};

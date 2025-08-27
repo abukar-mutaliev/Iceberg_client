@@ -1,4 +1,4 @@
-import { createProtectedRequest } from '@/shared/api/api';
+import { createProtectedRequest } from '@shared/api/api';
 
 const formatFeedback = (feedback, userData) => {
     // Если в отзыве уже есть клиент с именем, возвращаем его как есть с проверкой на photoUrls

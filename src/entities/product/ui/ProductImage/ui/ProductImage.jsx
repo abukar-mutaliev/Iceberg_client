@@ -1,23 +1,30 @@
-import React, {useRef, useState} from "react";
-import {Dimensions, Image, StyleSheet, Text, View} from "react-native";
+import React, {useRef, useState, useEffect} from "react";
+import {Dimensions, Image, StyleSheet, View, Text} from "react-native";
 import PagerView from "react-native-pager-view";
 import {CustomSliderIndicator} from "@shared/ui/CustomSliderIndicator";
+
+// Заменяем изображение на простой серый блок
+const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export const ProductImage = ({ images, style }) => {
+    // Улучшена обработка изображений
+    const [loadingError, setLoadingError] = useState({});
+    const [activeIndex, setActiveIndex] = useState(0);
+    const pagerRef = useRef(null);
 
     let imageArray = [];
 
     if (Array.isArray(images)) {
-        imageArray = images.filter(item => item && typeof item === 'string' && item.trim() !== '');
+        imageArray = images.filter(item => item && (typeof item === 'string' || item.uri) && (typeof item === 'string' ? item.trim() !== '' : true));
     } else if (images) {
-        imageArray = [images];
+        if (typeof images === 'string' && images.trim() !== '') {
+            imageArray = [images];
+        } else if (images.uri) {
+            imageArray = [images];
+        }
     }
-
-
-    const [activeIndex, setActiveIndex] = useState(0);
-    const pagerRef = useRef(null);
 
 
     const handlePageSelected = (event) => {
@@ -25,19 +32,36 @@ export const ProductImage = ({ images, style }) => {
         setActiveIndex(newIndex);
     };
 
+    const handleImageError = (index) => {
+        console.error(`Error loading image at index ${index}`);
+        setLoadingError(prev => ({...prev, [index]: true}));
+    };
+
     const renderImages = () => {
         return imageArray.map((item, index) => {
             const imageSource = typeof item === 'string'
                 ? { uri: item }
                 : item;
+                
             return (
-                <View key={`image-${index}`} style={styles.imageContainer}>
-                    <Image
-                        source={imageSource}
-                        style={styles.image}
-                        resizeMode="cover"
-                        onError={(error) => console.error(`Error loading image at index ${index}:`, error.nativeEvent.error)}
-                    />
+                <View key={`image-${index}`} style={styles.slide}>
+                    {loadingError[index] ? (
+                        <View style={styles.errorContainer}>
+                            <Image
+                                source={placeholderImage}
+                                style={styles.placeholderImage}
+                                resizeMode="contain"
+                            />
+                        </View>
+                    ) : (
+                        <Image
+                            source={imageSource}
+                            style={styles.fullImage}
+                            resizeMode="cover"
+                            defaultSource={placeholderImage}
+                            onError={() => handleImageError(index)}
+                        />
+                    )}
                 </View>
             );
         });
@@ -46,9 +70,12 @@ export const ProductImage = ({ images, style }) => {
     if (imageArray.length === 0) {
         return (
             <View style={[styles.container, style]}>
-                <View style={[styles.background, { backgroundColor: '#E4F6FC' }]} />
-                <View style={styles.debugContainer}>
-                    <Text style={styles.debugText}>Нет изображений для отображения</Text>
+                <View style={styles.slide}>
+                    <Image
+                        source={placeholderImage}
+                        style={styles.placeholderImage}
+                        resizeMode="contain"
+                    />
                 </View>
             </View>
         );
@@ -56,8 +83,6 @@ export const ProductImage = ({ images, style }) => {
 
     return (
         <View style={[styles.container, style]}>
-            <View style={[styles.background, { backgroundColor: '#E4F6FC' }]} />
-
             <PagerView
                 ref={pagerRef}
                 style={styles.pagerView}
@@ -68,7 +93,7 @@ export const ProductImage = ({ images, style }) => {
             </PagerView>
 
             {imageArray.length > 1 && (
-                <View >
+                <View style={styles.indicatorContainer}>
                     <CustomSliderIndicator
                         totalItems={imageArray.length}
                         activeIndex={activeIndex}
@@ -84,29 +109,48 @@ const styles = StyleSheet.create({
         width: SCREEN_WIDTH,
         height: 350,
         overflow: 'hidden',
-        marginTop: 0,
+        margin: 0,
+        padding: 0,
+        backgroundColor: '#F9F9F9',
     },
-    background: {
+    pagerView: {
+        flex: 1,
+        width: SCREEN_WIDTH,
+        height: 350,
+    },
+    slide: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        width: SCREEN_WIDTH,
+        height: 350,
+        margin: 0,
+        padding: 0,
+    },
+    fullImage: {
         position: 'absolute',
         top: 0,
         left: 0,
         right: 0,
         bottom: 0,
-        width: '100%',
-        height: '100%',
-    },
-    pagerView: {
         width: SCREEN_WIDTH,
         height: '100%',
     },
-    imageContainer: {
-        width: SCREEN_WIDTH,
-        height: '100%',
+    placeholderImage: {
+        width: SCREEN_WIDTH * 0.7,
+        height: SCREEN_WIDTH * 0.7,
+        opacity: 0.7,
+    },
+    errorContainer: {
+        flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    image: {
+    indicatorContainer: {
+        position: 'absolute',
+        bottom: 20,
         width: '100%',
-        height: '100%',
+        alignItems: 'center',
+        zIndex: 100,
     }
 });

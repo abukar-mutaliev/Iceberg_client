@@ -12,7 +12,8 @@ import {
     PixelRatio
 } from 'react-native';
 import { ChevronRight } from 'lucide-react-native';
-import { FontFamily } from '@/app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
+import IconRight from "@shared/ui/Icon/Common/IconRight";
 
 // Адаптивные размеры
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -85,7 +86,7 @@ export const PackagingFilter = ({ packaging = [], onChange }) => {
                 activeOpacity={0.7}
             >
                 <Text style={styles.selectorText}>Упаковка</Text>
-                <ChevronRight color="#000000" size={normalize(24)} />
+                <IconRight color="#000000" size={normalize(24)} />
             </TouchableOpacity>
 
             <Modal

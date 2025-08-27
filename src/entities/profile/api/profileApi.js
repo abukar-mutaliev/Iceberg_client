@@ -1,60 +1,34 @@
-// entities/profile/api/profileApi.js
-import { createProtectedRequest } from '@/shared/api/api';
+import { createApiModule } from '@shared/services/ApiClient';
 
-export const profileApi = {
-    getProfile: async () => {
-        try {
-            const response = await createProtectedRequest('get', '/api/profile');
+const profileApi = createApiModule('/api/profile');
 
-            if (!response || !response.data) {
-                console.error('Invalid response format in getProfile:', response);
-                throw new Error('Получен некорректный формат ответа от сервера');
-            }
+export const profileApiMethods = {
+    // Получение профиля
+    getProfile: () => profileApi.get(),
 
-            return response;
-        } catch (error) {
-            console.error('Error in getProfile API call:', error);
-            throw error;
-        }
+    // Обновление профиля
+    updateProfile: (data) => profileApi.put('', data),
+
+    // Обновление аватара
+    updateAvatar: (formData, options = {}) => {
+        const timestamp = new Date().getTime();
+        const config = {
+            ...options,
+            headers: {
+                ...options.headers,
+                'Content-Type': 'multipart/form-data',
+            },
+            timeout: options.timeout || 120000,
+        };
+
+        return profileApi.post(`/avatar?_t=${timestamp}`, formData, config);
     },
 
-    updateProfile: async (data) => {
-        try {
-            const response = await createProtectedRequest('put', '/api/profile', data);
-            return response;
-        } catch (error) {
-            console.error('Error in updateProfile API call:', error);
-            throw error;
-        }
-    },
+    // Смена пароля
+    changePassword: (data) => profileApi.put('/password', data),
 
-    updateAvatar: async (formData, options = {}) => {
-        try {
-            const response = await createProtectedRequest(
-                'patch',
-                '/api/profile/avatar',
-                formData,
-                {
-                    headers: {
-                        'Content-Type': 'multipart/form-data',
-                    },
-                    ...options,
-                }
-            );
-            return response;
-        } catch (error) {
-            console.error('Error in updateAvatar API call:', error);
-            throw error;
-        }
-    },
-
-    changePassword: async (data) => {
-        try {
-            const response = await createProtectedRequest('put', '/api/profile/password', data);
-            return response;
-        } catch (error) {
-            console.error('Error in changePassword API call:', error);
-            throw error;
-        }
-    },
+    // Удаление профиля
+    deleteProfile: (passwordData) => profileApi.delete('', passwordData)
 };
+
+export { profileApiMethods as profileApi };

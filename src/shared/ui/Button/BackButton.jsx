@@ -1,25 +1,76 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
-import { AndroidShadow } from '@/shared/ui/Shadow';
-import { BackArrowIcon } from '@shared/ui/Icon/BackArrowIcon/BackArrowIcon';
-import {useTheme} from "@app/providers/themeProvider/ThemeProvider";
+import { useNavigation } from '@react-navigation/native';
+import { useTheme } from "@app/providers/themeProvider/ThemeProvider";
+import BackArrowIcon from "@shared/ui/Icon/BackArrowIcon/BackArrowIcon";
+import { Color } from '@app/styles/GlobalStyles';
 
-export const BackButton = ({ onPress, style }) => {
+export const BackButton = ({ onPress, style, disabled = false }) => {
     const { colors } = useTheme();
+    const navigation = useNavigation();
+    const isNavigatingRef = useRef(false);
+
+    const handlePress = () => {
+        if (disabled || isNavigatingRef.current) {
+            if (process.env.NODE_ENV === 'development') {
+                console.log('BackButton - button is disabled or already navigating');
+            }
+            return;
+        }
+
+        // Блокируем повторные нажатия
+        isNavigatingRef.current = true;
+
+        if (typeof onPress === 'function') {
+            onPress();
+            // Сбрасываем блокировку сразу после выполнения onPress
+            setTimeout(() => {
+                isNavigatingRef.current = false;
+            }, 100);
+        } else if (navigation.canGoBack()) {
+            navigation.goBack();
+            // Сбрасываем блокировку сразу после навигации
+            setTimeout(() => {
+                isNavigatingRef.current = false;
+            }, 100);
+        } else {
+            // Если не можем вернуться назад, переходим на главный экран
+            navigation.navigate('Main');
+            // Сбрасываем блокировку сразу после навигации
+            setTimeout(() => {
+                isNavigatingRef.current = false;
+            }, 100);
+        }
+    };
 
     return (
-        <Pressable style={[styles.button, style]} onPress={onPress}>
-                <BackArrowIcon color={colors.primary} />
+        <Pressable
+            style={[
+                styles.button,
+                style,
+                disabled && styles.disabled
+            ]}
+            onPress={handlePress}
+            disabled={disabled}
+            android_ripple={{ color: 'rgba(0, 0, 0, 0.1)', borderless: true }}
+        >
+            <BackArrowIcon
+                color={disabled ? Color.gray : Color.blue3}
+            />
         </Pressable>
     );
 };
 
 const styles = StyleSheet.create({
     button: {
-        position: 'absolute',
-        top: 50,
-        left: 16,
-        zIndex: 10,
+        padding: 15,
+        width: 50,
+        height: 50,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    disabled: {
+        opacity: 0.5,
     },
     buttonShadow: {
         width: 40,
@@ -31,3 +82,4 @@ const styles = StyleSheet.create({
     },
 });
 
+export default React.memo(BackButton);

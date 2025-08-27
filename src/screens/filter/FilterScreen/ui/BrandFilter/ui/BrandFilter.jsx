@@ -13,9 +13,9 @@ import {
     Platform
 } from 'react-native';
 import { ChevronRight } from 'lucide-react-native';
-import { FontFamily } from '@/app/styles/GlobalStyles';
-import { Checkbox } from '@/shared/ui/Checkbox';
-import { ScrollableBackgroundGradient } from '@/shared/ui/BackgroundGradient';
+import { FontFamily } from '@app/styles/GlobalStyles';
+import { Checkbox } from '@shared/ui/Checkbox';
+import { ScrollableBackgroundGradient } from '@shared/ui/BackgroundGradient';
 
 // Адаптивные размеры
 const { width: SCREEN_WIDTH } = Dimensions.get('window');

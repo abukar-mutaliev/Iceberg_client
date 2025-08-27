@@ -15,7 +15,7 @@ import {
 import { useDispatch, useSelector } from 'react-redux';
 import { selectEmail, selectPassword, setEmail, setPassword, selectName, setName, selectPhone, setPhone, selectAddress, setAddress, selectGender, setGender } from '@entities/auth';
 import { initiateRegister } from '@entities/auth';
-import { CustomTextInput } from '@/shared/ui/CustomTextInput/CustomTextInput';
+import { CustomTextInput } from '@shared/ui/CustomTextInput/CustomTextInput';
 
 export const RegisterForm = ({ onVerification }) => {
     const dispatch = useDispatch();

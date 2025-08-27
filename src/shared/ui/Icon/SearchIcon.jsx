@@ -1,9 +1,15 @@
 import React from 'react';
-import Svg, { Path, Circle } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 
-export const SearchIcon = ({ size = 18, color = '#3339B0', style }) => (
-    <Svg width={size} height={size} viewBox="0 0 18 18" fill="none" style={style}>
-        <Circle cx="8.25" cy="8.25" r="5.25" stroke={color} strokeWidth="1.5" />
-        <Path d="M15 15L12.75 12.75" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+export const SearchIcon = ({ size = 24, color = '#FFFFFF' }) => {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"
+        fill={color}
+      />
     </Svg>
-);
+  );
+};
+
+export default SearchIcon;

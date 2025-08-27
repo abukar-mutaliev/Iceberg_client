@@ -8,8 +8,8 @@ import {
     PixelRatio
 } from 'react-native';
 import Slider from '@react-native-community/slider';
-import { ChevronRight } from 'lucide-react-native';
-import { FontFamily } from '@/app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
+import {IconRight} from "@shared/ui/Icon/Profile";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = SCREEN_WIDTH / 440;
@@ -52,7 +52,7 @@ export const RatingFilter = ({ minRating = 4.5, onChange }) => {
                 activeOpacity={0.7}
             >
                 <Text style={styles.selectorText}>Рейтинг от {localRating}</Text>
-                <ChevronRight
+                <IconRight
                     color="#000000"
                     size={normalize(24)}
                     style={[

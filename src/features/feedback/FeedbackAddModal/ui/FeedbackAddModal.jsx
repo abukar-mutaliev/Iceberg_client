@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     View,
     Modal,
@@ -13,6 +13,8 @@ import {
     FlatList,
     Alert,
     ActivityIndicator,
+    Keyboard,
+    Dimensions,
 } from 'react-native';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import * as ImagePicker from 'expo-image-picker';
@@ -21,11 +23,13 @@ import {
     createFeedback,
     selectFeedbackLoading,
     selectPhotoUploading,
-    selectHasUserLeftFeedback,
-} from '@/entities/feedback/';
+    selectHasUserLeftFeedbackSafe,
+    selectFeedbackError,
+} from '@entities/feedback/';
 import { selectUser } from '@entities/auth';
 
 const MAX_PHOTOS = 5;
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const StarRating = ({ rating, onRatingChange }) => {
     return (
@@ -78,22 +82,39 @@ export const FeedbackAddModal = ({
                                  }) => {
     const { colors } = useTheme();
     const dispatch = useDispatch();
-    const currentUser = useSelector(selectUser);
+    const currentUser = useSelector((state) => selectUser(state));
 
-    const hasLeftFeedback = useSelector(
-        currentUser?.profile?.id
-            ? state => selectHasUserLeftFeedback(currentUser.profile.id)(state, productId)
-            : () => false
-    );
-
+    // Используем селекторы для получения состояния
+    const hasLeftFeedback = useSelector(selectHasUserLeftFeedbackSafe(currentUser?.profile?.id));
     const isLoading = useSelector(selectFeedbackLoading);
     const isPhotoUploading = useSelector(selectPhotoUploading);
+    const feedbackError = useSelector(selectFeedbackError);
 
+    // Локальное состояние
     const [rating, setRating] = useState(initialRating);
     const [comment, setComment] = useState('');
     const [photos, setPhotos] = useState([]);
     const [error, setError] = useState('');
+    const [keyboardVisible, setKeyboardVisible] = useState(false);
 
+    // Обработчики клавиатуры
+    useEffect(() => {
+        const keyboardDidShowListener = Keyboard.addListener(
+            'keyboardDidShow',
+            () => setKeyboardVisible(true)
+        );
+        const keyboardDidHideListener = Keyboard.addListener(
+            'keyboardDidHide',
+            () => setKeyboardVisible(false)
+        );
+
+        return () => {
+            keyboardDidShowListener.remove();
+            keyboardDidHideListener.remove();
+        };
+    }, []);
+
+    // Проверка на существующий отзыв при открытии модалки
     useEffect(() => {
         if (visible && hasLeftFeedback) {
             Alert.alert(
@@ -109,6 +130,7 @@ export const FeedbackAddModal = ({
         }
     }, [visible, hasLeftFeedback, onClose]);
 
+    // Сброс формы при открытии
     useEffect(() => {
         if (visible) {
             setRating(initialRating);
@@ -118,83 +140,103 @@ export const FeedbackAddModal = ({
         }
     }, [visible, initialRating]);
 
-    const handleRatingChange = (newRating) => {
+    // Отслеживание ошибок из Redux
+    useEffect(() => {
+        if (feedbackError) {
+            setError(feedbackError);
+        }
+    }, [feedbackError]);
+
+    const handleRatingChange = useCallback((newRating) => {
         setRating(newRating);
         if (error && newRating > 0) {
             setError('');
         }
-    };
+    }, [error]);
 
-    const pickImages = async () => {
+    const pickImages = useCallback(async () => {
         if (photos.length >= MAX_PHOTOS) {
             Alert.alert('Ограничение', `Вы можете добавить максимум ${MAX_PHOTOS} фотографий`);
             return;
         }
 
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        try {
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
-        if (status !== 'granted') {
-            Alert.alert('Доступ запрещен', 'Для выбора фотографий необходимо разрешение на доступ к галерее.');
-            return;
-        }
-
-        let result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.8,
-        });
-
-        if (!result.canceled && result.assets && result.assets.length > 0) {
-            const selectedAsset = result.assets[0];
-
-            if (photos.length + 1 > MAX_PHOTOS) {
-                Alert.alert('Ограничение', `Вы можете добавить максимум ${MAX_PHOTOS} фотографий`);
+            if (status !== 'granted') {
+                Alert.alert('Доступ запрещен', 'Для выбора фотографий необходимо разрешение на доступ к галерее.');
                 return;
             }
 
-            setPhotos([...photos, selectedAsset]);
-        }
-    };
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [4, 3],
+                quality: 0.8,
+            });
 
-    const takePhoto = async () => {
+            if (!result.canceled && result.assets && result.assets.length > 0) {
+                const selectedAsset = result.assets[0];
+
+                if (photos.length + 1 > MAX_PHOTOS) {
+                    Alert.alert('Ограничение', `Вы можете добавить максимум ${MAX_PHOTOS} фотографий`);
+                    return;
+                }
+
+                setPhotos(prevPhotos => [...prevPhotos, selectedAsset]);
+            }
+        } catch (error) {
+            console.error('Ошибка при выборе изображения:', error);
+            Alert.alert('Ошибка', 'Не удалось выбрать изображение');
+        }
+    }, [photos.length]);
+
+    const takePhoto = useCallback(async () => {
         if (photos.length >= MAX_PHOTOS) {
             Alert.alert('Ограничение', `Вы можете добавить максимум ${MAX_PHOTOS} фотографий`);
             return;
         }
 
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        try {
+            const { status } = await ImagePicker.requestCameraPermissionsAsync();
 
-        if (status !== 'granted') {
-            Alert.alert('Доступ запрещен', 'Для съемки фотографий необходимо разрешение на доступ к камере.');
-            return;
-        }
-
-        let result = await ImagePicker.launchCameraAsync({
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.8,
-        });
-
-        if (!result.canceled && result.assets && result.assets.length > 0) {
-            const selectedAsset = result.assets[0];
-
-            if (photos.length + 1 > MAX_PHOTOS) {
-                Alert.alert('Ограничение', `Вы можете добавить максимум ${MAX_PHOTOS} фотографий`);
+            if (status !== 'granted') {
+                Alert.alert('Доступ запрещен', 'Для съемки фотографий необходимо разрешение на доступ к камере.');
                 return;
             }
 
-            setPhotos([...photos, selectedAsset]);
+            const result = await ImagePicker.launchCameraAsync({
+                allowsEditing: true,
+                aspect: [4, 3],
+                quality: 0.8,
+            });
+
+            if (!result.canceled && result.assets && result.assets.length > 0) {
+                const selectedAsset = result.assets[0];
+
+                if (photos.length + 1 > MAX_PHOTOS) {
+                    Alert.alert('Ограничение', `Вы можете добавить максимум ${MAX_PHOTOS} фотографий`);
+                    return;
+                }
+
+                setPhotos(prevPhotos => [...prevPhotos, selectedAsset]);
+            }
+        } catch (error) {
+            console.error('Ошибка при съемке фото:', error);
+            Alert.alert('Ошибка', 'Не удалось сделать фото');
         }
-    };
+    }, [photos.length]);
 
-    const removePhoto = (index) => {
-        const newPhotos = [...photos];
-        newPhotos.splice(index, 1);
-        setPhotos(newPhotos);
-    };
+    const removePhoto = useCallback((index) => {
+        setPhotos(prevPhotos => {
+            const newPhotos = [...prevPhotos];
+            newPhotos.splice(index, 1);
+            return newPhotos;
+        });
+    }, []);
 
-    const handleSubmit = async () => {
+    const handleSubmit = useCallback(async () => {
+        // Проверяем еще раз, не оставил ли пользователь отзыв
         if (hasLeftFeedback) {
             Alert.alert(
                 "Уведомление",
@@ -204,181 +246,249 @@ export const FeedbackAddModal = ({
             return;
         }
 
+        // Валидация рейтинга
         if (rating === 0) {
             setError('Пожалуйста, поставьте оценку');
+            return;
+        }
+
+        // Валидация productId
+        if (!productId) {
+            setError('Ошибка: не указан продукт');
             return;
         }
 
         const feedbackData = {
             productId,
             rating,
-            comment,
+            comment: comment.trim(),
             photos,
         };
 
         try {
+            console.log('Отправка отзыва:', feedbackData);
+
             const resultAction = await dispatch(createFeedback(feedbackData));
 
             if (createFeedback.rejected.match(resultAction)) {
-                if (resultAction.payload && resultAction.payload.includes('уже оставили отзыв')) {
+                const errorMessage = resultAction.payload;
+
+                if (errorMessage && errorMessage.includes('уже оставили отзыв')) {
                     Alert.alert(
                         "Уведомление",
                         "Вы уже оставили отзыв к этому продукту.",
                         [{ text: "OK" }],
                     );
                 } else {
-                    setError(resultAction.payload || 'Не удалось отправить отзыв. Попробуйте позже.');
+                    setError(errorMessage || 'Не удалось отправить отзыв. Попробуйте позже.');
                 }
                 return;
             }
 
-            if (onSuccess) {
-                onSuccess({ rating, comment, productId, photos });
-            }
+            // Успешное создание отзыва
+            if (createFeedback.fulfilled.match(resultAction)) {
+                console.log('Отзыв успешно создан:', resultAction.payload);
 
-            if (onClose) {
-                onClose();
+                if (onSuccess) {
+                    onSuccess({
+                        rating,
+                        comment: comment.trim(),
+                        productId,
+                        photos,
+                        feedback: resultAction.payload.feedback
+                    });
+                }
+
+                if (onClose) {
+                    onClose();
+                }
             }
         } catch (error) {
+            console.error('Ошибка при отправке отзыва:', error);
             setError(error.message || 'Не удалось отправить отзыв. Попробуйте позже.');
         }
-    };
+    }, [hasLeftFeedback, rating, productId, comment, photos, dispatch, onSuccess, onClose]);
+
+    const handleClose = useCallback(() => {
+        if (isLoading || isPhotoUploading) {
+            Alert.alert(
+                'Подтверждение',
+                'Отзыв в процессе отправки. Вы действительно хотите закрыть окно?',
+                [
+                    { text: 'Отмена', style: 'cancel' },
+                    { text: 'Закрыть', onPress: onClose }
+                ]
+            );
+        } else {
+            onClose();
+        }
+    }, [isLoading, isPhotoUploading, onClose]);
+
+    const isSubmitDisabled = isLoading || isPhotoUploading || rating === 0;
 
     return (
         <Modal
             animationType="slide"
             transparent={true}
             visible={visible}
-            onRequestClose={onClose}
+            onRequestClose={handleClose}
         >
-            <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={styles.centeredView}
-            >
-                <View style={[styles.modalView, { backgroundColor: colors.background }]}>
-                    <ScrollView
-                        contentContainerStyle={styles.scrollContent}
-                        showsVerticalScrollIndicator={false}
+            <View style={styles.centeredView}>
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    style={styles.keyboardAvoidingView}
+                    keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
+                >
+                    <View
+                        style={[
+                            styles.modalView,
+                            {
+                                backgroundColor: colors.background,
+                                maxHeight: keyboardVisible
+                                    ? SCREEN_HEIGHT * 0.7
+                                    : SCREEN_HEIGHT * 0.9
+                            }
+                        ]}
                     >
-                        <Text style={[styles.title, { color: colors.text }]}>
-                            Оставить отзыв
-                        </Text>
-
-                        <StarRating
-                            rating={rating}
-                            onRatingChange={handleRatingChange}
-                        />
-
-                        <Text style={[styles.ratingText, { color: colors.primary }]}>
-                            {rating > 0 ? `Ваша оценка: ${rating}` : 'Выберите оценку'}
-                        </Text>
-
-                        {error ? (
-                            <Text style={styles.errorText}>{error}</Text>
-                        ) : null}
-
-                        {isLoading || isPhotoUploading ? (
-                            <ActivityIndicator size="small" color={colors.primary} style={styles.loadingIndicator} />
-                        ) : null}
-
-                        <TextInput
-                            style={[
-                                styles.commentInput,
-                                {
-                                    backgroundColor: colors.card || '#F9F9F9',
-                                    color: colors.text,
-                                    borderColor: colors.border || '#E0E0E0',
-                                },
-                            ]}
-                            placeholder="Напишите ваш отзыв"
-                            placeholderTextColor={colors.placeholder || '#999999'}
-                            multiline
-                            value={comment}
-                            onChangeText={setComment}
-                        />
-
-                        <View style={styles.photosSection}>
-                            <Text style={[styles.photosTitle, { color: colors.text }]}>
-                                Фотографии: {photos.length}/{MAX_PHOTOS}
+                        <ScrollView
+                            contentContainerStyle={styles.scrollContent}
+                            showsVerticalScrollIndicator={false}
+                            keyboardShouldPersistTaps="handled"
+                        >
+                            <Text style={[styles.title, { color: colors.text }]}>
+                                Оставить отзыв
                             </Text>
 
-                            {photos.length > 0 && (
-                                <FlatList
-                                    data={photos}
-                                    horizontal
-                                    showsHorizontalScrollIndicator={false}
-                                    keyExtractor={(_, index) => `photo-${index}`}
-                                    style={styles.photosList}
-                                    renderItem={({ item, index }) => (
-                                        <View style={styles.photoContainer}>
-                                            <Image
-                                                source={{ uri: item.uri }}
-                                                style={styles.photoPreview}
-                                            />
-                                            <TouchableOpacity
-                                                style={[styles.removePhotoButton, { backgroundColor: colors.error || '#FF3B30' }]}
-                                                onPress={() => removePhoto(index)}
-                                            >
-                                                <DeleteIcon color="#FFFFFF" />
-                                            </TouchableOpacity>
-                                        </View>
-                                    )}
-                                />
-                            )}
+                            <StarRating
+                                rating={rating}
+                                onRatingChange={handleRatingChange}
+                            />
 
-                            {photos.length < MAX_PHOTOS && (
-                                <View style={styles.photoButtonsContainer}>
-                                    <TouchableOpacity
-                                        style={[styles.photoButton, { backgroundColor: colors.primary }]}
-                                        onPress={pickImages}
-                                    >
-                                        <GalleryIcon />
-                                        <Text style={styles.photoButtonText}>Галерея</Text>
-                                    </TouchableOpacity>
+                            <Text style={[styles.ratingText, { color: colors.primary }]}>
+                                {rating > 0 ? `Ваша оценка: ${rating}` : 'Выберите оценку'}
+                            </Text>
 
-                                    <TouchableOpacity
-                                        style={[styles.photoButton, { backgroundColor: colors.primary }]}
-                                        onPress={takePhoto}
-                                    >
-                                        <CameraIcon />
-                                        <Text style={styles.photoButtonText}>Камера</Text>
-                                    </TouchableOpacity>
+                            {error ? (
+                                <Text style={styles.errorText}>{error}</Text>
+                            ) : null}
+
+                            {(isLoading || isPhotoUploading) && (
+                                <View style={styles.loadingContainer}>
+                                    <ActivityIndicator size="small" color={colors.primary} />
+                                    <Text style={[styles.loadingText, { color: colors.text }]}>
+                                        {isPhotoUploading ? 'Загрузка фотографий...' : 'Отправка отзыва...'}
+                                    </Text>
                                 </View>
                             )}
-                        </View>
 
-                        <View style={styles.buttonContainer}>
-                            <TouchableOpacity
-                                style={[styles.button, styles.cancelButton, { borderColor: colors.border || '#E0E0E0' }]}
-                                onPress={onClose}
-                                disabled={isLoading || isPhotoUploading}
-                            >
-                                <Text style={[styles.buttonText, { color: colors.text }]}>
-                                    Отмена
-                                </Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
+                            <TextInput
                                 style={[
-                                    styles.button,
-                                    styles.submitButton,
+                                    styles.commentInput,
                                     {
-                                        backgroundColor: (isLoading || isPhotoUploading)
-                                            ? colors.disabled || '#A0A0A0'
-                                            : colors.primary || '#3498db',
+                                        backgroundColor: colors.card || '#F9F9F9',
+                                        color: colors.text,
+                                        borderColor: colors.border || '#E0E0E0',
                                     },
                                 ]}
-                                onPress={handleSubmit}
-                                disabled={isLoading || isPhotoUploading}
-                            >
-                                <Text style={[styles.buttonText, { color: '#FFFFFF' }]}>
-                                    {isLoading || isPhotoUploading ? 'Отправка...' : 'Отправить'}
+                                placeholder="Напишите ваш отзыв"
+                                placeholderTextColor={colors.placeholder || '#999999'}
+                                multiline
+                                value={comment}
+                                onChangeText={setComment}
+                                editable={!isLoading && !isPhotoUploading}
+                            />
+
+                            <View style={styles.photosSection}>
+                                <Text style={[styles.photosTitle, { color: colors.text }]}>
+                                    Фотографии: {photos.length}/{MAX_PHOTOS}
                                 </Text>
-                            </TouchableOpacity>
-                        </View>
-                    </ScrollView>
-                </View>
-            </KeyboardAvoidingView>
+
+                                {photos.length > 0 && (
+                                    <FlatList
+                                        data={photos}
+                                        horizontal
+                                        showsHorizontalScrollIndicator={false}
+                                        keyExtractor={(_, index) => `photo-${index}`}
+                                        style={styles.photosList}
+                                        renderItem={({ item, index }) => (
+                                            <View style={styles.photoContainer}>
+                                                <Image
+                                                    source={{ uri: item.uri }}
+                                                    style={styles.photoPreview}
+                                                />
+                                                <TouchableOpacity
+                                                    style={[styles.removePhotoButton, { backgroundColor: colors.error || '#FF3B30' }]}
+                                                    onPress={() => removePhoto(index)}
+                                                    disabled={isLoading || isPhotoUploading}
+                                                >
+                                                    <DeleteIcon color="#FFFFFF" />
+                                                </TouchableOpacity>
+                                            </View>
+                                        )}
+                                    />
+                                )}
+
+                                {photos.length < MAX_PHOTOS && !isLoading && !isPhotoUploading && (
+                                    <View style={styles.photoButtonsContainer}>
+                                        <TouchableOpacity
+                                            style={[styles.photoButton, { backgroundColor: colors.primary }]}
+                                            onPress={pickImages}
+                                        >
+                                            <GalleryIcon />
+                                            <Text style={styles.photoButtonText}>Галерея</Text>
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity
+                                            style={[styles.photoButton, { backgroundColor: colors.primary }]}
+                                            onPress={takePhoto}
+                                        >
+                                            <CameraIcon />
+                                            <Text style={styles.photoButtonText}>Камера</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                )}
+                            </View>
+
+                            <View style={styles.buttonContainer}>
+                                <TouchableOpacity
+                                    style={[
+                                        styles.button,
+                                        styles.cancelButton,
+                                        {
+                                            borderColor: colors.border || '#E0E0E0',
+                                            opacity: (isLoading || isPhotoUploading) ? 0.7 : 1
+                                        }
+                                    ]}
+                                    onPress={handleClose}
+                                >
+                                    <Text style={[styles.buttonText, { color: colors.text }]}>
+                                        Отмена
+                                    </Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={[
+                                        styles.button,
+                                        styles.submitButton,
+                                        {
+                                            backgroundColor: isSubmitDisabled
+                                                ? colors.disabled || '#A0A0A0'
+                                                : colors.primary || '#3498db',
+                                            opacity: isSubmitDisabled ? 0.7 : 1
+                                        },
+                                    ]}
+                                    onPress={handleSubmit}
+                                    disabled={isSubmitDisabled}
+                                >
+                                    <Text style={[styles.buttonText, { color: '#FFFFFF' }]}>
+                                        {isLoading || isPhotoUploading ? 'Отправка...' : 'Отправить'}
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+                        </ScrollView>
+                    </View>
+                </KeyboardAvoidingView>
+            </View>
         </Modal>
     );
 };
@@ -391,9 +501,13 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0, 0, 0, 0.5)',
         padding: 10,
     },
+    keyboardAvoidingView: {
+        width: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
     modalView: {
         width: '95%',
-        maxHeight: '90%',
         borderRadius: 15,
         padding: 20,
         shadowColor: '#000',
@@ -407,6 +521,7 @@ const styles = StyleSheet.create({
     },
     scrollContent: {
         flexGrow: 1,
+        paddingBottom: 10,
     },
     title: {
         fontSize: 20,
@@ -432,12 +547,20 @@ const styles = StyleSheet.create({
         textAlign: 'center',
     },
     errorText: {
-        color: 'red',
+        color: '#FF3B30',
         marginBottom: 10,
         textAlign: 'center',
+        fontSize: 14,
     },
-    loadingIndicator: {
-        marginBottom: 10,
+    loadingContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 16,
+    },
+    loadingText: {
+        marginLeft: 8,
+        fontSize: 14,
     },
     commentInput: {
         width: '100%',
@@ -505,7 +628,7 @@ const styles = StyleSheet.create({
         width: '100%',
     },
     button: {
-        paddingVertical: 10,
+        paddingVertical: 12,
         paddingHorizontal: 20,
         borderRadius: 8,
         minWidth: '45%',

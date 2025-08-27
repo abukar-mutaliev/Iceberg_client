@@ -1,7 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigation } from '@react-navigation/native';
-import { Animated, View, Text, Dimensions } from 'react-native';
-import LogoSvg from '@/assets/logo/Logo';
+import { Animated, View, Dimensions, Platform, Image } from 'react-native';
+import Text from '@shared/ui/Text/Text';
+
+// Безопасная функция для получения шрифта
+const getSafeFont = () => {
+    if (__DEV__) {
+        // В development режиме пытаемся использовать кастомный шрифт
+        return 'BezierSans';
+    } else {
+        // В production используем платформенные шрифты
+        return Platform.select({
+            ios: 'System',
+            android: 'Roboto',
+            default: 'System'
+        });
+    }
+};
 
 export const SplashScreen = () => {
     const navigation = useNavigation();
@@ -15,10 +30,37 @@ export const SplashScreen = () => {
 
     const RenderLogo = () => {
         try {
-            return <LogoSvg width={296} height={252} />;
+            // Используем качественный PNG логотип
+            return (
+                <Image
+                    source={require('@assets/logo/logo.png')}
+                    style={{
+                        width: 296,
+                        height: 252,
+                        resizeMode: 'contain',
+                    }}
+                />
+            );
         } catch (error) {
-            console.error('Error rendering logo:', error);
-            return <View style={{ width: 296, height: 252, backgroundColor: '#3339B0' }} />;
+            console.error('Error loading PNG logo:', error);
+            // Fallback на простой логотип
+            return (
+                <View style={{ 
+                    width: 296, 
+                    height: 252, 
+                    backgroundColor: '#3339B0',
+                    borderRadius: 20,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    shadowColor: '#3339B0',
+                    shadowOffset: { width: 0, height: 8 },
+                    shadowOpacity: 0.3,
+                    shadowRadius: 16,
+                    elevation: 8,
+                }}>
+                    <Text style={{ fontSize: 48, color: '#fff' }}>🍦</Text>
+                </View>
+            );
         }
     };
 
@@ -71,10 +113,10 @@ export const SplashScreen = () => {
             }),
         ]).start();
 
-        // Задержка перед переходом на другой экран
+        // Задержка перед переходом на Welcome экран
         const timer = setTimeout(() => {
             navigation.replace('Welcome');
-        }, 4500);
+        }, 3000); // Уменьшаем время до 3 секунд
 
         // Очистка таймера при размонтировании компонента
         return () => clearTimeout(timer);
@@ -106,11 +148,19 @@ export const SplashScreen = () => {
                 style={{
                     opacity: textOpacity,
                     transform: [{ translateY: textPosition }],
-                    fontSize: 24,
+                    fontSize: 26,
+                    fontWeight: '600',
                     color: '#3339B0',
                     textAlign: 'center',
-                    fontFamily: 'BezierSans',
+                    fontFamily: getSafeFont(),
                     marginTop: 100, // Больше места для текста под логотипом
+                    letterSpacing: 0.5,
+                    lineHeight: 34,
+                    shadowColor: '#3339B0',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.1,
+                    shadowRadius: 4,
+                    elevation: 2,
                 }}
             >
                 Добро пожаловать{'\n'}в Айсберг

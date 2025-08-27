@@ -15,12 +15,11 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSelector, useDispatch } from 'react-redux';
 import { LinearGradient } from 'expo-linear-gradient';
 
-// Импорт стилей и иконок
-import { FontFamily } from '@/app/styles/GlobalStyles';
-import BackArrowIcon from "@shared/ui/Icon/BackArrowIcon/BackArrowIcon";
+import { FontFamily } from '@app/styles/GlobalStyles';
 
 // Селекторы
-import { selectProducts } from '@/entities/product';
+import { selectProducts } from '@entities/product';
+import {BackButton} from "@shared/ui/Button/BackButton";
 
 // Адаптивные размеры
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -132,10 +131,9 @@ export const CategorySelectScreen = () => {
                     <View style={styles.header}>
                         <TouchableOpacity
                             style={styles.backButton}
-                            onPress={() => navigation.goBack()}
-                            activeOpacity={0.7}
+
                         >
-                            <BackArrowIcon size={normalize(24)} color="rgba(51, 57, 176, 1)" />
+                            <BackButton />
                         </TouchableOpacity>
 
                         <Text style={styles.headerTitle}>Выберите категории</Text>

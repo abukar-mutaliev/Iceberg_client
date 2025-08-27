@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, PixelRatio } from 'react-native';
-import { Color, FontFamily, FontSize, Border } from '@/app/styles/GlobalStyles';
+import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const scale = SCREEN_WIDTH / 440;
@@ -90,11 +90,11 @@ const styles = StyleSheet.create({
     tagBackground: {
         borderRadius: normalize(Border.br_base),
         backgroundColor: Color.colorBlue,
-        right: "0%",
+        right: 0,
         width: "100%",
-        bottom: "0%",
-        left: "0%",
-        top: "0%",
+        bottom: 0,
+        left: 0,
+        top: 0,
         height: "100%",
         position: "absolute"
     },
@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
         textAlign: "center",
         fontFamily: FontFamily.sFProText,
         position: "absolute",
-        top: "50%",
+        top: 20, // Исправлено с "50%" на числовое значение (50% от высоты 40px)
         marginTop: normalize(-10),
         left: normalize(10),
         right: normalize(10),

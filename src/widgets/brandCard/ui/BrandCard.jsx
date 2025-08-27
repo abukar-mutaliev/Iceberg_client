@@ -1,20 +1,51 @@
 import React from 'react';
 import { StyleSheet, View, Image, Text, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useTheme } from '@/app/providers/themeProvider/ThemeProvider';
-import { ProductRating } from '@/entities/product/ui/ProductRating';
-import ArrowIcons from '@/shared/ui/Icon/DetailScreenIcons/ArrowIcon';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import ArrowIcons from '@shared/ui/Icon/DetailScreenIcons/ArrowIcon';
 import { FontFamily, FontSize } from "@app/styles/GlobalStyles";
+import { normalize, normalizeFont } from '@shared/lib/normalize';
+import {SupplierRatingFromRedux} from "@entities/supplier";
+import {Colors} from "react-native/Libraries/NewAppScreen";
 
-export const BrandCard = ({ supplier, rating, onSupplierPress }) => {
-    const { colors } = useTheme();
+// Заменяем изображение на простой серый блок
+const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
 
-    if (!supplier) return null;
+export const BrandCard = ({ supplier, onSupplierPress }) => {
 
-    const companyName = supplier.supplier?.companyName || supplier.companyName || supplier.email || 'Название компании';
-    const logo = supplier.avatar;
-    const ratingValue = rating || 0;
-    const placeholderImage = require('@/assets/images/placeholder.png');
+    // Проверка на существование supplier и его полей
+    if (!supplier) {
+        return null;
+    }
+
+    // Определяем эффективный ID поставщика (используем любой доступный ID)
+    const supplierId = supplier.id || (supplier.supplier?.id);
+
+    // Логика получения названия компании
+    const companyName = supplier.companyName ||
+        supplier.supplier?.companyName ||
+        supplier.email ||
+        'Название компании';
+
+    // Логика получения логотипа поставщика
+    const logo = supplier.user?.avatar ||
+        supplier.avatar ||
+        supplier.supplier?.avatar ||
+        supplier.logo ||
+        supplier.supplier?.logo ||
+        (supplier.images && supplier.images[0]) ||
+        (supplier.supplier?.images && supplier.supplier.images[0]);
+
+
+    // Определяем, является ли изображение placeholder'ом
+    const isPlaceholder = !logo;
+
+    // Выбираем стили в зависимости от типа изображения
+    const imageStyles = isPlaceholder
+        ? [styles.brandLogo, styles.placeholderLogo]
+        : styles.brandLogo;
+
+    const imageSource = logo ? { uri: logo } : placeholderImage;
 
     return (
         <TouchableOpacity
@@ -31,32 +62,47 @@ export const BrandCard = ({ supplier, rating, onSupplierPress }) => {
             />
 
             <View style={styles.brandNameContainer}>
-                <Text style={[styles.brandName, { color: colors.text }]}>
+                <Text style={[styles.brandName, { color: Colors.purpleSoft }]} numberOfLines={1} ellipsizeMode="tail">
                     {companyName}
                 </Text>
             </View>
 
+            {/* Используем компонент рейтинга только если есть ID поставщика */}
             <View style={styles.ratingContainer}>
-                <ProductRating
-                    rating={ratingValue}
-                    canRate={false}
-                />
+                {supplierId ? (
+                    <SupplierRatingFromRedux
+                        supplierId={supplierId}
+                        showCount={false}
+                        starSize={16}
+                        style={styles.ratingComponent}
+                    />
+                ) : null}
             </View>
 
-            <Image
-                style={styles.brandLogo}
-                resizeMode="cover"
-                source={logo ? { uri: logo } : placeholderImage}
-            />
+            {isPlaceholder ? (
+                <View style={styles.placeholderContainer}>
+                    <Image
+                        style={imageStyles}
+                        resizeMode="contain"
+                        source={imageSource}
+                    />
+                </View>
+            ) : (
+                <Image
+                    style={imageStyles}
+                    resizeMode="cover"
+                    source={imageSource}
+                />
+            )}
 
-            <ArrowIcons style={styles.arrow} width={165} />
+            <ArrowIcons style={styles.arrow} width={normalize(185)} />
         </TouchableOpacity>
     );
 };
 
 const styles = StyleSheet.create({
     container: {
-        borderRadius: 20,
+        borderRadius: normalize(20),
         backgroundColor: 'rgba(255, 255, 255, 0.9)',
         borderStyle: 'solid',
         borderColor: '#c1fff4',
@@ -66,8 +112,8 @@ const styles = StyleSheet.create({
         borderLeftWidth: 0.2,
         width: '100%',
         overflow: 'hidden',
-        height: 118,
-        marginVertical: 5,
+        height: normalize(118),
+        marginVertical: normalize(5),
         position: 'relative',
     },
     gradient: {
@@ -79,34 +125,59 @@ const styles = StyleSheet.create({
     },
     arrow: {
         position: 'absolute',
-        top: 90,
-        left: 147,
+        top: normalize(90),
+        left: normalize(177),
     },
     brandNameContainer: {
-        top: 12,
-        width: 200,
-        height: 29,
-        left: 165,
+        top: normalize(12),
+        width: normalize(200),
+        height: normalize(29),
+        left: normalize(185),
         position: 'absolute',
     },
     brandName: {
         fontFamily: FontFamily.SFProDisplayMedium,
-        fontSize: FontSize.size_md,
+        fontSize: normalizeFont(FontSize.size_md),
         fontWeight: '500',
         color: '#000',
     },
     ratingContainer: {
         position: 'absolute',
-        top: '43%',
-        left: '43.69%',
+        top: 50, // Исправлено с '43%' на числовое значение
+        left: normalize(185),
     },
     brandLogo: {
-        marginTop: -41,
-        top: '50%',
-        left: 16,
-        width: 115,
-        height: 82,
+        marginTop: normalize(-41),
+        top: 59, // Исправлено с '50%' на числовое значение (50% от высоты 118px)
+        left: normalize(16),
+        width: normalize(145),
+        height: normalize(82),
         position: 'absolute',
-        borderRadius: 10,
+        borderRadius: normalize(10),
+    },
+    // Стили специально для placeholder'а
+    placeholderContainer: {
+        position: 'absolute',
+        marginTop: normalize(-41),
+        top: 59, // Исправлено с '50%' на числовое значение (50% от высоты 118px)
+        left: normalize(16),
+        width: normalize(145),
+        height: normalize(82),
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(240, 240, 240, 0.3)',
+        borderRadius: normalize(10),
+    },
+    placeholderLogo: {
+        width: normalize(70),
+        height: normalize(70),
+        position: 'relative',
+        top: 0,
+        left: 0,
+        marginTop: 0,
+        opacity: 0.6,
+        tintColor: '#999',
     },
 });
+
+export default BrandCard;

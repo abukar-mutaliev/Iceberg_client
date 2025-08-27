@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { verify2FALogin } from '@entities/auth';
+import { getSafePlatformFont } from '@shared/lib/fontUtils';
 
 // Получаем размеры экрана и вычисляем адаптивные размеры
 const { width, height } = Dimensions.get('window');
@@ -260,7 +261,7 @@ const styles = StyleSheet.create({
         color: '#000',
     },
     keySubText: {
-        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+        fontFamily: getSafePlatformFont('SFProText'),
         fontSize: adaptiveSize(10),
         color: '#666',
         marginTop: -5,

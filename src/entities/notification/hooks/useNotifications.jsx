@@ -27,31 +27,14 @@ export const useNotifications = (navigation) => {
     const navigationHandlersSet = useRef(false);
     const lastRefreshTime = useRef(0);
 
+    // Проверяем доступность уведомлений для роли пользователя
+    const isNotificationsAvailable = user?.role === 'CLIENT';
+
     useEffect(() => {
         const initializePush = async () => {
-            // ОТКЛЮЧЕНО: Дублирующая инициализация - она уже происходит в AppContainer
-            // if (initializationAttempted.current) {
-            //     return;
-            // }
-
-            // if (user?.role !== 'CLIENT') {
-            //     return;
-            // }
-
-            // initializationAttempted.current = true;
-
-            // try {
-            //     const success = await PushNotificationService.initializeForUser(user);
-            //     if (success) {
-            //         setupNavigationHandlers();
-            //         console.log('✅ Push notifications initialized');
-            //     }
-            // } catch (error) {
-            //     console.error('Error initializing push notifications:', error);
-            // }
-
-            // Вместо инициализации просто настраиваем навигационные хэндлеры
-            if (user?.role === 'CLIENT') {
+            // ИСПРАВЛЕНО: Инициализация push-уведомлений происходит в AppContainer
+            // Здесь только настраиваем навигационные хэндлеры для клиентов
+            if (isNotificationsAvailable && navigation) {
                 setupNavigationHandlers();
             }
         };
@@ -63,7 +46,7 @@ export const useNotifications = (navigation) => {
         return () => {
             clearTimeout(timeoutId);
         };
-    }, [user?.id, setupNavigationHandlers]);
+    }, [user?.id, user?.role, navigation, setupNavigationHandlers, isNotificationsAvailable]);
 
     useEffect(() => {
         if (setupDone.current) return;
@@ -75,7 +58,7 @@ export const useNotifications = (navigation) => {
             if (
                 appState.current.match(/inactive|background/) &&
                 nextAppState === 'active' &&
-                user?.role === 'CLIENT' &&
+                isNotificationsAvailable &&
                 !refreshing.current &&
                 (now - lastRefreshTime.current > 30000)
             ) {
@@ -104,7 +87,9 @@ export const useNotifications = (navigation) => {
             return;
         }
 
-        if (user?.role !== 'CLIENT') {
+        // Проверяем доступность уведомлений для роли пользователя
+        if (!user || user?.role !== 'CLIENT') {
+            console.log('🚫 Notifications not available for role:', user?.role);
             return;
         }
 
@@ -123,104 +108,23 @@ export const useNotifications = (navigation) => {
     }, [dispatch, user?.id, user?.role]);
 
     const setupNavigationHandlers = useCallback(() => {
-        if (navigationHandlersSet.current || !navigation) {
+        if (navigationHandlersSet.current || !navigation || !isNotificationsAvailable) {
             return;
         }
 
         console.log('🧭 Setting up navigation handlers');
         navigationHandlersSet.current = true;
 
-        // Улучшенная функция навигации к остановкам
-        PushNotificationService.navigateToStops = async (data) => {
-            console.log('🧭 navigateToStops called with:', data);
+        // УБИРАЕМ: Дублирующая настройка навигационных функций - уже есть в AppNavigator
+        // PushNotificationService.navigateToStops = async (data) => {
+        //     console.log('🧭 navigateToStops called with:', data);
+        //     // ... остальной код
+        // };
 
-            if (!navigation) {
-                console.warn('❌ Navigation object not available, delaying navigation');
-                // Добавляем в очередь ожидания с задержкой
-                setTimeout(() => {
-                    if (navigation) {
-                        PushNotificationService.navigateToStops(data);
-                    } else {
-                        console.error('❌ Navigation still not available after delay');
-                    }
-                }, 2000);
-                return;
-            }
-
-            if (!data?.stopId) {
-                console.warn('❌ No stopId in notification data');
-                navigation.navigate('Main', {
-                    screen: 'MainTab',
-                    params: {
-                        screen: 'StopsListScreen'
-                    }
-                });
-                return;
-            }
-
-            try {
-                const stopId = parseInt(data.stopId);
-                console.log('🚛 Navigating to stop with ID:', stopId);
-
-                // Загружаем данные остановок если они не загружены
-                if (!stops || stops.length === 0) {
-                    console.log('📥 Loading stops data before navigation');
-                    await dispatch(fetchAllStops()).unwrap();
-                }
-
-                // Используем более надежную навигацию с задержкой
-                setTimeout(() => {
-                    try {
-                        navigation.navigate('StopDetails', {
-                            stopId: stopId,
-                            fromNotification: true,
-                            timestamp: Date.now() // Добавляем timestamp для принудительного обновления
-                        });
-                        console.log('✅ Successfully navigated to StopDetails');
-                    } catch (navError) {
-                        console.error('❌ Error in direct navigation:', navError);
-
-                        // Fallback навигация через Main
-                        navigation.navigate('Main', {
-                            screen: 'MainTab',
-                            params: {
-                                screen: 'StopDetails',
-                                params: {
-                                    stopId: stopId,
-                                    fromNotification: true,
-                                    fallback: true
-                                }
-                            }
-                        });
-                    }
-                }, 500);
-
-            } catch (error) {
-                console.error('❌ Error in navigateToStops:', error);
-
-                // Fallback: навигация к списку остановок
-                navigation.navigate('Main', {
-                    screen: 'MainTab',
-                    params: {
-                        screen: 'StopsListScreen'
-                    }
-                });
-            }
-        };
-
-        PushNotificationService.navigateToOrder = (data) => {
-            console.log('🧭 navigateToOrder called with:', data);
-            if (navigation && data?.orderId) {
-                try {
-                    navigation.navigate('OrderDetails', {
-                        orderId: data.orderId,
-                        fromNotification: true
-                    });
-                } catch (error) {
-                    console.error('❌ Error navigating to order:', error);
-                }
-            }
-        };
+        // PushNotificationService.navigateToOrder = (data) => {
+        //     console.log('🧭 navigateToOrder called with:', data);
+        //     // ... остальной код
+        // };
 
         // Важно: сообщаем сервису, что навигация готова
         setTimeout(() => {
@@ -228,32 +132,20 @@ export const useNotifications = (navigation) => {
             console.log('🧭 Navigation handlers setup complete and marked as ready');
         }, 100);
 
-    }, [navigation, dispatch, stops]);
+    }, [navigation, dispatch, stops, isNotificationsAvailable]);
 
-    const initializePushNotifications = useCallback(async () => {
-        if (initializationAttempted.current) {
-            return true;
-        }
-
-        if (user?.role === 'CLIENT') {
-            try {
-                const success = await PushNotificationService.initializeForUser(user);
-                if (success) {
-                    setupNavigationHandlers();
-                }
-                return success;
-            } catch (error) {
-                console.error('Error in initialization:', error);
-                return false;
-            }
-        }
-
-        return false;
-    }, [user?.id, setupNavigationHandlers]);
+    // ИСПРАВЛЕНО: Убираем дублирующую функцию initializePushNotifications
+    // Инициализация push-уведомлений происходит в AppContainer
+    // const initializePushNotifications = useCallback(async () => {
+    //     if (initializationAttempted.current) {
+    //         return true;
+    //     }
+    //     // ... остальной код
+    // }, [user?.id, setupNavigationHandlers]);
 
     // ОБНОВЛЕННЫЕ функции создания уведомлений с навигационными данными
     const showStopNotification = useCallback((stopData) => {
-        if (user?.role === 'CLIENT') {
+        if (isNotificationsAvailable) {
             const stopId = typeof stopData.id === 'string' ? parseInt(stopData.id) : stopData.id;
 
             console.log('🚛 Creating stop notification for stopId:', stopId);
@@ -293,12 +185,12 @@ export const useNotifications = (navigation) => {
 
             dispatch(fetchUnreadCount());
         }
-    }, [dispatch, user?.role]);
+    }, [dispatch, isNotificationsAvailable]);
 
     const showStopUpdateNotification = useCallback((stopData, changes) => {
         const userDistrictId = user?.client?.districtId || user?.districtId;
 
-        if (user?.role === 'CLIENT' && userDistrictId === stopData.districtId) {
+        if (isNotificationsAvailable && userDistrictId === stopData.districtId) {
             PushNotificationService.showStopUpdateNotification(stopData, changes);
 
             // ИСПРАВЛЕНО: Добавляем полные навигационные данные
@@ -329,7 +221,7 @@ export const useNotifications = (navigation) => {
     const showStopCancelNotification = useCallback((stopData) => {
         const userDistrictId = user?.client?.districtId || user?.districtId;
 
-        if (user?.role === 'CLIENT' && userDistrictId === stopData.districtId) {
+        if (isNotificationsAvailable && userDistrictId === stopData.districtId) {
             PushNotificationService.showStopCancelNotification(stopData);
 
             // ИСПРАВЛЕНО: Добавляем полные навигационные данные
@@ -359,7 +251,7 @@ export const useNotifications = (navigation) => {
     }, [dispatch, user]);
 
     const showProductNotification = useCallback((productData) => {
-        if (user?.role === 'CLIENT') {
+        if (isNotificationsAvailable) {
             PushNotificationService.showLocalNotification({
                 title: `🆕 Новый товар: ${productData.name}`,
                 body: `Цена: ${productData.price} ₽`,

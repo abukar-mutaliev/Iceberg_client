@@ -1,3 +1,4 @@
+// Альтернативное решение с использованием SVG иконок для лучшего выравнивания
 import React, { useState } from 'react';
 import {
     View,
@@ -11,15 +12,40 @@ import {
     StatusBar,
     Platform,
 } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 
 const { width: WINDOW_WIDTH, height: WINDOW_HEIGHT } = Dimensions.get('window');
 
+const LeftArrow = () => (
+    <Svg width="30" height="30" viewBox="0 0 24 24" fill="none">
+        <Path
+            d="M15 6L9 12L15 18"
+            stroke="white"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+        />
+    </Svg>
+);
+
+const RightArrow = () => (
+    <Svg width="30" height="30" viewBox="0 0 24 24" fill="none">
+        <Path
+            d="M9 6L15 12L9 18"
+            stroke="white"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+        />
+    </Svg>
+);
+
 export const FeedbackPhotoViewerModal = ({
-                                      photos = [],
-                                      initialIndex = 0,
-                                      visible = false,
-                                      onClose,
-                                  }) => {
+                                             photos = [],
+                                             initialIndex = 0,
+                                             visible = false,
+                                             onClose,
+                                         }) => {
     const [currentIndex, setCurrentIndex] = useState(initialIndex);
     const [statusBarHidden, setStatusBarHidden] = useState(false);
 
@@ -151,25 +177,25 @@ export const FeedbackPhotoViewerModal = ({
                 {/* Кнопки навигации (только если фотографий больше одной) */}
                 {photos.length > 1 && (
                     <>
-                        {/* Кнопка "Назад" */}
+                        {/* Кнопка "Назад" с SVG иконкой */}
                         {currentIndex > 0 && (
                             <TouchableOpacity
                                 style={[styles.navButton, styles.prevButton]}
                                 onPress={prevPhoto}
                                 activeOpacity={0.7}
                             >
-                                <Text style={styles.navButtonText}>‹</Text>
+                                <LeftArrow />
                             </TouchableOpacity>
                         )}
 
-                        {/* Кнопка "Вперед" */}
+                        {/* Кнопка "Вперед" с SVG иконкой */}
                         {currentIndex < photos.length - 1 && (
                             <TouchableOpacity
                                 style={[styles.navButton, styles.nextButton]}
                                 onPress={nextPhoto}
                                 activeOpacity={0.7}
                             >
-                                <Text style={styles.navButtonText}>›</Text>
+                                <RightArrow />
                             </TouchableOpacity>
                         )}
                     </>
@@ -235,21 +261,16 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0, 0, 0, 0.5)',
         justifyContent: 'center',
         alignItems: 'center',
+        zIndex: 10,
     },
     prevButton: {
         left: 20,
-        top: '50%',
+        top: 400, // Исправлено с '50%' на числовое значение
         transform: [{ translateY: -25 }],
     },
     nextButton: {
         right: 20,
-        top: '50%',
+        top: 400, // Исправлено с '50%' на числовое значение
         transform: [{ translateY: -25 }],
     },
-    navButtonText: {
-        color: 'white',
-        fontSize: 30,
-        fontWeight: 'bold',
-    },
 });
-

@@ -1,6 +1,6 @@
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet } from 'react-native';
-import { Color } from '@/app/styles/GlobalStyles';
+import { Color } from '@app/styles/GlobalStyles';
 
 export const CategoryItem = ({ category, onPress }) => {
     return (

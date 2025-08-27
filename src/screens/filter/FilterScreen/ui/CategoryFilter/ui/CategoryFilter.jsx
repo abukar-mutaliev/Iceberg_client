@@ -12,10 +12,10 @@ import {
     Platform
 } from 'react-native';
 import { ChevronRight } from 'lucide-react-native';
-import { FontFamily, Color } from '@/app/styles/GlobalStyles';
+import { FontFamily, Color } from '@app/styles/GlobalStyles';
 import { useEffect, useState } from "react";
-import { ScrollableBackgroundGradient } from '@/shared/ui/BackgroundGradient';
-import { Checkbox } from '@/shared/ui/Checkbox'; // Импортируем наш переиспользуемый компонент
+import { ScrollableBackgroundGradient } from '@shared/ui/BackgroundGradient';
+import { Checkbox } from '@shared/ui/Checkbox';
 
 // Адаптивные размеры
 const { width: SCREEN_WIDTH } = Dimensions.get('window');

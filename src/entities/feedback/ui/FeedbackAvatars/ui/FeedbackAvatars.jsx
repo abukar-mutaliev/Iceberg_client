@@ -3,8 +3,8 @@ import { View, Image, StyleSheet, Text } from 'react-native';
 import AvatarPlaceholder from "@shared/ui/Icon/DetailScreenIcons/AvatarPlaceholder";
 import {Color} from "@app/styles/GlobalStyles";
 
-export const FeedbackAvatars = React.memo(({ feedbacks, maxAvatars = 3 }) => {
-    if (!feedbacks || feedbacks.length === 0) {
+export const FeedbackAvatars = React.memo(({ feedbacks = [], maxAvatars = 3 }) => {
+    if (!Array.isArray(feedbacks) || feedbacks.length === 0) {
         return null;
     }
 
@@ -17,9 +17,11 @@ export const FeedbackAvatars = React.memo(({ feedbacks, maxAvatars = 3 }) => {
     return (
         <View style={styles.container}>
             {displayFeedbacks.map((feedback, index) => {
-                const hasAvatar = feedback.avatar || feedback.avatar;
+                if (!feedback) return null;
+
+                const hasAvatar = feedback.avatar || feedback.client?.avatar;
                 const avatarUrl = hasAvatar
-                    ? { uri: feedback.avatar || feedback.avatar }
+                    ? { uri: feedback.avatar || feedback.client?.avatar }
                     : null;
 
                 const userName = feedback.client?.name || '';

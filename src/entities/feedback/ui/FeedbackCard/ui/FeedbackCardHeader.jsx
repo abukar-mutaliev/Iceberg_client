@@ -1,8 +1,8 @@
 import React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
-import { useTheme } from '@/app/providers/themeProvider/ThemeProvider';
-import { FontFamily } from '@/app/styles/GlobalStyles';
-import { RatingStarIcon, AvatarPlaceholder } from '@/shared/ui/Icon/DetailScreenIcons';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { FontFamily } from '@app/styles/GlobalStyles';
+import { RatingStarIcon, AvatarPlaceholder } from '@shared/ui/Icon/DetailScreenIcons';
 import { formatFeedbackDate, fixAvatarUrl } from '../../../model';
 
 /**

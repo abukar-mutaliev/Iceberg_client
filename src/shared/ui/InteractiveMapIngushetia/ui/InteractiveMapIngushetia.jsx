@@ -1,313 +1,865 @@
-import React, { useState } from 'react';
+import React, {useState, useRef, useEffect} from 'react';
+import {
+    View,
+    Text,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Dimensions,
+    SafeAreaView,
+    StatusBar,
+} from 'react-native';
+import {PanGestureHandler, PinchGestureHandler, State} from 'react-native-gesture-handler';
+import Animated, {
+    useAnimatedGestureHandler,
+    useAnimatedStyle,
+    useSharedValue,
+    withSpring,
+} from 'react-native-reanimated';
 
-const InteractiveFullMap = () => {
-    const [hoveredRegion, setHoveredRegion] = useState(null);
+import { Sunzha } from "@shared/ui/InteractiveMapIngushetia/ui/districts/Sunzha";
+import { Malgobek } from "@shared/ui/InteractiveMapIngushetia/ui/districts/Malgobek";
+import { Nazran } from "@shared/ui/InteractiveMapIngushetia/ui/districts/Nazran";
+import { Prigorodny } from "@shared/ui/InteractiveMapIngushetia/ui/districts/Prigorodny";
+import { Dzheirakh } from "@shared/ui/InteractiveMapIngushetia/ui/districts/Dzheirakh";
+import { useDistrict } from "@entities/district";
+import { useSelector } from 'react-redux';
+import { selectDistrictsWithStats } from "@entities/district/model/selectors";
+import { Color } from "@app/styles/GlobalStyles";
+import { Loader } from "@shared/ui/Loader";
+
+const { width: screenWidth, height: screenHeight} = Dimensions.get('window');
+
+export const InteractiveMap = ({ onDistrictSelect }) => {
     const [selectedRegion, setSelectedRegion] = useState(null);
-    const [scale, setScale] = useState(1);
-    const [position, setPosition] = useState({ x: 0, y: 0 });
+    const [showInfo, setShowInfo] = useState(false);
 
-    // Информация о регионах
-    const regionInfo = {
-        region1: {
-            name: "Сунженский район",
-            color: "#EBECEC",
-            population: "102 168",
-            area: "647 км²"
+
+    const panRef = useRef();
+    const pinchRef = useRef();
+
+    const scale = useSharedValue(1);
+    const translateX = useSharedValue(0);
+    const translateY = useSharedValue(0);
+
+    const districtsWithStats = useSelector(selectDistrictsWithStats);
+    const {
+        isLoading = false,
+        error = null,
+        loadDistricts,
+        clearError
+    } = useDistrict();
+
+    useEffect(() => {
+        loadDistricts();
+    }, [loadDistricts]);
+
+    // Маппинг по названиям районов (более надежный)
+    const nameToLocalMapping = {
+        'Малгобекский район': 'malgobek',
+        'Назрановский район': 'nazran',
+        'Сунженский район': 'sunzha',
+        'Пригородный район': 'prigorodny',
+        'Джейрахский район': 'dzheirakhsky'
+
+    };
+
+    const defaultDistrictNames = {
+        malgobek: 'Малгобекский район',
+        nazran: 'Назрановский район',
+        sunzha: 'Сунженский район',
+        prigorodny: 'Пригородный район',
+        dzheirakhsky: 'Джейрахский район',
+    };
+
+    const districtColors = {
+        malgobek: '#FEFEFE',
+        nazran: '#D2CDE7',
+        prigorodny: '#D6E9D8',
+        dzheirakhsky: '#A2D9F7',
+        sunzha: '#EBECEC',
+    };
+
+    const getRegionInfo = () => {
+        const regionInfo = {};
+
+        // Если есть данные с сервера, используем их
+        if (districtsWithStats && districtsWithStats.length > 0) {
+            districtsWithStats.forEach(district => {
+                const localKey = nameToLocalMapping[district.name];
+                if (localKey) {
+                    regionInfo[localKey] = {
+                        id: district.id,
+                        name: district.name,
+                        description: district.description,
+                        color: districtColors[localKey] || '#E5E7EB',
+                        driversCount: district.driversCount || 0,
+                        clientsCount: district.clientsCount || 0,
+                        stopsCount: district.stopsCount || 0,
+                        totalCount: district.totalCount || 0,
+                        createdAt: district.createdAt,
+                        updatedAt: district.updatedAt,
+                    };
+                }
+            });
+        } else {
+            // Если данных нет (ошибка или загрузка), показываем базовые названия
+            Object.entries(defaultDistrictNames).forEach(([key, name]) => {
+                regionInfo[key] = {
+                    id: null,
+                    name: name,
+                    description: 'Данные загружаются...',
+                    color: districtColors[key] || '#E5E7EB',
+                    driversCount: 0,
+                    clientsCount: 0,
+                    stopsCount: 0,
+                    totalCount: 0,
+                };
+            });
+        }
+
+        return regionInfo;
+    };
+
+    const regionInfo = getRegionInfo();
+
+    const districts = [
+        {
+            id: 'malgobek',
+            Component: Malgobek,
+            style: {
+                position: 'absolute',
+                left: 117,
+                top: -2,
+                zIndex: 2,
+            },
+            width: screenWidth * 0.35,
+            height: screenHeight * 0.15,
+            hitSlop: {top: 10, bottom: 10, left: 10, right: 10},
+            pressableStyle: {
+                borderRadius: 8,
+            }
         },
-        region2: {
-            name: "Пригородный район",
-            color: "#D6E9D8",
-            population: "98 515",
-            area: "1 236 км²"
+        {
+            id: 'nazran',
+            Component: Nazran,
+            style: {
+                position: 'absolute',
+                left: 155,
+                top: 78,
+                zIndex: 5,
+            },
+            width: screenWidth * 0.34,
+            height: screenHeight * 0.16,
+            hitSlop: {top: 0, bottom: 0, left: 0, right: 0},
+            pressableStyle: {
+                borderRadius: 10,
+            }
         },
-        region3: {
-            name: "Малгобекский район",
-            color: "#FEFEFE",
-            population: "67 835",
-            area: "266 км²"
+        {
+            id: 'sunzha',
+            Component: Sunzha,
+            style: {
+                position: 'absolute',
+                right: 25,
+                top: 40,
+                zIndex: 1,
+            },
+            width: screenWidth * 0.33,
+            height: screenHeight * 0.35,
+            hitSlop: {top: 0, bottom: 0, left: 0, right: 0},
+            pressableStyle: {
+                borderRadius: 12,
+            }
         },
-        region4: {
-            name: "Джейрахский район",
-            color: "#A2D9F7",
-            population: "3 200",
-            area: "627 км²"
+        {
+            id: 'prigorodny',
+            Component: Prigorodny,
+            style: {
+                position: 'absolute',
+                left: 152,
+                top: 124,
+                zIndex: 4,
+            },
+            width: screenWidth * 0.31,
+            height: screenHeight * 0.23,
+            hitSlop: {top: 0, bottom: 0, left: 0, right: 0},
+            pressableStyle: {
+                borderRadius: 8,
+            }
         },
-        region5: {
-            name: "Назрановский район",
-            color: "#D2CDE7",
-            population: "141 904",
-            area: "627 км²"
+        {
+            id: 'dzheirakhsky',
+            Component: Dzheirakh,
+            style: {
+                position: 'absolute',
+                left: 150,
+                top: 261,
+                zIndex: 3,
+            },
+            width: screenWidth * 0.45,
+            height: screenHeight * 0.17,
+            hitSlop: {top: 5, bottom: 5, left: 5, right: 5},
+            pressableStyle: {
+                borderRadius: 10,
+            }
+        },
+    ];
+
+    const handleRegionPress = (regionId) => {
+        if (regionInfo[regionId]) {
+            setSelectedRegion(regionId);
+            setShowInfo(true);
+            selectDistrict(regionId);
         }
     };
 
-    const handleRegionClick = (regionId) => {
-        setSelectedRegion(regionId);
+    const selectDistrict = (regionId) => {
+        const region = regionInfo[regionId];
+        if (region && onDistrictSelect) {
+            onDistrictSelect({
+                id: region.id,
+                name: region.name,
+                description: region.description,
+                color: region.color
+            });
+        }
     };
 
-    const handleRegionHover = (regionId) => {
-        setHoveredRegion(regionId);
-    };
-
-    const handleRegionLeave = () => {
-        setHoveredRegion(null);
-    };
-
-    const zoomIn = () => {
-        setScale(prev => Math.min(prev + 0.2, 3));
-    };
-
-    const zoomOut = () => {
-        setScale(prev => Math.max(prev - 0.2, 0.5));
-    };
-
-    const resetView = () => {
-        setScale(1);
-        setPosition({ x: 0, y: 0 });
+    const resetDistrictSelection = () => {
+        if (onDistrictSelect) {
+            onDistrictSelect(null);
+        }
+        setShowInfo(false);
         setSelectedRegion(null);
     };
 
-    return (
-        <div className="flex flex-col h-screen bg-gray-50">
-            {/* Заголовок и инструменты */}
-            <div className="bg-white shadow-sm p-4">
-                <h1 className="text-2xl font-bold text-gray-800 mb-4">Интерактивная карта Республики Ингушетия</h1>
+    const pinchHandler = useAnimatedGestureHandler({
+        onStart: (_, context) => {
+            context.startScale = scale.value;
+        },
+        onActive: (event, context) => {
+            scale.value = Math.max(0.5, Math.min(context.startScale * event.scale, 3));
+        },
+        onEnd: () => {
+            scale.value = withSpring(Math.max(0.5, Math.min(scale.value, 3)));
+        },
+    });
 
-                <div className="flex gap-4 items-center">
-                    <div className="flex gap-2">
-                        <button
-                            onClick={zoomIn}
-                            className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-                        >
-                            Увеличить
-                        </button>
-                        <button
-                            onClick={zoomOut}
-                            className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-                        >
-                            Уменьшить
-                        </button>
-                        <button
-                            onClick={resetView}
-                            className="px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
-                        >
-                            Сбросить
-                        </button>
-                    </div>
+    const panHandler = useAnimatedGestureHandler({
+        onStart: (_, context) => {
+            context.startX = translateX.value;
+            context.startY = translateY.value;
+        },
+        onActive: (event, context) => {
+            translateX.value = context.startX + event.translationX;
+            translateY.value = context.startY + event.translationY;
+        },
+        onEnd: () => {
+            translateX.value = withSpring(translateX.value);
+            translateY.value = withSpring(translateY.value);
+        },
+    });
 
-                    <div className="text-sm text-gray-600">
-                        Масштаб: {Math.round(scale * 100)}%
-                    </div>
-                </div>
-            </div>
+    const animatedStyle = useAnimatedStyle(() => {
+        return {
+            transform: [
+                {translateX: translateX.value},
+                {translateY: translateY.value},
+                {scale: scale.value},
+            ],
+        };
+    });
 
-            <div className="flex flex-1">
-                {/* Карта */}
-                <div className="flex-1 overflow-hidden relative">
-                    <div
-                        className="w-full h-full overflow-auto"
-                        style={{ cursor: scale > 1 ? 'grab' : 'default' }}
+    // Функции для управления зумом
+    const zoomIn = () => {
+        scale.value = withSpring(Math.min(scale.value + 0.5, 3));
+    };
+
+    const zoomOut = () => {
+        scale.value = withSpring(Math.max(scale.value - 0.5, 0.5));
+    };
+
+    const resetView = () => {
+        scale.value = withSpring(1);
+        translateX.value = withSpring(0);
+        translateY.value = withSpring(0);
+        setSelectedRegion(null);
+        setShowInfo(false);
+        resetDistrictSelection();
+    };
+
+    const retryLoad = () => {
+        clearError();
+        loadDistricts();
+    };
+
+    const InteractiveDistrict = ({ district }) => {
+        const { id, Component, style, width, height, hitSlop, pressableStyle } = district;
+        const [isPressed, setIsPressed] = useState(false);
+
+        const hasData = regionInfo[id];
+
+        return (
+            <Pressable
+                style={[
+                    style,
+                    pressableStyle,
+                    {
+                        opacity: selectedRegion && selectedRegion !== id ? 0.4 : hasData ? 1 : 0.6,
+                        transform: [{ scale: isPressed ? 0.98 : 1 }],
+                    }
+                ]}
+                hitSlop={hitSlop}
+                onPress={() => handleRegionPress(id)}
+                onPressIn={() => setIsPressed(true)}
+                onPressOut={() => setIsPressed(false)}
+                accessibilityLabel={`${regionInfo[id]?.name || id} район`}
+                accessibilityHint="Нажмите для получения подробной информации"
+                accessibilityRole="button"
+                disabled={!hasData}
+            >
+                <Component
+                    width={width}
+                    height={height}
+                    isSelected={selectedRegion === id}
+                />
+            </Pressable>
+        );
+    };
+
+    const renderInfoPanel = () => {
+        if (!showInfo || !selectedRegion || !regionInfo[selectedRegion]) {
+            return null;
+        }
+
+        const region = regionInfo[selectedRegion];
+
+        const regionName = String(region.name || 'Неизвестный район');
+        const regionDescription = String(region.description || 'Описание не доступно');
+        const regionStopsCount = String(region.stopsCount || 0);
+        const regionColor = String(region.color || '#E5E7EB');
+
+        return (
+            <View style={styles.infoPanel}>
+                <View style={styles.infoPanelContent}>
+                    <View style={[styles.colorBar, {backgroundColor: regionColor}]}/>
+
+                    <Text style={styles.regionTitle}>{regionName}</Text>
+
+                    <Text style={styles.regionDescription}>{regionDescription}</Text>
+
+                    <View style={styles.infoRow}>
+                        <Text style={styles.infoLabel}>Остановки:</Text>
+                        <Text style={styles.infoValue}>{regionStopsCount}</Text>
+                    </View>
+                    <Pressable
+                        style={styles.showAllButton}
+                        onPress={resetDistrictSelection}
                     >
-                        <div
-                            style={{
-                                transform: `scale(${scale}) translate(${position.x}px, ${position.y}px)`,
-                                transformOrigin: 'center center',
-                                transition: 'transform 0.3s ease'
-                            }}
-                            className="flex justify-center items-center p-8"
+                        <Text style={styles.showAllButtonText}>
+                            Показать все остановки
+                        </Text>
+                    </Pressable>
+
+                </View>
+            </View>
+        );
+    };
+
+    const renderLegend = () => {
+        const hasData = districtsWithStats && districtsWithStats.length > 0;
+        
+        return (
+            <View style={styles.legend}>
+                <Text style={styles.legendTitle}>Районы Ингушетии:</Text>
+                {error && (
+                    <View style={styles.errorBanner}>
+                        <Text style={styles.errorBannerText}>
+                            ⚠️ Ошибка загрузки данных. Нажмите "Повторить" для обновления.
+                        </Text>
+                        <Pressable style={styles.retrySmallButton} onPress={retryLoad}>
+                            <Text style={styles.retrySmallButtonText}>Повторить</Text>
+                        </Pressable>
+                    </View>
+                )}
+                {isLoading && (
+                    <Text style={styles.legendText}>Загрузка данных...</Text>
+                )}
+                {!hasData && !isLoading && !error && (
+                    <Text style={styles.legendText}>Данные отсутствуют</Text>
+                )}
+                {hasData && (
+                    <Text style={styles.legendSubtitle}>
+                        Нажмите на район - остановки сразу отфильтруются
+                    </Text>
+                )}
+                {Object.entries(regionInfo).map(([key, info]) => {
+                    const driversCount = typeof info.driversCount === 'number' ? info.driversCount : 0;
+                    const clientsCount = typeof info.clientsCount === 'number' ? info.clientsCount : 0;
+                    const stopsCount = typeof info.stopsCount === 'number' ? info.stopsCount : 0;
+
+                    return (
+                        <Pressable
+                            key={key}
+                            style={[
+                                styles.legendItem,
+                                selectedRegion === key && styles.legendItemSelected,
+                                !hasData && styles.legendItemDisabled
+                            ]}
+                            onPress={() => hasData && handleRegionPress(key)}
+                            disabled={!hasData}
                         >
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                xmlSpace="preserve"
-                                width="934.94"
-                                height="1682.98"
-                                version="1.1"
-                                viewBox="0 0 934.94 1682.98"
-                                className="max-w-full max-h-full"
-                            >
-                                <defs>
-                                    <style type="text/css">
-                                        {`
-                      .str0 {stroke:black;stroke-width:6.81;stroke-linejoin:round;stroke-miterlimit:22.9256}
-                      .fil0 {fill:none}
-                      .fil3 {fill:#FEFEFE}
-                      .fil1 {fill:#EBECEC}
-                      .fil2 {fill:#D6E9D8}
-                      .fil5 {fill:#D2CDE7}
-                      .fil4 {fill:#A2D9F7}
-                      .fil6 {fill:#2B2A29;fill-rule:nonzero}
-                      .region-path {
-                        transition: all 0.3s ease;
-                        cursor: pointer;
-                      }
-                      .region-path:hover {
-                        filter: brightness(1.1);
-                        stroke-width: 8;
-                      }
-                      .region-selected {
-                        filter: brightness(1.2);
-                        stroke: #FF6B35;
-                        stroke-width: 10;
-                      }
-                    `}
-                                    </style>
-                                </defs>
+                            <View style={[styles.legendColor, {backgroundColor: info.color || '#E5E7EB'}]}/>
+                            <View style={styles.legendTextContainer}>
+                                <Text style={[
+                                    styles.legendText,
+                                    selectedRegion === key && styles.legendTextSelected,
+                                    !hasData && styles.legendTextDisabled
+                                ]}>
+                                    {String(info.name || 'Неизвестный район')}
+                                </Text>
+                                <Text style={[styles.legendStopsCount, !hasData && styles.legendTextDisabled]}>
+                                    {hasData ? `Остановок в этом районе: ${stopsCount}` : info.description}
+                                </Text>
+                            </View>
+                        </Pressable>
+                    );
+                })}
+            </View>
+        );
+    };
 
-                                <g id="map-regions">
-                                    {/* Сунженский район */}
-                                    <path
-                                        className={`fil1 str0 region-path ${selectedRegion === 'region1' ? 'region-selected' : ''}`}
-                                        onClick={() => handleRegionClick('region1')}
-                                        onMouseEnter={() => handleRegionHover('region1')}
-                                        onMouseLeave={handleRegionLeave}
-                                        d="M537.18 277.92c4.24,3.48 10.46,5.26 4.42,13.02 -3.43,4.41 -2.05,2.35 -1.13,7.12 0.91,4.72 -1.11,5.43 -2.81,8.49 0.63,2.56 2.6,4.43 1.74,8.14 -1.03,4.44 -3.37,3.45 -3.63,7.73 -0.48,8.23 1.07,11.39 -0.93,20.9 -3.93,18.69 -23.57,5.68 -32.82,7.53 0.12,2.76 1.28,4.2 2.1,6.63 1.14,3.39 0.63,5.52 1.33,8.77 0.51,2.36 1.94,3.93 2.75,6.66 0.9,3.04 0.8,5.53 1.44,8.55 0.64,3.04 1.75,3.81 2.27,7.3 1.31,8.76 5.31,12.48 8.06,21.37 3.29,10.63 2.96,14.13 -3.15,21.86 -4.94,6.24 -8.49,12.78 -7.91,21.62 0.15,2.21 1.27,15.87 2.51,17 3.99,3.63 14.84,-6.9 15.91,1.95 1.05,8.63 -11.11,13.6 -12.74,22.18 5.46,4 6.89,3.49 6.83,12.28 -0.05,8.7 5.99,21.3 8.1,30.56 3.95,17.34 6.31,25.7 16.82,40.83 2.93,4.22 5.35,6.78 8.24,11.24 9.49,14.65 6.72,12.93 22.88,6.82 4.86,-1.84 9.38,-3.55 14.97,-4.51l29.29 -9.63c8.62,-3.55 5.54,-3.35 7.05,-11.72 1.49,-8.27 31.97,-23 36.78,-20.65 3.02,2.11 2.14,4.48 3.73,7.91 3.75,8.12 2.46,12.7 4.8,18.97 1.84,4.93 0.55,0.73 2.62,3.18 1.62,1.92 0.57,2.12 1.92,4.51 6.31,0.26 6.67,-4.23 17.4,-0.1 9.02,3.47 2.83,14.28 2.39,24.26 -0.24,5.31 7.01,14.72 -1.31,26.65 1.45,2.91 2.52,3.83 1.64,7.71 2.87,-0.07 7.04,-4.49 12.72,-1.22 4.53,4.56 -5.24,14.9 -6.94,18.97 -2.92,7.01 -3.98,14 -7.31,20.81 -4.67,9.57 -14.19,33.42 -18.38,44.36 -1.18,3.07 -1.25,2.05 -2.85,4.37 -10.03,14.5 -2.89,12.21 -20.4,22.12 -8.13,4.6 -10.53,5.08 -13.18,14.97 -3.29,12.31 -1.54,16.51 -11.64,15 -1.39,3.54 -2.11,7.41 -4.03,10.1 4.79,4.03 4.48,1.67 8.15,3.78 1.51,1.58 0.71,4.88 1.76,6.93 2.89,5.61 1.09,10.53 -4.47,14.52 -1.17,10.65 1.56,7.57 -11.38,14.55 -6.6,3.56 -10.18,6.28 -14.86,11.11 -1.98,2.04 -4.14,4.66 -5.97,7.03l-5.54 7.42c-4.07,7.04 -5.57,24.84 -0.3,32.58 2.23,3.28 4.92,3.56 7.11,5.84 3.24,3.37 6.3,11.95 9.28,16.69 3.71,5.89 9.44,6.66 14.53,11.41 12,11.2 13.01,16.04 21.18,24.25 6.13,6.17 8.99,9.29 8.21,24.16 -0.27,5.26 -4.63,15.18 -7.17,18.67 -2.37,3.25 -3.8,3.87 -7.02,5.96 -3.05,1.98 -3.52,3.94 -6.32,6.66 -3.22,3.14 -4.22,2.97 -3.89,9.04 0.96,17.3 -3.98,11.25 1.86,34.23 6.02,23.69 -9.97,20.14 -15.12,21.83 -3.61,1.18 -5.33,4.46 -4.19,8.28 5.78,1.59 8.28,-2.42 14.06,-4.32 6.35,-2.08 8.32,3.69 10.52,7.85 7.02,13.28 7.57,11.64 6.51,33.12 -0.9,18.26 -7.46,29.3 -23.75,36.03 -6.54,2.7 -8.06,3.33 -15.93,4.32 -14.9,1.88 -17.71,1.49 -27.27,12.32 -5.3,6 -10.44,16.71 -14.39,25.29 -7.56,16.4 0.16,39.57 -13.54,46.28 -3.99,1.95 -9.36,2.01 -13.6,3.64 -2.58,0.99 -0.81,0.1 -2.03,1.15 -0.5,7.51 5.15,9.19 8.16,15.17 2.09,4.15 6.67,11.65 5.4,16.84 -4.12,4.55 -11.74,0.79 -18.36,1.09 -2.94,3.09 -5.61,5.33 -6.98,10.39 -0.71,2.64 -2.83,12.31 -2.76,14.57 22.61,4.88 38.2,12.9 63.22,-5.27l11.34 -8.84c5.87,-5.37 11.96,-10.55 20.19,-13.7 4.56,-1.74 7.02,-0.15 11.34,1.03 6.23,1.7 50.52,6.55 59.99,7.88 22.43,3.15 42.98,10.18 64.47,16.19 8.14,2.28 14.53,2.89 22.65,4.74 6.96,1.58 13.61,3.96 20.9,5.79 6.97,1.75 15.37,3.19 22.58,4.74 28.51,6.15 31.27,12.8 39.67,15.14 2.23,-3.35 5.33,-5.07 7.83,-10.1 1.94,-3.9 3.34,-8.94 5.04,-13.01 7.36,-17.66 12.28,-37.02 18.48,-55.07 3.4,-9.91 18.13,-41.18 23.64,-49.9 4.91,-7.78 8.77,-14.81 13.64,-23.13 4.4,-7.53 9.49,-19.12 4.84,-28.92 -2.77,-5.83 -12.28,-11.2 -16.46,-20.34 -3.6,-7.86 -5.7,-21.52 -4.78,-31.35 1.14,-12.13 5.59,-19.57 0.1,-31.72 -5.02,-11.12 -9.97,-12.82 -16.3,-20.47 -3.81,-4.61 1.32,-8.52 -0.55,-14.6 -4.13,-13.42 -5.74,-8.29 1.48,-19.8 1.35,-2.16 2.28,-3.72 3.41,-5.97 10.46,-20.93 13.62,-36.35 9.67,-60.2 -1.79,-10.81 -10.4,-13.98 -2.47,-22 3.24,-3.27 8.22,-10.15 9.87,-13.66 -2.27,-1.63 -4.22,-3.56 -6.27,-5.7 -1.72,2.08 -2.57,5.45 -3.97,8.14 -1.49,2.87 -3.37,5.27 -5.13,7.87 -2.11,3.1 -2.63,4.93 -7.46,4.97 -3.84,0.03 -7.99,-1.31 -10.2,-2.76 0.1,-4.03 3.48,-6.02 6.55,-9.73 5.06,-6.13 10.23,-11.98 14.29,-18.85 2.17,-3.67 3.6,-6.93 5.57,-11.04 1.9,-3.96 4.92,-6.41 7.21,-9.38 6.95,-9.01 14.62,-22.36 15.55,-34.24 1.47,-18.62 1.1,-10.38 -2.35,-27.92 -1.78,-9.05 -1.72,-21.89 -3.8,-29.41 -0.82,-2.95 -0.74,-4.03 -1.32,-6.62 -1.98,-8.88 -3.86,-7.39 -1.26,-22.61 1.62,-9.46 4.67,-18 4.88,-28.03 0.11,-5.24 -1.05,-11.42 0.99,-15.82 1.9,-4.1 2.99,-8.73 3.02,-13.76 0.03,-5.45 -1.38,-10.43 -1.14,-15.9l3.77 -29.65c0.86,-5.01 -1.87,-9.22 -2.76,-13.73 -2.23,-11.28 6.84,-6.24 -3.94,-26.28 -6.84,-12.72 -5.96,-10.34 -3.14,-25.23 6.04,-32 -6.42,-47.51 -1.52,-59.25 1.92,-4.59 2.55,-7.72 4.26,-12.29 2.53,-6.75 1.44,-7.15 2.44,-14.27 2.37,-17.04 -4.63,-18.62 -9.97,-36.77 -1.4,-4.78 -3.08,-7.68 -4.72,-11.86 -3.79,-9.64 -8.14,-13.45 -3.72,-25.16 5.49,-14.54 14.25,-15.6 14.2,-35.32 -0.03,-11.92 -12.56,-9.24 -21.39,-11.51 -4.44,-1.14 -8.86,-2.23 -13.25,-3.32 -26.12,-6.49 -24.24,-8.44 -34.39,-31.97l-9.34 -23.83c-2.82,-8.71 -4.54,-17.25 -7.15,-26.01 -4.45,-14.93 -15.63,-45 -22.1,-60.82 -2.52,-6.17 -4.36,-4.11 -8.84,-7.75 -3.89,-3.15 -3.89,-5.97 -10.58,-5.22 -5.52,0.61 -8.95,1.96 -14.63,0.17 -14.42,-4.54 -29.35,2.81 -42.34,-5.97 -1.14,-0.77 -3.75,-2.55 -4.63,-3.34 -3.32,-2.94 -0.63,-2.3 -2.27,-4.71 -16.96,-0.59 -32.73,-2.35 -48.91,-4.69 -14.11,-2.04 -8.86,-1.15 -19.81,4.05 -5.96,2.83 -12.96,6.43 -20.55,7.04 -14.05,1.13 -31.13,-8.25 -40.33,-13.96 -11.41,-7.08 -24.07,-11.1 -36.84,-16.98 -6.84,5.46 -4.36,16.76 -2.08,25.62 1.64,6.39 2.37,7.62 2.21,15.24 -0.15,6.98 -2.17,8.15 -3.89,13.5 -1.58,4.93 -0.4,10.14 -1.48,15.08 -0.89,4.03 -2.95,8.39 -4.15,13.19 -1.46,5.84 -2.36,7.69 -8.65,8.56 -4.31,0.59 -7.99,4.21 -9.91,7.53z"
-                                    />
+    const renderLoadingState = () => (
+        <View style={styles.loadingContainer}>
+            <Loader 
+                type="youtube"
+                color={Color.purpleSoft}
+            />
+            <Text style={styles.loadingText}>Загрузка данных районов...</Text>
+        </View>
+    );
 
-                                    {/* Пригородный район */}
-                                    <path
-                                        className={`fil2 str0 region-path ${selectedRegion === 'region2' ? 'region-selected' : ''}`}
-                                        onClick={() => handleRegionClick('region2')}
-                                        onMouseEnter={() => handleRegionHover('region2')}
-                                        onMouseLeave={handleRegionLeave}
-                                        d="M310.63 690.15c5.11,3.12 6.65,4.57 13.65,7.21 6.51,2.46 9.56,3.8 12.74,8.2 4.82,6.67 9.25,23.18 7.69,33.07 -2.65,16.69 -13.03,23.04 -13.95,28 -0.84,4.56 3.42,11.63 4.5,16.32 2,8.7 -1.55,11.2 -1.59,19.23 10.4,5.22 5.57,24.1 -0.14,31.97 -2.72,3.75 -7.23,8.14 -14.09,7.76 -10.9,-0.6 -8.55,-3.67 -15.46,4.5 -8.13,9.61 -7.82,19.18 -26.83,14.91 -10.88,-2.44 -16.89,-7.73 -24.16,2.58 -7.28,10.33 3.72,7.6 8.69,9.97 2.31,1.1 4.82,3.56 6.39,5.17 4.05,4.15 5.45,12.59 3.17,18.26 -4.6,1.06 -2.09,-0.64 -4.73,1.18 2.35,5.43 7.46,16.34 10.62,19.82 3.37,3.72 13.67,11.87 7.22,19.49 -4.83,1.38 -9.22,-1.63 -12.22,-3.68 -5.27,-3.59 -10.87,-12 -16.3,-17.59 -3.64,-3.75 -4.1,-6.22 -7.07,-10.22 -6.54,-8.8 -14.1,6.02 -17.23,11.12 -2.4,3.9 -3.84,7.32 -6.15,11.14 -2.14,3.52 -4.56,6.88 -6.81,10.47 -6.65,10.62 -4.57,16.04 1.29,25.01l12.72 21.86c1.65,4.09 2.94,8.12 4.34,12.25 1.46,4.31 3.73,7.47 5.23,12.08 3.43,10.52 0.05,20.37 -10.12,21.52 0.23,9.31 4.08,16.62 4.75,27.15 0.62,9.8 -1.57,18.89 -6.36,25.39 -8.09,11 -32.82,20.24 -37.94,26.15 8.06,5.53 7.39,-0.99 13.37,11.06 3.38,6.8 5.13,10.89 4.39,19.81 -1.36,16.25 -16.82,59.43 -25.64,72.37 -3.77,5.53 -8.21,7.56 -12.6,11.91 -2.11,2.09 -9.06,10.73 -8.69,14.87 3.85,0.47 7.22,-0.98 12.46,-0.26 4.81,0.66 7.32,2.18 10.14,4.21 4.3,-1.71 4.66,-4.76 11.59,-5.34 7.66,-0.64 9.86,-2.33 15.09,1.23 6.54,-2.96 0.56,-2.06 17.29,-8.03 4.49,-1.6 11.53,-3.08 16.59,-2.18 3.72,0.66 1.36,1.5 4.46,2.08 7.29,1.36 5.98,-6.11 30.61,2.52 3.83,1.34 13.18,6.96 15.7,9.57 3.5,3.63 5.3,1.16 9.82,3.14 5.14,2.25 2.3,2.43 10.07,2.42 9.31,-0 24.33,0.26 29.04,8.98 2.01,3.73 3.61,3.9 5.92,6.32 2.21,2.32 3.24,4.78 5.42,7.34l9.09 -1.22 1.67 3.9c7.87,0.34 7.12,-1.06 10.96,3.94 2.22,2.89 5.73,5.21 10,5.45 7.53,0.43 4.61,-3.17 9.99,-4.88 2.11,-0.67 3.06,-1.03 5.27,-1.79 2.56,-0.88 4.59,-0.65 6.72,-1.23 2.2,-2.23 3.79,-6.71 7.24,-7.9 2.52,-0.87 3.02,-0.1 5.73,-1.47 5.26,-2.66 7.77,-6.01 14.88,-8.22 6.31,-1.96 7.45,-0.51 10.72,3.03 9.21,-2.27 9.85,3.3 15.19,9.1 7.75,8.4 21.2,14.55 30.99,20.93 3.98,2.59 12.34,7.21 17.98,7.82 3.48,-6.73 1.29,-15.38 6.92,-21.77 2.69,-3.05 3.51,-6.21 8.17,-6.4 4.6,-0.19 9.29,1.91 13.54,1.03 -0.74,-4.53 -5.18,-13.76 -7.83,-16.58 -5,-5.32 -7.4,-8.33 -5.13,-17.64 8.26,-2.49 20.83,-1.36 22.61,-11.97 1.68,-10.03 1.37,-21.56 4.1,-31.24 2.81,-10 11.78,-25.95 18.88,-33.72 13.85,-15.16 23.49,-7.48 38.92,-13.71 8.91,-3.59 16.83,-7.75 20.6,-14.76 4.6,-8.55 7.88,-35.76 2,-45.27 -1.84,-2.97 -4.61,-8.81 -7.43,-10.84 -6.63,1.11 -8.4,6.61 -16.37,5.11 -7.77,-1.46 -6.04,-10.04 -2.45,-13.59 9.28,-9.2 22.41,4.59 16.42,-24.19 -1.28,-6.15 -3.64,-12.05 -2.29,-18.64 1.96,-9.53 0.55,-16.32 1.83,-19.82 1.34,-3.67 3.11,-2.85 5.23,-5.55 4.98,-6.36 9.26,-7.69 11.33,-10.3 1.34,-1.69 2.76,-5.12 3.95,-7.56 3.28,-6.75 4.08,-9.02 2.86,-18.15 -1.57,-11.73 -7.6,-11.94 -12.68,-19.63 -11.04,-16.76 -24.33,-21.29 -28.3,-26.48 -1.55,-2.03 -3.22,-3.97 -4.45,-6.38 -3.95,-7.77 -2.11,-6.7 -9.05,-12.55l-5.23 -5.6c-3.25,-4 -4.79,-11.22 -4.72,-17.68 -4.59,0.18 -7.87,0.96 -12.6,0.28 -4.2,-0.61 -7.63,-1.57 -12.55,-1.92 -12.33,-0.9 -11.91,-3.77 -20.95,-7.71 -8.98,-3.91 -11.58,-4.3 -17.77,-10.36 -5.54,-5.42 -16.2,-8.47 -15.39,-13.35 2.8,-6.62 6.95,0.97 8.84,-11.83 2.42,-16.35 -23.28,-20.93 -34.07,-27.94 -4.64,-3.01 -7.93,-5.87 -12.78,-8.14 -5.35,-2.5 -7.8,-5.07 -9.71,-11.18 -6.35,-20.32 -8.85,-13.09 -23.39,-6.85 -6.31,2.71 -9.58,4.97 -13.22,-2.67 -2.21,-4.63 -4.07,-9.92 -6.1,-14.83 -2.18,-5.27 -3.76,-9.93 -5.69,-15.22 -1.96,-5.36 -4.42,-9.75 -6.55,-15.07 -2.08,-5.19 -3.66,-10.21 -5.66,-15.25 -8.86,-22.25 -14.11,-22.61 -23.09,-40.37 -6.93,-13.69 -5.12,-19.14 -13.43,-28.36 -7.03,-7.81 -9.98,-16.77 -13.69,-28.87 -4.86,-15.87 -10.91,-30.26 -26.03,-36.65 -3.93,-1.66 -11.79,-6.04 -16.39,-4.78 -0.06,0.02 -1.32,0.43 -1.63,0.62 -2.18,1.32 -6.24,9.83 -6.66,12.22 -3.62,20.86 4.16,22.22 2.51,35.65 -1.76,14.25 -13.29,15.75 3.11,28.68 6.16,4.86 15.61,18.26 16.58,25.24 1.13,8.13 -5.07,10.03 -8.44,12.79z"
-                                    />
+    if (error) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <StatusBar barStyle="dark-content" backgroundColor="#f9fafb" />
+                {renderErrorState()}
+            </SafeAreaView>
+        );
+    }
 
-                                    {/* Малгобекский район */}
-                                    <path
-                                        className={`fil3 str0 region-path ${selectedRegion === 'region3' ? 'region-selected' : ''}`}
-                                        onClick={() => handleRegionClick('region3')}
-                                        onMouseEnter={() => handleRegionHover('region3')}
-                                        onMouseLeave={handleRegionLeave}
-                                        d="M196.08 351.9c10.15,-0.16 17.6,-0.5 27.85,1.08 7.33,1.13 21.91,1.79 24.19,6.23 2.2,4.85 -2.5,11.29 2.14,19.27 3.65,6.28 4.96,10.37 -0.52,15.71 -5.81,5.66 -8.96,1.22 -14.59,-2.04 -3.04,-1.76 -4.43,-2.48 -7.07,-4.46 -2.19,-1.64 -4.34,-3.58 -7.03,-4.69 -1.11,2.72 -1.38,4.46 -3.01,6.9 -2.2,3.32 -2.85,3.54 -2.64,8.36 2.45,1.4 2.91,2.55 6.3,3.71 3.44,1.18 4.92,1.11 7.67,3.16 8.5,6.33 13.86,14.81 16.39,25.42 0.71,3 0.9,5.48 1.51,8.54 0.27,1.37 0.56,2.72 0.9,4.17 0.1,0.41 0.45,1.81 0.67,2.24 3.03,5.89 17.61,0.57 26.69,3.6l10.38 3.29c11.69,3.23 21.77,12.83 30.9,11.02 12.16,-2.41 20.86,-14.73 27.26,-21.03 2.65,-2.61 15.73,-10.8 15.91,-19.74 0.14,-7.07 -6.42,-15.99 1.24,-22.25 4.88,-3.98 14.56,-8.4 17.26,-10.91 -0.59,-4.89 -3.26,-12.7 -1.51,-17.26 1.25,-3.27 8.96,-7.28 13.46,-6.27 5.64,1.26 10.73,23.19 11.73,28.8 4.85,0.08 14.59,1.03 18.47,-0.92 1.56,-1.7 0.14,0.76 0.8,-1.65 0.62,-2.25 -0.05,-4.59 2.23,-5.84 3.81,-2.07 28.52,4.77 42.63,-9.92 6.51,-6.78 18.64,-21.86 30.69,-24.1 1.18,-14.11 15.68,-0.48 28.21,-3.54 3.02,-0.74 3.45,-0.94 4.56,-3.35 1.34,-2.93 2.27,-9.83 2.33,-13.61 0.08,-4.41 -1.54,-11.01 0.67,-14.38 1.1,-1.68 2.55,-1.81 2.59,-4.43 0.08,-4.7 -4.78,-1.89 0.09,-10.98 1.98,-3.68 0.62,-2.51 -0.13,-5.95 -1.18,-5.45 3.3,-5.81 4.18,-11.13 -2.23,-2.55 -4.15,-2.27 -5.77,-4.66 -3.21,-4.72 2.03,-7.43 4.31,-9.48 8.82,-7.96 6.83,-2.5 10.93,-5.41 1.55,-1.06 0.7,0.02 1.8,-2.05 0.49,-0.91 0.82,-2.39 1.03,-3.21 2.89,-11.35 3.83,-8.54 4.61,-21.33 1.14,-18.56 9.74,-5.67 0.7,-43.88 -4.24,-17.94 7.75,1.56 -1.02,-43.63 -4.52,-23.31 -14.57,-41.85 -27.06,-58.78 -4.52,-6.12 -8.67,-16.6 -10.08,-24.59 -0.76,-4.29 -1.07,-12.69 -3.33,-14.01 -5.77,-1.98 -21.74,-1.3 -28.72,-0.75 -12.89,1.01 -16.95,-1.41 -27.79,-2.26 -27.6,-2.15 -34.08,3.7 -41.72,4.22 -5.12,0.35 -10.06,-0.52 -15.15,-0.66 -13.03,-0.36 -46.04,4.18 -54.95,-3.71 -10.49,-9.29 -8.72,-35.38 -14.79,-47.11 -11.42,-1.08 -14.99,1.72 -22.94,6.2 -6.53,3.68 -15.41,2.17 -24.08,6.25 -9.14,4.3 -12.28,6.13 -23.83,6.11 -10.65,-0.02 -17.62,-0.18 -26.55,4.03 -14.11,6.67 -29.64,10.59 -44.92,15.65 -15.38,5.09 -33.63,7.08 -47.16,14.12 -6.45,3.36 -15.58,4.69 -23.49,6.76 -8.26,2.16 -17.46,2.18 -25.2,5.11 -3.75,1.42 -6.97,3.2 -10.71,4.45 -4.29,1.44 -7.42,1.66 -11.21,3.92 -23.23,13.85 -24.8,28.77 -32.67,58.86 -2.14,8.19 -4.35,15.96 -5.44,24.8 -1.44,11.68 1,18.54 0.71,29.16 -0.97,35.24 -8.51,44.52 -22.97,67.61 -13.47,21.51 -9.86,19.03 2.18,41.36 2.55,4.72 3.24,5.36 6.56,8.6 3.28,3.2 4.31,4.94 6.84,8.3 12.01,15.94 -0.43,24.15 26,50.41 3.87,3.85 1.45,7.73 6.33,8.89 5.1,1.2 6.62,-2.67 12.09,-2.84 12.5,-0.4 3.36,8.07 23.67,5 13.76,-2.08 6.82,-9.4 20.3,-9.88 15.08,-0.54 18.52,-16.33 23.18,-23.07 3.91,-5.66 10.83,-9.22 19.62,-10.58 8.97,-1.38 17.98,-4.62 24.58,0.77 10.54,8.6 10.57,7.5 12.72,18.28z"
-                                    />
+    return (
+        <SafeAreaView style={styles.container}>
+            {/* Заголовок без кнопок управления */}
+            <View style={styles.header}>
+            </View>
 
-                                    {/* Джейрахский район */}
-                                    <path
-                                        className={`fil4 str0 region-path ${selectedRegion === 'region4' ? 'region-selected' : ''}`}
-                                        onClick={() => handleRegionClick('region4')}
-                                        onMouseEnter={() => handleRegionHover('region4')}
-                                        onMouseLeave={handleRegionLeave}
-                                        d="M169.98 1243.98c0.19,6.16 -1.23,7.07 -2.02,12.18 -0.93,6.08 0.95,7.18 -1.62,12.8 -1.66,3.62 -2.38,8.07 -1.96,12.33 0.51,5.23 3.61,6.51 5.52,9.56 4.74,7.58 -2.2,14.75 -3.66,22.65 -1.53,8.28 0.7,9.22 7.75,20.84 7.86,12.94 1.6,16.82 -0.93,22.09 -2.56,5.32 -3.71,17.13 -5.8,23.77 -1.11,3.54 -10.48,28.72 -12.67,31.31 -2.08,2.47 -5.96,4.57 -6.31,8.97 2.4,2.96 6.26,4.68 9.52,7.21 7.58,5.9 1.88,16.38 25.42,25.07 3.87,1.43 9.38,-0.97 14.23,-0.84 4.44,0.12 10.26,1.47 14.62,2.25 24.18,4.29 8.03,1.85 30.79,1.87 20.7,0.02 35.45,-8.47 52.39,-14.9 11.87,-4.5 16.09,0.85 24.4,4.96 15.01,7.42 20.26,12.51 31.48,18.94 11.48,6.57 5.78,5.52 21.22,11.97 4.76,1.99 6.3,4.46 10.11,7.17 5.5,3.92 12.34,5.92 10.52,22.84 -3.66,34.03 -10.97,27.27 3.78,52.98 13.76,23.99 9.31,30.07 11.67,38.84l15.36 35.1c2.28,3.66 4.86,4.82 7.61,8.94l13.92 19.24c5.05,7.39 6.21,13.77 17.55,16.45 37.89,8.96 14.43,-41.43 31.98,-83.97 9.48,-22.99 9.69,-16.28 21.7,-28.04 5.19,-5.08 18.95,-22.96 21.22,-29.27 4.06,-11.27 4.76,-16.27 4.47,-29.58 -0.17,-7.88 0.33,-23.56 2.28,-30.7 2.97,-10.89 5.92,-14.28 16.13,-17.76 12.92,-4.41 43.43,-8.34 58.54,-8.57 9.64,-0.15 36.41,1.03 45.39,4.45 7.91,3.01 5.24,3.47 10.11,7.22 4.42,3.39 3.4,1.36 9.06,7.5 1.43,1.56 2.4,2.67 3.89,4.06 7.57,7 6.89,7.88 11.68,13.56 2.83,3.35 4.39,6.14 6.94,10.37 8.92,14.81 12.89,32.86 25.66,41.39 7.12,4.75 14,12.78 22.09,9.55 6.56,-2.62 15.99,-7.77 22.36,-11.51 3.46,-2.04 6.21,-4.91 9.7,-6.86 2.09,-1.17 3.64,-1.14 5.75,-2.21 2.19,-1.11 2.95,-2.49 5.37,-3.26 3.74,-1.19 11.28,-0.76 14.53,-1.97 4.97,-1.86 2.55,-9.34 3.42,-14.09 2.64,-14.53 12.5,-35.83 18.57,-48.39 3.78,-7.82 6.21,-15.45 10.11,-23.06 4.14,-8.08 8.17,-14.21 12.53,-21.34 6.9,-11.26 20.85,-28.63 22.98,-44.07 4.98,-36.1 -11.28,-30.41 -26.08,-39.2 -33.84,-20.09 -42.11,-13.69 -75.85,-24.36 -9.42,-2.98 -19.06,-2.91 -27.81,-6.11l-52.97 -14.03c-18.56,-3.89 -39.5,-5.92 -58.48,-8.57 -4.68,-0.65 -10.26,-0.87 -14.94,-1.69 -6.43,-1.14 -7.94,-4.81 -22.03,7.56 -10.55,9.26 -9.51,7.81 -18.68,15.22 -8.17,6.6 -25.7,11.66 -38.98,10.4 -9.97,-0.94 -17.86,-4.23 -27.3,-6.18 -9.32,-1.92 -17.06,-5.39 -23.83,-10.07 -11.64,-8.05 -20.16,-11.12 -30.15,-20.3 -2.95,-2.71 -5.18,-6.62 -8.1,-9.25 -2.82,0.59 -3.19,1.69 -6.49,1.45l-2.62 -4.35c-8.03,-0.38 -13.45,4.96 -18.23,8.05 -4.23,2.74 -6.15,0.43 -9.03,3.96 -2.14,2.63 -2.62,5.9 -7.01,6.57 -5.21,0.79 -5.73,0.79 -10.39,2.84 -3.58,1.57 -3.15,4.18 -8.94,4.61 -9.51,0.7 -13.46,-4.62 -17.27,-9.21 -6.98,-0.12 -6.95,1.25 -10.85,-3.33l-8.75 0.56c-4.47,-9.99 -8.8,-10.63 -10.69,-13.27 -1.88,-2.64 -0.26,-2.31 -3.4,-4.54 -7.94,-5.65 -16.48,-4.53 -26.95,-4.8 -6.64,-0.17 -5.93,-2.44 -12.39,-3.4 -6.96,-1.03 -4.65,-3.03 -10.13,-5.75 -1.84,-0.91 -3.77,-1.88 -5.17,-2.77 -6.68,-4.27 -7.68,-4.47 -16.76,-7.01 -6.24,-1.74 -8.21,-0.35 -13.89,0.89 -10.96,2.4 -5.35,-1.96 -12.95,-1.71 -6.92,0.23 -19.78,4.24 -24.2,7.84 -7.23,5.89 -7.14,0.87 -11.23,0.41 -2.7,-0.31 -11.91,1.02 -13.66,2.11 -3.22,2 -5.36,6.35 -10.14,3.01 -4.4,-3.08 -6.32,-3.47 -12.98,-3.56z"
-                                    />
+            {/* Карта с боковыми кнопками управления */}
+            <View style={styles.mapContainer}>
+                {isLoading && renderLoadingState()}
 
-                                    {/* Назрановский район */}
-                                    <path
-                                        className={`fil5 str0 region-path ${selectedRegion === 'region5' ? 'region-selected' : ''}`}
-                                        onClick={() => handleRegionClick('region5')}
-                                        onMouseEnter={() => handleRegionHover('region5')}
-                                        onMouseLeave={handleRegionLeave}
-                                        d="M195.73 356.04c-2.65,18.19 -2.98,37.88 -4.81,56.52l-4.31 57.66c0.09,19.44 -0.67,38.84 -2.9,58.4 -1.28,11.19 -1.02,18.46 -1.16,29.56 -0.17,14.1 1.19,15.34 1.27,21.64 0.07,5.68 -0.08,2.57 1.5,6.33 1.03,2.47 1.54,26.01 0.74,28.41 -2.13,6.43 0.15,7.04 0.43,12.98 0.26,5.52 -4.93,18.12 -3.67,27.26 0.75,5.43 2.8,6.74 7.23,8.79 5.46,2.53 17.58,6 24.11,6.83 10.34,1.33 15.3,3.98 26.43,2.3 26.79,-4.04 17.41,-1.94 36.82,5.2 4.24,1.56 8.33,1.83 12.11,3.75 3.37,1.71 5.78,5.73 9.47,5.24 4.55,-0.6 -1.56,-1.89 5.51,-0.27 5.67,1.3 12.76,-4.45 9.75,-10.91 -10.55,-22.61 -10.82,-14.86 -20.18,-26 -8.11,-9.66 -2.51,-14.3 0.64,-23.08 2.83,-7.89 -2.26,-18.36 -2.97,-26.62 -0.53,-6.16 2.52,-21.1 5.7,-24.73 6.21,-7.07 14.21,-3.88 21.89,-0.56 15.52,6.71 23.22,15.59 29.14,32.85 3.78,11.01 6.86,22.66 13.14,32.27 6.15,9.4 7,3.66 11.44,19.57 1.19,4.27 3,7.59 4.75,11.11 6,12.13 6.09,10.01 12.35,18.66 5.02,6.94 6.5,12.3 9.84,21.18 2.64,7.04 5.64,15.66 8.84,22.14 6.77,13.74 10.7,29.53 18.25,43.52 8.49,-0.63 26.04,-19.49 31.34,-4.43 1.48,4.21 4.33,13.93 6.55,16.53 2.69,3.16 24.39,15.94 29.15,17.7 15.97,5.92 29.3,12.74 23.09,32.49 -1.4,4.45 -2.64,3.82 -6.69,5.38 1.77,2.31 9.14,5.12 14.98,10.79 5.74,5.58 9.33,5.64 17.22,9.44 9.19,4.42 6.88,5.68 19.54,6.64 8.11,0.62 14.94,3.81 23.45,0.99 1.9,-8.87 5.18,-16.89 10.72,-23.25 1.84,-2.11 3.66,-3.99 5.35,-6.17 7.23,-9.35 18.06,-11.86 26.56,-18.83 -0.47,-14.62 4.75,-5.84 6.03,-15.67 -1.93,-4.45 -2.8,0.27 -2.12,-8.24 -3.38,-0.18 -5.16,-1.7 -7.37,-3.21 -3.37,-2.31 -3.13,-3.67 -0.97,-6.89 4.34,-6.45 0.47,-11.99 11.48,-10.11 1.33,-6.19 3.31,-13.72 5.87,-19.45 3.51,-7.86 7.6,-7.12 14.2,-11.75 9.1,-6.39 7.44,-2.11 13.23,-12.72 12.41,-22.75 21.61,-47.89 30.71,-72.37 1.4,-3.76 1.9,-5.73 4.07,-8.92 1.92,-2.82 4.11,-4.81 4.79,-8.76 -5.81,-0.37 -15.56,7.9 -13.23,-4.83 -0.13,-0.12 -0.37,-0.46 -0.43,-0.34l-1.53 -1.46c-2.12,-3.05 0.83,-5.28 2,-8.87 4.23,-12.94 -2.41,-15.22 0.31,-28.58 1.49,-7.33 3.98,-3.49 0.38,-12.63 -12.08,-3.33 -7.05,-0.94 -14.58,0.13 -4.17,0.59 -4.94,-0.61 -6.96,-2.57 -0.11,-0.1 -0.26,-0.25 -0.36,-0.36l-1.55 -1.32c-3.61,-3.63 -3.38,-12.49 -4.23,-17.37 -0.8,-4.55 -2.72,-8.88 -4.6,-12.96 -0.06,-0.13 -0.17,-0.37 -0.28,-0.55 -5.86,1.29 -29.42,11.76 -30.6,17.95 -1.61,8.47 2.38,11.26 -13.79,15.87 -7.3,2.08 -14.11,5.45 -21.42,7.49 -2.92,0.81 -5.38,0.98 -8.26,1.79 -5.82,1.65 -9.32,2.64 -14.61,4.83 -20.37,8.45 -15.83,0.93 -26.9,-13.48 -7.41,-9.65 -13.22,-19.16 -18.02,-31.73 -2.52,-6.58 -5.54,-22.31 -8.1,-30.85 -1.13,-3.78 -3.83,-11.55 -4.22,-15.11 -1.43,-13.12 1.66,-6.43 -6.86,-13.32 -1.48,-10.8 13.04,-16.74 12.91,-24.43 -19.4,7.97 -15.97,-3.06 -18,-18.99 -2.19,-17.22 10.91,-23.82 12.06,-30.33 2.12,-12 -8.15,-22.49 -9.44,-32.84 -0.45,-3.67 -1.52,-4.56 -2.26,-7.74 -0.75,-3.21 -0.5,-6.06 -1.6,-9.24 -1.12,-3.25 -2.43,-3.86 -2.83,-7.88 -0.46,-4.65 -0.36,-5.17 -1.51,-9.27 -11.91,0.71 -22.67,15.67 -30.65,23.72 -10.19,10.28 -25.36,11.2 -42.97,10.38 -0.37,7.49 -1.25,7.86 -8.76,8.53 -28.62,2.56 -13.93,-1.66 -27.62,-28.66 -3.8,-0.32 -6.89,1.67 -8.87,3.6 -1.06,8.1 4.86,16.5 -0.33,20.7 -3.58,2.9 -13.18,6.87 -16.1,9.87 -4.73,4.85 1.5,13.29 0.54,20.11 -1.26,8.93 -10.68,16 -17.06,21.03 -5.96,4.7 -8.38,10.06 -20.35,18.59 -13.73,9.79 -26.39,-0.64 -38.28,-5.71 -24.54,-10.48 -37.2,-2.52 -43,-8.2 -5.49,-5.38 -1.49,-24.66 -14.93,-36.97 -11.17,-10.23 -8.44,-4.38 -15.72,-9.51 -7.9,-5.56 -4.38,-9.87 -0.41,-17.35 4.14,-7.82 3.85,-11.24 13.77,-3.22 2.66,2.15 4.86,3.35 7.93,5.06 2.97,1.65 5.37,3.7 7.9,4.64 8.01,-5.33 5.19,-6.82 1.37,-13.2 -4.27,-7.14 -1.35,-11.44 -1.87,-18.9 -15.21,-4.7 -32.97,-4.55 -48.61,-4.7z"
-                                    />
-                                </g>
+                {/* Боковые кнопки управления */}
+                <View style={styles.sideControls} pointerEvents="box-none">
+                    <Pressable style={styles.sideControlButton} onPress={zoomIn}>
+                        <Text style={styles.sideControlButtonText}>+</Text>
+                    </Pressable>
+                    <Pressable style={styles.sideControlButton} onPress={zoomOut}>
+                        <Text style={styles.sideControlButtonText}>-</Text>
+                    </Pressable>
+                    <Pressable style={[styles.sideControlButton, styles.sideResetButton]} onPress={resetView}>
+                        <Text style={styles.sideResetButtonText}>⌂</Text>
+                    </Pressable>
+                </View>
 
-                                {/* Текстовые элементы - названия районов */}
-                                <g className="region-labels">
-                                    {/* Малгобекский район - в центре белого района (#FEFEFE) */}
-                                    <text className="fil6" x="280" y="500" fontSize="24" fontFamily="Arial, sans-serif" fill="#2B2A29" textAnchor="middle">
-                                        Малгобекский район
-                                    </text>
+                <PinchGestureHandler
+                    ref={pinchRef}
+                    onGestureEvent={pinchHandler}
+                    simultaneousHandlers={[panRef]}
+                    minPointers={2}
+                >
+                    <Animated.View style={styles.gestureContainer}>
+                        <PanGestureHandler
+                            ref={panRef}
+                            onGestureEvent={panHandler}
+                            simultaneousHandlers={[pinchRef]}
+                            minPointers={1}
+                            maxPointers={1}
+                        >
+                            <Animated.View style={[styles.mapWrapper, animatedStyle]}>
+                                {districts
+                                    .sort((a, b) => (b.style.zIndex || 0) - (a.style.zIndex || 0))
+                                    .map((district) => {
+                                        if (!district.Component) {
+                                            console.warn(`Компонент для района ${district.id} не найден`);
+                                            return null;
+                                        }
 
-                                    {/* Сунженский район - горизонтально в сером районе (#EBECEC) */}
-                                    <text className="fil6" x="570" y="380" fontSize="24" fontFamily="Arial, sans-serif" fill="#2B2A29" textAnchor="middle">
-                                        Сунженский район
-                                    </text>
+                                        return (
+                                            <InteractiveDistrict
+                                                key={district.id}
+                                                district={district}
+                                            />
+                                        );
+                                    })
+                                }
+                            </Animated.View>
+                        </PanGestureHandler>
+                    </Animated.View>
+                </PinchGestureHandler>
 
-                                    {/* Назрановский район - в центре фиолетового района (#D2CDE7) */}
-                                    <text className="fil6" x="380" y="750" fontSize="24" fontFamily="Arial, sans-serif" fill="#2B2A29" textAnchor="middle">
-                                        Назрановский район
-                                    </text>
+                {/* Инструкция */}
+                {!showInfo && !isLoading && (
+                    <View style={styles.instruction}>
+                        <Text style={styles.instructionText}>
+                            Нажмите на район - остановки сразу отфильтруются по этому району
+                        </Text>
+                    </View>
+                )}
+            </View>
 
-                                    {/* Джейрахский район - в центре голубого района (#A2D9F7) */}
-                                    <text className="fil6" x="350" y="1400" fontSize="24" fontFamily="Arial, sans-serif" fill="#2B2A29" textAnchor="middle">
-                                        Джейрахский район
-                                    </text>
-
-                                    {/* Пригородный район - в центре зеленого района (#D6E9D8) */}
-                                    <text className="fil6" x="450" y="950" fontSize="24" fontFamily="Arial, sans-serif" fill="#2B2A29" textAnchor="middle">
-                                        Пригородный район
-                                    </text>
-                                </g>
-                            </svg>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Боковая панель с информацией */}
-                <div className="w-80 bg-white shadow-lg p-6 overflow-y-auto">
-                    <h2 className="text-xl font-bold mb-4 text-gray-800">Информация о регионе</h2>
-
-                    {hoveredRegion && regionInfo[hoveredRegion] && (
-                        <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                            <h3 className="font-semibold text-blue-800 mb-2">Наведение:</h3>
-                            <p className="text-blue-700">{regionInfo[hoveredRegion].name}</p>
-                        </div>
-                    )}
-
-                    {selectedRegion && regionInfo[selectedRegion] ? (
-                        <div className="space-y-4">
-                            <div
-                                className="w-full h-4 rounded mb-4"
-                                style={{ backgroundColor: regionInfo[selectedRegion].color }}
-                            ></div>
-
-                            <h3 className="text-lg font-semibold text-gray-800">
-                                {regionInfo[selectedRegion].name}
-                            </h3>
-
-                            <div className="space-y-3">
-                                <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                                    <span className="font-medium text-gray-600">Население:</span>
-                                    <span className="text-gray-800">{regionInfo[selectedRegion].population}</span>
-                                </div>
-
-                                <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                                    <span className="font-medium text-gray-600">Площадь:</span>
-                                    <span className="text-gray-800">{regionInfo[selectedRegion].area}</span>
-                                </div>
-
-                                <div className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                                    <span className="font-medium text-gray-600">Цвет на карте:</span>
-                                    <div className="flex items-center gap-2">
-                                        <div
-                                            className="w-6 h-6 rounded border border-gray-300"
-                                            style={{ backgroundColor: regionInfo[selectedRegion].color }}
-                                        ></div>
-                                        <span className="text-sm text-gray-600">{regionInfo[selectedRegion].color}</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <button
-                                onClick={() => setSelectedRegion(null)}
-                                className="w-full mt-4 px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
-                            >
-                                Закрыть
-                            </button>
-                        </div>
-                    ) : (
-                        <div className="text-gray-500 text-center py-8">
-                            <p>Кликните по району на карте для получения подробной информации</p>
-                        </div>
-                    )}
-
-                    {/* Легенда */}
-                    <div className="mt-8 border-t pt-6">
-                        <h3 className="font-semibold mb-4 text-gray-800">Легенда:</h3>
-                        <div className="space-y-2">
-                            {Object.entries(regionInfo).map(([key, info]) => (
-                                <div key={key} className="flex items-center gap-3">
-                                    <div
-                                        className="w-4 h-4 rounded border border-gray-300"
-                                        style={{ backgroundColor: info.color }}
-                                    ></div>
-                                    <span className="text-sm text-gray-700">{info.name}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+            {/* Нижняя панель с информацией или легендой */}
+            <View style={styles.bottomPanel}>
+                <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                    {showInfo ? renderInfoPanel() : renderLegend()}
+                </ScrollView>
+            </View>
+        </SafeAreaView>
     );
 };
 
-export default InteractiveFullMap;
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: '#f9fafb',
+    },
+    header: {
+        paddingHorizontal: 16,
+        paddingVertical: 0,
+        backgroundColor: '#ffffff',
+        borderBottomWidth: 1,
+        borderBottomColor: '#e5e7eb',
+        minHeight: 0,
+    },
+    title: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#1f2937',
+        textAlign: 'center',
+        marginBottom: 12,
+    },
+    mapContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        position: 'relative',
+        backgroundColor: '#f0f9ff',
+    },
+    sideControls: {
+        position: 'absolute',
+        left: 16,
+        top: 200, // Исправлено с '50%' на числовое значение
+        marginTop: -75,
+        zIndex: 100,
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        borderRadius: 12,
+        padding: 8,
+        elevation: 6,
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 3,
+        },
+        shadowOpacity: 0.15,
+        shadowRadius: 6,
+    },
+    sideControlButton: {
+        backgroundColor: '#3b82f6',
+        width: 44,
+        height: 44,
+        borderRadius: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 8,
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 1,
+        },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+    },
+    sideControlButtonText: {
+        color: '#ffffff',
+        fontSize: 20,
+        fontWeight: 'bold',
+    },
+    sideResetButton: {
+        backgroundColor: '#6b7280',
+        marginBottom: 0,
+    },
+    sideResetButtonText: {
+        color: '#ffffff',
+        fontSize: 18,
+        fontWeight: 'bold',
+    },
+    gestureContainer: {
+        flex: 1,
+        width: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    mapWrapper: {
+        justifyContent: 'flex-start',
+        alignItems: 'center',
+        width: screenWidth,
+        height: screenHeight * 0.5,
+        paddingTop: 20,
+    },
+    instruction: {
+        position: 'absolute',
+        bottom: 2,
+        left: 16,
+        right: 16,
+        backgroundColor: 'rgba(59, 130, 246, 0.9)',
+        paddingHorizontal: 16,
+        paddingVertical: 5,
+        borderRadius: 8,
+    },
+    instructionText: {
+        color: '#ffffff',
+        textAlign: 'center',
+        fontSize: 14,
+        fontWeight: '500',
+    },
+    bottomPanel: {
+        backgroundColor: '#ffffff',
+        minHeight: screenHeight * 0.25,
+        borderTopWidth: 1,
+        borderTopColor: '#e5e7eb',
+    },
+    scrollContent: {
+        padding: 16,
+        paddingBottom: 24,
+    },
+    infoPanel: {
+        alignItems: 'center',
+        paddingBottom: 8,
+    },
+    infoPanelContent: {
+        width: '100%',
+        alignItems: 'center',
+    },
+    colorBar: {
+        width: '100%',
+        height: 4,
+        borderRadius: 2,
+        marginBottom: 12,
+    },
+    regionTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#1f2937',
+        marginBottom: 6,
+        textAlign: 'center',
+    },
+    regionDescription: {
+        fontSize: 14,
+        color: '#6b7280',
+        textAlign: 'center',
+        marginBottom: 12,
+        lineHeight: 20,
+    },
+    infoRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+        backgroundColor: '#f9fafb',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 6,
+        marginBottom: 6,
+    },
+    infoLabel: {
+        fontSize: 14,
+        fontWeight: '500',
+        color: '#6b7280',
+    },
+    infoValue: {
+        fontSize: 14,
+        color: '#1f2937',
+        fontWeight: '600',
+    },
+    colorInfo: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    colorSample: {
+        width: 20,
+        height: 20,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: '#d1d5db',
+    },
+    colorText: {
+        fontSize: 12,
+        color: '#6b7280',
+    },
+    showAllButton: {
+        backgroundColor: Color.blue2,
+        paddingHorizontal: 24,
+        paddingVertical: 12,
+        borderRadius: 6,
+        marginTop: 16,
+        width: '100%',
+        alignItems: 'center',
+    },
+    showAllButtonText: {
+        color: '#ffffff',
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    legend: {
+        width: '100%',
+        paddingBottom: 8,
+    },
+    legendTitle: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#1f2937',
+        marginBottom: 6,
+    },
+    legendSubtitle: {
+        fontSize: 12,
+        color: '#6b7280',
+        marginBottom: 12,
+        lineHeight: 16,
+    },
+    legendItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 6,
+        gap: 12,
+        paddingVertical: 10,
+        paddingHorizontal: 8,
+        borderRadius: 8,
+        backgroundColor: '#f9fafb',
+    },
+    legendItemSelected: {
+        backgroundColor: '#dbeafe',
+        borderWidth: 1,
+        borderColor: '#3b82f6',
+    },
+    legendColor: {
+        width: 16,
+        height: 16,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: '#d1d5db',
+    },
+    legendTextContainer: {
+        flex: 1,
+    },
+    legendText: {
+        fontSize: 14,
+        color: '#374151',
+        fontWeight: '500',
+    },
+    legendTextSelected: {
+        color: '#1f2937',
+        fontWeight: '600',
+    },
+    legendStopsCount: {
+        fontSize: 12,
+        color: '#6b7280',
+        marginTop: 2,
+    },
+    legendCount: {
+        fontSize: 12,
+        color: '#6b7280',
+        fontWeight: '500',
+    },
+    loadingContainer: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(255, 255, 255, 0.8)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 1000,
+    },
+    loadingText: {
+        marginTop: 16,
+        fontSize: 16,
+        color: '#6b7280',
+        fontWeight: '500',
+    },
+    errorContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 32,
+    },
+    errorTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#ef4444',
+        marginBottom: 12,
+        textAlign: 'center',
+    },
+    errorMessage: {
+        fontSize: 16,
+        color: '#6b7280',
+        textAlign: 'center',
+        marginBottom: 24,
+        lineHeight: 24,
+    },
+    retryButton: {
+        backgroundColor: '#3b82f6',
+        paddingHorizontal: 24,
+        paddingVertical: 12,
+        borderRadius: 8,
+    },
+    retryButtonText: {
+        color: '#ffffff',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    errorBanner: {
+        backgroundColor: '#fef2f2',
+        padding: 12,
+        borderRadius: 8,
+        marginBottom: 12,
+    },
+    errorBannerText: {
+        color: '#b91c1c',
+        fontSize: 14,
+        fontWeight: '500',
+        marginBottom: 8,
+    },
+    retrySmallButton: {
+        backgroundColor: '#3b82f6',
+        paddingHorizontal: 24,
+        paddingVertical: 12,
+        borderRadius: 8,
+    },
+    retrySmallButtonText: {
+        color: '#ffffff',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    legendItemDisabled: {
+        backgroundColor: '#f9fafb',
+        borderWidth: 1,
+        borderColor: '#d1d5db',
+    },
+    legendTextDisabled: {
+        color: '#6b7280',
+        fontWeight: '500',
+    },
+})

@@ -3,8 +3,8 @@ import { TouchableOpacity } from 'react-native';
 import Svg, { Path, ClipPath, Rect, G, Defs, LinearGradient, Stop } from 'react-native-svg';
 
 export const RatingStarSvg = ({
-                                  width = 24,
-                                  height = 25,
+                                  width = 20,
+                                  height = 20,
                                   color = '#5E00FF',
                                   filled = false,
                                   halfFilled = false,

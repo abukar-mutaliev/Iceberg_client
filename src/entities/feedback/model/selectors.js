@@ -1,28 +1,81 @@
 import { createSelector } from '@reduxjs/toolkit';
 
-export const selectFeedbackState = (state) => state.feedback;
+// Базовый селектор с мемоизацией для базовой структуры состояния
+export const selectFeedbackState = createSelector(
+    [(state) => state.feedback || { items: {}, loading: false, error: null, loadedProductIds: [] }],
+    (feedbackState) => {
+        // Трансформируем состояние для обеспечения стабильности селектора
+        return {
+            ...feedbackState,
+            items: feedbackState.items || {},
+            loading: Boolean(feedbackState.loading),
+            error: feedbackState.error || null,
+            loadedProductIds: Array.isArray(feedbackState.loadedProductIds) ? feedbackState.loadedProductIds : []
+        };
+    }
+);
 
 // Базовый селектор для получения отзывов текущего продукта
-export const selectCurrentProductId = (state, productId) => productId;
+export const selectCurrentProductId = (state, productId) => {
+    // Нормализуем productId для стабильности селектора
+    if (!productId) return null;
+    const numericId = typeof productId === 'string' ? parseInt(productId, 10) : productId;
+    return isNaN(numericId) ? null : numericId;
+};
 
 // Селектор для получения отзывов конкретного продукта
 export const selectFeedbacksByProductId = createSelector(
     [selectFeedbackState, selectCurrentProductId],
     (feedbackState, productId) => {
-        return feedbackState.items[productId] || [];
+        // Проверяем наличие элементов для продукта
+        if (!feedbackState || !feedbackState.items || !productId) {
+            return [];
+        }
+        
+        const feedbacks = feedbackState.items[productId];
+        
+        // Проверяем, является ли feedbacks массивом
+        if (!Array.isArray(feedbacks)) {
+            return [];
+        }
+        
+        // Теперь безопасно вызываем map на массиве
+        return feedbacks.map(feedback => {
+            if (!feedback) return null;
+            
+            return {
+                ...feedback,
+                // Убедимся, что id и rating всегда правильного типа
+                id: typeof feedback.id === 'string' ? parseInt(feedback.id, 10) : feedback.id,
+                rating: parseFloat(feedback?.rating || 0),
+                // Добавим вычисляемое поле (например, дату в формате для отображения)
+                formattedDate: feedback.createdAt ? new Date(feedback.createdAt).toLocaleDateString() : ''
+            };
+        }).filter(feedback => feedback !== null); // Фильтруем null значения
     }
+);
+
+// Стабильные input селекторы
+const selectFeedbackItems = createSelector(
+    [selectFeedbackState],
+    (feedbackState) => feedbackState.items || {}
 );
 
 // Общий селектор для всех отзывов (для обратной совместимости)
 export const selectFeedbacks = createSelector(
-    [selectFeedbackState, (state, productId) => productId],
-    (feedbackState, productId) => {
+    [selectFeedbackItems, selectCurrentProductId],
+    (feedbackItems, productId) => {
         if (productId) {
-            return feedbackState.items[productId] || [];
+            const productFeedbacks = feedbackItems[productId];
+            if (!Array.isArray(productFeedbacks)) return [];
+            
+            // Возвращаем без трансформации, если данные уже корректны
+            return productFeedbacks;
         }
 
         // Если productId не передан, возвращаем все отзывы в виде массива
-        return Object.values(feedbackState.items).flat();
+        const allFeedbacks = Object.values(feedbackItems).flat();
+        return Array.isArray(allFeedbacks) ? allFeedbacks : [];
     }
 );
 
@@ -51,6 +104,12 @@ export const selectIsFeedbacksLoaded = createSelector(
     [selectFeedbackState, selectCurrentProductId],
     (feedbackState, productId) => feedbackState.loadedProductIds.includes(productId)
 );
+
+// Безопасная версия селектора для использования с useSelector
+export const selectIsFeedbacksLoadedSafe = (productId) => (state) => {
+    if (!productId) return false;
+    return selectIsFeedbacksLoaded(state, productId);
+};
 
 export const selectFeedbacksSortedByDate = createSelector(
     [selectFeedbacks],
@@ -123,7 +182,11 @@ export const selectHasUserLeftFeedback = (clientId) => createSelector(
     (feedbacks) => feedbacks.some(feedback => feedback.clientId === clientId)
 );
 
-
+// Безопасная версия селектора для использования с useSelector
+export const selectHasUserLeftFeedbackSafe = (clientId) => (state) => {
+    if (!clientId) return false;
+    return selectHasUserLeftFeedback(clientId)(state);
+};
 
 // Селектор для проверки времени кеширования отзывов
 export const selectFeedbackCacheTimestamp = createSelector(

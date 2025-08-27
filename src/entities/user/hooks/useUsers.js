@@ -1,7 +1,7 @@
 // entities/user/model/hooks/useUsers.js
 import { useDispatch, useSelector } from 'react-redux';
 import { useCallback } from 'react';
-import { userSelectors } from '../selectors';
+import { userSelectors } from '../model/selectors';
 import {
     fetchAllUsers,
     fetchUserById,
@@ -18,7 +18,7 @@ import {
     clearCurrentDriver,
     clearUserErrors,
     clearUserState
-} from '../slice';
+} from '../model/slice';
 
 export const useUsers = () => {
     const dispatch = useDispatch();

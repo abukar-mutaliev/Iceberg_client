@@ -1,6 +1,6 @@
 import * as React from "react";
 import { View, StyleSheet, TouchableOpacity } from "react-native";
-import Instance from "@/screens/driver/ui/StopDetailsScreen/ui/Instance";
+import Instance from "@screens/stop/ui/StopDetailsScreen/ui/Instance";
 import IceCreamTruckIcon from "@shared/ui/Icon/MainScreen/IceCreamTruckIcon";
 
 const DriverLocator = ({ onPress }) => {

@@ -1,0 +1,1 @@
+export { AdminProductBasicInfo } from'./ui/AdminProductBasicInfo'

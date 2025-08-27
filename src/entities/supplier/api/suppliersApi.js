@@ -1,25 +1,29 @@
-import { createProtectedRequest } from '@/shared/api/api';
+import { createProtectedRequest } from '@shared/api/api';
 
 export const suppliersApi = {
-    // Методы для работы с данными поставщиков
 
     getSuppliers: async (params = {}) => {
-        const queryParams = new URLSearchParams();
-        if (params.page) queryParams.append('page', params.page);
-        if (params.limit) queryParams.append('limit', params.limit);
-        if (params.search) queryParams.append('search', params.search);
+        try {
+            const queryParams = new URLSearchParams();
+            if (params.page) queryParams.append('page', params.page);
+            if (params.limit) queryParams.append('limit', params.limit);
+            if (params.search) queryParams.append('search', params.search);
 
-        const queryString = queryParams.toString();
-        const url = `/api/users/suppliers${queryString ? `?${queryString}` : ''}`;
+            const queryString = queryParams.toString();
+            const url = `/api/users/suppliers${queryString ? `?${queryString}` : ''}`;
 
-        return await createProtectedRequest('get', url);
+            const response = await createProtectedRequest('get', url);
+
+            return response;
+        } catch (error) {
+            console.error('Ошибка в getSuppliers:', error);
+            throw error;
+        }
     },
 
     getSupplierById: async (supplierId) => {
         try {
-            console.log(`Отправка запроса на получение поставщика с ID: ${supplierId}`);
             const response = await createProtectedRequest('get', `/api/users/suppliers/${supplierId}`);
-            console.log(`Получен ответ для поставщика ${supplierId}:`, response);
 
             if (response && response.status === 'success' && response.data && response.data.user) {
                 return response;
@@ -71,12 +75,8 @@ export const suppliersApi = {
 
     getSupplierWithProducts: async (supplierId) => {
         try {
-            console.log(`Получение поставщика с продуктами для ID: ${supplierId}`);
             const supplierResponse = await suppliersApi.getSupplierById(supplierId);
 
-            console.log('Ответ от API getSupplierById:', supplierResponse);
-
-            // Извлекаем данные поставщика из ответа
             let supplier;
 
             if (supplierResponse && supplierResponse.status === 'success' && supplierResponse.data && supplierResponse.data.user) {
@@ -87,7 +87,6 @@ export const suppliersApi = {
                 supplier = supplierResponse;
             }
 
-            console.log('Извлеченные данные поставщика:', supplier);
 
             if (!supplier) {
                 throw new Error('Поставщик не найден');
@@ -107,12 +106,10 @@ export const suppliersApi = {
                     products = productsResponse.data || [];
                 }
 
-                // Если у поставщика нет поля supplier с данными компании,
-                // создаем фиктивное поле supplier с данными по умолчанию
                 if (!supplier.supplier) {
                     supplier.supplier = {
                         id: parseInt(supplierId),
-                        companyName: supplier.companyName || "Марзо", // Используем значение по умолчанию
+                        companyName: supplier.companyName || "Айсберг",
                         contactPerson: "Представитель",
                         phone: supplier.phone || "",
                         address: supplier.address || ""
@@ -129,12 +126,10 @@ export const suppliersApi = {
             } catch (productsError) {
                 console.warn(`Не удалось получить продукты поставщика ${supplierId}:`, productsError);
 
-                // Даже если не удалось получить продукты, возвращаем поставщика
-                // с фиктивным полем supplier, если его нет
                 if (!supplier.supplier) {
                     supplier.supplier = {
                         id: parseInt(supplierId),
-                        companyName: supplier.companyName || "Марзо", // Используем значение по умолчанию
+                        companyName: supplier.companyName || "Айсберг",
                         contactPerson: "Представитель",
                         phone: supplier.phone || "",
                         address: supplier.address || ""

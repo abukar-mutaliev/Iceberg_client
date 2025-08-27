@@ -1,6 +1,15 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { ORDER_STATUSES, ORDER_STATUS_LABELS, ORDER_STATUS_COLORS } from '@entities/order';
+import { ORDER_STATUSES, ORDER_STATUS_LABELS } from '@entities/order/lib/utils';
+
+const ORDER_STATUS_COLORS = {
+    PENDING: '#ffc107',
+    CONFIRMED: '#17a2b8',
+    IN_DELIVERY: '#007bff',
+    DELIVERED: '#28a745',
+    CANCELLED: '#dc3545',
+    RETURNED: '#6c757d'
+};
 
 /**
  * Компонент для отображения статуса заказа в виде бейджа
@@ -28,11 +37,10 @@ export const OrderStatusBadge = ({
         const icons = {
             [ORDER_STATUSES.PENDING]: '⏳',
             [ORDER_STATUSES.CONFIRMED]: '✅',
-            [ORDER_STATUSES.PROCESSING]: '⚙️',
             [ORDER_STATUSES.IN_DELIVERY]: '🚚',
             [ORDER_STATUSES.DELIVERED]: '📦',
             [ORDER_STATUSES.CANCELLED]: '❌',
-            [ORDER_STATUSES.REFUNDED]: '💰'
+            [ORDER_STATUSES.RETURNED]: '🔄'
         };
         return icons[status] || '❓';
     };

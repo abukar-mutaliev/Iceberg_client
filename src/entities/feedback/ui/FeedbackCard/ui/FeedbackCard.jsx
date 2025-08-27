@@ -5,6 +5,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { selectUser } from '@entities/auth';
 import { FeedbackCardHeader } from './FeedbackCardHeader';
 import { FeedbackCardPhotos } from './FeedbackCardPhotos';
+import IconDelete from "@shared/ui/Icon/Profile/IconDelete";
+import { Color } from '@app/styles/GlobalStyles'
 
 const PhotoViewerModal = lazy(() =>
     import('@features/feedback/FeedbackPhotoViewerModal').then(module => ({
@@ -12,13 +14,13 @@ const PhotoViewerModal = lazy(() =>
     }))
 );
 
-const FeedbackCard = memo(({
+export const FeedbackCard = memo(({
                                feedback,
                                feedbacks = null,
                                canDelete = false,
                                onDelete = null,
                                onExpandComment = null,
-                               onProductPress = () => {} // Добавляем пропс для перехода к продукту
+                               onProductPress = () => {}
                            }) => {
     const feedbackData = feedback || feedbacks;
     if (!feedbackData) return null;
@@ -53,9 +55,9 @@ const FeedbackCard = memo(({
         const newState = !isReplyExpanded;
         setIsReplyExpanded(newState);
         if (onExpandComment) {
-            onExpandCommentascendancy(newState);
+            onExpandComment(newState);
         }
-    }, [isReplyExpanded, feedbackData.id, onExpandComment]);
+    }, [isReplyExpanded, onExpandComment]);
 
     const handleDelete = useCallback(() => {
         if (onDelete) {
@@ -124,7 +126,7 @@ const FeedbackCard = memo(({
             )}
             {canDelete && onDelete && (
                 <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
-                    <Text style={styles.deleteButtonText}>Удалить</Text>
+                    <IconDelete color={Color.red} />
                 </TouchableOpacity>
             )}
             {photoViewerVisible && hasPhotos && (
@@ -210,10 +212,9 @@ const styles = StyleSheet.create({
         padding: 5,
     },
     deleteButton: {
-        position: 'absolute',
-        top: 10,
-        right: 10,
-        backgroundColor: 'rgba(255, 0, 0, 0.8)',
+        alignItems: 'flex-end',
+        justifyContent: 'flex-end',
+        backgroundColor: 'transparent',
         paddingHorizontal: 10,
         paddingVertical: 5,
         borderRadius: 5,
@@ -233,5 +234,4 @@ const styles = StyleSheet.create({
     },
 });
 
-export { FeedbackCard };
 export default FeedbackCard;

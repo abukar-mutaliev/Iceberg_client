@@ -4,13 +4,13 @@
     "paths": {
       "@/*": ["./src/*"],
       "@shared/*": ["./src/shared/*"],
+      "@assets/*": ["./src/assets/*"],
       "@features/*": ["./src/features/*"],
       "@widgets/*": ["./src/widgets/*"],
-      "@pages/*": ["./src/pages/*"],
+      "@screens/*": ["./src/screens/*"],
       "@entities/*": ["./src/entities/*"],
       "@app/*": ["./src/app/*"],
       "@services/*": ["./src/services/*"]
-
     }
   },
   "exclude": ["node_modules", "babel.config.js"]

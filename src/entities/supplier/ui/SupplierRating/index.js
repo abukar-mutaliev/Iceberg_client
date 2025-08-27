@@ -1,0 +1,1 @@
+export { SupplierRatingFromRedux } from './ui/SupplierRating';

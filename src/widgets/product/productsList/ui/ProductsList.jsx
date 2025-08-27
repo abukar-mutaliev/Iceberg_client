@@ -1,28 +1,35 @@
-import React from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import { View, StyleSheet, ActivityIndicator, Text, FlatList } from 'react-native';
 import { useSelector } from 'react-redux';
-import { useNavigation } from '@react-navigation/native';
 import {
     selectProducts,
     selectProductsLoading,
-    selectProductsError
-} from '@entities/product/model/selectors';
+    selectProductsError,
+    resetCurrentProduct
+} from '@entities/product';
 import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 
-import defaultImage from '@assets/images/chocolate-icecream.png';
-import {ProductCard} from "@entities/product/ui/ProductCard";
+
+import { ProductCardItem } from './ProductCardItem';
+
+const defaultProductImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
 
 export const ProductsList = ({
                                  fromScreen = 'ProductsList',
                                  onProductPress,
-                                 visibleProducts,
-                                 onEndReached
+                                 onEndReached,
+                                 onEndReachedThreshold = 8,
+                                 isLoadingMore = false,
+                                 hasMore = true,
+                                 ListHeaderComponent,
+                                 ListFooterComponent,
+                                 hideLoader = false
                              }) => {
-    const navigation = useNavigation();
     const products = useSelector(selectProducts);
     const isLoading = useSelector(selectProductsLoading);
     const error = useSelector(selectProductsError);
 
+    // Обработка ошибок и пустых состояний
     if (error) {
         return (
             <View style={styles.errorContainer}>
@@ -38,77 +45,80 @@ export const ProductsList = ({
             </View>
         );
     }
-    const validProducts = products.filter(product => product !== undefined);
 
-
-    if (validProducts.length === 0) {
-        return (
-            <View style={styles.noProductsContainer}>
-                <Text style={styles.noProductsText}>Товары не найдены</Text>
-            </View>
-        );
-    }
-
-    const displayProducts = products.slice(0, visibleProducts);
-
-    const adaptedProducts = displayProducts.map(product => ({
-        id: product.id,
-        title: product.name,
-        description: product.description,
-        price: product.price.toString(),
-        image: product.images && product.images.length > 0
-            ? { uri: product.images[0] }
-            : defaultImage,
-        originalData: product
-    }));
-
-    const handleProductPress = (product) => {
-        if (onProductPress) {
-            onProductPress(product.id);
-        } else {
-            navigation.navigate('ProductDetail', {
-                productId: product.id,
-                product: {
-                    id: product.id,
-                    name: product.title,
-                    description: product.description,
-                    type: product.originalData.type || 'Рожок',
-                    shortDescription: product.description?.substring(0, 100) || '',
-                    price: parseFloat(product.price),
-                    weight: product.originalData.weight || '~150 грамм',
-                    rating: product.originalData.rating || 4.5,
-                    reviewCount: product.originalData.reviewCount || 0,
-                    image: product.image
-                },
-                fromScreen
-            });
+    const displayProducts = useMemo(() => {
+        if (!Array.isArray(products)) {
+            return [];
         }
-    };
 
-    const renderItem = ({ item }) => (
-        <ProductCard
-            key={item.id}
+        return products
+            .filter(product => product && product.id)
+            .map(product => ({
+                id: product.id,
+                title: product.name || '',
+                description: product.description || '',
+                price: product.price ? product.price.toString() : '0',
+                image: product.images && Array.isArray(product.images) && product.images.length > 0
+                    ? { uri: product.images[0] }
+                    : defaultProductImage,
+                originalData: product
+            }));
+    }, [products]);
+
+    const renderItem = useCallback(({ item }) => (
+        <ProductCardItem
             product={item}
-            onPress={() => handleProductPress(item)}
+            onProductPress={onProductPress}
+            fromScreen={fromScreen}
         />
-    );
+    ), [onProductPress, fromScreen]);
+
+    const keyExtractor = useCallback(item =>
+            `product-${item.id}`,
+        []);
+
+    // Обработчик для бесконечной прокрутки
+    const handleEndReached = useCallback(() => {
+        if (hasMore && !isLoadingMore && onEndReached) {
+            onEndReached();
+        }
+    }, [hasMore, isLoadingMore, onEndReached]);
+
+    // Вычисляем threshold в зависимости от количества элементов
+    const threshold = useMemo(() => {
+        if (displayProducts.length === 0) return 0.5;
+        return Math.min(onEndReachedThreshold / displayProducts.length, 0.5);
+    }, [displayProducts.length, onEndReachedThreshold]);
+
+    const renderListFooter = useCallback(() => (
+        <>
+            {isLoadingMore && (
+                <View style={styles.loaderContainer}>
+                    <ActivityIndicator size="small" color={Color.purpleSoft} />
+                    <Text style={styles.loadingText}>Загружаем ещё товары...</Text>
+                </View>
+            )}
+            {ListFooterComponent && ListFooterComponent()}
+        </>
+    ), [isLoadingMore, ListFooterComponent]);
 
     return (
         <View style={styles.container}>
             <FlatList
-                data={adaptedProducts}
+                data={displayProducts}
                 renderItem={renderItem}
-                keyExtractor={(item) => item.id.toString()}
-                onEndReached={onEndReached}
-                onEndReachedThreshold={0.5}
-                ListFooterComponent={
-                    isLoading ? (
-                        <View style={styles.loaderContainer}>
-                            <ActivityIndicator size="small" color={Color.purpleSoft} />
-                        </View>
-                    ) : null
-                }
-                scrollEnabled={false}
+                keyExtractor={keyExtractor}
+                onEndReached={handleEndReached}
+                onEndReachedThreshold={threshold}
+                windowSize={5}
+                maxToRenderPerBatch={10}
+                updateCellsBatchingPeriod={50}
+                removeClippedSubviews={true}
+                initialNumToRender={10}
+                ListHeaderComponent={ListHeaderComponent}
+                ListFooterComponent={renderListFooter}
+                showsVerticalScrollIndicator={false}
+                scrollEnabled={true}
             />
         </View>
     );
@@ -136,14 +146,23 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
     },
-    emptyContainer: {
+    noProductsContainer: {
         height: 200,
         justifyContent: 'center',
         alignItems: 'center',
+        paddingHorizontal: 20,
     },
-    emptyText: {
+    noProductsText: {
         fontSize: FontSize.size_sm,
         fontFamily: FontFamily.sFProText,
         color: Color.colorSilver_100,
+        textAlign: 'center',
+    },
+    loadingText: {
+        marginTop: 8,
+        fontSize: FontSize.size_xs,
+        fontFamily: FontFamily.sFProText,
+        color: Color.colorSilver_100,
+        textAlign: 'center',
     }
 });

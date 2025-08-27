@@ -1,1 +1,1 @@
-export { MainTabNavigator } from './ui/MainTabNavigator';
+export { CustomTabBar } from './ui/CustomTabBar/CustomTabBar';

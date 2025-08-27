@@ -1,0 +1,1 @@
+export { HeaderNotificationBadge } from './ui/NotificationBadge/NotificationBadge.';

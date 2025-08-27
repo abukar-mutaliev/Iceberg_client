@@ -59,14 +59,12 @@ export const fetchSupplierFeedbacks = createAsyncThunk(
 
             console.log(`Загрузка отзывов для ${supplierProducts.length} продуктов поставщика`);
 
-            // Запускаем загрузку отзывов для каждого продукта поставщика
             const feedbackPromises = supplierProducts.map(product =>
                 dispatch(fetchProductFeedbacks(product.id))
             );
 
             await Promise.all(feedbackPromises);
 
-            // После загрузки всех отзывов, возвращаем успешный результат
             return { supplierId, success: true };
         } catch (error) {
             console.error('Ошибка при загрузке отзывов поставщика:', error);
@@ -75,22 +73,22 @@ export const fetchSupplierFeedbacks = createAsyncThunk(
     }
 );
 
-
 export const createFeedback = createAsyncThunk(
     'feedback/createFeedback',
     async (feedbackData, { rejectWithValue, dispatch, getState }) => {
         try {
+            const state = getState();
             const userData = {
-                ...getState().auth?.user,
-                profile: getState().profile?.data,
+                ...state.auth?.user,
+                profile: state.profile?.data,
             };
 
-            const state = getState();
             const productId = feedbackData.productId;
             const clientId = userData?.profile?.id;
 
             console.log('createFeedback:', { productId, feedbackData });
 
+            // Проверяем существующие отзывы
             if (state.feedback.loadedProductIds.includes(productId) && clientId) {
                 const feedbacks = state.feedback.items[productId] || [];
                 const hasExistingFeedback = feedbacks.some(
@@ -104,23 +102,32 @@ export const createFeedback = createAsyncThunk(
 
             const { photos, ...feedbackInfo } = feedbackData;
 
+            // Создаем отзыв
             const response = await feedbackApi.createFeedback(feedbackInfo, userData);
             console.log('Created feedback:', response.data);
 
+            // Загружаем фотографии, если они есть
             if (photos && photos.length > 0 && response.data && response.data.id) {
                 const feedbackId = response.data.id;
-                await feedbackApi.uploadFeedbackPhotos(feedbackId, photos);
-                console.log('Photos uploaded for feedback:', feedbackId);
+                try {
+                    await feedbackApi.uploadFeedbackPhotos(feedbackId, photos);
+                    console.log('Photos uploaded for feedback:', feedbackId);
+                } catch (photoError) {
+                    console.warn('Ошибка загрузки фотографий:', photoError);
+                    // Не прерываем выполнение, если фото не загрузились
+                }
             }
 
             // Инвалидируем кэш для productId
             dispatch(invalidateFeedbackCache(productId));
 
-            // Теперь fetchProductFeedbacks отправит новый запрос
-            await dispatch(fetchProductFeedbacks(feedbackData.productId));
+            // Перезагружаем отзывы
+            await dispatch(fetchProductFeedbacks(productId));
 
             return { productId, feedback: response.data };
         } catch (error) {
+            console.error('Ошибка создания отзыва:', error);
+
             if (error.response && error.response.data) {
                 const errorMessage = error.response.data.message;
                 if (errorMessage && errorMessage.includes('уже оставили отзыв')) {
@@ -143,7 +150,9 @@ export const updateFeedback = createAsyncThunk(
 
             const response = await feedbackApi.updateFeedback(id, feedbackData, userData);
 
-            dispatch(fetchProductFeedbacks(productId));
+            // Инвалидируем кэш и перезагружаем отзывы
+            dispatch(invalidateFeedbackCache(productId));
+            await dispatch(fetchProductFeedbacks(productId));
 
             return { productId, feedback: response.data };
         } catch (error) {
@@ -155,11 +164,13 @@ export const updateFeedback = createAsyncThunk(
 
 export const deleteFeedback = createAsyncThunk(
     'feedback/deleteFeedback',
-    async ({ id, productId }, { rejectWithValue, dispatch, getState }) => {
+    async ({ id, productId }, { rejectWithValue, dispatch }) => {
         try {
             await feedbackApi.deleteFeedback(id);
 
-            dispatch(fetchProductFeedbacks(productId));
+            // Инвалидируем кэш и перезагружаем отзывы
+            dispatch(invalidateFeedbackCache(productId));
+            await dispatch(fetchProductFeedbacks(productId));
 
             return { id, productId };
         } catch (error) {
@@ -171,12 +182,12 @@ export const deleteFeedback = createAsyncThunk(
 
 export const uploadFeedbackPhotos = createAsyncThunk(
     'feedback/uploadFeedbackPhotos',
-    async ({ feedbackId, photos, productId }, { rejectWithValue, dispatch, getState }) => {
+    async ({ feedbackId, photos, productId }, { rejectWithValue, dispatch }) => {
         try {
             await feedbackApi.uploadFeedbackPhotos(feedbackId, photos);
 
+            // Инвалидируем кэш и перезагружаем отзывы
             dispatch(invalidateFeedbackCache(productId));
-
             await dispatch(fetchProductFeedbacks(productId));
 
             return { feedbackId, success: true };
@@ -189,11 +200,13 @@ export const uploadFeedbackPhotos = createAsyncThunk(
 
 export const deleteFeedbackPhoto = createAsyncThunk(
     'feedback/deleteFeedbackPhoto',
-    async ({ feedbackId, photoIndex, productId }, { rejectWithValue, dispatch, getState }) => {
+    async ({ feedbackId, photoIndex, productId }, { rejectWithValue, dispatch }) => {
         try {
             await feedbackApi.deleteFeedbackPhoto(feedbackId, photoIndex);
 
-            dispatch(fetchProductFeedbacks(productId));
+            // Инвалидируем кэш и перезагружаем отзывы
+            dispatch(invalidateFeedbackCache(productId));
+            await dispatch(fetchProductFeedbacks(productId));
 
             return { feedbackId, photoIndex };
         } catch (error) {
@@ -216,15 +229,60 @@ const feedbackSlice = createSlice({
             state.loading = false;
             state.error = null;
         },
+        // ИСПРАВЛЕНИЕ: Добавляем недостающий reducer
         invalidateFeedbackCache: (state, action) => {
             const productId = action.payload;
-            delete state.items[productId];
-            delete state.cacheTimestamps[productId];
-            state.loadedProductIds = state.loadedProductIds.filter(id => id !== productId);
+            if (productId) {
+                delete state.items[productId];
+                delete state.cacheTimestamps[productId];
+                state.loadedProductIds = state.loadedProductIds.filter(id => id !== productId);
+            }
         },
+        // Дополнительные reducers для управления состоянием
+        setFeedbacksLoading: (state, action) => {
+            state.loading = action.payload;
+        },
+        setFeedbacksError: (state, action) => {
+            state.error = action.payload;
+        },
+        setFeedbacksPhotoUploading: (state, action) => {
+            state.photoUploading = action.payload;
+        },
+        setFeedbacksPhotoError: (state, action) => {
+            state.photoError = action.payload;
+        },
+        // Для ручного добавления отзывов (если нужно)
+        addFeedbackToProduct: (state, action) => {
+            const { productId, feedback } = action.payload;
+            if (!state.items[productId]) {
+                state.items[productId] = [];
+            }
+            state.items[productId].push(feedback);
+            state.cacheTimestamps[productId] = Date.now();
+        },
+        // Для обновления конкретного отзыва
+        updateFeedbackInState: (state, action) => {
+            const { productId, feedbackId, updatedFeedback } = action.payload;
+            if (state.items[productId]) {
+                const index = state.items[productId].findIndex(f => f.id === feedbackId);
+                if (index !== -1) {
+                    state.items[productId][index] = { ...state.items[productId][index], ...updatedFeedback };
+                    state.cacheTimestamps[productId] = Date.now();
+                }
+            }
+        },
+        // Для удаления отзыва из состояния
+        removeFeedbackFromState: (state, action) => {
+            const { productId, feedbackId } = action.payload;
+            if (state.items[productId]) {
+                state.items[productId] = state.items[productId].filter(f => f.id !== feedbackId);
+                state.cacheTimestamps[productId] = Date.now();
+            }
+        }
     },
     extraReducers: (builder) => {
         builder
+            // fetchProductFeedbacks
             .addCase(fetchProductFeedbacks.pending, (state) => {
                 state.loading = true;
                 state.error = null;
@@ -244,15 +302,15 @@ const feedbackSlice = createSlice({
                 state.error = action.payload;
             })
 
+            // fetchSupplierFeedbacks
             .addCase(fetchSupplierFeedbacks.pending, (state) => {
-                state.supplierLoading = true; // Можно добавить отдельное поле для отслеживания загрузки по поставщику
+                state.supplierLoading = true;
                 state.supplierError = null;
             })
             .addCase(fetchSupplierFeedbacks.fulfilled, (state, action) => {
                 state.supplierLoading = false;
-                // Можно добавить информацию о том, что отзывы поставщика были загружены
                 state.supplierLoadedIds = state.supplierLoadedIds || [];
-                const supplierId = action.meta.arg; // Получаем ID поставщика из аргументов
+                const supplierId = action.meta.arg;
                 if (!state.supplierLoadedIds.includes(supplierId)) {
                     state.supplierLoadedIds.push(supplierId);
                 }
@@ -262,73 +320,53 @@ const feedbackSlice = createSlice({
                 state.supplierError = action.payload;
             })
 
+            // createFeedback
             .addCase(createFeedback.pending, (state) => {
                 state.loading = true;
                 state.error = null;
             })
             .addCase(createFeedback.fulfilled, (state, action) => {
                 state.loading = false;
-                const { productId, feedback } = action.payload;
-                if (state.items[productId]) {
-                    state.items[productId].push(feedback);
-                } else {
-                    state.items[productId] = [feedback];
-                }
+                const { productId } = action.payload;
+                // Кэш будет обновлен через fetchProductFeedbacks
+                state.cacheTimestamps[productId] = Date.now();
             })
             .addCase(createFeedback.rejected, (state, action) => {
                 state.loading = false;
                 state.error = action.payload;
-                const { productId } = action.meta.arg;
-                delete state.items[productId];
-                delete state.cacheTimestamps[productId];
-                state.loadedProductIds = state.loadedProductIds.filter(id => id !== productId);
             })
 
+            // updateFeedback
             .addCase(updateFeedback.pending, (state) => {
                 state.loading = true;
                 state.error = null;
             })
             .addCase(updateFeedback.fulfilled, (state, action) => {
                 state.loading = false;
-                const { productId, feedback } = action.payload;
-                if (state.items[productId]) {
-                    const index = state.items[productId].findIndex(f => f.id === feedback.id);
-                    if (index !== -1) {
-                        state.items[productId][index] = feedback;
-                    }
-                }
+                const { productId } = action.payload;
                 state.cacheTimestamps[productId] = Date.now();
             })
             .addCase(updateFeedback.rejected, (state, action) => {
                 state.loading = false;
                 state.error = action.payload;
-                const { productId } = action.meta.arg;
-                delete state.items[productId];
-                delete state.cacheTimestamps[productId];
-                state.loadedProductIds = state.loadedProductIds.filter(id => id !== productId);
             })
 
+            // deleteFeedback
             .addCase(deleteFeedback.pending, (state) => {
                 state.loading = true;
                 state.error = null;
             })
             .addCase(deleteFeedback.fulfilled, (state, action) => {
                 state.loading = false;
-                const { id, productId } = action.payload;
-                if (state.items[productId]) {
-                    state.items[productId] = state.items[productId].filter(f => f.id !== id);
-                }
+                const { productId } = action.payload;
                 state.cacheTimestamps[productId] = Date.now();
             })
             .addCase(deleteFeedback.rejected, (state, action) => {
                 state.loading = false;
                 state.error = action.payload;
-                const { productId } = action.meta.arg;
-                delete state.items[productId];
-                delete state.cacheTimestamps[productId];
-                state.loadedProductIds = state.loadedProductIds.filter(id => id !== productId);
             })
 
+            // uploadFeedbackPhotos
             .addCase(uploadFeedbackPhotos.pending, (state) => {
                 state.photoUploading = true;
                 state.photoError = null;
@@ -341,6 +379,7 @@ const feedbackSlice = createSlice({
                 state.photoError = action.payload;
             })
 
+            // deleteFeedbackPhoto
             .addCase(deleteFeedbackPhoto.pending, (state) => {
                 state.photoUploading = true;
                 state.photoError = null;
@@ -355,5 +394,20 @@ const feedbackSlice = createSlice({
     },
 });
 
-export const { clearFeedbacks, resetFeedbackLoadingState, invalidateFeedbackCache } = feedbackSlice.actions;
+// ИСПРАВЛЕНИЕ: Экспортируем все actions, включая invalidateFeedbackCache
+export const {
+    clearFeedbacks,
+    resetFeedbackLoadingState,
+    invalidateFeedbackCache, // <- Это действие теперь экспортируется
+    setFeedbacksLoading,
+    setFeedbacksError,
+    setFeedbacksPhotoUploading,
+    setFeedbacksPhotoError,
+    addFeedbackToProduct,
+    updateFeedbackInState,
+    removeFeedbackFromState
+} = feedbackSlice.actions;
+
+// Экспортируем reducer
+export const feedbackReducer = feedbackSlice.reducer;
 export default feedbackSlice.reducer;

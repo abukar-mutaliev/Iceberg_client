@@ -19,8 +19,8 @@ export const CustomSliderIndicator = ({ totalItems, activeIndex }) => {
                 styles.indicator,
                 isActive ? styles.activeIndicator : styles.inactiveIndicator,
                 {
-                    width: `${indicatorWidth}%`,
-                    left: `${leftPosition}%`,
+                    width: (indicatorWidth / 100) * 80, // Исправлено с процентов на абсолютные значения
+                    left: (leftPosition / 100) * 80, // Исправлено с процентов на абсолютные значения
                 },
             ];
 
@@ -44,7 +44,7 @@ export const CustomSliderIndicator = ({ totalItems, activeIndex }) => {
 
 const styles = StyleSheet.create({
     sliderContainer: {
-        width: '20%',
+        width: 80,
         height: 3,
         position: 'relative',
         flexDirection: 'row',
@@ -52,7 +52,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     indicator: {
-        height: '100%',
+        height: 3,
         position: 'absolute',
         borderRadius: 10,
     },

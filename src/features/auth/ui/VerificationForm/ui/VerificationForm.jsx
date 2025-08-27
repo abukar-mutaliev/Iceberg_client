@@ -9,10 +9,12 @@ import {
     ActivityIndicator,
     Dimensions,
     Platform,
-    StatusBar
+    StatusBar,
+    Clipboard
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { completeRegister, clearError } from '@entities/auth';
+import {normalize} from "@shared/lib/normalize";
 
 const { width, height } = Dimensions.get('window');
 const isSmallDevice = height < 700;
@@ -48,8 +50,48 @@ export const VerificationForm = ({ tempToken, onBack }) => {
         }
     }, [error]);
 
+    const handleCodePaste = (pastedText, currentIndex) => {
+        const cleanedText = pastedText.replace(/\D/g, '');
+
+        const validText = cleanedText.slice(0, 6);
+
+        if (validText.length === 0) return;
+
+        const newCode = [...code];
+
+        if (validText.length === 6) {
+            for (let i = 0; i < 6; i++) {
+                newCode[i] = validText[i];
+            }
+            setCode(newCode);
+
+            setTimeout(() => {
+                inputRefs.current[5]?.current?.focus();
+            }, 10);
+        }
+        else {
+            let remainingFields = 6 - currentIndex;
+            let charsToFill = Math.min(validText.length, remainingFields);
+
+            for (let i = 0; i < charsToFill; i++) {
+                newCode[currentIndex + i] = validText[i];
+            }
+            setCode(newCode);
+
+            const nextIndex = Math.min(currentIndex + charsToFill, 5);
+            setTimeout(() => {
+                inputRefs.current[nextIndex]?.current?.focus();
+            }, 10);
+        }
+    };
+
     const handleCodeChange = (text, index) => {
         if (error) dispatch(clearError());
+
+        if (text.length > 1) {
+            handleCodePaste(text, index);
+            return;
+        }
 
         if (text && !/^\d*$/.test(text)) {
             return;
@@ -63,6 +105,31 @@ export const VerificationForm = ({ tempToken, onBack }) => {
             setTimeout(() => {
                 inputRefs.current[index + 1]?.current?.focus();
             }, 10);
+        }
+    };
+
+    const handleKeyPress = (e, index) => {
+        if (e.nativeEvent.key === 'Backspace') {
+            if (code[index] === '' && index > 0) {
+                const newCode = [...code];
+                newCode[index - 1] = '';
+                setCode(newCode);
+
+                setTimeout(() => {
+                    inputRefs.current[index - 1]?.current?.focus();
+                }, 10);
+            }
+        }
+    };
+
+    const handlePaste = async (index) => {
+        try {
+            const clipboardContent = await Clipboard.getString();
+            if (clipboardContent && clipboardContent.length > 0) {
+                handleCodePaste(clipboardContent, index);
+            }
+        } catch (err) {
+            console.error('Error pasting from clipboard', err);
         }
     };
 
@@ -107,6 +174,7 @@ export const VerificationForm = ({ tempToken, onBack }) => {
         >
             <Text style={styles.title}>Введите код подтверждения</Text>
             <Text style={styles.subtitle}>Мы отправили код на вашу почту</Text>
+            <Text style={styles.subtitle}>Если письмо с кодом не пришло, проверьте папку спам</Text>
 
             <View style={styles.codeContainer}>
                 {code.map((digit, index) => (
@@ -119,14 +187,17 @@ export const VerificationForm = ({ tempToken, onBack }) => {
                         ]}
                         value={digit}
                         onChangeText={(text) => handleCodeChange(text, index)}
+                        onKeyPress={(e) => handleKeyPress(e, index)}
+                        onPaste={() => handlePaste(index)}
                         keyboardType="numeric"
-                        maxLength={1}
+                        maxLength={6}
                         autoFocus={index === 0}
                         textAlign="center"
                         blurOnSubmit={false}
                         autoCorrect={false}
                         underlineColorAndroid="transparent"
                         caretHidden={Platform.OS === 'android'}
+                        contextMenuHidden={false}
                     />
                 ))}
             </View>
@@ -249,9 +320,14 @@ const styles = StyleSheet.create({
         color: '#A0A0A0',
     },
     backButton: {
-        paddingVertical: adaptiveSize(10),
+        padding: 15,
+        width: normalize(90),
+        height: 50,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     backButtonText: {
+        width: '100%',
         color: '#3949ab',
         fontSize: adaptiveSize(14),
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',

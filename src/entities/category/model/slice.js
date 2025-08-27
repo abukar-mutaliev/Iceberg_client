@@ -10,12 +10,20 @@ const initialState = {
 };
 
 const handleError = (error) => {
+    console.error('Category API Error:', error);
+
+    if (error?.name === 'TypeError' && error.message.includes('undefined')) {
+        return 'Ошибка формата данных от сервера. Пожалуйста, повторите попытку.';
+    }
+
     if (error.code === 'ECONNABORTED') {
         return 'Превышено время ожидания. Проверьте подключение к сети.';
     }
+
     if (!error.response) {
         return 'Ошибка сети. Проверьте подключение.';
     }
+
     return error.response?.data?.message || 'Произошла ошибка';
 };
 
@@ -23,9 +31,41 @@ export const createCategory = createAsyncThunk(
     'category/createCategory',
     async (categoryData, {rejectWithValue}) => {
         try {
+
+            if (!categoryData.slug || categoryData.slug.trim() === '') {
+                categoryData.slug = categoryData.name
+                    .toLowerCase()
+                    .replace(/\s+/g, '-')
+                    .replace(/[^\wа-яё-]/gi, '')
+                    .replace(/^-+|-+$/g, '')
+                    .replace(/-+/g, '-');
+            }
+
             const response = await categoryApi.createCategory(categoryData);
-            return response.data.data.category;
+
+            // Проверяем структуру ответа
+            if (response?.status === 'success' && response?.data) {
+                // Возвращаем категорию из ответа или сформированный объект
+                return response.data.category || {
+                    id: response.data.id || Date.now(),
+                    name: categoryData.name,
+                    slug: categoryData.slug,
+                    description: categoryData.description,
+                    ...response.data
+                };
+            }
+
+            return rejectWithValue('Некорректный формат ответа от сервера');
         } catch (error) {
+            console.error('Create category error:', error);
+
+            // Если ошибка имеет формат API (со свойством errors)
+            if (error?.response?.data?.errors && Array.isArray(error.response.data.errors)) {
+                const validationErrors = error.response.data.errors;
+                const errorMessage = validationErrors.map(err => err.msg).join(', ');
+                return rejectWithValue(errorMessage);
+            }
+
             return rejectWithValue(handleError(error));
         }
     }
@@ -36,25 +76,24 @@ export const fetchCategories = createAsyncThunk(
     async (_, {rejectWithValue}) => {
         try {
             const response = await categoryApi.getCategories();
-            console.log('Raw API response in fetchCategories:', response);
-            console.log('Типы данных:', {
-                responseType: typeof response,
-                hasData: 'data' in response,
-                dataType: typeof response.data,
-                hasCategories: response.data && 'categories' in response.data,
-                categoriesType: response.data && response.data.categories ? Array.isArray(response.data.categories) : null
-            });
 
-            if (response && response.status === 'success' && response.data && response.data.categories) {
-                console.log('Возвращаемые категории:', response.data.categories);
-                return response.data.categories;
+            // Проверка разных возможных форматов ответа API
+            if (response && response.status === 'success') {
+                // Проверяем наличие данных в разных форматах
+                if (Array.isArray(response.data)) {
+                    return response.data;
+                }
+                
+                if (response.data && response.data.categories) {
+                    return response.data.categories;
+                }
             } else {
-                console.error('Invalid response format:', response);
+                console.error('Invalid categories response format:', response);
                 return rejectWithValue('Некорректный формат ответа от сервера');
             }
         } catch (error) {
             console.error('Error fetching categories:', error);
-            return rejectWithValue(error.message || 'Ошибка при получении категорий');
+            return rejectWithValue(handleError(error));
         }
     }
 );
@@ -64,28 +103,49 @@ export const fetchCategoryById = createAsyncThunk(
     async (id, {rejectWithValue}) => {
         try {
             const response = await categoryApi.getCategoryById(id);
-            return response.data.data.category;
+
+            // Проверяем структуру ответа
+            if (response?.status === 'success' && response?.data) {
+                return response.data.category || response.data;
+            }
+
+            return rejectWithValue('Некорректный формат ответа от сервера');
         } catch (error) {
             return rejectWithValue(handleError(error));
         }
     }
 );
 
+
 export const fetchProductsByCategory = createAsyncThunk(
     'category/fetchProductsByCategory',
     async ({categoryId, params}, {rejectWithValue}) => {
         try {
             const response = await categoryApi.getProductsByCategory(categoryId, params);
-            if (response && response.status === 'success' && response.data) {
-                return {
-                    categoryId,
-                    products: response.data.products || [],
-                    pagination: response.data.pagination || {}
-                };
-            } else {
-                console.error('Invalid response format:', response);
-                return rejectWithValue('Некорректный формат ответа от сервера');
+            
+            // Проверяем разные возможные форматы ответа API
+            if (response && response.status === 'success') {
+                // Вариант 1: { data: { products: [...], pagination: {...} } }
+                if (response.data && response.data.products) {
+                    return {
+                        categoryId,
+                        products: response.data.products || [],
+                        pagination: response.data.pagination || {}
+                    };
+                }
+                
+                // Вариант 2: { data: [...] } - массив продуктов напрямую
+                if (response.data && Array.isArray(response.data)) {
+                    return {
+                        categoryId,
+                        products: response.data,
+                        pagination: {}
+                    };
+                }
             }
+            
+            console.error('Invalid response format:', response);
+            return rejectWithValue('Некорректный формат ответа от сервера');
         } catch (error) {
             return rejectWithValue(handleError(error));
         }
@@ -94,11 +154,35 @@ export const fetchProductsByCategory = createAsyncThunk(
 
 export const updateCategory = createAsyncThunk(
     'category/updateCategory',
-    async ({id, categoryData}, {rejectWithValue}) => {
+    async ({id, categoryData}, {rejectWithValue, getState}) => {
         try {
             const response = await categoryApi.updateCategory(id, categoryData);
-            return response.data.data.category;
+
+            // Проверяем структуру ответа
+            if (response?.status === 'success' && response?.data) {
+                // Возвращаем категорию из ответа или объединяем с данными из запроса
+                return response.data.category || {
+                    id: id,
+                    ...categoryData,
+                    ...response.data
+                };
+            }
+
+            // Если ответ некорректный, но запрос успешен, создаем объект категории из отправленных данных
+            // и ID, который мы уже знаем
+            const currentState = getState();
+            const existingCategory = currentState.category.categories.find(cat => cat.id === id);
+
+            if (existingCategory) {
+                return {
+                    ...existingCategory,
+                    ...categoryData
+                };
+            }
+
+            return rejectWithValue('Некорректный формат ответа от сервера');
         } catch (error) {
+            console.error('Update category error:', error);
             return rejectWithValue(handleError(error));
         }
     }
@@ -108,8 +192,13 @@ export const deleteCategory = createAsyncThunk(
     'category/deleteCategory',
     async (id, {rejectWithValue}) => {
         try {
-            await categoryApi.deleteCategory(id);
-            return id;
+            const response = await categoryApi.deleteCategory(id);
+
+            if (response?.status === 'success') {
+                return id;
+            }
+
+            return rejectWithValue('Не удалось удалить категорию');
         } catch (error) {
             return rejectWithValue(handleError(error));
         }
@@ -129,6 +218,11 @@ const categorySlice = createSlice({
             clearCurrentCategory: (state) => {
                 state.currentCategory = null;
             },
+            setCategories: (state, action) => {
+                state.categories = action.payload;
+                state.isLoading = false;
+                state.error = null;
+            },
             clearProductsByCategory: (state, action) => {
                 if (action.payload) {
                     delete state.productsByCategory[action.payload];
@@ -145,7 +239,7 @@ const categorySlice = createSlice({
             };
             const setRejected = (state, action) => {
                 state.isLoading = false;
-                state.error = action.payload;
+                state.error = action.payload || 'Произошла неизвестная ошибка';
             };
 
             builder
@@ -219,6 +313,10 @@ export const {
     clearError,
     setCurrentCategory,
     clearCurrentCategory,
+    setCategories,
     clearProductsByCategory
 } = categorySlice.actions;
-export default categoryReducer = categorySlice.reducer;
+
+// Экспортируем reducer как default и именованный экспорт для поддержки совместимости
+export const categoryReducer = categorySlice.reducer;
+export default categorySlice.reducer;

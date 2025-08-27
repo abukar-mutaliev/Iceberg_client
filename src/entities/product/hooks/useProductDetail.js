@@ -64,21 +64,66 @@ export const useProductDetail = (productId) => {
         };
     }, []);
 
-    // Функция для принудительного обновления данных
-    const refreshData = useCallback((force = false) => {
-        if (isMountedRef.current) {
-            setShouldReload(force);
+    // Функция для принудительной загрузки данных
+    const forceLoadProductData = useCallback(async () => {
+        if (!validProductId || !isMountedRef.current) return;
+
+        console.log('[useProductDetail] Принудительная загрузка продукта:', validProductId);
+
+        loadingStates.current.product = true;
+        setIsLoading(true);
+        setError(null);
+
+        try {
+            // Передаем объект с force: true для принудительного обновления
+            const result = await dispatch(fetchProductById({ productId: validProductId, force: true })).unwrap();
+
+            if (isMountedRef.current) {
+                setLastLoadedId(validProductId);
+                setShouldReload(false);
+                setIsLoading(false);
+                console.log('Продукт принудительно загружен:', result.data?.name || result.data?.id);
+            }
+        } catch (err) {
+            console.error(`Ошибка при принудительной загрузке продукта ${validProductId}:`, err);
+            if (isMountedRef.current) {
+                setError(err.message || 'Ошибка при загрузке товара');
+                setIsLoading(false);
+            }
+        } finally {
+            loadingStates.current.product = false;
         }
-    }, []);
+    }, [dispatch, validProductId]);
+
+    // Функция для принудительного обновления данных
+    const refreshData = useCallback(async (force = false) => {
+        if (isMountedRef.current) {
+            console.log('[useProductDetail] Принудительное обновление данных, force:', force);
+            
+            if (force) {
+                // При принудительном обновлении сбрасываем состояние и немедленно загружаем данные
+                setLastLoadedId(null);
+                setShouldReload(true);
+                
+                // Немедленно загружаем данные принудительно
+                return forceLoadProductData();
+            } else {
+                setShouldReload(force);
+            }
+        }
+    }, [forceLoadProductData]);
 
     // Проверяем, нужно ли загружать продукт
     const shouldFetchProduct = useCallback(() => {
         if (!validProductId) return false;
         if (loadingStates.current.product) return false;
+        
+        // Если shouldReload = true, всегда загружаем
         if (shouldReload) return true;
 
         // Если продукт уже есть в кэше или в currentProduct, не загружаем
-        if (product && product.id === validProductId && lastLoadedId === validProductId) {
+        // НО только если это не принудительное обновление
+        if (product && product.id === validProductId && lastLoadedId === validProductId && !shouldReload) {
             return false;
         }
 
@@ -87,7 +132,18 @@ export const useProductDetail = (productId) => {
 
     // Загружаем данные о товаре
     const loadProductData = useCallback(async () => {
-        if (!shouldFetchProduct()) {
+        const shouldFetch = shouldFetchProduct();
+        
+        console.log('[useProductDetail] loadProductData:', {
+            validProductId,
+            shouldFetch,
+            shouldReload,
+            hasProduct: !!product,
+            productId: product?.id,
+            lastLoadedId
+        });
+        
+        if (!shouldFetch) {
             // Если продукт уже есть, просто устанавливаем его как текущий
             if (product && !currentProduct) {
                 // Устанавливаем кэшированный продукт как текущий
@@ -102,17 +158,17 @@ export const useProductDetail = (productId) => {
         setError(null);
 
         try {
-            console.log('Загружаем продукт с ID:', validProductId);
+            console.log('Загружаем продукт с ID:', validProductId, 'принудительно:', shouldReload);
 
-            // Загружаем данные о товаре
-            const result = await dispatch(fetchProductById(validProductId)).unwrap();
+            // При принудительном обновлении используем флаг refresh=true
+            const result = await dispatch(fetchProductById(shouldReload ? { productId: validProductId, force: true } : validProductId)).unwrap();
 
             // Обновляем состояние только если компонент все еще смонтирован
             if (isMountedRef.current) {
                 setLastLoadedId(validProductId);
                 setShouldReload(false);
                 setIsLoading(false);
-                console.log('Продукт успешно загружен:', result.data);
+                console.log('Продукт успешно загружен:', result.data?.name || result.data?.id);
             }
         } catch (err) {
             console.error(`Ошибка при загрузке продукта ${validProductId}:`, err);
@@ -123,7 +179,7 @@ export const useProductDetail = (productId) => {
         } finally {
             loadingStates.current.product = false;
         }
-    }, [dispatch, validProductId, shouldFetchProduct, product, currentProduct]);
+    }, [dispatch, validProductId, shouldFetchProduct, product, currentProduct, shouldReload]);
 
     // Загружаем данные о поставщике
     const loadSupplierData = useCallback(async () => {

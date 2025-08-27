@@ -1,21 +1,46 @@
-import React from 'react';
-import { View, StyleSheet, Dimensions, Text, TouchableOpacity } from 'react-native';
-import { useTheme } from '@/app/providers/themeProvider/ThemeProvider';
-import { FeedbackCard } from "@entities/feedback";
+import React, { useMemo } from 'react';
+import { View, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { FeedbackCard } from "@entities/feedback/ui/FeedbackCard";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-export const BestFeedbacks = ({
-                                  feedbacks = [],
-                                  onProductPress = () => {}
-                              }) => {
+/**
+ * Оптимизированный компонент для отображения лучших отзывов поставщика
+ * - Использует мемоизацию для предотвращения лишних рендеров
+ * - Оптимизированы проверки наличия отзывов
+ * - Добавлена защита от неожиданных типов данных
+ */
+export const BestFeedbacks = React.memo(({
+                                             feedbacks = [],
+                                             onProductPress = () => {}
+                                         }) => {
     const { colors } = useTheme();
 
-    if (!feedbacks || feedbacks.length === 0) return null;
+    // Мемоизируем валидные отзывы (фильтрация невалидных отзывов)
+    const validFeedbacks = useMemo(() => {
+        if (!Array.isArray(feedbacks)) return [];
+
+        return feedbacks.filter(feedback =>
+            feedback &&
+            typeof feedback === 'object' &&
+            feedback.id !== undefined
+        );
+    }, [feedbacks]);
+
+    // Если нет отзывов, не отображаем компонент вообще
+    if (validFeedbacks.length === 0) return null;
+
+    // Мемоизированный обработчик для отзыва
+    const handleExpandComment = (id, isExpanded) => {
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`Отзыв ${id} развернут: ${isExpanded}`);
+        }
+    };
 
     return (
         <View style={styles.container}>
-            {feedbacks.map((feedback) => (
+            {validFeedbacks.map((feedback) => (
                 <TouchableOpacity
                     key={feedback.id}
                     style={styles.feedbackWrapper}
@@ -24,15 +49,16 @@ export const BestFeedbacks = ({
                 >
                     <FeedbackCard
                         feedback={feedback}
-                        onExpandComment={(id, isExpanded) => {
-                            console.log(`Отзыв ${id} развернут: ${isExpanded}`);
-                        }}
+                        onExpandComment={handleExpandComment}
                     />
                 </TouchableOpacity>
             ))}
         </View>
     );
-};
+});
+
+// Добавляем displayName для удобства отладки
+BestFeedbacks.displayName = 'BestFeedbacks';
 
 const styles = StyleSheet.create({
     container: {

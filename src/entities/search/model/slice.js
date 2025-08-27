@@ -17,6 +17,10 @@ const searchHistorySlice = createSlice({
             state.items = action.payload;
         },
         addSearchQuery: (state, action) => {
+            if (!Array.isArray(state.items)) {
+                state.items = [];
+            }
+            
             if (!state.items.includes(action.payload)) {
                 state.items = [action.payload, ...state.items.filter(item => item !== action.payload)].slice(0, 10);
                 AsyncStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(state.items)).catch(error => {

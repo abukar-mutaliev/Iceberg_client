@@ -1,5 +1,4 @@
-// src/features/profile/ui/ProfileEdit/ui/DynamicFormField.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -8,7 +7,6 @@ import {
     StyleSheet,
     Pressable,
     Animated,
-    Platform,
     Keyboard
 } from 'react-native';
 import DropdownArrowIcon from '@shared/ui/Icon/Profile/DropdownArrowIcon';
@@ -23,10 +21,12 @@ export const DynamicFormField = ({
                                      setEditable,
                                      extraOptions = [],
                                      error = null,
+                                     scrollViewRef,
                                  }) => {
     const [showDropdown, setShowDropdown] = useState(false);
     const [rotateAnimation] = useState(new Animated.Value(0));
     const [fieldValue, setFieldValue] = useState(value);
+    const fieldContainerRef = useRef(null);
 
     useEffect(() => {
         Animated.timing(rotateAnimation, {
@@ -49,9 +49,37 @@ export const DynamicFormField = ({
         transform: [{ rotate: rotateInterpolate }],
     };
 
+    const handleAutoScroll = () => {
+        if (fieldContainerRef.current && scrollViewRef?.current) {
+            setTimeout(() => {
+                fieldContainerRef.current.measureLayout(
+                    scrollViewRef.current,
+                    (x, y, width, height) => {
+                        const options = field.options ? [...field.options, ...extraOptions] : extraOptions;
+                        const dropdownHeight = Math.min(options.length * normalize(41), normalize(200)); // Максимальная высота dropdown
+                        const fieldBottom = y + height + dropdownHeight;
+
+                        scrollViewRef.current.scrollTo({
+                            y: fieldBottom - 300,
+                            animated: true,
+                        });
+                    },
+                    (error) => {
+                        console.warn('Ошибка измерения позиции поля:', error);
+                    }
+                );
+            }, 100);
+        }
+    };
+
     const toggleDropdown = () => {
-        setShowDropdown(!showDropdown);
+        const newShowDropdown = !showDropdown;
+        setShowDropdown(newShowDropdown);
         Keyboard.dismiss();
+
+        if (newShowDropdown) {
+            handleAutoScroll();
+        }
     };
 
     const handleChangeText = (text) => {
@@ -140,7 +168,7 @@ export const DynamicFormField = ({
 
             case 'select':
                 return (
-                    <View>
+                    <View style={styles.selectContainer}>
                         <Pressable
                             style={styles.selector}
                             onPress={toggleDropdown}
@@ -163,7 +191,10 @@ export const DynamicFormField = ({
                             </Animated.View>
                         </Pressable>
                         {showDropdown && (
-                            <View style={styles.dropdown}>
+                            <View style={[
+                                styles.dropdown,
+                                { maxHeight: normalize(200) }
+                            ]}>
                                 {options.map((option) => (
                                     <Pressable
                                         key={option.value || option.id}
@@ -189,9 +220,8 @@ export const DynamicFormField = ({
                 );
 
             case 'multiselect':
-                // Упрощенная реализация multiselect, можно расширить по необходимости
                 return (
-                    <View>
+                    <View style={styles.selectContainer}>
                         <Pressable
                             style={styles.selector}
                             onPress={toggleDropdown}
@@ -214,7 +244,10 @@ export const DynamicFormField = ({
                             </Animated.View>
                         </Pressable>
                         {showDropdown && (
-                            <View style={styles.dropdown}>
+                            <View style={[
+                                styles.dropdown,
+                                { maxHeight: normalize(200) }
+                            ]}>
                                 {options.map((option) => {
                                     const isSelected = Array.isArray(value) && (value.includes(option.value) || value.includes(option.id));
                                     return (
@@ -260,7 +293,13 @@ export const DynamicFormField = ({
     };
 
     return (
-        <View style={styles.fieldContainer}>
+        <View
+            style={[
+                styles.fieldContainer,
+                showDropdown && (field.type === 'select' || field.type === 'multiselect') && styles.fieldContainerExpanded
+            ]}
+            ref={fieldContainerRef}
+        >
             <View style={styles.labelContainer}>
                 <Text style={styles.fieldLabel}>
                     {field.label}
@@ -280,6 +319,9 @@ const styles = StyleSheet.create({
         marginHorizontal: normalize(20),
         marginBottom: normalize(20),
         position: 'relative',
+    },
+    fieldContainerExpanded: {
+        marginBottom: normalize(220),
     },
     labelContainer: {
         marginBottom: normalize(10),
@@ -321,6 +363,10 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         lineHeight: normalize(20),
     },
+    selectContainer: {
+        position: 'relative',
+        zIndex: 1,
+    },
     selector: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -349,7 +395,7 @@ const styles = StyleSheet.create({
         top: normalize(55),
         left: 0,
         right: 0,
-        zIndex: 1,
+        zIndex: 2,
         borderWidth: 0.5,
         borderColor: '#E5E5E5',
         borderRadius: normalize(8),
@@ -359,6 +405,7 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
         shadowRadius: 2,
+        overflow: 'hidden',
     },
     option: {
         height: normalize(41),

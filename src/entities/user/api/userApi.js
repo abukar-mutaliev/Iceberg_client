@@ -1,66 +1,57 @@
-import { createProtectedRequest } from '@/shared/api/api';
-import { api } from '@/shared/api/api';
+import { createApiModule } from '@shared/services/ApiClient';
 
-export const userApi = {
-    getClients: async (params = {}) => {
-        const queryParams = new URLSearchParams();
-        if (params.page) queryParams.append('page', params.page);
-        if (params.limit) queryParams.append('limit', params.limit);
-        if (params.search) queryParams.append('search', params.search);
+const userApi = createApiModule('/api/users');
+const employeeApi = createApiModule('/api/employee');
 
-        const queryString = queryParams.toString();
-        const url = `/api/users/clients${queryString ? `?${queryString}` : ''}`;
+export const userApiMethods = {
+    // Получение всех пользователей (для админа)
+    getAllUsers: (params = {}) => userApi.get('', params),
 
-        try {
-            const response = await api.get(url);
-            return response.data;
-        } catch (error) {
-            console.error('Ошибка при получении клиентов:', error);
-            throw error;
-        }
-    },
+    // Получение пользователя по ID
+    getUserById: (id) => userApi.get(`/${id}`),
 
-    getEmployees: async (params = {}) => {
-        const queryParams = new URLSearchParams();
-        if (params.page) queryParams.append('page', params.page);
-        if (params.limit) queryParams.append('limit', params.limit);
-        if (params.search) queryParams.append('search', params.search);
-        if (params.position) queryParams.append('position', params.position);
+    // Получение клиентов
+    getClients: (params = {}) => userApi.get('/clients', params),
 
-        const queryString = queryParams.toString();
-        const url = `/api/users/employees${queryString ? `?${queryString}` : ''}`;
+    // Получение сотрудников
+    getEmployees: (params = {}) => userApi.get('/employees', params),
 
-        return await createProtectedRequest('get', url);
-    },
+    // Получение поставщиков
+    getSuppliers: (params = {}) => userApi.get('/suppliers', params),
 
-    getAllUsers: async (params = {}) => {
-        const queryParams = new URLSearchParams();
-        if (params.page) queryParams.append('page', params.page);
-        if (params.limit) queryParams.append('limit', params.limit);
-        if (params.search) queryParams.append('search', params.search);
-        if (params.role) queryParams.append('role', params.role);
+    // Получение поставщика по ID
+    getSupplierById: (id) => userApi.get(`/suppliers/${id}`),
 
-        const queryString = queryParams.toString();
-        const url = `/api/users${queryString ? `?${queryString}` : ''}`;
+    // Получение водителей
+    getDrivers: (params = {}) => userApi.get('/drivers', params),
 
-        return await createProtectedRequest('get', url);
-    },
+    // Получение всех водителей без пагинации
+    getAllDrivers: () => userApi.get('/drivers/all'),
 
-    getUserById: async (id) => {
-        return await createProtectedRequest('get', `/api/users/${id}`);
-    },
+    // Получение водителя по ID
+    getDriverById: (id) => userApi.get(`/drivers/${id}`),
 
-    createUser: async (userData) => {
-        return await createProtectedRequest('post', '/api/users', userData);
-    },
-
-    updateUser: async (id, userData) => {
-        return await createProtectedRequest('put', `/api/users/${id}`, userData);
-    },
-
-    deleteUser: async (id) => {
-        return await createProtectedRequest('delete', `/api/users/${id}`);
-    },
+    // Получение остановок водителя
+    getDriverStops: (id, params = {}) => userApi.get(`/drivers/${id}/stops`, params),
 };
 
-export default userApi;
+// API методы для работы с сотрудниками и их районами
+export const employeeApiMethods = {
+    // Получение всех сотрудников с их районами
+    getAllEmployees: () => employeeApi.get('/all'),
+
+    // Получение сотрудника по ID с детальной информацией
+    getEmployeeById: (id) => employeeApi.get(`/${id}/details`),
+
+    // Обновление районов сотрудника (только для админов)
+    updateEmployeeDistricts: (employeeId, districts) => 
+        employeeApi.put(`/${employeeId}/districts`, { districts }),
+
+    // Получение сотрудников по району
+    getEmployeesByDistrict: (districtId) => employeeApi.get(`/district/${districtId}`),
+
+    // Получение статистики по районам
+    getDistrictStats: () => employeeApi.get('/stats/districts'),
+};
+
+export { userApiMethods as userApi, employeeApiMethods as employeeApi };

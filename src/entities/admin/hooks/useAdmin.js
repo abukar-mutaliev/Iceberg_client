@@ -1,4 +1,3 @@
-// Исправленные хуки в файле entities/admin/model/hooks/useAdmin.js
 import { useDispatch, useSelector } from 'react-redux';
 import { useCallback } from 'react';
 import {
@@ -10,38 +9,75 @@ import {
     changeUserRole,
     deleteAdmin,
     deleteStaff,
+    fetchWarehousesForSelection,
+    fetchDistrictsForSelection,
     clearAdminErrors,
-    clearOperationState
-} from '../slice';
+    clearOperationState,
+    clearUsersList
+} from '../model/slice';
+
+import {
+    selectAllUsers,
+    selectUsersTotal,
+    selectUsersPage,
+    selectUsersPages,
+    selectUsersLimit,
+    selectUsersLoading,
+    selectUsersError,
+    selectAdmins,
+    selectAdminsLoading,
+    selectAdminsError,
+    selectStaff,
+    selectStaffTotal,
+    selectStaffPage,
+    selectStaffPages,
+    selectStaffLoading,
+    selectStaffError,
+    selectOperationLoading,
+    selectOperationError,
+    selectOperationSuccess,
+    selectWarehouses,
+    selectWarehousesLoading,
+    selectWarehousesError,
+    selectDistricts,
+    selectDistrictsLoading,
+    selectDistrictsError
+} from '../model/selectors';
 
 export const useAdmin = () => {
     const dispatch = useDispatch();
 
-    // Получаем данные из состояния с явным указанием селекторов
-    const users = useSelector((state) => state.admin?.users?.items || []);
-    const usersTotal = useSelector((state) => state.admin?.users?.total || 0);
-    const usersPage = useSelector((state) => state.admin?.users?.page || 1);
-    const usersPages = useSelector((state) => state.admin?.users?.pages || 1);
-    const usersLimit = useSelector((state) => state.admin?.users?.limit || 10);
-    const usersLoading = useSelector((state) => state.admin?.users?.isLoading || false);
-    const usersError = useSelector((state) => state.admin?.users?.error || null);
+    const users = useSelector(selectAllUsers);
+    const usersTotal = useSelector(selectUsersTotal);
+    const usersPage = useSelector(selectUsersPage);
+    const usersPages = useSelector(selectUsersPages);
+    const usersLimit = useSelector(selectUsersLimit);
+    const usersLoading = useSelector(selectUsersLoading);
+    const usersError = useSelector(selectUsersError);
 
-    const admins = useSelector((state) => state.admin?.admins?.items || []);
-    const adminsLoading = useSelector((state) => state.admin?.admins?.isLoading || false);
-    const adminsError = useSelector((state) => state.admin?.admins?.error || null);
+    const admins = useSelector(selectAdmins);
+    const adminsLoading = useSelector(selectAdminsLoading);
+    const adminsError = useSelector(selectAdminsError);
 
-    const staff = useSelector((state) => state.admin?.staff?.items || []);
-    const staffTotal = useSelector((state) => state.admin?.staff?.total || 0);
-    const staffPage = useSelector((state) => state.admin?.staff?.page || 1);
-    const staffPages = useSelector((state) => state.admin?.staff?.pages || 1);
-    const staffLoading = useSelector((state) => state.admin?.staff?.isLoading || false);
-    const staffError = useSelector((state) => state.admin?.staff?.error || null);
+    const staff = useSelector(selectStaff);
+    const staffTotal = useSelector(selectStaffTotal);
+    const staffPage = useSelector(selectStaffPage);
+    const staffPages = useSelector(selectStaffPages);
+    const staffLoading = useSelector(selectStaffLoading);
+    const staffError = useSelector(selectStaffError);
 
-    const operationLoading = useSelector((state) => state.admin?.operation?.isLoading || false);
-    const operationError = useSelector((state) => state.admin?.operation?.error || null);
-    const operationSuccess = useSelector((state) => state.admin?.operation?.success || null);
+    const operationLoading = useSelector(selectOperationLoading);
+    const operationError = useSelector(selectOperationError);
+    const operationSuccess = useSelector(selectOperationSuccess);
 
-    // Функции для работы с данными
+    const warehouses = useSelector(selectWarehouses);
+    const warehousesLoading = useSelector(selectWarehousesLoading);
+    const warehousesError = useSelector(selectWarehousesError);
+
+    const districts = useSelector(selectDistricts);
+    const districtsLoading = useSelector(selectDistrictsLoading);
+    const districtsError = useSelector(selectDistrictsError);
+
     const loadAllUsers = useCallback((params = {}) => {
         return dispatch(fetchAllUsers(params));
     }, [dispatch]);
@@ -54,7 +90,14 @@ export const useAdmin = () => {
         return dispatch(fetchStaff(params));
     }, [dispatch]);
 
-    // Изменяем функции так, чтобы они возвращали промисы для обработки ошибок
+    const loadWarehouses = useCallback(() => {
+        return dispatch(fetchWarehousesForSelection());
+    }, [dispatch]);
+
+    const loadDistricts = useCallback(() => {
+        return dispatch(fetchDistrictsForSelection());
+    }, [dispatch]);
+
     const addAdmin = useCallback((data) => {
         return new Promise((resolve, reject) => {
             dispatch(createAdmin(data))
@@ -103,12 +146,14 @@ export const useAdmin = () => {
         dispatch(clearOperationState());
     }, [dispatch]);
 
-    // Вспомогательные функции
+    const clearUsers = useCallback(() => {
+        dispatch(clearUsersList());
+    }, [dispatch]);
+
     const getUsersByRole = useCallback((role) => {
         return users.filter(user => user.role === role);
     }, [users]);
 
-    // Возвращаем все нужные данные и функции
     return {
         // Данные о пользователях
         users: {
@@ -145,10 +190,26 @@ export const useAdmin = () => {
             success: operationSuccess
         },
 
+        // Данные о складах
+        warehouses: {
+            items: warehouses,
+            isLoading: warehousesLoading,
+            error: warehousesError
+        },
+
+        // Данные о районах
+        districts: {
+            items: districts,
+            isLoading: districtsLoading,
+            error: districtsError
+        },
+
         // Функции получения данных
         loadAllUsers,
         loadAdmins,
         loadStaff,
+        loadWarehouses,
+        loadDistricts,
 
         // Функции создания и управления
         addAdmin,
@@ -160,6 +221,7 @@ export const useAdmin = () => {
         // Функции очистки
         clearErrors,
         clearOperation,
+        clearUsers,
 
         // Вспомогательные функции
         getUsersByRole

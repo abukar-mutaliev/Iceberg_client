@@ -1,7 +1,7 @@
 import React from 'react';
 import { Text, StyleSheet, Pressable, View } from 'react-native';
-import { Color, FontFamily, FontSize, Padding } from '@/app/styles/GlobalStyles';
-import { AndroidShadow } from '@/shared/ui/Shadow';
+import { Color, FontFamily, FontSize, Padding } from '@app/styles/GlobalStyles';
+import { AndroidShadow } from '@shared/ui/Shadow';
 
 export const CatalogButton = ({ onPress }) => {
     return (

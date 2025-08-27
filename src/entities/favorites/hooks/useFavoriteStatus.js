@@ -10,7 +10,7 @@ import {
     selectIsFavorite,
     selectProductStatus
 } from '@entities/favorites/model/selectors';
-import { useAuth } from '@entities/auth/model/hooks/useAuth';
+import { useAuth } from '@entities/auth/hooks/useAuth';
 
 /**
  * Оптимизированный хук для работы с избранным для одного продукта

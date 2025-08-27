@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { useTheme } from '@/app/providers/themeProvider/ThemeProvider';
-import { FontFamily } from '@/app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { FontFamily } from '@app/styles/GlobalStyles';
 
 /**
  * Упрощенный компонент ответа на отзыв

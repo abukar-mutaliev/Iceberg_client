@@ -1,55 +1,46 @@
-import { createProtectedRequest } from '@shared/api/api';
+import { createApiModule } from '@shared/services/ApiClient';
+import { createPublicRequest } from '@shared/api/api';
 
-export const authApi = {
-    initiateRegister: (data) =>
-        createProtectedRequest('post', '/api/auth/register/initiate', data),
+// Используем обычный модуль для методов, требующих авторизации
+const authApi = createApiModule('/api/auth');
+const staffApplicationsApi = createApiModule('/api/staff-applications');
 
-// Полностью исправленный метод completeRegister для authApi.js
-    completeRegister: async (data) => {
-        try {
-            // Более подробное логирование запроса
-            console.log('Отправка запроса на завершение регистрации:', {
-                registrationToken: data.registrationToken?.slice(0, 10) + '...',
-                verificationCode: data.verificationCode
-            });
+// Базовый URL для auth API
+const BASE_AUTH_URL = '/api/auth';
 
-            const response = await createProtectedRequest('post', '/api/auth/register/complete', {
-                registrationToken: data.registrationToken,
-                verificationCode: data.verificationCode,
-            });
+export const authApiMethods = {
+    // Инициация регистрации - публичный запрос
+    initiateRegister: (data) => 
+        createPublicRequest('post', `${BASE_AUTH_URL}/register/initiate`, data),
 
-            // Добавляем подробное логирование ответа
-            console.log('Ответ от сервера при завершении регистрации:', JSON.stringify(response));
-
-            // Проверка формата ответа
-            if (response && response.status === 'success' && response.data) {
-                // Важно: возвращаем ответ без модификаций
-                return response;
-            } else {
-                console.error('Некорректный формат ответа:', response);
-                throw new Error('Некорректный формат ответа от сервера');
-            }
-        } catch (error) {
-            console.error('Ошибка при завершении регистрации:', error);
-            throw error;
-        }
-    },
-
-    login: (data) =>
-        createProtectedRequest('post', '/api/auth/login', data),
-
-    verify2FALogin: ({ tempToken, twoFactorCode }) =>
-        createProtectedRequest('post', '/api/2fa/verify-login', {
-            tempToken,
-            twoFactorCode
+    // Завершение регистрации - публичный запрос
+    completeRegister: (data) => 
+        createPublicRequest('post', `${BASE_AUTH_URL}/register/complete`, {
+            registrationToken: data.registrationToken,
+            verificationCode: data.verificationCode,
         }),
 
-    logout: (refreshToken) =>
-        createProtectedRequest('post', '/api/auth/logout', { refreshToken }),
+    // Вход в систему - публичный запрос
+    login: (data) => 
+        createPublicRequest('post', `${BASE_AUTH_URL}/login`, data),
 
-    refreshToken: (refreshToken) =>
-        createProtectedRequest('post', '/api/auth/refresh-token', { refreshToken }),
+    // Верификация 2FA - публичный запрос
+    verify2FALogin: ({ tempToken, twoFactorCode }) =>
+        createPublicRequest('post', `${BASE_AUTH_URL}/2fa/verify-login`, 
+            { tempToken, twoFactorCode: twoFactorCode.toString() }),
 
-    getMe: () =>
-        createProtectedRequest('get', '/api/auth/me')
+    // Выход из системы - требует авторизации
+    logout: (refreshToken) => authApi.post('/logout', { refreshToken }),
+
+    // Обновление токена - публичный запрос
+    refreshToken: (refreshToken) => 
+        createPublicRequest('post', `${BASE_AUTH_URL}/refresh-token`, { refreshToken }),
+
+    // Получение текущего пользователя - требует авторизации
+    getMe: () => authApi.get('/me'),
+
+    // Подача заявки на роль сотрудника - требует авторизации
+    applyForStaff: (data) => staffApplicationsApi.post('/apply', data),
 };
+
+export { authApiMethods as authApi };

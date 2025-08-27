@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, {useState, useEffect, useRef} from 'react';
 import {
     View,
     Text,
@@ -10,14 +10,17 @@ import {
     PixelRatio,
     Keyboard,
     Animated,
-    ScrollView
+    ScrollView,
+    Alert
 } from 'react-native';
-import { useDispatch, useSelector } from 'react-redux';
-import { login, clearError } from '@entities/auth';
-import { selectEmail, selectPassword, setEmail, setPassword } from '@entities/auth';
-import { CustomTextInput } from '@/shared/ui/CustomTextInput/CustomTextInput';
+import {useDispatch, useSelector} from 'react-redux';
+import {login, clearError, setTokens, setUser} from '@entities/auth';
+import {selectEmail, selectPassword, setEmail, setPassword} from '@entities/auth';
+import {CustomTextInput} from '@shared/ui/CustomTextInput/CustomTextInput';
+import {clearProfile, fetchProfile} from '@entities/profile';
+import {normalize, normalizeFont} from "@shared/lib/normalize";
 
-export const LoginForm = ({ navigation }) => {
+export const LoginForm = () => {
     const dispatch = useDispatch();
     const email = useSelector(selectEmail) || '';
     const password = useSelector(selectPassword) || '';
@@ -29,9 +32,44 @@ export const LoginForm = ({ navigation }) => {
     const [formError, setFormError] = useState('');
     const [localEmail, setLocalEmail] = useState(email);
     const [localPassword, setLocalPassword] = useState(password);
+    const [keyboardVisible, setKeyboardVisible] = useState(false);
 
-    const formPosition = useRef(new Animated.Value(0)).current;
+    // Анимированное значение для смещения формы
+    const formMarginTop = useRef(new Animated.Value(0)).current;
 
+    // Слушатели клавиатуры
+    useEffect(() => {
+        const keyboardWillShowListener = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+            (event) => {
+                setKeyboardVisible(true);
+                // Анимируем смещение формы вверх при появлении клавиатуры
+                Animated.timing(formMarginTop, {
+                    toValue: -normalize(60), // Смещаем форму вверх
+                    duration: Platform.OS === 'ios' ? event.duration : 300,
+                    useNativeDriver: false
+                }).start();
+            }
+        );
+
+        const keyboardWillHideListener = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+            (event) => {
+                setKeyboardVisible(false);
+                // Возвращаем форму в исходное положение при скрытии клавиатуры
+                Animated.timing(formMarginTop, {
+                    toValue: 0,
+                    duration: Platform.OS === 'ios' ? event.duration : 300,
+                    useNativeDriver: false
+                }).start();
+            }
+        );
+
+        return () => {
+            keyboardWillShowListener.remove();
+            keyboardWillHideListener.remove();
+        };
+    }, []);
 
     useEffect(() => {
         setLocalEmail(email);
@@ -49,17 +87,46 @@ export const LoginForm = ({ navigation }) => {
 
     useEffect(() => {
         if (error && !isLoading) {
-            if (error.includes('email') || error.includes('почта')) {
-                setEmailError(error);
-            } else if (error.includes('пароль') || error.includes('password') || error.includes('credentials')) {
-                setPasswordError(error);
-            } else {
-                setFormError(error);
-            }
-
-            dispatch(clearError());
+            handleErrorDisplay(error);
+        } else {
+            setEmailError('');
+            setPasswordError('');
+            setFormError('');
         }
-    }, [error, isLoading, dispatch]);
+    }, [error, isLoading]);
+
+    const handleErrorDisplay = (errorMessage) => {
+        if (!errorMessage) return;
+
+        console.log('Processing error:', errorMessage);
+
+        const lowerCaseError = typeof errorMessage === 'string'
+            ? errorMessage.toLowerCase()
+            : '';
+
+        if (lowerCaseError.includes('неверный email') ||
+            lowerCaseError.includes('не найден')) {
+            setEmailError('Пользователь с таким email не найден');
+            setPasswordError('');
+            setFormError('');
+        } else if (lowerCaseError.includes('пароль') ||
+            lowerCaseError.includes('password') ||
+            lowerCaseError.includes('credentials')) {
+            setPasswordError('Неверный пароль');
+            setEmailError('');
+            setFormError('');
+        } else if (lowerCaseError.includes('401') ||
+            lowerCaseError.includes('unauthorized') ||
+            lowerCaseError.includes('неверн')) {
+            setPasswordError('Неверный email или пароль');
+            setEmailError('');
+            setFormError('');
+        } else {
+            setFormError(errorMessage);
+            setEmailError('');
+            setPasswordError('');
+        }
+    };
 
     const validateForm = () => {
         let isValid = true;
@@ -80,10 +147,15 @@ export const LoginForm = ({ navigation }) => {
         return isValid;
     };
 
-    const handleLogin = async () => {
+    const handleLogin = () => {
+        if (isLoading) {
+            return;
+        }
+
         setEmailError('');
         setPasswordError('');
         setFormError('');
+        dispatch(clearError());
 
         dispatch(setEmail(localEmail));
         dispatch(setPassword(localPassword));
@@ -92,20 +164,56 @@ export const LoginForm = ({ navigation }) => {
             return;
         }
 
-        try {
-            await dispatch(login({ email: localEmail, password: localPassword })).unwrap();
-        } catch (error) {
-        }
+        // Полный сброс состояния перед входом нового пользователя
+        dispatch({ type: 'RESET_APP_STATE' });
+
+        // Выполняем вход с обработкой результата
+        dispatch(login({email: localEmail, password: localPassword}))
+            .unwrap()
+            .then(result => {
+                if (result.requiresTwoFactor) {
+                    return;
+                }
+
+                if (result.tokens && result.user) {
+                    console.log('Вход выполнен успешно для пользователя ID:', result.user.id);
+
+                    dispatch(setTokens(result.tokens));
+                    dispatch(setUser(result.user));
+
+                    // Сразу запрашиваем профиль для нового пользователя
+                    dispatch(fetchProfile());
+                }
+            })
+            .catch(err => {
+                console.log('Login error caught:', err);
+
+                // Обработка ошибок
+                if (typeof err === 'string') {
+                    if (err.toLowerCase().includes('пароль')) {
+                        setPasswordError(err);
+                    } else if (err.toLowerCase().includes('email') || err.toLowerCase().includes('почта')) {
+                        setEmailError(err);
+                    } else {
+                        setFormError(err);
+                    }
+                } else {
+                    setFormError('Произошла ошибка при входе');
+                }
+            });
     };
+
 
     const handleEmailChange = (text) => {
         setLocalEmail(text);
         setEmailError('');
+        setFormError('');
     };
 
     const handlePasswordChange = (text) => {
         setLocalPassword(text);
         setPasswordError('');
+        setFormError('');
     };
 
     const handleEmailBlur = () => {
@@ -117,45 +225,50 @@ export const LoginForm = ({ navigation }) => {
     };
 
     return (
-        <View style={styles.formContainer}>
+        <Animated.View style={[
+            styles.formContainer,
+            {marginTop: formMarginTop}
+        ]}>
             <View style={styles.inputsContainer}>
                 <View style={styles.emailInputContainer}>
                     <Text style={styles.inputLabel}>Ваша почта/номер телефона</Text>
                     <CustomTextInput
-                        style={[
-                            styles.input,
-                            emailError ? styles.inputError : null
-                        ]}
+                        style={styles.input}
                         value={localEmail}
                         onChangeText={handleEmailChange}
                         onBlur={handleEmailBlur}
                         keyboardType="email-address"
                         autoCapitalize="none"
                         placeholder="Icbrg@gmail.com"
+                        editable={!isLoading}
                     />
+                    <View style={[
+                        styles.inputUnderline,
+                        emailError ? styles.errorUnderline : null
+                    ]}/>
                     {emailError ? (
                         <Text style={styles.errorText}>{emailError}</Text>
                     ) : null}
-                    <View style={styles.inputUnderline} />
                 </View>
 
                 <View style={styles.passwordInputContainer}>
                     <Text style={styles.inputLabel}>Ваш пароль</Text>
                     <CustomTextInput
-                        style={[
-                            styles.input,
-                            passwordError ? styles.inputError : null
-                        ]}
+                        style={styles.input}
                         value={localPassword}
                         onChangeText={handlePasswordChange}
                         onBlur={handlePasswordBlur}
                         secureTextEntry
                         placeholder="********"
+                        editable={!isLoading}
                     />
+                    <View style={[
+                        styles.inputUnderline,
+                        passwordError ? styles.errorUnderline : null
+                    ]}/>
                     {passwordError ? (
                         <Text style={styles.errorText}>{passwordError}</Text>
                     ) : null}
-                    <View style={styles.inputUnderline} />
                 </View>
             </View>
 
@@ -164,47 +277,27 @@ export const LoginForm = ({ navigation }) => {
             ) : null}
 
             <TouchableOpacity
-                style={styles.forgotPasswordContainer}
-                onPress={() => navigation.navigate('Main')}
-            >
-                <Text style={styles.forgotPasswordText}>Забыли пароль?</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-                style={[styles.button, isLoading && styles.buttonDisabled]}
+                style={[
+                    styles.button,
+                    isLoading && styles.buttonDisabled
+                ]}
                 onPress={handleLogin}
                 disabled={isLoading}
             >
                 {isLoading ? (
-                    <ActivityIndicator color="#fff" />
+                    <ActivityIndicator color="#fff"/>
                 ) : (
                     <Text style={styles.buttonText}>Подтвердить</Text>
                 )}
             </TouchableOpacity>
-        </View>
+        </Animated.View>
     );
 };
 
 const { width, height } = Dimensions.get('window');
 const scale = width / 430;
 
-const normalize = (size) => {
-    const newSize = size * scale;
-    return Math.round(PixelRatio.roundToNearestPixel(newSize));
-};
 
-const normalizeFont = (size) => {
-    const isSmallDevice = height < 700;
-    const isLargeDevice = height > 800;
-
-    let newSize = size * scale;
-    if (isSmallDevice) {
-        newSize = newSize * 0.9;
-    } else if (isLargeDevice) {
-        newSize = newSize * 1.1;
-    }
-    return Math.round(PixelRatio.roundToNearestPixel(newSize));
-};
 
 const styles = StyleSheet.create({
     formContainer: {
@@ -250,11 +343,10 @@ const styles = StyleSheet.create({
         height: 1,
         backgroundColor: '#000',
         width: '100%',
-        position: 'absolute',
-        bottom: 0,
     },
-    inputError: {
-        color: '#FF0000',
+    errorUnderline: {
+        backgroundColor: '#FF0000',
+        height: 1.5,
     },
     errorText: {
         color: '#FF0000',
@@ -279,6 +371,7 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: '#3339b0',
         lineHeight: normalize(22),
+        paddingHorizontal: normalize(10),
     },
     button: {
         backgroundColor: '#000cff',
@@ -291,7 +384,8 @@ const styles = StyleSheet.create({
         paddingVertical: normalize(5),
         paddingHorizontal: normalize(20),
         paddingBottom: normalize(10),
-    }, buttonDisabled: {
+    },
+    buttonDisabled: {
         backgroundColor: '#d3d3d3',
     },
     buttonText: {
@@ -302,4 +396,8 @@ const styles = StyleSheet.create({
         color: '#fff',
         lineHeight: normalize(30),
     },
+    textDisabled: {
+        opacity: 0.5
+    }
 });
+

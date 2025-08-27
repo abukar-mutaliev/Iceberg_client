@@ -1,6 +1,6 @@
 import {View, StyleSheet, TouchableOpacity, Dimensions, ActivityIndicator} from 'react-native';
-import { useTheme } from '@/app/providers/themeProvider/ThemeProvider';
-import { ScrollableBackgroundGradient } from '@/shared/ui/BackgroundGradient';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { ScrollableBackgroundGradient } from '@shared/ui/BackgroundGradient';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 

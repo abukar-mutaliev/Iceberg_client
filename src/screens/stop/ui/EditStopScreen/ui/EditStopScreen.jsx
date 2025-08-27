@@ -1,15 +1,20 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { StyleSheet, SafeAreaView } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
-import { useFocusEffect, useRoute } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Color } from '@app/styles/GlobalStyles';
 import {
     selectDriverLoading,
     selectDriverError,
-    clearDriverError,
-    selectDriverDistricts
+    clearDriverError
 } from "@entities/driver";
-import { fetchDriverDistricts } from "@entities/district";
+
+import {
+    selectDistricts,
+    selectDistrictsForDropdown
+} from "@entities/district";
+
+import { fetchAllDistricts } from "@entities/district";
 import { LoadingState } from '@shared/ui/states/LoadingState';
 import { ErrorState } from '@shared/ui/states/ErrorState';
 import { logData } from '@shared/lib/logger';
@@ -19,24 +24,26 @@ import {
     selectStopById,
     updateStop
 } from "@entities/stop";
+import { parseCoordinates } from '@/shared/lib/coordinatesHelper';
 
 export const EditStopScreen = ({ route, navigation }) => {
     const dispatch = useDispatch();
-    const { stopId, selectedLocation, timestamp, navId } = route.params || {};
+    const { stopId, selectedLocation, addressString, timestamp, navId } = route.params || {};
 
-    // Для отслеживания обновлений параметров
-    const lastParamsRef = useRef({ selectedLocation, timestamp, navId });
+    const lastParamsRef = useRef({ selectedLocation, addressString, timestamp, navId });
     const screenInstanceId = useRef(Math.random().toString(36).substr(2, 9)).current;
     const prevLocationRef = useRef(selectedLocation);
 
-    // Состояние для хранения выбранных координат, чтобы избежать циклов обновления
     const [currentLocation, setCurrentLocation] = useState(selectedLocation);
+    const [currentAddress, setCurrentAddress] = useState(addressString);
 
-    // Логируем монтирование компонента
+    const [locationChanged, setLocationChanged] = useState(false);
+
     useEffect(() => {
         logData('EditStopScreen: Компонент инициализирован', {
             stopId,
             selectedLocation,
+            addressString,
             instanceId: screenInstanceId,
             timestamp: new Date().toISOString()
         });
@@ -49,51 +56,82 @@ export const EditStopScreen = ({ route, navigation }) => {
         };
     }, []);
 
-    // Для отладки выводим полученные параметры и обновляем локальное состояние
     useEffect(() => {
-        // Сравниваем с предыдущими значениями
         const hasChanged = selectedLocation !== lastParamsRef.current.selectedLocation ||
-                          timestamp !== lastParamsRef.current.timestamp ||
-                          navId !== lastParamsRef.current.navId;
+            addressString !== lastParamsRef.current.addressString ||
+            timestamp !== lastParamsRef.current.timestamp ||
+            navId !== lastParamsRef.current.navId;
 
         if (hasChanged && selectedLocation && selectedLocation !== prevLocationRef.current) {
             logData('EditStopScreen: Получены новые параметры маршрута', {
                 selectedLocation,
+                addressString,
                 previousLocation: lastParamsRef.current.selectedLocation,
+                previousAddress: lastParamsRef.current.addressString,
                 timestamp,
                 navId,
                 instanceId: screenInstanceId
             });
 
-            // Обновляем референсы
-            lastParamsRef.current = { selectedLocation, timestamp, navId };
+            try {
+                const parsedCoords = parseCoordinates(selectedLocation);
+                
+                if (parsedCoords) {
+                    const formattedLocation = `${parsedCoords.latitude},${parsedCoords.longitude}`;
+                    
+                    logData('EditStopScreen: Координаты нормализованы', {
+                        original: selectedLocation,
+                        normalized: formattedLocation,
+                        instanceId: screenInstanceId
+                    });
+                    
+                    setCurrentLocation(formattedLocation);
+                } else {
+                    setCurrentLocation(selectedLocation);
+                }
+            } catch (error) {
+                logData('EditStopScreen: Ошибка при обработке координат', {
+                    error: error.message,
+                    selectedLocation,
+                    instanceId: screenInstanceId
+                });
+                setCurrentLocation(selectedLocation);
+            }
+
+            if (addressString) {
+                setCurrentAddress(addressString);
+            }
+
+            lastParamsRef.current = { selectedLocation, addressString, timestamp, navId };
             prevLocationRef.current = selectedLocation;
 
-            // Обновляем локальное состояние
-            setCurrentLocation(selectedLocation);
-
-            // Обновляем ключ формы при изменении координат
+            setLocationChanged(true);
+            
             setFormKey(`edit-stop-form-${stopId}-${Date.now()}`);
         }
-    }, [selectedLocation, timestamp, navId, stopId]);
+    }, [selectedLocation, addressString, timestamp, navId, stopId]);
 
-    // Добавляем состояние для отслеживания первоначальной загрузки
+    useEffect(() => {
+        if (locationChanged) {
+            setLocationChanged(false);
+        }
+    }, [locationChanged]);
+
     const [initialLoadComplete, setInitialLoadComplete] = useState(false);
     const [isScreenFocused, setIsScreenFocused] = useState(true);
     const [formKey, setFormKey] = useState(`edit-stop-form-${stopId}-${Date.now()}`);
 
     const stopData = useSelector(state => selectStopById(state, stopId));
     const isDriverLoading = useSelector(selectDriverLoading);
-    const districts = useSelector(selectDriverDistricts);
+    const districts = useSelector(selectDistricts);
+    const districtsForDropdown = useSelector(selectDistrictsForDropdown);
     const error = useSelector(selectDriverError);
 
     useEffect(() => {
-        // Настройка заголовка
         navigation.setOptions({
             title: 'Редактирование остановки'
         });
 
-        // Запрашиваем данные только если их еще нет
         if (!stopData && stopId) {
             logData('EditStopScreen: Загрузка данных остановки', {
                 stopId,
@@ -107,7 +145,6 @@ export const EditStopScreen = ({ route, navigation }) => {
         }
     }, [dispatch, stopId, stopData, navigation]);
 
-    // Отслеживаем фокус на экране
     useFocusEffect(
         React.useCallback(() => {
             logData('EditStopScreen: Получил фокус', {
@@ -134,29 +171,53 @@ export const EditStopScreen = ({ route, navigation }) => {
     useEffect(() => {
         if (districts.length === 0) {
             logData('Загрузка списка районов для EditStopScreen');
-            dispatch(fetchDriverDistricts());
+            dispatch(fetchAllDistricts());
         }
     }, [dispatch, districts.length]);
 
-    // Обработчик закрытия формы
     const handleClose = () => {
         logData('Закрытие редактирования остановки', { stopId });
-        navigation.goBack();
+        
+        if (navigation.canGoBack()) {
+            navigation.goBack();
+        } else {
+            navigation.navigate('StopsScreen');
+        }
     };
 
     const handleSave = (formData) => {
         logData('Сохранение данных остановки из EditStopScreen', { stopId });
 
-        dispatch(updateStop({ stopId, stopData: formData }))
+        return dispatch(updateStop({ stopId, stopData: formData }))
             .unwrap()
-            .then(() => {
-                logData('Успешное сохранение остановки', { stopId });
-                navigation.goBack();
+            .then((result) => {
+                logData('Успешное сохранение остановки', { stopId, result });
+                return result;
             })
             .catch((error) => {
                 logData('Ошибка при сохранении остановки', { stopId, error });
+                throw error;
             });
     };
+
+    // Сохраняем координаты в память устройства для отладки
+    useEffect(() => {
+        if (currentLocation) {
+            try {
+                logData('EditStopScreen: Сохранены координаты для остановки', {
+                    stopId,
+                    coordinates: currentLocation,
+                    timestamp: new Date().toISOString(),
+                    instanceId: screenInstanceId
+                });
+            } catch (error) {
+                logData('EditStopScreen: Ошибка при сохранении координат', {
+                    error: error.message,
+                    instanceId: screenInstanceId
+                });
+            }
+        }
+    }, [currentLocation, stopId]);
 
     if (!initialLoadComplete || (isDriverLoading && !stopData)) {
         return <LoadingState message="Загрузка данных..." />;
@@ -180,26 +241,31 @@ export const EditStopScreen = ({ route, navigation }) => {
         );
     }
 
-    let availableDistricts = districts;
+    let availableDistricts = districtsForDropdown;
 
     if (availableDistricts.length === 0 && stopData?.district) {
-        availableDistricts = [stopData.district];
+        availableDistricts = [{
+            id: stopData.district.id,
+            name: stopData.district.name,
+            value: stopData.district.id,
+            label: stopData.district.name
+        }];
     }
 
-    // Рендерим форму, только если экран в фокусе и данные готовы
     return (
         <SafeAreaView style={styles.container}>
             {isScreenFocused && stopData && (
                 <EditStopForm
                     stopData={{
                         ...stopData,
-                        // Используем локальное состояние вместо параметра навигации
-                        ...(currentLocation ? { mapLocation: currentLocation } : {})
+                        ...(currentLocation ? { mapLocation: currentLocation } : {}),
+                        ...(currentAddress ? { address: currentAddress } : {})
                     }}
                     onClose={handleClose}
                     onSave={handleSave}
                     districts={availableDistricts}
-                    key={formKey} // Используем динамический ключ для пересоздания
+                    key={formKey}
+                    locationChanged={locationChanged}
                 />
             )}
         </SafeAreaView>

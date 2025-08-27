@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState } from 'react';
 import { useColorScheme } from 'react-native';
-import { Color } from '@/app/styles/GlobalStyles';
+import { Color } from '@app/styles/GlobalStyles';
 
 const ThemeContext = createContext({
     theme: 'light',
@@ -11,7 +11,7 @@ const ThemeContext = createContext({
 const themes = {
     light: {
         background: Color.colorLightMode,
-        text: Color.dark,
+        text: Color.colorLightMode,
         primary: Color.purpleSoft,
         secondary: Color.colorCornflowerblue,
         border: Color.colorSilver_100,

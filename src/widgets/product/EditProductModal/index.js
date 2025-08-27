@@ -1,1 +1,1 @@
-export EditProductModal  from './ui/EditProductModal';
+export { EditProductModal }  from './ui/EditProductModal';

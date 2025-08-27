@@ -1,18 +1,14 @@
 import { createSelector } from '@reduxjs/toolkit';
-import { selectProducts } from '@/entities/product';
-import { applyFiltersToProducts } from "@entities/filter";
+import { selectProducts } from '@entities/product';
+import {applyFiltersToProducts} from "@entities/filter";
 
-// Простые селекторы для получения состояния фильтров
 export const selectFilterCriteria = (state) => {
-    console.log('DEBUG: STATE:', state);
-    console.log('DEBUG: FILTER STATE:', state.filter);
     return state.filter?.criteria;
 };
 
 export const selectIsFilterActive = (state) => {
     const criteria = state.filter?.criteria;
 
-    // Проверяем наличие активных фильтров
     if (!criteria) return false;
 
     return (
@@ -27,7 +23,6 @@ export const selectIsFilterActive = (state) => {
     );
 };
 
-// Селектор для примененных фильтров в удобном для отображения формате
 export const selectAppliedFilters = createSelector(
     [selectFilterCriteria],
     (criteria) => {
@@ -35,7 +30,6 @@ export const selectAppliedFilters = createSelector(
 
         const appliedFilters = [];
 
-        // Добавляем проверки для каждого типа фильтра
         if (criteria.minPrice > 45 || criteria.maxPrice < 1800) {
             appliedFilters.push({
                 id: 'price',
@@ -100,7 +94,6 @@ export const selectAppliedFilters = createSelector(
     }
 );
 
-// Селектор для получения отфильтрованных продуктов
 export const selectFilteredProductsBySearch = createSelector(
     [
         selectProducts,
@@ -109,10 +102,6 @@ export const selectFilteredProductsBySearch = createSelector(
         (state, searchQuery) => searchQuery || ''
     ],
     (products, filterCriteria, isFilterActive, searchQuery) => {
-        console.log('Фильтрация продуктов:');
-        console.log('- Всего продуктов:', products?.length || 0);
-        console.log('- Активен ли фильтр:', isFilterActive);
-        console.log('- Поисковый запрос:', searchQuery);
 
         if (!products || !Array.isArray(products) || products.length === 0) {
             return [];
@@ -120,14 +109,10 @@ export const selectFilteredProductsBySearch = createSelector(
 
         let filteredProducts = [...products];
 
-        // Сначала применяем фильтры, если они активны
         if (isFilterActive && filterCriteria) {
-            console.log('- Применяем фильтры:', JSON.stringify(filterCriteria));
             filteredProducts = applyFiltersToProducts(filteredProducts, filterCriteria);
-            console.log('- После фильтров осталось:', filteredProducts.length);
         }
 
-        // Затем фильтруем по поисковому запросу
         if (searchQuery && searchQuery.trim() !== '') {
             const query = searchQuery.toLowerCase().trim();
             filteredProducts = filteredProducts.filter(product =>
@@ -138,13 +123,7 @@ export const selectFilteredProductsBySearch = createSelector(
                     (typeof cat === 'object' && cat.description && cat.description.toLowerCase().includes(query))
                 ))
             );
-            console.log('- После поиска осталось:', filteredProducts.length);
         }
-        console.log('СЕЛЕКТОР: Входные данные');
-        console.log('- Продукты:', products?.length);
-        console.log('- Фильтры:', JSON.stringify(filterCriteria));
-        console.log('- Активен:', isFilterActive);
-        console.log('- Поиск:', searchQuery);
         return filteredProducts;
     }
 );

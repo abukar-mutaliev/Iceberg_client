@@ -1,17 +1,66 @@
 import { createSelector } from '@reduxjs/toolkit';
 import {selectFeedbackState} from "@entities/feedback/model/selectors";
 
+// Константы для предотвращения создания новых ссылок
+const EMPTY_ARRAY = [];
+const EMPTY_OBJECT = {};
+
 // Базовые селекторы
-export const selectSuppliersList = (state) => state.suppliers.list;
+export const selectSuppliersList = (state) => {
+
+    if (!state.suppliers) {
+        return EMPTY_ARRAY;
+    }
+
+    if (!state.suppliers.list) {
+        return EMPTY_ARRAY;
+    }
+
+    return state.suppliers.list;
+};
 export const selectSuppliersTotal = (state) => state.suppliers.total;
 export const selectSuppliersPage = (state) => state.suppliers.page;
 export const selectSuppliersPages = (state) => state.suppliers.pages;
 export const selectCurrentSupplierId = (state) => state.suppliers.currentSupplierId;
 export const selectSupplierDetails = (state) => state.suppliers.supplierDetails;
-export const selectSupplierProducts = (state, supplierId) => {
-    const supplierProducts = state.suppliers.supplierProducts || {};
-    return supplierProducts[supplierId] || [];
-};
+
+
+/**
+ * Селектор для получения продуктов поставщика из Redux
+ * Исправлена проблема с undefined и добавлено логирование
+ */
+export const selectSupplierProducts = createSelector(
+    [
+        (state) => state.suppliers?.supplierProducts || {},
+        (_, supplierId) => supplierId
+    ],
+    (supplierProducts, supplierId) => {
+        // Проверяем тип supplierId и преобразуем его при необходимости
+        const id = supplierId ? Number(supplierId) : null;
+
+        // Если нет ID, возвращаем пустой массив
+        if (id === null) {
+            return EMPTY_ARRAY;
+        }
+
+        // Получаем продукты по ID (проверяем существование ключа)
+        const products = id in supplierProducts ? supplierProducts[id] : [];
+
+        // Для отладочных целей в режиме разработки
+        if (process.env.NODE_ENV === 'development') {
+            console.log('selectSupplierProducts:', {
+                supplierId: id,
+                hasKey: id in supplierProducts,
+                productsCount: Array.isArray(products) ? products.length : 0,
+                allKeys: Object.keys(supplierProducts)
+            });
+        }
+
+        // Всегда возвращаем массив, даже если продукты не найдены
+        return Array.isArray(products) ? products : EMPTY_ARRAY;
+    }
+);
+
 export const selectSuppliersLoading = (state) => state.suppliers.loading;
 export const selectSuppliersError = (state) => state.suppliers.error;
 
@@ -34,6 +83,28 @@ export const selectSupplierById = createSelector(
     }
 );
 
+export const selectSupplierRating = createSelector(
+    [(state, supplierId) => state.suppliers?.ratings?.[supplierId]],
+    (ratingData) => {
+        if (!ratingData) {
+            return { rating: 0, totalFeedbacks: 0 };
+        }
+        
+        // Выполняем трансформацию данных вместо простого возврата
+        return {
+            rating: parseFloat(ratingData.rating || 0).toFixed(1),
+            formattedRating: parseFloat(ratingData.rating || 0).toFixed(1),
+            isPositive: (ratingData.rating || 0) >= 4.0,
+            totalFeedbacks: ratingData.totalFeedbacks || 0
+        };
+    }
+);
+
+export const selectSupplierTotalFeedbacks = createSelector(
+    [(state, supplierId) => state.suppliers?.ratings?.[supplierId]],
+    (ratingData) => ratingData?.totalFeedbacks || 0
+);
+
 // Селектор для получения текущего поставщика
 export const selectCurrentSupplier = createSelector(
     [selectSupplierDetails, selectCurrentSupplierId],
@@ -43,13 +114,13 @@ export const selectCurrentSupplier = createSelector(
 // Селектор для получения продуктов поставщика по ID
 export const selectSupplierProductsBySupplierId = createSelector(
     [selectSupplierProducts, (state, supplierId) => supplierId],
-    (productsMap, supplierId) => productsMap[supplierId] || []
+    (productsMap, supplierId) => productsMap[supplierId] || EMPTY_ARRAY
 );
 
 // Селектор для получения продуктов текущего поставщика
 export const selectCurrentSupplierProducts = createSelector(
     [selectSupplierProducts, selectCurrentSupplierId],
-    (productsMap, currentId) => currentId ? productsMap[currentId] || [] : []
+    (productsMap, currentId) => currentId ? productsMap[currentId] || EMPTY_ARRAY : EMPTY_ARRAY
 );
 
 // Вспомогательный селектор для объединения данных поставщика и его продуктов
@@ -92,16 +163,24 @@ export const selectBestFeedbacks = createSelector(
         (state, supplierId, limit) => limit || 2
     ],
     (supplierProducts, allFeedbacks, limit) => {
+        if (!Array.isArray(supplierProducts)) {
+            return EMPTY_ARRAY;
+        }
+        
         const feedbacks = supplierProducts
             .filter((product) => product?.id)
             .flatMap((product) => {
                 const productFeedbacks = allFeedbacks[product.id] || [];
-                return productFeedbacks.map((feedback) => ({
+                return Array.isArray(productFeedbacks) ? productFeedbacks.map((feedback) => ({
                     ...feedback,
                     productId: product.id,
                     productName: product.name,
-                }));
+                })) : [];
             });
+
+        if (!Array.isArray(feedbacks) || feedbacks.length === 0) {
+            return EMPTY_ARRAY;
+        }
 
         const sortedFeedbacks = feedbacks.sort((a, b) => {
             if (b.rating !== a.rating) {
@@ -110,7 +189,7 @@ export const selectBestFeedbacks = createSelector(
             return new Date(b.createdAt) - new Date(a.createdAt);
         });
 
-        return sortedFeedbacks.slice(0, limit).map((feedback) => ({
+        return Array.isArray(sortedFeedbacks) ? sortedFeedbacks.slice(0, limit).map((feedback) => ({
             id: feedback.id,
             rating: feedback.rating,
             comment: feedback.comment,
@@ -118,56 +197,115 @@ export const selectBestFeedbacks = createSelector(
             userName: feedback.client?.name || 'Клиент',
             productId: feedback.productId,
             productName: feedback.productName,
-        }));
+        })) : [];
     }
 );
 
-export const selectSupplierRating = (state, supplierId) =>
-    state.suppliers?.ratings[supplierId]?.rating || 0;
+export const selectMemoizedSupplierProducts = createSelector(
+    [selectSupplierProducts, (_, supplierId) => supplierId],
+    (productsGetter, supplierId) => {
+        const products = productsGetter || [];
+        return products;
+    }
+);
 
-export const selectSupplierTotalFeedbacks = (state, supplierId) =>
-    state.suppliers?.ratings[supplierId]?.totalFeedbacks || 0;
-
-
+/**
+ * Селектор для получения всех отзывов поставщика с исправлением проблемы мемоизации
+ * и корректной обработкой порядка загрузки данных
+ */
 export const selectAllSupplierFeedbacks = createSelector(
     [
-        selectSupplierProducts,
-        selectFeedbackState,
-        (state, supplierId) => supplierId
+        (state) => state.feedback?.items || {},
+        (state) => state.suppliers?.supplierProducts || {},
+        (state) => state.feedback?.supplierLoadedIds || EMPTY_ARRAY,
+        (_, supplierId) => supplierId
     ],
-    (supplierProducts, feedbackState, supplierId) => {
-        // Получаем все ID продуктов поставщика
-        const productIds = supplierProducts
-            .filter(product => product && product.supplierId === parseInt(supplierId))
+    (feedbackItems, supplierProducts, supplierLoadedIds, supplierId) => {
+        // Возвращаем пустой массив, если нет ключевых данных
+        if (!supplierId || !feedbackItems || !supplierProducts) {
+            return EMPTY_ARRAY;
+        }
+
+        // Преобразуем ID к числу
+        const numericSupplierId = Number(supplierId);
+
+        // Получаем массив продуктов поставщика (с защитой от undefined)
+        const products = supplierProducts[numericSupplierId] || [];
+
+        // Проверяем, загружены ли отзывы для поставщика
+        const isSupplierFeedbacksLoaded = Array.isArray(supplierLoadedIds) &&
+            supplierLoadedIds.includes(numericSupplierId);
+
+        // Отладочная информация
+        if (process.env.NODE_ENV === 'development') {
+            console.log('selectAllSupplierFeedbacks:', {
+                supplierId: numericSupplierId,
+                isLoaded: isSupplierFeedbacksLoaded,
+                productsCount: products.length,
+                feedbackItemsCount: Object.keys(feedbackItems).length,
+                productsIDs: Array.isArray(products) ? products.map(p => p.id) : []
+            });
+        }
+
+        // Возвращаем пустой массив, если:
+        // 1. Отзывы не были загружены ИЛИ
+        // 2. У поставщика нет продуктов
+        if (!isSupplierFeedbacksLoaded || !Array.isArray(products) || products.length === 0) {
+            return EMPTY_ARRAY;
+        }
+
+        // Фильтруем только продукты этого поставщика и извлекаем их ID
+        const productIds = products
+            .filter(product => product && product.id && product.supplierId === numericSupplierId)
             .map(product => product.id);
 
-        // Собираем все отзывы по этим продуктам
-        const allFeedbacks = [];
+        // Если нет ID продуктов, возвращаем пустой массив
+        if (productIds.length === 0) {
+            return [];
+        }
 
-        productIds.forEach(productId => {
-            const productFeedbacks = feedbackState.items[productId] || [];
-
-            // Добавляем дополнительную информацию к каждому отзыву
-            const enrichedFeedbacks = productFeedbacks.map(feedback => {
-                // Найдем информацию о продукте
-                const product = supplierProducts.find(p => p.id === productId);
-
-                return {
-                    ...feedback,
-                    productId,
-                    productName: product ? product.name : 'Продукт',
-                };
-            });
-
-            allFeedbacks.push(...enrichedFeedbacks);
+        // Создаем карту продуктов для быстрого поиска
+        const productsMap = {};
+        products.forEach(product => {
+            if (product && product.id) {
+                productsMap[product.id] = product;
+            }
         });
 
-        // Сортируем отзывы: сначала по рейтингу, затем по дате создания
-        return allFeedbacks.sort((a, b) => {
+        // Результирующий массив отзывов
+        let allFeedbacks = [];
+
+        // Для каждого продукта собираем отзывы
+        productIds.forEach(productId => {
+            // Проверяем, что отзывы для продукта загружены
+            const productFeedbacks = feedbackItems[productId] || [];
+
+            if (productFeedbacks.length > 0) {
+                // Добавляем информацию о продукте к каждому отзыву
+                const enrichedFeedbacks = productFeedbacks.map(feedback => {
+                    const product = productsMap[productId];
+
+                    return {
+                        ...feedback,
+                        productId,
+                        productName: product ? product.name : 'Продукт',
+                    };
+                });
+
+                // Добавляем обогащенные отзывы в общий массив
+                allFeedbacks = allFeedbacks.concat(enrichedFeedbacks);
+            }
+        });
+
+        // Сортируем отзывы по рейтингу и дате
+        const sortedFeedbacks = allFeedbacks.sort((a, b) => {
             if (b.rating !== a.rating) {
                 return b.rating - a.rating;
             }
             return new Date(b.createdAt) - new Date(a.createdAt);
         });
+
+        // Ограничиваем количество отзывов для производительности
+        return Array.isArray(sortedFeedbacks) ? sortedFeedbacks.slice(0, 20) : EMPTY_ARRAY;
     }
 );

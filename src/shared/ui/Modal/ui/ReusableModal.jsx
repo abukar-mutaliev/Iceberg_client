@@ -44,8 +44,10 @@ export const ReusableModal = ({
                               }) => {
     const [keyboardVisible, setKeyboardVisible] = useState(false);
     const [isClosing, setIsClosing] = useState(false);
-    const translateY = useRef(new Animated.Value(0)).current;
+    const [showModal, setShowModal] = useState(visible);
+    const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
     const modalHeight = useRef(SCREEN_HEIGHT * (height / 100));
+    const [contentReady, setContentReady] = useState(false);
 
     // Настройка PanResponder для свайпа
     const panResponder = useRef(
@@ -73,11 +75,48 @@ export const ReusableModal = ({
         })
     ).current;
 
+    useEffect(() => {
+        let timer;
+        if (visible) {
+            // Сначала покажем модальное окно
+            setShowModal(true);
+            setIsClosing(false);
+
+            // Затем запустим анимацию открытия
+            Animated.timing(translateY, {
+                toValue: 0,
+                duration: 300,
+                useNativeDriver: true,
+            }).start(() => {
+                // И только после завершения анимации покажем содержимое
+                timer = setTimeout(() => {
+                    setContentReady(true);
+                }, 50);
+            });
+        } else {
+            // При закрытии сначала скрываем содержимое
+            setContentReady(false);
+
+            // Затем с небольшой задержкой начинаем закрытие
+            if (!isClosing && showModal) {
+                timer = setTimeout(() => {
+                    handleModalClose();
+                }, 50);
+            }
+        }
+
+        return () => {
+            if (timer) clearTimeout(timer);
+        };
+    }, [visible, translateY]);
+
     // Отслеживание клавиатуры
     useEffect(() => {
         const keyboardDidShowListener = Keyboard.addListener(
             Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
-            () => {
+            (event) => {
+                // Запоминаем высоту клавиатуры для корректировки размеров модального окна
+                const keyboardHeight = event.endCoordinates.height;
                 setKeyboardVisible(true);
             }
         );
@@ -94,11 +133,20 @@ export const ReusableModal = ({
         };
     }, []);
 
-    // Сброс анимации при изменении видимости
+    // Управление анимацией при изменении видимости
     useEffect(() => {
         if (visible) {
+            setShowModal(true);
             setIsClosing(false);
-            translateY.setValue(0);
+            // Анимация открытия снизу вверх
+            Animated.timing(translateY, {
+                toValue: 0,
+                duration: 300,
+                useNativeDriver: true,
+            }).start();
+        } else if (!isClosing && showModal) {
+            // Если модалка видима, но должна закрыться
+            handleModalClose();
         }
     }, [visible, translateY]);
 
@@ -106,26 +154,27 @@ export const ReusableModal = ({
     const handleModalClose = () => {
         if (!isClosing) {
             setIsClosing(true);
-            Keyboard.dismiss();
+            setContentReady(false);
 
-            Animated.timing(translateY, {
-                toValue: modalHeight.current,
-                duration: 300,
-                useNativeDriver: true,
-            }).start(() => {
-                if (onClose && typeof onClose === "function") {
-                    onClose();
-                }
-                setIsClosing(false);
-            });
+            setTimeout(() => {
+                Keyboard.dismiss();
+
+                Animated.timing(translateY, {
+                    toValue: modalHeight.current,
+                    duration: 300,
+                    useNativeDriver: true,
+                }).start(() => {
+                    if (onClose && typeof onClose === "function") {
+                        onClose();
+                    }
+                    setIsClosing(false);
+                    setShowModal(false);
+                });
+            }, 50);
         }
     };
 
-    // Обработчики нажатия
-    const handleOutsidePress = (event) => {
-        event.stopPropagation();
-    };
-
+    // Обработчик нажатия на оверлей (тёмную область вокруг модального окна)
     const handleOverlayPress = () => {
         if (!keyboardVisible) {
             handleModalClose();
@@ -134,9 +183,14 @@ export const ReusableModal = ({
         }
     };
 
-    // Компонент заголовка
+    // Обработчик нажатия внутри модального окна для скрытия клавиатуры
+    const handleModalPress = () => {
+        Keyboard.dismiss();
+    };
+
+    // Компонент заголовка с возможностью свайпа
     const ModalHeader = () => (
-        <View style={styles.header}>
+        <View style={styles.header} {...panResponder.panHandlers}>
             <Text style={styles.headerTitle}>{title}</Text>
             <TouchableOpacity
                 style={styles.closeButton}
@@ -151,9 +205,9 @@ export const ReusableModal = ({
 
     return (
         <Modal
-            visible={visible}
+            visible={showModal}
             transparent={true}
-            animationType="fade"
+            animationType="none"
             onRequestClose={() => {
                 if (keyboardVisible) {
                     Keyboard.dismiss();
@@ -164,10 +218,12 @@ export const ReusableModal = ({
             statusBarTranslucent={true}
         >
             <View style={styles.container}>
+                {/* Оверлей (темная область вокруг модального окна) */}
                 <TouchableWithoutFeedback onPress={handleOverlayPress}>
                     <View style={styles.modalOverlay} />
                 </TouchableWithoutFeedback>
 
+                {/* Модальное окно с анимацией */}
                 <Animated.View
                     style={[
                         styles.modalContent,
@@ -178,27 +234,31 @@ export const ReusableModal = ({
                         additionalStyles,
                     ]}
                 >
-                    <View style={styles.dragHandle} {...panResponder.panHandlers} />
+                    {/* Заголовок модального окна */}
+                    <ModalHeader />
 
-                    <TouchableWithoutFeedback onPress={handleOutsidePress}>
-                        <View style={{ flex: 1 }}>
-                            <ModalHeader />
-
-                            <KeyboardAvoidingView
-                                behavior={Platform.OS === "ios" ? "padding" : undefined}
-                                style={{ flex: 1 }}
-                                keyboardVerticalOffset={Platform.OS === "ios" ? 30 : 0}
-                            >
-                                <ScrollView
-                                    style={styles.scrollView}
-                                    keyboardShouldPersistTaps="handled"
-                                    contentContainerStyle={{ paddingBottom: 20 }}
-                                >
-                                    {children}
-                                </ScrollView>
-                            </KeyboardAvoidingView>
+                    {/* Основное содержимое модального окна */}
+                    <KeyboardAvoidingView
+                        behavior={Platform.OS === "ios" ? "padding" : undefined}
+                        style={{ flex: 1 }}
+                        keyboardVerticalOffset={Platform.OS === "ios" ? 30 : 0}
+                    >
+                        {/* Используем обычный View вместо ScrollView для предотвращения конфликтов с FlatList */}
+                        <View style={styles.contentContainer}>
+                            {contentReady ? (
+                                // Оборачиваем содержимое в TouchableWithoutFeedback для скрытия клавиатуры
+                                <TouchableWithoutFeedback onPress={handleModalPress} accessible={false}>
+                                    <View style={{ flex: 1 }}>
+                                        {children}
+                                    </View>
+                                </TouchableWithoutFeedback>
+                            ) : (
+                                <View style={styles.loadingContainer}>
+                                    {/* Заглушка во время загрузки содержимого */}
+                                </View>
+                            )}
                         </View>
-                    </TouchableWithoutFeedback>
+                    </KeyboardAvoidingView>
                 </Animated.View>
             </View>
         </Modal>
@@ -221,23 +281,25 @@ const styles = StyleSheet.create({
         borderTopLeftRadius: 16,
         borderTopRightRadius: 16,
         overflow: "hidden",
-    },
-    dragHandle: {
-        width: 40,
-        height: 5,
-        backgroundColor: "#ccc",
-        borderRadius: 2.5,
-        alignSelf: "center",
-        marginTop: 8,
-        marginBottom: 8,
+        // Тень для iOS
+        shadowColor: "#000",
+        shadowOffset: {
+            width: 0,
+            height: -2,
+        },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+        // Тень для Android
+        elevation: 5,
     },
     header: {
-        height: 38,
+        height: 50,
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
         borderBottomWidth: 0.5,
         borderBottomColor: "#EBEBF0",
+        paddingTop: 10,
     },
     headerTitle: {
         fontWeight: "600",
@@ -252,8 +314,14 @@ const styles = StyleSheet.create({
         justifyContent: "center",
         padding: 5,
     },
-    scrollView: {
+      contentContainer: {
+    flex: 1,
+  },
+    loadingContainer: {
         flex: 1,
+        minHeight: 200,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
 });
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { downloadPDFFile } from '../../../shared/lib/fileUtils';
 import {
     fetchMyOrders,
     fetchStaffOrders,
@@ -7,10 +8,14 @@ import {
     fetchOrdersStats,
     updateOrderStatus,
     assignOrder,
+    takeOrder as takeOrderThunk,
+    completeOrderStage,
     cancelOrder,
     createOrderForClient,
     bulkUpdateOrders,
     exportOrders,
+    pickupOrder,
+    fetchAvailableOrdersForPickup,
     clearError,
     clearSpecificError,
     clearCache,
@@ -24,32 +29,70 @@ import {
     removeOrderFromList
 } from '../model/slice';
 
-import orderSelectors from '../model/selectors';
-import OrderService from '@shared/services/OrderService';
+import {
+    selectMyOrders,
+    selectStaffOrders,
+    selectOrderDetails,
+    selectOrdersStats,
+    selectOrdersUIState,
+    selectOrderOperations,
+    selectStaffOrdersFilters,
+    selectOrdersPreferences,
+    selectOrderNotifications,
+    selectActiveOrderNotifications,
+    selectOrderAccessRights,
+    selectOrderById,
+    selectOrderDetailsFormatted,
+    selectIsOrderLoading,
+    selectFilteredMyOrders,
+    selectFilteredStaffOrders,
+    selectSortedOrders,
+    selectOrdersStatsFormatted,
+    selectOrdersDashboardData,
+    selectOrdersStatsLoading,
+    selectMyOrdersStats,
+    selectStaffOrdersStats,
+    selectOrdersAnalytics,
+    selectOrderNotificationsByType,
+    selectOrderNotificationsByOrderId,
+    selectIsBulkOperating,
+    selectIsExporting
+} from '../model/selectors';
+import { OrderApi } from '../api';
+import {
+    getStatusLabel,
+    getStatusColor,
+    formatOrderNumber,
+    canCancelOrder as canCancelOrderUtil,
+    canLeaveReview as canLeaveReviewUtil,
+    getAvailableStatuses,
+    calculateEstimatedDelivery
+} from '../lib/utils';
 
 // ===== ОСНОВНОЙ ХУК ДЛЯ РАБОТЫ С ЗАКАЗАМИ =====
 export const useOrders = () => {
     const dispatch = useDispatch();
     const userRole = useSelector(state => state.auth?.user?.role);
-    const accessRights = useSelector(orderSelectors.selectOrderAccessRights);
+    const accessRights = useSelector(selectOrderAccessRights);
 
     // Основные данные
-    const myOrders = useSelector(orderSelectors.selectMyOrders);
-    const staffOrders = useSelector(orderSelectors.selectStaffOrders);
-    const orderDetails = useSelector(orderSelectors.selectOrderDetails);
-    const stats = useSelector(orderSelectors.selectOrdersStats);
+    const myOrders = useSelector(selectMyOrders);
+    const staffOrders = useSelector(selectStaffOrders);
+    const orderDetails = useSelector(selectOrderDetails);
+    const stats = useSelector(selectOrdersStats);
+    const availableOrders = useSelector(state => state.order?.availableOrders || { data: [], loading: false, error: null });
 
     // Состояния загрузки
-    const loading = useSelector(orderSelectors.selectOrdersUIState);
-    const operations = useSelector(orderSelectors.selectOrderOperations);
+    const loading = useSelector(selectOrdersUIState);
+    const operations = useSelector(selectOrderOperations);
 
     // Фильтры и настройки
-    const staffFilters = useSelector(orderSelectors.selectStaffOrdersFilters);
-    const preferences = useSelector(orderSelectors.selectOrdersPreferences);
+    const staffFilters = useSelector(selectStaffOrdersFilters);
+    const preferences = useSelector(selectOrdersPreferences);
 
     // Уведомления
-    const notifications = useSelector(orderSelectors.selectOrderNotifications);
-    const activeNotifications = useSelector(orderSelectors.selectActiveOrderNotifications);
+    const notifications = useSelector(selectOrderNotifications);
+    const activeNotifications = useSelector(selectActiveOrderNotifications);
 
     // ===== ЗАГРУЗКА ДАННЫХ =====
 
@@ -109,6 +152,32 @@ export const useOrders = () => {
         }
     }, [dispatch, accessRights.canAssignOrders]);
 
+    const takeOrder = useCallback(async (orderId, reason = null) => {
+        if (!accessRights.canAssignOrders) {
+            throw new Error('Access denied: Cannot take orders');
+        }
+
+        try {
+            const result = await dispatch(takeOrderThunk({ orderId, reason })).unwrap();
+            return { success: true, data: result };
+        } catch (error) {
+            return { success: false, error: error.message || 'Ошибка при взятии заказа в работу' };
+        }
+    }, [dispatch, accessRights.canAssignOrders]);
+
+    const completeOrderStageAction = useCallback(async (orderId, comment = null) => {
+        if (!accessRights.canUpdateOrderStatus) {
+            throw new Error('Access denied: Cannot complete order stage');
+        }
+
+        try {
+            const result = await dispatch(completeOrderStage({ orderId, comment })).unwrap();
+            return { success: true, data: result };
+        } catch (error) {
+            return { success: false, error: error.message || 'Ошибка при завершении этапа заказа' };
+        }
+    }, [dispatch, accessRights.canUpdateOrderStatus]);
+
     const cancelOrderById = useCallback(async (orderId, cancellationData, isMyOrder = false) => {
         const canCancel = isMyOrder ? accessRights.canCancelMyOrders : accessRights.canCancelOrders;
 
@@ -141,6 +210,27 @@ export const useOrders = () => {
         }
     }, [dispatch, accessRights.canCreateOrders]);
 
+    const pickupOrderFromNearby = useCallback(async (orderId, pickupData) => {
+        if (!accessRights.canAssignOrders) {
+            throw new Error('Access denied: Cannot pickup orders');
+        }
+
+        try {
+            const result = await dispatch(pickupOrder({ orderId, pickupData })).unwrap();
+            return { success: true, data: result };
+        } catch (error) {
+            return { success: false, error: error.message || 'Ошибка при принятии заказа' };
+        }
+    }, [dispatch, accessRights.canAssignOrders]);
+
+    const loadAvailableOrders = useCallback((params = {}) => {
+        if (!accessRights.canViewStaffOrders) {
+            console.warn('Access denied: Cannot view available orders');
+            return Promise.reject(new Error('Access denied'));
+        }
+        return dispatch(fetchAvailableOrdersForPickup(params));
+    }, [dispatch, accessRights.canViewStaffOrders]);
+
     // ===== МАССОВЫЕ ОПЕРАЦИИ =====
 
     const bulkUpdate = useCallback(async (bulkData) => {
@@ -168,6 +258,45 @@ export const useOrders = () => {
             return { success: false, error: error.message || 'Ошибка при экспорте' };
         }
     }, [dispatch, accessRights.canExportOrders]);
+
+    const downloadInvoice = useCallback(async (orderId) => {
+        if (!accessRights.canViewStaffOrders) {
+            throw new Error('Access denied: Cannot download invoice');
+        }
+
+        try {
+            console.log('Начинаем скачивание накладной для заказа:', orderId);
+            
+            // Сначала пробуем альтернативный метод с fetch API
+            let response;
+            try {
+                console.log('Пробуем downloadInvoiceDirect...');
+                response = await OrderApi.downloadInvoiceDirect(orderId);
+            } catch (directError) {
+                console.warn('downloadInvoiceDirect не сработал, пробуем обычный метод:', directError.message);
+                // Fallback к обычному методу
+                response = await OrderApi.downloadInvoice(orderId);
+            }
+            
+            const filename = `nakladnaya_zakaz_${orderId}_${new Date().toISOString().split('T')[0]}.pdf`;
+            
+            console.log('Получен ответ от API, тип:', typeof response, 'является Blob:', response instanceof Blob);
+            
+            if (!(response instanceof Blob)) {
+                throw new Error('Ответ сервера не является PDF файлом');
+            }
+            
+            console.log('Размер Blob:', response.size, 'байт');
+            
+            // Обрабатываем скачивание файла напрямую
+            await downloadPDFFile(response, filename);
+            
+            return { success: true, filename };
+        } catch (error) {
+            console.error('Ошибка при скачивании накладной:', error);
+            return { success: false, error: error.message || 'Ошибка при скачивании накладной' };
+        }
+    }, [accessRights.canViewStaffOrders]);
 
     // ===== ФИЛЬТРЫ И НАСТРОЙКИ =====
 
@@ -250,6 +379,7 @@ export const useOrders = () => {
         staffOrders,
         orderDetails,
         stats,
+        availableOrders,
 
         // Состояния
         loading,
@@ -269,16 +399,21 @@ export const useOrders = () => {
         loadStaffOrders,
         loadOrderDetails,
         loadOrdersStats,
+        loadAvailableOrders,
 
         // Управление заказами
         updateStatus,
         assignOrderToEmployee,
+        takeOrder,
+        completeOrderStage: completeOrderStageAction,
         cancelOrderById,
         createOrder,
+        pickupOrderFromNearby,
 
         // Массовые операции
         bulkUpdate,
         exportOrdersData,
+        downloadInvoice,
 
         // Фильтры и настройки
         setFilters,
@@ -298,10 +433,10 @@ export const useOrders = () => {
 // ===== ХУК ДЛЯ РАБОТЫ С КОНКРЕТНЫМ ЗАКАЗОМ =====
 export const useOrder = (orderId) => {
     const dispatch = useDispatch();
-    const order = useSelector(state => orderSelectors.selectOrderById(state, orderId));
-    const orderDetails = useSelector(orderSelectors.selectOrderDetailsFormatted);
-    const isLoading = useSelector(state => orderSelectors.selectIsOrderLoading(state, orderId));
-    const accessRights = useSelector(orderSelectors.selectOrderAccessRights);
+    const order = useSelector(state => selectOrderById(state, orderId));
+    const orderDetails = useSelector(selectOrderDetailsFormatted);
+    const isLoading = useSelector(state => selectIsOrderLoading(state, orderId));
+    const accessRights = useSelector(selectOrderAccessRights);
 
     // Загружаем детали заказа
     const loadDetails = useCallback((forceRefresh = false) => {
@@ -365,15 +500,15 @@ export const useOrder = (orderId) => {
         return {
             ...currentOrder,
             // Добавляем вычисляемые поля
-            statusLabel: OrderService.getStatusLabel(currentOrder.status),
-            statusColor: OrderService.getStatusColor(currentOrder.status),
-            formattedOrderNumber: OrderService.formatOrderNumber(currentOrder.orderNumber),
-            canCancel: OrderService.canCancelOrder(currentOrder.status, accessRights.canCancelMyOrders ? 'CLIENT' : 'STAFF'),
-            canLeaveReview: OrderService.canLeaveReview(currentOrder.status),
-            availableStatuses: OrderService.getAvailableStatuses(currentOrder.status),
+            statusLabel: getStatusLabel(currentOrder.status),
+            statusColor: getStatusColor(currentOrder.status),
+            formattedOrderNumber: formatOrderNumber(currentOrder.orderNumber),
+            canCancel: canCancelOrderUtil(currentOrder.status, accessRights.canCancelMyOrders ? 'CLIENT' : 'STAFF'),
+            canLeaveReview: canLeaveReviewUtil(currentOrder.status),
+            availableStatuses: getAvailableStatuses(currentOrder.status),
             estimatedDelivery: currentOrder.expectedDeliveryDate
                 ? new Date(currentOrder.expectedDeliveryDate)
-                : OrderService.calculateEstimatedDelivery(currentOrder),
+                : calculateEstimatedDelivery(currentOrder),
             formattedAmount: new Intl.NumberFormat('ru-RU', {
                 style: 'currency',
                 currency: 'RUB'
@@ -405,7 +540,7 @@ export const useOrdersAutoLoad = (options = {}) => {
 
     const dispatch = useDispatch();
     const userRole = useSelector(state => state.auth?.user?.role);
-    const accessRights = useSelector(orderSelectors.selectOrderAccessRights);
+    const accessRights = useSelector(selectOrderAccessRights);
     const intervalRef = useRef(null);
 
     // Загрузка при монтировании
@@ -486,20 +621,62 @@ export const useOrdersAutoLoad = (options = {}) => {
 // ===== ХУК ДЛЯ ФИЛЬТРАЦИИ И ПОИСКА ЗАКАЗОВ =====
 export const useOrdersFilter = () => {
     const dispatch = useDispatch();
-    const myOrders = useSelector(orderSelectors.selectMyOrders);
-    const staffOrders = useSelector(orderSelectors.selectStaffOrders);
-    const currentFilters = useSelector(orderSelectors.selectStaffOrdersFilters);
+    const myOrders = useSelector(selectMyOrders);
+    const staffOrders = useSelector(selectStaffOrders);
+    const currentFilters = useSelector(selectStaffOrdersFilters);
 
+    // Прямые функции фильтрации без неправильного использования хуков
     const filterMyOrders = useCallback((filters) => {
-        return useSelector(state => orderSelectors.selectFilteredMyOrders(state, filters));
-    }, []);
+        if (!filters || Object.keys(filters).length === 0) return myOrders;
+        
+        return myOrders.filter(order => {
+            if (filters.status && order.status !== filters.status) return false;
+            if (filters.search) {
+                const searchTerm = filters.search.toLowerCase();
+                const searchableText = [
+                    order.orderNumber,
+                    order.comment,
+                    order.deliveryAddress
+                ].filter(Boolean).join(' ').toLowerCase();
+                
+                if (!searchableText.includes(searchTerm)) return false;
+            }
+            return true;
+        });
+    }, [myOrders]);
 
-    const filterStaffOrders = useCallback(() => {
-        return useSelector(orderSelectors.selectFilteredStaffOrders);
-    }, []);
+    const filterStaffOrders = useCallback((filters = null) => {
+        const filtersToUse = filters || currentFilters;
+        if (!filtersToUse || Object.keys(filtersToUse).length === 0) return staffOrders;
+        
+        return staffOrders.filter(order => {
+            if (filtersToUse.status && order.status !== filtersToUse.status) return false;
+            if (filtersToUse.warehouseId && order.warehouseId !== filtersToUse.warehouseId) return false;
+            if (filtersToUse.districtId && order.client?.districtId !== filtersToUse.districtId) return false;
+            if (filtersToUse.assignedToMe && !order.assignedToMe) return false;
+            if (filtersToUse.priority && !isPriorityOrder(order)) return false;
+            return true;
+        });
+    }, [staffOrders, currentFilters]);
 
     const sortOrders = useCallback((orders, sortBy = 'createdAt', sortOrder = 'desc') => {
-        return useSelector(state => orderSelectors.selectSortedOrders(state, orders, sortBy, sortOrder));
+        if (!Array.isArray(orders)) return [];
+        
+        const sorted = [...orders].sort((a, b) => {
+            let aValue = a[sortBy];
+            let bValue = b[sortBy];
+            
+            if (sortBy === 'createdAt' || sortBy === 'updatedAt') {
+                aValue = new Date(aValue);
+                bValue = new Date(bValue);
+            }
+            
+            if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1;
+            if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
+            return 0;
+        });
+        
+        return sorted;
     }, []);
 
     const setStaffFilters = useCallback((filters) => {
@@ -522,11 +699,28 @@ export const useOrdersFilter = () => {
                 order.comment,
                 order.deliveryAddress,
                 order.status,
-                OrderService.getStatusLabel(order.status)
+                getStatusLabel(order.status)
             ].filter(Boolean).join(' ').toLowerCase();
 
             return searchableText.includes(searchLower);
         });
+    }, []);
+
+    // Утилитарная функция для проверки приоритетности заказа
+    const isPriorityOrder = useCallback((order) => {
+        if (order.status === 'PENDING') {
+            return true;
+        }
+        
+        if (order.expectedDeliveryDate) {
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(23, 59, 59, 999);
+            
+            return new Date(order.expectedDeliveryDate) <= tomorrow;
+        }
+        
+        return false;
     }, []);
 
     return {
@@ -545,26 +739,42 @@ export const useOrdersFilter = () => {
 // ===== ХУК ДЛЯ СТАТИСТИКИ И АНАЛИТИКИ =====
 export const useOrdersAnalytics = () => {
     const dispatch = useDispatch();
-    const stats = useSelector(orderSelectors.selectOrdersStatsFormatted);
-    const myOrders = useSelector(orderSelectors.selectMyOrders);
-    const staffOrders = useSelector(orderSelectors.selectStaffOrders);
-    const dashboardData = useSelector(orderSelectors.selectOrdersDashboardData);
-    const loading = useSelector(orderSelectors.selectOrdersStatsLoading);
+    const stats = useSelector(selectOrdersStatsFormatted);
+    const myOrders = useSelector(selectMyOrders);
+    const staffOrders = useSelector(selectStaffOrders);
+    const dashboardData = useSelector(selectOrdersDashboardData);
+    const loading = useSelector(selectOrdersStatsLoading);
 
     const loadStats = useCallback((params = {}) => {
         return dispatch(fetchOrdersStats(params));
     }, [dispatch]);
 
+    const myOrdersAnalytics = useSelector(selectMyOrdersStats);
+    const staffOrdersAnalytics = useSelector(selectStaffOrdersStats);
+
     const getMyOrdersAnalytics = useCallback(() => {
-        return useSelector(orderSelectors.selectMyOrdersStats);
-    }, []);
+        return myOrdersAnalytics;
+    }, [myOrdersAnalytics]);
 
     const getStaffOrdersAnalytics = useCallback(() => {
-        return useSelector(orderSelectors.selectStaffOrdersStats);
-    }, []);
+        return staffOrdersAnalytics;
+    }, [staffOrdersAnalytics]);
 
     const getOrdersAnalytics = useCallback((orders) => {
-        return useSelector(state => orderSelectors.selectOrdersAnalytics(state, orders));
+        if (!Array.isArray(orders) || orders.length === 0) return null;
+        
+        const totalRevenue = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+        const averageOrderValue = totalRevenue / orders.length;
+        const completedOrders = orders.filter(order => order.status === 'DELIVERED');
+        const conversionRate = (completedOrders.length / orders.length) * 100;
+        
+        return {
+            totalOrders: orders.length,
+            totalRevenue,
+            averageOrderValue,
+            completedOrders: completedOrders.length,
+            conversionRate
+        };
     }, []);
 
     const calculateMetrics = useCallback((orders, period = 'month') => {
@@ -641,8 +851,8 @@ export const useOrdersAnalytics = () => {
 // ===== ХУК ДЛЯ УВЕДОМЛЕНИЙ =====
 export const useOrderNotifications = () => {
     const dispatch = useDispatch();
-    const notifications = useSelector(orderSelectors.selectOrderNotifications);
-    const activeNotifications = useSelector(orderSelectors.selectActiveOrderNotifications);
+    const notifications = useSelector(selectOrderNotifications);
+    const activeNotifications = useSelector(selectActiveOrderNotifications);
 
     const addNotification = useCallback((notification) => {
         const notificationWithId = {
@@ -713,12 +923,12 @@ export const useOrderNotifications = () => {
 
     // Фильтрация уведомлений
     const getNotificationsByType = useCallback((type) => {
-        return useSelector(state => orderSelectors.selectOrderNotificationsByType(state, type));
-    }, []);
+        return notifications.filter(notification => notification.type === type);
+    }, [notifications]);
 
     const getNotificationsByOrderId = useCallback((orderId) => {
-        return useSelector(state => orderSelectors.selectOrderNotificationsByOrderId(state, orderId));
-    }, []);
+        return notifications.filter(notification => notification.orderId === orderId);
+    }, [notifications]);
 
     return {
         notifications,
@@ -738,8 +948,8 @@ export const useOrderNotifications = () => {
 // ===== ХУК ДЛЯ МАССОВЫХ ОПЕРАЦИЙ =====
 export const useBulkOrderOperations = () => {
     const dispatch = useDispatch();
-    const accessRights = useSelector(orderSelectors.selectOrderAccessRights);
-    const isBulkOperating = useSelector(orderSelectors.selectIsBulkOperating);
+    const accessRights = useSelector(selectOrderAccessRights);
+    const isBulkOperating = useSelector(selectIsBulkOperating);
 
     const bulkUpdateStatus = useCallback(async (orderIds, status, comment = null) => {
         if (!accessRights.canBulkUpdate) {
@@ -807,8 +1017,8 @@ export const useBulkOrderOperations = () => {
 // ===== ХУК ДЛЯ ЭКСПОРТА =====
 export const useOrdersExport = () => {
     const dispatch = useDispatch();
-    const accessRights = useSelector(orderSelectors.selectOrderAccessRights);
-    const isExporting = useSelector(orderSelectors.selectIsExporting);
+    const accessRights = useSelector(selectOrderAccessRights);
+    const isExporting = useSelector(selectIsExporting);
 
     const exportOrders = useCallback(async (exportData) => {
         if (!accessRights.canExportOrders) {
@@ -832,7 +1042,7 @@ export const useOrdersExport = () => {
 
 export default {
     useOrders,
-    useOrder,
+    useOrder: useOrders,
     useOrdersAutoLoad,
     useOrdersFilter,
     useOrdersAnalytics,

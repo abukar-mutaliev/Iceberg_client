@@ -2,13 +2,13 @@ import React from 'react';
 import { View, Text, Modal, TouchableOpacity, TouchableWithoutFeedback, StyleSheet, FlatList } from 'react-native';
 import { useSelector } from 'react-redux';
 import { XCircle } from 'lucide-react-native';
-import { Color } from '@/app/styles/GlobalStyles';
+import { Color } from '@app/styles/GlobalStyles';
 import {
     selectCategories,
     selectCategoriesLoading,
     selectCategoriesError
-} from '@/entities/category';
-import { Loader } from '@/shared/ui/Loader';
+} from '@entities/category';
+import { Loader } from '@shared/ui/Loader';
 import { CategoryItem } from "@entities/category/ui/CategoryItem";
 
 export const CategoryModal = ({ isVisible, onClose, onSelectCategory }) => {

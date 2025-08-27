@@ -11,8 +11,8 @@ import {
 } from 'react-native';
 import { useDispatch } from 'react-redux';
 import { deleteProduct } from '@entities/product';
-import { useProductManagement } from '@entities/product/model/hooks/useProductManagement';
-import { useAuth } from '@entities/auth/model/hooks/useAuth';
+import { useProductManagement } from '@entities/product/hooks/useProductManagement';
+import { useAuth } from '@entities/auth/hooks/useAuth';
 
 export const ProductListScreen = () => {
     const dispatch = useDispatch();

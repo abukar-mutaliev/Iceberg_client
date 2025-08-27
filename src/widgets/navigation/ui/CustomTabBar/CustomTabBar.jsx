@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { View, Text, Pressable, StyleSheet, Animated, Dimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -6,63 +6,48 @@ import {
     SearchIcon,
     FavouritesIcon,
     CartIcon,
-    ProfileIcon
+    ProfileIcon,
+    ChatIcon,
 } from '@shared/ui/Icon/TabBarIcons';
+import { useCartAvailability } from '@entities/cart';
+import { useAuth } from '@entities/auth/hooks/useAuth';
 
 const { width } = Dimensions.get('window');
 
 export const CustomTabBar = ({ state, descriptors, navigation }) => {
     const insets = useSafeAreaInsets();
+    const { isCartAvailable } = useCartAvailability();
+    const { currentUser } = useAuth();
 
-    // Фильтруем скрытые вкладки (например, Catalog)
-    const visibleRoutes = state.routes.filter(route => route.name !== 'Catalog');
+    // Защита от множественных нажатий
+    const isNavigating = useRef(false);
+    const lastPressTime = useRef(0);
 
-    // Вычисляем ширину вкладки исходя из количества видимых вкладок
-    const tabWidth = width / visibleRoutes.length;
+    // Проверяем доступность вкладки заказов
+    const isOrdersAvailable = useMemo(() => {
+        return currentUser?.role === 'CLIENT';
+    }, [currentUser?.role]);
 
-    // Создаем динамический массив для анимаций на основе фактического количества вкладок
-    const visibleIndex = visibleRoutes.findIndex(route => route.key === state.routes[state.index].key);
-
-    const indicatorPosition = useRef(new Animated.Value(visibleIndex * tabWidth)).current;
-
-    // Инициализируем анимации только для видимых вкладок
-    const tabAnimations = visibleRoutes.map(() => ({
-        opacity: useRef(new Animated.Value(0.7)).current,
-        scale: useRef(new Animated.Value(1)).current,
-    }));
-
-    useEffect(() => {
-        // Находим индекс активной вкладки среди видимых вкладок
-        const activeVisibleIndex = visibleRoutes.findIndex(route => route.key === state.routes[state.index].key);
-
-        if (activeVisibleIndex >= 0) {
-            Animated.spring(indicatorPosition, {
-                toValue: activeVisibleIndex * tabWidth,
-                tension: 300,
-                friction: 35,
-                useNativeDriver: true,
-            }).start();
-
-            tabAnimations.forEach((tab, index) => {
-                Animated.parallel([
-                    Animated.timing(tab.opacity, {
-                        toValue: index === activeVisibleIndex ? 1 : 0.7,
-                        duration: 200,
-                        useNativeDriver: true,
-                    }),
-                    Animated.spring(tab.scale, {
-                        toValue: index === activeVisibleIndex ? 1.1 : 1,
-                        tension: 300,
-                        friction: 20,
-                        useNativeDriver: true,
-                    }),
-                ]).start();
-            });
-        }
-    }, [state.index, visibleRoutes]);
+    // Фильтруем скрытые вкладки
+    const visibleRoutes = useMemo(() => {
+        return state.routes.filter(route => {
+            if (route.name === 'Catalog') return false;
+            if (route.name === 'Favourites') return false; // Скрываем вкладку "Избранное"
+            if (route.name === 'Cart' && !isCartAvailable) return false;
+            if (route.name === 'Orders' && !isOrdersAvailable) return false;
+            if (route.name === 'ChatList' && !currentUser) return false;
+            return true;
+        });
+    }, [state.routes, isCartAvailable, isOrdersAvailable, currentUser]);
 
     const handleTabPress = (route, visibleIndex, actualIndex) => {
+        const now = Date.now();
         const isFocused = state.index === actualIndex;
+
+        // Защита от множественных нажатий
+        if (isNavigating.current || (now - lastPressTime.current < 300)) {
+            return;
+        }
 
         const event = navigation.emit({
             type: 'tabPress',
@@ -71,26 +56,16 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
         });
 
         if (!isFocused && !event.defaultPrevented) {
+            isNavigating.current = true;
+            lastPressTime.current = now;
+
             console.log('Tab pressed:', route.name);
-
-            // Анимация нажатия на вкладку
-            if (visibleIndex >= 0 && visibleIndex < tabAnimations.length) {
-                Animated.sequence([
-                    Animated.timing(tabAnimations[visibleIndex].scale, {
-                        toValue: 0.9,
-                        duration: 50,
-                        useNativeDriver: true,
-                    }),
-                    Animated.spring(tabAnimations[visibleIndex].scale, {
-                        toValue: 1.1,
-                        tension: 300,
-                        friction: 10,
-                        useNativeDriver: true,
-                    }),
-                ]).start();
-            }
-
             navigation.navigate(route.name);
+
+            // Сбрасываем флаг через небольшую задержку
+            setTimeout(() => {
+                isNavigating.current = false;
+            }, 300);
         }
     };
 
@@ -112,6 +87,8 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
                 return <CartIcon color={color} />;
             case 'ProfileTab':
                 return <ProfileIcon color={color} />;
+            case 'ChatList':
+                return <ChatIcon color={color} />;
             default:
                 return <HomeIcon color={color} />;
         }
@@ -130,6 +107,8 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
                 return 'Корзина';
             case 'ProfileTab':
                 return 'Кабинет';
+            case 'ChatList':
+                return 'Чаты';
             default:
                 return routeName;
         }
@@ -149,7 +128,6 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
                             label={getTabLabel(route.name)}
                             isActive={isActive}
                             onPress={() => handleTabPress(route, visibleIndex, actualIndex)}
-                            animation={tabAnimations[visibleIndex]}
                         />
                     );
                 })}
@@ -158,18 +136,15 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
     );
 };
 
-const TabItem = ({ icon, label, isActive, onPress, animation }) => {
+const TabItem = ({ icon, label, isActive, onPress }) => {
     return (
-        <Pressable onPress={onPress} style={styles.iconLayout}>
-            <Animated.View
-                style={[
-                    styles.iconContainer,
-                    {
-                        opacity: animation.opacity,
-                        transform: [{ scale: animation.scale }]
-                    }
-                ]}
-            >
+        <Pressable
+            onPress={onPress}
+            style={styles.iconLayout}
+            delayPressIn={0} // Убираем задержку нажатия
+            delayPressOut={0} // Убираем задержку отпускания
+        >
+            <View style={styles.iconContainer}>
                 {icon}
                 <View style={styles.textContainer}>
                     <Text style={[
@@ -179,7 +154,7 @@ const TabItem = ({ icon, label, isActive, onPress, animation }) => {
                         {label}
                     </Text>
                 </View>
-            </Animated.View>
+            </View>
         </Pressable>
     );
 };
@@ -197,15 +172,6 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: -2 },
         elevation: 8,
         position: 'relative',
-    },
-    indicator: {
-        position: 'absolute',
-        top: 5,
-        left: 10, // Отступ для центрирования
-        height: 3,
-        backgroundColor: "#3339b0",
-        borderRadius: 10,
-        zIndex: 1,
     },
     iconMenuHomeParent: {
         flexDirection: "row",

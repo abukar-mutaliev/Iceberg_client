@@ -2,7 +2,7 @@ import React, {useCallback} from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, PixelRatio, Keyboard, Platform } from 'react-native';
 import { Clock, X } from 'lucide-react-native';
 import { useDispatch, useSelector } from 'react-redux';
-import { Color, FontFamily, FontSize } from '@/app/styles/GlobalStyles';
+import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { removeSearchQuery, selectSearchHistoryItems } from "@entities/search";
 
 // Настройка масштабирования для адаптивности

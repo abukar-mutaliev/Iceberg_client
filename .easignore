@@ -1,0 +1,62 @@
+# Dependencies
+node_modules/
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+/android
+/ios
+
+# Testing
+coverage/
+__tests__/
+*.test.js
+*.spec.js
+
+# Development
+.git/
+.gitignore
+.env*
+.eslintrc*
+.prettierrc*
+.editorconfig
+.vscode/
+.idea/
+*.log
+
+# Build artifacts
+android/app/build/
+ios/build/
+*.apk
+*.aab
+*.ipa
+
+# Temporary files
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Documentation
+docs/
+*.md
+LICENSE
+
+# Unneeded assets
+src/assets/fonts/*.ttf
+src/assets/fonts/*.otf
+src/assets/images/
+src/assets/icons/
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# Misc
+*.bak
+*.tmp
+*.temp
+
+# Problematic files
+**/placeholder*.png

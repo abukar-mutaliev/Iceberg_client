@@ -1,0 +1,1 @@
+export { DistrictsManagementScreen } from './ui/DistrictManagementScreen/DistrictsManagementScreen';
