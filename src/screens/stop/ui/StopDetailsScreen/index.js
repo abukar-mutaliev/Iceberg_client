@@ -1,0 +1,1 @@
+export { StopDetailsScreen } from './ui/StopDetailsScreen';

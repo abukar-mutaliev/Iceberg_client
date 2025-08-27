@@ -1,0 +1,1 @@
+export EditProductModal  from './ui/EditProductModal';
