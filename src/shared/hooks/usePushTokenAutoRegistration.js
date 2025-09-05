@@ -25,6 +25,23 @@ export const usePushTokenAutoRegistration = () => {
         const success = await PushNotificationService.initializeForUser(user);
 
         console.log('Push notification initialization successful:', success);
+
+        if (success) {
+            try {
+                console.log('Getting FCM token...');
+                const token = await PushNotificationService.getFCMToken();
+                console.log('FCM token received:', !!token);
+                if (token) {
+                    console.log('Saving FCM token to server...');
+                    const saved = await PushNotificationService.saveTokenToServerSafe(token, PushNotificationService.deviceId, Platform.OS);
+                    console.log('FCM token saved:', saved);
+                } else {
+                    console.log('No FCM token received');
+                }
+            } catch (firebaseError) {
+                console.log('FCM token error:', firebaseError.message);
+            }
+        }
       } catch (e) {
         console.log('Registration error:', e.message);
         hasAttemptedRegistration.current = false;

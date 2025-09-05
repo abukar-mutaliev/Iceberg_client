@@ -157,7 +157,7 @@ class PushNotificationService {
 
             if (this.currentToken) {
                 console.log('Saving FCM token for user:', user.id);
-                await this.saveTokenToServerSafe(this.currentToken, this._deviceId, Platform.OS);
+                await this.saveTokenToServerSafe(this.currentToken, this.deviceId, Platform.OS);
             } else {
                 console.log('No current token available');
             }
@@ -254,7 +254,7 @@ class PushNotificationService {
                 this.currentToken = token;
                 await this.saveDeviceTokenLocally(token);
 
-                const saved = await this.saveTokenToServerSafe(token, this._deviceId, Platform.OS);
+                const saved = await this.saveTokenToServerSafe(token, this.deviceId, Platform.OS);
                 return token;
             }
 
@@ -536,7 +536,7 @@ class PushNotificationService {
                 return false;
             }
             
-            const result = await this.saveTokenToServerSafe(this.currentToken, this._deviceId, Platform.OS);
+            const result = await this.saveTokenToServerSafe(this.currentToken, this.deviceId, Platform.OS);
 
             return result;
         } catch (error) {
