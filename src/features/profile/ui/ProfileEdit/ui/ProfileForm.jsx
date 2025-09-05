@@ -37,14 +37,44 @@ const ProfileFormComponent = ({
         const isInitialRender = renderCountRef.current <= 2;
 
         if (Object.keys(initialValues).length > 0) {
+            // Убеждаемся, что поле gender имеет значение по умолчанию
+            const valuesWithDefaults = {
+                ...initialValues,
+                gender: initialValues.gender || 'MALE'
+            };
+
             if (isInitialRender) {
-                logData('ProfileForm: Установка начальных значений формы', { userType });
+                logData('ProfileForm: Установка начальных значений формы', {
+                    userType,
+                    initialValues,
+                    valuesWithDefaults,
+                    initialValuesKeys: Object.keys(initialValues),
+                    gender: initialValues.gender,
+                    finalGender: valuesWithDefaults.gender
+                });
             }
-            setFormValues(initialValues);
+            setFormValues(valuesWithDefaults);
+
+            // Для отладки gender поля
+            if (valuesWithDefaults.gender) {
+                console.log('ProfileForm: gender set in formValues', {
+                    gender: valuesWithDefaults.gender,
+                    formValuesGender: valuesWithDefaults.gender
+                });
+            }
         }
     }, [initialValues, userType]);
 
     const handleFieldChange = useCallback((fieldId, value) => {
+        // Для отладки gender поля
+        if (fieldId === 'gender') {
+            console.log('ProfileForm: handleFieldChange for gender', {
+                fieldId,
+                value,
+                valueType: typeof value
+            });
+        }
+
         setFormValues(prev => ({
             ...prev,
             [fieldId]: value
@@ -80,10 +110,18 @@ const ProfileFormComponent = ({
 
     const handleSave = useCallback(() => {
         if (validateForm()) {
-            logData('ProfileForm: Форма валидна, отправка данных', { formValues });
+            logData('ProfileForm: Форма валидна, отправка данных', {
+                formValues,
+                gender: formValues.gender,
+                formValuesKeys: Object.keys(formValues)
+            });
             onSave(formValues);
         } else {
-            logData('ProfileForm: Ошибка валидации формы', { formErrors });
+            logData('ProfileForm: Ошибка валидации формы', {
+                formErrors,
+                formValues,
+                gender: formValues.gender
+            });
         }
     }, [validateForm, formValues, onSave]);
 
@@ -111,20 +149,31 @@ const ProfileFormComponent = ({
             nestedScrollEnabled={true}
         >
             <View style={styles.formContainer}>
-                {sortedFields.map(field => (
-                    <DynamicFormField
-                        key={field.id}
-                        field={field}
-                        value={formValues[field.id]}
-                        onChange={handleFieldChange}
-                        editable={editableFields[field.id] || false}
-                        setEditable={(isEditable) => toggleFieldEditable(field.id, isEditable)}
-                        extraOptions={getExtraOptions(field.id)}
-                        error={formErrors[field.id]}
-                        scrollViewRef={scrollViewRef}
-                        onDropdownToggle={setHasOpenDropdown}
-                    />
-                ))}
+                {sortedFields.map(field => {
+                    // Для отладки gender поля
+                    if (field.id === 'gender') {
+                        console.log('ProfileForm: Rendering gender field', {
+                            field,
+                            value: formValues[field.id],
+                            formValuesGender: formValues.gender,
+                            fieldOptions: field.options
+                        });
+                    }
+                    return (
+                        <DynamicFormField
+                            key={field.id}
+                            field={field}
+                            value={formValues[field.id]}
+                            onChange={handleFieldChange}
+                            editable={editableFields[field.id] || false}
+                            setEditable={(isEditable) => toggleFieldEditable(field.id, isEditable)}
+                            extraOptions={getExtraOptions(field.id)}
+                            error={formErrors[field.id]}
+                            scrollViewRef={scrollViewRef}
+                            onDropdownToggle={setHasOpenDropdown}
+                        />
+                    );
+                })}
             </View>
 
             <ProfileSaveButton

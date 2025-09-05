@@ -14,11 +14,16 @@ import {
     Alert
 } from 'react-native';
 import {useDispatch, useSelector} from 'react-redux';
-import {login, clearError, setTokens, setUser} from '@entities/auth';
+import {login, clearError, setTokens, setUser, loadUserProfile} from '@entities/auth';
 import {selectEmail, selectPassword, setEmail, setPassword} from '@entities/auth';
 import {CustomTextInput} from '@shared/ui/CustomTextInput/CustomTextInput';
 import {clearProfile, fetchProfile} from '@entities/profile';
 import {normalize, normalizeFont} from "@shared/lib/normalize";
+
+// Импорт для отладки FCM
+if (__DEV__) {
+    import('../../../../../../debug-fcm-logs').catch(e => console.warn('Debug FCM logs not available:', e));
+}
 
 export const LoginForm = () => {
     const dispatch = useDispatch();
@@ -165,8 +170,10 @@ export const LoginForm = () => {
         }
 
         // Полный сброс состояния перед входом нового пользователя
+        console.log('🔄 Выполняем RESET_APP_STATE перед входом');
         dispatch({ type: 'RESET_APP_STATE' });
 
+        console.log('🔐 Начинаем процесс входа для пользователя:', localEmail);
         // Выполняем вход с обработкой результата
         dispatch(login({email: localEmail, password: localPassword}))
             .unwrap()
@@ -183,6 +190,48 @@ export const LoginForm = () => {
 
                     // Сразу запрашиваем профиль для нового пользователя
                     dispatch(fetchProfile());
+
+                    // Также загружаем полный профиль через useAuth
+                    dispatch(loadUserProfile());
+
+                    // Регистрируем FCM токен после успешного логина
+                    setTimeout(async () => {
+                        try {
+                            console.log('🔥 === НАЧАЛО РЕГИСТРАЦИИ FCM ТОКЕНА ПОСЛЕ ЛОГИНА ===');
+                            console.log('🔔 Пользователь ID:', result.user.id);
+                            console.log('🔔 Пользователь роль:', result.user.role);
+                            
+                            // Используем новый FCM сервис
+                            const FCMTokenService = require('@shared/services/FCMTokenService').default;
+                            const buildType = FCMTokenService.getBuildType();
+                            console.log('🔔 Build type:', buildType);
+
+                            // ТОЛЬКО FCM ТОКЕНЫ
+                            if (FCMTokenService.shouldUseFCM()) {
+                                console.log('✅ Build type поддерживает FCM:', buildType);
+                                
+                                // Инициализируем FCM сервис
+                                const initialized = await FCMTokenService.initializeForUser(result.user);
+                                
+                                if (initialized) {
+                                    console.log('🎉 УСПЕХ: FCM токен обработан!');
+                                } else {
+                                    console.error('❌ ОШИБКА: FCM инициализация не удалась!');
+                                }
+                            } else {
+                                console.log('🚫 Build type не поддерживает FCM:', buildType);
+                                console.log('ℹ️ Для FCM токенов соберите APK: eas build --platform android --profile preview');
+                            }
+                            
+                            console.log('🔥 === КОНЕЦ РЕГИСТРАЦИИ FCM ТОКЕНА ===');
+                        } catch (error) {
+                            console.error('❌ КРИТИЧЕСКАЯ ОШИБКА при регистрации FCM токена:', {
+                                message: error.message,
+                                stack: error.stack,
+                                name: error.name
+                            });
+                        }
+                    }, 3000); // Ждем 3 секунды для полной инициализации
                 }
             })
             .catch(err => {

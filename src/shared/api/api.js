@@ -22,8 +22,8 @@ const SILENT_ENDPOINTS = [
     '/api/notifications',
     '/api/health',
     "/api/banners",
-    "/api/banners",
-    "/api/push-tokens"
+    "/api/banners"
+    // "/api/push-tokens" - временно убрали для отладки сохранения токенов
 ];
 
 const apiDebugLog = (type, message, data) => {
@@ -629,61 +629,7 @@ export const validateTokensStatus = async () => {
     }
 };
 
-export const testAuth = async () => {
-    try {
-        const tokenStatus = await validateTokensStatus();
 
-        if (!tokenStatus.accessTokenValid && tokenStatus.refreshTokenValid) {
-            const tokens = await getStoredTokens();
-
-            if (tokens?.refreshToken) {
-                try {
-                    const response = await axios.post(
-                        `${getBaseUrl()}/api/auth/refresh-token`,
-                        { refreshToken: tokens.refreshToken },
-                        {
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Accept': 'application/json'
-                            }
-                        }
-                    );
-
-                    if (response.data) {
-                        let newTokens = null;
-
-                        if (response.data.data?.accessToken) {
-                            newTokens = {
-                                accessToken: response.data.data.accessToken,
-                                refreshToken: response.data.data.refreshToken
-                            };
-                        } else if (response.data.accessToken) {
-                            newTokens = {
-                                accessToken: response.data.accessToken,
-                                refreshToken: response.data.refreshToken
-                            };
-                        }
-
-                        if (newTokens) {
-                            await saveTokens(newTokens);
-                        }
-                    }
-                } catch (err) {
-                    console.error('Ошибка при тестовом обновлении токена:', err.message);
-                    if (err.response) {
-                        console.error('Данные ответа:', err.response.data);
-                    }
-                }
-            }
-        }
-
-        const updatedStatus = await validateTokensStatus();
-        return updatedStatus;
-    } catch (error) {
-        console.error('Ошибка тестирования авторизации:', error);
-        return { status: 'error', message: error.message };
-    }
-};
 
 export const testNetworkConnection = async () => {
     try {

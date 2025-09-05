@@ -48,74 +48,49 @@ export const ProfileEdit = () => {
 
     useEffect(() => {
         if (isDistrictsNeeded() && !districts?.length && !districtsLoading) {
-            logData('ProfileEdit: Принудительная загрузка районов', { userType });
             loadDistricts();
         }
         if (isWarehousesNeeded() && !warehouses?.length && !warehousesLoading) {
-            logData('ProfileEdit: Принудительная загрузка складов', { userType });
             loadWarehouses();
         }
     }, [isDistrictsNeeded, districts, districtsLoading, loadDistricts, userType, isWarehousesNeeded, warehouses, warehousesLoading, loadWarehouses]);
 
-    // Инициализация формы - ждем загрузки всех необходимых данных
     useEffect(() => {
         if (!profile) {
             setIsFormInitialized(false);
             return;
         }
 
-        // Проверяем, нужны ли нам районы и склады и загружены ли они
         const needsDistricts = isDistrictsNeeded();
         const needsWarehouses = isWarehousesNeeded();
         const districtsReady = !needsDistricts || (districts && districts.length > 0);
         const warehousesReady = !needsWarehouses || (warehouses && warehouses.length > 0);
 
-        logData('ProfileEdit: Проверка готовности данных', {
-            userType,
-            needsDistricts,
-            needsWarehouses,
-            districtsReady,
-            warehousesReady,
-            districtsCount: districts?.length || 0,
-            warehousesCount: warehouses?.length || 0,
-            districtsLoading,
-            warehousesLoading
-        });
 
-        // Инициализируем форму только когда все данные готовы
         if (districtsReady && warehousesReady && !districtsLoading && !warehousesLoading) {
-            logData('ProfileEdit: Инициализация значений формы', { userType });
 
             const initialValues = getInitialFormValues();
+            console.log('ProfileEdit: Инициализация формы', {
+                userType,
+                initialValues,
+                initialValuesKeys: Object.keys(initialValues),
+                profileGender: profile?.gender,
+                profileKeys: profile ? Object.keys(profile) : 'no profile'
+            });
             setFormInitialValues(initialValues);
             setIsFormInitialized(true);
 
-            logData('ProfileEdit: Форма инициализирована', {
-                initialValues,
-                districtsCount: districts?.length || 0
-            });
+
         } else {
             setIsFormInitialized(false);
-            logData('ProfileEdit: Ожидание загрузки данных', {
-                needsDistricts,
-                needsWarehouses,
-                districtsReady,
-                warehousesReady,
-                districtsLoading,
-                warehousesLoading
-            });
+
         }
     }, [profile, getInitialFormValues, userType, districts, districtsLoading, isDistrictsNeeded, warehouses, warehousesLoading, isWarehousesNeeded]);
 
-    // Мемоизируем дополнительные данные для формы
     const extraData = useMemo(() => {
         const data = {};
 
-        logData('ProfileEdit: Формирование extraData', {
-            userType,
-            districtsCount: districts?.length || 0,
-            warehousesCount: warehouses?.length || 0
-        });
+
 
         if (userType === 'driver') {
             data.districts = districts || [];
@@ -133,7 +108,6 @@ export const ProfileEdit = () => {
         return data;
     }, [userType, districts, warehouses]);
 
-    // Показываем индикатор загрузки если данные еще не готовы
     if (isLoading || !isFormInitialized) {
         const loadingText = isLoading ? 'Загрузка профиля...' :
             districtsLoading ? 'Загрузка районов...' :
@@ -150,9 +124,7 @@ export const ProfileEdit = () => {
         );
     }
 
-    // Проверка наличия ProfileForm
     if (!ProfileForm) {
-        console.error("ProfileForm компонент не определен или не импортирован корректно");
         return (
             <View style={styles.centered}>
                 <Text style={[styles.errorText, { fontSize: normalizeFont(16) }]}>
@@ -190,6 +162,7 @@ export const ProfileEdit = () => {
                 onScroll={handleScroll}
                 editableFields={editableFields}
                 toggleFieldEditable={toggleFieldEditable}
+                key={`profile-form-${userType}`}
             />
         </View>
     );
@@ -236,5 +209,4 @@ const styles = StyleSheet.create({
     },
 });
 
-// Экспортируем компонент
 export default ProfileEdit;

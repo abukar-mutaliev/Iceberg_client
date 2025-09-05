@@ -110,19 +110,7 @@ export const useProductBox = (product) => {
             minimumOrder: minimumOrderBoxes
         };
 
-        console.log('🔍 useProductBox processing:', {
-            productId: actualProduct.id,
-            name: actualProduct.name,
-            itemsPerBox,
-            stockQuantityBoxes,
-            availableBoxes,
-            totalItems,
-            availableItems,
-            boxPrice,
-            pricePerItem,
-            isActive,
-            isAvailable
-        });
+
 
         return {
             id: actualProduct.id,

@@ -204,16 +204,18 @@ export const updateProductWithImages = async (params) => {
                         }
                     }
                 } else if (key === 'warehouses') {
-                    // Особая обработка для складов (legacy)
+                    // Особая обработка для складов
                     console.log(`Обработка поля ${key}:`, {
                         исходноеЗначение: formData[key],
                         исходныйТип: typeof formData[key],
                         isArray: Array.isArray(formData[key])
                     });
-                    
+
                     if (Array.isArray(formData[key])) {
-                        // Если это массив складов, преобразуем в JSON
-                        formDataToSend.append('warehouses', JSON.stringify(formData[key]));
+                        // Если это массив складов, преобразуем в JSON строку для корректной передачи
+                        const warehousesJson = JSON.stringify(formData[key]);
+                        formDataToSend.append('warehouses', warehousesJson);
+                        console.log('Отправка массива складов как JSON:', warehousesJson);
                     } else {
                         // Если это строка "all" или другое значение
                         formDataToSend.append('warehouses', String(formData[key]));

@@ -12,7 +12,7 @@ import DeleteIcon from '@shared/ui/Icon/Profile/IconDelete';
 import RightArrowIcon from '@shared/ui/Icon/Common/IconRight';
 import DeleteAccountModal from './DeleteAccountModal';
 import {clearError, selectIsProfileDeleting, selectProfileError} from "@entities/profile";
-import PushNotificationDiagnostic from '@shared/ui/PushNotificationDiagnostic';
+import { NotificationSettings } from "@features/profile";
 
 export const SettingsScreen = () => {
     const navigation = useNavigation();
@@ -21,7 +21,6 @@ export const SettingsScreen = () => {
     const [isPasswordPressed, setIsPasswordPressed] = useState(false);
     const [isNotificationPressed, setIsNotificationPressed] = useState(false);
     const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
-    const [showPushDiagnostic, setShowPushDiagnostic] = useState(false);
 
     const isDeleting = useSelector(selectIsProfileDeleting);
 
@@ -66,26 +65,7 @@ export const SettingsScreen = () => {
         setIsDeleteModalVisible(true);
     };
 
-    const handlePushDiagnostic = () => {
-        setShowPushDiagnostic(!showPushDiagnostic);
-    };
 
-    if (showPushDiagnostic) {
-        return (
-            <SafeAreaView style={styles.container}>
-                <View style={styles.header}>
-                    <TouchableOpacity
-                        style={styles.backButton}
-                        onPress={handlePushDiagnostic}
-                    >
-                        <ArrowBackIcon width={24} height={24} color="rgba(0, 12, 255, 1)" />
-                    </TouchableOpacity>
-                    <Text style={styles.title}>Push Диагностика</Text>
-                </View>
-                <PushNotificationDiagnostic />
-            </SafeAreaView>
-        );
-    }
 
     return (
         <SafeAreaView style={styles.container}>
@@ -124,7 +104,7 @@ export const SettingsScreen = () => {
                         styles.menuItemText,
                         isNotificationPressed && styles.whiteText
                     ]}>
-                        Центр уведомлений
+                        Настройки уведомлений
                     </Text>
                     <RightArrowIcon
                         style={styles.rightIcon}
@@ -134,29 +114,7 @@ export const SettingsScreen = () => {
                     />
                 </TouchableOpacity>
 
-                {/* Push Диагностика - всегда доступна */}
-                <TouchableOpacity
-                    style={[styles.menuItem, styles.diagnosticMenuItem]}
-                    onPress={handlePushDiagnostic}
-                    activeOpacity={0.7}
-                >
-                    <View style={styles.iconContainer}>
-                        <NotificationIcon
-                            width={20}
-                            height={20}
-                            color="#666"
-                        />
-                    </View>
-                    <Text style={[styles.menuItemText, { color: '#666' }]}>
-                        Push Диагностика
-                    </Text>
-                    <RightArrowIcon
-                        style={styles.rightIcon}
-                        width={8}
-                        height={15}
-                        color="#666"
-                    />
-                </TouchableOpacity>
+
 
                 {/* Мой пароль */}
                 <TouchableOpacity
@@ -288,9 +246,7 @@ const styles = StyleSheet.create({
     rightIcon: {
         marginLeft: 8,
     },
-    diagnosticMenuItem: {
-        backgroundColor: '#f0f0f0',
-    },
+
 });
 
 export default SettingsScreen;

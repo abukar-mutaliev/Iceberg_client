@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, memo, useCallback } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Alert, Image } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
 import * as Location from 'expo-location';
 import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { logData } from '@shared/lib/logger';
 import { Ionicons } from '@expo/vector-icons';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { normalizeCoordinates } from '@/shared/lib/coordinatesHelper';
+import { useToast } from '@shared/ui/Toast';
 
 export const LocationInput = memo(({
                                      mapLocation,
@@ -16,6 +17,7 @@ export const LocationInput = memo(({
                                      error,
                                      setAddress
                                    }) => {
+  const { showSuccess, showError } = useToast();
   const [locationPermissionStatus, setLocationPermissionStatus] = React.useState(null);
   const [showPreview, setShowPreview] = React.useState(false);
 
@@ -114,10 +116,7 @@ export const LocationInput = memo(({
       if (locationPermissionStatus !== 'granted') {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
-          Alert.alert(
-              'Требуется разрешение',
-              'Для определения текущего местоположения необходимо разрешение на доступ к геолокации.'
-          );
+          showError('Для определения текущего местоположения необходимо разрешение на доступ к геолокации.');
           return;
         }
         setLocationPermissionStatus(status);
@@ -143,15 +142,15 @@ export const LocationInput = memo(({
 
       await reverseGeocode(latitude, longitude, setAddress);
 
-      Alert.alert('Местоположение', 'Координаты успешно определены');
+      showSuccess('Координаты успешно определены');
     } catch (error) {
       logData('LocationInput (AddDriverStop): Ошибка при получении текущего местоположения', error);
-      Alert.alert('Ошибка', 'Не удалось определить текущее местоположение');
+      showError('Не удалось определить текущее местоположение');
     } finally {
       setIsLocationLoading(false);
       isGettingLocation.current = false;
     }
-  }, [locationPermissionStatus, isLocationLoading, setIsLocationLoading, componentId, mapLocation, setMapLocation, reverseGeocode, setAddress]);
+  }, [locationPermissionStatus, isLocationLoading, setIsLocationLoading, componentId, mapLocation, setMapLocation, reverseGeocode, setAddress, showSuccess, showError]);
 
   const handleOpenMap = useCallback(() => {
     if (isLocationLoading) return;

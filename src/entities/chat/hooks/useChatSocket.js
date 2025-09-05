@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import io from 'socket.io-client/dist/socket.io.js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useDispatch, useSelector } from 'react-redux';
+import { AppState } from 'react-native';
 import { getBaseUrl } from '@shared/api/api';
 import { featureFlags } from '@shared/config/featureFlags';
 import {
@@ -13,7 +14,9 @@ import {
   setTyping,
   updateMessageStatus,
   updateUserOnlineStatus,
+  setConnectionStatus,
 } from '@entities/chat/model/slice';
+import { setGlobalSocket } from './useChatSocketActions';
 
 // Simple throttle helper
 const throttle = (fn, wait) => {
@@ -31,11 +34,50 @@ const throttle = (fn, wait) => {
 export const useChatSocket = () => {
   const dispatch = useDispatch();
   const roomsState = useSelector((s) => s.chat?.rooms);
+  const isAuthenticated = useSelector((s) => !!s.auth?.user?.id);
   const socketRef = useRef(null);
   const joinedRoomsRef = useRef(new Set());
+  const appStateRef = useRef(AppState.currentState);
+
+  // Отслеживаем состояние приложения для управления соединением
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState) => {
+      console.log('🔄 App state changed:', appStateRef.current, '->', nextAppState);
+      
+      if (socketRef.current) {
+        if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
+          // Приложение вернулось в активное состояние - проверяем соединение
+          console.log('📱 App became active - checking WebSocket connection');
+          if (!socketRef.current.connected) {
+            console.log('🔌 Reconnecting WebSocket...');
+            socketRef.current.connect();
+          }
+        } else if (nextAppState.match(/inactive|background/)) {
+          // Приложение ушло в фон - НЕ отключаем WebSocket для получения уведомлений
+          console.log('📱 App went to background - keeping WebSocket alive for push notifications');
+        }
+      }
+      
+      appStateRef.current = nextAppState;
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => subscription?.remove();
+  }, []);
 
   useEffect(() => {
-    if (!featureFlags.chat) return;
+    if (!featureFlags.chat || !isAuthenticated) {
+      // Отключаем WebSocket если пользователь не авторизован
+      if (socketRef.current) {
+        console.log('🔌 Disconnecting WebSocket - user not authenticated');
+        socketRef.current.disconnect();
+        socketRef.current = null;
+        setGlobalSocket(null); // Очищаем глобальную ссылку
+        joinedRoomsRef.current.clear();
+        dispatch(setConnectionStatus({ isConnected: false, transport: null }));
+      }
+      return;
+    }
 
     let isMounted = true;
     const setup = async () => {
@@ -52,38 +94,92 @@ export const useChatSocket = () => {
         console.log('🔌 Attempting to connect to WebSocket:', { baseUrl, hasToken: !!token });
         
         const socket = io(baseUrl, {
-          transports: ['websocket'],
+          transports: ['websocket', 'polling'], // Добавляем polling как fallback для проблемных устройств
           auth: { token },
           reconnection: true,
           reconnectionAttempts: Infinity,
           reconnectionDelay: 1000,
+          reconnectionDelayMax: 5000,
+          timeout: 20000, // Увеличиваем timeout для медленных устройств
+          forceNew: true, // Принудительно создаем новое соединение
         });
 
         socket.on('connect', () => {
-          console.log('🔌 Chat socket connected', socket.id);
+          const transport = socket.io.engine.transport.name;
+          console.log('🔌 Chat socket connected successfully!', {
+            socketId: socket.id,
+            transport,
+            connected: socket.connected,
+            deviceInfo: {
+              platform: require('react-native').Platform.OS,
+              version: require('react-native').Platform.Version
+            }
+          });
+          
+          // Обновляем статус соединения в Redux
+          dispatch(setConnectionStatus({
+            isConnected: true,
+            transport,
+            reconnectAttempts: 0
+          }));
+          
           // join existing rooms
           const roomIds = roomsState?.ids || [];
+          console.log('🏠 Auto-joining rooms:', roomIds);
+          
           roomIds.forEach((roomId) => {
             if (!joinedRoomsRef.current.has(roomId)) {
               socket.emit('chat:join', { roomId });
               joinedRoomsRef.current.add(roomId);
+              console.log('🏠 Joined room:', roomId);
             }
           });
         });
 
-        socket.on('disconnect', () => {
-          console.log('⚠️ Chat socket disconnected');
+        socket.on('disconnect', (reason) => {
+          console.warn('⚠️ Chat socket disconnected:', {
+            reason,
+            transport: socket?.io?.engine?.transport?.name,
+            socketId: socket?.id,
+            timestamp: new Date().toISOString()
+          });
+          
+          // Обновляем статус соединения в Redux
+          dispatch(setConnectionStatus({
+            isConnected: false,
+            transport: null,
+            reconnectAttempts: 0
+          }));
+          
           joinedRoomsRef.current.clear();
         });
 
         socket.on('connect_error', (error) => {
-          console.error('❌ Chat socket connection error:', error);
+          console.error('❌ Chat socket connection error:', {
+            error: error.message,
+            type: error.type,
+            description: error.description,
+            context: error.context,
+            timestamp: new Date().toISOString(),
+            baseUrl
+          });
+        });
+
+        socket.on('reconnect', (attemptNumber) => {
+          console.log('🔄 Chat socket reconnected after', attemptNumber, 'attempts');
+        });
+
+        socket.on('reconnect_error', (error) => {
+          console.error('🔄❌ Chat socket reconnection failed:', error.message);
+        });
+
+        socket.on('reconnect_failed', () => {
+          console.error('🔄💀 Chat socket reconnection completely failed');
         });
 
         // incoming events
         socket.on('chat:message:new', (payload) => {
           // payload: { roomId, message }
-          console.log('📨 Received new message:', payload);
           dispatch(receiveSocketMessage(payload));
         });
 
@@ -98,8 +194,15 @@ export const useChatSocket = () => {
 
         // Обновление статусов сообщений в real-time
         socket.on('chat:message:status', (payload) => {
-          // payload: { roomId, messageId, status }
-          console.log('📡 Received status update:', payload);
+          // payload: { roomId, messageId, status, deliveredAt?, readAt?, updatedBy }
+          console.log('📡 [WEBSOCKET] Status update:', payload);
+
+          // Дополнительная проверка перед диспатчем
+          if (!payload.roomId || !payload.messageId) {
+            console.error('❌ [WEBSOCKET] Invalid payload:', payload);
+            return;
+          }
+
           dispatch(updateMessageStatus(payload));
         });
 
@@ -116,6 +219,7 @@ export const useChatSocket = () => {
         });
 
         socketRef.current = socket;
+        setGlobalSocket(socket); // Устанавливаем глобальную ссылку для других компонентов
       } catch (e) {
         // console.error('Socket init error', e);
       }
@@ -128,11 +232,12 @@ export const useChatSocket = () => {
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
+        setGlobalSocket(null); // Очищаем глобальную ссылку
       }
       joinedRoomsRef.current.clear();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [featureFlags.chat]);
+  }, [featureFlags.chat, isAuthenticated]);
 
   // Join new rooms as they appear
   useEffect(() => {
@@ -147,31 +252,7 @@ export const useChatSocket = () => {
     });
   }, [roomsState?.ids]);
 
-  // API for emitting typing with throttle 500ms
-  const emitTyping = useRef(throttle((roomId, isTyping) => {
-    const socket = socketRef.current;
-    if (!socket) return;
-    socket.emit('chat:typing', { roomId, isTyping });
-  }, 500)).current;
-
-  // API for marking messages as read via socket
-  const emitMarkRead = useRef((roomId, messageIds = []) => {
-    const socket = socketRef.current;
-    if (!socket || !roomId || messageIds.length === 0) return;
-    
-    console.log(`📖 Emitting mark-read for room ${roomId}, messages:`, messageIds);
-    socket.emit('chat:mark-read', { roomId, messageIds }, (response) => {
-      if (response?.ok) {
-        console.log(`✅ Mark-read successful for room ${roomId}`);
-      } else {
-        console.error(`❌ Mark-read failed for room ${roomId}:`, response?.error);
-      }
-    });
-  }).current;
-
-  return {
-    emitTyping,
-    emitMarkRead,
-  };
+  // Этот хук теперь только инициализирует соединение
+  // Для использования WebSocket функций используйте useChatSocketActions
 };
 

@@ -23,6 +23,15 @@ export const DynamicFormField = ({
                                      error = null,
                                      scrollViewRef,
                                  }) => {
+    // Для отладки gender поля
+    if (field.id === 'gender') {
+        console.log('DynamicFormField: gender field render', {
+            field,
+            value,
+            valueType: typeof value,
+            fieldOptions: field.options
+        });
+    }
     const [showDropdown, setShowDropdown] = useState(false);
     const [rotateAnimation] = useState(new Animated.Value(0));
     const [fieldValue, setFieldValue] = useState(value);
@@ -37,8 +46,17 @@ export const DynamicFormField = ({
     }, [showDropdown]);
 
     useEffect(() => {
+        // Для отладки gender поля
+        if (field.id === 'gender') {
+            console.log('DynamicFormField: useEffect value changed', {
+                fieldId: field.id,
+                oldValue: fieldValue,
+                newValue: value,
+                valueType: typeof value
+            });
+        }
         setFieldValue(value);
-    }, [value]);
+    }, [value, field.id, fieldValue]);
 
     const rotateInterpolate = rotateAnimation.interpolate({
         inputRange: [0, 1],
@@ -83,6 +101,13 @@ export const DynamicFormField = ({
     };
 
     const handleChangeText = (text) => {
+        // Для отладки gender поля
+        if (field.id === 'gender') {
+            console.log('DynamicFormField: gender text changed', {
+                text,
+                fieldId: field.id
+            });
+        }
         setFieldValue(text);
         onChange(field.id, text);
     };
@@ -98,6 +123,14 @@ export const DynamicFormField = ({
     };
 
     const handleOptionSelect = (option) => {
+        // Для отладки gender поля
+        if (field.id === 'gender') {
+            console.log('DynamicFormField: gender option selected', {
+                option,
+                optionValue: option.value,
+                fieldId: field.id
+            });
+        }
         onChange(field.id, option.value);
         setShowDropdown(false);
     };
@@ -105,7 +138,13 @@ export const DynamicFormField = ({
     const options = field.options ? [...field.options, ...extraOptions] : extraOptions;
 
     const getSelectedOptionLabel = () => {
-        if (!value) return '';
+        if (!value) {
+            // Для отладки gender поля
+            if (field.id === 'gender') {
+                console.log('DynamicFormField: gender value is null/undefined', { value, fieldId: field.id });
+            }
+            return '';
+        }
 
         if (field.type === 'multiselect' && Array.isArray(value)) {
             return value.map(v => {
@@ -114,6 +153,14 @@ export const DynamicFormField = ({
             }).join(', ');
         } else {
             const option = options.find(opt => opt.value === value || opt.id === value);
+            // Для отладки gender поля
+            if (field.id === 'gender') {
+                console.log('DynamicFormField: gender option search', {
+                    value,
+                    option,
+                    options: options.map(o => ({ value: o.value, label: o.label }))
+                });
+            }
             return option ? option.label || option.name : '';
         }
     };

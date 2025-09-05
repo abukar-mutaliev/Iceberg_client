@@ -85,7 +85,7 @@ export const AdminProductDetailScreen = () => {
     } = useProductEdit(productId, displayProduct);
 
     // Хук для проверки прав доступа
-    const { canEdit, canDelete } = useAdminPermissions(currentUser);
+    const { canEdit, canDelete } = useAdminPermissions(currentUser, displayProduct?.supplierId);
 
 
     const categories = useSelector(selectCategories);

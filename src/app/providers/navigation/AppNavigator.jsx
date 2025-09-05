@@ -17,7 +17,7 @@ import {AuthScreen} from "@/screens/auth/ui/AuthScreen";
 import {MainScreen} from "@screens/main/ui/MainScreen";
 import {ProfileScreen} from "@/screens/profile";
 import {ProfileEdit} from "@features/profile/ui/ProfileEdit";
-import {ChangePasswordScreen, SettingsScreen} from "@features/profile";
+import {ChangePasswordScreen, SettingsScreen, NotificationSettings} from "@features/profile";
 import {ProductListScreen} from "@screens/product/ProductListScreen/ProductListScreen";
 import {ProductDetailScreen} from "@screens/product/ProductDetailScreen";
 import {ProductManagementScreen} from "@screens/product/ProductManagementScreen";
@@ -359,10 +359,79 @@ const ProfileStackScreen = () => {
                     unmountOnBlur: false,
                 }}
             />
+            <ProfileStack.Screen
+                name="ProductManagement"
+                component={ProductManagementScreen}
+                options={{
+                    ...slideFromRight,
+                    headerShown: false,
+                    gestureEnabled: true,
+                    cardStyle: {
+                        backgroundColor: '#ffffff',
+                        ...Platform.select({
+                            ios: {
+                                shadowColor: '#000',
+                                shadowOffset: {width: -3, height: 0},
+                                shadowOpacity: 0.25,
+                                shadowRadius: 6,
+                            },
+                            android: {
+                                elevation: 6,
+                            },
+                        }),
+                    },
+                }}
+            />
+            <ProfileStack.Screen
+                name="AdminProductDetail"
+                component={AdminProductDetailScreen}
+                options={{
+                    ...slideFromRight,
+                    headerShown: false,
+                    gestureEnabled: true,
+                    cardStyle: {
+                        backgroundColor: '#ffffff',
+                        ...Platform.select({
+                            ios: {
+                                shadowColor: '#000',
+                                shadowOffset: {width: -3, height: 0},
+                                shadowOpacity: 0.25,
+                                shadowRadius: 6,
+                            },
+                            android: {
+                                elevation: 6,
+                            },
+                        }),
+                    },
+                }}
+            />
 
             <ProfileStack.Screen
                 name="Favourites"
                 component={FavouritesScreen}
+                options={{
+                    ...slideFromRight,
+                    headerShown: false,
+                    gestureEnabled: true,
+                    cardStyle: {
+                        backgroundColor: '#ffffff',
+                        ...Platform.select({
+                            ios: {
+                                shadowColor: '#000',
+                                shadowOffset: {width: -3, height: 0},
+                                shadowOpacity: 0.25,
+                                shadowRadius: 6,
+                            },
+                            android: {
+                                elevation: 6,
+                            },
+                        }),
+                    },
+                }}
+            />
+            <ProfileStack.Screen
+                name="NotificationSettings"
+                component={NotificationSettings}
                 options={{
                     ...slideFromRight,
                     headerShown: false,
@@ -646,8 +715,59 @@ const NavigationWrapper = ({children}) => {
             }
         };
 
+        // Функция навигации к чату
+        const navigateToChat = (data) => {
+            try {
+                console.log('💬 navigateToChat called with:', data);
+                
+                if (!data.roomId) {
+                    console.warn('No roomId provided for chat navigation');
+                    return;
+                }
+
+                navigation.navigate('Main', {
+                    screen: 'ChatList',
+                    params: {
+                        screen: 'ChatRoom',
+                        params: {
+                            roomId: parseInt(data.roomId),
+                            fromNotification: true,
+                            messageId: data.messageId || null
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Navigation error to chat:', error);
+            }
+        };
+
+        // Функция навигации по URL
+        const navigateToUrl = (url) => {
+            try {
+                console.log('🔗 navigateToUrl called with:', url);
+                
+                // Парсим iceberg:// URL
+                if (url.startsWith('iceberg://')) {
+                    const path = url.replace('iceberg://', '');
+                    const [screen, id] = path.split('/');
+                    
+                    console.log('🔗 Parsed URL:', { screen, id });
+                    
+                    if (screen === 'chat' && id) {
+                        navigateToChat({ roomId: id });
+                    } else if (screen === 'stop' && id) {
+                        navigateToStops({ stopId: id });
+                    } else if (screen === 'order' && id) {
+                        navigateToOrder({ orderId: id });
+                    }
+                }
+            } catch (error) {
+                console.error('Navigation error for URL:', error);
+            }
+        };
+
         if (PushNotificationService && typeof PushNotificationService.setNavigationFunctions === 'function') {
-            PushNotificationService.setNavigationFunctions(navigateToStops, navigateToOrder);
+            PushNotificationService.setNavigationFunctions(navigateToStops, navigateToOrder, navigateToChat, navigateToUrl);
         } else {
             console.warn('PushNotificationService.setNavigationFunctions is not available');
         }
@@ -1058,7 +1178,7 @@ export const AppNavigator = () => {
                                 name="EditStop"
                                 component={EditStopScreen}
                                 options={{
-                                    ...modalSlideFromBottom,
+                                    ...slideFromRight, // Меняем на обычный переход вместо модального
                                     headerShown: false,
                                     gestureEnabled: true,
                                     cardStyle: {

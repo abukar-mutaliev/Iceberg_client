@@ -81,7 +81,13 @@ export const ProductManagementScreen = ({ route }) => {
                 if (navigation.canGoBack()) {
                     navigation.goBack();
                 } else {
-                    navigation.navigate('AdminPanel');
+                    // Если пришли из профиля, возвращаемся в профиль
+                    if (fromScreen === 'Profile') {
+                        navigation.navigate('ProfileMain');
+                    } else {
+                        // В противном случае возвращаемся в админ панель
+                        navigation.navigate('AdminPanel');
+                    }
                 }
             }
 

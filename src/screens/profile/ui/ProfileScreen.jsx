@@ -61,15 +61,6 @@ export const ProfileScreen = ({ onProductPress }) => {
         });
     }, [navigation]);
 
-    useEffect(() => {
-        console.log('ProfileScreen состояние:', {
-            isAuthenticated: isAuthenticated,
-            userId: currentUser?.id,
-            profileId: profile?.id,
-            isProfileLoading: isProfileLoading,
-            isInitialLoading: isInitialLoading
-        });
-    }, [isAuthenticated, currentUser, profile, isProfileLoading, isInitialLoading]);
 
     if (isInitialLoading) {
         return (

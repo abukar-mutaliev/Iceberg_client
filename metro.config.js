@@ -54,4 +54,5 @@ config.resolver.assetExts = [
     'webp'
 ];
 
+
 module.exports = config;

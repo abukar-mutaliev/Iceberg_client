@@ -9,16 +9,22 @@ export const pushTokenApi = {
             console.log('💾 Сохранение push-токена на сервере:', {
                 tokenPrefix: tokenData.token?.substring(0, 20) + '...',
                 deviceId: tokenData.deviceId,
-                platform: tokenData.platform
+                platform: tokenData.platform,
+                tokenLength: tokenData.token?.length || 0
             });
+
+            console.log('📡 Отправка запроса на /api/push-tokens с данными:', tokenData);
 
             const response = await createProtectedRequest('post', '/api/push-tokens', tokenData);
 
             console.log('📡 Полный ответ сервера:', {
                 status: response?.status,
                 data: response?.data,
-                dataKeys: response?.data ? Object.keys(response.data) : 'no data'
+                dataKeys: response?.data ? Object.keys(response.data) : 'no data',
+                responseType: typeof response
             });
+
+            console.log('📡 Ответ сервера (stringify):', JSON.stringify(response, null, 2));
 
             if (response?.status === 200) {
                 console.log('✅ HTTP 200 - Push-токен сохранен успешно');
@@ -45,8 +51,23 @@ export const pushTokenApi = {
             console.error('❌ Ошибка сохранения push-токена:', {
                 message: error.message,
                 response: error.response?.data,
-                status: error.response?.status
+                status: error.response?.status,
+                fullError: error
             });
+
+            // Добавим дополнительное логирование для axios ошибок
+            if (error.response) {
+                console.error('❌ Axios error response:', {
+                    status: error.response.status,
+                    data: error.response.data,
+                    headers: error.response.headers
+                });
+            } else if (error.request) {
+                console.error('❌ Axios error request:', error.request);
+            } else {
+                console.error('❌ Axios error message:', error.message);
+            }
+
             throw error;
         }
     },

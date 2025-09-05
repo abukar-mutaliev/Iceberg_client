@@ -23,29 +23,52 @@ const useProductPermissions = (isAuthenticated, currentUser, productSupplierId) 
         const isAdmin = userRole === 'ADMIN';
         const isEmployee = userRole === 'EMPLOYEE';
         const isSupplier = userRole === 'SUPPLIER';
-        const userSupplier = currentUser?.supplier;
-        const profileData = currentUser?.profile;
 
         if (isAdmin || isEmployee) {
             return { canEdit: true, canDelete: true };
         }
 
         if (isSupplier) {
-            let supplierInfo = userSupplier;
+            // Проверяем данные поставщика из разных источников
+            let supplierId = null;
 
-            if (!supplierInfo && profileData && profileData.id) {
-                supplierInfo = {
-                    id: profileData.id,
-                    name: profileData.companyName
-                };
+            // 1. Сначала проверяем currentUser.supplier
+            if (currentUser.supplier && currentUser.supplier.id) {
+                supplierId = currentUser.supplier.id;
+            }
+            // 2. Если нет, проверяем profile данные
+            else if (currentUser.profile && currentUser.profile.supplier && currentUser.profile.supplier.id) {
+                supplierId = currentUser.profile.supplier.id;
+            }
+            // 3. Если нет, используем ID пользователя как supplier ID (для старой логики)
+            else if (currentUser.id) {
+                supplierId = currentUser.id;
             }
 
-            if (!supplierInfo) {
+            if (!supplierId) {
+                console.warn('ProductActions: Не удалось определить ID поставщика', {
+                    userId: currentUser.id,
+                    userSupplier: currentUser.supplier,
+                    userProfile: currentUser.profile
+                });
                 return { canEdit: false, canDelete: false };
             }
 
+            // Сравниваем ID поставщика с supplierId продукта
             const isProductOwner = productSupplierId &&
-                String(supplierInfo.id) === String(productSupplierId);
+                String(supplierId) === String(productSupplierId);
+
+            console.log('ProductActions: Проверка прав доступа поставщика', {
+                userId: currentUser.id,
+                supplierId: supplierId,
+                productSupplierId: productSupplierId,
+                isProductOwner: isProductOwner,
+                canEdit: isProductOwner,
+                canDelete: isProductOwner,
+                userSupplier: !!currentUser.supplier,
+                userProfileSupplier: !!(currentUser.profile && currentUser.profile.supplier),
+                supplierIdSource: currentUser.supplier ? 'user.supplier' : (currentUser.profile?.supplier ? 'user.profile.supplier' : 'user.id')
+            });
 
             return {
                 canEdit: isProductOwner,
@@ -161,22 +184,36 @@ export const ProductActions = React.memo(({
     const loadProfileIfNeeded = useCallback(async () => {
         if (isAuthenticated &&
             currentUser?.role === 'SUPPLIER' &&
-            !currentUser?.supplier &&
             !profileLoadedRef.current &&
             !isLoadingProfile) {
 
-            profileLoadedRef.current = true;
-            setIsLoadingProfile(true);
+            // Проверяем, нужно ли загружать профиль
+            const needsProfileLoad = !currentUser?.supplier ||
+                                   !currentUser?.profile ||
+                                   !currentUser?.profile?.supplier;
 
-            try {
-                await dispatch(fetchProfile()).unwrap();
-            } catch (error) {
-                console.error('ProductActions: Ошибка загрузки профиля:', error);
-            } finally {
-                setIsLoadingProfile(false);
+            if (needsProfileLoad) {
+                console.log('ProductActions: Загружаем профиль поставщика', {
+                    hasSupplier: !!currentUser?.supplier,
+                    hasProfile: !!currentUser?.profile,
+                    hasProfileSupplier: !!(currentUser?.profile?.supplier)
+                });
+
+                profileLoadedRef.current = true;
+                setIsLoadingProfile(true);
+
+                try {
+                    await dispatch(fetchProfile()).unwrap();
+                    console.log('ProductActions: Профиль поставщика загружен успешно');
+                } catch (error) {
+                    console.error('ProductActions: Ошибка загрузки профиля:', error);
+                    profileLoadedRef.current = false; // Сбрасываем флаг при ошибке
+                } finally {
+                    setIsLoadingProfile(false);
+                }
             }
         }
-    }, [dispatch, isAuthenticated, currentUser?.role, currentUser?.supplier, isLoadingProfile]);
+    }, [dispatch, isAuthenticated, currentUser, isLoadingProfile]);
 
     // Загружаем профиль при монтировании компонента
     useEffect(() => {

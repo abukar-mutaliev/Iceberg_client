@@ -92,6 +92,36 @@ export const AppContainer = ({ children, onNavigateToAuth }) => {
                 return;
             }
 
+            // Дополнительная проверка токенов
+            const { tokens } = useSelector((state) => state.auth);
+            if (!tokens?.accessToken) {
+                console.log('🔔 AppContainer: Токены отсутствуют, пропускаем инициализацию push-уведомлений');
+                return;
+            }
+
+            // Принудительная проверка и регистрация токена (только для preview/production)
+            const buildType = PushNotificationService.getBuildType();
+            if (buildType === 'development' || buildType === 'expo-go') {
+                console.log('ℹ️ AppContainer: Expo Go режим - Firebase недоступен, пропускаем регистрацию токена');
+            } else {
+                const currentToken = PushNotificationService.getCurrentToken();
+                if (!currentToken) {
+                    console.log('🔍 AppContainer: Push токен отсутствует, принудительно регистрируем...');
+                    try {
+                        const token = await PushNotificationService.getFCMToken();
+                        if (token) {
+                            console.log('🎫 AppContainer: FCM токен получен, сохраняем на сервере...');
+                            const saved = await PushNotificationService.saveTokenToServerSafe(token, PushNotificationService._deviceId, Platform.OS);
+                            if (saved) {
+                                console.log('💾 AppContainer: Токен успешно сохранен на сервере');
+                            }
+                        }
+                    } catch (error) {
+                        console.warn('⚠️ AppContainer: Ошибка принудительной регистрации токена:', error);
+                    }
+                }
+            }
+
             const currentUserId = user.id;
             const lastInitializedUserId = pushInitializationAttempted.current;
 

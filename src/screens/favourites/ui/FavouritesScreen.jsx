@@ -291,9 +291,9 @@ const styles = StyleSheet.create({
         ...CommonStyles.flexRow,
         alignItems: 'center',
         justifyContent: 'flex-start',
-        paddingVertical: 15,
-        backgroundColor: Color.colorLightMode,
-    },
+        paddingVertical: 5,
+        backgroundColor: "rgba(255,255,255,0.5)",
+},
     backButton: {
         padding: 15,
         width: 50,

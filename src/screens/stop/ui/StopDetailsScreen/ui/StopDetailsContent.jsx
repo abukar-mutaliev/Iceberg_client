@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Platform, Alert, Linking, TouchableWithoutFeedback } from 'react-native';
 import { useSelector } from 'react-redux';
 import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
 import UniversalMapView, { Marker } from '@shared/ui/Map/UniversalMapView';
-import { PROVIDER_GOOGLE } from 'react-native-maps';
 import { selectUser } from '@entities/auth/model/selectors';
 import { formatTimeRange } from "@shared/lib/dateFormatters";
 import { getBaseUrl } from '@shared/api/api';
@@ -21,17 +20,11 @@ const getPhotoUrl = (photoPath) => {
 
     if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) {
         const url = photoPath.replace('https://', 'http://');
-        logData('Используем полный URL фото', url, 'StopDetailsContent');
         return url;
     }
 
     const baseUrl = getBaseUrl();
     const fullUrl = `${baseUrl}${photoPath}`;
-    logData('Формируем полный URL фото', {
-        baseUrl,
-        photoPath,
-        fullUrl
-    }, 'StopDetailsContent');
     return fullUrl;
 };
 
@@ -117,12 +110,11 @@ export const StopDetailsContent = ({ stop, navigation }) => {
     const user = useSelector(selectUser);
     const defaultCoords = { latitude: 43.172837, longitude: 44.811913 };
     const [mapCoordinates, setMapCoordinates] = useState(defaultCoords);
-
+    const [mapLoaded, setMapLoaded] = useState(false);
     const canEdit = ['DRIVER', 'ADMIN', 'EMPLOYEE'].includes(user?.role);
 
-    // Добавляем проверку на существование остановки
+
     if (!stop) {
-        console.error('Stop data is null or undefined');
         return (
             <View style={styles.container}>
                 <Text style={styles.errorText}>Данные остановки не найдены</Text>
@@ -130,44 +122,41 @@ export const StopDetailsContent = ({ stop, navigation }) => {
         );
     }
 
-    const formatDate = (dateString) => {
-        if (!dateString) return 'Не указано';
-        try {
-            const date = new Date(dateString);
-            return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        } catch (error) {
-            console.error('Ошибка форматирования даты:', error);
-            return 'Неверная дата';
-        }
-    };
-
-    const formatTime = (dateString) => {
-        if (!dateString) return 'Не указано';
-        try {
-            const date = new Date(dateString);
-            return date.toLocaleTimeString('ru-RU', {
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-        } catch (error) {
-            console.error('Ошибка форматирования времени:', error);
-            return 'Неверное время';
-        }
-    };
-
-    const formatDateTime = (dateString) => {
-        return `${formatTime(dateString)}, ${formatDate(dateString)}`;
-    };
-
     const handleEditPress = () => {
         navigation.navigate('EditStop', { stopId: stop.id });
     };
+
+    const handleMarkerPress = () => {
+        const { latitude, longitude } = mapCoordinates;
+        const address = stop.address || 'Остановка';
+
+        const url = Platform.select({
+            ios: `maps://app?daddr=${latitude},${longitude}&dirflg=d&saddr=Current%20Location`,
+            android: `geo:${latitude},${longitude}?q=${encodeURIComponent(address)}`
+        });
+
+        Linking.canOpenURL(url).then(supported => {
+            if (supported) {
+                Linking.openURL(url);
+            } else {
+                const webUrl = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+                Linking.openURL(webUrl);
+            }
+        }).catch(err => {
+            Alert.alert('Ошибка', 'Не удалось открыть приложение карт');
+        });
+    };
+
+
 
     useEffect(() => {
         if (!stop) {
             console.error('Stop is null in useEffect');
             return;
         }
+
+        // Сбрасываем состояние загрузки при изменении остановки
+        setMapLoaded(false);
 
         // Логируем данные остановки для отладки
         logData('Детали остановки', {
@@ -190,10 +179,36 @@ export const StopDetailsContent = ({ stop, navigation }) => {
             console.log('Исходные данные mapLocation:', stop.mapLocation);
             setMapCoordinates(defaultCoords);
         }
+
+        // Добавляем таймаут на случай долгой загрузки карты
     }, [stop]);
 
     return (
-        <ScrollView style={styles.container}>
+        <ScrollView
+            style={styles.container}
+            nestedScrollEnabled={true}
+            showsVerticalScrollIndicator={true}
+            showsHorizontalScrollIndicator={false}
+            scrollEnabled={true}
+            bounces={true}
+            keyboardShouldPersistTaps="handled"
+            automaticallyAdjustContentInsets={false}
+            contentInsetAdjustmentBehavior="never"
+            contentInset={{ top: 0, left: 0, bottom: 0, right: 0 }}
+            keyboardDismissMode="on-drag"
+            onScrollBeginDrag={() => {
+                console.log('[ScrollView] Начало скролла');
+            }}
+            onScrollEndDrag={() => {
+                console.log('[ScrollView] Конец скролла');
+            }}
+            onMomentumScrollBegin={() => {
+                console.log('[ScrollView] Начало инерционного скролла');
+            }}
+            onMomentumScrollEnd={() => {
+                console.log('[ScrollView] Конец инерционного скролла');
+            }}
+        >
             <View style={styles.header}>
                 <TouchableOpacity
                     style={styles.backButton}
@@ -208,7 +223,6 @@ export const StopDetailsContent = ({ stop, navigation }) => {
                     </Text>
                 </View>
 
-                {/* Пустой элемент для баланса с кнопкой назад */}
                 <View style={styles.backButton} />
             </View>
 
@@ -280,34 +294,60 @@ export const StopDetailsContent = ({ stop, navigation }) => {
                 )}
 
                 <View style={styles.mapContainer}>
-                    <Text style={styles.mapTitle}>Местоположение</Text>
-                    <UniversalMapView
-                        style={styles.map}
-                        initialRegion={{
-                            latitude: mapCoordinates.latitude,
-                            longitude: mapCoordinates.longitude,
-                            latitudeDelta: 0.005,
-                            longitudeDelta: 0.005,
-                        }}
-                        onError={(error) => {
-                            console.log('[StopDetailsContent] Ошибка карты:', error);
-                        }}
-                        onMapReady={() => {
-                            console.log('[StopDetailsContent] Карта готова');
-                        }}
-                        showsUserLocation={false}
-                        showsMyLocationButton={false}
-                        toolbarEnabled={false}
-                        provider={PROVIDER_GOOGLE}
+                    <View style={styles.mapHeader}>
+                        <Text style={styles.mapTitle}>Местоположение</Text>
+                    </View>
+                    <View
+                        style={styles.mapWrapper}
+                        pointerEvents="box-only"
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
-                        <Marker
-                            coordinate={{
+                        <UniversalMapView
+                            style={styles.map}
+                            initialRegion={{
                                 latitude: mapCoordinates.latitude,
                                 longitude: mapCoordinates.longitude,
+                                latitudeDelta: 0.01,
+                                longitudeDelta: 0.01,
                             }}
-                            title={stop.address || 'Остановка'}
-                        />
-                    </UniversalMapView>
+                            onMapReady={() => {
+                                console.log('[StopDetailsContent] Google Maps готова');
+                                setMapLoaded(true);
+                            }}
+                            onError={(error) => {
+                                console.log('[StopDetailsContent] Ошибка Google Maps:', error);
+                                setMapLoaded(false);
+                            }}
+                            showsUserLocation={false}
+                            showsMyLocationButton={false}
+                            toolbarEnabled={false}
+                            zoomEnabled={true}
+                            scrollEnabled={true}
+                            rotateEnabled={true}
+                            pitchEnabled={true}
+                            mapType="standard"
+                            minZoomLevel={10}
+                            maxZoomLevel={20}
+                        >
+                            <Marker
+                                coordinate={{
+                                    latitude: mapCoordinates.latitude,
+                                    longitude: mapCoordinates.longitude,
+                                }}
+                                title={stop.address || 'Остановка'}
+                                description="Нажмите для навигации"
+                                onPress={handleMarkerPress}
+                                pinColor="#3B43A2"
+                            />
+                        </UniversalMapView>
+                    </View>
+                    {!mapLoaded && (
+                        <View style={styles.mapLoadingContainer}>
+                            <Text style={styles.mapLoadingText}>
+                                Загружаем карту...
+                            </Text>
+                        </View>
+                    )}
                 </View>
 
                 {canEdit && (
@@ -448,12 +488,31 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
         backgroundColor: '#f0f0f0',
     },
+    mapWrapper: {
+        flex: 1,
+        position: 'relative',
+    },
+    mapHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 8,
+        paddingTop: 8,
+    },
+    mapTitleContainer: {
+        flex: 1,
+    },
     mapTitle: {
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
         color: Color.dark,
-        marginBottom: 8,
         fontWeight: '500',
+    },
+    mapSubtitle: {
+        fontSize: FontSize.size_xs,
+        fontFamily: FontFamily.sFProText,
+        color: '#666',
+        marginTop: 2,
     },
     map: {
         ...StyleSheet.absoluteFillObject,
@@ -472,5 +531,23 @@ const styles = StyleSheet.create({
         fontSize: FontSize.size_md,
         fontWeight: '500',
         fontFamily: FontFamily.sFProText,
+    },
+    mapLoadingContainer: {
+        position: 'absolute',
+        top: '50%',
+        left: 0,
+        right: 0,
+        alignItems: 'center',
+        zIndex: 1000,
+    },
+    mapLoadingText: {
+        fontSize: FontSize.size_md,
+        color: '#3B43A2',
+        fontFamily: FontFamily.sFProText,
+        fontWeight: '500',
+        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 8,
     },
 });

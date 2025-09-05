@@ -22,6 +22,13 @@ const initialState = {
   participants: {
     byUserId: {},
   },
+  connection: {
+    isConnected: false,
+    transport: null,
+    lastConnected: null,
+    lastDisconnected: null,
+    reconnectAttempts: 0,
+  },
 };
 
 const upsertParticipant = (state, participant) => {
@@ -52,6 +59,16 @@ const upsertRooms = (state, rooms) => {
       for (const p of room.participants) {
         upsertParticipant(state, p);
       }
+    }
+
+    // Отладка для проверки lastMessage при сохранении
+    if (__DEV__) {
+      console.log('📥 upsertRooms: Saving room:', {
+        roomId: room.id,
+        hasLastMessage: !!room.lastMessage,
+        lastMessage: room.lastMessage,
+        existingRoom: state.rooms.byId[room.id]
+      });
     }
 
     state.rooms.byId[room.id] = { ...(state.rooms.byId[room.id] || {}), ...room };
@@ -168,7 +185,7 @@ export const loadRoomMessagesCache = createAsyncThunk('chat/loadRoomMessagesCach
 
 export const fetchRooms = createAsyncThunk(
     'chat/fetchRooms',
-    async ({ page = 1, limit = 20 } = {}, { rejectWithValue }) => {
+    async ({ page = 1, limit = 20 } = {}, { rejectWithValue, dispatch }) => {
       try {
         const res = await ChatApi.getRooms({ page, limit });
         const root = (res && res.data) ? res.data : {};
@@ -177,15 +194,96 @@ export const fetchRooms = createAsyncThunk(
             ? dataNode
             : (dataNode.rooms ?? dataNode.items ?? dataNode.data ?? []);
         if (!Array.isArray(roomsRaw)) roomsRaw = [];
+        
+        // Отладка структуры данных
+        if (__DEV__ && roomsRaw.length > 0) {
+          console.log('🔍 fetchRooms raw data structure:', {
+            firstItem: roomsRaw[0],
+            hasRoom: !!roomsRaw[0]?.room,
+            roomStructure: roomsRaw[0]?.room ? {
+              id: roomsRaw[0].room.id,
+              hasLastMessage: !!roomsRaw[0].room.lastMessage,
+              lastMessage: roomsRaw[0].room.lastMessage
+            } : null
+          });
+        }
 
         const rooms = roomsRaw.map((it) => {
           if (it && it.room && typeof it.room === 'object') {
             const room = { ...it.room, unread: it.unreadCount ?? it.unread ?? 0 };
             if (!room.product && it.product) room.product = it.product;
+            // Добавляем lastMessage если оно есть в room
+            if (!room.lastMessage && it.room.lastMessage) room.lastMessage = it.room.lastMessage;
+            
+            // Отладка для проверки lastMessage
+            if (__DEV__) {
+              console.log('🔍 fetchRooms mapping room:', {
+                roomId: room.id,
+                hasLastMessage: !!room.lastMessage,
+                lastMessage: room.lastMessage,
+                originalItem: it
+              });
+            }
+            
             return room;
           }
           return it;
         }).filter(r => r && r.id);
+
+        // Загружаем последние сообщения для каждой комнаты, чтобы иметь актуальные статусы
+        if (page === 1 && rooms.length > 0) {
+          console.log('🔄 fetchRooms: Loading last messages for rooms:', rooms.map(r => ({
+            id: r.id,
+            hasLastMessage: !!r.lastMessage,
+            title: r.title || 'No title'
+          })));
+
+          const loadMessagesPromises = rooms.map(async (room) => {
+            try {
+              // Всегда загружаем последнее сообщение, даже если room.lastMessage есть
+              // Это гарантирует актуальные данные
+              console.log(`📨 fetchRooms: Requesting messages for room ${room.id} (${room.title || 'No title'})`);
+              const messagesRes = await ChatApi.getMessages(room.id, { limit: 1 });
+              const messagesData = messagesRes?.data?.data || messagesRes?.data || [];
+
+              if (Array.isArray(messagesData) && messagesData.length > 0) {
+                const lastMessage = messagesData[0];
+
+                // Сохраняем сообщение в Redux store
+                dispatch(receiveMessage({
+                  roomId: room.id,
+                  message: lastMessage
+                }));
+
+                console.log(`✅ fetchRooms: Successfully loaded last message for room ${room.id}:`, {
+                  messageId: lastMessage.id,
+                  status: lastMessage.status,
+                  deliveredAt: lastMessage.deliveredAt,
+                  readAt: lastMessage.readAt,
+                  senderId: lastMessage.senderId,
+                  hasSender: !!lastMessage.sender,
+                  content: lastMessage.content?.substring(0, 30) + '...'
+                });
+              } else {
+                console.log(`❌ fetchRooms: No messages found for room ${room.id}`);
+              }
+            } catch (error) {
+              console.warn(`❌ fetchRooms: Failed to load messages for room ${room.id}:`, {
+                error: error.message,
+                roomId: room.id,
+                roomTitle: room.title
+              });
+            }
+          });
+
+          // Ждем загрузки всех сообщений
+          console.log('⏳ fetchRooms: Waiting for all message loads to complete...');
+          const results = await Promise.allSettled(loadMessagesPromises);
+          const successCount = results.filter(r => r.status === 'fulfilled').length;
+          const failCount = results.filter(r => r.status === 'rejected').length;
+
+          console.log(`✅ fetchRooms: Message loading completed - Success: ${successCount}, Failed: ${failCount}`);
+        }
 
         const pagination = root?.pagination ?? dataNode?.pagination ?? dataNode?.meta ?? null;
 
@@ -477,14 +575,49 @@ const chatSlice = createSlice({
     receiveSocketMessage(state, action) {
       const { roomId, message } = action.payload || {};
 
-      if (!roomId || !message) return;
+      if (!roomId || !message) {
+        console.warn('⚠️ receiveSocketMessage: Invalid payload', action.payload);
+        return;
+      }
 
-      upsertRooms(state, [{ id: roomId, updatedAt: message.createdAt, lastMessage: message }]);
+      if (__DEV__) {
+        console.log('📨 Processing socket message:', {
+          roomId,
+          messageId: message.id,
+          messageType: message.type,
+          content: message.content?.substring(0, 50),
+          senderId: message.senderId,
+          hasSender: !!message.sender,
+          status: message.status,
+          deliveredAt: message.deliveredAt,
+          readAt: message.readAt
+        });
+      }
+
+      // Обрабатываем информацию об отправителе для обогащения участников
+      if (message.sender && message.senderId) {
+        upsertParticipant(state, {
+          userId: message.senderId,
+          user: message.sender
+        });
+      }
+
+      // Обновляем комнату с новым сообщением
+      const roomUpdate = { 
+        id: roomId, 
+        updatedAt: message.createdAt, 
+        lastMessage: message 
+      };
+      upsertRooms(state, [roomUpdate]);
+      
+      // Обновляем сообщения в комнате
       ensureRoomBucket(state, roomId);
       upsertMessagesDesc(state.messages[roomId], [message]);
 
+      // Обновляем кэш
       updateMessageCache(roomId, state.messages[roomId]);
 
+      // Увеличиваем счетчик непрочитанных если комната не активна
       if (state.activeRoomId !== roomId) {
         const oldUnread = state.unreadByRoomId[roomId] || 0;
         state.unreadByRoomId[roomId] = oldUnread + 1;
@@ -494,7 +627,74 @@ const chatSlice = createSlice({
           roomInList.unread = state.unreadByRoomId[roomId];
         }
       }
+
+      // Принудительно пересортировываем комнаты по времени последнего сообщения
+      state.rooms.ids.sort((a, b) => {
+        const ra = state.rooms.byId[a];
+        const rb = state.rooms.byId[b];
+        const ta = (ra?.updatedAt || ra?.lastMessage?.createdAt || 0);
+        const tb = (rb?.updatedAt || rb?.lastMessage?.createdAt || 0);
+        return new Date(tb) - new Date(ta);
+      });
     },
+
+    receiveMessage(state, action) {
+      const { roomId, message } = action.payload || {};
+
+      if (!roomId || !message) {
+        console.warn('⚠️ receiveMessage: Invalid payload', action.payload);
+        return;
+      }
+
+      if (__DEV__) {
+        console.log('📨 Processing regular message:', {
+          roomId,
+          messageId: message.id,
+          messageType: message.type,
+          content: message.content?.substring(0, 50),
+          senderId: message.senderId,
+          hasSender: !!message.sender,
+          status: message.status,
+          deliveredAt: message.deliveredAt,
+          readAt: message.readAt
+        });
+      }
+
+      // Обрабатываем информацию об отправителе для обогащения участников
+      if (message.sender && message.senderId) {
+        upsertParticipant(state, {
+          userId: message.senderId,
+          user: message.sender
+        });
+      }
+
+      // Добавляем сообщение в хранилище сообщений комнаты
+      if (!state.messages[roomId]) {
+        state.messages[roomId] = { ids: [], byId: {} };
+      }
+
+      const bucket = state.messages[roomId];
+      if (bucket) {
+        // Если сообщение уже существует, обновляем его
+        if (bucket.byId[message.id]) {
+          bucket.byId[message.id] = { ...bucket.byId[message.id], ...message };
+        } else {
+          // Добавляем новое сообщение
+          bucket.ids.push(message.id);
+          bucket.byId[message.id] = message;
+
+          // Ограничиваем количество сообщений в памяти
+          if (bucket.ids.length > 50) {
+            const oldestId = bucket.ids.shift();
+            delete bucket.byId[oldestId];
+          }
+        }
+
+        // Обновляем кэш сообщений
+        updateMessageCache(roomId, bucket);
+      }
+    },
+
     receiveMessageDeleted(state, action) {
       const { roomId, messageId } = action.payload || {};
       if (!roomId || !messageId || !state.messages[roomId]) return;
@@ -502,13 +702,52 @@ const chatSlice = createSlice({
       state.messages[roomId].ids = state.messages[roomId].ids.filter(id => id !== messageId);
     },
     updateMessageStatus(state, action) {
-      const { roomId, messageId, status } = action.payload || {};
+      const { roomId, messageId, status, deliveredAt, readAt } = action.payload || {};
 
       if (!roomId || !messageId || !status) return;
 
       const roomMessages = state.messages[roomId];
       if (roomMessages?.byId?.[messageId]) {
-        roomMessages.byId[messageId].status = status;
+        const message = roomMessages.byId[messageId];
+
+        // Обновляем статус и временные метки
+        message.status = status;
+        if (deliveredAt) message.deliveredAt = deliveredAt;
+        if (readAt) message.readAt = readAt;
+
+        console.log('Redux: Updated message status:', {
+          messageId,
+          status,
+          deliveredAt,
+          readAt,
+          message: {
+            id: message.id,
+            status: message.status,
+            deliveredAt: message.deliveredAt,
+            readAt: message.readAt
+          }
+        });
+
+        // Обновляем кэш сообщений
+        updateMessageCache(roomId, roomMessages);
+      }
+
+      // Если это последнее сообщение в комнате, обновляем его статус в списке чатов
+      const room = state.rooms.byId[roomId];
+      if (room?.lastMessage?.id === messageId) {
+        room.lastMessage = {
+          ...room.lastMessage,
+          status,
+          deliveredAt: deliveredAt || room.lastMessage.deliveredAt,
+          readAt: readAt || room.lastMessage.readAt
+        };
+
+        console.log('Redux: Updated room lastMessage status:', {
+          roomId,
+          messageId,
+          status,
+          lastMessage: room.lastMessage
+        });
       }
     },
     updateUserOnlineStatus(state, action) {
@@ -533,6 +772,18 @@ const chatSlice = createSlice({
       state.messages[roomId].cursorId = state.messages[roomId].ids.length
           ? state.messages[roomId].ids[state.messages[roomId].ids.length - 1]
           : null;
+    },
+    setConnectionStatus(state, action) {
+      const { isConnected, transport, reconnectAttempts } = action.payload || {};
+      state.connection.isConnected = !!isConnected;
+      state.connection.transport = transport || null;
+      state.connection.reconnectAttempts = reconnectAttempts || 0;
+      
+      if (isConnected) {
+        state.connection.lastConnected = new Date().toISOString();
+      } else {
+        state.connection.lastDisconnected = new Date().toISOString();
+      }
     },
   },
   extraReducers: (builder) => {
@@ -602,6 +853,22 @@ const chatSlice = createSlice({
         .addCase(fetchMessages.fulfilled, (state, action) => {
           const { roomId, messages, hasMore } = action.payload;
           ensureRoomBucket(state, roomId);
+          
+          // Обновляем сообщения с новыми статусами
+          if (messages && Array.isArray(messages)) {
+            messages.forEach(newMessage => {
+              const existingMessage = state.messages[roomId].byId[newMessage.id];
+              if (existingMessage) {
+                // Обновляем статус если он изменился
+                if (newMessage.status && newMessage.status !== existingMessage.status) {
+                  existingMessage.status = newMessage.status;
+                  existingMessage.deliveredAt = newMessage.deliveredAt;
+                  existingMessage.readAt = newMessage.readAt;
+                }
+              }
+            });
+          }
+          
           upsertMessagesDesc(state.messages[roomId], messages || []);
           state.messages[roomId].hasMore = !!hasMore;
           const ids = state.messages[roomId].ids;
@@ -802,9 +1069,28 @@ const chatSlice = createSlice({
         .addCase(fetchRoomAvatar.rejected, (state, action) => {
           const roomId = action.meta?.arg;
           if (roomId) state.avatarFetchAttemptedByRoomId[roomId] = true;
+        })
+        .addCase(updateMessageStatus, (state, action) => {
+            const { roomId, messageId, status, deliveredAt, readAt, updatedBy } = action.payload;
+
+            // Update message status in messages store
+            if (state.messages[roomId]?.byId[messageId]) {
+                const message = state.messages[roomId].byId[messageId];
+                message.status = status;
+                if (deliveredAt) message.deliveredAt = deliveredAt;
+                if (readAt) message.readAt = readAt;
+            }
+
+            // Update lastMessage status in room if this is the last message
+            const room = state.rooms.byId[roomId];
+            if (room?.lastMessage?.id === messageId) {
+                room.lastMessage.status = status;
+                if (deliveredAt) room.lastMessage.deliveredAt = deliveredAt;
+                if (readAt) room.lastMessage.readAt = readAt;
+            }
         });
   },
 });
 
-export const { setActiveRoom, setTyping, receiveSocketMessage, receiveMessageDeleted, updateMessageStatus, updateUserOnlineStatus } = chatSlice.actions;
+export const { setActiveRoom, setTyping, receiveSocketMessage, receiveMessage, receiveMessageDeleted, updateMessageStatus, updateUserOnlineStatus, setConnectionStatus } = chatSlice.actions;
 export default chatSlice.reducer;

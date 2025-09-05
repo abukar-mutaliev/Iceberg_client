@@ -90,7 +90,7 @@ export const AdminProductDetailPage = () => {
     } = useProductEdit(productId, displayProduct);
 
     // Хук для проверки прав доступа
-    const { canEdit, canDelete } = useAdminPermissions(currentUser);
+    const { canEdit, canDelete } = useAdminPermissions(currentUser, displayProduct?.supplierId);
 
     // Мемоизированные данные для отображения
     const displayData = useMemo(() => {

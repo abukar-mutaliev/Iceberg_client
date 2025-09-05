@@ -3,13 +3,13 @@ import {View, StyleSheet, Text, TouchableOpacity} from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchProducts } from '@entities/product/model/slice';
-import { 
-    selectProducts, 
-    selectProductsLoading, 
-    selectProductsLoadingMore, 
+import {
+    selectProducts,
+    selectProductsLoading,
+    selectProductsLoadingMore,
     selectProductsError,
     selectProductsHasMore,
-    selectProductsCurrentPage 
+    selectProductsCurrentPage
 } from '@entities/product/model/selectors';
 import { fetchBanners, selectActiveMainBanners, selectBannerStatus } from '@entities/banner';
 import { fetchCategories } from '@entities/category/model/slice';
@@ -20,7 +20,6 @@ import { Header } from "@widgets/header";
 import { PromoBanner } from "@widgets/promoSlider";
 import { CategoriesBar } from "@widgets/categoriesBar";
 import { ProductsList } from "@widgets/product/productsList";
-// import { Loader } from "@shared/ui/Loader";
 
 import { selectCategories, selectCategoriesLoading, setCategories } from "@entities/category";
 import DriverLocator from "@features/driver/driverLocator/ui/DriverLocator";
@@ -31,11 +30,10 @@ import { useAuth } from '@entities/auth/hooks/useAuth';
 
 const PRODUCTS_PER_PAGE = 10;
 const LOAD_MORE_THRESHOLD = 8;
-const REFRESH_INTERVAL = 300000; // отключим автообновление для избежания подгрузок на каждый фокус
+const REFRESH_INTERVAL = 300000;
 const CACHE_KEY = 'main_screen_cache';
-const CACHE_EXPIRY = 10 * 60 * 1000; // 10 минут
+const CACHE_EXPIRY = 10 * 60 * 1000;
 
-const selectFetchCompleted = (state) => state.products?.fetchCompleted || false;
 
 // Функции для работы с кэшем
 const saveCacheData = async (data) => {
@@ -57,13 +55,10 @@ const loadCacheData = async () => {
             const cache = JSON.parse(cacheStr);
             const now = Date.now();
             
-            // Проверяем, не истек ли кэш
             if (now - cache.timestamp < CACHE_EXPIRY) {
-                // Возвращаем данные напрямую, так как они сохраняются не в поле data
                 const { timestamp, ...data } = cache;
                 return data;
             } else {
-                // Удаляем истекший кэш
                 await AsyncStorage.removeItem(CACHE_KEY);
             }
         }
@@ -74,13 +69,6 @@ const loadCacheData = async () => {
     }
 };
 
-const clearCache = async () => {
-    try {
-        await AsyncStorage.removeItem(CACHE_KEY);
-    } catch (error) {
-        console.error('Ошибка очистки кэша:', error);
-    }
-};
 
 export const MainScreen = ({ navigation, route }) => {
     const dispatch = useDispatch();
@@ -92,10 +80,8 @@ export const MainScreen = ({ navigation, route }) => {
     const unreadCount = useSelector(state => state.notification?.unreadCount || 0);
 
     useEffect(() => {
-        // Badge sync logic
     }, [unreadCount]);
 
-    // Селекторы данных
     const products = useSelector(selectProducts);
     const isProductsLoading = useSelector(selectProductsLoading);
     const isLoadingMore = useSelector(selectProductsLoadingMore);
@@ -106,9 +92,7 @@ export const MainScreen = ({ navigation, route }) => {
     const bannerStatus = useSelector(selectBannerStatus);
     const categories = useSelector(selectCategories);
     const isCategoriesLoading = useSelector(selectCategoriesLoading);
-    const fetchCompleted = useSelector(selectFetchCompleted);
 
-    // Состояние загрузки
     const [isInitialLoading, setIsInitialLoading] = useState(true);
     const [dataLoaded, setDataLoaded] = useState(false);
     const [lastFetchTime, setLastFetchTime] = useState(0);
@@ -124,52 +108,38 @@ export const MainScreen = ({ navigation, route }) => {
     const initialLoadRef = useRef(false);
     const cacheTimeoutRef = useRef(null);
 
-    // Проверяем, нужно ли обновить данные
     const shouldRefreshData = useCallback(() => {
         const now = Date.now();
         const timeSinceLastFetch = now - lastFetchTime;
         return !isProductsLoading && timeSinceLastFetch > REFRESH_INTERVAL;
     }, [lastFetchTime, isProductsLoading]);
 
-    // Проверяем, есть ли кэшированные данные
     const hasCachedData = useCallback(() => {
         return (Array.isArray(products) && products.length > 0) || 
                (Array.isArray(activeBanners) && activeBanners.length > 0) || 
                (Array.isArray(categories) && categories.length > 0);
     }, [products, activeBanners, categories]);
 
-    // Единая функция загрузки всех данных
     const loadAllData = useCallback(async (refresh = false) => {
         if (loadingRef.current) {
             console.log('loadAllData: Пропуск загрузки - уже идет загрузка');
             return;
         }
 
-        // Если есть кэшированные данные и это не принудительное обновление, показываем их сразу
         if (!refresh && hasCachedData() && dataLoaded) {
-            console.log('loadAllData: Используем кэшированные данные');
             setIsInitialLoading(false);
             initialLoadRef.current = true;
             return;
         }
 
-        // Пытаемся загрузить из кэша при первом запуске
         if (!refresh && !dataLoaded && !initialLoadRef.current) {
             const cachedData = await loadCacheData();
             if (cachedData) {
-                console.log('loadAllData: Используем данные из кэша');
-                
-                // Восстанавливаем данные в Redux store если они есть
+
                 if (cachedData.products && cachedData.products.length > 0) {
-                    // Продукты уже должны быть в store, но можно обновить если нужно
                 }
                 if (cachedData.categories && cachedData.categories.length > 0) {
-                    // Восстанавливаем категории в store
-                    console.log('📦 Восстанавливаем категории из кэша:', cachedData.categories.length);
                     dispatch(setCategories(cachedData.categories));
-                }
-                if (cachedData.banners && cachedData.banners.length > 0) {
-                    // Баннеры уже должны быть в store, но можно обновить если нужно
                 }
                 
                 setIsInitialLoading(false);
@@ -181,13 +151,6 @@ export const MainScreen = ({ navigation, route }) => {
         }
 
         if (refresh || shouldRefreshData() || !dataLoaded) {
-            console.log('loadAllData: Начинаем загрузку всех данных', { 
-                refresh, 
-                shouldRefresh: shouldRefreshData(), 
-                dataLoaded,
-                isInitialLoading,
-                hasCachedData: hasCachedData()
-            });
 
             loadingRef.current = true;
             setLoadingStates({
@@ -197,10 +160,8 @@ export const MainScreen = ({ navigation, route }) => {
             });
 
             try {
-                // Загружаем все данные параллельно для ускорения
                 const promises = [];
 
-                // Загрузка продуктов с приоритетом
                 const productsPromise = dispatch(fetchProducts({ page: 1, limit: PRODUCTS_PER_PAGE, refresh }))
                     .finally(() => {
                         if (isMountedRef.current) {
@@ -209,7 +170,6 @@ export const MainScreen = ({ navigation, route }) => {
                     });
                 promises.push(productsPromise);
 
-                // Загрузка баннеров (если еще не загружены)
                 if (!activeBanners?.length && bannerStatus !== 'loading') {
                     const bannersPromise = dispatch(fetchBanners({ type: 'MAIN', active: true }))
                         .finally(() => {
@@ -222,9 +182,7 @@ export const MainScreen = ({ navigation, route }) => {
                     setLoadingStates(prev => ({ ...prev, banners: false }));
                 }
 
-                // Загрузка категорий (всегда загружаем при первом запуске или принудительном обновлении)
                 if (refresh || !categories?.length || !dataLoaded) {
-                    console.log('🔄 Загружаем категории:', { refresh, categoriesLength: categories?.length, dataLoaded });
                     const categoriesPromise = dispatch(fetchCategories())
                         .finally(() => {
                             if (isMountedRef.current) {
@@ -233,11 +191,9 @@ export const MainScreen = ({ navigation, route }) => {
                         });
                     promises.push(categoriesPromise);
                 } else {
-                    console.log('⏭️ Пропускаем загрузку категорий:', { refresh, categoriesLength: categories?.length, dataLoaded });
                     setLoadingStates(prev => ({ ...prev, categories: false }));
                 }
 
-                // Ждем завершения всех загрузок
                 await Promise.all(promises);
 
                 if (isMountedRef.current) {
@@ -247,14 +203,12 @@ export const MainScreen = ({ navigation, route }) => {
                     setIsInitialLoading(false);
                     initialLoadRef.current = true;
 
-                    // Получаем актуальные данные после загрузки
                     const currentState = {
                         products: products,
                         banners: activeBanners,
                         categories: categories
                     };
 
-                    // Сохраняем данные в кэш
                     const cacheData = {
                         timestamp: currentTime,
                         ...currentState
@@ -262,8 +216,6 @@ export const MainScreen = ({ navigation, route }) => {
                     await saveCacheData(cacheData);
                 }
             } catch (error) {
-                console.error('Ошибка при загрузке данных:', error);
-                // Даже при ошибке снимаем состояние загрузки
                 if (isMountedRef.current) {
                     setIsInitialLoading(false);
                     initialLoadRef.current = true;
@@ -275,27 +227,21 @@ export const MainScreen = ({ navigation, route }) => {
     }, [dispatch, isProductsLoading, shouldRefreshData, dataLoaded,
         activeBanners, bannerStatus, categories, isCategoriesLoading, hasCachedData]);
 
-    // Функция для загрузки следующей страницы продуктов
     const loadMoreProducts = useCallback(() => {
         if (!hasMore || isLoadingMore || isProductsLoading) {
-            console.log('Загрузка отменена:', { hasMore, isLoadingMore, isProductsLoading });
             return;
         }
 
         const nextPage = currentPage + 1;
-        console.log('Загрузка страницы:', nextPage);
-        
+
         dispatch(fetchProducts({ page: nextPage, limit: PRODUCTS_PER_PAGE }));
     }, [dispatch, hasMore, isLoadingMore, isProductsLoading, currentPage]);
 
-    // Инициализация при монтировании
     useEffect(() => {
         isMountedRef.current = true;
         
         const initializeScreen = async () => {
-            // Если в Redux уже есть данные — используем их без сетевых запросов (однократно)
             if (hasCachedData()) {
-                console.log('🚀 Используем данные из Redux при инициализации');
                 if (!initialLoadRef.current) {
                     setIsInitialLoading(false);
                     initialLoadRef.current = true;
@@ -305,13 +251,10 @@ export const MainScreen = ({ navigation, route }) => {
                 return;
             }
 
-            // Пытаемся загрузить из локального кэша
             const cachedData = await loadCacheData();
             if (cachedData) {
-                console.log('🚀 Используем данные из кэша при инициализации');
 
                 if (cachedData.categories && cachedData.categories.length > 0) {
-                    console.log('📦 Восстанавливаем категории из кэша при инициализации:', cachedData.categories.length);
                     dispatch(setCategories(cachedData.categories));
                 }
 
@@ -324,18 +267,14 @@ export const MainScreen = ({ navigation, route }) => {
                 return;
             }
 
-            // Данных нет ни в Redux, ни в кэше — загружаем с сервера один раз
             if (!initialLoadRef.current) {
-                console.log('🚀 Инициализация главного экрана - начинаем загрузку данных');
                 loadAllData();
             }
         };
 
         initializeScreen();
 
-        // Дополнительная проверка: если категории не загружены, загружаем их принудительно
         if (!categories?.length && !isCategoriesLoading) {
-            console.log('🚀 Принудительная загрузка категорий при инициализации');
             dispatch(fetchCategories());
         }
 
@@ -343,13 +282,6 @@ export const MainScreen = ({ navigation, route }) => {
             notifications.initializePushNotifications();
         }
 
-        // Отключено автообновление, чтобы не было подгрузок при каждом возвращении на экран
-        // refreshTimerRef.current = setInterval(() => {
-        //     if (isMountedRef.current && shouldRefreshData()) {
-        //         console.log('🔄 Автоматическое обновление данных');
-        //         loadAllData(true);
-        //     }
-        // }, REFRESH_INTERVAL);
 
         return () => {
             isMountedRef.current = false;
@@ -362,10 +294,8 @@ export const MainScreen = ({ navigation, route }) => {
         };
     }, []);
 
-    // Обновление при фокусе экрана
     useFocusEffect(
         useCallback(() => {
-            // На фокусе ничего не перезагружаем, только мягкие операции
             if (route?.params?.resetProduct) {
                 navigation.setParams({ resetProduct: undefined });
             }
@@ -396,32 +326,29 @@ export const MainScreen = ({ navigation, route }) => {
     }, [loadAllData]);
 
     const renderHeader = useCallback(() => {
-        const isInitialLoad = isInitialLoading || (isAnyLoading && !hasAnyData);
-        
+
         return (
             <>
                 <Header navigation={navigation} />
                 <PromoBanner hideLoader={true} />
                 <CategoriesBar hideLoader={true} />
                 <DriverLocator onPress={handleDriverLocatorPress} />
+
             </>
         );
-    }, [handleDriverLocatorPress, navigation, isInitialLoading, isAnyLoading, hasAnyData]);
+    }, [handleDriverLocatorPress, navigation, isInitialLoading]);
 
     const renderFooter = useCallback(() => (
         <View style={styles.bottomSpacer} />
     ), []);
 
-    // Проверяем общее состояние загрузки
     const isAnyLoading = loadingStates.products || loadingStates.banners || loadingStates.categories || isProductsLoading;
     const hasAnyData = (Array.isArray(products) && products.length > 0) || 
                        (Array.isArray(activeBanners) && activeBanners.length > 0) || 
                        (Array.isArray(categories) && categories.length > 0);
 
-    // Показываем лоадер только если нет данных и идет загрузка
     const shouldShowLoader = (isInitialLoading || (isAnyLoading && !hasAnyData)) && !hasCachedData();
 
-    // Единый лоадер со скелетоном для начальной загрузки
     if (shouldShowLoader) {
         return (
             <View style={styles.container}>

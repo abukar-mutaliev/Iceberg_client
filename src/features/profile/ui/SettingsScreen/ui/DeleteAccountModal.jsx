@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
-import {deleteProfile, selectIsProfileDeleting, selectProfileError} from '@entities/profile';
+import { deleteProfile, selectIsProfileDeleting, selectProfileError } from '@entities/profile';
 import { logout, resetState, removeTokensFromStorage,  } from '@entities/auth';
 import { FontFamily, Color, Border } from '@app/styles/GlobalStyles';
 
@@ -35,18 +35,35 @@ const DeleteAccountModal = ({ visible, onClose }) => {
 
     const handleSuccessfulDeletion = async () => {
         try {
+            console.log('🗑️ Обработка успешного удаления аккаунта...');
+
+            // Деактивируем FCM токен при удалении аккаунта
+            try {
+                console.log('🔄 Деактивация FCM токена при удалении аккаунта...');
+                const FCMTokenService = require('@shared/services/FCMTokenService').default;
+                await FCMTokenService.deactivateTokenOnLogout();
+                console.log('✅ FCM токен деактивирован при удалении аккаунта');
+            } catch (fcmError) {
+                console.warn('⚠️ Ошибка деактивации FCM токена при удалении:', fcmError);
+            }
+
+            // Очищаем токены авторизации
             await removeTokensFromStorage();
 
+            // Сбрасываем состояние приложения
             dispatch(resetState());
 
             onClose();
 
+            // Переходим на главный экран (неавторизованный)
             navigation.reset({
                 index: 0,
                 routes: [{ name: 'Main' }],
             });
+
+            console.log('✅ Очистка данных после удаления аккаунта завершена');
         } catch (error) {
-            console.error('Ошибка при очистке данных:', error);
+            console.error('❌ Ошибка при очистке данных после удаления:', error);
         }
     };
     const handleConfirm = async () => {

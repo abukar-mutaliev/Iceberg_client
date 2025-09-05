@@ -12,6 +12,7 @@ import ChatIcon from '@shared/ui/Chat/ChatIcon';
 export const UserPublicProfileScreen = ({ route, navigation }) => {
     const userId = route?.params?.userId;
     const fromScreen = route?.params?.fromScreen;
+    const roomId = route?.params?.roomId;
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [user, setUser] = useState(null);
@@ -139,6 +140,8 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
     const handleGoBack = () => {
         if (fromScreen === 'ChatRoom') {
             navigation.goBack();
+        } else if (fromScreen === 'GroupInfo' && roomId) {
+            navigation.navigate('GroupInfo', { roomId });
         } else {
             navigation.goBack();
         }
@@ -202,8 +205,9 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                 roomId: existingChat.id,
                 roomTitle: displayName,
                 roomData: existingChat,
-                fromScreen: 'UserPublicProfile',
-                currentUserId: currentUser.id
+                fromScreen: fromScreen === 'GroupInfo' ? 'GroupInfo' : 'UserPublicProfile',
+                currentUserId: currentUser.id,
+                groupRoomId: fromScreen === 'GroupInfo' ? roomId : undefined
             });
             return;
         }
@@ -229,8 +233,8 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                     roomData: {
                         ...room,
                         participants: [
-                            { 
-                                userId: user.id, 
+                            {
+                                userId: user.id,
                                 user: {
                                     ...user,
                                     name: displayName,
@@ -241,8 +245,9 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                             }
                         ]
                     },
-                    fromScreen: 'UserPublicProfile',
-                    currentUserId: currentUser.id
+                    fromScreen: fromScreen === 'GroupInfo' ? 'GroupInfo' : 'UserPublicProfile',
+                    currentUserId: currentUser.id,
+                    groupRoomId: fromScreen === 'GroupInfo' ? roomId : undefined
                 });
             } else {
                 throw new Error('Не удалось создать чат');

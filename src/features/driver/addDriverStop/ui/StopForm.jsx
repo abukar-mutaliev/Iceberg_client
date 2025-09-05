@@ -22,6 +22,7 @@ import { logData } from '@shared/lib/logger';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { DriverPicker } from "@features/driver/DriverPicker";
 import { createStop } from "@entities/stop";
+import { useToast } from '@shared/ui/Toast';
 
 export const StopForm = memo(({
                                   districts,
@@ -39,6 +40,7 @@ export const StopForm = memo(({
     const route = useRoute();
     const isLoading = useSelector(selectDriverLoading);
     const allDrivers = useSelector(state => state.driver?.allDrivers || []);
+    const { showSuccess, showError, showInfo } = useToast();
 
     const isAdminOrEmployee = userRole === 'ADMIN' || userRole === 'EMPLOYEE';
 
@@ -335,11 +337,7 @@ export const StopForm = memo(({
             if (!networkState.isConnected) {
                 logData('Отсутствует подключение к сети', networkState);
                 setFormSubmitted(false);
-                Alert.alert(
-                    'Проблема с подключением',
-                    'Отсутствует подключение к интернету. Пожалуйста, проверьте ваше соединение и попробуйте снова.',
-                    [{ text: 'OK' }]
-                );
+                showError('Отсутствует подключение к интернету. Пожалуйста, проверьте ваше соединение и попробуйте снова.');
                 return;
             }
         } catch (netInfoError) {
@@ -413,7 +411,7 @@ export const StopForm = memo(({
                     });
                 } catch (error) {
                     logData('Ошибка при подготовке фото', error);
-                    Alert.alert('Предупреждение', 'Возникла проблема с обработкой фото, но форма будет отправлена');
+                    showInfo('Возникла проблема с обработкой фото, но форма будет отправлена');
                     
                     // Создаем базовый объект фотографии для загрузки
                     photoForUpload = {
@@ -467,9 +465,11 @@ export const StopForm = memo(({
                         });
                     }
                     
-                    Alert.alert('Успех', 'Остановка успешно добавлена', [
-                        {text: 'OK', onPress: () => navigation.goBack()}
-                    ]);
+                    showSuccess('Остановка успешно добавлена', {
+                        action: true,
+                        actionText: 'Вернуться',
+                        onActionPress: () => navigation.goBack()
+                    });
                     
                     return result;
                 } catch (error) {
@@ -497,12 +497,7 @@ export const StopForm = memo(({
                         logData(`Повторная попытка ${nextRetry}/${maxRetries}`, { error: error.message });
                         
                         // Показываем сообщение о повторной попытке
-                        Alert.alert(
-                            'Проблема с сетью',
-                            `Повторная попытка ${nextRetry} из ${maxRetries}...`,
-                            [{ text: 'OK' }],
-                            { cancelable: false }
-                        );
+                        showInfo(`Повторная попытка ${nextRetry} из ${maxRetries}...`);
                         
                         // Увеличиваем время ожидания с каждой попыткой (экспоненциальная задержка)
                         const waitTime = 1000 * Math.pow(2, retryCount); // 1s, 2s, 4s, ...
@@ -562,18 +557,15 @@ export const StopForm = memo(({
                             }, 100);
 
                             // Показываем сообщение об ошибке валидации
-                            Alert.alert(
-                                'Ошибка валидации', 
-                                'Пожалуйста, исправьте ошибки в форме',
-                                [{ text: 'OK', onPress: () => setFormSubmitted(false) }]
-                            );
+                            showError('Пожалуйста, исправьте ошибки в форме');
+                            setFormSubmitted(false);
                         } else {
                             // Если не удалось определить поля ошибок, показываем общее сообщение
-                            Alert.alert('Ошибка', 'Произошла ошибка при создании остановки. Пожалуйста, попробуйте еще раз.');
+                            showError('Произошла ошибка при создании остановки. Пожалуйста, попробуйте еще раз.');
                         }
                     } else {
                         // Обработка других типов ошибок
-                        Alert.alert('Ошибка', 'Произошла ошибка при создании остановки. Пожалуйста, попробуйте еще раз.');
+                        showError('Произошла ошибка при создании остановки. Пожалуйста, попробуйте еще раз.');
                     }
                     
                     throw error;
@@ -585,7 +577,7 @@ export const StopForm = memo(({
             
         } catch (error) {
             logData('Ошибка при обработке формы', error);
-            Alert.alert('Ошибка', 'Ошибка при обработке данных. Пожалуйста, попробуйте еще раз.');
+            showError('Ошибка при обработке данных. Пожалуйста, попробуйте еще раз.');
             setFormSubmitted(false);
         }
     }, [
@@ -603,7 +595,10 @@ export const StopForm = memo(({
         selectedDriver,
         dispatch,
         navigation,
-        addressFromMap
+        addressFromMap,
+        showSuccess,
+        showError,
+        showInfo
     ]);
 
     return (

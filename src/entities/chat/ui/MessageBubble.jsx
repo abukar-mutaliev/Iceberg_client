@@ -364,7 +364,9 @@ export const MessageBubble = memo(({
         minute: '2-digit'
     }) : '';
 
-    const status = message?.status || 'SENT';
+    // Нормализуем статус к верхнему регистру для StatusTicks компонента
+    const rawStatus = message?.status || 'SENT';
+    const status = typeof rawStatus === 'string' ? rawStatus.toUpperCase() : 'SENT';
 
     const avatarUriBase = message?.sender?.avatar
         || message?.sender?.image
@@ -416,7 +418,7 @@ export const MessageBubble = memo(({
     }
 
     if (message.type === 'PRODUCT') {
-        // ИСПРАВЛЕНО: Получаем данные о товаре из content (JSON строка)
+        // Получаем данные о товаре из content (JSON строка)
         let productData = null;
         let productId = message?.productId;
 

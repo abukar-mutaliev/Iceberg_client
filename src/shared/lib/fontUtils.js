@@ -24,11 +24,12 @@ export const getSafePlatformFont = (iosFont, androidFont = 'sans-serif') => {
 
 /**
  * Готовые безопасные шрифты
+ * Имена соответствуют тому, как шрифты загружаются в App.jsx
  */
 export const SafeFonts = {
-    BezierSans: getSafeFont('BezierSans'),
-    SFProText: getSafePlatformFont('SFProText'),
-    SFProDisplay: getSafeFont('SF Pro Display'),
-    SFProDisplayMedium: getSafeFont('SFProDisplayMedium'),
+    BezierSans: getSafeFont('BezierSans'), // соответствует 'BezierSans_Regular.ttf'
+    SFProText: getSafePlatformFont('SFProText'), // соответствует 'SFProText-Regular.ttf'
+    SFProDisplay: getSafeFont('SF Pro Display'), // соответствует 'SF-Pro-Display-Regular.otf'
+    SFProDisplayMedium: getSafeFont('SFProDisplayMedium'), // соответствует 'SF-Pro-Display-Medium.otf'
     System: Platform.OS === 'ios' ? 'System' : 'sans-serif',
 }; 

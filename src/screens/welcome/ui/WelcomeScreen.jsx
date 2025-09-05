@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity, Image, Platform, Dimensions } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Image, Dimensions } from 'react-native';
 import Text from '@shared/ui/Text/Text';
 import LinesIceCream from './assets/LinesIceCream.png';
 import { SafeFonts, getSafePlatformFont } from '@shared/lib/fontUtils';
@@ -17,7 +17,16 @@ const adaptiveSize = (baseSize) => {
 
 export const WelcomeScreen = ({ navigation }) => {
     const handleStart = () => {
-        navigation.navigate('Main');
+        console.log('🚀 WelcomeScreen: handleStart called');
+        console.log('🚀 Navigation object:', typeof navigation);
+
+        try {
+            console.log('🚀 Attempting to navigate to Main...');
+            navigation.navigate('Main');
+            console.log('🚀 Navigation call completed');
+        } catch (error) {
+            console.error('❌ Navigation error in WelcomeScreen:', error);
+        }
     };
 
     const borderRadius = adaptiveSize(220);

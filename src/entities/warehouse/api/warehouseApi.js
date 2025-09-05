@@ -48,8 +48,12 @@ const WarehouseService = {
         warehouseApi.get(`/${warehouseId}/stats`),
 
     // Поиск складов с товаром
-    findWarehousesWithProduct: (productId, params = {}) =>
-        warehouseApi.get(`/find-with-product/${productId}`, params)
+    findWarehousesWithProduct: (productId, params = {}) => {
+        console.log('[WarehouseService] Вызываем findWarehousesWithProduct для товара:', productId);
+        console.log('[WarehouseService] URL:', `/find-with-product/${productId}`);
+        console.log('[WarehouseService] Params:', params);
+        return warehouseApi.get(`/find-with-product/${productId}`, params);
+    }
 };
 
 export default WarehouseService; 

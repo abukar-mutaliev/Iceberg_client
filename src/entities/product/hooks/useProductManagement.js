@@ -156,6 +156,7 @@ const normalizeProductData = (rawProduct) => {
         description,
         isActive,
         supplier: product.supplier || null,
+        supplierId: product.supplierId || null,
         categories: product.categories || [],
         images: product.images || [],
         weight: product.weight || null,

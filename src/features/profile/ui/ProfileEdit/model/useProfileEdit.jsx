@@ -16,13 +16,8 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
 
     useEffect(() => {
         renderCountRef.current += 1;
-        const isInitialRender = renderCountRef.current <= 2;
 
         const determineUserType = () => {
-            if (isInitialRender) {
-                console.log('determineUserType - profile:', profile);
-                console.log('determineUserType - user:', currentUser);
-            }
 
             if (currentUser && currentUser.role) {
                 switch(currentUser.role.toUpperCase()) {
@@ -61,9 +56,13 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
         const newUserType = determineUserType();
         if (newUserType !== userTypeRef.current) {
             userTypeRef.current = newUserType;
-            if (isInitialRender) {
-                console.log('useProfileEdit - определен тип пользователя:', newUserType);
-            }
+            console.log('useProfileEdit - определен тип пользователя:', newUserType);
+            console.log('useProfileEdit - profile для определения типа:', {
+                role: profile?.role,
+                hasSupplier: !!profile?.supplier,
+                hasCompanyName: !!profile?.companyName,
+                profileKeys: profile ? Object.keys(profile) : 'no profile'
+            });
         }
     }, [profile, currentUser]);
 
@@ -90,7 +89,6 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
 
     const loadDistricts = useCallback(() => {
         if (isDistrictsNeeded()) {
-            logData('useProfileEdit: Загрузка районов', { userType });
             return dispatch(fetchAllDistricts());
         }
         return Promise.resolve();
@@ -98,7 +96,6 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
 
     const loadWarehouses = useCallback(() => {
         if (isWarehousesNeeded()) {
-            logData('useProfileEdit: Загрузка складов', { userType });
             return dispatch(fetchAllWarehouses());
         }
         return Promise.resolve();
@@ -106,11 +103,9 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
 
     useEffect(() => {
         if (isDistrictsNeeded()) {
-            logData('useProfileEdit: Автоматическая загрузка районов для профиля', { userType });
             loadDistricts();
         }
         if (isWarehousesNeeded()) {
-            logData('useProfileEdit: Автоматическая загрузка складов для профиля', { userType });
             loadWarehouses();
         }
     }, [userType, loadDistricts, isDistrictsNeeded, loadWarehouses, isWarehousesNeeded]);
@@ -128,6 +123,7 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
             case 'admin':
                 return profile.admin || profile;
             case 'supplier':
+                return profile.supplier || profile;
             default:
                 return profile;
         }
@@ -138,7 +134,7 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
 
         switch (userType) {
             case 'supplier':
-                return profile.companyName || '';
+                return profile.supplier?.companyName || profile.companyName || '';
             case 'employee':
                 return profile.employee?.name || profile.name || '';
             case 'driver':
@@ -173,9 +169,6 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
     }, []);
 
     const prepareDataForSubmission = useCallback((formData) => {
-        logData('useProfileEdit: Подготовка данных для отправки', { userType, formData });
-        console.log('Входные данные формы для отправки:', formData);
-
         let baseData = {};
 
         switch (userType) {
@@ -226,28 +219,27 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
                 break;
             case 'supplier':
                 baseData = {
-                    phone: formData.phone || '',
-                    address: formData.address || '',
-                    gender: formData.gender === '' ? null : formData.gender,
+                    phone: formData.phone || null,
+                    address: formData.address || null,
+                    gender: formData.gender || null,
                     companyName: formData.companyName || formData.name || '',
                     contactPerson: formData.contactPerson || '',
-                    inn: formData.inn || '',
-                    ogrn: formData.ogrn || '',
-                    bankAccount: formData.bankAccount || '',
-                    bik: formData.bik || '',
+                    inn: formData.inn === '' ? null : formData.inn,
+                    ogrn: formData.ogrn === '' ? null : formData.ogrn,
+                    bankAccount: formData.bankAccount === '' ? null : formData.bankAccount,
+                    bik: formData.bik === '' ? null : formData.bik,
                 };
                 break;
             default:
                 baseData = {
                     phone: formData.phone || '',
                     address: formData.address || '',
-                    gender: formData.gender === '' ? null : formData.gender,
+                    gender: formData.gender || null,
                     name: formData.name || '',
                 };
                 break;
         }
 
-        console.log('Подготовленные данные для отправки:', baseData);
         return baseData;
     }, [userType]);
 
@@ -255,13 +247,26 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
         Keyboard.dismiss();
         try {
             setIsSaving(true);
-            logData('useProfileEdit: Сохранение профиля', { userType });
-
-            console.log('Данные формы перед отправкой:', formData);
-
+            console.log('useProfileEdit: handleSaveProfile called', {
+                formData,
+                gender: formData.gender,
+                formDataKeys: Object.keys(formData)
+            });
             const dataToSend = prepareDataForSubmission(formData);
+            console.log('useProfileEdit: dataToSend prepared', {
+                dataToSend,
+                gender: dataToSend.gender
+            });
 
+            console.log('useProfileEdit: dispatching updateProfile', {
+                dataToSend,
+                gender: dataToSend.gender
+            });
             const result = await dispatch(updateProfile(dataToSend)).unwrap();
+            console.log('useProfileEdit: updateProfile result', {
+                result,
+                resultGender: result?.gender
+            });
 
             await dispatch(fetchProfile()).unwrap();
 
@@ -275,8 +280,6 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
 
             navigation.goBack();
         } catch (error) {
-            logData('useProfileEdit: Ошибка обновления профиля', { error });
-
             Alert.alert(
                 'Ошибка',
                 error?.message || 'Не удалось сохранить изменения',
@@ -297,52 +300,51 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
                 commonValues = {
                     phone: profile.employee?.phone || profile.phone || '',
                     address: profile.employee?.address || profile.address || '',
-                    gender: profile.gender || '',
+                    gender: profile.gender || 'MALE',
                 };
                 break;
             case 'driver':
                 commonValues = {
                     phone: profile.driver?.phone || profile.phone || '',
                     address: profile.driver?.address || profile.address || '',
-                    gender: profile.gender || '',
+                    gender: profile.gender || 'MALE',
                 };
                 break;
             case 'client':
                 commonValues = {
                     phone: profile.client?.phone || profile.phone || '',
                     address: profile.client?.address || profile.address || '',
-                    gender: profile.gender || '',
+                    gender: profile.gender || 'MALE',
                 };
                 break;
             case 'admin':
                 commonValues = {
                     phone: profile.admin?.phone || profile.phone || '',
                     address: profile.admin?.address || profile.address || '',
-                    gender: profile.gender || '',
+                    gender: profile.gender || 'MALE',
                 };
                 break;
             default:
                 commonValues = {
                     phone: profile.phone || '',
                     address: profile.address || '',
-                    gender: profile.gender || '',
+                    gender: profile.gender || 'MALE',
                 };
                 break;
         }
 
-        console.log('Общие значения:', commonValues);
 
         let typeSpecificValues = {};
 
         switch (userType) {
             case 'supplier':
                 typeSpecificValues = {
-                    companyName: profile.companyName || '',
-                    contactPerson: profile.contactPerson || '',
-                    inn: profile.inn || '',
-                    ogrn: profile.ogrn || '',
-                    bankAccount: profile.bankAccount || '',
-                    bik: profile.bik || '',
+                    companyName: profile.supplier?.companyName || profile.companyName || '',
+                    contactPerson: profile.supplier?.contactPerson || profile.contactPerson || '',
+                    inn: profile.supplier?.inn || profile.inn || '',
+                    ogrn: profile.supplier?.ogrn || profile.ogrn || '',
+                    bankAccount: profile.supplier?.bankAccount || profile.bankAccount || '',
+                    bik: profile.supplier?.bik || profile.bik || '',
                 };
                 break;
 
@@ -385,14 +387,28 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
                 break;
         }
 
-        console.log('Специфические значения:', typeSpecificValues);
 
         const result = {
             ...commonValues,
             ...typeSpecificValues
         };
 
-        console.log('Итоговые начальные значения формы:', result);
+        // Убеждаемся, что поле gender имеет значение по умолчанию, если оно пустое
+        if (!result.gender || result.gender === '') {
+            result.gender = 'MALE';
+        }
+
+        console.log(`useProfileEdit: Финальные начальные значения для ${userType}:`, {
+            commonValues,
+            typeSpecificValues,
+            result,
+            profileKeys: profile ? Object.keys(profile) : 'no profile',
+            supplierKeys: profile?.supplier ? Object.keys(profile.supplier) : 'no supplier',
+            gender: profile?.gender,
+            supplierGender: profile?.supplier?.gender,
+            finalGender: result.gender
+        });
+
         return result;
     }, [profile, userType]);
 

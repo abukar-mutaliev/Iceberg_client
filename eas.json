@@ -3,6 +3,30 @@
     "version": ">= 13.2.0"
   },
   "build": {
+    // Профиль для сборки standalone APK (production-like build для тестирования)
+    "standalone": {
+      "extends": "production",
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease",
+        "developmentClient": false,
+        "withoutCredentials": false
+      },
+      "ios": {
+        "buildConfiguration": "Release",
+        "developmentClient": false
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://212.67.11.134:5000",
+        "NODE_ENV": "production",
+        "EXPO_PUBLIC_BUILD_TYPE": "standalone",
+        "EXPO_DEBUG": "false",
+        "YANDEX_MAPS_API_KEY": "17ee620d-aee1-482c-acc9-c7144fd46087"
+      },
+      "channel": "standalone"
+    },
+    // Development build для тестирования на устройстве с Expo Go
     "development": {
       "developmentClient": true,
       "distribution": "internal",
@@ -23,30 +47,66 @@
       "env": {
         "EXPO_PUBLIC_API_URL": "http://212.67.11.134:5000",
         "NODE_ENV": "development",
-        "EXPO_DEBUG": "true"
+        "EXPO_DEBUG": "true",
+        "YANDEX_MAPS_API_KEY": "17ee620d-aee1-482c-acc9-c7144fd46087"
       },
       "channel": "debug"
     },
+    // Preview build - standalone APK для тестирования (исправленный)
     "preview": {
       "distribution": "internal",
       "android": {
         "buildType": "apk",
-        "gradleCommand": ":app:assembleRelease"
+        "gradleCommand": ":app:assembleRelease",
+        "developmentClient": false,
+        "withoutCredentials": false
       },
       "ios": {
-        "buildConfiguration": "Release"
+        "buildConfiguration": "Release",
+        "developmentClient": false
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "http://212.67.11.134:5000",
-        "NODE_ENV": "development",
+        "NODE_ENV": "production",
         "EXPO_USE_CLEARTEXT_TRAFFIC": "true",
-        "EXPO_PUBLIC_BUILD_TYPE": "preview"
+        "EXPO_PUBLIC_BUILD_TYPE": "preview",
+        "EXPO_DEBUG": "false",
+        "YANDEX_MAPS_API_KEY": "17ee620d-aee1-482c-acc9-c7144fd46087"
       },
       "channel": "preview",
       "cache": {
-        "disabled": false
+        "disabled": true
       }
     },
+    // Preview Debug build - standalone APK с отладкой
+    "preview-debug": {
+      "extends": "preview",
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleRelease",
+        "developmentClient": false,
+        "withoutCredentials": false
+      },
+      "ios": {
+        "buildConfiguration": "Release",
+        "developmentClient": false
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://212.67.11.134:5000",
+        "NODE_ENV": "production",
+        "EXPO_USE_CLEARTEXT_TRAFFIC": "true",
+        "EXPO_PUBLIC_BUILD_TYPE": "preview-debug",
+        "EXPO_DEBUG": "true",
+        "EXPO_ENABLE_REMOTE_DEBUGGING": "true",
+        "YANDEX_MAPS_API_KEY": "17ee620d-aee1-482c-acc9-c7144fd46087"
+      },
+      "channel": "preview-debug",
+      "cache": {
+        "disabled": true
+      }
+    },
+    // Production build - финальная сборка для публикации
     "production": {
       "android": {
         "buildType": "apk",
@@ -59,7 +119,8 @@
         "EXPO_PUBLIC_API_URL": "http://212.67.11.134:5000",
         "NODE_ENV": "production",
         "EXPO_PUBLIC_BUILD_TYPE": "production",
-        "EXPO_PUSH_TOKEN_ENABLED": "true"
+        "EXPO_PUSH_TOKEN_ENABLED": "true",
+        "YANDEX_MAPS_API_KEY": "17ee620d-aee1-482c-acc9-c7144fd46087"
       },
       "channel": "production"
     }

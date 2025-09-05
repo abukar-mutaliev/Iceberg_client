@@ -547,22 +547,26 @@ const styles = StyleSheet.create({
         zIndex: 1000,
     },
     backButton: {
-        padding: 8,
-        marginRight: 2,
+        padding: 12,
+        marginRight: 4,
         justifyContent: 'center',
         alignItems: 'center',
+        minWidth: 44,
+        minHeight: 44,
     },
     backButtonText: {
         fontSize: 26,
         color: '#000000',
         fontWeight: '400',
+        textAlign: 'center',
+        lineHeight: 26,
     },
     avatarContainer: {
         marginRight: 8,
     },
     avatar: {
-        width: 40,
-        height: 40,
+        width: 35,
+        height: 35,
         borderRadius: 20,
         backgroundColor: '#E0E0E0',
         justifyContent: 'center',
@@ -570,8 +574,8 @@ const styles = StyleSheet.create({
         overflow: 'hidden'
     },
     avatarImage: {
-        width: 40,
-        height: 40,
+        width: 35,
+        height: 35,
         borderRadius: 20,
     },
     avatarPlaceholder: {
@@ -583,13 +587,13 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     chatName: {
-        fontSize: 18,
+        fontSize: 16,
         fontWeight: '500',
         color: '#000000',
         marginBottom: 2,
     },
     chatStatus: {
-        fontSize: 13,
+        fontSize: 11,
         color: '#666666',
     },
     menuButton: {

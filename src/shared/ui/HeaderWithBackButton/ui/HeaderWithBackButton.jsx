@@ -84,10 +84,11 @@ const styles = StyleSheet.create({
     leftContent: {
         width: 40,
         justifyContent: 'center',
-        alignItems: 'flex-start',
+        alignItems: 'center',
     },
     backButton: {
         padding: 4,
+        marginRight: 10,
     },
     titleContainer: {
         flex: 1,

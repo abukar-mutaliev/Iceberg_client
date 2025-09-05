@@ -33,6 +33,16 @@ export const useAuth = () => {
             if (result.meta.requestStatus === 'fulfilled' && !result.payload.requiresTwoFactor) {
                 console.log('🔄 Загружаем полный профиль после логина...');
                 await dispatch(loadUserProfile());
+                
+                // Дополнительно проверяем, что токены установлены
+                if (result.payload.tokens) {
+                    console.log('✅ Токены получены, устанавливаем в API заголовки');
+                    const { api } = await import('@shared/api/api');
+                    if (api && api.defaults) {
+                        api.defaults.headers.common['Authorization'] = `Bearer ${result.payload.tokens.accessToken}`;
+                        console.log('🔐 Заголовок Authorization установлен');
+                    }
+                }
             }
 
             return result;

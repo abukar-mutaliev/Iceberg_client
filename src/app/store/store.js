@@ -17,7 +17,7 @@ import { stopReducer } from "@entities/stop";
 import { districtReducer } from "@entities/district";
 import { adminReducer, processingRolesReducer } from '@entities/admin';
 import { favoritesReducer } from '@entities/favorites';
-import { notificationReducer } from '@entities/notification';
+import { notificationReducer, notificationSettingsSlice, fetchNotificationSettings } from '@entities/notification';
 import { cartReducer } from '@entities/cart';
 import { cartReloadMiddleware } from '@entities/cart/model/middleware';
 import { warehouseReducer } from '@entities/warehouse';
@@ -54,6 +54,7 @@ const appReducer = combineReducers({
     processingRoles: processingRolesReducer,
     favorites: favoritesReducer,
     notification: notificationReducer,
+    notificationSettings: notificationSettingsSlice.reducer,
     cart: cartReducer,
     warehouse: warehouseReducer,
     order: orderReducer,
@@ -78,6 +79,30 @@ const localStorageMiddleware = store => next => action => {
     if (action.type.startsWith('auth/')) {
         // Ваш код, если нужен
     }
+    return result;
+};
+
+// Middleware для автоматической загрузки настроек уведомлений при входе
+const notificationSettingsMiddleware = store => next => action => {
+    const result = next(action);
+
+    // При успешном входе загружаем настройки уведомлений
+    if (action.type === 'auth/login/fulfilled' && !action.payload?.requiresTwoFactor) {
+        console.log('🔔 Notification middleware: Login successful, loading notification settings');
+        setTimeout(() => {
+            if (fetchNotificationSettings) {
+                store.dispatch(fetchNotificationSettings());
+            } else {
+                console.warn('⚠️ fetchNotificationSettings not available in middleware');
+            }
+        }, 100); // Небольшая задержка для обеспечения корректной инициализации
+    }
+
+    // При сбросе состояния приложения очищаем настройки уведомлений
+    if (action.type === 'RESET_APP_STATE') {
+        console.log('🔔 Notification middleware: App state reset, clearing notification settings');
+    }
+
     return result;
 };
 
@@ -116,6 +141,7 @@ export const store = configureStore({
             },
         })
             .concat(localStorageMiddleware)
+            .concat(notificationSettingsMiddleware)
             .concat(profileCheckMiddleware)
             .concat(favoritesDebugMiddleware)
             .concat(cartReloadMiddleware)

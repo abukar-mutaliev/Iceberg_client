@@ -21,9 +21,8 @@ export const PushNotificationDiagnostic = () => {
     const [logs, setLogs] = useState([]);
     
     const user = useSelector(selectUser);
-    const tokens = useSelector(selectTokens); // ИСПРАВЛЕНО: Получаем токены из Redux
+    const tokens = useSelector(selectTokens); 
 
-    // НОВАЯ ФУНКЦИЯ: Добавление логов
     const addLog = (message, type = 'info') => {
         const timestamp = new Date().toISOString();
         const logEntry = { timestamp, message, type };

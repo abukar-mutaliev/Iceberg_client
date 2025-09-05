@@ -363,7 +363,12 @@ const ProductsService = {
         const formData = new FormData();
 
         Object.keys(data.formData).forEach(key => {
-            if (data.formData[key] !== undefined && data.formData[key] !== null) {
+            // Пропускаем undefined значения
+            if (data.formData[key] === undefined) {
+                return;
+            }
+            
+            if (data.formData[key] !== null) {
                 if (key === 'warehouses' && Array.isArray(data.formData[key])) {
                     // Обрабатываем массив складов
                     if (data.formData[key].length > 0) {
@@ -481,7 +486,12 @@ const ProductsService = {
 
             const formData = new FormData();
             Object.keys(data.formData).forEach(key => {
-                if (data.formData[key] !== undefined && data.formData[key] !== null) {
+                // Пропускаем undefined значения и supplierId если он undefined
+                if (data.formData[key] === undefined) {
+                    return;
+                }
+                
+                if (data.formData[key] !== null) {
                     if (key === 'category' || key === 'categories') {
                         const categoryValue = data.formData[key];
                         console.log('ProductsService - обработка категорий:', {

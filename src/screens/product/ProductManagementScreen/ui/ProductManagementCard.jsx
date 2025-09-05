@@ -97,11 +97,6 @@ export const ProductManagementCard = ({ product, onViewProduct }) => {
                         {product.description || 'Без описания'}
                     </Text>
 
-                    {product.supplierId && (
-                        <Text style={styles.supplier} numberOfLines={1}>
-                            Поставщик: {product.supplier?.companyName || `ID: ${product.supplierId}`}
-                        </Text>
-                    )}
                 </View>
             </View>
 
@@ -112,7 +107,7 @@ export const ProductManagementCard = ({ product, onViewProduct }) => {
                     style={styles.actionsStyle}
                     buttonStyle={styles.actionButtonStyle}
                     textStyle={styles.actionTextStyle}
-                    allowEdit={false}
+                    allowEdit={true}
                 />
             </View>
         </Pressable>

@@ -21,8 +21,6 @@ import JoinTeamIcon from "@shared/ui/Icon/Profile/JoinTeamIcon";
 import CustomButton from "@shared/ui/Button/CustomButton";
 import { AddProductModal } from "@widgets/product/AddProductModal";
 import { useAuth } from "@entities/auth/hooks/useAuth";
-// Импортируем только функцию тестирования авторизации
-import { testAuth } from '@shared/api/api';
 
 export const ProfileInfo = ({ onProductPress }) => {
     const navigation = useNavigation();
@@ -39,10 +37,6 @@ export const ProfileInfo = ({ onProductPress }) => {
 
     const [isAddProductModalVisible, setAddProductModalVisible] = useState(false);
     const [activeButtonId, setActiveButtonId] = useState(null);
-    // Упрощенные состояния для диагностики
-    const [authTestResult, setAuthTestResult] = useState(null);
-    const [isTestingAuth, setIsTestingAuth] = useState(false);
-    const [lastTestTime, setLastTestTime] = useState(null);
 
     const {
         setRetryCount,
@@ -76,50 +70,54 @@ export const ProfileInfo = ({ onProductPress }) => {
 
     const handleLogoutPress = () => {
         try {
-            console.log('Выполняем выход...');
+            console.log('🚪 Выполняем выход из системы...');
 
-            // Сначала отправляем действие для полного сброса состояния
-            dispatch({ type: 'RESET_APP_STATE' });
+            // Деактивируем FCM токен перед выходом
+            const deactivateFCMToken = async () => {
+                try {
+                    const FCMTokenService = require('@shared/services/FCMTokenService').default;
+                    const deactivated = await FCMTokenService.deactivateTokenOnLogout();
+                    
+                    if (deactivated) {
+                        console.log('✅ FCM токен деактивирован при выходе');
+                    } else {
+                        console.warn('⚠️ Не удалось деактивировать FCM токен');
+                    }
+                } catch (fcmError) {
+                    console.warn('⚠️ Ошибка деактивации FCM токена:', fcmError);
+                }
+            };
 
-            // Затем выполняем выход
-            logout().then(() => {
-                console.log('Выход выполнен, переходим на экран авторизации');
+            // Сначала деактивируем FCM токен
+            deactivateFCMToken().finally(() => {
+                console.log('🚪 Начинаем процесс выхода из аккаунта');
 
-                // Сбрасываем стек навигации на экран авторизации
-                navigation.reset({
-                    index: 0,
-                    routes: [{ name: 'Auth' }],
+                // Затем выполняем стандартный выход
+                dispatch({ type: 'RESET_APP_STATE' });
+                console.log('🔄 RESET_APP_STATE отправлен');
+
+                logout().then(() => {
+                    console.log('✅ Выход выполнен, переходим на экран авторизации');
+
+                    // Сбрасываем стек навигации на экран авторизации
+                    navigation.reset({
+                        index: 0,
+                        routes: [{ name: 'Auth' }],
+                    });
+                    console.log('🧭 Навигация сброшена на экран Auth');
+                }).catch(error => {
+                    console.error('❌ Ошибка при выходе:', error);
+                    Alert.alert('Ошибка', 'Не удалось выйти из системы. Попробуйте еще раз.');
                 });
-            }).catch(error => {
-                console.error('Ошибка при выходе:', error);
-                Alert.alert('Ошибка', 'Не удалось выйти из системы. Попробуйте еще раз.');
             });
+
         } catch (error) {
-            console.error('Необработанная ошибка при выходе:', error);
+            console.error('❌ Необработанная ошибка при выходе:', error);
             Alert.alert('Ошибка', 'Произошла неизвестная ошибка при выходе из системы.');
         }
     };
 
-    // Упрощенная функция для тестирования авторизации
-    const handleTestAuth = async () => {
-        try {
-            setIsTestingAuth(true);
-            setAuthTestResult(null);
 
-            console.log('Запускаем диагностику авторизации...');
-            const result = await testAuth();
-
-            console.log('Результат диагностики:', result);
-            setAuthTestResult(result);
-            setLastTestTime(new Date());
-
-        } catch (error) {
-            console.error('Ошибка при тестировании авторизации:', error);
-            Alert.alert('Ошибка диагностики', error.message || 'Не удалось выполнить проверку авторизации');
-        } finally {
-            setIsTestingAuth(false);
-        }
-    };
 
     const handleProductSuccess = (product) => {
         console.log('Продукт добавлен:', product);
@@ -129,10 +127,10 @@ export const ProfileInfo = ({ onProductPress }) => {
     };
 
     const handleManageProducts = () => {
-        // Используем глобальную навигацию к MainStack
-        navigation.navigate('MainTab', {
-            screen: 'ProductManagement',
-            params: { fromScreen: 'Profile' }
+        // Переход к управлению продуктами в ProfileStack
+        navigation.navigate('ProductManagement', {
+            fromScreen: 'Profile',
+            returnTo: 'Profile'
         });
     };
 
@@ -373,55 +371,5 @@ const styles = StyleSheet.create({
     },
     retryButtonTextStyle: {
         fontSize: normalizeFont(14),
-    },
-
-    // Стили для секции диагностики
-    debugContainer: {
-        marginHorizontal: normalize(15),
-        marginTop: normalize(10),
-        marginBottom: normalize(10),
-        paddingTop: normalize(10),
-        paddingBottom: normalize(10),
-        borderTopWidth: 0.5,
-        borderBottomWidth: 0.5,
-        borderColor: '#E5E5E5',
-    },
-    debugButton: {
-        backgroundColor: 'rgba(102, 102, 102, 0.1)',
-    },
-    testResultContainer: {
-        marginTop: normalize(10),
-        padding: normalize(10),
-        backgroundColor: '#F5F5F5',
-        borderRadius: normalize(8),
-    },
-    testResultTitle: {
-        fontSize: normalizeFont(14),
-        fontWeight: 'bold',
-        marginBottom: normalize(5),
-        color: '#333',
-    },
-    testResultItem: {
-        fontSize: normalizeFont(12),
-        marginVertical: normalize(2),
-        color: '#666',
-    },
-    testResultValue: {
-        fontWeight: 'bold',
-    },
-    validToken: {
-        color: 'green',
-    },
-    invalidToken: {
-        color: 'red',
-    },
-    testResultStatus: {
-        fontSize: normalizeFont(13),
-        marginTop: normalize(5),
-        paddingTop: normalize(5),
-        borderTopWidth: 0.5,
-        borderTopColor: '#E0E0E0',
-        fontWeight: 'bold',
-        color: '#333',
     },
 });

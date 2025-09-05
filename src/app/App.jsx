@@ -12,6 +12,8 @@ import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {initConsolePolyfill} from '@shared/lib/consolePolyfill';
 import {testNetworkConnection} from '@shared/api/api';
 import {useChatSocket} from '@entities/chat/hooks/useChatSocket';
+import {usePushTokenAutoRegistration} from '@shared/hooks/usePushTokenAutoRegistration';
+import {ToastContainer} from '@shared/ui/Toast';
 
 initConsolePolyfill();
 
@@ -126,46 +128,37 @@ const AppInitializer = ({children}) => {
     const {refreshToken, logout} = useAuth();
     const hasInitialized = useRef(false);
 
+    usePushTokenAutoRegistration();
+    useChatSocket();
+
+
     useEffect(() => {
         if (hasInitialized.current) return;
 
         const initializeApp = async () => {
             hasInitialized.current = true;
-            console.log('🚀 Начинаем инициализацию приложения...');
 
             try {
                 setLoadingText("Проверка подключения к серверу...");
-                // Тестируем подключение к серверу
 
                 try {
-                    const networkResult = await testNetworkConnection();
-
-                    if (!networkResult) {
-                        console.warn('Сервер недоступен, продолжаем без проверки');
-                        // Не блокируем инициализацию, если сервер недоступен
-                    }
-
+                    await testNetworkConnection();
                 } catch (networkError) {
-                    console.warn('Ошибка подключения к серверу:', networkError.message);
                     // Не блокируем инициализацию при ошибках сети
                 }
 
                 setLoadingText("Проверка аутентификации...");
-                // Инициализация аутентификации
                 const initialized = await authService.initializeAuth();
 
                 if (!initialized) {
-                    console.log('Auth service не инициализирован, продолжаем');
                     setIsInitializing(false);
                     return;
                 }
 
                 setLoadingText("Проверка токенов...");
-                // Проверяем токены
                 const tokens = await authService.getStoredTokens();
 
                 if (!tokens || !tokens.refreshToken) {
-                    console.log('Токены не найдены, пользователь не авторизован');
                     setIsInitializing(false);
                     return;
                 }
@@ -176,7 +169,6 @@ const AppInitializer = ({children}) => {
 
                 if (!refreshTokenValid) {
                     setLoadingText("Очистка данных...");
-                    console.log('Refresh token недействителен, очищаем данные');
                     await authService.clearTokens();
                     logout();
                     setIsInitializing(false);
@@ -186,27 +178,26 @@ const AppInitializer = ({children}) => {
                 if (!accessTokenValid && refreshTokenValid) {
                     setLoadingText("Обновление токена...");
                     try {
-                        console.log('Обновляем access token');
                         await refreshToken();
                     } catch (refreshError) {
-                        console.log('Ошибка обновления токена:', refreshError.message);
                         await authService.clearTokens();
                         logout();
                     }
                 }
 
-                setLoadingText("Завершение...");
-                console.log('Инициализация приложения завершена успешно');
-            } catch (err) {
-                console.error('Ошибка инициализации приложения:', err);
+                setLoadingText("Инициализация push-уведомлений...");
+                try {
+                    const pushService = await import('@shared/services/PushNotificationService');
+                    await pushService.default.initialize();
+                } catch (pushError) {
+                    // Ошибка инициализации push-уведомлений
+                }
 
+                setLoadingText("Завершение...");
+            } catch (err) {
                 if (err.response && err.response.status === 401) {
-                    console.log('Получен 401, очищаем токены');
                     await authService.clearTokens();
                     logout();
-                } else {
-                    console.warn('Ошибка сети при инициализации, продолжаем работу');
-                    // Не блокируем приложение при сетевых ошибках
                 }
             } finally {
                 setIsInitializing(false);
@@ -239,12 +230,8 @@ const AppInitializer = ({children}) => {
     return children;
 };
 
-// Основной контент приложения
 const AppContent = () => {
     const [fontsLoaded, setFontsLoaded] = useState(__DEV__ ? false : true);
-    
-    // Инициализируем WebSocket подключение для чата глобально
-    useChatSocket();
 
     useEffect(() => {
         if (!__DEV__) {
@@ -254,48 +241,30 @@ const AppContent = () => {
 
         async function loadFonts() {
             try {
-                console.log('Начинаем загрузку шрифтов...');
-
-                // Динамически импортируем шрифты только в development режиме
                 const fontMap = {};
 
                 try {
                     fontMap['BezierSans'] = require('../assets/fonts/BezierSans_Regular.ttf');
-                } catch (e) {
-                    console.log('BezierSans font не найден');
-                }
+                } catch (e) {}
 
                 try {
                     fontMap['SFProText'] = require('../assets/fonts/SFProText-Regular.ttf');
-                } catch (e) {
-                    console.log('SFProText font не найден');
-                }
+                } catch (e) {}
 
                 try {
                     fontMap['SF Pro Display'] = require('../assets/fonts/SF-Pro-Display-Regular.otf');
-                } catch (e) {
-                    console.log('SF Pro Display font не найден');
-                }
+                } catch (e) {}
 
                 try {
                     fontMap['SFProDisplayMedium'] = require('../assets/fonts/SF-Pro-Display-Medium.otf');
-                } catch (e) {
-                    console.log('SFProDisplayMedium font не найден');
-                }
+                } catch (e) {}
 
-                // Загружаем только те шрифты, которые успешно найдены
                 if (Object.keys(fontMap).length > 0) {
-                    console.log(`Загружаем ${Object.keys(fontMap).length} шрифтов...`);
                     await Font.loadAsync(fontMap);
-                    console.log('Шрифты загружены успешно');
-                } else {
-                    console.log('Шрифты для загрузки не найдены');
                 }
 
                 setFontsLoaded(true);
             } catch (e) {
-                console.warn('Ошибка загрузки шрифтов:', e.message);
-                // Продолжаем без кастомных шрифтов
                 setFontsLoaded(true);
             }
         }
@@ -328,13 +297,14 @@ export default function App() {
                         </PersistGate>
                     </AppProviders>
                 </SafeAreaProvider>
+                {/* ToastContainer на самом верхнем уровне для отображения поверх всех модальных окон */}
+                <ToastContainer/>
             </GestureHandlerRootView>
         </ErrorBoundary>
     );
 }
 
 const styles = StyleSheet.create({
-    // Кастомный экран загрузки
     customLoadingContainer: {
         flex: 1,
         backgroundColor: '#ffffff',
@@ -375,19 +345,6 @@ const styles = StyleSheet.create({
         fontFamily: __DEV__ ? 'System' : 'System',
     },
 
-    // Старые стили для совместимости
-    loadingContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 20,
-        backgroundColor: '#f8f9ff',
-    },
-    loadingText: {
-        marginTop: 10,
-        fontSize: 16,
-        color: '#333',
-    },
     errorContainer: {
         flex: 1,
         justifyContent: 'center',

@@ -14,7 +14,7 @@ import {Color, FontFamily} from "@app/styles/GlobalStyles";
 import {MultipleImageUpload} from "@entities/product/ui/MultipleImageUpload";
 import {CategoryPicker} from "@shared/ui/Pickers/CategoryPicker/ui/CategoryPicker";
 import {SupplierPicker} from "@shared/ui/Pickers/SupplierPicker";
-import {WarehousePicker} from "@shared/ui/Pickers/WarehousePicker";
+import {WarehouseQuantityPicker} from "@shared/ui/Pickers/WarehousePicker";
 import {selectIsAuthenticated, selectUser} from "@entities/auth/model/selectors";
 import {createProductChunked, clearProductsCache} from '@entities/product';
 import {fetchProfile} from "@entities/profile";
@@ -51,11 +51,11 @@ export const AddProductModal = ({visible, onClose, onSuccess}) => {
         itemsPerBox: "1", // количество штук в коробке
         boxPrice: "", // цена за коробку (может рассчитываться автоматически)
         discount: "",
-        stockQuantity: "", // количество коробок на складе
+        stockQuantity: "", // общее количество коробок (для обратной совместимости)
         description: "",
         images: [],
         supplierId: "",
-        warehouses: [], // Добавляем поле для складов
+        warehouseQuantities: [], // массив [{warehouseId, quantity}, ...]
     });
 
     // Состояние для ошибок валидации
@@ -71,7 +71,7 @@ export const AddProductModal = ({visible, onClose, onSuccess}) => {
         description: "",
         images: "",
         supplierId: "",
-        warehouses: "", // Добавляем поле для ошибок складов
+        warehouseQuantities: "", // Ошибки для складов с количествами
     });
 
     // Устанавливаем supplier ID если пользователь поставщик
@@ -99,7 +99,7 @@ export const AddProductModal = ({visible, onClose, onSuccess}) => {
                 description: "",
                 images: [],
                 supplierId: isSupplier && user?.supplier?.id ? user.supplier.id.toString() : "",
-                warehouses: [], // Сбрасываем выбранные склады
+                warehouseQuantities: [], // Сбрасываем выбранные склады с количествами
             };
 
             setFormData(resetData);
@@ -115,7 +115,7 @@ export const AddProductModal = ({visible, onClose, onSuccess}) => {
                 description: "",
                 images: "",
                 supplierId: "",
-                warehouses: "", // Сбрасываем ошибки складов
+                warehouseQuantities: "", // Сбрасываем ошибки складов
             });
 
             // Сбрасываем состояние загрузки
@@ -126,12 +126,47 @@ export const AddProductModal = ({visible, onClose, onSuccess}) => {
         }
     }, [visible, isSupplier, user]);
 
+    // Автоматически рассчитываем общее количество коробок на основе выбранных складов
+    useEffect(() => {
+        if (formData.warehouseQuantities && formData.warehouseQuantities.length > 0) {
+            const totalBoxes = formData.warehouseQuantities.reduce((sum, item) => sum + item.quantity, 0);
+            if (totalBoxes > 0 && (!formData.stockQuantity || formData.stockQuantity !== totalBoxes.toString())) {
+                setFormData(prev => ({
+                    ...prev,
+                    stockQuantity: totalBoxes.toString()
+                }));
+            }
+        }
+    }, [formData.warehouseQuantities]);
+
     // Обработка изменения полей формы
     const handleChange = (field, value) => {
-        setFormData((prev) => ({
-            ...prev,
-            [field]: value,
-        }));
+        setFormData((prev) => {
+            const newData = {
+                ...prev,
+                [field]: value,
+            };
+            
+            // Автоматически рассчитываем рекомендуемую цену за коробку
+            if (field === 'price' || field === 'itemsPerBox') {
+                const priceStr = field === 'price' ? value : prev.price;
+                const itemsStr = field === 'itemsPerBox' ? value : prev.itemsPerBox;
+
+                // Очищаем строки от нечисловых символов
+                const price = parseFloat(priceStr.toString().replace(/[^0-9.,]/g, '').replace(',', '.'));
+                const itemsPerBox = parseInt(itemsStr.toString().replace(/[^0-9]/g, ''));
+
+                if (!isNaN(price) && !isNaN(itemsPerBox) && itemsPerBox > 0 && price > 0) {
+                    // Расчетная цена за коробку = цена за штуку * количество штук
+                    const calculatedBoxPrice = price * itemsPerBox;
+
+                    // Устанавливаем полную стоимость (100%) при изменении price или itemsPerBox
+                    newData.boxPrice = calculatedBoxPrice.toFixed(2);
+                }
+            }
+            
+            return newData;
+        });
 
         if (errors[field]) {
             setErrors((prev) => ({
@@ -171,13 +206,13 @@ export const AddProductModal = ({visible, onClose, onSuccess}) => {
         }
     };
 
-    // Обработка изменения складов
-    const handleWarehousesChange = (warehouseIds) => {
+    // Обработка изменения складов с количествами
+    const handleWarehouseQuantitiesChange = (warehouseQuantities) => {
         setFormData((prev) => ({
             ...prev,
-            warehouses: warehouseIds,
+            warehouseQuantities: warehouseQuantities,
         }));
-        setErrors((prev) => ({...prev, warehouses: ""}));
+        setErrors((prev) => ({...prev, warehouseQuantities: ""}));
     };
 
     // Валидация формы
@@ -201,20 +236,17 @@ export const AddProductModal = ({visible, onClose, onSuccess}) => {
             isValid = false;
         }
 
-        if (!formData.price) {
+        if (!formData.price || !formData.price.toString().trim()) {
             newErrors.price = "Введите цену за штуку";
             isValid = false;
-        } else if (typeof formData.price === "string") {
-            if (!formData.price.trim()) {
-                newErrors.price = "Введите цену за штуку";
-                isValid = false;
-            } else if (isNaN(parseFloat(formData.price.replace(/[^0-9,.]/g, "")))) {
-                newErrors.price = "Цена за штуку должна быть числом";
+        } else {
+            const priceStr = formData.price.toString().replace(/[^0-9.,]/g, '').replace(',', '.');
+            const price = parseFloat(priceStr);
+
+            if (isNaN(price) || price <= 0) {
+                newErrors.price = "Цена за штуку должна быть положительным числом";
                 isValid = false;
             }
-        } else if (typeof formData.price !== "number") {
-            newErrors.price = "Некорректный формат цены за штуку";
-            isValid = false;
         }
 
         // Проверка количества штук в коробке
@@ -231,11 +263,39 @@ export const AddProductModal = ({visible, onClose, onSuccess}) => {
             }
         }
 
-        // Проверка цены за коробку (опционально - может рассчитываться автоматически)
-        if (formData.boxPrice && formData.boxPrice.trim()) {
-            if (isNaN(parseFloat(formData.boxPrice.replace(/[^0-9,.]/g, "")))) {
-                newErrors.boxPrice = "Цена за коробку должна быть числом";
+        // Проверка цены за коробку
+        if (formData.boxPrice && formData.boxPrice.toString().trim()) {
+            const boxPriceStr = formData.boxPrice.toString().replace(/[^0-9.,]/g, '').replace(',', '.');
+            const boxPrice = parseFloat(boxPriceStr);
+
+            if (isNaN(boxPrice) || boxPrice <= 0) {
+                newErrors.boxPrice = "Цена за коробку должна быть положительным числом";
                 isValid = false;
+            } else {
+                // Проверяем корректность данных для расчета
+                const priceStr = formData.price.toString().replace(/[^0-9.,]/g, '').replace(',', '.');
+                const itemsStr = formData.itemsPerBox.toString().replace(/[^0-9]/g, '');
+
+                const price = parseFloat(priceStr);
+                const itemsPerBox = parseInt(itemsStr);
+
+                if (!isNaN(price) && !isNaN(itemsPerBox) && itemsPerBox > 0 && price > 0) {
+                    // Расчетная цена за коробку = цена за штуку * количество штук
+                    const calculatedBoxPrice = price * itemsPerBox;
+                    // Минимальная цена за коробку = 70% от расчетной (пользователь может установить скидку до 30%)
+                    const minBoxPrice = calculatedBoxPrice * 0.7;
+
+                    if (boxPrice < minBoxPrice) {
+                        newErrors.boxPrice = `Цена за коробку не может быть меньше 70% от расчетной (${calculatedBoxPrice.toFixed(2)} ₽). Минимум: ${minBoxPrice.toFixed(2)} ₽`;
+                        isValid = false;
+                    }
+                } else {
+                    // Если не можем рассчитать - проверяем только чтобы цена была положительной
+                    if (boxPrice <= 0) {
+                        newErrors.boxPrice = "Цена за коробку должна быть больше 0";
+                        isValid = false;
+                    }
+                }
             }
         }
 
@@ -276,11 +336,27 @@ export const AddProductModal = ({visible, onClose, onSuccess}) => {
             isValid = false;
         }
 
-        // Валидация выбора складов (для поставщиков и админов)
-        if ((isSupplier || isAdminOrEmployee) && (!formData.warehouses || formData.warehouses.length === 0)) {
-            // Показываем предупреждение, но не блокируем отправку - товар будет добавлен на все склады
-            newErrors.warehouses = "Не выбраны склады. Товар будет добавлен на все доступные склады";
-            // isValid остается true - это предупреждение, а не ошибка
+        // Валидация выбора складов с количествами (для поставщиков и админов)
+        if ((isSupplier || isAdminOrEmployee) && (!formData.warehouseQuantities || formData.warehouseQuantities.length === 0)) {
+            newErrors.warehouseQuantities = "Выберите склады и укажите количество коробок для каждого склада";
+            isValid = false;
+        }
+
+        // Проверяем валидность складов с количествами
+        if (formData.warehouseQuantities && formData.warehouseQuantities.length > 0) {
+            const totalBoxes = formData.warehouseQuantities.reduce((sum, item) => sum + item.quantity, 0);
+
+            // Проверяем, что есть хотя бы один склад с положительным количеством
+            if (totalBoxes === 0) {
+                newErrors.warehouseQuantities = "Укажите количество коробок хотя бы для одного склада";
+                isValid = false;
+            }
+
+            // Проверяем, что stockQuantity соответствует сумме (если заполнено)
+            if (formData.stockQuantity && parseInt(formData.stockQuantity) !== totalBoxes) {
+                newErrors.stockQuantity = `Общее количество (${formData.stockQuantity}) не совпадает с суммой по складам (${totalBoxes})`;
+                isValid = false;
+            }
         }
 
         setErrors(newErrors);
@@ -329,12 +405,13 @@ export const AddProductModal = ({visible, onClose, onSuccess}) => {
                 price: formData.price, // цена за штуку
                 itemsPerBox: formData.itemsPerBox || 1, // количество штук в коробке
                 boxPrice: formData.boxPrice || null, // цена за коробку (может быть null для автоматического расчета)
-                stockQuantity: formData.stockQuantity, // количество коробок на складе
+                stockQuantity: formData.stockQuantity, // общее количество коробок
                 weight: formData.weight || null,
                 discount: formData.discount || null,
                 description: formData.description || '',
-                supplierId: formData.supplierId,
-                warehouses: formData.warehouses.length > 0 ? formData.warehouses : "all", // Добавляем склады
+                // Для поставщиков не отправляем supplierId - он определяется на сервере автоматически
+                supplierId: isSupplier ? undefined : formData.supplierId,
+                warehouses: formData.warehouseQuantities.length > 0 ? JSON.stringify(formData.warehouseQuantities) : "all", // Добавляем склады с количествами
             };
 
             if (!formData.images || formData.images.length === 0) {
@@ -354,7 +431,10 @@ export const AddProductModal = ({visible, onClose, onSuccess}) => {
                 цена: formData.price,
                 количествоНаСкладе: formData.stockQuantity,
                 поставщикID: formData.supplierId,
-                склады: formData.warehouses,
+                складыСКоличествами: formData.warehouseQuantities,
+                warehousesОтправка: productData.warehouses,
+                warehousesТип: typeof productData.warehouses,
+                warehousesМассив: Array.isArray(productData.warehouses),
                 количествоФото: formData.images.length
             });
 
@@ -486,14 +566,11 @@ export const AddProductModal = ({visible, onClose, onSuccess}) => {
                         />
                     )}
 
-                    {/* Выбор складов */}
-                    <WarehousePicker
-                        selectedWarehouses={formData.warehouses}
-                        onSelectWarehouses={handleWarehousesChange}
-                        error={errors.warehouses}
-                        isWarning={errors.warehouses && errors.warehouses.includes("будет добавлен на все")}
-                        allowMultiple={true}
-                        allowSelectAll={true}
+                    <WarehouseQuantityPicker
+                        selectedWarehouseQuantities={formData.warehouseQuantities}
+                        onSelectWarehouseQuantities={handleWarehouseQuantitiesChange}
+                        error={errors.warehouseQuantities}
+                        isWarning={errors.warehouseQuantities && errors.warehouseQuantities.includes("Не выбраны")}
                     />
 
                     <View style={styles.inputGroup}>

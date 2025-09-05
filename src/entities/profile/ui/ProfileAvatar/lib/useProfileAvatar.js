@@ -27,46 +27,17 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
     const uploadProgress = useSelector(selectAvatarUploadProgress);
     const avatarError = useSelector(selectAvatarError);
 
-    // Логирование для отладки
-    const logAvatarInfo = useCallback(() => {
-        console.log('useProfileAvatar - Данные профиля:', profile);
-        console.log('useProfileAvatar - Данные пользователя:', currentUser);
-
-        if (profile?.avatar) {
-            console.log('useProfileAvatar - Найден avatar в profile:', profile.avatar);
-        }
-
-        if (currentUser?.avatar) {
-            console.log('useProfileAvatar - Найден avatar в currentUser:', currentUser.avatar);
-        }
-
-        if (profile?.user?.avatar) {
-            console.log('useProfileAvatar - Найден avatar в profile.user:', profile.user.avatar);
-        }
-    }, [profile, currentUser]);
-
     useEffect(() => {
-        console.log('useProfileAvatar: Сброс avatarUriRef при смене пользователя');
-        // Сбрасываем данные аватара при смене пользователя
         avatarUriRef.current = null;
     }, [currentUser?.id]);
 
-    // Вызываем логгирование при изменении профиля или пользователя
-    useEffect(() => {
-        logAvatarInfo();
-    }, [profile, currentUser, logAvatarInfo]);
-
-    // Функция для формирования полного URL аватара
     const getFullAvatarUrl = useCallback((avatarPath) => {
         if (!avatarPath) return null;
 
-        // Проверка на валидность URL
         try {
             if (avatarPath.startsWith('http')) {
-                // Абсолютный URL
                 return avatarPath;
             } else {
-                // Относительный путь, добавляем базовый URL
                 const baseUrl = getBaseUrl();
                 const fullUrl = `${baseUrl}${avatarPath}`;
                 return fullUrl;
@@ -77,52 +48,39 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
         }
     }, []);
 
-    // Обновляем ссылку на аватар при изменении данных профиля
-    // ИСПРАВЛЕНО: логика поиска аватара
+
     useEffect(() => {
         if (!profile && !currentUser) return;
 
         let avatarUrl = null;
 
-        // Проверяем все возможные места для аватара
         if (profile?.user?.avatar) {
             avatarUrl = getFullAvatarUrl(profile.user.avatar);
-            console.log('useProfileAvatar - Установлен аватар из profile.user.avatar');
         }
         else if (profile?.avatar) {
             avatarUrl = getFullAvatarUrl(profile.avatar);
-            console.log('useProfileAvatar - Установлен аватар из profile.avatar');
         }
         else if (currentUser?.avatar) {
             avatarUrl = getFullAvatarUrl(currentUser.avatar);
-            console.log('useProfileAvatar - Установлен аватар из currentUser.avatar');
         }
-        // Проверяем на основе роли пользователя
         else if (currentUser?.role && profile) {
             const role = currentUser.role.toLowerCase();
             if (profile[role]?.avatar) {
                 avatarUrl = getFullAvatarUrl(profile[role].avatar);
-                console.log(`useProfileAvatar - Установлен аватар из profile.${role}.avatar`);
             }
         }
 
         if (avatarUrl) {
-            console.log('useProfileAvatar - Итоговый URL аватара:', avatarUrl);
             avatarUriRef.current = { uri: avatarUrl };
         } else {
-            console.log('useProfileAvatar - Аватар не найден');
             avatarUriRef.current = null;
         }
 
-        // Принудительно обновляем компонент для применения изменений
         setDebugText(prev => prev === 'update' ? 'updated' : 'update');
     }, [profile, currentUser, getFullAvatarUrl]);
 
-    // Функция для загрузки аватара - используем для инициализации
     const loadAvatarUri = useCallback(() => {
-        logAvatarInfo();
 
-        const baseUrl = getBaseUrl();
         let avatarUrl = null;
 
         if (profile?.user?.avatar) {
@@ -142,14 +100,13 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
         }
 
         if (avatarUrl) {
-            console.log('loadAvatarUri - URL аватара:', avatarUrl);
             avatarUriRef.current = { uri: avatarUrl };
             setDebugText(prev => prev === 'update' ? 'updated' : 'update');
             return true;
         }
 
         return false;
-    }, [profile, currentUser, getFullAvatarUrl, logAvatarInfo]);
+    }, [profile, currentUser, getFullAvatarUrl]);
 
     useEffect(() => {
         if (avatarError) {
@@ -184,21 +141,17 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
             const state = await NetInfo.fetch();
             return state.isConnected && state.isInternetReachable;
         } catch (error) {
-            console.log('Ошибка при проверке сети:', error);
             return true;
         }
     }, []);
 
-    // Функция для открытия модального окна просмотра аватара
     const handleAvatarPress = useCallback(() => {
         if (avatarUriRef.current) {
             setModalVisible(true);
         }
     }, []);
 
-    // Функция для выбора аватара из галереи (для экрана редактирования)
     const handleChoosePhoto = useCallback(async () => {
-        console.log('Запускаем выбор изображения из галереи');
         setDebugText('Запуск выбора изображения с expo-image-picker');
 
         try {
@@ -212,7 +165,6 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
             }
 
             const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-            console.log('Результат запроса разрешений:', permissionResult);
 
             if (!permissionResult.granted) {
                 setDebugText('Доступ к галерее не предоставлен');
@@ -227,18 +179,14 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
                 quality: 0.5,
             });
 
-            console.log('Результат выбора изображения:', result);
             setDebugText('Ответ от ImagePicker: ' + JSON.stringify(result).substring(0, 100) + '...');
 
             if (!result.canceled && result.assets && result.assets.length > 0) {
                 const asset = result.assets[0];
-                console.log('Изображение выбрано:', asset.uri);
                 setDebugText(prev => prev + '\nИзображение выбрано: ' + asset.uri);
 
-                // Сохраняем выбранное изображение (уже сжатое ImagePicker)
                 setSelectedImage(asset);
 
-                // Проверяем размер файла (максимум 2MB)
                 if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) {
                     Alert.alert(
                         'Большой файл',
@@ -247,13 +195,11 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
                     );
                 }
 
-                // Загружаем изображение (сжатие уже произведено ImagePicker)
                 uploadAvatarToServer(asset);
             } else {
                 console.log('Выбор изображения отменен');
             }
         } catch (error) {
-            console.error('Ошибка при выборе изображения:', error);
             setDebugText('Ошибка при выборе изображения: ' + error.message);
             Alert.alert('Ошибка', 'Не удалось выбрать изображение: ' + error.message);
         }
@@ -261,19 +207,15 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
 
     // Основная логика для обработки нажатия на аватар в зависимости от экрана
     const handleChooseAvatar = useCallback(() => {
-        console.log('Нажата кнопка аватара');
 
         // Если мы на экране редактирования профиля и редактирование разрешено
         if (isEditScreen && editable) {
-            console.log('Режим редактирования - запускаем выбор изображения');
             handleChoosePhoto();
         }
         // Иначе просто показываем аватар в модальном окне
         else if (avatarUriRef.current) {
-            console.log('Режим просмотра - открываем модальное окно');
             handleAvatarPress();
         } else {
-            console.log('Аватар отсутствует, пробуем загрузить');
             const found = loadAvatarUri();
             if (found) {
                 handleAvatarPress();
@@ -311,7 +253,6 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
             setSelectedImage(null);
 
             if (response?.data?.avatar) {
-                console.log('Аватар успешно загружен:', response.data.avatar);
                 avatarUriRef.current = { uri: response.data.avatar };
                 setDebugText(prev => `Аватар обновлен: ${response.data.avatar}`);
             }

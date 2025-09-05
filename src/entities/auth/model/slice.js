@@ -2,6 +2,7 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { authApi } from '@entities/auth/api/authApi';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {api, authService, getBaseUrl, createProtectedRequest} from '@shared/api/api';
+import { fetchNotificationSettings } from '@entities/notification/model/slice';
 
 const STORAGE_KEYS = {
     TOKENS: 'tokens',
@@ -307,7 +308,17 @@ export const logout = createAsyncThunk(
     'auth/logout',
     async (_, { rejectWithValue, getState, dispatch }) => {
         try {
-            console.log('Logout: начало процесса выхода');
+            console.log('🚪 Logout: начало процесса выхода');
+
+            // Деактивируем FCM токен перед выходом
+            try {
+                console.log('🔄 Logout: деактивация FCM токена...');
+                const FCMTokenService = require('@shared/services/FCMTokenService').default;
+                await FCMTokenService.deactivateTokenOnLogout();
+                console.log('✅ Logout: FCM токен деактивирован');
+            } catch (fcmError) {
+                console.warn('⚠️ Logout: ошибка деактивации FCM токена:', fcmError);
+            }
 
             dispatch({ type: 'RESET_APP_STATE' });
 
@@ -641,12 +652,24 @@ const authSlice = createSlice({
                     state.user = action.payload.user;
                     state.isAuthenticated = true;
 
+                    // Устанавливаем токены в API заголовки
                     if (action.payload.tokens?.accessToken) {
-                        api.defaults.headers.common['Authorization'] = `Bearer ${action.payload.tokens.accessToken}`;
-                        console.log('Заголовок Authorization установлен после входа');
+                        try {
+                            if (api && api.defaults) {
+                                api.defaults.headers.common['Authorization'] = `Bearer ${action.payload.tokens.accessToken}`;
+                                console.log('✅ Заголовок Authorization установлен после входа');
+                            }
+                        } catch (error) {
+                            console.warn('⚠️ Не удалось установить заголовок Authorization:', error.message);
+                        }
                     }
 
                     console.log('🔄 Требуется загрузка полного профиля для пользователя:', state.user?.id);
+                    console.log('🔐 Токены сохранены в состоянии:', {
+                        hasAccessToken: !!state.tokens?.accessToken,
+                        hasRefreshToken: !!state.tokens?.refreshToken,
+                        isAuthenticated: state.isAuthenticated
+                    });
                 }
             })
             .addCase(login.rejected, (state, action) => {

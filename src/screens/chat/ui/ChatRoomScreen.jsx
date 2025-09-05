@@ -17,6 +17,7 @@ import {fetchProductById} from '@entities/product/model/slice';
 import {MessageBubble} from '@entities/chat/ui/MessageBubble';
 import {Composer} from '@entities/chat/ui/Composer';
 import {ChatBackground} from '@entities/chat/ui/ChatBackground';
+import {useChatSocketActions} from '@entities/chat/hooks/useChatSocketActions';
 
 import {getBaseUrl} from '@shared/api/api';
 import {ImageViewerModal} from '@shared/ui/ImageViewerModal/ui/ImageViewerModal';
@@ -29,7 +30,8 @@ export const ChatRoomScreen = ({route, navigation}) => {
         roomId,
         productId: shareProductId,
         productInfo,
-        autoSendProduct
+        autoSendProduct,
+        groupRoomId
     } = route.params;
 
     const [imageViewerVisible, setImageViewerVisible] = useState(false);
@@ -47,6 +49,9 @@ export const ChatRoomScreen = ({route, navigation}) => {
     const roomDataRaw = useSelector((s) => s.chat?.rooms?.byId?.[roomId]);
     const roomData = roomDataRaw?.room ? roomDataRaw.room : roomDataRaw;
     const participantsById = useSelector((s) => s.chat?.participants?.byUserId || {});
+    
+    // Получаем функции WebSocket
+    const { emitActiveRoom, emitMarkRead } = useChatSocketActions();
 
     const isAdmin = useMemo(() => {
         if (roomData?.type !== 'GROUP') return false;
@@ -195,12 +200,22 @@ export const ChatRoomScreen = ({route, navigation}) => {
                     screen: 'ProductDetail',
                     params: {productId, fromScreen: 'ChatRoom'}
                 });
+            } else if (groupRoomId && fromScreen === 'GroupInfo' && (actionType === 'POP' || actionType === 'GO_BACK' || !actionType)) {
+                e.preventDefault();
+                navigation.navigate('GroupInfo', {
+                    roomId: groupRoomId
+                });
             }
         });
         return sub;
-    }, [navigation, route.params]);
+    }, [navigation, route.params, groupRoomId]);
 
     useEffect(() => {
+        // Отмечаем комнату как активную при входе
+        if (emitActiveRoom) {
+            emitActiveRoom(roomId);
+        }
+        
         dispatch(loadRoomMessagesCache({roomId}));
         dispatch(fetchMessages({roomId, limit: 30}));
         dispatch(fetchRoom(roomId));
@@ -212,8 +227,15 @@ export const ChatRoomScreen = ({route, navigation}) => {
                 dispatch(markAsRead({roomId, currentUserId}));
             }, 300);
         });
-        return unsubscribe;
-    }, [dispatch, roomId, navigation, currentUserId]);
+        
+        // Очищаем активную комнату при размонтировании
+        return () => {
+            unsubscribe();
+            if (emitActiveRoom) {
+                emitActiveRoom(null);
+            }
+        };
+    }, [dispatch, roomId, navigation, currentUserId, emitActiveRoom]);
 
     useEffect(() => {
         if (!messages || !Array.isArray(messages) || !currentUserId) return;
@@ -223,9 +245,28 @@ export const ChatRoomScreen = ({route, navigation}) => {
             (msg.status === 'SENT' || msg.status === 'DELIVERED')
         );
 
+        if (__DEV__ && unreadMessages.length > 0) {
+            console.log('📨 ChatRoom: Found unread messages to mark as read:', {
+                count: unreadMessages.length,
+                messageIds: unreadMessages.map(m => m.id),
+                roomId,
+                currentUserId
+            });
+        }
+
         if (unreadMessages.length > 0) {
             const timeoutId = setTimeout(() => {
                 const messageIds = unreadMessages.map(msg => msg.id);
+
+                if (__DEV__) {
+                    console.log('📖 ChatRoom: Marking messages as read:', {
+                        messageIds,
+                        roomId,
+                        currentUserId
+                    });
+                }
+
+                // Используем только Redux action - WebSocket обработается автоматически
                 dispatch(markAsRead({roomId, currentUserId, messageIds}));
             }, 500);
 
@@ -566,7 +607,6 @@ const styles = StyleSheet.create({
         fontSize: 16,
         textAlign: 'center',
     },
-
     emptyStateContainer: {
         position: 'absolute',
         top: 0,

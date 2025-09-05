@@ -482,6 +482,17 @@ export const GroupInfoScreen = ({ route, navigation }) => {
     Alert.alert('Изменить фото группы', 'Выберите действие', options);
   };
 
+  const handleParticipantPress = (participant) => {
+    const userId = participant.userId || participant.user?.id;
+    if (!userId || userId === currentUser?.id) return;
+
+    navigation.navigate('UserPublicProfile', {
+      userId: userId,
+      fromScreen: 'GroupInfo',
+      roomId: roomId
+    });
+  };
+
   const renderParticipant = ({ item }) => {
     const displayName = getUserDisplayName(item);
     const avatarUri = getUserAvatar(item);
@@ -490,8 +501,9 @@ export const GroupInfoScreen = ({ route, navigation }) => {
     const canManageThis = canEditGroup && !isCurrentUser && item.role !== 'OWNER';
 
     return (
-      <Pressable 
-        style={styles.participantItem} 
+      <Pressable
+        style={styles.participantItem}
+        onPress={() => handleParticipantPress(item)}
         onLongPress={() => canManageThis && handleMemberLongPress(item)}
         android_ripple={{ color: '#f0f0f0' }}
       >

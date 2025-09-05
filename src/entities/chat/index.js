@@ -8,4 +8,5 @@ export { AttachmentPreview } from './ui/AttachmentPreview';
 export { ChatHeader } from './ui/ChatHeader';
 export { ChatListHeader } from './ui/ChatListHeader';
 export { useChatSocket } from './hooks/useChatSocket';
+export { useChatSocketActions } from './hooks/useChatSocketActions';
 
