@@ -46,12 +46,43 @@ export const useChatSocket = () => {
       
       if (socketRef.current) {
         if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
-          // Приложение вернулось в активное состояние - проверяем соединение
+          // Приложение вернулось в активное состояние - проверяем и переподключаем
           console.log('📱 App became active - checking WebSocket connection');
-          if (!socketRef.current.connected) {
-            console.log('🔌 Reconnecting WebSocket...');
+          
+          const isConnected = socketRef.current.connected;
+          console.log('🔍 WebSocket status:', {
+            connected: isConnected,
+            socketId: socketRef.current.id,
+            transport: socketRef.current.io?.engine?.transport?.name
+          });
+          
+          if (!isConnected) {
+            console.log('🔌 WebSocket disconnected - reconnecting...');
             socketRef.current.connect();
+          } else {
+            console.log('✅ WebSocket still connected - rejoining rooms...');
+            // Даже если подключен, перезаходим в комнаты на всякий случай
+            const roomIds = roomsState?.ids || [];
+            roomIds.forEach((roomId) => {
+              console.log('🏠 Re-joining room after app activation:', roomId);
+              socketRef.current.emit('chat:join', { roomId }, (response) => {
+                if (response?.ok) {
+                  console.log('🏠 ✅ Re-joined room successfully:', roomId);
+                } else {
+                  console.error('🏠 ❌ Failed to re-join room:', roomId, response?.error);
+                }
+              });
+            });
           }
+          
+          // Принудительно обновляем список комнат при возвращении в приложение
+          setTimeout(() => {
+            if (dispatch) {
+              console.log('🔄 Refreshing rooms after app activation');
+              dispatch(fetchRooms({ page: 1 }));
+            }
+          }, 1000);
+          
         } else if (nextAppState.match(/inactive|background/)) {
           // Приложение ушло в фон - НЕ отключаем WebSocket для получения уведомлений
           console.log('📱 App went to background - keeping WebSocket alive for push notifications');
@@ -63,7 +94,7 @@ export const useChatSocket = () => {
 
     const subscription = AppState.addEventListener('change', handleAppStateChange);
     return () => subscription?.remove();
-  }, []);
+  }, [dispatch, roomsState?.ids]);
 
   useEffect(() => {
     if (!featureFlags.chat || !isAuthenticated) {
@@ -257,14 +288,55 @@ export const useChatSocket = () => {
 
         socket.on('reconnect', (attemptNumber) => {
           console.log('🔄 Chat socket reconnected after', attemptNumber, 'attempts');
+          
+          // После переподключения перезаходим в комнаты
+          const roomIds = roomsState?.ids || [];
+          console.log('🏠 Re-joining rooms after reconnect:', roomIds);
+          
+          roomIds.forEach((roomId) => {
+            socket.emit('chat:join', { roomId }, (response) => {
+              if (response?.ok) {
+                joinedRoomsRef.current.add(roomId);
+                console.log('🏠 ✅ Re-joined room after reconnect:', roomId);
+              } else {
+                console.error('🏠 ❌ Failed to re-join room after reconnect:', roomId, response?.error);
+              }
+            });
+          });
+          
+          // Обновляем статус соединения
+          dispatch(setConnectionStatus({
+            isConnected: true,
+            transport: socket.io.engine.transport.name,
+            reconnectAttempts: attemptNumber
+          }));
         });
 
         socket.on('reconnect_error', (error) => {
           console.error('🔄❌ Chat socket reconnection failed:', error.message);
+          
+          // Обновляем статус соединения
+          dispatch(setConnectionStatus({
+            isConnected: false,
+            transport: null,
+            lastError: error.message
+          }));
         });
 
         socket.on('reconnect_failed', () => {
           console.error('🔄💀 Chat socket reconnection completely failed');
+          
+          // Обновляем статус соединения
+          dispatch(setConnectionStatus({
+            isConnected: false,
+            transport: null,
+            lastError: 'Reconnection failed'
+          }));
+          
+          // Очищаем соединение
+          socketRef.current = null;
+          setGlobalSocket(null);
+          joinedRoomsRef.current.clear();
         });
 
         // incoming events
