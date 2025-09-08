@@ -2,26 +2,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Разрешение конфликта Firebase messaging цвета уведомлений -->
+    <!-- Firebase удален - используем только Expo Notifications -->
     <application>
+        <!-- Настройки уведомлений через Expo -->
         <meta-data
-            android:name="com.google.firebase.messaging.default_notification_color"
-            android:resource="@color/notification_icon_color"
-            tools:replace="android:resource" />
-            
+            android:name="expo.modules.notifications.default_notification_color"
+            android:resource="@color/notification_icon_color" />
+
         <meta-data
-            android:name="com.google.firebase.messaging.default_notification_icon"
-            android:resource="@drawable/ic_notification"
-            tools:replace="android:resource" />
-            
-        <!-- Автоинициализация Firebase -->
-        <meta-data
-            android:name="firebase_messaging_auto_init_enabled"
-            android:value="true" />
-            
-        <meta-data
-            android:name="firebase_analytics_collection_enabled"
-            android:value="false" />
+            android:name="expo.modules.notifications.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
     </application>
 </manifest>
 

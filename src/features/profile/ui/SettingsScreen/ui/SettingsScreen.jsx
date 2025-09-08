@@ -13,6 +13,7 @@ import RightArrowIcon from '@shared/ui/Icon/Common/IconRight';
 import DeleteAccountModal from './DeleteAccountModal';
 import {clearError, selectIsProfileDeleting, selectProfileError} from "@entities/profile";
 import { NotificationSettings } from "@features/profile";
+import PushNotificationIcon from '@shared/ui/Icon/Profile/IconNotification';
 
 export const SettingsScreen = () => {
     const navigation = useNavigation();
@@ -20,6 +21,7 @@ export const SettingsScreen = () => {
 
     const [isPasswordPressed, setIsPasswordPressed] = useState(false);
     const [isNotificationPressed, setIsNotificationPressed] = useState(false);
+    const [isPushDiagnosticPressed, setIsPushDiagnosticPressed] = useState(false);
     const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
 
     const isDeleting = useSelector(selectIsProfileDeleting);
@@ -56,6 +58,16 @@ export const SettingsScreen = () => {
         setTimeout(() => {
             setIsNotificationPressed(false);
             navigation.navigate('NotificationSettings');
+        }, 150);
+    };
+
+    const handlePushDiagnostic = () => {
+        if (isDeleting) return;
+
+        setIsPushDiagnosticPressed(true);
+        setTimeout(() => {
+            setIsPushDiagnosticPressed(false);
+            navigation.navigate('PushNotificationDiagnostic');
         }, 150);
     };
 
@@ -114,7 +126,37 @@ export const SettingsScreen = () => {
                     />
                 </TouchableOpacity>
 
-
+                {/* Диагностика Push-уведомлений */}
+                <TouchableOpacity
+                    style={[
+                        styles.menuItem,
+                        isPushDiagnosticPressed && styles.blueMenuItem,
+                        isDeleting && styles.disabledMenuItem
+                    ]}
+                    onPress={handlePushDiagnostic}
+                    activeOpacity={isDeleting ? 1 : 0.7}
+                    disabled={isDeleting}
+                >
+                    <View style={styles.iconContainer}>
+                        <NotificationIcon
+                            width={20}
+                            height={20}
+                            color={isPushDiagnosticPressed ? "#fff" : "#FF6B35"}
+                        />
+                    </View>
+                    <Text style={[
+                        styles.menuItemText,
+                        isPushDiagnosticPressed && styles.whiteText
+                    ]}>
+                        Диагностика Push-уведомлений
+                    </Text>
+                    <RightArrowIcon
+                        style={styles.rightIcon}
+                        width={8}
+                        height={15}
+                        color={isPushDiagnosticPressed ? "#fff" : "#333"}
+                    />
+                </TouchableOpacity>
 
                 {/* Мой пароль */}
                 <TouchableOpacity

@@ -71,3 +71,5 @@ adb logcat com.abuingush.iceberg:V *:S
 Теперь даже в Expo Go токен должен сохраняться (Expo токен), но для FCM нужна APK сборка!
 
 
+
+

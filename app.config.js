@@ -42,6 +42,8 @@ export default {
                         // Дополнительные настройки для preview-debug
                         ...(IS_PREVIEW_DEBUG && {
                             enableProguardInReleaseBuilds: false,
+
+
                             enableShrinkResourcesInReleaseBuilds: false,
                             enableHermes: true,
                             enableProfiling: true,
@@ -68,6 +70,7 @@ export default {
                     mode: 'production',
                 },
             ],
+            // Firebase удален - используем только Expo Notifications для всех сборок
 
         ],
         extra: {
@@ -105,20 +108,25 @@ export default {
                     apiKey: '17ee620d-aee1-482c-acc9-c7144fd46087',
                 },
             },
-            permissions: [
-                'RECEIVE_BOOT_COMPLETED',
-                'VIBRATE',
-                'WAKE_LOCK',
-                'com.android.vending.BILLING',
-                'android.permission.RECEIVE_BOOT_COMPLETED',
-                'android.permission.VIBRATE',
-                'android.permission.WAKE_LOCK',
-                'android.permission.POST_NOTIFICATIONS',
-                'android.permission.INTERNET',
-                'android.permission.ACCESS_NETWORK_STATE',
-                'android.permission.SYSTEM_ALERT_WINDOW',
-                'android.permission.FOREGROUND_SERVICE',
-            ],
+        permissions: [
+          'RECEIVE_BOOT_COMPLETED',
+          'VIBRATE',
+          'WAKE_LOCK',
+          'POST_NOTIFICATIONS',
+          'INTERNET',
+          'ACCESS_NETWORK_STATE',
+          'SYSTEM_ALERT_WINDOW',
+          'FOREGROUND_SERVICE',
+          'com.android.vending.BILLING',
+          'android.permission.RECEIVE_BOOT_COMPLETED',
+          'android.permission.VIBRATE',
+          'android.permission.WAKE_LOCK',
+          'android.permission.POST_NOTIFICATIONS',
+          'android.permission.INTERNET',
+          'android.permission.ACCESS_NETWORK_STATE',
+          'android.permission.SYSTEM_ALERT_WINDOW',
+          'android.permission.FOREGROUND_SERVICE',
+        ],
             intentFilters: [
                 {
                     action: 'VIEW',

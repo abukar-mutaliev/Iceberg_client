@@ -18,6 +18,7 @@ import {MainScreen} from "@screens/main/ui/MainScreen";
 import {ProfileScreen} from "@/screens/profile";
 import {ProfileEdit} from "@features/profile/ui/ProfileEdit";
 import {ChangePasswordScreen, SettingsScreen, NotificationSettings} from "@features/profile";
+import PushNotificationDiagnostic from "@shared/ui/PushNotificationDiagnostic";
 import {ProductListScreen} from "@screens/product/ProductListScreen/ProductListScreen";
 import {ProductDetailScreen} from "@screens/product/ProductDetailScreen";
 import {ProductManagementScreen} from "@screens/product/ProductManagementScreen";
@@ -432,6 +433,29 @@ const ProfileStackScreen = () => {
             <ProfileStack.Screen
                 name="NotificationSettings"
                 component={NotificationSettings}
+                options={{
+                    ...slideFromRight,
+                    headerShown: false,
+                    gestureEnabled: true,
+                    cardStyle: {
+                        backgroundColor: '#ffffff',
+                        ...Platform.select({
+                            ios: {
+                                shadowColor: '#000',
+                                shadowOffset: {width: -3, height: 0},
+                                shadowOpacity: 0.25,
+                                shadowRadius: 6,
+                            },
+                            android: {
+                                elevation: 6,
+                            },
+                        }),
+                    },
+                }}
+            />
+            <ProfileStack.Screen
+                name="PushNotificationDiagnostic"
+                component={PushNotificationDiagnostic}
                 options={{
                     ...slideFromRight,
                     headerShown: false,

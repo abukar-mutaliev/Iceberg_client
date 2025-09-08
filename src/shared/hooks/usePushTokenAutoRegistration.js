@@ -12,38 +12,28 @@ export const usePushTokenAutoRegistration = () => {
     const register = async () => {
       try {
         if (!isAuthenticated || !user) {
+          console.log('🚫 Push token registration: user not authenticated');
           hasAttemptedRegistration.current = false;
           return;
         }
 
         if (hasAttemptedRegistration.current) {
+          console.log('⏭️ Push token registration: already attempted');
           return;
         }
 
+        console.log('🚀 Starting push token registration for user:', user.id);
         hasAttemptedRegistration.current = true;
 
         const success = await PushNotificationService.initializeForUser(user);
-
-        console.log('Push notification initialization successful:', success);
-
-        if (success) {
-            try {
-                console.log('Getting FCM token...');
-                const token = await PushNotificationService.getFCMToken();
-                console.log('FCM token received:', !!token);
-                if (token) {
-                    console.log('Saving FCM token to server...');
-                    const saved = await PushNotificationService.saveTokenToServerSafe(token, PushNotificationService.deviceId, Platform.OS);
-                    console.log('FCM token saved:', saved);
-                } else {
-                    console.log('No FCM token received');
-                }
-            } catch (firebaseError) {
-                console.log('FCM token error:', firebaseError.message);
-            }
+        console.log('📱 PushNotificationService initializeForUser result:', success);
+        
+        if (!success) {
+          console.log('❌ Push token registration failed - initializeForUser returned false');
+          hasAttemptedRegistration.current = false;
         }
       } catch (e) {
-        console.log('Registration error:', e.message);
+        console.error('❌ Push token registration error:', e.message);
         hasAttemptedRegistration.current = false;
       }
     };
@@ -58,12 +48,16 @@ export const usePushTokenAutoRegistration = () => {
       const checkToken = async () => {
         try {
           const token = PushNotificationService.getCurrentToken();
+          console.log('🔍 Token check - current token exists:', !!token);
+          
           if (!token) {
+            console.log('🔄 No token found, re-attempting registration');
             hasAttemptedRegistration.current = false;
-            await PushNotificationService.initializeForUser(user);
+            const success = await PushNotificationService.initializeForUser(user);
+            console.log('🔄 Re-initialization result:', success);
           }
         } catch (e) {
-          // Token check error
+          console.error('❌ Token check error:', e.message);
         }
       };
 

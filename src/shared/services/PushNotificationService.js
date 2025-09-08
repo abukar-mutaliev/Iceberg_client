@@ -4,8 +4,7 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-let firebase = null;
-let messaging = null;
+// Firebase удален - используем только Expo Notifications
 
 class PushNotificationService {
     constructor() {
@@ -13,14 +12,65 @@ class PushNotificationService {
 
         this.isInitialized = false;
         this.currentToken = null;
-        this._deviceId = Device.osBuildId || Device.osInternalBuildId || Platform.OS + '-' + Date.now();
+        this._deviceId = Device.osBuildId || Device.osInternalBuildId || 'unknown';
         this.navigationReady = false;
         this.pendingNavigations = [];
     }
 
+    getBuildType() {
+        console.log('🔍 Build type detection:', {
+            __DEV__,
+            appOwnership: Constants.appOwnership,
+            channel: Constants.expoConfig?.updates?.channel,
+            EXPO_PUBLIC_BUILD_TYPE: process.env.EXPO_PUBLIC_BUILD_TYPE,
+            executionEnvironment: Constants.executionEnvironment,
+            isDetached: Constants.isDetached
+        });
 
+        // Сначала проверяем переменную окружения
+        if (process.env.EXPO_PUBLIC_BUILD_TYPE) {
+            console.log('📝 Using EXPO_PUBLIC_BUILD_TYPE:', process.env.EXPO_PUBLIC_BUILD_TYPE);
+            return process.env.EXPO_PUBLIC_BUILD_TYPE;
+        }
+
+        if (__DEV__) {
+            return 'development';
+        }
+
+        // Проверяем канал обновлений
+        if (Constants.expoConfig?.updates?.channel) {
+            const channel = Constants.expoConfig.updates.channel;
+            console.log('📺 Using update channel:', channel);
+            if (channel === 'preview' || channel === 'preview-debug') {
+                return 'preview';
+            } else if (channel === 'production') {
+                return 'production';
+            }
+        }
+
+        if (Constants.appOwnership === 'expo') {
+            return 'expo-go';
+        }
+
+        if (Constants.appOwnership === 'standalone') {
+            return 'production';
+        }
+
+        // Fallback для standalone/bare builds
+        if (Constants.executionEnvironment === 'bare' || Constants.isDetached) {
+            return 'preview';
+        }
+
+        return 'development';
+    }
+
+    // Firebase удален - всегда используем Expo Notifications
+    shouldUseFCM() {
+        return false;
+    }
 
     async initialize() {
+        // ИСПРАВЛЕНО: Позволяем повторную инициализацию для обновления токенов
         if (this.isInitialized) {
             if (!this.currentToken) {
                 this.isInitialized = false;
@@ -42,6 +92,9 @@ class PushNotificationService {
                 return false;
             }
 
+            const buildType = this.getBuildType();
+
+
             // Настраиваем обработчик уведомлений
             Notifications.setNotificationHandler({
                 handleNotification: async () => ({
@@ -51,12 +104,7 @@ class PushNotificationService {
                 }),
             });
 
-            // Инициализируем Firebase
-            try {
-                await this.initializeFirebase();
-            } catch (firebaseError) {
-                console.error('Firebase initialization failed:', firebaseError.message);
-            }
+            // Firebase удален - используем только Expo Notifications
 
             // Настраиваем каналы уведомлений для Android
             if (Platform.OS === 'android') {
@@ -78,48 +126,7 @@ class PushNotificationService {
         }
     }
 
-    async loadFirebaseModules() {
-        try {
-            if (firebase && messaging) {
-                return true;
-            }
-
-            const firebaseApp = await import('@react-native-firebase/app');
-            const firebaseMessaging = await import('@react-native-firebase/messaging');
-
-            firebase = firebaseApp.default;
-            messaging = firebaseMessaging.default;
-
-            return true;
-        } catch (error) {
-            return false;
-        }
-    }
-
-    async initializeFirebase() {
-        try {
-            const modulesLoaded = await this.loadFirebaseModules();
-            if (!modulesLoaded) {
-                throw new Error('Firebase modules could not be loaded');
-            }
-
-            if (!firebase.apps.length) {
-                await firebase.initializeApp();
-            }
-
-            const authStatus = await messaging().requestPermission();
-            const enabled = authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
-                           authStatus === messaging.AuthorizationStatus.PROVISIONAL;
-
-            if (enabled) {
-                return true;
-            } else {
-                return false;
-            }
-        } catch (error) {
-            throw error;
-        }
-    }
+    // Firebase методы удалены - используем только Expo Notifications
 
     async requestPermissions() {
         try {
@@ -145,21 +152,32 @@ class PushNotificationService {
 
     async initializeForUser(user) {
         try {
-            console.log('Initializing push notifications for user:', user.id);
             const baseInitResult = await this.initialize();
             if (!baseInitResult) {
-                console.log('Base initialization failed');
                 return false;
             }
 
             this.currentUser = user;
-            console.log('User context saved');
 
             if (this.currentToken) {
-                console.log('Saving FCM token for user:', user.id);
-                await this.saveTokenToServerSafe(this.currentToken, this.deviceId, Platform.OS);
+                const buildType = this.getBuildType();
+                const tokenType = this.getTokenType(this.currentToken);
+
+                console.log('💾 Saving token to server from initializeForUser:', {
+                    buildType,
+                    tokenType,
+                    hasToken: !!this.currentToken
+                });
+
+                // Сохраняем только Expo токены
+                if (tokenType === 'expo') {
+                    const saveResult = await this.saveTokenToServerSafe(this.currentToken, this._deviceId, Platform.OS);
+                    console.log('💾 Save result from initializeForUser:', saveResult);
+                } else {
+                    console.log('⚠️ Unknown token type, not saving to server:', tokenType);
+                }
             } else {
-                console.log('No current token available');
+                console.log('⚠️ No token available to save from initializeForUser');
             }
 
             return true;
@@ -230,7 +248,6 @@ class PushNotificationService {
         }
     }
 
-
     async registerForPushNotifications() {
         try {
             const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -246,16 +263,24 @@ class PushNotificationService {
             }
 
             let token;
+            const buildType = this.getBuildType();
 
-            // Получаем FCM токен
-            token = await this.getFCMToken();
+            // Всегда используем Expo токен (Firebase удален)
+            console.log('📱 Fetching Expo token...');
+            token = await this.getExpoPushToken();
 
             if (token) {
+                console.log('✅ Token received:', `${token.substring(0, 20)}...`, 'Type:', this.getTokenType(token));
                 this.currentToken = token;
                 await this.saveDeviceTokenLocally(token);
 
-                const saved = await this.saveTokenToServerSafe(token, this.deviceId, Platform.OS);
+                // Сохраняем токен на сервере для всех типов сборок (включая Expo Go для тестирования)
+                const saved = await this.saveTokenToServerSafe(token, this._deviceId, Platform.OS);
+                console.log('💾 Token save to server result:', saved);
+
                 return token;
+            } else {
+                console.log('❌ No token received');
             }
 
             return null;
@@ -268,28 +293,29 @@ class PushNotificationService {
 
 
 
-
-    async getFCMToken() {
+    async getExpoPushToken() {
         try {
-            if (!messaging) {
-                const modulesLoaded = await this.loadFirebaseModules();
-                if (!modulesLoaded) {
-                    throw new Error('Firebase modules could not be loaded');
-                }
+            if (!this.projectId) {
+                throw new Error('Project ID is missing');
             }
 
-            const token = await messaging().getToken();
+            const tokenData = await Notifications.getExpoPushTokenAsync({
+                projectId: this.projectId,
+            });
 
-            if (token) {
-                return token;
-            } else {
-                throw new Error('No FCM token received');
+            if (!tokenData || !tokenData.data) {
+                throw new Error('Invalid token response from Expo');
             }
+
+            const token = tokenData.data;
+            return token;
+
         } catch (error) {
-            console.error('Error getting FCM token:', error.message);
             throw error;
         }
     }
+
+    // Метод getFCMToken удален - используем только Expo токены
 
     async saveDeviceTokenLocally(token) {
         try {
@@ -300,9 +326,29 @@ class PushNotificationService {
         }
     }
 
+    getTokenType(token) {
+        if (!token) return 'unknown';
+
+        // Expo токены начинаются с ExponentPushToken[
+        if (token.startsWith('ExponentPushToken[')) {
+            return 'expo';
+        }
+
+        return 'unknown';
+    }
+
     async saveTokenToServerSafe(token, deviceId, platform) {
         try {
             if (!token) {
+                return false;
+            }
+
+            const tokenType = this.getTokenType(token);
+            console.log('🎫 Token type detected:', tokenType);
+
+            // Принимаем только Expo токены
+            if (tokenType !== 'expo') {
+                console.log('❌ Unknown token type, skipping save');
                 return false;
             }
 
@@ -314,25 +360,45 @@ class PushNotificationService {
                 platform
             };
 
+            console.log('📤 Saving Expo token to server:', {
+                tokenPreview: `${token.substring(0, 20)}...`,
+                deviceId,
+                platform
+            });
+
             const response = await createProtectedRequest('post', '/api/push-tokens', tokenData);
-            console.log('Server response status:', response?.status);
+
+            console.log('📥 Server response for Expo token:', {
+                success: !!response,
+                data: response
+            });
 
             const result = {
                 status: response?.status === 200 ? 'success' : 'error',
-                data: response?.data,
-                message: response?.data?.message || 'Token processed'
+                data: response,
+                message: response?.message || 'Token processed'
             };
 
-            console.log('Token save result:', result.status);
-
             if (result.status === 'success') {
+                console.log('✅ Expo token successfully saved to server');
                 return true;
             } else {
+                console.log('❌ Failed to save Expo token to server:', result);
                 return false;
             }
 
         } catch (error) {
             console.error('Error saving token to server:', error.message);
+            
+            // Если ошибка связана с дублированием токена (P2002), это не критично
+            // Токен уже существует на сервере, что означает что он сохранен
+            if (error?.response?.data?.code === 'P2002' ||
+                error?.message?.includes('Unique constraint failed on the fields: (`token`)') ||
+                error?.response?.status === 409) {
+                console.log('ℹ️ Expo token already exists on server - this is OK');
+                return true;
+            }
+            
             return false;
         }
     }
@@ -352,6 +418,8 @@ class PushNotificationService {
 
 
 
+
+            // Firebase удален - не нужно слушать FCM токены
 
         } catch (error) {
             console.error('❌ Error setting up listeners:', error);
@@ -482,7 +550,9 @@ class PushNotificationService {
             hasToken: !!this.currentToken,
             navigationReady: this.navigationReady,
             pendingNavigationsCount: this.pendingNavigations.length,
-            firebaseAvailable: !!(firebase && messaging),
+            buildType: this.getBuildType(),
+            shouldUseFCM: this.shouldUseFCM(),
+            firebaseAvailable: false, // Firebase удален
             projectIds: {
                 expo: this.projectId
             }
@@ -518,6 +588,11 @@ class PushNotificationService {
                 this.responseListener.remove();
                 this.responseListener = null;
             }
+
+            if (this.tokenRefreshListener) {
+                this.tokenRefreshListener();
+                this.tokenRefreshListener = null;
+            }
         } catch (error) {
             // Error clearing listeners
         }
@@ -536,7 +611,7 @@ class PushNotificationService {
                 return false;
             }
             
-            const result = await this.saveTokenToServerSafe(this.currentToken, this.deviceId, Platform.OS);
+            const result = await this.saveTokenToServerSafe(this.currentToken, this._deviceId, Platform.OS);
 
             return result;
         } catch (error) {
@@ -548,14 +623,17 @@ class PushNotificationService {
         return this.currentToken;
     }
 
-    getCurrentToken() {
-        return this.currentToken;
-    }
-
     getStatus() {
         return this.getServiceStatus();
     }
 
+    isStandaloneBuild() {
+        return Constants.appOwnership === 'standalone';
+    }
+
+    async registerForPushNotificationsAsync() {
+        return await this.registerForPushNotifications();
+    }
 
     async showChatMessageNotification(messageData) {
         try {

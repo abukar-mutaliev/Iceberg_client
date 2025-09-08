@@ -17,30 +17,22 @@ export const pushTokenApi = {
 
             const response = await createProtectedRequest('post', '/api/push-tokens', tokenData);
 
-            console.log('📡 Полный ответ сервера:', {
-                status: response?.status,
-                data: response?.data,
-                dataKeys: response?.data ? Object.keys(response.data) : 'no data',
-                responseType: typeof response
+            console.log('📡 Данные ответа сервера:', {
+                dataType: typeof response,
+                dataKeys: response ? Object.keys(response) : 'no data',
+                responseType: typeof response,
+                response
             });
 
             console.log('📡 Ответ сервера (stringify):', JSON.stringify(response, null, 2));
 
-            if (response?.status === 200) {
-                console.log('✅ HTTP 200 - Push-токен сохранен успешно');
+            // createProtectedRequest уже обработал статус в api.js, поэтому если мы здесь - запрос успешен
+            if (response) {
+                console.log('✅ Push-токен сохранен успешно');
                 return {
                     status: 'success',
-                    data: response.data?.data || response.data || { id: 1, isActive: true },
-                    message: response.data?.message || 'Push-токен успешно сохранен'
-                };
-            }
-
-            if (response?.data) {
-                console.log('✅ Получен ответ с данными - считаем успехом');
-                return {
-                    status: 'success',
-                    data: response.data.data || response.data || { id: 1, isActive: true },
-                    message: response.data.message || 'Push-токен успешно сохранен'
+                    data: response.data || response || { id: 1, isActive: true },
+                    message: response.message || 'Push-токен успешно сохранен'
                 };
             }
 
@@ -80,16 +72,17 @@ export const pushTokenApi = {
             console.log('🔒 Деактивация push-токена на сервере');
             const response = await createProtectedRequest('put', '/api/push-tokens/deactivate', deactivateData);
 
-            if (response?.status >= 200 && response?.status < 300) {
+            // createProtectedRequest уже обработал статус в api.js, поэтому если мы здесь - запрос успешен
+            if (response) {
                 console.log('✅ Push-токен деактивирован');
                 return {
                     status: 'success',
-                    data: response.data?.data || { deactivatedCount: 1 },
-                    message: response.data?.message || 'Push-токен деактивирован'
+                    data: response.data || response || { deactivatedCount: 1 },
+                    message: response.message || 'Push-токен деактивирован'
                 };
             }
 
-            throw new Error('Неожиданный ответ при деактивации');
+            throw new Error('Пустой ответ при деактивации');
         } catch (error) {
             console.error('❌ Ошибка деактивации push-токена:', error);
             throw error;
@@ -104,36 +97,39 @@ export const pushTokenApi = {
             console.log('📋 Запрос push-токенов с сервера...');
             const response = await createProtectedRequest('get', '/api/push-tokens');
 
-            console.log('📡 Ответ сервера для получения токенов:', {
-                status: response?.status,
-                data: response?.data,
-                dataKeys: response?.data ? Object.keys(response.data) : 'no data'
+            console.log('📡 Данные ответа сервера:', {
+                dataType: typeof response,
+                dataKeys: response ? Object.keys(response) : 'no data',
+                response
             });
 
-            if (response?.status >= 200 && response?.status < 300) {
-                // ИСПРАВЛЕНО: Правильная обработка структуры ответа
-                const tokens = response.data?.data || response.data || [];
-                console.log('✅ Получены токены с сервера:', {
-                    count: Array.isArray(tokens) ? tokens.length : 'не массив',
-                    tokens: Array.isArray(tokens) ? tokens.map(t => t.token?.substring(0, 20) + '...') : 'не массив'
-                });
-                
-                return {
-                    status: 'success',
-                    data: tokens,
-                    message: response.data?.message || 'Токены получены успешно'
-                };
-            }
+            // createProtectedRequest уже обработал статус в api.js, поэтому если мы здесь - запрос успешен
+            const tokens = response?.data || response || [];
+            console.log('✅ Получены токены с сервера:', {
+                count: Array.isArray(tokens) ? tokens.length : 'не массив',
+                tokens: Array.isArray(tokens) ? tokens.map(t => t.token?.substring(0, 20) + '...') : 'не массив'
+            });
 
-            console.error('❌ Неожиданный статус ответа:', response?.status);
-            throw new Error(`Неожиданный ответ при получении токенов (статус: ${response?.status})`);
+            return {
+                status: 'success',
+                data: tokens,
+                message: response?.message || 'Токены получены успешно'
+            };
         } catch (error) {
             console.error('❌ Ошибка получения push-токенов:', {
                 message: error.message,
                 response: error.response?.data,
-                status: error.response?.status
+                status: error.response?.status,
+                errorType: typeof error
             });
-            throw error;
+
+            // Если это ошибка от сервера (HTTP ошибка)
+            if (error?.response?.status) {
+                throw new Error(`Ошибка сервера (${error.response.status}): ${error.response.data?.message || 'Неизвестная ошибка'}`);
+            }
+
+            // Если это сетевая ошибка или другая ошибка
+            throw new Error(`Ошибка сети: ${error.message || 'Неизвестная ошибка'}`);
         }
     },
 
@@ -145,33 +141,20 @@ export const pushTokenApi = {
             console.log('📋 Получение токенов пользователя с сервера');
             const response = await createProtectedRequest('get', '/api/push-tokens');
 
-            console.log('📡 Ответ сервера на получение токенов:', {
-                status: response?.status,
-                data: response?.data,
-                dataKeys: response?.data ? Object.keys(response.data) : 'no data'
+            console.log('📡 Данные ответа сервера:', {
+                dataType: typeof response,
+                dataKeys: response ? Object.keys(response) : 'no data',
+                response
             });
 
-            // ИСПРАВЛЕНО: Более гибкая обработка ответа
-            if (response?.status >= 200 && response?.status < 300) {
-                const tokens = response.data?.data || response.data || [];
-                console.log('✅ Токены пользователя получены:', Array.isArray(tokens) ? tokens.length : 'не массив');
-                return {
-                    status: 'success',
-                    data: Array.isArray(tokens) ? tokens : [],
-                    message: response.data?.message || 'Токены получены'
-                };
-            }
-
-            // Если статус не 2xx, но есть данные - все равно возвращаем
-            if (response?.data) {
-                console.log('⚠️ Нестандартный статус, но есть данные');
-                const tokens = response.data?.data || response.data || [];
-                return {
-                    status: 'success',
-                    data: Array.isArray(tokens) ? tokens : [],
-                    message: response.data?.message || 'Токены получены'
-                };
-            }
+            // createProtectedRequest уже обработал статус в api.js, поэтому если мы здесь - запрос успешен
+            const tokens = response?.data || response || [];
+            console.log('✅ Токены пользователя получены:', Array.isArray(tokens) ? tokens.length : 'не массив');
+            return {
+                status: 'success',
+                data: Array.isArray(tokens) ? tokens : [],
+                message: response?.message || 'Токены получены'
+            };
 
             // ИСПРАВЛЕНО: Если response undefined или пустой - возвращаем пустой массив
             if (!response || !response.data) {
@@ -210,16 +193,16 @@ export const pushTokenApi = {
 
             const response = await createProtectedRequest('post', '/api/push-tokens/test', testData);
 
-            console.log('📡 Ответ сервера на тестовое уведомление:', {
-                status: response?.status,
-                data: response?.data,
-                dataKeys: response?.data ? Object.keys(response.data) : 'no data'
+            console.log('📡 Данные ответа сервера на тестовое уведомление:', {
+                dataType: typeof response,
+                dataKeys: response ? Object.keys(response) : 'no data',
+                response
             });
 
-            if (response?.data) {
+            if (response) {
                 console.log('✅ Тестовое уведомление отправлено');
 
-                const responseData = response.data;
+                const responseData = response;
 
                 return {
                     status: 'success',

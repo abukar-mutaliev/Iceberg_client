@@ -211,6 +211,9 @@ export const ChatRoomScreen = ({route, navigation}) => {
     }, [navigation, route.params, groupRoomId]);
 
     useEffect(() => {
+        // Устанавливаем активную комнату в Redux
+        dispatch(setActiveRoom(roomId));
+        
         // Отмечаем комнату как активную при входе
         if (emitActiveRoom) {
             emitActiveRoom(roomId);
@@ -231,6 +234,7 @@ export const ChatRoomScreen = ({route, navigation}) => {
         // Очищаем активную комнату при размонтировании
         return () => {
             unsubscribe();
+            dispatch(setActiveRoom(null));
             if (emitActiveRoom) {
                 emitActiveRoom(null);
             }

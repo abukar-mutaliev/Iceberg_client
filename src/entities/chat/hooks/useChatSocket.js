@@ -82,27 +82,92 @@ export const useChatSocket = () => {
     let isMounted = true;
     const setup = async () => {
       try {
+        console.log('🔌 [DEBUG] Starting Socket.IO setup...');
+
         const tokensStr = await AsyncStorage.getItem('tokens');
+        console.log('🔌 [DEBUG] Raw tokens from AsyncStorage:', {
+          tokensStr: tokensStr ? `${tokensStr.substring(0, 50)}...` : 'null',
+          tokensStrLength: tokensStr?.length || 0
+        });
+
         const tokens = tokensStr ? JSON.parse(tokensStr) : null;
+        console.log('🔌 [DEBUG] Parsed tokens object:', {
+          hasTokens: !!tokens,
+          hasAccessToken: !!tokens?.accessToken,
+          hasRefreshToken: !!tokens?.refreshToken,
+          accessTokenLength: tokens?.accessToken?.length || 0,
+          refreshTokenLength: tokens?.refreshToken?.length || 0
+        });
+
         const token = tokens?.accessToken;
         const baseUrl = getBaseUrl();
 
-        if (!token) {
+        // Проверяем валидность токена
+        let isTokenValid = false;
+        if (token) {
+          try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            const currentTime = Math.floor(Date.now() / 1000);
+            isTokenValid = payload.exp > currentTime;
+            console.log('🔌 [DEBUG] Token validation:', {
+              exp: payload.exp,
+              currentTime,
+              isValid: isTokenValid,
+              timeToExpiry: payload.exp - currentTime
+            });
+          } catch (decodeError) {
+            console.error('🔌 [DEBUG] Token decode error:', decodeError.message);
+            isTokenValid = false;
+          }
+        }
+
+           console.log('🔌 [DEBUG] Final token check:', {
+             hasToken: !!token,
+             isTokenValid,
+             tokenLength: token?.length || 0,
+             tokenPrefix: token ? `${token.substring(0, 50)}...` : 'no token',
+             tokenEnd: token ? `...${token.substring(Math.max(0, token.length - 50))}` : 'no token',
+             baseUrl
+           });
+
+        if (!token || !isTokenValid) {
+          console.warn('🔌 [WARNING] No valid access token found, skipping WebSocket connection');
           return; // not authenticated; skip sockets
         }
 
-        console.log('🔌 Attempting to connect to WebSocket:', { baseUrl, hasToken: !!token });
-        
-        const socket = io(baseUrl, {
-          transports: ['websocket', 'polling'], // Добавляем polling как fallback для проблемных устройств
-          auth: { token },
+        console.log('🔌 Attempting to connect to WebSocket:', {
+            baseUrl,
+            hasToken: !!token,
+            isProductionUrl: baseUrl === 'http://212.67.11.134:5000'
+        });
+
+        // Подробное логирование Socket.IO конфигурации
+        const socketConfig = {
+          transports: ['websocket', 'polling'],
+          auth: {
+            token: token // Полный токен для аутентификации
+          },
+          extraHeaders: {
+            'Authorization': `Bearer ${token}` // Дополнительный способ передачи токена
+          },
           reconnection: true,
           reconnectionAttempts: Infinity,
           reconnectionDelay: 1000,
           reconnectionDelayMax: 5000,
-          timeout: 20000, // Увеличиваем timeout для медленных устройств
-          forceNew: true, // Принудительно создаем новое соединение
+          timeout: 20000,
+          forceNew: true
+        };
+
+        console.log('🔌 [DEBUG] Socket.IO configuration:', {
+          ...socketConfig,
+          auth: {
+            token: socketConfig.auth.token ? `${socketConfig.auth.token.substring(0, 50)}...` : 'NO_TOKEN',
+            tokenLength: socketConfig.auth.token?.length || 0,
+            tokenEnd: socketConfig.auth.token ? `...${socketConfig.auth.token.substring(Math.max(0, socketConfig.auth.token.length - 50))}` : 'NO_TOKEN'
+          }
         });
+
+        const socket = io(baseUrl, socketConfig);
 
         socket.on('connect', () => {
           const transport = socket.io.engine.transport.name;
@@ -110,6 +175,11 @@ export const useChatSocket = () => {
             socketId: socket.id,
             transport,
             connected: socket.connected,
+            serverUrl: socket.io.uri,
+            authSent: !!socket.auth?.token,
+            authTokenLength: socket.auth?.token?.length || 0,
+            authTokenPrefix: socket.auth?.token?.substring(0, 20) + '...' || 'NO_TOKEN',
+            extraHeadersAuth: socket.io.opts?.extraHeaders?.Authorization?.substring(0, 30) + '...' || 'NO_HEADER',
             deviceInfo: {
               platform: require('react-native').Platform.OS,
               version: require('react-native').Platform.Version
@@ -129,9 +199,15 @@ export const useChatSocket = () => {
           
           roomIds.forEach((roomId) => {
             if (!joinedRoomsRef.current.has(roomId)) {
-              socket.emit('chat:join', { roomId });
-              joinedRoomsRef.current.add(roomId);
-              console.log('🏠 Joined room:', roomId);
+              console.log('🏠 Attempting to join room:', roomId);
+              socket.emit('chat:join', { roomId }, (response) => {
+                if (response?.ok) {
+                  joinedRoomsRef.current.add(roomId);
+                  console.log('🏠 ✅ Successfully joined room:', roomId);
+                } else {
+                  console.error('🏠 ❌ Failed to join room:', roomId, response?.error);
+                }
+              });
             }
           });
         });
@@ -161,8 +237,22 @@ export const useChatSocket = () => {
             description: error.description,
             context: error.context,
             timestamp: new Date().toISOString(),
-            baseUrl
+            baseUrl,
+            socketId: socket?.id,
+            authSent: !!socket?.auth?.token,
+            authTokenPrefix: socket?.auth?.token ? `${socket.auth.token.substring(0, 20)}...` : 'no auth token',
+            serverUrl: socket?.io?.uri,
+            transport: socket?.io?.engine?.transport?.name,
+            isAuthError: error.message?.includes('unauthorized') || error.message?.includes('auth') || error.message?.includes('token')
           });
+          
+          // Обновляем статус соединения в Redux при ошибке
+          dispatch(setConnectionStatus({
+            isConnected: false,
+            transport: null,
+            lastError: error.message,
+            reconnectAttempts: 0
+          }));
         });
 
         socket.on('reconnect', (attemptNumber) => {
@@ -180,6 +270,13 @@ export const useChatSocket = () => {
         // incoming events
         socket.on('chat:message:new', (payload) => {
           // payload: { roomId, message }
+          console.log('📨 [WEBSOCKET] New message received:', {
+            roomId: payload?.roomId,
+            messageId: payload?.message?.id,
+            senderId: payload?.message?.senderId,
+            hasContent: !!payload?.message?.content,
+            timestamp: new Date().toISOString()
+          });
           dispatch(receiveSocketMessage(payload));
         });
 
@@ -195,14 +292,21 @@ export const useChatSocket = () => {
         // Обновление статусов сообщений в real-time
         socket.on('chat:message:status', (payload) => {
           // payload: { roomId, messageId, status, deliveredAt?, readAt?, updatedBy }
-          console.log('📡 [WEBSOCKET] Status update:', payload);
+          console.log('📡 [WEBSOCKET] Status update received:', {
+            ...payload,
+            timestamp: new Date().toISOString(),
+            socketId: socket.id,
+            socketConnected: socket.connected
+          });
 
           // Дополнительная проверка перед диспатчем
           if (!payload.roomId || !payload.messageId) {
-            console.error('❌ [WEBSOCKET] Invalid payload:', payload);
+            console.error('❌ [WEBSOCKET] Invalid status payload:', payload);
             return;
           }
 
+          // Логируем перед отправкой в Redux
+          console.log('📦 Dispatching updateMessageStatus to Redux:', payload);
           dispatch(updateMessageStatus(payload));
         });
 
@@ -216,6 +320,30 @@ export const useChatSocket = () => {
         // Optional: room updated/members updated triggers refetch
         socket.on('chat:room:updated', () => {
           dispatch(fetchRooms({ page: 1 }));
+        });
+
+        // Добавляем обработку ответов на события join
+        socket.on('chat:join:success', (payload) => {
+          console.log('🏠 ✅ Successfully joined room:', payload);
+        });
+
+        socket.on('chat:join:error', (payload) => {
+          console.error('🏠 ❌ Failed to join room:', payload);
+          // Удаляем из списка присоединенных комнат в случае ошибки
+          if (payload?.roomId) {
+            joinedRoomsRef.current.delete(payload.roomId);
+          }
+        });
+
+        // Обработка ошибок аутентификации после подключения
+        socket.on('disconnect', (reason, details) => {
+          console.warn('⚠️ Chat socket disconnected:', {
+            reason,
+            details,
+            isAuthError: reason === 'server namespace disconnect' || 
+                        reason === 'client namespace disconnect' ||
+                        details?.description?.includes('unauthorized')
+          });
         });
 
         socketRef.current = socket;
@@ -242,12 +370,19 @@ export const useChatSocket = () => {
   // Join new rooms as they appear
   useEffect(() => {
     const socket = socketRef.current;
-    if (!socket) return;
+    if (!socket || !socket.connected) return;
     const roomIds = roomsState?.ids || [];
     roomIds.forEach((roomId) => {
       if (!joinedRoomsRef.current.has(roomId)) {
-        socket.emit('chat:join', { roomId });
-        joinedRoomsRef.current.add(roomId);
+        console.log('🏠 New room detected, joining:', roomId);
+        socket.emit('chat:join', { roomId }, (response) => {
+          if (response?.ok) {
+            joinedRoomsRef.current.add(roomId);
+            console.log('🏠 ✅ Successfully joined new room:', roomId);
+          } else {
+            console.error('🏠 ❌ Failed to join new room:', roomId, response?.error);
+          }
+        });
       }
     });
   }, [roomsState?.ids]);

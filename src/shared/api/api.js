@@ -66,6 +66,19 @@ const processQueue = (error, token = null) => {
 };
 
 export const getBaseUrl = () => {
+    // Сервер работает на порту 5001 (5000 занят)
+    // const baseUrl = 'http://212.67.11.134';
+    // const port = 5001; // Сервер запустился на порту 5001
+    //
+    // const serverUrl = `${baseUrl}:${port}`;
+    //
+    // console.log('🌐 [API] Using server URL:', serverUrl);
+    // console.log('🌐 [API] Server is running on port 5001 (5000 is busy)');
+    //
+    // return serverUrl;
+
+    // // Старый код на случай, если нужно будет вернуться к локальной разработке
+
     // if (__DEV__) {
     //     if (Platform.OS === 'android') {
     //         return 'http://192.168.1.226:5000';
@@ -73,6 +86,7 @@ export const getBaseUrl = () => {
     //     return 'http://localhost:5000';
     // }
     return 'http://212.67.11.134:5000';
+
 };
 
 
@@ -111,19 +125,39 @@ const setTokensAndUser = (tokens) => {
 const getStoredTokens = async () => {
     try {
         const tokensStr = await AsyncStorage.getItem(STORAGE_KEYS.TOKENS);
-        return tokensStr ? JSON.parse(tokensStr) : null;
+        const tokens = tokensStr ? JSON.parse(tokensStr) : null;
+
+        console.log('📖 [API] Retrieved tokens:', {
+            hasStoredData: !!tokensStr,
+            hasTokens: !!tokens,
+            hasAccessToken: !!tokens?.accessToken,
+            hasRefreshToken: !!tokens?.refreshToken,
+            accessTokenLength: tokens?.accessToken?.length || 0,
+            refreshTokenLength: tokens?.refreshToken?.length || 0
+        });
+
+        return tokens;
     } catch (error) {
-        console.error('Ошибка получения токенов:', error);
+        console.error('❌ [API] Ошибка получения токенов:', error);
         return null;
     }
 };
 
 const saveTokens = async (tokens) => {
     try {
+        console.log('💾 [API] Saving tokens:', {
+            hasAccessToken: !!tokens.accessToken,
+            hasRefreshToken: !!tokens.refreshToken,
+            accessTokenLength: tokens.accessToken?.length || 0,
+            refreshTokenLength: tokens.refreshToken?.length || 0
+        });
+
         await AsyncStorage.setItem(STORAGE_KEYS.TOKENS, JSON.stringify(tokens));
         api.defaults.headers.common['Authorization'] = `Bearer ${tokens.accessToken}`;
+
+        console.log('💾 [API] Tokens saved successfully, Authorization header set');
     } catch (error) {
-        console.error('Ошибка сохранения токенов:', error);
+        console.error('❌ [API] Ошибка сохранения токенов:', error);
     }
 };
 
@@ -329,6 +363,13 @@ api.interceptors.request.use(async (config) => {
         const tokens = await getStoredTokens();
         if (tokens?.accessToken) {
             config.headers.Authorization = `Bearer ${tokens.accessToken}`;
+            console.log('🔑 [API REQUEST] Authorization header set:', {
+                hasToken: !!tokens.accessToken,
+                tokenPrefix: `${tokens.accessToken.substring(0, 20)}...`,
+                url: config.url
+            });
+        } else {
+            console.warn('⚠️ [API REQUEST] No access token found for request:', config.url);
         }
 
         if (config.method === 'delete' && (!config.data || config.data === null)) {
@@ -587,22 +628,34 @@ export const createPublicRequest = async (method, url, data = null, config = {})
 // Остальные функции остаются без изменений...
 export const validateTokensStatus = async () => {
     try {
+        console.log('🔍 [VALIDATE] Starting token validation...');
+
         const tokens = await getStoredTokens();
+        console.log('🔍 [VALIDATE] Tokens retrieved:', !!tokens);
 
         if (!tokens) {
+            console.log('🔍 [VALIDATE] Result: No tokens found');
             return { status: 'error', message: 'Токены не найдены' };
         }
 
         const currentTime = Math.floor(Date.now() / 1000);
         let accessTokenValid = false;
         let refreshTokenValid = false;
+        let accessTokenExpiry = null;
+        let refreshTokenExpiry = null;
 
         if (tokens.accessToken) {
             try {
                 const decoded = decodeToken(tokens.accessToken);
                 accessTokenValid = decoded && decoded.exp > currentTime;
+                accessTokenExpiry = decoded ? decoded.exp : null;
+                console.log('🔍 [VALIDATE] Access token:', {
+                    valid: accessTokenValid,
+                    exp: accessTokenExpiry,
+                    timeToExpiry: accessTokenExpiry ? accessTokenExpiry - currentTime : null
+                });
             } catch (e) {
-                console.error('Ошибка декодирования access token:', e);
+                console.error('🔍 [VALIDATE] Ошибка декодирования access token:', e);
             }
         }
 
@@ -610,21 +663,34 @@ export const validateTokensStatus = async () => {
             try {
                 const decoded = decodeToken(tokens.refreshToken);
                 refreshTokenValid = decoded && decoded.exp > currentTime;
+                refreshTokenExpiry = decoded ? decoded.exp : null;
+                console.log('🔍 [VALIDATE] Refresh token:', {
+                    valid: refreshTokenValid,
+                    exp: refreshTokenExpiry,
+                    timeToExpiry: refreshTokenExpiry ? refreshTokenExpiry - currentTime : null
+                });
             } catch (e) {
-                console.error('Ошибка декодирования refresh token:', e);
+                console.error('🔍 [VALIDATE] Ошибка декодирования refresh token:', e);
             }
         }
 
         const authHeader = api.defaults.headers.common['Authorization'];
+        console.log('🔍 [VALIDATE] Auth header present:', !!authHeader);
 
-        return {
+        const result = {
             status: 'success',
             accessTokenValid,
             refreshTokenValid,
-            authHeaderPresent: !!authHeader
+            authHeaderPresent: !!authHeader,
+            accessTokenExpiry,
+            refreshTokenExpiry,
+            currentTime
         };
+
+        console.log('🔍 [VALIDATE] Final result:', result);
+        return result;
     } catch (error) {
-        console.error('Ошибка при проверке токенов:', error);
+        console.error('🔍 [VALIDATE] Ошибка при проверке токенов:', error);
         return { status: 'error', message: error.message };
     }
 };
