@@ -19,6 +19,32 @@ pids
 # Coverage directory used by tools like istanbul
 coverage
 *.lcov
+.idea/
+.vscode/
+.claude/
+*.swp
+*.swo
+*~
+
+# Логи и отладочные файлы
+*.log
+app-logs.txt
+debug-*.md
+debug-*.js
+
+# Keystore файлы (безопасность!)
+*.keystore
+*.jks
+my-upload-key.keystore
+
+# Временные файлы сборки
+android-manifest-merger.xml
+network_security_config.xml
+
+# Скрипты отладки/проверки (если они не нужны в репозитории)
+check_supplier_products.js
+debug-fcm-logs.js
+debug-tokens.js
 
 # nyc test coverage
 .nyc_output
