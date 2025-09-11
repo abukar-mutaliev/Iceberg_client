@@ -25,13 +25,18 @@ import { Loader } from "@shared/ui/Loader";
 
 import {
     fetchStaffOrders,
+    setLocalOrderAction,
+    clearLocalOrderAction,
+    clearAllLocalOrderActions
 } from '@entities/order/model/slice';
-import { 
-    selectStaffOrders, 
-    selectStaffOrdersLoading 
+import {
+    selectStaffOrders,
+    selectStaffOrdersLoading,
+    selectLocalOrderActions
 } from '@entities/order/model/selectors';
 import { useOrders } from '@entities/order/hooks/useOrders';
 import { ORDER_STATUSES, ORDER_STATUS_LABELS, getAvailableStatuses } from '@entities/order';
+import { ToastSimple } from '@shared/ui/Toast/ui/ToastSimple';
 
 const CACHE_KEY = 'staff_orders_cache';
 const CACHE_EXPIRY = 5 * 60 * 1000; // 5 минут
@@ -185,6 +190,12 @@ export const StaffOrdersScreen = () => {
     const [selectedStatus, setSelectedStatus] = useState('');
     const [statusComment, setStatusComment] = useState('');
     const [updatingStatus, setUpdatingStatus] = useState(false);
+
+    // Получаем локальные действия из Redux
+    const localOrderActions = useSelector(selectLocalOrderActions);
+
+    // Состояние для Toast уведомления
+    const [toastConfig, setToastConfig] = useState(null);
     
     // Загрузка данных с кэшированием
     const loadInitialData = useCallback(async (forceRefresh = false) => {
@@ -220,6 +231,9 @@ export const StaffOrdersScreen = () => {
                 console.error('StaffOrdersScreen - Ошибка загрузки заказов:', ordersResult.reason);
                 throw ordersResult.reason;
             }
+
+            // Очищаем локальное состояние действий при обновлении данных
+            dispatch(clearAllLocalOrderActions());
 
             // Сохраняем данные в кэш
             const currentTime = Date.now();
@@ -336,13 +350,43 @@ export const StaffOrdersScreen = () => {
             }
 
             if (result.success) {
-                Alert.alert('Успех', canViewAllOrders ? 'Статус заказа успешно изменен' : 'Этап заказа успешно завершен');
+                // Если это завершение этапа сотрудником (не изменение статуса админом)
+                if (!canViewAllOrders && selectedOrder) {
+                    // Сразу обновляем локальное состояние - этап завершен
+                    dispatch(setLocalOrderAction({
+                        orderId: selectedOrder.id,
+                        action: 'completed',
+                        value: true
+                    }));
+                    console.log('Локально отмечен завершенный этап:', selectedOrder.id, 'роль:', actualProcessingRole);
+
+                    // Для курьера дополнительно логируем завершение доставки
+                    if (actualProcessingRole === 'COURIER') {
+                        console.log('Курьер завершил доставку заказа:', selectedOrder.id, {
+                            orderStatus: selectedOrder?.status,
+                            expectedNewStatus: 'DELIVERED'
+                        });
+                    }
+                }
+
+                // Показываем Toast уведомление вместо алерта
+                setToastConfig({
+                    message: canViewAllOrders ? 'Статус заказа успешно изменен' : 'Этап заказа успешно завершен',
+                    type: 'success',
+                    duration: 3000
+                });
                 setStatusModalVisible(false);
                 setSelectedOrder(null);
                 setSelectedStatus('');
                 setStatusComment('');
-                // Обновляем список заказов
-                loadInitialData();
+                // Обновляем список заказов с принудительной перезагрузкой
+                console.log('StaffOrdersScreen: обновляем список заказов после завершения этапа');
+
+                // Ждем немного перед обновлением, чтобы сервер успел обработать изменения
+                setTimeout(() => {
+                    console.log('StaffOrdersScreen: начинаем загрузку данных после паузы');
+                    loadInitialData(true);
+                }, 1500); // Увеличиваем задержку до 1.5 секунд
             } else {
                 Alert.alert('Ошибка', result.error || 'Не удалось изменить статус заказа');
             }
@@ -414,16 +458,45 @@ export const StaffOrdersScreen = () => {
         ordersRef.current = { staffOrders: staffOrders || [], filteredOrders: [] };
         let filtered = [...(staffOrders || [])];
 
+        // Логируем все заказы для отладки
+        if (actualProcessingRole === 'COURIER') {
+            console.log('StaffOrdersScreen: курьер видит заказы', {
+                totalOrders: filtered.length,
+                ordersByStatus: filtered.reduce((acc, order) => {
+                    acc[order.status] = (acc[order.status] || 0) + 1;
+                    return acc;
+                }, {}),
+                showHistory,
+                relevantStatuses,
+                historyStatuses,
+                // Проверяем конкретные заказы
+                order29: filtered.find(o => o.id === 29)?.status || 'не найден',
+                recentOrders: filtered.slice(0, 3).map(o => ({ id: o.id, status: o.status, assignedToId: o.assignedTo?.id }))
+            });
+        }
+
         // Для админов и супервизоров - показываем все заказы
         if (canViewAllOrders) {
             // Админы видят всё без фильтрации по истории
         } else if (actualProcessingRole && (relevantStatuses.length > 0 || historyStatuses.length > 0)) {
             const beforeFilter = filtered.length;
-            
+
             if (showHistory) {
                 filtered = filtered.filter(order => historyStatuses.includes(order.status));
+                console.log('StaffOrdersScreen: фильтрация истории для роли', actualProcessingRole, {
+                    beforeFilter,
+                    afterFilter: filtered.length,
+                    historyStatuses,
+                    filteredStatuses: filtered.map(o => ({ id: o.id, status: o.status }))
+                });
             } else {
                 filtered = filtered.filter(order => relevantStatuses.includes(order.status));
+                console.log('StaffOrdersScreen: фильтрация активных для роли', actualProcessingRole, {
+                    beforeFilter,
+                    afterFilter: filtered.length,
+                    relevantStatuses,
+                    filteredStatuses: filtered.map(o => ({ id: o.id, status: o.status }))
+                });
             }
         }
 
@@ -544,28 +617,66 @@ export const StaffOrdersScreen = () => {
 
 
     const renderOrderItem = useCallback(({ item }) => {
+        // Также проверяем, может ли сотрудник изменять статус заказа
+        // В истории заказов некоторые роли могут изменять статус (например, курьер для возвратов)
+        const canChangeStatusInHistory = (() => {
+            if (!showHistory) return true; // В активных заказах все могут изменять статус
+
+            // В истории только курьер может изменять статус (для возвратов от клиентов)
+            return actualProcessingRole === 'COURIER';
+        })();
+
         // Определяем, можно ли изменять статус заказа
         const canUpdateOrderStatus = (() => {
             // Получаем актуальные данные из ref
             const { staffOrders: currentStaffOrders, filteredOrders: currentFilteredOrders } = ordersRef.current;
-            
+
             // Проверяем, что данные загружены
             if (!currentUser || (!currentStaffOrders && !currentFilteredOrders)) {
                 return false;
             }
-            
+
+            // Проверяем локальное состояние - если сотрудник только что завершил этап, скрываем кнопку
+            const localActionForCompletion = localOrderActions[item.id];
+            if (localActionForCompletion?.completed) {
+                console.log('Скрываем кнопку статуса - этап только что завершен:', item.id);
+                return false;
+            }
+
+            // Для завершенных заказов (доставленных, отмененных, возвращенных) кнопки не нужны
+            const completedStatuses = [ORDER_STATUSES.DELIVERED, ORDER_STATUSES.CANCELLED, ORDER_STATUSES.RETURNED];
+            if (completedStatuses.includes(item.status)) {
+                console.log('Скрываем кнопку статуса - заказ завершен:', item.id, item.status);
+                return false;
+            }
+
             // Админы могут изменять статус всегда
             if (canViewAllOrders) return true;
-            
+
             // Если заказ в истории
             if (showHistory) {
-                // Только курьер может изменять статус в истории (возвраты от клиентов)
-                const result = actualProcessingRole === 'COURIER';
-                return result;
+                // Используем новую логику определения возможности изменения статуса
+                return canChangeStatusInHistory;
             }
-            
-            // В активных заказах все роли могут изменять статус
-            return true;
+
+            // В активных заказах кнопка "статус" показывается только если заказ уже взят в работу текущим сотрудником
+            const localActionForStatus = localOrderActions[item.id];
+            const isAssignedToMe = Boolean(item.assignedTo?.id && currentUser?.employee?.id && item.assignedTo.id === currentUser.employee.id);
+            const isLocallyTaken = localActionForStatus?.taken;
+
+            console.log('canUpdateOrderStatus: заказ', item.id, {
+                isAssignedToMe,
+                isLocallyTaken,
+                assignedToId: item.assignedTo?.id,
+                currentUserEmployeeId: currentUser?.employee?.id,
+                showStatusButton: isAssignedToMe || isLocallyTaken
+            });
+
+            if (isAssignedToMe || isLocallyTaken) {
+                return true;
+            }
+
+            return false;
         })();
 
 
@@ -579,11 +690,25 @@ export const StaffOrdersScreen = () => {
                 onStatusUpdate={canUpdateOrderStatus ? handleStatusUpdate : null}
                 onTakeOrder={async (orderId) => {
                     try {
+                        // Сразу обновляем локальное состояние - заказ взят в работу
+                        dispatch(setLocalOrderAction({
+                            orderId: orderId,
+                            action: 'taken',
+                            value: true
+                        }));
+
                         const res = await takeOrder(orderId, 'Взял заказ в работу');
                         if (!res.success) throw new Error(res.error);
-                        Alert.alert('Успех', 'Заказ взят в работу');
+                        // Показываем Toast уведомление вместо алерта
+                        setToastConfig({
+                            message: 'Заказ взят в работу',
+                            type: 'success',
+                            duration: 3000
+                        });
                         loadInitialData(true);
                     } catch (e) {
+                        // В случае ошибки откатываем локальное состояние
+                        dispatch(clearLocalOrderAction({ orderId: orderId }));
                         Alert.alert('Ошибка', e.message || 'Не удалось взять заказ');
                     }
                 }}
@@ -597,20 +722,85 @@ export const StaffOrdersScreen = () => {
                         Alert.alert('Ошибка', e.message || 'Не удалось снять назначение');
                     }
                 } : null}
-                canTake={!item.assignedTo}
-                isTakenByMe={Boolean(item.assignedTo?.id && currentUser?.employee?.id && item.assignedTo.id === currentUser.employee.id)}
-                
+                // Учитываем локальное состояние для определения статуса заказа
+                canTake={(() => {
+                    // Для завершенных заказов кнопка "взять" не нужна
+                    const completedStatuses = [ORDER_STATUSES.DELIVERED, ORDER_STATUSES.CANCELLED, ORDER_STATUSES.RETURNED];
+                    if (completedStatuses.includes(item.status)) {
+                        console.log('Скрываем кнопку взять - заказ завершен:', item.id, item.status);
+                        return false;
+                    }
+
+                    const localAction = localOrderActions[item.id];
+                    // Если локально заказ взят в работу, то нельзя брать еще раз
+                    if (localAction?.taken) return false;
+                    // Если заказ уже назначен на кого-то другого, нельзя брать
+                    if (item.assignedTo && item.assignedTo.id !== currentUser?.employee?.id) return false;
+
+                    // Всегда проверяем, работал ли уже сотрудник с этим заказом в истории обработки
+                    if (item.statusHistory) {
+                        const hasWorkedOnOrder = item.statusHistory.some(historyItem => {
+                            if (!historyItem.comment) return false;
+
+                            // Проверяем, есть ли в комментарии имя или должность текущего сотрудника
+                            const hasEmployeeName = currentUser?.employee?.name &&
+                                historyItem.comment.includes(currentUser.employee.name);
+                            const hasEmployeePosition = currentUser?.employee?.position &&
+                                historyItem.comment.includes(currentUser.employee.position);
+
+                            return hasEmployeeName || hasEmployeePosition;
+                        });
+
+                        if (hasWorkedOnOrder) {
+                            console.log('Сотрудник уже работал с заказом ранее:', item.id, currentUser?.employee?.name);
+                            return false;
+                        }
+                    }
+
+                    // Если заказ не назначен, можно брать
+                    return !item.assignedTo;
+                })()}
+                isTakenByMe={(() => {
+                    const localAction = localOrderActions[item.id];
+                    // Если локально заказ взят в работу текущим пользователем
+                    if (localAction?.taken) return true;
+
+                    // Если сотрудник уже работал с этим заказом ранее и заказ сейчас не назначен на него,
+                    // то он не считается "взятым им"
+                    if (item.statusHistory) {
+                        const hasWorkedOnOrder = item.statusHistory.some(historyItem => {
+                            if (!historyItem.comment) return false;
+
+                            const hasEmployeeName = currentUser?.employee?.name &&
+                                historyItem.comment.includes(currentUser.employee.name);
+                            const hasEmployeePosition = currentUser?.employee?.position &&
+                                historyItem.comment.includes(currentUser.employee.position);
+
+                            return hasEmployeeName || hasEmployeePosition;
+                        });
+
+                        // Если сотрудник работал с заказом, но заказ сейчас назначен на кого-то другого
+                        if (hasWorkedOnOrder && item.assignedTo && item.assignedTo.id !== currentUser?.employee?.id) {
+                            return false;
+                        }
+                    }
+
+                    // Проверяем серверные данные
+                    return Boolean(item.assignedTo?.id && currentUser?.employee?.id && item.assignedTo.id === currentUser.employee.id);
+                })()}
+
                 onDownloadInvoice={handleDownloadInvoice}
                 downloadingInvoice={downloadingInvoices.has(item.id)}
                 showProcessingInfo={canViewAllOrders}
                 showEmployeeInfo={true}
-                showStatusHistory={true}
-                showProcessingHistory={true}
+                // Убираем историю обработки заказа - она доступна на детальном экране
+                showStatusHistory={false}
+                showProcessingHistory={false}
                 // Явно передаем доступные статусы, чтобы не зависеть от barrel и избежать ранних обращений
                 availableStatusesProvider={getAvailableStatuses}
             />
         );
-    }, [canViewAllOrders, showHistory, actualProcessingRole, handleStatusUpdate, assignOrderToEmployee, handleDownloadInvoice, downloadingInvoices, navigation, currentUser, takeOrder, loadInitialData]);
+    }, [canViewAllOrders, showHistory, actualProcessingRole, handleStatusUpdate, assignOrderToEmployee, handleDownloadInvoice, downloadingInvoices, navigation, currentUser, takeOrder, loadInitialData, localOrderActions]);
 
     // Компонент заголовка для прокручиваемого контента
     const renderHeader = useCallback(() => (
@@ -864,6 +1054,16 @@ export const StaffOrdersScreen = () => {
                     </View>
                 </View>
             </Modal>
+
+            {/* Toast уведомление */}
+            {toastConfig && (
+                <ToastSimple
+                    message={toastConfig.message}
+                    type={toastConfig.type}
+                    duration={toastConfig.duration}
+                    onHide={() => setToastConfig(null)}
+                />
+            )}
         </View>
     );
 

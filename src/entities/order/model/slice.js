@@ -75,6 +75,9 @@ const initialState = {
         exporting: false
     },
 
+    // Локальные действия сотрудников по заказам (для синхронизации между экранами)
+    localOrderActions: {}, // orderId -> { taken: boolean, completed: boolean, timestamp: number }
+
     // Уведомления
     notifications: [],
 
@@ -157,11 +160,27 @@ export const fetchStaffOrders = createAsyncThunk(
 
             const { forceRefresh = false, ...requestParams } = params;
 
+            console.log('fetchStaffOrders: параметры запроса', {
+                forceRefresh,
+                requestParams,
+                cacheValid: isCacheValid(state.order.staffOrders.lastFetchTime),
+                lastFetchTime: state.order.staffOrders.lastFetchTime
+            });
+
             if (!forceRefresh && isCacheValid(state.order.staffOrders.lastFetchTime)) {
+                console.log('fetchStaffOrders: возвращаем данные из кэша');
                 return { data: state.order.staffOrders, fromCache: true };
             }
 
-            const response = await OrderApi.getOrders(requestParams);
+            console.log('fetchStaffOrders: делаем запрос к серверу');
+
+            // Добавляем timestamp для обхода кэширования
+            const requestParamsWithTimestamp = {
+                ...requestParams,
+                _t: Date.now()
+            };
+
+            const response = await OrderApi.getOrders(requestParamsWithTimestamp);
 
             if (response.status === 'success') {
                 return { data: response.data, fromCache: false, filters: requestParams };
@@ -240,7 +259,14 @@ export const completeOrderStage = createAsyncThunk(
     'orders/completeOrderStage',
     async ({ orderId, comment }, { rejectWithValue, dispatch }) => {
         try {
+            console.log('completeOrderStage: начинаем завершение этапа', { orderId, comment });
             const response = await OrderApi.completeOrderStage(orderId, comment);
+
+            console.log('completeOrderStage: ответ сервера', {
+                orderId,
+                status: response.status,
+                data: response.data
+            });
 
             if (response.status === 'success') {
                 // Обновляем детали заказа, если они загружены
@@ -648,6 +674,29 @@ const orderSlice = createSlice({
             if (state.orderDetails.data && state.orderDetails.data.id === orderId) {
                 state.orderDetails.data = null;
             }
+        },
+
+        // Управление локальными действиями сотрудников
+        setLocalOrderAction: (state, action) => {
+            const { orderId, action: orderAction, value } = action.payload;
+            if (!state.localOrderActions[orderId]) {
+                state.localOrderActions[orderId] = {
+                    taken: false,
+                    completed: false,
+                    timestamp: Date.now()
+                };
+            }
+            state.localOrderActions[orderId][orderAction] = value;
+            state.localOrderActions[orderId].timestamp = Date.now();
+        },
+
+        clearLocalOrderAction: (state, action) => {
+            const { orderId } = action.payload;
+            delete state.localOrderActions[orderId];
+        },
+
+        clearAllLocalOrderActions: (state) => {
+            state.localOrderActions = {};
         }
     },
     extraReducers: (builder) => {
@@ -1136,7 +1185,10 @@ export const {
     clearNotifications,
     updatePreferences,
     updateOrderInList,
-    removeOrderFromList
+    removeOrderFromList,
+    setLocalOrderAction,
+    clearLocalOrderAction,
+    clearAllLocalOrderActions
 } = orderSlice.actions;
 
 export default orderSlice.reducer;

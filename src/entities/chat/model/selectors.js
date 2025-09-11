@@ -20,9 +20,13 @@ export const selectRoomsList = createSelector(
       const room = roomsById[id];
       if (!room) return null;
       
-      const unreadFromState = unreadByRoomId?.[id] || 0;
-      const unreadFromRoom = room.unread || 0;
-      const actualUnread = Math.max(unreadFromState, unreadFromRoom);
+      // Используем только unreadByRoomId как единственный источник истины
+      // Если комната не в unreadByRoomId, считаем что unread = 0
+      const actualUnread = unreadByRoomId?.[id] ?? 0;
+
+      if (__DEV__ && actualUnread > 0) {
+        console.log(`🎯 Selector: Room ${id} unread count: ${actualUnread} (from unreadByRoomId)`);
+      }
 
             // Получаем последнее сообщение с актуальным статусом
       let lastMessage = null;

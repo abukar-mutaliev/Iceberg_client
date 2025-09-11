@@ -20,6 +20,10 @@ export default {
             favicon: './assets/icon.png',
             bundler: 'metro',
         },
+        // Включаем developmentClient для preview и development сборок
+        developmentClient: {
+            silentLaunch: true,
+        },
         plugins: [
             'expo-font',
             [
@@ -28,6 +32,8 @@ export default {
                     locationAlwaysAndWhenInUsePermission: 'This app uses location to show your position on the map.',
                 },
             ],
+            // Добавляем expo-dev-client плагин для preview и dev сборок
+            ...(IS_DEV || IS_PREVIEW ? ['expo-dev-client'] : []),
             [
                 'expo-build-properties',
                 {
@@ -42,8 +48,6 @@ export default {
                         // Дополнительные настройки для preview-debug
                         ...(IS_PREVIEW_DEBUG && {
                             enableProguardInReleaseBuilds: false,
-
-
                             enableShrinkResourcesInReleaseBuilds: false,
                             enableHermes: true,
                             enableProfiling: true,
@@ -70,8 +74,12 @@ export default {
                     mode: 'production',
                 },
             ],
-            // Firebase удален - используем только Expo Notifications для всех сборок
-
+            [
+                'onesignal-expo-plugin',
+                {
+                    mode: IS_DEV ? 'development' : 'production',
+                }
+            ]
         ],
         extra: {
             eas: {
@@ -108,25 +116,25 @@ export default {
                     apiKey: '17ee620d-aee1-482c-acc9-c7144fd46087',
                 },
             },
-        permissions: [
-          'RECEIVE_BOOT_COMPLETED',
-          'VIBRATE',
-          'WAKE_LOCK',
-          'POST_NOTIFICATIONS',
-          'INTERNET',
-          'ACCESS_NETWORK_STATE',
-          'SYSTEM_ALERT_WINDOW',
-          'FOREGROUND_SERVICE',
-          'com.android.vending.BILLING',
-          'android.permission.RECEIVE_BOOT_COMPLETED',
-          'android.permission.VIBRATE',
-          'android.permission.WAKE_LOCK',
-          'android.permission.POST_NOTIFICATIONS',
-          'android.permission.INTERNET',
-          'android.permission.ACCESS_NETWORK_STATE',
-          'android.permission.SYSTEM_ALERT_WINDOW',
-          'android.permission.FOREGROUND_SERVICE',
-        ],
+            permissions: [
+                'RECEIVE_BOOT_COMPLETED',
+                'VIBRATE',
+                'WAKE_LOCK',
+                'POST_NOTIFICATIONS',
+                'INTERNET',
+                'ACCESS_NETWORK_STATE',
+                'SYSTEM_ALERT_WINDOW',
+                'FOREGROUND_SERVICE',
+                'com.android.vending.BILLING',
+                'android.permission.RECEIVE_BOOT_COMPLETED',
+                'android.permission.VIBRATE',
+                'android.permission.WAKE_LOCK',
+                'android.permission.POST_NOTIFICATIONS',
+                'android.permission.INTERNET',
+                'android.permission.ACCESS_NETWORK_STATE',
+                'android.permission.SYSTEM_ALERT_WINDOW',
+                'android.permission.FOREGROUND_SERVICE',
+            ],
             intentFilters: [
                 {
                     action: 'VIEW',

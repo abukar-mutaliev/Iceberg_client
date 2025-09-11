@@ -16,16 +16,23 @@ import {
     TextInput
 } from 'react-native';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useDispatch, useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { OrderApi } from '@entities/order';
 import { useOrders } from '@entities/order';
 import { useAuth } from '@entities/auth/hooks/useAuth';
+import { selectHasLocalOrderAction } from '@entities/order/model/selectors';
+import { clearLocalOrderAction } from '@entities/order/model/slice';
 import { Loader } from "@shared/ui/Loader";
+import { ToastSimple } from '@shared/ui/Toast/ui/ToastSimple';
 
 // Временно определяем константы локально
 const ORDER_STATUS_LABELS = {
     PENDING: 'Ожидает обработки',
-    CONFIRMED: 'Подтвержден',
+    PICKING: 'Взял в работу',
+    CONFIRMED: 'Сборка завершена',
+    PACKING: 'Взял в работу',
+    PACKING_COMPLETED: 'Упаковка завершена',
     IN_DELIVERY: 'В доставке',
     DELIVERED: 'Доставлен',
     CANCELLED: 'Отменен',
@@ -34,7 +41,10 @@ const ORDER_STATUS_LABELS = {
 
 const ORDER_STATUS_COLORS = {
     PENDING: '#FFA726',
+    PICKING: '#FF7043',
     CONFIRMED: '#42A5F5',
+    PACKING: '#AB47BC',
+    PACKING_COMPLETED: '#7E57C2',
     IN_DELIVERY: '#5C6BC0',
     DELIVERED: '#66BB6A',
     CANCELLED: '#EF5350',
@@ -43,7 +53,10 @@ const ORDER_STATUS_COLORS = {
 
 const ORDER_STATUS_ICONS = {
     PENDING: 'schedule',
+    PICKING: 'inventory',
     CONFIRMED: 'check-circle',
+    PACKING: 'package',
+    PACKING_COMPLETED: 'done-all',
     IN_DELIVERY: 'local-shipping',
     DELIVERED: 'done-all',
     CANCELLED: 'cancel',
@@ -91,10 +104,15 @@ const formatBoxesCount = (count) => {
 };
 
 const canCancelOrder = (status, userRole = 'CLIENT') => {
+    console.log('canCancelOrder: status -', status, 'userRole -', userRole);
     if (userRole === 'CLIENT') {
-        return status === 'PENDING';
+        const result = status === 'PENDING';
+        console.log('canCancelOrder: CLIENT result -', result);
+        return result;
     }
-    return ['PENDING', 'CONFIRMED', 'IN_DELIVERY'].includes(status);
+    const result = ['PENDING', 'CONFIRMED', 'IN_DELIVERY'].includes(status);
+    console.log('canCancelOrder: EMPLOYEE/ADMIN result -', result);
+    return result;
 };
 
 const { width } = Dimensions.get('window');
@@ -117,10 +135,23 @@ export const OrderDetailsScreen = () => {
     const [processingComment, setProcessingComment] = useState('');
     const [processingOrder, setProcessingOrder] = useState(false);
 
+    // Состояние для Toast уведомления
+    const [toastConfig, setToastConfig] = useState(null);
+
     // Хуки
     const { currentUser: user } = useAuth();
     const { downloadInvoice, completeOrderStage, takeOrder } = useOrders();
     const [taking, setTaking] = useState(false);
+    const dispatch = useDispatch();
+    
+    // Локальное состояние для отслеживания действий сотрудника
+    const [localOrderState, setLocalOrderState] = useState({
+        assignedToId: null,
+        status: null,
+        lastAction: null, // 'taken' | 'completed' | null
+        actionTimestamp: null,
+        temporarySteps: [] // Массив временных этапов
+    });
 
     // Анимации - используем useRef для стабильных ссылок
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -131,103 +162,559 @@ export const OrderDetailsScreen = () => {
         return user?.role === 'ADMIN' || user?.role === 'EMPLOYEE';
     }, [user?.role]);
 
+    // Синхронизация локального состояния с данными заказа
+    useEffect(() => {
+        if (order) {
+            // Обновляем локальное состояние только если данные действительно изменились
+            setLocalOrderState(prevState => {
+                const newState = {
+                    ...prevState,
+                    assignedToId: order.assignedTo?.id || null,
+                    status: order.status,
+                    lastKnownHistoryLength: order?.statusHistory?.length || 0
+                };
+
+                // Если данные изменились, проверяем нужно ли обновлять временные этапы
+                const hasDataChanged = prevState.assignedToId !== newState.assignedToId ||
+                                      prevState.status !== newState.status ||
+                                      (prevState.lastKnownHistoryLength !== (order?.statusHistory?.length || 0));
+
+                if (hasDataChanged) {
+                    // Проверяем изменение statusHistory отдельно
+                    const historyLengthChanged = prevState.lastKnownHistoryLength !== (order?.statusHistory?.length || 0);
+
+                    if (historyLengthChanged) {
+                        console.log('📋 Изменение истории заказов:', {
+                            previous: prevState.lastKnownHistoryLength,
+                            current: order?.statusHistory?.length || 0
+                        });
+
+                        // Когда приходит новая история с сервера, проверяем нужно ли сбросить локальное состояние
+                        if ((order?.statusHistory?.length || 0) > prevState.lastKnownHistoryLength) {
+                            console.log('📋 Пришла новая история с сервера, проверяем статус заказа');
+
+                            // Если статус заказа изменился по сравнению с тем, что было при последнем действии,
+                            // значит сервер подтвердил завершение этапа и передал заказ дальше
+                            if (prevState.status && order?.status !== prevState.status) {
+                                console.log('🔄 Статус заказа изменился, сбрасываем локальное состояние');
+                                newState.lastAction = null;
+                                newState.actionTimestamp = null;
+                                newState.assignedToId = null; // Заказ теперь доступен для следующего этапа
+                                newState.temporarySteps = []; // Очищаем временные этапы
+
+                                // Очищаем также Redux localOrderActions для этого заказа
+                                dispatch(clearLocalOrderAction({ orderId: orderId }));
+                                console.log('🗑️ Очищены Redux localOrderActions для заказа:', orderId);
+                            }
+                        }
+                    } else {
+                        // Для других изменений (assignedTo, status) применяем старую логику
+                        const timeSinceAction = prevState.actionTimestamp ? Date.now() - prevState.actionTimestamp : Infinity;
+                        if (timeSinceAction > 10000) {
+                            console.log('🧹 Очищаем временные этапы по таймауту');
+                            newState.lastAction = null;
+                            newState.actionTimestamp = null;
+                            newState.temporarySteps = [];
+                        } else {
+                            console.log('📋 Сохраняем временные этапы - прошло мало времени с момента действия');
+                        }
+                    }
+                }
+
+                return newState;
+            });
+        }
+    }, [order?.assignedTo?.id, order?.status, order?.statusHistory?.length]);
+
+    // Автоматический сброс локального состояния через 10 секунд
+    useEffect(() => {
+        if (localOrderState.lastAction && localOrderState.actionTimestamp) {
+            const timeout = setTimeout(() => {
+                setLocalOrderState(prevState => ({
+                    ...prevState,
+                    lastAction: null,
+                    actionTimestamp: null,
+                    temporarySteps: []
+                }));
+            }, 15000); // 15 секунд - больше времени для загрузки данных
+
+            return () => clearTimeout(timeout);
+        }
+    }, [localOrderState.lastAction, localOrderState.actionTimestamp]);
+
     // Функция для анализа истории статусов и извлечения информации о сотрудниках
     const getProcessingHistory = useCallback(() => {
         if (!order?.statusHistory || order.statusHistory.length === 0) return [];
 
         const processingSteps = [];
-        const statusOrder = ['PENDING', 'CONFIRMED', 'IN_DELIVERY', 'DELIVERED', 'CANCELLED', 'RETURNED'];
         
         // Анализируем каждый статус в истории
         order.statusHistory.forEach((historyItem, index) => {
             const { status, comment, createdAt } = historyItem;
+
+            console.log(`📋 Обрабатываем запись истории #${index + 1}:`, {
+                status,
+                comment,
+                createdAt
+            });
+
+            // Пропускаем PENDING статус, если это не этап "взял в работу"
+            if (status === 'PENDING') {
+                const lowerComment = comment ? comment.toLowerCase() : '';
+                if (lowerComment.includes('взял заказ в работу') ||
+                    lowerComment.includes('взял в работу')) {
+                    console.log('🎯 Обрабатываем PENDING статус - найден этап "взял в работу"');
+                    // Продолжаем обработку для этого комментария
+                } else {
+                    console.log('⏭️ Пропускаем PENDING статус - не этап обработки');
+                    return;
+                }
+            }
             
-            // Определяем роль сотрудника по статусу
+            // Определяем роль сотрудника и этап по комментарию и статусу
             let role = '';
             let roleLabel = '';
+            let stepType = ''; // 'started' или 'completed'
+            let actualStatus = status; // Реальный статус для отображения
             
-            switch (status) {
-                case 'CONFIRMED':
+            if (comment) {
+                // Анализируем комментарий для определения этапа обработки
+                const lowerComment = comment.toLowerCase();
+                console.log(`🔍 Анализируем комментарий: "${comment}"`);
+                console.log(`🔍 Нижний регистр: "${lowerComment}"`);
+                console.log(`🔍 Статус записи: "${status}"`);
+                
+                // Сначала проверяем завершение этапов
+                if (lowerComment.includes('сборка завершена')) {
                     role = 'PICKER';
                     roleLabel = 'Сборщик';
-                    break;
-                case 'IN_DELIVERY':
+                    stepType = 'completed';
+                    actualStatus = 'CONFIRMED';
+                    console.log('🎯 Обнаружено завершение сборки');
+                } else if (lowerComment.includes('упаковка завершена')) {
                     role = 'PACKER';
                     roleLabel = 'Упаковщик';
-                    break;
-                case 'DELIVERED':
+                    stepType = 'completed';
+                    actualStatus = 'PACKING_COMPLETED';
+                    console.log('🎯 Обнаружено завершение упаковки');
+                } else if (lowerComment.includes('доставка завершена')) {
                     role = 'COURIER';
                     roleLabel = 'Курьер';
-                    break;
-                case 'CANCELLED':
-                    role = 'MANAGER';
-                    roleLabel = 'Менеджер';
-                    break;
-                case 'RETURNED':
-                    role = 'COURIER';
-                    roleLabel = 'Курьер';
-                    break;
-                default:
-                    role = 'UNKNOWN';
-                    roleLabel = 'Сотрудник';
+                    stepType = 'completed';
+                    actualStatus = 'DELIVERED';
+                    console.log('🎯 Обнаружено завершение доставки');
+                }
+                // Затем проверяем взятие в работу (назначение + взятие)
+                else if (lowerComment.includes('взял заказ в работу') ||
+                         (lowerComment.includes('назначен сотруднику') && lowerComment.includes('взял заказ в работу'))) {
+                    stepType = 'started';
+                    console.log('🎯 Обнаружено взятие заказа в работу в комментарии:', comment);
+
+                    // Определяем роль по содержимому комментария с учетом различных форматов
+                    if (lowerComment.includes('сборщик') ||
+                        lowerComment.includes('сборщик заказов') ||
+                        lowerComment.includes('сборщиком')) {
+                        role = 'PICKER';
+                        roleLabel = 'Сборщик';
+                        actualStatus = 'PICKING';
+                        console.log('👷 Определена роль: Сборщик для этапа "взял в работу"');
+                    } else if (lowerComment.includes('упаковщик') ||
+                              lowerComment.includes('упаковщиком')) {
+                        role = 'PACKER';
+                        roleLabel = 'Упаковщик';
+                        actualStatus = 'PACKING';
+                        console.log('📦 Определена роль: Упаковщик для этапа "взял в работу"');
+                    } else if (lowerComment.includes('курьер') ||
+                              lowerComment.includes('курьером')) {
+                        role = 'COURIER';
+                        roleLabel = 'Курьер';
+                        actualStatus = 'IN_DELIVERY';
+                        console.log('🚚 Определена роль: Курьер для этапа "взял в работу"');
+                    } else {
+                        // Если роль не указана явно, определяем по статусу
+                        console.log('⚠️ Роль не указана явно, определяем по статусу:', status);
+                        if (status === 'PENDING') {
+                            role = 'PICKER';
+                            roleLabel = 'Сборщик';
+                            actualStatus = 'PICKING';
+                            console.log('👷 Автоматически определена роль: Сборщик');
+                        } else if (status === 'CONFIRMED') {
+                            role = 'PACKER';
+                            roleLabel = 'Упаковщик';
+                            actualStatus = 'PACKING';
+                            console.log('📦 Автоматически определена роль: Упаковщик');
+                        } else if (status === 'IN_DELIVERY') {
+                            role = 'COURIER';
+                            roleLabel = 'Курьер';
+                            actualStatus = 'IN_DELIVERY';
+                            console.log('🚚 Автоматически определена роль: Курьер');
+                        }
+                    }
+                }
+                // Проверяем назначение сотруднику с взятием в работу
+                else if (lowerComment.includes('назначен сотруднику')) {
+                    console.log('📋 Найдено назначение сотруднику, проверяем на взятие в работу:', comment);
+
+                    // Если есть указание на взятие в работу, обрабатываем как started
+                    if (lowerComment.includes('взял заказ в работу') ||
+                        lowerComment.includes('взял в работу') ||
+                        lowerComment.includes('взялся за работу')) {
+
+                        stepType = 'started';
+                        console.log('🎯 Назначение с взятием в работу - обрабатываем как started');
+
+                        // Определяем роль по содержимому комментария
+                        if (lowerComment.includes('сборщик') ||
+                            lowerComment.includes('сборщик заказов') ||
+                            lowerComment.includes('сборщиком')) {
+                            role = 'PICKER';
+                            roleLabel = 'Сборщик';
+                            actualStatus = 'PICKING';
+                            console.log('👷 Определена роль: Сборщик для назначения с взятием');
+                        } else if (lowerComment.includes('упаковщик') ||
+                                  lowerComment.includes('упаковщиком')) {
+                            role = 'PACKER';
+                            roleLabel = 'Упаковщик';
+                            actualStatus = 'PACKING';
+                            console.log('📦 Определена роль: Упаковщик для назначения с взятием');
+                        } else if (lowerComment.includes('курьер') ||
+                                  lowerComment.includes('курьером')) {
+                            role = 'COURIER';
+                            roleLabel = 'Курьер';
+                            actualStatus = 'IN_DELIVERY';
+                            console.log('🚚 Определена роль: Курьер для назначения с взятием');
+                        } else {
+                            // Определяем по статусу если роль не указана
+                            console.log('⚠️ Роль не указана в назначении, определяем по статусу:', status);
+                            if (status === 'PENDING') {
+                                role = 'PICKER';
+                                roleLabel = 'Сборщик';
+                                actualStatus = 'PICKING';
+                            } else if (status === 'CONFIRMED') {
+                                role = 'PACKER';
+                                roleLabel = 'Упаковщик';
+                                actualStatus = 'PACKING';
+                            } else if (status === 'IN_DELIVERY') {
+                                role = 'COURIER';
+                                roleLabel = 'Курьер';
+                                actualStatus = 'IN_DELIVERY';
+                            }
+                        }
+                    } else {
+                        // Просто назначение без взятия в работу - пропускаем
+                        console.log('🚫 Простое назначение без взятия в работу - пропускаем');
+                        return;
+                    }
+                }
+                // Fallback для других случаев
+                else {
+                    // Определяем роль по статусу если не смогли по комментарию
+                    switch (status) {
+                        case 'CONFIRMED':
+                            // Если статус CONFIRMED и нет явного указания на завершение сборки,
+                            // возможно это завершение сборки
+                            role = 'PICKER';
+                            roleLabel = 'Сборщик';
+                            stepType = 'completed';
+                            actualStatus = 'CONFIRMED';
+                            break;
+                        case 'IN_DELIVERY':
+                            // Для IN_DELIVERY нужно понимать контекст
+                            // Если это первая запись с IN_DELIVERY, то это завершение упаковки
+                            role = 'PACKER';
+                            roleLabel = 'Упаковщик';
+                            stepType = 'completed';
+                            actualStatus = 'PACKING_COMPLETED';
+                            break;
+                        case 'DELIVERED':
+                            role = 'COURIER';
+                            roleLabel = 'Курьер';
+                            stepType = 'completed';
+                            actualStatus = 'DELIVERED';
+                            break;
+                        case 'CANCELLED':
+                            role = 'MANAGER';
+                            roleLabel = 'Менеджер';
+                            stepType = 'completed';
+                            actualStatus = 'CANCELLED';
+                            break;
+                        case 'RETURNED':
+                            role = 'COURIER';
+                            roleLabel = 'Курьер';
+                            stepType = 'completed';
+                            actualStatus = 'RETURNED';
+                            break;
+                        default:
+                            return; // Пропускаем неизвестные статусы
+                    }
+                }
+            } else {
+                console.log('🚫 Пропускаем запись без комментария');
+                return; // Пропускаем записи без комментария
+            }
+
+            // Логируем результат анализа перед добавлением этапа
+            console.log('📊 Результат анализа этапа:', {
+                role,
+                roleLabel,
+                stepType,
+                actualStatus,
+                employeeName,
+                employeePosition,
+                comment
+            });
+
+            // Проверяем, найден ли этап
+            if (!role || !stepType) {
+                console.log('⚠️ Этап не определен, пропускаем:', { role, stepType });
+                return;
             }
 
             // Извлекаем информацию о сотруднике из комментария
             let employeeName = '';
             let employeePosition = '';
-            
+
             if (comment) {
-                // Ищем паттерны в комментариях для извлечения информации о сотрудниках
-                const patterns = [
+                console.log('🔍 Парсинг комментария:', comment);
+
+                // Специальные паттерны для разных типов комментариев
+                const specialPatterns = [
+                    // Формат: "Заказ назначен сотруднику Ахмед Сборщик (Сборщик заказов). Взял заказ в работу"
+                    /заказ назначен сотруднику (.+?) \((.+?)\)\. взял заказ в работу/i,
+                    // Формат: "Ахмед Сборщик (Сборщик заказов) взял заказ в работу"
+                    /(.+?) \((.+?)\) взял заказ в работу/i,
+                    // Формат: "Заказ назначен сотруднику Ахмед Сборщик (Сборщик заказов)"
+                    /заказ назначен сотруднику (.+?) \((.+?)\)/i,
+                    // Формат: "Обработано сотрудником Ахмед Сборщик (Сборщик заказов)"
                     /обработано сотрудником (.+?) \((.+?)\)/i,
-                    /назначен сотруднику (.+?) \((.+?)\)/i,
-                    /назначен сотруднику (.+?)/i,
-                    /принят сотрудником (.+?) на склад/i,
+                    // Формат: "Автоматически назначен сотруднику Ахмед Сборщик (Сборщик заказов)"
                     /автоматически назначен сотруднику (.+?) \((.+?)\)/i,
+                    // Формат: "Заказ переназначен сотруднику Ахмед Сборщик (Сборщик заказов)"
                     /заказ переназначен сотруднику (.+?) \((.+?)\)/i,
-                    /(.+?) \((.+?)\)/i,
-                    /(.+?)/i
                 ];
-                
-                for (const pattern of patterns) {
+
+                // Сначала пробуем специальные паттерны
+                let foundMatch = false;
+                for (const pattern of specialPatterns) {
                     const match = comment.match(pattern);
-                    if (match) {
+                    if (match && match[1]) {
+                        employeeName = match[1].trim();
                         if (match[2]) {
-                            employeeName = match[1].trim();
                             employeePosition = match[2].trim();
-                        } else {
-                            employeeName = match[1].trim();
                         }
+                        console.log('✅ Найдено специальным паттерном:', { employeeName, employeePosition, pattern: pattern.toString() });
+                        foundMatch = true;
                         break;
                     }
                 }
+
+                // Если специальные паттерны не сработали, пробуем общие
+                if (!foundMatch) {
+                    const generalPatterns = [
+                        // Паттерны без должности
+                        /назначен сотруднику (.+?)\./i,
+                        /назначен сотруднику (.+?)$/i,
+                        /принят сотрудником (.+?) на склад/i,
+                        /(.+?) взял заказ в работу/i,
+                        /(.+?) взял в работу/i,
+
+                        // Общий паттерн с скобками (должен быть последним)
+                        /(.+?) \((.+?)\)/i
+                    ];
+
+                    for (const pattern of generalPatterns) {
+                        const match = comment.match(pattern);
+                        if (match) {
+                            if (match[2]) {
+                                employeeName = match[1].trim();
+                                employeePosition = match[2].trim();
+                                // Убираем роли из должности, если они есть
+                                if (!['Сборщик', 'Упаковщик', 'Курьер'].includes(employeePosition)) {
+                                    // Оставляем должность как есть
+                                } else {
+                                    // Если в скобках только роль, убираем её
+                                    employeePosition = '';
+                                }
+                            } else if (match[1]) {
+                                employeeName = match[1].trim();
+                            }
+                            console.log('✅ Найдено общим паттерном:', { employeeName, employeePosition, pattern: pattern.toString() });
+                            break;
+                        }
+                    }
+                }
+
+                // Очистка имени от лишних слов
+                if (employeeName) {
+                    // Убираем лишние слова из имени
+                    employeeName = employeeName
+                        .replace(/^(заказ|сотруднику|сотрудником)/i, '')
+                        .replace(/(заказ|сотруднику|сотрудником)$/i, '')
+                        .trim();
+
+                    // Проверяем, что имя не является служебным словом
+                    if (['сотруднику', 'сотрудником', 'заказ', 'работу', 'взял'].includes(employeeName.toLowerCase())) {
+                        employeeName = '';
+                        employeePosition = '';
+                    }
+
+                    console.log('📝 Финальное имя сотрудника:', { employeeName, employeePosition });
+                } else {
+                    console.log('❌ Имя сотрудника не найдено в комментарии:', comment);
+                }
             }
 
-            processingSteps.push({
-                status,
+            const stepData = {
+                status: actualStatus,
                 role,
                 roleLabel,
+                stepType,
                 employeeName,
                 employeePosition,
                 comment,
                 createdAt,
-                order: statusOrder.indexOf(status)
+                originalStatus: status
+            };
+
+            console.log('📋 Добавляем этап в историю:', stepData);
+            processingSteps.push(stepData);
+        });
+
+        // Сортируем по времени создания
+        processingSteps.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+        console.log('🎉 Итоговые этапы обработки:', processingSteps.length);
+        processingSteps.forEach((step, index) => {
+            console.log(`📋 Этап ${index + 1}:`, {
+                role: step.role,
+                roleLabel: step.roleLabel,
+                stepType: step.stepType,
+                status: step.status,
+                employeeName: step.employeeName,
+                comment: step.comment
             });
         });
 
-        // Сортируем по порядку статусов
-        processingSteps.sort((a, b) => a.order - b.order);
+        // Пост-обработка: добавляем недостающие этапы
+        const enhancedSteps = [];
+        let lastPickerCompleted = false;
+        let lastPackerCompleted = false;
         
-        return processingSteps;
+        for (let i = 0; i < processingSteps.length; i++) {
+            const step = processingSteps[i];
+            
+            // Добавляем текущий этап
+            enhancedSteps.push(step);
+            
+            // Отслеживаем завершенные этапы
+            if (step.role === 'PICKER' && step.stepType === 'completed') {
+                lastPickerCompleted = true;
+            }
+            if (step.role === 'PACKER' && step.stepType === 'completed') {
+                lastPackerCompleted = true;
+            }
+            
+            // Если мы видим курьера, но упаковщик не завершил свой этап,
+            // добавляем виртуальный этап завершения упаковки
+            if (step.role === 'COURIER' && step.stepType === 'started' && 
+                lastPickerCompleted && !lastPackerCompleted) {
+                
+                // Создаем виртуальный этап завершения упаковки
+                const packingCompletedStep = {
+                    status: 'PACKING_COMPLETED',
+                    role: 'PACKER',
+                    roleLabel: 'Упаковщик',
+                    stepType: 'completed',
+                    employeeName: '',
+                    employeePosition: '',
+                    comment: 'Упаковка завершена',
+                    createdAt: new Date(step.createdAt).getTime() - 1, // Чуть раньше чем курьер
+                    originalStatus: 'IN_DELIVERY',
+                    isVirtual: true
+                };
+                
+                // Вставляем перед текущим этапом курьера
+                enhancedSteps.splice(enhancedSteps.length - 1, 0, packingCompletedStep);
+                lastPackerCompleted = true;
+            }
+        }
+        
+        return enhancedSteps;
     }, [order?.statusHistory]);
 
     // Функция для отображения полной истории обработки
     const renderProcessingHistory = useMemo(() => {
-        if (!canViewProcessingHistory) return null;
+        console.log('📋 renderProcessingHistory - начало рендеринга');
+        console.log('📋 canViewProcessingHistory:', canViewProcessingHistory);
 
-        const processingSteps = getProcessingHistory();
-        if (processingSteps.length === 0) return null;
+        if (!canViewProcessingHistory) {
+            console.log('🚫 renderProcessingHistory - история не доступна для просмотра');
+            return null;
+        }
 
+        let processingSteps = getProcessingHistory();
+        console.log('📋 processingSteps из getProcessingHistory:', processingSteps.length);
+        let allSteps = [...processingSteps]; // Начинаем с реальных этапов
+
+        // Всегда добавляем временные этапы, если они есть
+        // Они должны оставаться видимыми даже после получения реальной истории
+        if (localOrderState.temporarySteps && localOrderState.temporarySteps.length > 0) {
+            console.log('🕒 Объединяем временные этапы с реальными:', {
+                tempSteps: localOrderState.temporarySteps.length,
+                realSteps: processingSteps.length,
+                tempStepsDetails: localOrderState.temporarySteps.map(step => ({
+                    role: step.role,
+                    stepType: step.stepType,
+                    employeeName: step.employeeName
+                }))
+            });
+
+            // Фильтруем временные этапы, чтобы избежать дубликатов с реальными
+            const filteredTempSteps = localOrderState.temporarySteps.filter(tempStep => {
+                // Проверяем, нет ли уже такого этапа в реальной истории
+                const duplicateFound = processingSteps.some(realStep =>
+                    realStep.role === tempStep.role &&
+                    realStep.stepType === tempStep.stepType &&
+                    realStep.employeeName === tempStep.employeeName
+                );
+
+                if (duplicateFound) {
+                    console.log('🚫 Убираем дубликат временного этапа:', {
+                        role: tempStep.role,
+                        stepType: tempStep.stepType,
+                        employeeName: tempStep.employeeName
+                    });
+                    return false;
+                }
+                return true;
+            });
+
+            console.log('📋 После фильтрации дубликатов:', {
+                originalTemp: localOrderState.temporarySteps.length,
+                filteredTemp: filteredTempSteps.length
+            });
+
+            // Добавляем отфильтрованные временные этапы в начало (они самые новые)
+            allSteps = [...filteredTempSteps, ...processingSteps];
+
+            console.log('📊 Всего этапов после объединения:', allSteps.length);
+            console.log('📋 Сводка этапов:', allSteps.map(step => ({
+                role: step.role,
+                stepType: step.stepType,
+                employeeName: step.employeeName,
+                isTemporary: step.isTemporary,
+                comment: step.comment?.substring(0, 50) + '...'
+            })));
+        } else {
+            console.log('📋 Показываем только реальные этапы:', processingSteps.length);
+        }
+        
+        if (allSteps.length === 0) {
+            console.log('🚫 renderProcessingHistory - нет этапов для отображения');
+            return null;
+        }
+
+        console.log('✅ renderProcessingHistory - возвращаем JSX с', allSteps.length, 'этапами');
         return (
             <View style={styles.modernCard}>
                 <View style={styles.cardHeader}>
@@ -236,56 +723,96 @@ export const OrderDetailsScreen = () => {
                 </View>
                 
                 <View style={styles.processingStepsContainer}>
-                    {processingSteps.map((step, index) => (
-                        <View key={index} style={[
-                            styles.processingStep,
-                            index === processingSteps.length - 1 && styles.lastProcessingStep
-                        ]}>
-                            <View style={styles.stepHeader}>
-                                <View style={styles.stepRole}>
-                                    <View style={[styles.roleBadge, { backgroundColor: ORDER_STATUS_COLORS[step.status] }]}>
-                                        <Icon name={ORDER_STATUS_ICONS[step.status]} size={16} color="#fff" />
-                                        <Text style={styles.roleLabel}>{step.roleLabel}</Text>
-                                    </View>
-                                    <Text style={styles.stepStatus}>
-                                        {ORDER_STATUS_LABELS[step.status]}
-                                    </Text>
-                                </View>
-                                <Text style={styles.stepDate}>
-                                    {new Date(step.createdAt).toLocaleString('ru-RU')}
-                                </Text>
-                            </View>
-                            
-                            {step.employeeName && (
-                                <View style={styles.stepEmployee}>
-                                    <Icon name="person" size={16} color="#667eea" />
-                                    <View style={styles.employeeInfo}>
-                                        <Text style={styles.employeeName}>
-                                            {step.employeeName}
+                    {allSteps.map((step, index) => {
+                        // Формируем правильный заголовок этапа
+                        let stepTitle = '';
+                        if (step.stepType === 'started') {
+                            stepTitle = `${step.roleLabel} взял в работу`;
+                        } else if (step.stepType === 'completed') {
+                            switch (step.role) {
+                                case 'PICKER':
+                                    stepTitle = 'Сборка завершена';
+                                    break;
+                                case 'PACKER':
+                                    stepTitle = 'Упаковка завершена';
+                                    break;
+                                case 'COURIER':
+                                    stepTitle = 'Доставка завершена';
+                                    break;
+                                default:
+                                    stepTitle = ORDER_STATUS_LABELS[step.status] || 'Этап завершен';
+                            }
+                        } else {
+                            stepTitle = ORDER_STATUS_LABELS[step.status] || step.roleLabel;
+                        }
+
+                        return (
+                            <View key={`${index}-${step.status}-${step.stepType}`} style={[
+                                styles.processingStep,
+                                index === allSteps.length - 1 && styles.lastProcessingStep,
+                                step.isVirtual && styles.virtualStep,
+                                step.isTemporary && styles.temporaryStep
+                            ]}>
+                                <View style={styles.stepHeader}>
+                                    <View style={styles.stepRole}>
+                                        <View style={[styles.roleBadge, { backgroundColor: ORDER_STATUS_COLORS[step.status] }]}>
+                                            <Icon name={ORDER_STATUS_ICONS[step.status]} size={16} color="#fff" />
+                                            <Text style={styles.roleLabel}>{step.roleLabel}</Text>
+                                        </View>
+                                        <Text style={styles.stepStatus}>
+                                            {stepTitle}
                                         </Text>
-                                        {step.employeePosition && (
-                                            <Text style={styles.employeePosition}>
-                                                {step.employeePosition}
-                                            </Text>
-                                        )}
                                     </View>
-                                </View>
-                            )}
-                            
-                            {step.comment && (
-                                <View style={styles.stepComment}>
-                                    <Icon name="comment" size={14} color="#718096" />
-                                    <Text style={styles.commentText}>
-                                        {step.comment}
+                                    <Text style={styles.stepDate}>
+                                        {step.isVirtual ? 
+                                            'Автоматически' : 
+                                            step.isTemporary ?
+                                                'Только что' :
+                                                new Date(step.createdAt).toLocaleString('ru-RU')
+                                        }
                                     </Text>
                                 </View>
-                            )}
-                        </View>
-                    ))}
+                                
+                                {step.employeeName && (
+                                    <View style={styles.stepEmployee}>
+                                        <Icon name="person" size={16} color="#667eea" />
+                                        <View style={styles.employeeInfo}>
+                                            <Text style={styles.employeeName}>
+                                                {step.employeeName}
+                                            </Text>
+                                            {step.employeePosition && (
+                                                <Text style={styles.employeePosition}>
+                                                    {step.employeePosition}
+                                                </Text>
+                                            )}
+                                        </View>
+                                    </View>
+                                )}
+                                
+                                {step.comment && !step.isVirtual && (
+                                    <View style={styles.stepComment}>
+                                        <Icon name="comment" size={14} color="#718096" />
+                                        <Text style={styles.commentText}>
+                                            {step.comment}
+                                        </Text>
+                                    </View>
+                                )}
+                                
+                                {step.isVirtual && (
+                                    <View style={styles.stepComment}>
+                                        <Icon name="info" size={14} color="#718096" />
+                                        <Text style={[styles.commentText, styles.virtualComment]}>
+                                            Этап завершен автоматически при переходе к доставке
+                                        </Text>
+                                    </View>
+                                )}
+                            </View>
+                        );
+                    })}
                 </View>
             </View>
         );
-    }, [canViewProcessingHistory, getProcessingHistory]);
+    }, [canViewProcessingHistory, getProcessingHistory, localOrderState.temporarySteps, user?.employee]);
 
     // Загрузка деталей заказа
     const loadOrderDetails = useCallback(async (isRefresh = false) => {
@@ -303,9 +830,22 @@ export const OrderDetailsScreen = () => {
 
             const response = await OrderApi.getOrderById(orderId);
             console.log('loadOrderDetails: response -', response);
+            console.log('loadOrderDetails: response.status type -', typeof response.status);
+            console.log('loadOrderDetails: response.status value -', response.status);
+            console.log('loadOrderDetails: response.data type -', typeof response.data);
+            console.log('loadOrderDetails: response.data exists -', !!response.data);
 
-            if (response.status === 'success') {
+            const isSuccess = response.status === 'success';
+            const hasData = !!response.data;
+
+            console.log('loadOrderDetails: isSuccess -', isSuccess);
+            console.log('loadOrderDetails: hasData -', hasData);
+            console.log('loadOrderDetails: combined condition -', isSuccess && hasData);
+
+            if (isSuccess && hasData) {
                 console.log('loadOrderDetails: order data -', response.data);
+                console.log('loadOrderDetails: order status -', response.data?.status);
+                console.log('loadOrderDetails: order assignedTo -', response.data?.assignedTo);
                 console.log('loadOrderDetails: order items -', response.data?.items || response.data?.orderItems);
                 setOrder(response.data);
 
@@ -323,7 +863,8 @@ export const OrderDetailsScreen = () => {
                     })
                 ]).start();
             } else {
-                throw new Error(response.message || 'Ошибка при загрузке заказа');
+                console.log('loadOrderDetails: FAILED CONDITION - status:', response.status, 'data:', !!response.data);
+                throw new Error(`Invalid response: status=${response.status}, hasData=${hasData}`);
             }
         } catch (err) {
             console.error('Ошибка загрузки деталей заказа:', err);
@@ -351,7 +892,7 @@ export const OrderDetailsScreen = () => {
 
     // Обработка отмены заказа
     const handleCancelOrder = useCallback(async () => {
-        if (!order || !canCancelOrder(order.status, 'CLIENT')) {
+        if (!order || !canCancelOrder(order.status, user?.role || 'CLIENT')) {
             Alert.alert('Ошибка', 'Этот заказ нельзя отменить');
             return;
         }
@@ -368,7 +909,12 @@ export const OrderDetailsScreen = () => {
                         try {
                             setCancelling(true);
                             await OrderApi.cancelMyOrder(orderId, 'Отменен клиентом');
-                            Alert.alert('Успех', 'Заказ успешно отменен');
+                            // Показываем Toast уведомление вместо алерта
+                            setToastConfig({
+                                message: 'Заказ успешно отменен',
+                                type: 'success',
+                                duration: 3000
+                            });
                             loadOrderDetails();
                         } catch (err) {
                             Alert.alert('Ошибка', err.message || 'Не удалось отменить заказ');
@@ -421,11 +967,78 @@ export const OrderDetailsScreen = () => {
             const result = await completeOrderStage(orderId, processingComment.trim() || undefined);
             
             if (result.success) {
-                Alert.alert('Успех', 'Этап заказа успешно завершен');
+                // Создаем временный этап завершения с полным именем сотрудника
+                const fullEmployeeName = `${user?.employee?.name || 'Сотрудник'} ${user?.employee?.position || ''}`.trim();
+                const newStatus = user?.employee?.processingRole === 'PICKER' ? 'CONFIRMED' :
+                               user?.employee?.processingRole === 'PACKER' ? 'PACKING_COMPLETED' : 'DELIVERED';
+
+                const completedTempStep = {
+                    id: `temp-completed-${Date.now()}`,
+                    status: newStatus,
+                    role: user?.employee?.processingRole,
+                    roleLabel: user?.employee?.processingRole === 'PICKER' ? 'Сборщик' :
+                              user?.employee?.processingRole === 'PACKER' ? 'Упаковщик' : 'Курьер',
+                    stepType: 'completed',
+                    employeeName: fullEmployeeName,
+                    employeePosition: user?.employee?.position || '',
+                    comment: processingComment.trim() || `${user?.employee?.processingRole === 'PICKER' ? 'Сборка' :
+                             user?.employee?.processingRole === 'PACKER' ? 'Упаковка' : 'Доставка'} завершена`,
+                    createdAt: new Date().toISOString(),
+                    originalStatus: order?.status,
+                    isTemporary: true
+                };
+
+                // Логируем завершение этапа для курьера
+                if (user?.employee?.processingRole === 'COURIER') {
+                    console.log('OrderDetailsScreen: курьер завершает доставку', {
+                        orderId,
+                        currentStatus: order?.status,
+                        newStatus,
+                        employeeName: fullEmployeeName
+                    });
+                }
+
+                // Немедленно обновляем локальное состояние с этапом завершения
+                setLocalOrderState(prevState => ({
+                    assignedToId: prevState.assignedToId, // Сохраняем назначение до подтверждения сервера
+                    status: order?.status || null, // Статус может измениться на сервере
+                    lastAction: 'completed',
+                    actionTimestamp: Date.now(),
+                    temporarySteps: [...(prevState.temporarySteps || []), completedTempStep],
+                    lastKnownHistoryLength: prevState.lastKnownHistoryLength
+                }));
+
+                console.log('✅ Этап завершен локально:', {
+                    employeeId: user?.employee?.id,
+                    employeeRole: user?.employee?.processingRole,
+                    tempStep: completedTempStep
+                });
+
+                // Показываем Toast уведомление вместо алерта
+                setToastConfig({
+                    message: 'Этап заказа успешно обработан',
+                    type: 'success',
+                    duration: 3000
+                });
                 setProcessingModalVisible(false);
                 setProcessingComment('');
-                // Обновляем данные заказа
-                loadOrderDetails(true);
+                // Обновляем данные заказа в фоне
+                console.log('OrderDetailsScreen: обновляем данные после завершения этапа курьера');
+
+                // Ждем немного перед обновлением, чтобы сервер успел обработать изменения
+                setTimeout(() => {
+                    console.log('OrderDetailsScreen: начинаем обновление деталей заказа после паузы');
+                    loadOrderDetails(true).then((result) => {
+                        console.log('OrderDetailsScreen: результат обновления деталей заказа', {
+                            orderId,
+                            success: !!result,
+                            status: result?.status,
+                            assignedToId: result?.assignedTo?.id
+                        });
+                    }).catch((error) => {
+                        console.error('OrderDetailsScreen: ошибка при обновлении деталей заказа', error);
+                    });
+                }, 1000);
             } else {
                 throw new Error(result.error || 'Не удалось завершить этап заказа');
             }
@@ -449,17 +1062,164 @@ export const OrderDetailsScreen = () => {
         setProcessingComment('');
     }, []);
 
-    // Проверка прав для обработки заказа
-    const canProcessOrder = useMemo(() => {
-        // Только сотрудники могут обрабатывать заказы
+    // Проверяем, работал ли уже сотрудник с этим заказом в текущем статусе
+    const hasEmployeeWorkedOnCurrentStatus = useMemo(() => {
+        const currentEmployeeId = user?.employee?.id;
+        if (!currentEmployeeId) return false;
+
+        // Используем актуальные данные из локального состояния или заказа
+        const actualAssignedId = localOrderState.assignedToId !== null ? localOrderState.assignedToId : order?.assignedTo?.id;
+        const actualStatus = localOrderState.status || order?.status;
+        const employeeRole = user?.employee?.processingRole;
+
+        // Проверяем временные этапы сотрудника для текущего статуса
+        const tempStepsForCurrentStatus = localOrderState.temporarySteps.filter(step =>
+            step.role === employeeRole &&
+            step.originalStatus === actualStatus &&
+            step.employeeName?.includes(user?.employee?.name || '')
+        );
+
+        // Проверяем историю заказа для текущего статуса
+        const historyStepsForCurrentStatus = order?.statusHistory?.filter(historyItem =>
+            historyItem.comment &&
+            (historyItem.comment.includes(user?.employee?.name || '') ||
+             historyItem.comment.includes(user?.employee?.position || '')) &&
+            historyItem.status === actualStatus
+        ) || [];
+
+        const hasWorked = tempStepsForCurrentStatus.length > 0 || historyStepsForCurrentStatus.length > 0;
+
+        console.log('🔍 Проверка работы сотрудника с заказом:', {
+            employeeId: currentEmployeeId,
+            employeeName: user?.employee?.name,
+            employeeRole,
+            currentStatus: actualStatus,
+            tempStepsCount: tempStepsForCurrentStatus.length,
+            historyStepsCount: historyStepsForCurrentStatus.length,
+            hasWorked
+        });
+
+        return hasWorked;
+    }, [user?.employee?.id, user?.employee?.name, user?.employee?.position, user?.employee?.processingRole, localOrderState.assignedToId, localOrderState.status, localOrderState.temporarySteps, order?.assignedTo?.id, order?.status, order?.statusHistory]);
+
+    // Проверяем, были ли локальные действия по заказу из другого экрана
+    const hasLocalCompleted = useSelector(state => selectHasLocalOrderAction(orderId, 'completed')(state));
+    const hasLocalTaken = useSelector(state => selectHasLocalOrderAction(orderId, 'taken')(state));
+
+    // Логика кнопок для сотрудников
+    const employeeButtonLogic = useMemo(() => {
         const isEmployee = user?.role === 'EMPLOYEE';
         const isAdmin = user?.role === 'ADMIN';
+
+        console.log('🎛️ employeeButtonLogic - вычисление:', {
+            userRole: user?.role,
+            isEmployee,
+            isAdmin,
+            hasLocalCompleted,
+            hasLocalTaken,
+            localOrderState: {
+                assignedToId: localOrderState.assignedToId,
+                lastAction: localOrderState.lastAction,
+                tempStepsCount: localOrderState.temporarySteps.length
+            },
+            order: {
+                assignedToId: order?.assignedTo?.id,
+                status: order?.status
+            }
+        });
+
+        if (!isEmployee && !isAdmin) {
+            return {
+                showTakeButton: false,
+                showCompleteButton: false,
+                canTakeOrder: false,
+                canCompleteStage: false
+            };
+        }
+
+        const currentEmployeeId = user?.employee?.id;
+        const employeeRole = user?.employee?.processingRole; // Роль сотрудника (PICKER, PACKER, COURIER)
         
-        // Проверяем, что заказ в статусе, который можно обработать
-        const canProcessStatus = ['PENDING', 'CONFIRMED', 'IN_DELIVERY'].includes(order?.status);
+        // Используем актуальные данные из локального состояния или заказа
+        const actualAssignedId = localOrderState.assignedToId !== null ? localOrderState.assignedToId : order?.assignedTo?.id;
+        const actualStatus = localOrderState.status || order?.status;
         
-        return (isEmployee || isAdmin) && canProcessStatus;
-    }, [user?.role, order?.status]);
+        // Проверяем, назначен ли заказ текущему сотруднику
+        const isAssignedToMe = currentEmployeeId && actualAssignedId && currentEmployeeId === actualAssignedId;
+
+        // Если сотрудник только что взял заказ в работу, но данные еще не обновились
+        if (localOrderState.lastAction === 'taken' && !isAssignedToMe && localOrderState.temporarySteps.length > 0) {
+            // Временно считаем, что заказ назначен нам
+            const tempAssignedToMe = true;
+            return {
+                showTakeButton: false,
+                showCompleteButton: tempAssignedToMe && ['PENDING', 'CONFIRMED', 'IN_DELIVERY'].includes(actualStatus),
+                canTakeOrder: false,
+                canCompleteStage: tempAssignedToMe,
+                isAssignedToMe: tempAssignedToMe,
+                employeeRole
+            };
+        }
+        
+        // Если сотрудник только что завершил этап, скрываем кнопки до обновления с сервера
+        if (localOrderState.lastAction === 'completed' || hasLocalCompleted) {
+            console.log('🎯 Сотрудник завершил этап (локально или в другом экране), скрываем кнопки до обновления сервера', {
+                localCompleted: localOrderState.lastAction === 'completed',
+                hasLocalCompleted
+            });
+            return {
+                showTakeButton: false,
+                showCompleteButton: false,
+                canTakeOrder: false,
+                canCompleteStage: false,
+                isAssignedToMe: false,
+                employeeRole
+            };
+        }
+        
+        // Определяем, соответствует ли статус заказа роли сотрудника
+        let canTakeBasedOnRole = false;
+        if (employeeRole === 'PICKER' && actualStatus === 'PENDING') {
+            canTakeBasedOnRole = true; // Сборщик может взять новый заказ
+        } else if (employeeRole === 'PACKER' && actualStatus === 'CONFIRMED') {
+            canTakeBasedOnRole = true; // Упаковщик может взять заказ после сборки
+        } else if (employeeRole === 'COURIER' && actualStatus === 'IN_DELIVERY') {
+            canTakeBasedOnRole = true; // Курьер может взять заказ для доставки
+        } else if (isAdmin) {
+            // Админы могут взять любой заказ в любом статусе
+            canTakeBasedOnRole = ['PENDING', 'CONFIRMED', 'IN_DELIVERY'].includes(actualStatus);
+        }
+        
+
+        // Определяем, может ли сотрудник взять заказ в работу
+        // Сотрудник не может взять заказ, если уже работал с ним в текущем статусе
+        const canTakeOrder = !isAssignedToMe && canTakeBasedOnRole && !hasEmployeeWorkedOnCurrentStatus && !hasLocalTaken;
+
+        // Определяем, может ли сотрудник завершить этап (только если заказ назначен ему)
+        const canCompleteStage = isAssignedToMe && ['PENDING', 'CONFIRMED', 'IN_DELIVERY'].includes(actualStatus);
+        
+        const result = {
+            showTakeButton: canTakeOrder,
+            showCompleteButton: canCompleteStage,
+            canTakeOrder,
+            canCompleteStage,
+            isAssignedToMe,
+            employeeRole
+        };
+
+        console.log('🎛️ employeeButtonLogic - результат:', {
+            canTakeOrder,
+            canCompleteStage,
+            isAssignedToMe,
+            hasEmployeeWorkedOnCurrentStatus,
+            showTakeButton: result.showTakeButton,
+            showCompleteButton: result.showCompleteButton,
+            employeeRole,
+            currentStatus: actualStatus
+        });
+
+        return result;
+    }, [user?.role, user?.employee?.id, user?.employee?.processingRole, order?.assignedTo?.id, order?.status, order?.statusHistory, localOrderState.lastAction, localOrderState.temporarySteps, hasEmployeeWorkedOnCurrentStatus, hasLocalCompleted, hasLocalTaken]);
 
     // Проверка прав для скачивания накладной
     const canDownloadInvoice = useMemo(() => {
@@ -738,36 +1498,97 @@ export const OrderDetailsScreen = () => {
     const renderActions = useMemo(() => {
         console.log('renderActions: order статус -', order?.status);
         console.log('renderActions: user -', user);
-        
+        console.log('renderActions: user role -', user?.role);
+
         if (!order) return null;
 
-        const showCancelButton = canCancelOrder(order.status, 'CLIENT');
+        const showCancelButton = canCancelOrder(order.status, user?.role || 'CLIENT');
+        console.log('renderActions: canCancelOrder result -', canCancelOrder(order.status, user?.role || 'CLIENT'));
         const showDownloadButton = canDownloadInvoice;
-        const showProcessButton = canProcessOrder;
-        const isEmployee = user?.role === 'EMPLOYEE';
-        const alreadyAssignedToMe = isEmployee && order?.assignedTo?.id && user?.employee?.id && order.assignedTo.id === user.employee.id;
-        const showTakeButton = isEmployee && !alreadyAssignedToMe && ['PENDING','CONFIRMED','IN_DELIVERY'].includes(order.status);
+        const { showTakeButton, showCompleteButton, employeeRole } = employeeButtonLogic;
         
         console.log('renderActions: showCancelButton -', showCancelButton);
         console.log('renderActions: showDownloadButton -', showDownloadButton);
-        console.log('renderActions: showProcessButton -', showProcessButton);
+        console.log('renderActions: showTakeButton -', showTakeButton);
+        console.log('renderActions: showCompleteButton -', showCompleteButton);
 
-        if (!showCancelButton && !showDownloadButton && !showProcessButton && !showTakeButton) {
+        // Дополнительная диагностика для понимания проблемы
+        console.log('renderActions: employeeButtonLogic результат:', {
+            showTakeButton,
+            showCompleteButton,
+            employeeRole
+        });
+        console.log('renderActions: user данные:', {
+            role: user?.role,
+            employeeId: user?.employee?.id,
+            employeeName: user?.employee?.name,
+            processingRole: user?.employee?.processingRole
+        });
+        console.log('renderActions: order данные:', {
+            status: order?.status,
+            assignedToId: order?.assignedTo?.id,
+            assignedToName: order?.assignedTo?.name
+        });
+
+        if (!showCancelButton && !showDownloadButton && !showTakeButton && !showCompleteButton) {
             console.log('renderActions: не показываем кнопки');
             return null;
         }
 
         return (
             <View style={styles.actionsContainer}>
+                {/* Кнопка "Взять в работу" для сотрудников */}
                 {showTakeButton && (
                     <TouchableOpacity
-                        style={[styles.processButton, styles.buttonSpacing]}
+                        style={styles.processButton}
                         onPress={async () => {
                             try {
                                 setTaking(true);
                                 const res = await takeOrder(orderId, 'Взял заказ в работу');
                                 if (!res.success) throw new Error(res.error);
-                                Alert.alert('Успех', 'Заказ взят в работу');
+
+                                // Создаем временный этап для истории с полным именем и должностью
+                                const fullEmployeeName = `${user?.employee?.name || 'Сотрудник'} ${user?.employee?.position || ''}`.trim();
+                                const tempStep = {
+                                    id: `temp-${Date.now()}`,
+                                    status: user?.employee?.processingRole === 'PICKER' ? 'PICKING' :
+                                           user?.employee?.processingRole === 'PACKER' ? 'PACKING' : 'IN_DELIVERY',
+                                    role: user?.employee?.processingRole,
+                                    roleLabel: user?.employee?.processingRole === 'PICKER' ? 'Сборщик' :
+                                              user?.employee?.processingRole === 'PACKER' ? 'Упаковщик' : 'Курьер',
+                                    stepType: 'started',
+                                    employeeName: fullEmployeeName,
+                                    employeePosition: user?.employee?.position || '',
+                                    comment: `${fullEmployeeName} взял заказ в работу`,
+                                    createdAt: new Date().toISOString(),
+                                    originalStatus: order?.status,
+                                    isTemporary: true
+                                };
+
+                                // Немедленно обновляем локальное состояние с временным этапом
+                                setLocalOrderState(prevState => ({
+                                    ...prevState,
+                                    assignedToId: user?.employee?.id || null,
+                                    status: order?.status || null,
+                                    lastAction: 'taken',
+                                    actionTimestamp: Date.now(),
+                                    temporarySteps: [tempStep],
+                                    lastKnownHistoryLength: prevState.lastKnownHistoryLength
+                                }));
+
+                                console.log('🎯 После взятия заказа в работу:', {
+                                    assignedToId: user?.employee?.id,
+                                    employeeRole: user?.employee?.processingRole,
+                                    tempStep: tempStep
+                                });
+
+                                // Показываем Toast уведомление вместо алерта
+                                setToastConfig({
+                                    message: 'Заказ взят в работу',
+                                    type: 'success',
+                                    duration: 3000
+                                });
+                                // Загружаем обновленные данные в фоне
                                 loadOrderDetails(true);
                             } catch (e) {
                                 Alert.alert('Ошибка', e.message || 'Не удалось взять заказ');
@@ -794,8 +1615,9 @@ export const OrderDetailsScreen = () => {
                         </View>
                     </TouchableOpacity>
                 )}
-                {/* Кнопка обработки заказа для сотрудников */}
-                {showProcessButton && (
+                
+                {/* Кнопка "Завершить этап" для сотрудников */}
+                {showCompleteButton && (
                     <TouchableOpacity
                         style={styles.processButton}
                         onPress={handleOpenProcessingModal}
@@ -822,7 +1644,7 @@ export const OrderDetailsScreen = () => {
                 {/* Кнопка скачивания накладной для персонала */}
                 {showDownloadButton && (
                     <TouchableOpacity
-                        style={[styles.downloadButton, showProcessButton && styles.buttonSpacing]}
+                        style={[styles.downloadButton, (showTakeButton || showCompleteButton) && styles.buttonSpacing]}
                         onPress={handleDownloadInvoice}
                         disabled={downloadingInvoice}
                         activeOpacity={0.8}
@@ -845,9 +1667,10 @@ export const OrderDetailsScreen = () => {
                 )}
 
                 {/* Кнопка отмены заказа для клиентов */}
+                {console.log('renderActions: rendering cancel button, showCancelButton -', showCancelButton)}
                 {showCancelButton && (
                     <TouchableOpacity
-                        style={[styles.cancelButton, (showDownloadButton || showProcessButton) && styles.buttonSpacing]}
+                        style={[styles.cancelButton, (showDownloadButton || showTakeButton || showCompleteButton) && styles.buttonSpacing]}
                         onPress={handleCancelOrder}
                         disabled={cancelling}
                         activeOpacity={0.8}
@@ -870,7 +1693,7 @@ export const OrderDetailsScreen = () => {
                 )}
             </View>
         );
-    }, [order?.status, cancelling, downloadingInvoice, processingOrder, canDownloadInvoice, canProcessOrder, handleCancelOrder, handleDownloadInvoice, handleOpenProcessingModal]);
+    }, [order?.status, cancelling, downloadingInvoice, processingOrder, taking, canDownloadInvoice, employeeButtonLogic, handleCancelOrder, handleDownloadInvoice, handleOpenProcessingModal]);
 
     // Рендер ошибки
     const renderError = () => (
@@ -1057,6 +1880,16 @@ export const OrderDetailsScreen = () => {
                     </View>
                 </View>
             </Modal>
+
+            {/* Toast уведомление */}
+            {toastConfig && (
+                <ToastSimple
+                    message={toastConfig.message}
+                    type={toastConfig.type}
+                    duration={toastConfig.duration}
+                    onHide={() => setToastConfig(null)}
+                />
+            )}
         </View>
     );
 };
@@ -1577,6 +2410,24 @@ const styles = StyleSheet.create({
         color: '#718096',
         fontStyle: 'italic',
         lineHeight: 16,
+    },
+    virtualStep: {
+        opacity: 0.8,
+        backgroundColor: '#f8f9fa',
+        borderRadius: 8,
+        padding: 12,
+    },
+    virtualComment: {
+        fontStyle: 'normal',
+        color: '#6b7280',
+    },
+    temporaryStep: {
+        backgroundColor: '#e8f5e8',
+        borderLeftWidth: 4,
+        borderLeftColor: '#4CAF50',
+        borderRadius: 8,
+        padding: 12,
+        opacity: 0.9,
     },
 
     // Стили для загрузчика кнопки скачивания

@@ -194,44 +194,9 @@ export const LoginForm = () => {
                     // Также загружаем полный профиль через useAuth
                     dispatch(loadUserProfile());
 
-                    // Регистрируем FCM токен после успешного логина
-                    setTimeout(async () => {
-                        try {
-                            console.log('🔥 === НАЧАЛО РЕГИСТРАЦИИ FCM ТОКЕНА ПОСЛЕ ЛОГИНА ===');
-                            console.log('🔔 Пользователь ID:', result.user.id);
-                            console.log('🔔 Пользователь роль:', result.user.role);
-                            
-                            // Используем новый FCM сервис
-                            const FCMTokenService = require('@shared/services/FCMTokenService').default;
-                            const buildType = FCMTokenService.getBuildType();
-                            console.log('🔔 Build type:', buildType);
-
-                            // ТОЛЬКО FCM ТОКЕНЫ
-                            if (FCMTokenService.shouldUseFCM()) {
-                                console.log('✅ Build type поддерживает FCM:', buildType);
-                                
-                                // Инициализируем FCM сервис
-                                const initialized = await FCMTokenService.initializeForUser(result.user);
-                                
-                                if (initialized) {
-                                    console.log('🎉 УСПЕХ: FCM токен обработан!');
-                                } else {
-                                    console.error('❌ ОШИБКА: FCM инициализация не удалась!');
-                                }
-                            } else {
-                                console.log('🚫 Build type не поддерживает FCM:', buildType);
-                                console.log('ℹ️ Для FCM токенов соберите APK: eas build --platform android --profile preview');
-                            }
-                            
-                            console.log('🔥 === КОНЕЦ РЕГИСТРАЦИИ FCM ТОКЕНА ===');
-                        } catch (error) {
-                            console.error('❌ КРИТИЧЕСКАЯ ОШИБКА при регистрации FCM токена:', {
-                                message: error.message,
-                                stack: error.stack,
-                                name: error.name
-                            });
-                        }
-                    }, 3000); // Ждем 3 секунды для полной инициализации
+                    // Push токен регистрируется автоматически через usePushTokenAutoRegistration hook
+                    // который уже импортирован и используется в AppContainer
+                    console.log('✅ Вход выполнен успешно. Push токен будет зарегистрирован автоматически.');
                 }
             })
             .catch(err => {

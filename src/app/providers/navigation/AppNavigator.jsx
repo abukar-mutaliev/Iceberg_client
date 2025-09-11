@@ -710,32 +710,42 @@ const NavigationWrapper = ({children}) => {
 
         const navigateToOrder = (params = {}) => {
             try {
+                console.log('📦 navigateToOrder called with params:', params);
+                
                 if (params.orderId) {
+                    const orderId = parseInt(params.orderId);
+                    console.log('📦 Attempting to navigate to order:', orderId);
+                    
                     try {
+                        console.log('📦 Trying StaffOrderDetails navigation...');
                         navigation.navigate('StaffOrderDetails', {
-                            orderId: parseInt(params.orderId),
+                            orderId: orderId,
                             fromNotification: true,
                             ...params
                         });
+                        console.log('📦 ✅ StaffOrderDetails navigation successful');
                     } catch (error) {
+                        console.warn('📦 StaffOrderDetails navigation failed, trying OrderDetails:', error.message);
                         try {
                             navigation.navigate('OrderDetails', {
-                                orderId: parseInt(params.orderId),
+                                orderId: orderId,
                                 fromNotification: true,
                                 ...params
                             });
+                            console.log('📦 ✅ OrderDetails navigation successful');
                         } catch (fallbackError) {
-                            console.error('Error navigating to order:', fallbackError);
+                            console.error('📦 ❌ Both order navigations failed:', fallbackError);
                         }
                     }
                 } else {
+                    console.log('📦 No orderId, navigating to MyOrders screen');
                     navigation.navigate('Cart', {
                         screen: 'MyOrders',
                         params
                     });
                 }
             } catch (error) {
-                console.error('Navigation error to order:', error);
+                console.error('📦 ❌ General navigation error to order:', error);
             }
         };
 

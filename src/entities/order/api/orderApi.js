@@ -60,12 +60,36 @@ export const OrderApi = {
         const queryString = new URLSearchParams(filteredParams).toString();
         const url = `/api/orders${queryString ? `?${queryString}` : ''}`;
 
+        console.log('OrderApi: getOrders вызван', {
+            url,
+            params: filteredParams,
+            timestamp: new Date().toISOString()
+        });
+
         return createProtectedRequest('GET', url, null, {
             headers: {
                 'Cache-Control': 'no-cache, no-store, must-revalidate',
                 'Pragma': 'no-cache',
                 'Expires': '0'
             }
+        }).then(response => {
+            console.log('OrderApi: getOrders ответ получен', {
+                url,
+                status: response.status,
+                dataLength: response.data?.data?.length || 0,
+                timestamp: new Date().toISOString()
+            });
+
+            // Логируем статусы заказов для отладки
+            if (response.data?.data) {
+                const statusStats = response.data.data.reduce((acc, order) => {
+                    acc[order.status] = (acc[order.status] || 0) + 1;
+                    return acc;
+                }, {});
+                console.log('OrderApi: статусы заказов в ответе', statusStats);
+            }
+
+            return response;
         });
     },
 
@@ -105,10 +129,26 @@ export const OrderApi = {
     },
 
     // Завершить этап обработки заказа (с автоматическим переходом к следующему этапу)
-    completeOrderStage: (orderId, comment = null) => {
+    completeOrderStage: async (orderId, comment = null) => {
         const url = `/api/orders/${orderId}/complete-stage`;
         const data = comment ? { comment } : {};
-        return createProtectedRequest('PATCH', url, data);
+
+        console.log('OrderApi: завершение этапа заказа', {
+            orderId,
+            comment,
+            url,
+            data
+        });
+
+        const response = await createProtectedRequest('PATCH', url, data);
+
+        console.log('OrderApi: ответ сервера на завершение этапа', {
+            orderId,
+            status: response.status,
+            data: response.data
+        });
+
+        return response;
     },
 
     // Взять заказ в работу (самоназначение)

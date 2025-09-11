@@ -16,6 +16,8 @@ const initialState = {
   },
   messages: {},
   unreadByRoomId: {},
+  // Время последней загрузки комнат - используется для предотвращения дублирования счетчиков
+  lastRoomsFetchTime: null,
   typingByRoomId: {},
   activeRoomId: null,
   avatarFetchAttemptedByRoomId: {},
@@ -200,8 +202,16 @@ export const fetchRooms = createAsyncThunk(
           console.log('🔍 fetchRooms raw data structure:', {
             firstItem: roomsRaw[0],
             hasRoom: !!roomsRaw[0]?.room,
+            hasUnreadCount: roomsRaw[0]?.unreadCount !== undefined,
+            hasUnread: roomsRaw[0]?.unread !== undefined,
+            unreadCount: roomsRaw[0]?.unreadCount,
+            unread: roomsRaw[0]?.unread,
             roomStructure: roomsRaw[0]?.room ? {
               id: roomsRaw[0].room.id,
+              hasUnreadCount: roomsRaw[0].room?.unreadCount !== undefined,
+              hasUnread: roomsRaw[0].room?.unread !== undefined,
+              unreadCount: roomsRaw[0].room?.unreadCount,
+              unread: roomsRaw[0].room?.unread,
               hasLastMessage: !!roomsRaw[0].room.lastMessage,
               lastMessage: roomsRaw[0].room.lastMessage
             } : null
@@ -210,21 +220,25 @@ export const fetchRooms = createAsyncThunk(
 
         const rooms = roomsRaw.map((it) => {
           if (it && it.room && typeof it.room === 'object') {
-            const room = { ...it.room, unread: it.unreadCount ?? it.unread ?? 0 };
+            const room = { ...it.room };
             if (!room.product && it.product) room.product = it.product;
             // Добавляем lastMessage если оно есть в room
             if (!room.lastMessage && it.room.lastMessage) room.lastMessage = it.room.lastMessage;
-            
-            // Отладка для проверки lastMessage
-            if (__DEV__) {
+
+            // Копируем счетчик непрочитанных из внешнего объекта
+            if (it.unreadCount !== undefined) room.unreadCount = it.unreadCount;
+            if (it.unread !== undefined) room.unread = it.unread;
+
+            // Отладка для проверки lastMessage (только если есть проблемы)
+            if (__DEV__ && (room.unreadCount > 0 || room.unread > 0)) {
               console.log('🔍 fetchRooms mapping room:', {
                 roomId: room.id,
                 hasLastMessage: !!room.lastMessage,
-                lastMessage: room.lastMessage,
-                originalItem: it
+                copiedUnreadCount: room.unreadCount,
+                copiedUnread: room.unread
               });
             }
-            
+
             return room;
           }
           return it;
@@ -580,6 +594,15 @@ const chatSlice = createSlice({
         return;
       }
 
+      // Проверяем, не обрабатывали ли мы уже это сообщение
+      const existingMessage = state.messages[roomId]?.byId?.[message.id];
+      if (existingMessage) {
+        if (__DEV__) {
+          console.log(`⚠️ receiveSocketMessage: Message ${message.id} already exists, skipping duplicate processing`);
+        }
+        return;
+      }
+
       if (__DEV__) {
         console.log('📨 Processing socket message:', {
           roomId,
@@ -617,14 +640,27 @@ const chatSlice = createSlice({
       // Обновляем кэш
       updateMessageCache(roomId, state.messages[roomId]);
 
-      // Увеличиваем счетчик непрочитанных если комната не активна
-      if (state.activeRoomId !== roomId) {
-        const oldUnread = state.unreadByRoomId[roomId] || 0;
-        state.unreadByRoomId[roomId] = oldUnread + 1;
+      // Увеличиваем счетчик непрочитанных если комната не активна и сообщение не от текущего пользователя
+      // Для определения текущего пользователя используем auth state из getState в thunk
+      const isOwnMessage = false; // Пока отключаем эту проверку, так как currentUserId не доступен в slice
 
-        const roomInList = state.rooms.byId[roomId];
-        if (roomInList) {
-          roomInList.unread = state.unreadByRoomId[roomId];
+      if (state.activeRoomId !== roomId && !isOwnMessage) {
+        // Проверяем, не было ли это сообщение учтено при загрузке комнат
+        const messageTime = new Date(message.createdAt).getTime();
+        const shouldIncrement = !state.lastRoomsFetchTime || messageTime > state.lastRoomsFetchTime;
+
+        if (shouldIncrement) {
+          const oldUnread = state.unreadByRoomId[roomId] || 0;
+          const newUnread = oldUnread + 1;
+          state.unreadByRoomId[roomId] = newUnread;
+
+          if (__DEV__) {
+            console.log(`📊 WebSocket: Updated unread count for room ${roomId}: ${oldUnread} -> ${newUnread} (message time: ${message.createdAt})`);
+          }
+        } else {
+          if (__DEV__) {
+            console.log(`📊 WebSocket: Skipping unread count increment for room ${roomId} - message already counted in API data (message time: ${message.createdAt}, fetch time: ${new Date(state.lastRoomsFetchTime).toISOString()})`);
+          }
         }
       }
 
@@ -810,11 +846,33 @@ const chatSlice = createSlice({
             state.rooms.ids = [];
             state.rooms.byId = {};
             state.avatarFetchAttemptedByRoomId = {};
+            // НЕ очищаем счетчики непрочитанных полностью - сохраняем существующие
+            // Только инициализируем новые комнаты
           }
+
+          // Инициализируем счетчики непрочитанных из данных сервера ТОЛЬКО для новых комнат
+          // Это предотвращает потерю счетчиков при обновлении экрана
+          if (rooms && Array.isArray(rooms)) {
+            rooms.forEach(room => {
+              if (room.id && state.unreadByRoomId[room.id] === undefined) {
+                // Инициализируем счетчик только если он еще не существует
+                const unreadCount = room.unreadCount ?? room.unread ?? 0;
+                state.unreadByRoomId[room.id] = unreadCount;
+
+                if (__DEV__ && unreadCount > 0) {
+                  console.log(`📊 Initialized unread count for NEW room ${room.id}: ${unreadCount}`);
+                }
+              }
+            });
+          }
+
           upsertRooms(state, rooms || []);
           state.rooms.page = page;
           state.rooms.hasMore = !!hasMore;
           state.rooms.loading = false;
+
+          // Сохраняем время загрузки комнат для предотвращения дублирования счетчиков
+          state.lastRoomsFetchTime = Date.now();
         })
         .addCase(fetchRooms.rejected, (state, action) => {
           state.rooms.loading = false;
@@ -977,9 +1035,8 @@ const chatSlice = createSlice({
           const oldUnread = state.unreadByRoomId[roomId] || 0;
           state.unreadByRoomId[roomId] = 0;
 
-          const roomInList = state.rooms.byId[roomId];
-          if (roomInList) {
-            roomInList.unread = 0;
+          if (__DEV__) {
+            console.log(`📖 Mark as read: Reset unread count for room ${roomId}: ${oldUnread} -> 0`);
           }
 
           const currentUserId = action.meta?.arg?.currentUserId;

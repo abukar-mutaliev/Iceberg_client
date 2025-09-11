@@ -173,6 +173,21 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
 
         switch (userType) {
             case 'employee':
+                // Дополнительная обработка для districts - убеждаемся что это массив ID
+                let processedDistricts = [];
+                if (Array.isArray(formData.districts)) {
+                    processedDistricts = formData.districts.filter(id => id !== null && id !== undefined && id !== '');
+                } else if (formData.districts) {
+                    // Если districts не массив, но есть значение, пытаемся обработать
+                    processedDistricts = [formData.districts].filter(id => id !== null && id !== undefined && id !== '');
+                }
+
+                // Дополнительная обработка для warehouseId
+                let processedWarehouseId = null;
+                if (formData.warehouseId !== undefined && formData.warehouseId !== '' && formData.warehouseId !== null) {
+                    processedWarehouseId = formData.warehouseId;
+                }
+
                 baseData = {
                     gender: formData.gender === '' ? null : formData.gender,
                     employee: {
@@ -180,10 +195,20 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
                         address: formData.address || '',
                         name: formData.name || '',
                         position: formData.position || '',
-                        districts: Array.isArray(formData.districts) ? formData.districts : [],
-                        warehouseId: formData.warehouseId || null,
+                        districts: processedDistricts,
+                        warehouseId: processedWarehouseId,
                     }
                 };
+
+                // Отладка для employee
+                console.log('useProfileEdit: employee data processing', {
+                    originalDistricts: formData.districts,
+                    processedDistricts,
+                    originalWarehouseId: formData.warehouseId,
+                    processedWarehouseId,
+                    districtsType: typeof formData.districts,
+                    warehouseIdType: typeof formData.warehouseId
+                });
                 break;
             case 'driver':
                 baseData = {
@@ -252,11 +277,34 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
                 gender: formData.gender,
                 formDataKeys: Object.keys(formData)
             });
+
+            // Специальная отладка для employee
+            if (userType === 'employee') {
+                console.log('useProfileEdit: employee formData перед подготовкой', {
+                    districts: formData.districts,
+                    warehouseId: formData.warehouseId,
+                    districtsType: typeof formData.districts,
+                    warehouseIdType: typeof formData.warehouseId,
+                    isDistrictsArray: Array.isArray(formData.districts)
+                });
+            }
+
             const dataToSend = prepareDataForSubmission(formData);
             console.log('useProfileEdit: dataToSend prepared', {
                 dataToSend,
                 gender: dataToSend.gender
             });
+
+            // Специальная отладка для employee после подготовки
+            if (userType === 'employee') {
+                console.log('useProfileEdit: employee dataToSend после подготовки', {
+                    employeeDistricts: dataToSend.employee?.districts,
+                    employeeWarehouseId: dataToSend.employee?.warehouseId,
+                    districtsType: typeof dataToSend.employee?.districts,
+                    warehouseIdType: typeof dataToSend.employee?.warehouseId,
+                    isDistrictsArray: Array.isArray(dataToSend.employee?.districts)
+                });
+            }
 
             console.log('useProfileEdit: dispatching updateProfile', {
                 dataToSend,

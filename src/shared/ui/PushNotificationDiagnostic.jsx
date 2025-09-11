@@ -1,23 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Switch, Clipboard } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Clipboard } from 'react-native';
 import * as Constants from 'expo-constants';
 import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PushNotificationService } from '@shared/services/PushNotificationService';
-import pushNotificationService from '@shared/services/PushNotificationService'; // ИСПРАВЛЕНО: Импортируем синглтон
+import OneSignalService from '@shared/services/OneSignalService';
 import { pushTokenApi } from '@entities/notification/api/pushTokenApi';
 import { useSelector } from 'react-redux';
 import { selectUser, selectTokens } from '@entities/auth';
-import * as FileSystem from 'expo-file-system';
 import { Platform } from 'react-native';
 
 export const PushNotificationDiagnostic = () => {
     const [diagnosticData, setDiagnosticData] = useState({});
     const [loading, setLoading] = useState(false);
-    const [localNotificationsEnabled, setLocalNotificationsEnabled] = useState(true);
     const [serverTokens, setServerTokens] = useState([]);
-    const [testResults, setTestResults] = useState({});
     const [logs, setLogs] = useState([]);
     
     const user = useSelector(selectUser);
@@ -30,23 +26,18 @@ export const PushNotificationDiagnostic = () => {
         console.log(`[${type.toUpperCase()}] ${message}`);
     };
 
-    // НОВАЯ ФУНКЦИЯ: Получение всех логов в виде текста для копирования
-    const getLogsAsText = () => {
-        return logs.map(log => 
-            `[${log.timestamp}] [${log.type.toUpperCase()}] ${log.message}`
-        ).join('\n');
-    };
-
-    // НОВАЯ ФУНКЦИЯ: Копирование логов в буфер обмена
+    // Копирование логов в буфер обмена
     const copyLogsToClipboard = async () => {
         try {
-            const logsText = getLogsAsText();
+            const logsText = logs.map(log => 
+                `[${log.timestamp}] [${log.type.toUpperCase()}] ${log.message}`
+            ).join('\n');
+            
             if (logsText.trim()) {
                 await Clipboard.setString(logsText);
                 addLog('Логи скопированы в буфер обмена', 'success');
                 Alert.alert('Успех', 'Логи скопированы в буфер обмена!');
             } else {
-                addLog('Нет логов для копирования', 'warning');
                 Alert.alert('Предупреждение', 'Нет логов для копирования');
             }
         } catch (error) {
@@ -55,38 +46,13 @@ export const PushNotificationDiagnostic = () => {
         }
     };
 
-    // НОВАЯ ФУНКЦИЯ: Сохранение логов в файл
-    const saveLogsToFile = async () => {
-        try {
-            const logContent = logs.map(log => 
-                `[${log.timestamp}] [${log.type.toUpperCase()}] ${log.message}`
-            ).join('\n');
-            
-            const fileName = `push-diagnostic-logs-${Date.now()}.txt`;
-            const fileUri = `${FileSystem.documentDirectory}${fileName}`;
-            
-            await FileSystem.writeAsStringAsync(fileUri, logContent);
-            
-            Alert.alert(
-                'Логи сохранены',
-                `Файл сохранен: ${fileName}\nПуть: ${fileUri}`,
-                [{ text: 'OK' }]
-            );
-            
-            addLog(`Логи сохранены в файл: ${fileName}`, 'success');
-        } catch (error) {
-            addLog(`Ошибка сохранения логов: ${error.message}`, 'error');
-            Alert.alert('Ошибка', `Не удалось сохранить логи: ${error.message}`);
-        }
-    };
-
-    // НОВАЯ ФУНКЦИЯ: Очистка логов
+    // Очистка логов
     const clearLogs = () => {
         setLogs([]);
         addLog('Логи очищены', 'info');
     };
 
-    // НОВАЯ ФУНКЦИЯ: Определение цвета логов
+    // Определение цвета логов
     const getLogColor = (type) => {
         switch (type) {
             case 'success':
@@ -101,131 +67,32 @@ export const PushNotificationDiagnostic = () => {
         }
     };
 
-    const runDiagnostic = async () => {
+    // Основная диагностика OneSignal
+    const runOneSignalDiagnostic = async () => {
         setLoading(true);
-        addLog('Запуск диагностики push-уведомлений', 'info');
+        addLog('🚀 Запуск OneSignal диагностики', 'info');
         const data = {};
 
         try {
             // Device info
             data.device = {
                 isDevice: Device.isDevice,
-                deviceType: Device.deviceType,
                 platform: Device.osName,
                 osVersion: Device.osVersion,
                 model: Device.modelName,
                 brand: Device.brand,
-                manufacturer: Device.manufacturer
             };
-            addLog(`Устройство: ${Device.modelName} (${Device.osName} ${Device.osVersion})`, 'info');
+            addLog(`📱 Устройство: ${Device.modelName} (${Device.osName} ${Device.osVersion})`, 'info');
 
-            // Constants info
-            data.constants = {
+            // App info
+            data.app = {
                 expoVersion: Constants.expoVersion || 'Not available',
-                appOwnership: Constants.appOwnership || 'Not available',
-                isDetached: Constants.isDetached || false,
                 executionEnvironment: Constants.executionEnvironment || 'Not available',
-                projectId: Constants.expoConfig?.extra?.eas?.projectId || 
-                           Constants.manifest2?.extra?.eas?.projectId ||
-                           Constants.manifest?.extra?.eas?.projectId ||
-                           'Not found',
-                easProjectId: Constants.expoConfig?.extra?.eas?.projectId,
-                manifest2ProjectId: Constants.manifest2?.extra?.eas?.projectId,
-                manifestProjectId: Constants.manifest?.extra?.eas?.projectId
+                buildType: process.env.EXPO_PUBLIC_BUILD_TYPE || 'Not available',
+                isStandalone: Constants.appOwnership === 'standalone',
             };
-            addLog(`Expo версия: ${Constants.expoVersion || 'Not available'}`, 'info');
-            addLog(`Environment: ${Constants.executionEnvironment || 'Not available'}`, 'info');
-            addLog(`App Ownership: ${Constants.appOwnership || 'Not available'}`, 'info');
-            addLog(`Is Detached: ${Constants.isDetached || false}`, 'info');
-
-            // Permissions
-            try {
-                const permissions = await Notifications.getPermissionsAsync();
-                data.permissions = permissions;
-                
-                // Проверяем статус разрешений
-                data.permissionStatus = {
-                    granted: permissions.status === 'granted',
-                    canAskAgain: permissions.canAskAgain,
-                    status: permissions.status
-                };
-                addLog(`Разрешения: ${permissions.status}`, permissions.status === 'granted' ? 'success' : 'warning');
-            } catch (error) {
-                data.permissions = { error: error.message };
-                addLog(`Ошибка получения разрешений: ${error.message}`, 'error');
-            }
-
-            // Push token
-            try {
-                const pushService = pushNotificationService;
-                await pushService.initialize();
-                const projectId = pushService.getProjectId();
-                data.projectIdUsed = projectId;
-                addLog(`ProjectId: ${projectId}`, 'info');
-                
-                // ИСПРАВЛЕНО: Получаем статус сервиса
-                const serviceStatus = pushService.getServiceStatus();
-                data.serviceStatus = serviceStatus;
-                addLog(`Статус сервиса: ${serviceStatus.isInitialized ? 'инициализирован' : 'не инициализирован'}`, serviceStatus.isInitialized ? 'success' : 'warning');
-                
-                // ИСПРАВЛЕНО: Получаем текущий токен из сервиса
-                const currentToken = pushService.getCurrentToken();
-                if (currentToken) {
-                    data.expoPushToken = {
-                        success: true,
-                        tokenLength: currentToken.length || 0,
-                        tokenPrefix: currentToken.substring(0, 30) + '...',
-                        fullToken: currentToken
-                    };
-                    addLog(`Push токен получен: ${currentToken.substring(0, 30)}...`, 'success');
-                } else {
-                    // Пытаемся получить токен напрямую
-                    const expoPushToken = await Notifications.getExpoPushTokenAsync({ 
-                        projectId: projectId 
-                    });
-                    data.expoPushToken = {
-                        success: true,
-                        tokenLength: expoPushToken.data?.length || 0,
-                        tokenPrefix: expoPushToken.data?.substring(0, 30) + '...',
-                        fullToken: expoPushToken.data
-                    };
-                    addLog(`Push токен получен напрямую: ${expoPushToken.data?.substring(0, 30)}...`, 'success');
-                }
-            } catch (error) {
-                data.expoPushToken = { 
-                    success: false, 
-                    error: error.message 
-                };
-                addLog(`Ошибка получения push токена: ${error.message}`, 'error');
-            }
-
-            // Device push token (fallback)
-            try {
-                const deviceToken = await Notifications.getDevicePushTokenAsync();
-                data.devicePushToken = {
-                    success: true,
-                    tokenType: typeof deviceToken.data,
-                    tokenLength: deviceToken.data?.length || 0,
-                    tokenData: deviceToken.data
-                };
-            } catch (error) {
-                data.devicePushToken = { 
-                    success: false, 
-                    error: error.message 
-                };
-            }
-
-            // Local storage check
-            try {
-                const localToken = await AsyncStorage.getItem('expoPushToken');
-                data.localStorage = {
-                    hasToken: !!localToken,
-                    tokenLength: localToken?.length || 0,
-                    tokenPrefix: localToken?.substring(0, 30) + '...'
-                };
-            } catch (error) {
-                data.localStorage = { error: error.message };
-            }
+            addLog(`🏗️ Build Type: ${data.app.buildType}`, 'info');
+            addLog(`📦 Environment: ${data.app.executionEnvironment}`, 'info');
 
             // User info
             data.user = {
@@ -233,394 +100,194 @@ export const PushNotificationDiagnostic = () => {
                 role: user?.role,
                 email: user?.email,
                 isAuthenticated: !!user,
-                hasToken: !!user?.token,
-                hasAccessToken: !!user?.accessToken,
-                hasAuthToken: !!user?.authToken,
-                tokenLength: user?.token?.length || 0,
-                accessTokenLength: user?.accessToken?.length || 0,
-                authTokenLength: user?.authToken?.length || 0,
-                hasTokensObject: !!tokens,
-                hasAccessTokenInTokens: !!tokens?.accessToken,
-                accessTokenInTokensLength: tokens?.accessToken?.length || 0
             };
+            addLog(`👤 Пользователь: ${user?.email} (ID: ${user?.id})`, user ? 'success' : 'warning');
 
-            // Notification channels (Android)
-            if (Device.osName === 'Android') {
-                try {
-                    const channels = await Notifications.getNotificationChannelsAsync();
-                    data.notificationChannels = {
-                        count: channels.length,
-                        channels: channels.map(ch => ({ id: ch.id, name: ch.name }))
-                    };
-                } catch (error) {
-                    data.notificationChannels = { error: error.message };
+            // OneSignal Service Status
+            try {
+                const oneSignalStatus = OneSignalService.getStatus();
+                data.oneSignalService = oneSignalStatus;
+                addLog(`🔔 OneSignal инициализирован: ${oneSignalStatus.isInitialized}`, oneSignalStatus.isInitialized ? 'success' : 'warning');
+                addLog(`🎫 OneSignal Player ID: ${oneSignalStatus.hasSubscription ? 'есть' : 'нет'}`, oneSignalStatus.hasSubscription ? 'success' : 'warning');
+                if (oneSignalStatus.currentUserId) {
+                    addLog(`👤 OneSignal User ID: ${oneSignalStatus.currentUserId}`, 'info');
                 }
+            } catch (error) {
+                data.oneSignalService = { error: error.message };
+                addLog(`❌ Ошибка OneSignal Service: ${error.message}`, 'error');
+            }
+
+            // Push Notification Service Status
+            try {
+                const pushServiceStatus = PushNotificationService.getServiceStatus();
+                data.pushService = pushServiceStatus;
+                addLog(`📬 Push Service инициализирован: ${pushServiceStatus.isInitialized}`, pushServiceStatus.isInitialized ? 'success' : 'warning');
+                addLog(`🧭 Навигация готова: ${pushServiceStatus.navigationReady}`, pushServiceStatus.navigationReady ? 'success' : 'warning');
+            } catch (error) {
+                data.pushService = { error: error.message };
+                addLog(`❌ Ошибка Push Service: ${error.message}`, 'error');
             }
 
         } catch (error) {
             data.generalError = error.message;
+            addLog(`❌ Общая ошибка диагностики: ${error.message}`, 'error');
         }
 
         setDiagnosticData(data);
         setLoading(false);
+        addLog('✅ Диагностика завершена', 'success');
     };
 
+    // Инициализация OneSignal
+    const initializeOneSignal = async () => {
+        addLog('🚀 Инициализация OneSignal', 'info');
+        
+        try {
+            const appId = 'a1bde379-4211-4fb9-89e2-3e94530a7041';
+            const result = await OneSignalService.initialize(appId);
+            
+            if (result) {
+                addLog('✅ OneSignal инициализирован успешно', 'success');
+                
+                // Проверяем статус после инициализации
+                const status = OneSignalService.getStatus();
+                addLog(`📊 Статус после инициализации: ${JSON.stringify(status)}`, 'info');
+            } else {
+                addLog('❌ Не удалось инициализировать OneSignal', 'error');
+            }
+        } catch (error) {
+            addLog(`❌ Ошибка инициализации OneSignal: ${error.message}`, 'error');
+        }
+    };
+
+    // Инициализация OneSignal для пользователя
+    const initializeOneSignalForUser = async () => {
+        if (!user) {
+            addLog('❌ Нет авторизованного пользователя', 'error');
+            Alert.alert('Ошибка', 'Войдите в систему для инициализации OneSignal');
+            return;
+        }
+
+        addLog(`👤 Инициализация OneSignal для пользователя ${user.id}`, 'info');
+        
+        try {
+            const result = await OneSignalService.initializeForUser(user);
+            
+            if (result) {
+                addLog('✅ OneSignal настроен для пользователя', 'success');
+                
+                // Получаем Player ID
+                const playerId = OneSignalService.getCurrentSubscriptionId();
+                if (playerId) {
+                    addLog(`🎫 OneSignal Player ID: ${playerId}`, 'success');
+                } else {
+                    addLog('⚠️ Player ID не получен', 'warning');
+                }
+                
+                // Обновляем диагностику
+                runOneSignalDiagnostic();
+            } else {
+                addLog('❌ Не удалось настроить OneSignal для пользователя', 'error');
+            }
+        } catch (error) {
+            addLog(`❌ Ошибка настройки OneSignal для пользователя: ${error.message}`, 'error');
+        }
+    };
+
+    // Получение Player ID
+    const getOneSignalPlayerId = async () => {
+        addLog('🎫 Получение OneSignal Player ID', 'info');
+        
+        try {
+            const playerId = await OneSignalService.getSubscriptionId();
+            
+            if (playerId) {
+                addLog(`✅ Player ID получен: ${playerId}`, 'success');
+                Alert.alert('Player ID получен', `Player ID: ${playerId}`);
+                
+                // Копируем в буфер обмена
+                await Clipboard.setString(playerId);
+                addLog('📋 Player ID скопирован в буфер обмена', 'info');
+            } else {
+                addLog('❌ Player ID не получен', 'error');
+                Alert.alert('Ошибка', 'Player ID не получен. Убедитесь что OneSignal инициализирован.');
+            }
+        } catch (error) {
+            addLog(`❌ Ошибка получения Player ID: ${error.message}`, 'error');
+        }
+    };
+
+    // Проверка токенов на сервере
     const checkServerTokens = async () => {
+        addLog('📋 Проверка токенов на сервере', 'info');
+        
         try {
             const response = await pushTokenApi.getUserPushTokens();
             if (response.status === 'success') {
-                setServerTokens(response.data || []);
+                const tokens = response.data || [];
+                setServerTokens(tokens);
+                
+                addLog(`📊 Найдено токенов на сервере: ${tokens.length}`, tokens.length > 0 ? 'success' : 'warning');
+                
+                if (Array.isArray(tokens)) {
+                    tokens.forEach((token, index) => {
+                        addLog(`  ${index + 1}. ${token.tokenType || 'unknown'}: ${token.token ? token.token.substring(0, 40) + '...' : 'no token'}`, 'info');
+                    });
+                    
+                    // Проверяем OneSignal токены
+                    const oneSignalTokens = tokens.filter(t => t.tokenType === 'onesignal');
+                    if (oneSignalTokens.length > 0) {
+                        addLog(`✅ OneSignal токенов: ${oneSignalTokens.length}`, 'success');
+                    } else {
+                        addLog('⚠️ OneSignal токенов не найдено', 'warning');
+                    }
+                } else {
+                    addLog('⚠️ Токены не являются массивом', 'warning');
+                }
+                
                 return response;
             } else {
-                console.error('Ошибка получения токенов с сервера:', response.message);
+                addLog(`❌ Ошибка получения токенов: ${response.message}`, 'error');
                 return { data: [] };
             }
         } catch (error) {
-            console.error('Ошибка получения токенов с сервера:', error);
+            addLog(`❌ Ошибка запроса токенов: ${error.message}`, 'error');
             return { data: [] };
         }
     };
 
-    // НОВАЯ ФУНКЦИЯ: Тест локального уведомления без цикла
-    const testLocalNotification = async () => {
-        addLog('🧪 Тест локального уведомления', 'info');
+    // Отправка тестового push уведомления
+    const sendTestPushNotification = async () => {
+        addLog('📨 Отправка тестового push-уведомления', 'info');
         
         try {
-            const pushService = pushNotificationService;
-            await pushService.initialize();
-            
-            // ИСПРАВЛЕНО: Создаем уведомление с уникальным типом чтобы избежать цикла
-            const notificationId = await pushService.showLocalNotification({
-                title: '🧪 Локальное уведомление',
-                body: 'Это тестовое локальное уведомление',
-                data: {
-                    type: 'LOCAL_TEST',
-                    test: true,
-                    timestamp: Date.now()
-                }
-            });
-            
-            addLog(`✅ Локальное уведомление создано с ID: ${notificationId}`, 'success');
-        } catch (error) {
-            addLog(`❌ Ошибка создания локального уведомления: ${error.message}`, 'error');
-        }
-    };
-
-    // НОВАЯ ФУНКЦИЯ: Тест серверного уведомления без цикла
-    const testServerNotification = async () => {
-        addLog('📡 Тест серверного уведомления', 'info');
-        
-        try {
-            const pushService = pushNotificationService;
-            await pushService.initialize();
-            const currentToken = pushService.getCurrentToken();
-            
-            if (!currentToken) {
-                addLog('❌ Нет токена для отправки уведомления', 'error');
+            if (!user) {
+                addLog('❌ Нет авторизованного пользователя', 'error');
+                Alert.alert('Ошибка', 'Войдите в систему');
                 return;
             }
-            
-            addLog(`🎫 Используем токен: ${currentToken.substring(0, 30)}...`, 'info');
-            
-            const response = await fetch(`http://212.67.11.134:5000/api/push-tokens/test`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${tokens?.accessToken || user?.token || user?.accessToken || user?.authToken}`
-                },
-                body: JSON.stringify({
-                    token: currentToken,
-                    title: '🌐 Серверный тест',
-                    body: 'This is a test notification',
-                    data: {
-                        type: 'SERVER_TEST',
-                        test: true,
-                        timestamp: Date.now()
-                    }
-                })
-            });
-            
-            const result = await response.json();
-            addLog(`📋 Ответ сервера: ${JSON.stringify(result)}`, 'info');
-            
-            if (result.success) {
-                addLog('✅ Серверное уведомление отправлено успешно', 'success');
-            } else {
-                addLog(`❌ Ошибка отправки: ${result.message}`, 'error');
-            }
-        } catch (error) {
-            addLog(`❌ Ошибка серверного теста: ${error.message}`, 'error');
-        }
-    };
 
-    const reinitializeService = async () => {
-        try {
-            setLoading(true);
-            addLog('Переинициализация сервиса push-уведомлений', 'info');
-            
-            const pushService = pushNotificationService;
-            const status = await pushService.forceInitialize();
-            
-            addLog(`Сервис переинициализирован: ${JSON.stringify(status)}`, 'success');
-            Alert.alert('Успех', 'Сервис переинициализирован!');
-        } catch (error) {
-            addLog(`Ошибка переинициализации: ${error.message}`, 'error');
-            Alert.alert('Ошибка', error.message);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const requestPermissions = async () => {
-        try {
-            const { status } = await Notifications.requestPermissionsAsync();
-            Alert.alert(
-                'Разрешения',
-                `Статус разрешений: ${status}`,
-                [{ text: 'OK' }]
-            );
-            runDiagnostic(); // Обновляем диагностику
-        } catch (error) {
-            Alert.alert('Ошибка', `Не удалось запросить разрешения: ${error.message}`);
-        }
-    };
-
-    const clearAllNotifications = async () => {
-        try {
-            await Notifications.dismissAllNotificationsAsync();
-            Alert.alert('Успех', 'Все уведомления очищены');
-        } catch (error) {
-            Alert.alert('Ошибка', `Не удалось очистить уведомления: ${error.message}`);
-        }
-    };
-
-
-
-    // НОВАЯ ФУНКЦИЯ: Тест отправки уведомления через сервер
-    const testServerPushNotification = async () => {
-        addLog('📡 Тест отправки push-уведомления через сервер', 'info');
-        
-        try {
-            const pushService = pushNotificationService;
-            await pushService.initialize();
-            const currentToken = pushService.getCurrentToken();
-            
-            if (!currentToken) {
-                addLog('❌ Нет токена для отправки уведомления', 'error');
-                return;
-            }
-            
-            addLog(`🎫 Используем токен: ${currentToken.substring(0, 30)}...`, 'info');
-            addLog('📤 Отправляем тестовое уведомление на сервер...', 'info');
-            
-            const response = await fetch(`http://212.67.11.134:5000/api/push-tokens/test`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${tokens?.accessToken || user?.token || user?.accessToken || user?.authToken}`
-                },
-                body: JSON.stringify({
-                    token: currentToken,
-                    title: '🧪 Тест с диагностики',
-                    body: `Тестовое уведомление отправлено в ${new Date().toLocaleTimeString()}`,
-                    data: {
-                        type: 'DIAGNOSTIC_TEST',
-                        source: 'diagnostic_screen',
-                        timestamp: Date.now()
-                    }
-                })
-            });
-            
-            const result = await response.json();
-            addLog(`📋 Ответ сервера: ${JSON.stringify(result)}`, 'info');
-            
-            if (result.success) {
-                addLog('✅ Серверное уведомление отправлено успешно', 'success');
-            } else {
-                addLog(`❌ Ошибка отправки: ${result.message}`, 'error');
-            }
-        } catch (error) {
-            addLog(`❌ Ошибка отправки push-уведомления: ${error.message}`, 'error');
-        }
-    };
-
-    // НОВАЯ ФУНКЦИЯ: Тест обработки уведомлений
-    const testNotificationHandling = async () => {
-        addLog('🔔 Тест обработки push-уведомлений', 'info');
-        
-        try {
-            const pushService = pushNotificationService;
-            await pushService.initialize();
-            
-            // Проверяем статус обработчиков
-            const status = pushService.getServiceStatus();
-            addLog(`📊 Статус обработчиков: ${JSON.stringify(status)}`, 'info');
-            
-            // Создаем тестовое уведомление с данными для навигации
-            await pushService.showLocalNotification({
-                title: '🧪 Тест обработки',
-                body: 'Нажмите для проверки обработки данных',
-                data: {
-                    type: 'stop',
-                    stopId: '999',
-                    url: 'iceberg://stop/999',
-                    timestamp: Date.now(),
-                    test: true
-                }
-            });
-            
-            addLog('✅ Тестовое уведомление создано с данными для навигации', 'success');
-            
-            Alert.alert(
-                'Тест обработки',
-                '1. Уведомление должно появиться\n' +
-                '2. Нажмите на него\n' +
-                '3. Проверьте, что данные обрабатываются\n' +
-                '4. Посмотрите логи ниже',
-                [{ text: 'OK' }]
-            );
-            
-        } catch (error) {
-            addLog(`❌ Ошибка тестирования обработки: ${error.message}`, 'error');
-        }
-    };
-
-    // НОВАЯ ФУНКЦИЯ: Проверка настроек уведомлений
-    const checkNotificationSettings = async () => {
-        addLog('⚙️ Проверка настроек уведомлений', 'info');
-        
-        try {
-            // Проверяем разрешения
-            const permissions = await Notifications.getPermissionsAsync();
-            addLog(`🔐 Разрешения: ${permissions.status}`, permissions.status === 'granted' ? 'success' : 'warning');
-            
-            // Проверяем каналы уведомлений (Android)
-            if (Device.osName === 'Android') {
-                const channels = await Notifications.getNotificationChannelsAsync();
-                addLog(`📢 Каналы уведомлений: ${channels.length}`, 'info');
-                channels.forEach(channel => {
-                    addLog(`   - ${channel.name} (${channel.id})`, 'info');
-                });
-            }
-            
-            // Проверяем настройки звука
-            const soundEnabled = await Notifications.getPermissionsAsync();
-            addLog(`🔊 Звук уведомлений: ${soundEnabled.status === 'granted' ? 'включен' : 'выключен'}`, 'info');
-            
-            Alert.alert(
-                'Настройки уведомлений',
-                `Разрешения: ${permissions.status}\n` +
-                `Каналы: ${Device.osName === 'Android' ? 'проверьте логи' : 'не применимо'}\n` +
-                `Звук: ${soundEnabled.status === 'granted' ? 'включен' : 'выключен'}`,
-                [{ text: 'OK' }]
-            );
-            
-        } catch (error) {
-            addLog(`❌ Ошибка проверки настроек: ${error.message}`, 'error');
-        }
-    };
-
-    // НОВАЯ ФУНКЦИЯ: Тест получения уведомлений в реальном времени
-    const testRealTimeNotifications = async () => {
-        addLog('🔔 Тестирование получения push-уведомлений в реальном времени', 'info');
-        
-        try {
-            const pushService = pushNotificationService;
-            await pushService.initialize();
-            
-            const status = pushService.getServiceStatus();
-            addLog(`📊 Статус сервиса: ${JSON.stringify(status)}`, 'info');
-            
-            // Показываем локальное уведомление для проверки
-            await pushService.showLocalNotification({
-                title: '🔔 Тест получения уведомлений',
-                body: 'Это тестовое уведомление для проверки обработчиков',
-                data: {
-                    type: 'test',
-                    stopId: 'test-123',
-                    timestamp: Date.now()
-                }
-            });
-            
-            addLog('✅ Локальное уведомление отправлено для проверки обработчиков', 'success');
-            
-            Alert.alert(
-                'Тест получения уведомлений',
-                '1. Локальное уведомление должно появиться\n' +
-                '2. Нажмите на него для проверки обработки\n' +
-                '3. Проверьте логи в консоли\n' +
-                '4. Затем создайте остановку на сервере для тестирования push-уведомлений',
-                [
-                    { text: 'OK' },
-                    { 
-                        text: 'Создать остановку', 
-                        onPress: () => {
-                            addLog('💡 Пользователь хочет создать тестовую остановку', 'info');
-                        }
-                    }
-                ]
-            );
-            
-        } catch (error) {
-            addLog(`❌ Ошибка тестирования уведомлений: ${error.message}`, 'error');
-        }
-    };
-
-    // НОВАЯ ФУНКЦИЯ: Исправление навигации
-    const fixNavigation = async () => {
-        addLog('🔧 Исправление навигации для push-уведомлений', 'info');
-        
-        try {
-            const pushService = pushNotificationService; // ИСПРАВЛЕНО: Используем синглтон
-            await pushService.initialize();
-            
-            // Устанавливаем навигацию как готовую
-            pushService.setNavigationReady();
-            
-            // Проверяем статус после исправления
-            const status = pushService.getServiceStatus();
-            addLog(`📊 Статус после исправления: ${JSON.stringify(status)}`, 'info');
-            
-            if (status.navigationReady) {
-                addLog('✅ Навигация исправлена и готова к работе', 'success');
-                Alert.alert('Успех', 'Навигация исправлена! Теперь push-уведомления должны работать корректно.');
-            } else {
-                addLog('⚠️ Навигация все еще не готова', 'warning');
-                Alert.alert('Предупреждение', 'Навигация все еще не готова. Возможно, нужно перезапустить приложение.');
-            }
-            
-        } catch (error) {
-            addLog(`❌ Ошибка исправления навигации: ${error.message}`, 'error');
-        }
-    };
-
-    // НОВАЯ ФУНКЦИЯ: Тест получения push-уведомления с сервера
-    const testReceivePushNotification = async () => {
-        addLog('📨 Тест получения push-уведомления с сервера', 'info');
-        
-        try {
-            // Получаем push токен
-            const pushService = pushNotificationService;
-            await pushService.initialize();
-            const currentToken = pushService.getCurrentToken();
-            
-            if (!currentToken) {
-                addLog('❌ Нет push-токена для тестирования', 'error');
-                Alert.alert('Ошибка', 'Нет push-токена. Сначала получите токен.');
-                return;
-            }
-            
-            addLog(`🎫 Используем push-токен: ${currentToken.substring(0, 30)}...`, 'info');
-            
-            // Получаем токен авторизации
-            const authToken = tokens?.accessToken || user?.token || user?.accessToken || user?.authToken;
+            const authToken = tokens?.accessToken || user?.token || user?.accessToken;
             if (!authToken) {
                 addLog('❌ Нет токена авторизации', 'error');
-                Alert.alert('Ошибка', 'Нет токена авторизации. Войдите в систему заново.');
+                Alert.alert('Ошибка', 'Нет токена авторизации');
                 return;
             }
+
+            // Получаем Player ID для тестового уведомления
+            addLog('🔍 Получаем Player ID для тестового уведомления...', 'info');
+            const playerId = await OneSignalService.getSubscriptionId(); // Используем асинхронный метод
             
-            addLog('📤 Отправляем push-уведомление на сервер для получения...', 'info');
+            addLog(`🎫 Player ID из сервиса: ${playerId || 'null/undefined'}`, playerId ? 'success' : 'warning');
+            
+            if (!playerId) {
+                addLog('❌ Нет OneSignal Player ID для тестового уведомления', 'error');
+                addLog('💡 Попробуйте сначала нажать "🎫 Player ID" или "👤 Для пользователя"', 'info');
+                Alert.alert('Ошибка', 'Сначала получите OneSignal Player ID через кнопку "🎫 Player ID"');
+                return;
+            }
+
+            addLog(`📤 Отправляем запрос на сервер с Player ID: ${playerId}...`, 'info');
             
             const response = await fetch('http://212.67.11.134:5000/api/push-tokens/test', {
                 method: 'POST',
@@ -629,14 +296,13 @@ export const PushNotificationDiagnostic = () => {
                     'Authorization': `Bearer ${authToken}`
                 },
                 body: JSON.stringify({
-                    token: currentToken, // ИСПРАВЛЕНО: Добавляем токен
-                    title: '📨 Тест получения',
-                    body: `Проверьте, получили ли вы это уведомление в ${new Date().toLocaleTimeString()}`,
+                    token: playerId, // Передаем OneSignal Player ID
+                    title: '🧪 OneSignal Test',
+                    message: `Тест OneSignal от ${new Date().toLocaleTimeString()}`,
                     data: {
-                        type: 'RECEIVE_TEST',
+                        type: 'ONESIGNAL_TEST',
                         timestamp: Date.now(),
-                        test: true,
-                        url: 'iceberg://test/receive'
+                        source: 'diagnostic_screen'
                     }
                 })
             });
@@ -644,524 +310,104 @@ export const PushNotificationDiagnostic = () => {
             const result = await response.json();
             addLog(`📋 Ответ сервера: ${JSON.stringify(result)}`, 'info');
             
-            if (response.ok) {
-                addLog('✅ Push-уведомление отправлено на сервер', 'success');
-                Alert.alert(
-                    'Уведомление отправлено',
-                    'Проверьте, получили ли вы push-уведомление на устройстве.\n\n' +
-                    'Если уведомление не пришло:\n' +
-                    '1. Проверьте настройки уведомлений\n' +
-                    '2. Убедитесь, что приложение не в фоне\n' +
-                    '3. Попробуйте перезапустить приложение',
-                    [{ text: 'OK' }]
-                );
+            if (response.ok && result.success) {
+                addLog('✅ Тестовое уведомление отправлено успешно', 'success');
+                Alert.alert('Успех', 'Тестовое уведомление отправлено! Проверьте получение на устройстве.');
             } else {
-                addLog(`❌ Ошибка сервера: ${result.message || 'Неизвестная ошибка'}`, 'error');
-                Alert.alert('Ошибка', `Ошибка сервера: ${result.message || 'Неизвестная ошибка'}`);
+                addLog(`❌ Ошибка отправки: ${result.message || 'Неизвестная ошибка'}`, 'error');
+                Alert.alert('Ошибка', `Ошибка: ${result.message || 'Неизвестная ошибка'}`);
             }
-            
         } catch (error) {
             addLog(`❌ Ошибка отправки push-уведомления: ${error.message}`, 'error');
             Alert.alert('Ошибка', error.message);
         }
     };
 
-    // НОВАЯ ФУНКЦИЯ: Проверка получения push-уведомлений
-    const checkPushNotificationReceiving = async () => {
-        addLog('🔍 Проверка получения push-уведомлений', 'info');
+    // Установка тегов пользователя
+    const setUserTags = async () => {
+        addLog('🏷️ Установка пользовательских тегов', 'info');
         
         try {
-            const pushService = pushNotificationService;
-            await pushService.initialize();
+            const tags = {
+                user_id: user?.id?.toString() || 'unknown',
+                user_role: user?.role || 'unknown',
+                platform: Platform.OS,
+                app_version: Constants.expoVersion || '1.0.0',
+                test_user: 'true'
+            };
             
-            const status = pushService.getServiceStatus();
-            addLog(`📊 Статус сервиса: ${JSON.stringify(status)}`, 'info');
-            
-            // Проверяем обработчики
-            if (status.isInitialized && status.hasToken) {
-                addLog('✅ Сервис инициализирован и имеет токен', 'success');
-                
-                if (status.navigationReady) {
-                    addLog('✅ Навигация готова к работе', 'success');
-                } else {
-                    addLog('⚠️ Навигация не готова', 'warning');
-                }
-                
-                // Показываем локальное уведомление для проверки обработчиков
-                await pushService.showLocalNotification({
-                    title: '🔍 Проверка обработчиков',
-                    body: 'Если вы видите это уведомление, обработчики работают',
-                    data: {
-                        type: 'CHECK_HANDLERS',
-                        timestamp: Date.now(),
-                        test: true
-                    }
-                });
-                
-                addLog('✅ Локальное уведомление отправлено для проверки обработчиков', 'success');
-                
-                Alert.alert(
-                    'Проверка обработчиков',
-                    '1. Локальное уведомление должно появиться\n' +
-                    '2. Если уведомление появилось, обработчики работают\n' +
-                    '3. Теперь попробуйте получить push-уведомление с сервера',
-                    [
-                        { text: 'OK' },
-                        { 
-                            text: 'Тест с сервера', 
-                            onPress: () => {
-                                testReceivePushNotification();
-                            }
-                        }
-                    ]
-                );
-            } else {
-                addLog('❌ Сервис не инициализирован или нет токена', 'error');
-                Alert.alert('Ошибка', 'Сервис не инициализирован или нет токена.');
-            }
-            
+            await OneSignalService.setUserTags(tags);
+            addLog(`✅ Теги установлены: ${JSON.stringify(tags)}`, 'success');
+            Alert.alert('Успех', 'Пользовательские теги установлены!');
         } catch (error) {
-            addLog(`❌ Ошибка проверки: ${error.message}`, 'error');
+            addLog(`❌ Ошибка установки тегов: ${error.message}`, 'error');
         }
     };
 
-    // НОВАЯ ФУНКЦИЯ: Проверка состояния навигации
-    const checkNavigationState = async () => {
-        addLog('🧭 Проверка состояния навигации', 'info');
+    // Очистка контекста OneSignal
+    const clearOneSignalContext = async () => {
+        addLog('🧹 Очистка контекста OneSignal', 'info');
         
         try {
-            const pushService = pushNotificationService; // ИСПРАВЛЕНО: Используем синглтон
-            await pushService.initialize();
+            await OneSignalService.clearUserContext();
+            addLog('✅ Контекст OneSignal очищен', 'success');
+            Alert.alert('Успех', 'Контекст OneSignal очищен');
             
-            const status = pushService.getServiceStatus();
-            addLog(`📊 Статус навигации: ${JSON.stringify({
-                navigationReady: status.navigationReady,
-                pendingNavigationsCount: status.pendingNavigationsCount,
-                isInitialized: status.isInitialized,
-                hasToken: status.hasToken
-            })}`, 'info');
+            // Обновляем диагностику
+            runOneSignalDiagnostic();
+        } catch (error) {
+            addLog(`❌ Ошибка очистки контекста: ${error.message}`, 'error');
+        }
+    };
+
+    // Принудительная регистрация токена
+    const forceTokenRegistration = async () => {
+        addLog('🔄 Принудительная регистрация OneSignal токена', 'info');
+        
+        try {
+            if (!user) {
+                addLog('❌ Нет авторизованного пользователя', 'error');
+                Alert.alert('Ошибка', 'Войдите в систему');
+                return;
+            }
+
+            // Инициализируем Push Service для пользователя
+            const result = await PushNotificationService.initializeForUser(user);
             
-            if (status.navigationReady) {
-                addLog('✅ Навигация готова к работе', 'success');
+            if (result) {
+                addLog('✅ Push Service инициализирован для пользователя', 'success');
+                
+                // Проверяем что токен сохранился на сервере
+                setTimeout(async () => {
+                    await checkServerTokens();
+                }, 1000);
             } else {
-                addLog('⚠️ Навигация не готова', 'warning');
-                addLog('💡 Попробуйте нажать кнопку "🔧 Навигация" для исправления', 'info');
+                addLog('❌ Не удалось инициализировать Push Service', 'error');
             }
-            
-            if (status.pendingNavigationsCount > 0) {
-                addLog(`📋 Ожидающих навигаций: ${status.pendingNavigationsCount}`, 'info');
-            }
-            
+        } catch (error) {
+            addLog(`❌ Ошибка принудительной регистрации: ${error.message}`, 'error');
+        }
+    };
+
+    // Тест отправки сообщения в чат (для проверки уведомлений)
+    const testChatMessage = async () => {
+        addLog('💬 Тест уведомлений чата', 'info');
+        
+        try {
             Alert.alert(
-                'Состояние навигации',
-                `Готова: ${status.navigationReady ? '✅ Да' : '❌ Нет'}\n` +
-                `Ожидающих: ${status.pendingNavigationsCount}\n` +
-                `Инициализирован: ${status.isInitialized ? '✅ Да' : '❌ Нет'}\n` +
-                `Есть токен: ${status.hasToken ? '✅ Да' : '❌ Нет'}`,
+                'Тест чата',
+                'Для проверки OneSignal уведомлений:\n\n' +
+                '1. Убедитесь что у вас есть OneSignal Player ID\n' +
+                '2. Зайдите в любой чат\n' +
+                '3. Попросите кого-то отправить вам сообщение\n' +
+                '4. Проверьте получение уведомления\n\n' +
+                'Или используйте кнопку "📨 Тест Push"',
                 [{ text: 'OK' }]
             );
             
+            addLog('💡 Показана инструкция для тестирования чата', 'info');
         } catch (error) {
-            addLog(`❌ Ошибка проверки навигации: ${error.message}`, 'error');
-        }
-    };
-
-    // НОВАЯ ФУНКЦИЯ: Принудительная установка навигации
-    const forceSetNavigationReady = async () => {
-        addLog('🔧 Принудительная установка навигации', 'info');
-        
-        try {
-            const pushService = pushNotificationService; // ИСПРАВЛЕНО: Используем синглтон
-            await pushService.initialize();
-            
-            // Принудительно устанавливаем навигацию как готовую
-            pushService.setNavigationReady();
-            
-            // Проверяем результат
-            const status = pushService.getServiceStatus();
-            addLog(`📊 Статус после принудительной установки: ${JSON.stringify({
-                navigationReady: status.navigationReady,
-                pendingNavigationsCount: status.pendingNavigationsCount
-            })}`, 'info');
-            
-            if (status.navigationReady) {
-                addLog('✅ Навигация успешно установлена как готовая', 'success');
-                Alert.alert('Успех', 'Навигация успешно установлена как готовая!');
-            } else {
-                addLog('❌ Не удалось установить навигацию', 'error');
-                Alert.alert('Ошибка', 'Не удалось установить навигацию');
-            }
-            
-        } catch (error) {
-            addLog(`❌ Ошибка принудительной установки навигации: ${error.message}`, 'error');
-        }
-    };
-
-    // НОВАЯ ФУНКЦИЯ: Принудительное обновление токена на сервере
-    const forceUpdateTokenOnServer = async () => {
-        addLog('🔄 Принудительное обновление токена на сервере', 'info');
-        
-        try {
-            const pushService = pushNotificationService;
-            await pushService.initialize();
-            const currentToken = pushService.getCurrentToken();
-            
-            if (!currentToken) {
-                addLog('❌ Нет токена для обновления', 'error');
-                return;
-            }
-            
-            addLog(`🎫 Обновляем токен: ${currentToken.substring(0, 30)}...`, 'info');
-            
-            // ДОБАВЛЕНО: Проверка для Expo Go
-            const isExpoGo = Constants?.executionEnvironment === 'expo' || Constants?.appOwnership === 'expo';
-            if (isExpoGo) {
-                addLog('📱 Expo Go режим - токен обновляется только локально', 'info');
-                await pushService.saveDeviceTokenLocally(currentToken);
-                addLog('✅ Токен обновлен локально для Expo Go', 'success');
-                Alert.alert('Expo Go режим', 'Токен обновлен локально. Для полного тестирования используйте preview сборку.');
-                return;
-            }
-            
-            addLog('🔄 Попытка сохранения токена на сервер...', 'info');
-            const result = await pushService.saveTokenToServerSafe(currentToken, pushService.deviceId, Platform.OS);
-            
-            addLog(`📋 Результат сохранения: ${result}`, 'info');
-            
-            if (result) {
-                addLog('✅ Токен успешно обновлен на сервере', 'success');
-                Alert.alert('Успех', 'Токен успешно обновлен на сервере!');
-            } else {
-                addLog('❌ Не удалось обновить токен на сервере', 'error');
-                Alert.alert('Ошибка', 'Не удалось обновить токен на сервере. Проверьте подключение к интернету.');
-            }
-        } catch (error) {
-            addLog(`❌ Ошибка обновления токена: ${error.message}`, 'error');
-        }
-    };
-
-    // НОВАЯ ФУНКЦИЯ: Тест preview сборки
-    const testPreviewBuild = async () => {
-        addLog('🚀 Тест preview сборки', 'info');
-        
-        try {
-            const pushService = pushNotificationService;
-            await pushService.initialize();
-            
-            // Проверяем определение типа сборки
-            const isStandalone = pushService.isStandaloneBuild();
-            const buildType = process.env.EXPO_PUBLIC_BUILD_TYPE;
-            const isPreview = buildType === 'preview';
-            
-            addLog(`📱 Тип сборки: ${isStandalone ? 'Standalone' : 'Expo Go'}`, 'info');
-            addLog(`🔧 Build Type: ${buildType || 'unknown'}`, 'info');
-            addLog(`🎯 Preview: ${isPreview ? 'Да' : 'Нет'}`, 'info');
-            
-            if (isStandalone && isPreview) {
-                addLog('✅ Preview сборка определена корректно', 'success');
-                
-                // Тестируем получение токена
-                const currentToken = pushService.getCurrentToken();
-                if (currentToken) {
-                    addLog(`✅ Токен получен: ${currentToken.substring(0, 30)}...`, 'success');
-                    
-                    // Тестируем сохранение на сервер
-                    addLog('🔄 Тестируем сохранение токена на сервер...', 'info');
-                    const saved = await pushService.saveTokenToServerSafe(currentToken, pushService.deviceId, Platform.OS);
-                    
-                    if (saved) {
-                        addLog('✅ Токен успешно сохранен на сервере', 'success');
-                    } else {
-                        addLog('❌ Не удалось сохранить токен на сервер', 'error');
-                    }
-                } else {
-                    addLog('❌ Токен не получен', 'error');
-                }
-            } else {
-                addLog('⚠️ Это не preview сборка', 'warning');
-                addLog(`📋 Standalone: ${isStandalone}, Preview: ${isPreview}`, 'info');
-            }
-            
-        } catch (error) {
-            addLog(`❌ Ошибка тестирования preview сборки: ${error.message}`, 'error');
-        }
-    };
-
-    // НОВАЯ ФУНКЦИЯ: Информация о режиме работы
-    const showEnvironmentInfo = () => {
-        const isExpoGo = Constants?.executionEnvironment === 'expo' || Constants?.appOwnership === 'expo';
-        const isPreview = Constants?.buildType === 'preview' || Constants?.executionEnvironment === 'preview';
-        const isStandalone = Constants?.appOwnership === 'standalone';
-        
-        let message = '';
-        let title = '';
-        
-        if (isExpoGo) {
-            title = 'Expo Go режим';
-            message = 'Вы используете Expo Go.\n\n' +
-                     '✅ Push-уведомления работают\n' +
-                     '✅ Токен сохраняется локально\n' +
-                     '⚠️ Серверные функции ограничены\n\n' +
-                     'Для полного тестирования используйте preview сборку.';
-        } else if (isPreview) {
-            title = 'Preview режим';
-            message = 'Вы используете preview сборку.\n\n' +
-                     '✅ Полная функциональность\n' +
-                     '✅ Push-уведомления с сервера\n' +
-                     '✅ Сохранение токенов на сервере';
-        } else if (isStandalone) {
-            title = 'Production режим';
-            message = 'Вы используете production сборку.\n\n' +
-                     '✅ Полная функциональность\n' +
-                     '✅ Push-уведомления с сервера\n' +
-                     '✅ Сохранение токенов на сервере';
-        } else {
-            title = 'Неизвестный режим';
-            message = 'Не удалось определить режим работы.\n\n' +
-                     'Проверьте настройки приложения.';
-        }
-        
-        Alert.alert(title, message, [{ text: 'OK' }]);
-    };
-
-    // НОВАЯ ФУНКЦИЯ: Принудительная остановка цикла
-    const stopNotificationCycle = async () => {
-        addLog('🛑 Принудительная остановка цикла уведомлений', 'info');
-        
-        try {
-            const pushService = pushNotificationService;
-            
-            // Очищаем все уведомления
-            await pushService.clearAllNotifications();
-            addLog('✅ Все уведомления очищены', 'info');
-            
-            // Очищаем обработчики
-            pushService.clearNotificationListeners();
-            addLog('✅ Обработчики очищены', 'info');
-            
-            // Очищаем очередь навигации
-            if (pushService.navigationQueue) {
-                pushService.navigationQueue.length = 0;
-                addLog('✅ Очередь навигации очищена', 'info');
-            }
-            
-            addLog('✅ Цикл уведомлений остановлен', 'success');
-            Alert.alert('Успех', 'Цикл уведомлений остановлен');
-        } catch (error) {
-            addLog(`❌ Ошибка остановки цикла: ${error.message}`, 'error');
-        }
-    };
-
-    // НОВАЯ ФУНКЦИЯ: Переинициализация обработчиков
-    const reinitializeHandlers = async () => {
-        addLog('🔄 Переинициализация обработчиков уведомлений', 'info');
-        
-        try {
-            const pushService = pushNotificationService;
-            
-            // Сначала очищаем старые обработчики
-            pushService.clearNotificationListeners();
-            addLog('✅ Старые обработчики очищены', 'info');
-            
-            // Затем настраиваем новые
-            setTimeout(() => {
-                pushService.setupNotificationListeners();
-                addLog('✅ Новые обработчики настроены', 'success');
-                Alert.alert('Успех', 'Обработчики уведомлений переинициализированы');
-            }, 200);
-            
-        } catch (error) {
-            addLog(`❌ Ошибка переинициализации: ${error.message}`, 'error');
-        }
-    };
-
-    // НОВАЯ ФУНКЦИЯ: Очистка обработчиков уведомлений
-    const clearNotificationHandlers = async () => {
-        addLog('🧹 Очистка обработчиков уведомлений', 'info');
-        
-        try {
-            const pushService = pushNotificationService;
-            pushService.clearNotificationListeners();
-            addLog('✅ Обработчики уведомлений очищены', 'success');
-            Alert.alert('Успех', 'Обработчики уведомлений очищены');
-        } catch (error) {
-            addLog(`❌ Ошибка очистки обработчиков: ${error.message}`, 'error');
-        }
-    };
-
-    // НОВАЯ ФУНКЦИЯ: Проверка соответствия токенов
-    const checkTokenConsistency = async () => {
-        addLog('🔍 Проверка соответствия токенов', 'info');
-        
-        try {
-            const pushService = pushNotificationService;
-            await pushService.initialize();
-            const currentToken = pushService.getCurrentToken();
-            
-            if (!currentToken) {
-                addLog('❌ Нет локального токена', 'error');
-                return;
-            }
-            
-            addLog(`🎫 Локальный токен: ${currentToken.substring(0, 30)}...`, 'info');
-            
-            // ДОБАВЛЕНО: Проверка для Expo Go
-            const isExpoGo = Constants?.executionEnvironment === 'expo' || Constants?.appOwnership === 'expo';
-            if (isExpoGo) {
-                addLog('📱 Expo Go режим - токен сохранен только локально', 'info');
-                Alert.alert(
-                    'Expo Go режим',
-                    'В Expo Go токен сохраняется только локально.\n\n' +
-                    'Для полного тестирования push-уведомлений используйте preview или production сборку.',
-                    [{ text: 'OK' }]
-                );
-                return;
-            }
-            
-            // Получаем токены с сервера
-            const serverTokensResponse = await checkServerTokens();
-            const serverTokens = serverTokensResponse.data || [];
-            
-            if (serverTokens.length === 0) {
-                addLog('❌ Нет токенов на сервере', 'error');
-                Alert.alert('Предупреждение', 'На сервере нет токенов. Попробуйте обновить токен.');
-                return;
-            }
-            
-            // Проверяем соответствие
-            const matchingToken = serverTokens.find(token => 
-                token.token === currentToken || 
-                (token.token && token.token.startsWith(currentToken.substring(0, 20)))
-            );
-            
-            if (matchingToken) {
-                addLog('✅ Токен найден на сервере', 'success');
-                addLog(`📋 Серверный токен: ${matchingToken.token.substring(0, 30)}...`, 'info');
-                Alert.alert('Успех', 'Токен найден на сервере!');
-            } else {
-                addLog('❌ Токен НЕ найден на сервере', 'error');
-                addLog(`📋 Доступные токены на сервере:`, 'info');
-                serverTokens.forEach((token, index) => {
-                    addLog(`   ${index + 1}. ${token.token.substring(0, 30)}...`, 'info');
-                });
-                Alert.alert(
-                    'Проблема', 
-                    'Локальный токен не найден на сервере!\n\n' +
-                    'Это означает, что push-уведомления не будут работать.\n\n' +
-                    'Попробуйте обновить токен.',
-                    [
-                        { text: 'OK' },
-                        { text: 'Обновить токен', onPress: forceUpdateTokenOnServer }
-                    ]
-                );
-            }
-            
-        } catch (error) {
-            addLog(`❌ Ошибка проверки токенов: ${error.message}`, 'error');
-        }
-    };
-
-    // НОВАЯ ФУНКЦИЯ: Принудительное получение нового токена
-    const forceGetNewToken = async () => {
-        addLog('🔄 Принудительное получение нового токена', 'info');
-        
-        try {
-            const pushService = pushNotificationService;
-            await pushService.initialize();
-            
-            // Принудительно получаем новый токен
-            const newToken = await pushService.registerForPushNotificationsAsync();
-            
-            if (newToken) {
-                addLog(`✅ Новый токен получен: ${newToken.substring(0, 30)}...`, 'success');
-                
-                // Пытаемся сохранить на сервер
-                try {
-                    const saved = await pushService.saveTokenToServerSafe(newToken, pushService.deviceId, 'android');
-                    if (saved) {
-                        addLog('✅ Новый токен сохранен на сервере', 'success');
-                        Alert.alert('Успех', 'Новый токен получен и сохранен на сервере!');
-                    } else {
-                        addLog('⚠️ Токен получен, но не сохранен на сервере', 'warning');
-                        Alert.alert('Предупреждение', 'Новый токен получен, но не удалось сохранить на сервер.');
-                    }
-                } catch (saveError) {
-                    addLog(`❌ Ошибка сохранения нового токена: ${saveError.message}`, 'error');
-                    Alert.alert('Ошибка', `Не удалось сохранить новый токен: ${saveError.message}`);
-                }
-            } else {
-                addLog('❌ Не удалось получить новый токен', 'error');
-                Alert.alert('Ошибка', 'Не удалось получить новый токен.');
-            }
-            
-        } catch (error) {
-            addLog(`❌ Ошибка получения нового токена: ${error.message}`, 'error');
-            Alert.alert('Ошибка', error.message);
-        }
-    };
-
-    // ДОБАВЛЕНО: Функция для загрузки и отображения сохраненных логов
-    const loadSavedLogs = async () => {
-        try {
-            const files = await FileSystem.readDirectoryAsync(FileSystem.documentDirectory);
-            const logFiles = files.filter(file => file.startsWith('push-diagnostic-logs-'));
-            
-            if (logFiles.length === 0) {
-                addLog('📁 Сохраненных логов не найдено');
-                return;
-            }
-
-            // Берем самый новый файл
-            const latestLogFile = logFiles.sort().reverse()[0];
-            const logContent = await FileSystem.readAsStringAsync(
-                FileSystem.documentDirectory + latestLogFile
-            );
-
-            addLog(`📁 Загружен файл: ${latestLogFile}`);
-            addLog(`📄 Размер файла: ${logContent.length} символов`);
-            addLog('📋 СОДЕРЖИМОЕ ЛОГА:');
-            addLog('='.repeat(50));
-            
-            // Разбиваем на строки и добавляем в логи
-            const lines = logContent.split('\n');
-            lines.forEach((line, index) => {
-                if (line.trim()) {
-                    addLog(`${index + 1}: ${line}`);
-                }
-            });
-            
-            addLog('='.repeat(50));
-            addLog('✅ Логи загружены успешно');
-
-        } catch (error) {
-            addLog(`❌ Ошибка загрузки логов: ${error.message}`);
-        }
-    };
-
-    // ДОБАВЛЕНО: Функция для очистки старых логов
-    const clearOldLogs = async () => {
-        try {
-            const files = await FileSystem.readDirectoryAsync(FileSystem.documentDirectory);
-            const logFiles = files.filter(file => file.startsWith('push-diagnostic-logs-'));
-            
-            if (logFiles.length === 0) {
-                addLog('📁 Старых логов не найдено');
-                return;
-            }
-
-            // Удаляем все старые логи кроме самого нового
-            const sortedFiles = logFiles.sort().reverse();
-            const filesToDelete = sortedFiles.slice(1); // Оставляем только самый новый
-
-            for (const file of filesToDelete) {
-                await FileSystem.deleteAsync(FileSystem.documentDirectory + file);
-                addLog(`🗑️ Удален файл: ${file}`);
-            }
-
-            addLog(`✅ Очищено ${filesToDelete.length} старых логов`);
-
-        } catch (error) {
-            addLog(`❌ Ошибка очистки логов: ${error.message}`);
+            addLog(`❌ Ошибка: ${error.message}`, 'error');
         }
     };
 
@@ -1174,185 +420,58 @@ export const PushNotificationDiagnostic = () => {
         </View>
     );
 
-    const renderTestResult = (testName, result) => {
-        if (!result) return null;
-        
-        return (
-            <View style={styles.item}>
-                <Text style={styles.label}>{testName}:</Text>
-                <Text style={[styles.value, { color: result.success ? '#34C759' : '#FF3B30' }]}>
-                    {result.success ? '✅ Успешно' : `❌ Ошибка: ${result.error}`}
-                </Text>
-            </View>
-        );
-    };
-
     useEffect(() => {
-        runDiagnostic();
+        runOneSignalDiagnostic();
         checkServerTokens();
     }, []);
 
     return (
         <ScrollView style={styles.container}>
-            <Text style={styles.title}>🔔 Push Notifications Diagnostic</Text>
+            <Text style={styles.title}>🔔 OneSignal Diagnostic</Text>
             
             <View style={styles.buttonContainer}>
-                <TouchableOpacity style={styles.button} onPress={runDiagnostic} disabled={loading}>
+                <TouchableOpacity style={styles.button} onPress={runOneSignalDiagnostic} disabled={loading}>
                     <Text style={styles.buttonText}>
-                        {loading ? 'Проверка...' : '🔄 Обновить'}
+                        {loading ? 'Проверка...' : '🔄 Диагностика'}
                     </Text>
                 </TouchableOpacity>
                 
-                <TouchableOpacity style={styles.button} onPress={requestPermissions}>
-                    <Text style={styles.buttonText}>🔐 Разрешения</Text>
+                <TouchableOpacity style={[styles.button, { backgroundColor: '#34C759' }]} onPress={initializeOneSignal}>
+                    <Text style={styles.buttonText}>🚀 Инициализация</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                    style={[styles.button, { backgroundColor: '#27AE60' }]}
-                    onPress={checkNotificationSettings}
-                >
-                    <Text style={styles.buttonText}>⚙️ Настройки</Text>
+                <TouchableOpacity style={[styles.button, { backgroundColor: '#FF9500' }]} onPress={initializeOneSignalForUser}>
+                    <Text style={styles.buttonText}>👤 Для пользователя</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.testButton} onPress={checkServerTokens}>
-                    <Text style={styles.buttonText}>📋 Токены</Text>
+                <TouchableOpacity style={[styles.button, { backgroundColor: '#9B59B6' }]} onPress={getOneSignalPlayerId}>
+                    <Text style={styles.buttonText}>🎫 Player ID</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                    style={[styles.button, { backgroundColor: '#FF9500' }]}
-                    onPress={forceGetNewToken}
-                >
-                    <Text style={styles.buttonText}>🔄 Новый токен</Text>
+                <TouchableOpacity style={[styles.button, { backgroundColor: '#3498DB' }]} onPress={forceTokenRegistration}>
+                    <Text style={styles.buttonText}>🔄 Регистрация</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                    style={[styles.button, { backgroundColor: '#FF3B30' }]}
-                    onPress={checkTokenConsistency}
-                >
-                    <Text style={styles.buttonText}>🔍 Проверить токен</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={[styles.button, { backgroundColor: '#9B59B6' }]}
-                    onPress={testPreviewBuild}
-                >
-                    <Text style={styles.buttonText}>🚀 Preview тест</Text>
+                <TouchableOpacity style={[styles.button, { backgroundColor: '#E74C3C' }]} onPress={sendTestPushNotification}>
+                    <Text style={styles.buttonText}>📨 Тест Push</Text>
                 </TouchableOpacity>
             </View>
 
             <View style={styles.buttonContainer}>
-                <TouchableOpacity
-                    style={[styles.button, styles.testButton]}
-                    onPress={testLocalNotification}
-                >
-                    <Text style={styles.buttonText}>🧪 Локальное</Text>
+                <TouchableOpacity style={[styles.button, { backgroundColor: '#27AE60' }]} onPress={setUserTags}>
+                    <Text style={styles.buttonText}>🏷️ Теги</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                    style={[styles.button, styles.testButton]}
-                    onPress={testServerNotification}
-                >
-                    <Text style={styles.buttonText}>📡 Серверное</Text>
+                <TouchableOpacity style={[styles.button, { backgroundColor: '#F39C12' }]} onPress={checkServerTokens}>
+                    <Text style={styles.buttonText}>📋 Токены сервера</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                    style={[styles.button, { backgroundColor: '#FF6B35' }]}
-                    onPress={testServerPushNotification}
-                >
-                    <Text style={styles.buttonText}>🚀 Push тест</Text>
+                <TouchableOpacity style={[styles.button, { backgroundColor: '#8E44AD' }]} onPress={testChatMessage}>
+                    <Text style={styles.buttonText}>💬 Тест чата</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                    style={[styles.button, { backgroundColor: '#8E44AD' }]}
-                    onPress={testNotificationHandling}
-                >
-                    <Text style={styles.buttonText}>🔔 Обработка</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={[styles.button, { backgroundColor: '#9B59B6' }]}
-                    onPress={testRealTimeNotifications}
-                >
-                    <Text style={styles.buttonText}>🔔 Получение</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={[styles.button, { backgroundColor: '#3498DB' }]}
-                    onPress={testReceivePushNotification}
-                >
-                    <Text style={styles.buttonText}>📨 Получить</Text>
-                </TouchableOpacity>
-            </View>
-
-            <View style={styles.buttonContainer}>
-                <TouchableOpacity
-                    style={[styles.button, { backgroundColor: '#E67E22' }]}
-                    onPress={fixNavigation}
-                >
-                    <Text style={styles.buttonText}>🔧 Навигация</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={[styles.button, { backgroundColor: '#9B59B6' }]}
-                    onPress={checkNavigationState}
-                >
-                    <Text style={styles.buttonText}>🧭 Навигация</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={[styles.button, { backgroundColor: '#E74C3C' }]}
-                    onPress={forceSetNavigationReady}
-                >
-                    <Text style={styles.buttonText}>🔧 Установить</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={[styles.button, { backgroundColor: '#27AE60' }]}
-                    onPress={testPreviewBuild}
-                >
-                    <Text style={styles.buttonText}>🚀 Preview тест</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={[styles.button, { backgroundColor: '#FF9500' }]}
-                    onPress={forceUpdateTokenOnServer}
-                >
-                    <Text style={styles.buttonText}>🔄 Обновить токен</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={[styles.button, { backgroundColor: '#FF9500' }]}
-                    onPress={loadSavedLogs}
-                >
-                    <Text style={styles.buttonText}>📁 Загрузить</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={[styles.button, { backgroundColor: '#FF3B30' }]}
-                    onPress={clearNotificationHandlers}
-                >
-                    <Text style={styles.buttonText}>🧹 Очистить обработчики</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={[styles.button, { backgroundColor: '#27AE60' }]}
-                    onPress={reinitializeHandlers}
-                >
-                    <Text style={styles.buttonText}>🔄 Переинициализировать</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={[styles.button, { backgroundColor: '#FF3B30' }]}
-                    onPress={stopNotificationCycle}
-                >
-                    <Text style={styles.buttonText}>🛑 Остановить цикл</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={[styles.button, { backgroundColor: '#3498DB' }]}
-                    onPress={showEnvironmentInfo}
-                >
-                    <Text style={styles.buttonText}>ℹ️ Режим работы</Text>
+                <TouchableOpacity style={[styles.button, { backgroundColor: '#E67E22' }]} onPress={clearOneSignalContext}>
+                    <Text style={styles.buttonText}>🧹 Очистить</Text>
                 </TouchableOpacity>
             </View>
 
@@ -1378,115 +497,26 @@ export const PushNotificationDiagnostic = () => {
                         </View>
                     )}
 
-                    {diagnosticData.constants && (
+                    {diagnosticData.app && (
                         <View>
-                            <Text style={styles.subTitle}>⚙️ Constants:</Text>
-                            {Object.entries(diagnosticData.constants).map(([key, value]) => 
+                            <Text style={styles.subTitle}>🏗️ Приложение:</Text>
+                            {Object.entries(diagnosticData.app).map(([key, value]) => 
                                 <View key={key}>{renderValue(value, key)}</View>
                             )}
                         </View>
                     )}
 
-                    {diagnosticData.permissions && (
+                    {diagnosticData.oneSignalService && (
                         <View>
-                            <Text style={styles.subTitle}>🔐 Разрешения:</Text>
-                            {renderValue(diagnosticData.permissions, 'permissions')}
+                            <Text style={styles.subTitle}>🔔 OneSignal Service:</Text>
+                            {renderValue(diagnosticData.oneSignalService, 'OneSignal Status')}
                         </View>
                     )}
 
-                    {diagnosticData.permissionStatus && (
+                    {diagnosticData.pushService && (
                         <View>
-                            <Text style={styles.subTitle}>📋 Статус разрешений:</Text>
-                            {Object.entries(diagnosticData.permissionStatus).map(([key, value]) => 
-                                <View key={key}>{renderValue(value, key)}</View>
-                            )}
-                        </View>
-                    )}
-
-                    {diagnosticData.projectIdUsed && (
-                        <View>
-                            <Text style={styles.subTitle}>🔑 Project ID:</Text>
-                            {renderValue(diagnosticData.projectIdUsed, 'Used Project ID')}
-                        </View>
-                    )}
-
-                    {diagnosticData.expoPushToken && (
-                        <View>
-                            <Text style={styles.subTitle}>🎫 Expo Push Token:</Text>
-                            {renderValue(diagnosticData.expoPushToken, 'Expo Token')}
-                        </View>
-                    )}
-
-                    {diagnosticData.devicePushToken && (
-                        <View>
-                            <Text style={styles.subTitle}>📱 Device Push Token:</Text>
-                            {renderValue(diagnosticData.devicePushToken, 'Device Token')}
-                        </View>
-                    )}
-
-                    {diagnosticData.localStorage && (
-                        <View>
-                            <Text style={styles.subTitle}>💾 Локальное хранилище:</Text>
-                            {renderValue(diagnosticData.localStorage, 'Local Storage')}
-                        </View>
-                    )}
-
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>🔧 Service Status:</Text>
-                        <Text style={styles.infoText}>
-                            {JSON.stringify(diagnosticData.serviceStatus, null, 2)}
-                        </Text>
-                        <TouchableOpacity 
-                            style={styles.button} 
-                            onPress={reinitializeService}
-                            disabled={loading}
-                        >
-                            <Text style={styles.buttonText}>
-                                {loading ? 'Переинициализация...' : '🔄 Переинициализировать сервис'}
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-
-                    {/* НОВАЯ СЕКЦИЯ: Информация о навигации */}
-                    {diagnosticData.serviceStatus && (
-                        <View style={styles.section}>
-                            <Text style={styles.sectionTitle}>🧭 Навигация:</Text>
-                            <View style={styles.item}>
-                                <Text style={styles.label}>Готова к работе:</Text>
-                                <Text style={[styles.value, { 
-                                    color: diagnosticData.serviceStatus.navigationReady ? '#34C759' : '#FF3B30' 
-                                }]}>
-                                    {diagnosticData.serviceStatus.navigationReady ? '✅ Да' : '❌ Нет'}
-                                </Text>
-                            </View>
-                            <View style={styles.item}>
-                                <Text style={styles.label}>Ожидающих навигаций:</Text>
-                                <Text style={styles.value}>
-                                    {diagnosticData.serviceStatus.pendingNavigationsCount || 0}
-                                </Text>
-                            </View>
-                            <View style={styles.item}>
-                                <Text style={styles.label}>Последняя ошибка:</Text>
-                                <Text style={styles.value}>
-                                    {diagnosticData.serviceStatus.lastError || 'Нет ошибок'}
-                                </Text>
-                            </View>
-                        </View>
-                    )}
-
-                    {diagnosticData.notificationChannels && (
-                        <View>
-                            <Text style={styles.subTitle}>📢 Каналы уведомлений:</Text>
-                            {renderValue(diagnosticData.notificationChannels, 'Channels')}
-                        </View>
-                    )}
-
-                    {Object.keys(testResults).length > 0 && (
-                        <View>
-                            <Text style={styles.subTitle}>🧪 Результаты тестов:</Text>
-                            {Object.entries(testResults).map(([testName, result]) => 
-                                <View key={testName}>{renderTestResult(testName, result)}</View>
-                            )}
+                            <Text style={styles.subTitle}>📬 Push Service:</Text>
+                            {renderValue(diagnosticData.pushService, 'Push Service Status')}
                         </View>
                     )}
 
@@ -1497,9 +527,12 @@ export const PushNotificationDiagnostic = () => {
                                 <View key={index} style={styles.item}>
                                     <Text style={styles.label}>Токен {index + 1}:</Text>
                                     <Text style={styles.value}>
-                                        {token.token?.substring(0, 50)}...
+                                        Тип: {token.tokenType || 'unknown'}
                                     </Text>
                                     <Text style={styles.value}>
+                                        Токен: {token.token?.substring(0, 50)}...
+                                    </Text>
+                                    <Text style={[styles.value, { color: token.isActive ? '#34C759' : '#FF3B30' }]}>
                                         Активен: {token.isActive ? '✅' : '❌'}
                                     </Text>
                                 </View>
@@ -1509,99 +542,72 @@ export const PushNotificationDiagnostic = () => {
 
                     {diagnosticData.generalError && (
                         <View>
-                            <Text style={styles.errorTitle}>❌ Общая ошибка:</Text>
+                            <Text style={styles.errorTitle}>❌ Ошибка:</Text>
                             {renderValue(diagnosticData.generalError, 'Error')}
                         </View>
                     )}
-
-                    {/* НОВАЯ СЕКЦИЯ: Логи */}
-                    <View style={styles.section}>
-                        <View style={styles.sectionHeader}>
-                            <Text style={styles.sectionTitle}>📋 Логи:</Text>
-                            <View style={styles.logsHeaderButtons}>
-                                <TouchableOpacity
-                                    style={styles.copyLogsButton}
-                                    onPress={copyLogsToClipboard}
-                                    disabled={logs.length === 0}
-                                >
-                                    <Text style={styles.copyLogsButtonText}>
-                                        📋
-                                    </Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={styles.clearLogsButton}
-                                    onPress={clearLogs}
-                                    disabled={logs.length === 0}
-                                >
-                                    <Text style={styles.clearLogsButtonText}>
-                                        🗑️
-                                    </Text>
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-                        
-                        <View style={styles.logsActionsContainer}>
-                            <TouchableOpacity
-                                style={[styles.button, { backgroundColor: '#007AFF', flex: 1, marginRight: 4 }]}
-                                onPress={saveLogsToFile}
-                                disabled={logs.length === 0}
-                            >
-                                <Text style={styles.buttonText}>
-                                    💾 Сохранить
-                                </Text>
-                            </TouchableOpacity>
-                            
-                            <TouchableOpacity
-                                style={[styles.button, { backgroundColor: '#FF3B30', flex: 1, marginLeft: 4 }]}
-                                onPress={clearOldLogs}
-                                disabled={logs.length === 0}
-                            >
-                                <Text style={styles.buttonText}>
-                                    🗑️ Старые
-                                </Text>
-                            </TouchableOpacity>
-                        </View>
-
-                        <Text style={styles.logCount}>
-                            Записей в логе: {logs.length}
-                        </Text>
-
-                        <View style={styles.logsContainer}>
-                            <ScrollView 
-                                style={styles.logsScrollView} 
-                                nestedScrollEnabled 
-                                showsVerticalScrollIndicator={true}
-                                contentContainerStyle={styles.logsContentContainer}
-                            >
-                                {logs.length === 0 ? (
-                                    <Text style={styles.noLogsText}>
-                                        Нет логов. Запустите тесты для создания логов.
-                                    </Text>
-                                ) : (
-                                    logs.map((log, index) => (
-                                        <View key={index} style={[
-                                            styles.logListItem,
-                                            { borderLeftColor: getLogColor(log.type) }
-                                        ]}>
-                                            <View style={styles.logItemHeader}>
-                                                <Text style={styles.logItemTimestamp}>
-                                                    {new Date(log.timestamp).toLocaleTimeString()}
-                                                </Text>
-                                                <Text style={styles.logItemType}>
-                                                    {log.type.toUpperCase()}
-                                                </Text>
-                                            </View>
-                                            <Text style={styles.logItemMessage}>
-                                                {log.message}
-                                            </Text>
-                                        </View>
-                                    ))
-                                )}
-                            </ScrollView>
-                        </View>
-                    </View>
                 </View>
             )}
+
+            {/* Логи */}
+            <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>📋 Логи:</Text>
+                    <View style={styles.logsHeaderButtons}>
+                        <TouchableOpacity
+                            style={styles.copyLogsButton}
+                            onPress={copyLogsToClipboard}
+                            disabled={logs.length === 0}
+                        >
+                            <Text style={styles.copyLogsButtonText}>📋</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.clearLogsButton}
+                            onPress={clearLogs}
+                            disabled={logs.length === 0}
+                        >
+                            <Text style={styles.clearLogsButtonText}>🗑️</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+                
+                <Text style={styles.logCount}>
+                    Записей в логе: {logs.length}
+                </Text>
+
+                <View style={styles.logsContainer}>
+                    <ScrollView 
+                        style={styles.logsScrollView} 
+                        nestedScrollEnabled 
+                        showsVerticalScrollIndicator={true}
+                    >
+                        {logs.length === 0 ? (
+                            <Text style={styles.noLogsText}>
+                                Нет логов. Запустите тесты для создания логов.
+                            </Text>
+                        ) : (
+                            logs.map((log, index) => (
+                                <View key={index} style={[
+                                    styles.logListItem,
+                                    { borderLeftColor: getLogColor(log.type) }
+                                ]}>
+                                    <View style={styles.logItemHeader}>
+                                        <Text style={styles.logItemTimestamp}>
+                                            {new Date(log.timestamp).toLocaleTimeString()}
+                                        </Text>
+                                        <Text style={styles.logItemType}>
+                                            {log.type.toUpperCase()}
+                                        </Text>
+                                    </View>
+                                    <Text style={styles.logItemMessage}>
+                                        {log.message}
+                                    </Text>
+                                </View>
+                            ))
+                        )}
+                    </ScrollView>
+                </View>
+            </View>
         </ScrollView>
     );
 };
@@ -1633,14 +639,6 @@ const styles = StyleSheet.create({
         maxWidth: 120,
         marginBottom: 6
     },
-    testButton: {
-        backgroundColor: '#34C759',
-        padding: 10,
-        borderRadius: 6,
-        minWidth: 80,
-        maxWidth: 120,
-        marginBottom: 6
-    },
     buttonText: {
         color: 'white',
         textAlign: 'center',
@@ -1664,17 +662,6 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         marginBottom: 12
-    },
-    clearLogsButton: {
-        backgroundColor: '#FF3B30',
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 4
-    },
-    clearLogsButtonText: {
-        color: 'white',
-        fontSize: 10,
-        fontWeight: 'bold'
     },
     subTitle: {
         fontSize: 14,
@@ -1707,12 +694,6 @@ const styles = StyleSheet.create({
         color: '#666',
         fontFamily: 'monospace'
     },
-    infoText: {
-        fontSize: 14,
-        color: '#555',
-        marginBottom: 10,
-        fontFamily: 'monospace'
-    },
     logCount: {
         fontSize: 14,
         color: '#555',
@@ -1720,7 +701,6 @@ const styles = StyleSheet.create({
         marginBottom: 8,
         textAlign: 'center'
     },
-
     logsHeaderButtons: {
         flexDirection: 'row',
         gap: 4
@@ -1736,9 +716,16 @@ const styles = StyleSheet.create({
         fontSize: 10,
         fontWeight: 'bold'
     },
-    logsActionsContainer: {
-        flexDirection: 'row',
-        marginBottom: 12
+    clearLogsButton: {
+        backgroundColor: '#FF3B30',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 4
+    },
+    clearLogsButtonText: {
+        color: 'white',
+        fontSize: 10,
+        fontWeight: 'bold'
     },
     logsContainer: {
         height: 300,
@@ -1752,10 +739,6 @@ const styles = StyleSheet.create({
     logsScrollView: {
         flex: 1,
         backgroundColor: '#ffffff'
-    },
-    logsContentContainer: {
-        padding: 8,
-        paddingBottom: 16
     },
     noLogsText: {
         textAlign: 'center',
@@ -1797,24 +780,7 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: '#333',
         lineHeight: 16
-    },
-    logEntry: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 4,
-        paddingHorizontal: 8,
-        borderRadius: 2,
-        marginBottom: 2
-    },
-    logTimestamp: {
-        fontSize: 10,
-        color: '#888',
-        marginRight: 8
-    },
-    logMessage: {
-        fontSize: 12,
-        color: '#333'
     }
 });
 
-export default PushNotificationDiagnostic; 
+export default PushNotificationDiagnostic;

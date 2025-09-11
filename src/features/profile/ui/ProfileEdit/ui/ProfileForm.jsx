@@ -25,12 +25,21 @@ const ProfileFormComponent = ({
     const [formErrors, setFormErrors] = useState({});
     const [hasOpenDropdown, setHasOpenDropdown] = useState(false); // Отслеживаем открытые dropdown
     const renderCountRef = useRef(0);
+    const isFormInitializedRef = useRef(false); // Флаг для отслеживания инициализации формы
 
     const handleOptimizedScroll = useCallback((event) => {
         if (onScroll) {
             onScroll(event);
         }
     }, [onScroll]);
+
+    // Очищаем состояние при изменении userType
+    useEffect(() => {
+        isFormInitializedRef.current = false;
+        renderCountRef.current = 0;
+        setFormValues({});
+        setFormErrors({});
+    }, [userType]);
 
     useEffect(() => {
         renderCountRef.current += 1;
@@ -43,35 +52,77 @@ const ProfileFormComponent = ({
                 gender: initialValues.gender || 'MALE'
             };
 
-            if (isInitialRender) {
-                logData('ProfileForm: Установка начальных значений формы', {
-                    userType,
-                    initialValues,
-                    valuesWithDefaults,
-                    initialValuesKeys: Object.keys(initialValues),
-                    gender: initialValues.gender,
-                    finalGender: valuesWithDefaults.gender
-                });
-            }
-            setFormValues(valuesWithDefaults);
+            // Инициализируем форму начальными значениями только при первом рендере
+            // или если форма еще не была инициализирована
+            if (isInitialRender || !isFormInitializedRef.current) {
+                if (__DEV__) {
+                    console.log('ProfileForm: Установка начальных значений формы', {
+                        userType,
+                        gender: valuesWithDefaults.gender,
+                        isInitialRender,
+                        isFormInitialized: isFormInitializedRef.current
+                    });
+                }
 
-            // Для отладки gender поля
-            if (valuesWithDefaults.gender) {
-                console.log('ProfileForm: gender set in formValues', {
-                    gender: valuesWithDefaults.gender,
-                    formValuesGender: valuesWithDefaults.gender
+                setFormValues(valuesWithDefaults);
+                isFormInitializedRef.current = true; // Помечаем форму как инициализированную
+
+                // Для отладки gender поля
+                if (__DEV__ && valuesWithDefaults.gender) {
+                    console.log('ProfileForm: gender set in formValues', {
+                        gender: valuesWithDefaults.gender
+                    });
+                }
+            } else {
+                // Для последующих обновлений initialValues, обновляем только отсутствующие поля
+                // Это предотвратит потерю значений districts и warehouseId при повторных инициализациях
+                setFormValues(prevValues => {
+                    const updatedValues = { ...prevValues };
+                    let hasChanges = false;
+
+                    // Обновляем только те поля, которые отсутствуют в текущем состоянии формы
+                    Object.keys(valuesWithDefaults).forEach(key => {
+                        if (updatedValues[key] === undefined || updatedValues[key] === null) {
+                            if (key === 'districts' && Array.isArray(valuesWithDefaults[key])) {
+                                updatedValues[key] = [...valuesWithDefaults[key]];
+                                hasChanges = true;
+                            } else if (key === 'warehouseId' && valuesWithDefaults[key] !== null) {
+                                updatedValues[key] = valuesWithDefaults[key];
+                                hasChanges = true;
+                            } else if (key !== 'districts' && key !== 'warehouseId') {
+                                updatedValues[key] = valuesWithDefaults[key];
+                                hasChanges = true;
+                            }
+                        }
+                    });
+
+                    // Всегда обновляем gender если он изменился на валидное значение
+                    if (valuesWithDefaults.gender && valuesWithDefaults.gender !== updatedValues.gender) {
+                        updatedValues.gender = valuesWithDefaults.gender;
+                        hasChanges = true;
+                    }
+
+                    // Логируем обновление значений для отладки только если есть изменения
+                    if (__DEV__ && hasChanges && userType === 'employee') {
+                        console.log('ProfileForm: Обновление значений для employee', {
+                            districts: updatedValues.districts,
+                            warehouseId: updatedValues.warehouseId
+                        });
+                    }
+
+                    return hasChanges ? updatedValues : prevValues;
                 });
             }
         }
-    }, [initialValues, userType]);
+    }, [initialValues, userType]); // Убрали formValues из зависимостей
 
     const handleFieldChange = useCallback((fieldId, value) => {
-        // Для отладки gender поля
-        if (fieldId === 'gender') {
-            console.log('ProfileForm: handleFieldChange for gender', {
+        // Для отладки gender поля и полей сотрудника (только в dev режиме)
+        if (__DEV__ && (fieldId === 'gender' || (userType === 'employee' && (fieldId === 'districts' || fieldId === 'warehouseId')))) {
+            console.log('ProfileForm: handleFieldChange', {
                 fieldId,
                 value,
-                valueType: typeof value
+                userType
             });
         }
 
@@ -84,7 +135,7 @@ const ProfileFormComponent = ({
             ...prev,
             [fieldId]: null
         }));
-    }, []);
+    }, [userType]);
 
     const validateForm = useCallback(() => {
         const errors = {};
@@ -105,8 +156,18 @@ const ProfileFormComponent = ({
         });
 
         setFormErrors(errors);
+
+        // Для отладки валидации employee
+        if (__DEV__ && userType === 'employee' && !isValid) {
+            console.log('ProfileForm: Ошибки валидации employee', {
+                errors,
+                districts: formValues.districts,
+                warehouseId: formValues.warehouseId
+            });
+        }
+
         return isValid;
-    }, [formValues, fieldsConfig]);
+    }, [formValues, fieldsConfig, userType]);
 
     const handleSave = useCallback(() => {
         if (validateForm()) {
@@ -115,6 +176,15 @@ const ProfileFormComponent = ({
                 gender: formValues.gender,
                 formValuesKeys: Object.keys(formValues)
             });
+
+            // Специальная отладка для employee
+            if (__DEV__ && userType === 'employee') {
+                console.log('ProfileForm: Отправка данных employee', {
+                    districts: formValues.districts,
+                    warehouseId: formValues.warehouseId
+                });
+            }
+
             onSave(formValues);
         } else {
             logData('ProfileForm: Ошибка валидации формы', {
@@ -122,8 +192,16 @@ const ProfileFormComponent = ({
                 formValues,
                 gender: formValues.gender
             });
+
+            // Специальная отладка для employee при ошибке валидации
+            if (__DEV__ && userType === 'employee') {
+                console.log('ProfileForm: Ошибка валидации для employee', {
+                    districts: formValues.districts,
+                    warehouseId: formValues.warehouseId
+                });
+            }
         }
-    }, [validateForm, formValues, onSave]);
+    }, [validateForm, formValues, onSave, userType]);
 
     const sortedFields = useMemo(() => {
         return Object.keys(fieldsConfig)
@@ -151,12 +229,10 @@ const ProfileFormComponent = ({
             <View style={styles.formContainer}>
                 {sortedFields.map(field => {
                     // Для отладки gender поля
-                    if (field.id === 'gender') {
+                    if (__DEV__ && field.id === 'gender') {
                         console.log('ProfileForm: Rendering gender field', {
-                            field,
                             value: formValues[field.id],
-                            formValuesGender: formValues.gender,
-                            fieldOptions: field.options
+                            formValuesGender: formValues.gender
                         });
                     }
                     return (
@@ -170,7 +246,6 @@ const ProfileFormComponent = ({
                             extraOptions={getExtraOptions(field.id)}
                             error={formErrors[field.id]}
                             scrollViewRef={scrollViewRef}
-                            onDropdownToggle={setHasOpenDropdown}
                         />
                     );
                 })}
@@ -185,14 +260,17 @@ const ProfileFormComponent = ({
 };
 
 const ProfileForm = React.memo(ProfileFormComponent, (prevProps, nextProps) => {
+    // Простая оптимизация - сравниваем основные пропсы
     return (
         prevProps.userType === nextProps.userType &&
         prevProps.isSaving === nextProps.isSaving &&
-        JSON.stringify(prevProps.initialValues) === JSON.stringify(nextProps.initialValues) &&
-        JSON.stringify(prevProps.editableFields) === JSON.stringify(nextProps.editableFields) &&
         prevProps.onSave === nextProps.onSave &&
         prevProps.onScroll === nextProps.onScroll &&
-        prevProps.toggleFieldEditable === nextProps.toggleFieldEditable
+        prevProps.toggleFieldEditable === nextProps.toggleFieldEditable &&
+        prevProps.scrollViewRef === nextProps.scrollViewRef &&
+        JSON.stringify(prevProps.initialValues) === JSON.stringify(nextProps.initialValues) &&
+        JSON.stringify(prevProps.editableFields) === JSON.stringify(nextProps.editableFields) &&
+        JSON.stringify(prevProps.extraData) === JSON.stringify(nextProps.extraData)
     );
 });
 

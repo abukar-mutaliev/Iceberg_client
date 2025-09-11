@@ -123,12 +123,6 @@ export const AddStopScreen = ({ navigation, route }) => {
         // Получаем и обрабатываем параметры маршрута
         const locationString = route.params.selectedLocation;
         const addressString = route.params.addressString;
-        
-        logData('AddStopScreen: Получены координаты из параметров навигации', {
-            locationString,
-            addressString,
-            timestamp: route.params.timestamp
-        });
 
         // Обновляем состояние с координатами
         if (locationString) {
@@ -137,9 +131,7 @@ export const AddStopScreen = ({ navigation, route }) => {
         
         if (addressString) {
             setAddressFromMap(addressString);
-            logData('AddStopScreen: Получен адрес из параметров навигации', addressString);
         }
-
 
         setTimeout(() => {
             navigation.setParams({
@@ -149,11 +141,7 @@ export const AddStopScreen = ({ navigation, route }) => {
             });
 
             isProcessingRouteParams.current = false;
-            
-            logData('AddStopScreen: Проверка передачи адреса в форму', {
-                addressPassedToForm: addressFromMap,
-                coordinates: locationData.mapLocation
-            });
+
         }, 300);
     }, [route.params, handleLocationUpdate, navigation, addressFromMap, locationData.mapLocation]);
 
@@ -163,7 +151,6 @@ export const AddStopScreen = ({ navigation, route }) => {
 
         const loadInitialData = async () => {
             try {
-                logData('AddStopScreen: Загрузка начальных данных');
                 const promises = [dispatch(fetchAllDistricts())];
 
                 if (isAdminOrEmployee) {
@@ -172,7 +159,6 @@ export const AddStopScreen = ({ navigation, route }) => {
 
                 await Promise.all(promises);
 
-                logData('AddStopScreen: Начальные данные загружены успешно');
             } catch (error) {
                 logData('AddStopScreen: Ошибка при загрузке начальных данных', error);
             }

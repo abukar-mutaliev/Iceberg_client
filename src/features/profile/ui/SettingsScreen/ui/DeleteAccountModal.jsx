@@ -37,14 +37,14 @@ const DeleteAccountModal = ({ visible, onClose }) => {
         try {
             console.log('🗑️ Обработка успешного удаления аккаунта...');
 
-            // Деактивируем FCM токен при удалении аккаунта
+            // Деактивируем OneSignal токен при удалении аккаунта
             try {
-                console.log('🔄 Деактивация FCM токена при удалении аккаунта...');
-                const FCMTokenService = require('@shared/services/FCMTokenService').default;
-                await FCMTokenService.deactivateTokenOnLogout();
-                console.log('✅ FCM токен деактивирован при удалении аккаунта');
-            } catch (fcmError) {
-                console.warn('⚠️ Ошибка деактивации FCM токена при удалении:', fcmError);
+                console.log('🔄 Деактивация OneSignal токена при удалении аккаунта...');
+                const OneSignalService = require('@shared/services/OneSignalService').default;
+                await OneSignalService.clearUserContext();
+                console.log('✅ OneSignal токен деактивирован при удалении аккаунта');
+            } catch (oneSignalError) {
+                console.warn('⚠️ Ошибка деактивации OneSignal токена при удалении:', oneSignalError);
             }
 
             // Очищаем токены авторизации

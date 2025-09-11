@@ -162,7 +162,6 @@ export const ProfileEdit = () => {
                 onScroll={handleScroll}
                 editableFields={editableFields}
                 toggleFieldEditable={toggleFieldEditable}
-                key={`profile-form-${userType}`}
             />
         </View>
     );

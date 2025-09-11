@@ -44,13 +44,16 @@ export const ProfileHeader = () => {
         }
     };
 
-    // Определяем роль для отображения
-    const getUserRole = () => {
+    // Определяем роль или должность сотрудника для отображения
+    const getUserRoleOrPosition = () => {
         if (!currentUser?.role) return '';
 
         switch (currentUser.role) {
+            case 'EMPLOYEE':
+                // Для сотрудников показываем должность, если она есть
+                const position = profile?.employee?.position;
+                return position || 'сотрудник';
             case 'ADMIN': return 'администратор';
-            case 'EMPLOYEE': return 'сотрудник';
             case 'SUPPLIER': return 'поставщик';
             case 'DRIVER': return 'водитель';
             case 'CLIENT': return '';
@@ -59,7 +62,7 @@ export const ProfileHeader = () => {
     };
 
     const fullName = getUserFullName();
-    const userRole = getUserRole();
+    const userRoleOrPosition = getUserRoleOrPosition();
     const showRole = currentUser?.role && currentUser.role !== 'CLIENT';
 
     return (
@@ -85,7 +88,7 @@ export const ProfileHeader = () => {
                 <Text style={styles.nameText}>{fullName}</Text>
 
                 {showRole && (
-                    <Text style={styles.roleText}>{userRole}</Text>
+                    <Text style={styles.roleText}>{userRoleOrPosition}</Text>
                 )}
             </View>
         </View>

@@ -310,14 +310,14 @@ export const logout = createAsyncThunk(
         try {
             console.log('🚪 Logout: начало процесса выхода');
 
-            // Деактивируем FCM токен перед выходом
+            // Деактивируем OneSignal токен перед выходом
             try {
-                console.log('🔄 Logout: деактивация FCM токена...');
-                const FCMTokenService = require('@shared/services/FCMTokenService').default;
-                await FCMTokenService.deactivateTokenOnLogout();
-                console.log('✅ Logout: FCM токен деактивирован');
-            } catch (fcmError) {
-                console.warn('⚠️ Logout: ошибка деактивации FCM токена:', fcmError);
+                console.log('🔄 Logout: деактивация OneSignal токена...');
+                const OneSignalService = require('@shared/services/OneSignalService').default;
+                await OneSignalService.clearUserContext();
+                console.log('✅ Logout: OneSignal токен деактивирован');
+            } catch (oneSignalError) {
+                console.warn('⚠️ Logout: ошибка деактивации OneSignal токена:', oneSignalError);
             }
 
             dispatch({ type: 'RESET_APP_STATE' });

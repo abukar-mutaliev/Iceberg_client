@@ -499,19 +499,39 @@ export const selectIsExporting = createSelector(
     }
 );
 
+// ===== СЕЛЕКТОРЫ ДЛЯ ЛОКАЛЬНЫХ ДЕЙСТВИЙ СОТРУДНИКОВ =====
+export const selectLocalOrderActions = (state) => {
+    return state.order?.localOrderActions || EMPTY_OBJECT;
+};
+
+export const selectLocalOrderAction = (orderId) => createSelector(
+    [selectLocalOrderActions],
+    (localOrderActions) => {
+        return localOrderActions[orderId] || null;
+    }
+);
+
+export const selectHasLocalOrderAction = (orderId, action) => createSelector(
+    [selectLocalOrderActions],
+    (localOrderActions) => {
+        const orderAction = localOrderActions[orderId];
+        return orderAction ? orderAction[action] : false;
+    }
+);
+
 // Утилитарная функция для проверки приоритетности заказа
 const isPriorityOrder = (order) => {
     if (order.status === 'PENDING') {
         return true;
     }
-    
+
     if (order.expectedDeliveryDate) {
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
         tomorrow.setHours(23, 59, 59, 999);
-        
+
         return new Date(order.expectedDeliveryDate) <= tomorrow;
     }
-    
+
     return false;
 };

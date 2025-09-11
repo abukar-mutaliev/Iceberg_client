@@ -21,6 +21,7 @@ import JoinTeamIcon from "@shared/ui/Icon/Profile/JoinTeamIcon";
 import CustomButton from "@shared/ui/Button/CustomButton";
 import { AddProductModal } from "@widgets/product/AddProductModal";
 import { useAuth } from "@entities/auth/hooks/useAuth";
+import PushNotificationService from "@shared/services/PushNotificationService";
 
 export const ProfileInfo = ({ onProductPress }) => {
     const navigation = useNavigation();
@@ -72,43 +73,40 @@ export const ProfileInfo = ({ onProductPress }) => {
         try {
             console.log('🚪 Выполняем выход из системы...');
 
-            // Деактивируем FCM токен перед выходом
-            const deactivateFCMToken = async () => {
+            // Деактивируем OneSignal токен перед выходом
+            const deactivateOneSignalToken = async () => {
                 try {
-                    const FCMTokenService = require('@shared/services/FCMTokenService').default;
-                    const deactivated = await FCMTokenService.deactivateTokenOnLogout();
-                    
-                    if (deactivated) {
-                        console.log('✅ FCM токен деактивирован при выходе');
-                    } else {
-                        console.warn('⚠️ Не удалось деактивировать FCM токен');
-                    }
-                } catch (fcmError) {
-                    console.warn('⚠️ Ошибка деактивации FCM токена:', fcmError);
+                    await PushNotificationService.clearUserContext();
+                    console.log('✅ OneSignal токен деактивирован при выходе');
+                } catch (oneSignalError) {
+                    console.warn('⚠️ Ошибка деактивации OneSignal токена:', oneSignalError);
                 }
             };
 
-            // Сначала деактивируем FCM токен
-            deactivateFCMToken().finally(() => {
+            // Сначала деактивируем OneSignal токен
+            deactivateOneSignalToken().finally(() => {
                 console.log('🚪 Начинаем процесс выхода из аккаунта');
 
-                // Затем выполняем стандартный выход
-                dispatch({ type: 'RESET_APP_STATE' });
-                console.log('🔄 RESET_APP_STATE отправлен');
+                // Небольшая задержка для стабилизации состояния перед сбросом
+                setTimeout(() => {
+                    // Затем выполняем стандартный выход
+                    dispatch({ type: 'RESET_APP_STATE' });
+                    console.log('🔄 RESET_APP_STATE отправлен');
 
-                logout().then(() => {
-                    console.log('✅ Выход выполнен, переходим на экран авторизации');
+                    logout().then(() => {
+                        console.log('✅ Выход выполнен, переходим на экран авторизации');
 
-                    // Сбрасываем стек навигации на экран авторизации
-                    navigation.reset({
-                        index: 0,
-                        routes: [{ name: 'Auth' }],
+                        // Сбрасываем стек навигации на экран авторизации
+                        navigation.reset({
+                            index: 0,
+                            routes: [{ name: 'Auth' }],
+                        });
+                        console.log('🧭 Навигация сброшена на экран Auth');
+                    }).catch(error => {
+                        console.error('❌ Ошибка при выходе:', error);
+                        Alert.alert('Ошибка', 'Не удалось выйти из системы. Попробуйте еще раз.');
                     });
-                    console.log('🧭 Навигация сброшена на экран Auth');
-                }).catch(error => {
-                    console.error('❌ Ошибка при выходе:', error);
-                    Alert.alert('Ошибка', 'Не удалось выйти из системы. Попробуйте еще раз.');
-                });
+                }, 500); // Задержка 500ms для стабилизации
             });
 
         } catch (error) {
