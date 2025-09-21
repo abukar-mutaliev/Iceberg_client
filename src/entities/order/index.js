@@ -16,6 +16,8 @@ import {
     calculateEstimatedDelivery
 } from './lib/utils';
 
+import { CONSTANTS } from './lib/constants';
+
 // Slice и actions
 export { default as orderReducer } from './model/slice';
 export { default as orderProcessingReducer } from './model/slice';
@@ -47,9 +49,6 @@ export {
 
 } from './model/slice';
 
-// Селекторы
-// export { default as orderSelectors } from './model/selectors';
-
 // Основные селекторы для быстрого доступа
 export {
     selectMyOrders,
@@ -65,7 +64,9 @@ export {
     selectOrderNotifications,
     selectActiveOrderNotifications,
     selectOrderAccessRights,
-    selectOrdersDashboardData
+    selectOrdersDashboardData,
+    selectLocalOrderActions,
+    selectHasLocalOrderAction
 } from './model/selectors';
 
 // Хуки
@@ -77,8 +78,12 @@ export {
     useOrdersAnalytics,
     useOrderNotifications,
     useBulkOrderOperations,
-    useOrdersExport
+    useOrdersExport,
+    useStaffOrders
 } from './hooks/useOrders';
+
+export { useOrderPermissions } from './hooks/useOrderPermissions';
+export { useOrderFiltering } from './hooks/useOrderFiltering';
 
 export { useOrderNotifications as useOrderNotificationsNew } from './hooks/useOrderNotifications';
 
@@ -104,6 +109,11 @@ export {
     getAvailableStatuses,
     calculateEstimatedDelivery
 } from './lib/utils';
+
+// Константы
+export { CONSTANTS } from './lib/constants';
+
+export { orderStateHelpers } from './lib/orderStateHelpers';
 
 // Сервис для работы с API
 

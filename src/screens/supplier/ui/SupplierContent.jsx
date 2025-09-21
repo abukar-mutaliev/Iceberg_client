@@ -116,7 +116,9 @@ const SupplierContent = React.memo(({
     }, [navigation, fromScreen]);
 
 
-    const handleProductPress = (productId) => {
+    const handleProductPress = (product) => {
+        // Поддержка как productId, так и объекта продукта
+        const productId = typeof product === 'object' && product?.id ? product.id : product;
         navigation.navigate('ProductDetail', {
             productId: productId,
             fromScreen: 'SupplierScreen',

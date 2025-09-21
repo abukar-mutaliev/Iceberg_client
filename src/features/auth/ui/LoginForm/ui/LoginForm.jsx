@@ -20,10 +20,6 @@ import {CustomTextInput} from '@shared/ui/CustomTextInput/CustomTextInput';
 import {clearProfile, fetchProfile} from '@entities/profile';
 import {normalize, normalizeFont} from "@shared/lib/normalize";
 
-// Импорт для отладки FCM
-if (__DEV__) {
-    import('../../../../../../debug-fcm-logs').catch(e => console.warn('Debug FCM logs not available:', e));
-}
 
 export const LoginForm = () => {
     const dispatch = useDispatch();
@@ -103,8 +99,6 @@ export const LoginForm = () => {
     const handleErrorDisplay = (errorMessage) => {
         if (!errorMessage) return;
 
-        console.log('Processing error:', errorMessage);
-
         const lowerCaseError = typeof errorMessage === 'string'
             ? errorMessage.toLowerCase()
             : '';
@@ -170,11 +164,8 @@ export const LoginForm = () => {
         }
 
         // Полный сброс состояния перед входом нового пользователя
-        console.log('🔄 Выполняем RESET_APP_STATE перед входом');
         dispatch({ type: 'RESET_APP_STATE' });
 
-        console.log('🔐 Начинаем процесс входа для пользователя:', localEmail);
-        // Выполняем вход с обработкой результата
         dispatch(login({email: localEmail, password: localPassword}))
             .unwrap()
             .then(result => {
@@ -183,24 +174,13 @@ export const LoginForm = () => {
                 }
 
                 if (result.tokens && result.user) {
-                    console.log('Вход выполнен успешно для пользователя ID:', result.user.id);
-
                     dispatch(setTokens(result.tokens));
                     dispatch(setUser(result.user));
-
-                    // Сразу запрашиваем профиль для нового пользователя
                     dispatch(fetchProfile());
-
-                    // Также загружаем полный профиль через useAuth
                     dispatch(loadUserProfile());
-
-                    // Push токен регистрируется автоматически через usePushTokenAutoRegistration hook
-                    // который уже импортирован и используется в AppContainer
-                    console.log('✅ Вход выполнен успешно. Push токен будет зарегистрирован автоматически.');
                 }
             })
             .catch(err => {
-                console.log('Login error caught:', err);
 
                 // Обработка ошибок
                 if (typeof err === 'string') {
@@ -245,7 +225,7 @@ export const LoginForm = () => {
         ]}>
             <View style={styles.inputsContainer}>
                 <View style={styles.emailInputContainer}>
-                    <Text style={styles.inputLabel}>Ваша почта/номер телефона</Text>
+                    <Text style={styles.inputLabel}>Ваша почта</Text>
                     <CustomTextInput
                         style={styles.input}
                         value={localEmail}

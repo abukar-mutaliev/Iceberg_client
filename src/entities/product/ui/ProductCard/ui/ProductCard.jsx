@@ -145,6 +145,10 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width }) => {
 };
 
 const arePropsEqual = (prevProps, nextProps) => {
+    // Быстрая проверка на идентичность пропсов
+    if (prevProps === nextProps) return true;
+
+    // Проверяем примитивные пропсы
     if (prevProps.width !== nextProps.width) return false;
     if (prevProps.onPress !== nextProps.onPress) return false;
     if (prevProps.onGoToCart !== nextProps.onGoToCart) return false;
@@ -152,25 +156,40 @@ const arePropsEqual = (prevProps, nextProps) => {
     const prevProduct = prevProps.product;
     const nextProduct = nextProps.product;
 
+    // Проверяем на идентичность объектов
     if (prevProduct === nextProduct) return true;
 
+    // Проверяем на отсутствие данных
     if (!prevProduct || !nextProduct) return false;
 
-    // Проверяем основные поля продукта
-    const productFieldsEqual = (
+    // Проверяем основные поля продукта для оптимизации перерендеринга
+    const essentialFieldsEqual = (
         prevProduct.id === nextProduct.id &&
         prevProduct.name === nextProduct.name &&
-        prevProduct.title === nextProduct.title &&
         prevProduct.price === nextProduct.price &&
-        prevProduct.description === nextProduct.description &&
         prevProduct.stockQuantity === nextProduct.stockQuantity &&
-        prevProduct.isActive === nextProduct.isActive &&
-        JSON.stringify(prevProduct.images) === JSON.stringify(nextProduct.images)
+        prevProduct.isActive === nextProduct.isActive
     );
 
-    if (!productFieldsEqual) return false;
+    if (!essentialFieldsEqual) return false;
 
-    return false;
+    // Проверяем изображения только если они действительно изменились
+    if (prevProduct.images !== nextProduct.images) {
+        if (!prevProduct.images || !nextProduct.images ||
+            prevProduct.images.length !== nextProduct.images.length) {
+            return false;
+        }
+
+        // Проверяем первые несколько изображений
+        const imagesToCheck = Math.min(3, prevProduct.images.length);
+        for (let i = 0; i < imagesToCheck; i++) {
+            if (prevProduct.images[i] !== nextProduct.images[i]) {
+                return false;
+            }
+        }
+    }
+
+    return true;
 };
 
 export const ProductCard = memo(ProductCardComponent, arePropsEqual);

@@ -241,33 +241,27 @@ export const useChatSocket = () => {
           dispatch(updateMessageStatus(payload));
         });
 
-        // Обновление статуса онлайн пользователей
         socket.on('chat:user:status', (payload) => {
-          // payload: { userId, lastSeenAt }
-          console.log('👤 Received user status update:', payload);
           dispatch(updateUserOnlineStatus(payload));
         });
 
-        // Optional: room updated/members updated triggers refetch
         socket.on('chat:room:updated', () => {
           dispatch(fetchRooms({ page: 1 }));
         });
 
-        // Добавляем обработку ответов на события join
         socket.on('chat:join:success', (payload) => {
           console.log('🏠 ✅ Successfully joined room:', payload);
         });
 
         socket.on('chat:join:error', (payload) => {
           console.error('🏠 ❌ Failed to join room:', payload);
-          // Удаляем из списка присоединенных комнат в случае ошибки
           if (payload?.roomId) {
             joinedRoomsRef.current.delete(payload.roomId);
           }
         });
 
         socketRef.current = socket;
-        setGlobalSocket(socket); // Устанавливаем глобальную ссылку для других компонентов
+        setGlobalSocket(socket);
       } catch (e) {
         // console.error('Socket init error', e);
       }

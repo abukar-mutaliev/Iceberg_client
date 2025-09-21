@@ -414,7 +414,9 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
         }
     }, [dispatch, categoryId]);
 
-    const handleProductPress = useCallback((productId) => {
+    const handleProductPress = useCallback((product) => {
+        // Поддержка как productId, так и объекта продукта
+        const productId = typeof product === 'object' && product?.id ? product.id : product;
         if (!productId) return;
 
         const numericId = typeof productId === 'string' ? parseInt(productId, 10) : productId;

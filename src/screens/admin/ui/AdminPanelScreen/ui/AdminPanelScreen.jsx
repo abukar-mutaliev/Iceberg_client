@@ -130,10 +130,6 @@ export const AdminPanelScreen = () => {
         navigation.navigate('RewardSettings');
     }, [navigation]);
 
-    const handleOrderNotificationTestPress = useCallback(() => {
-        console.log('AdminPanel: Переход к тестированию уведомлений заказов');
-        navigation.navigate('OrderNotificationTest');
-    }, [navigation]);
 
     const handleProductSuccess = useCallback((product) => {
         // После успешного добавления продукта остаемся в админ панели
@@ -238,16 +234,6 @@ export const AdminPanelScreen = () => {
                     />
                 </AdminSection>
 
-                {/* Раздел для тестирования уведомлений - только для администраторов */}
-                {isAdmin && (
-                    <AdminSection title="Уведомления и тестирование">
-                        <AdminMenuItem
-                            icon={<IconSettings color={Color.blue2} />}
-                            title="Тест уведомлений заказов"
-                            onPress={handleOrderNotificationTestPress}
-                        />
-                    </AdminSection>
-                )}
 
                 {/* Управление сотрудниками - показываем только администраторам */}
                 {isAdmin && (

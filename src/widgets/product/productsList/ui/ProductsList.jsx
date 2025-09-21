@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useMemo } from 'react';
+import React, { memo, useCallback, useMemo, useRef, useEffect } from 'react';
 import { View, StyleSheet, ActivityIndicator, Text, FlatList } from 'react-native';
 import { useSelector } from 'react-redux';
 import {
@@ -25,9 +25,40 @@ export const ProductsList = ({
                                  ListFooterComponent,
                                  hideLoader = false
                              }) => {
+    // Безопасные значения по умолчанию
+    const safeOnEndReachedThreshold = onEndReachedThreshold || 8;
+    const safeIsLoadingMore = Boolean(isLoadingMore);
+    const safeHasMore = Boolean(hasMore);
+    const safeHideLoader = Boolean(hideLoader);
     const products = useSelector(selectProducts);
     const isLoading = useSelector(selectProductsLoading);
     const error = useSelector(selectProductsError);
+
+    // Сохраняем позицию скролла
+    const flatListRef = useRef(null);
+    const scrollPositionRef = useRef({ x: 0, y: 0 });
+
+    const handleScroll = useCallback((event) => {
+        const { x, y } = event.nativeEvent.contentOffset;
+        scrollPositionRef.current = { x, y };
+    }, []);
+
+    // Восстанавливаем позицию скролла после обновления данных
+    useEffect(() => {
+        if (flatListRef.current && displayProducts && displayProducts.length > 0) {
+            // Небольшая задержка для обеспечения корректного рендеринга
+            const timeoutId = setTimeout(() => {
+                if (flatListRef.current && scrollPositionRef.current.y > 0) {
+                    flatListRef.current.scrollToOffset({
+                        offset: scrollPositionRef.current.y,
+                        animated: false
+                    });
+                }
+            }, 50);
+
+            return () => clearTimeout(timeoutId);
+        }
+    }, [displayProducts?.length]);
 
     // Обработка ошибок и пустых состояний
     if (error) {
@@ -38,7 +69,7 @@ export const ProductsList = ({
         );
     }
 
-    if (!Array.isArray(products) || products.length === 0) {
+    if (!Array.isArray(products) || !products || products.length === 0) {
         return (
             <View style={styles.noProductsContainer}>
                 <Text style={styles.noProductsText}>Товары не найдены</Text>
@@ -47,7 +78,7 @@ export const ProductsList = ({
     }
 
     const displayProducts = useMemo(() => {
-        if (!Array.isArray(products)) {
+        if (!Array.isArray(products) || !products) {
             return [];
         }
 
@@ -63,36 +94,41 @@ export const ProductsList = ({
                     : defaultProductImage,
                 originalData: product
             }));
-    }, [products]);
+    }, [products?.length, products]); // Добавляем products.length для лучшего контроля зависимостей
 
-    const renderItem = useCallback(({ item }) => (
-        <ProductCardItem
-            product={item}
-            onProductPress={onProductPress}
-            fromScreen={fromScreen}
-        />
-    ), [onProductPress, fromScreen]);
+    const renderItem = useCallback(({ item }) => {
+        if (!item) return null;
 
-    const keyExtractor = useCallback(item =>
-            `product-${item.id}`,
-        []);
+        return (
+            <ProductCardItem
+                product={item}
+                onProductPress={onProductPress}
+                fromScreen={fromScreen}
+            />
+        );
+    }, [onProductPress, fromScreen]);
+
+    const keyExtractor = useCallback((item, index) => {
+        if (!item) return `product-empty-${index}`;
+        return `product-${item.id}-${item.originalData?.updatedAt || 0}`;
+    }, []);
 
     // Обработчик для бесконечной прокрутки
     const handleEndReached = useCallback(() => {
-        if (hasMore && !isLoadingMore && onEndReached) {
+        if (safeHasMore && !safeIsLoadingMore && onEndReached) {
             onEndReached();
         }
-    }, [hasMore, isLoadingMore, onEndReached]);
+    }, [safeHasMore, safeIsLoadingMore, onEndReached]);
 
     // Вычисляем threshold в зависимости от количества элементов
     const threshold = useMemo(() => {
-        if (displayProducts.length === 0) return 0.5;
-        return Math.min(onEndReachedThreshold / displayProducts.length, 0.5);
-    }, [displayProducts.length, onEndReachedThreshold]);
+        if (!displayProducts || displayProducts.length === 0) return 0.5;
+        return Math.min(safeOnEndReachedThreshold / displayProducts.length, 0.5);
+    }, [displayProducts?.length, safeOnEndReachedThreshold]);
 
     const renderListFooter = useCallback(() => (
         <>
-            {isLoadingMore && (
+            {safeIsLoadingMore && (
                 <View style={styles.loaderContainer}>
                     <ActivityIndicator size="small" color={Color.purpleSoft} />
                     <Text style={styles.loadingText}>Загружаем ещё товары...</Text>
@@ -100,25 +136,31 @@ export const ProductsList = ({
             )}
             {ListFooterComponent && ListFooterComponent()}
         </>
-    ), [isLoadingMore, ListFooterComponent]);
+    ), [safeIsLoadingMore, ListFooterComponent]);
 
     return (
         <View style={styles.container}>
             <FlatList
+                ref={flatListRef}
                 data={displayProducts}
                 renderItem={renderItem}
                 keyExtractor={keyExtractor}
                 onEndReached={handleEndReached}
                 onEndReachedThreshold={threshold}
+                onScroll={handleScroll}
                 windowSize={5}
                 maxToRenderPerBatch={10}
                 updateCellsBatchingPeriod={50}
                 removeClippedSubviews={true}
                 initialNumToRender={10}
-                ListHeaderComponent={ListHeaderComponent}
-                ListFooterComponent={renderListFooter}
                 showsVerticalScrollIndicator={false}
                 scrollEnabled={true}
+                ListHeaderComponent={ListHeaderComponent}
+                ListFooterComponent={renderListFooter}
+                maintainVisibleContentPosition={{
+                    minIndexForVisible: 0
+                }}
+                scrollEventThrottle={16}
             />
         </View>
     );

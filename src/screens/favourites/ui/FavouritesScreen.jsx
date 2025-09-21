@@ -116,7 +116,9 @@ export const FavouritesScreen = ({ navigation }) => {
         }
     }, [loadData, refreshing]);
 
-    const handleProductPress = useCallback((productId) => {
+    const handleProductPress = useCallback((product) => {
+        // Поддержка как productId, так и объекта продукта
+        const productId = typeof product === 'object' && product?.id ? product.id : product;
         if (!productId || navigatedToProductRef.current) return;
 
         navigatedToProductRef.current = true;

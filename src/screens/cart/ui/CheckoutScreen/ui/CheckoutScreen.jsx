@@ -8,7 +8,6 @@ import {
     StatusBar,
     ScrollView,
     ActivityIndicator,
-    Alert,
     KeyboardAvoidingView,
     Platform,
 } from 'react-native';
@@ -18,8 +17,10 @@ import {
 } from '@app/styles/GlobalStyles';
 import { CustomTextInput } from '@shared/ui/CustomTextInput/CustomTextInput';
 
-import { CartService } from '@entities/cart';
+import { CartService, clearCart, clearCartCache } from '@entities/cart';
 import { AddressPickerModal, DeliveryAddressApi } from '@entities/deliveryAddress';
+import { useDispatch } from 'react-redux';
+import { Toast } from '@shared/ui/Toast';
 
 const normalize = (size) => {
     const scale = 375 / 375;
@@ -28,6 +29,7 @@ const normalize = (size) => {
 
 export const CheckoutScreen = ({ navigation, route }) => {
     const { items = [], stats = {}, clientType } = route.params || {};
+    const dispatch = useDispatch();
 
     const [loading, setLoading] = useState(false);
     const [addressLoading, setAddressLoading] = useState(true);
@@ -38,6 +40,17 @@ export const CheckoutScreen = ({ navigation, route }) => {
         expectedDeliveryDate: null,
         paymentMethod: 'CASH'
     });
+    const [showSuccessToast, setShowSuccessToast] = useState(false);
+    const [orderNumber, setOrderNumber] = useState('');
+
+    // Обработчик скрытия Toast и навигации
+    const handleToastHide = () => {
+        setShowSuccessToast(false);
+        navigation.navigate('MainTab', {
+            screen: 'Cart',
+            params: { refresh: true }
+        });
+    };
 
     useEffect(() => {
         const loadDefaultAddress = async () => {
@@ -94,21 +107,20 @@ export const CheckoutScreen = ({ navigation, route }) => {
 
             const order = result.data?.order;
 
-            Alert.alert(
-                'Заказ создан!',
-                `Ваш заказ №${order?.orderNumber || 'N/A'} успешно создан. Мы свяжемся с вами для подтверждения.`,
-                [
-                    {
-                        text: 'OK',
-                        onPress: () => {
-                            navigation.navigate('MainTab', {
-                                screen: 'MyOrders',
-                                params: { refresh: true }
-                            });
-                        }
-                    }
-                ]
-            );
+            // Очищаем корзину после успешного создания заказа
+            try {
+                await dispatch(clearCart()).unwrap();
+                dispatch(clearCartCache()); // Синхронный action, без unwrap
+                console.log('✅ Cart cleared successfully after order creation');
+            } catch (error) {
+                console.error('❌ Error clearing cart after order:', error);
+                // Продолжаем выполнение даже если очистка корзины не удалась
+            }
+
+            // Сохраняем номер заказа и показываем Toast
+            setOrderNumber(order?.orderNumber || 'N/A');
+            setShowSuccessToast(true);
+
         } catch (error) {
             console.error('❌ Checkout error:', error);
 
@@ -325,6 +337,17 @@ export const CheckoutScreen = ({ navigation, route }) => {
                 onAddressSelected={handleAddressSelected}
                 currentAddress={selectedAddress}
             />
+
+            {/* Toast уведомление об успешном заказе */}
+            {showSuccessToast && (
+                <Toast
+                    message={`Заказ №${orderNumber} успешно создан! Мы свяжемся с вами для подтверждения.`}
+                    type="success"
+                    duration={4000}
+                    onHide={handleToastHide}
+                    position="top"
+                />
+            )}
         </SafeAreaView>
     );
 };

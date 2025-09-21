@@ -68,6 +68,7 @@ export const CartScreen = ({ navigation }) => {
     
     const {
         items,
+        stats,
         loading,
         error,
         isEmpty,
@@ -76,6 +77,9 @@ export const CartScreen = ({ navigation }) => {
         totalSavings,
         clientType
     } = useCart();
+
+    // Получаем totalAmount из stats
+    const totalAmount = stats?.totalAmount || 0;
 
     const {
         notifications,
@@ -109,27 +113,36 @@ export const CartScreen = ({ navigation }) => {
     const [showGuestNotification, setShowGuestNotification] = useState(true);
 
     // ===== ИНИЦИАЛИЗАЦИЯ =====
-    useCartAutoLoad({
-        loadOnMount: true,
-        loadOnAuthChange: true,
-        autoMergeGuestCart: true,
-    });
+    // Временно отключаем useCartAutoLoad чтобы избежать конфликтов с useFocusEffect
+    // useCartAutoLoad({
+    //     loadOnMount: true,
+    //     loadOnAuthChange: true,
+    //     autoMergeGuestCart: true,
+    // });
+
+    // Логируем начальное состояние
+    console.log(`🛒 CartScreen: Initial render - items: ${items?.length || 0}, totalAmount: ${totalAmount}, loading: ${loading}`);
 
     // Загрузка корзины при фокусе на экране (только если корзина доступна)
     useFocusEffect(
         useCallback(() => {
             if (isCartAvailable) {
-                console.log('🛒 CartScreen: Screen focused, loading cart');
-                // Принудительно очищаем кэш и загружаем данные
-                dispatch(clearCartCache());
+                console.log('🛒 CartScreen: Screen focused, force loading cart from server');
+                console.log(`🛒 CartScreen: Current cart state - items: ${items?.length || 0}, totalAmount: ${totalAmount || 0}`);
+                // Всегда загружаем свежие данные с сервера при входе в корзину
                 dispatch(fetchCart(true));
             } else {
                 console.log('🛒 CartScreen: Cart not available for current role, skipping load');
             }
-        }, [dispatch, isCartAvailable])
+        }, [dispatch, isCartAvailable, items?.length, totalAmount])
     );
 
     // ===== ЭФФЕКТЫ =====
+
+    // Логирование изменений состояния корзины
+    useEffect(() => {
+        console.log(`🛒 CartScreen: Cart state changed - items: ${items?.length || 0}, totalAmount: ${totalAmount || 0}, loading: ${loading}`);
+    }, [items, totalAmount, loading]);
 
     // Автоматический выбор всех товаров при загрузке
     useEffect(() => {
@@ -137,6 +150,7 @@ export const CartScreen = ({ navigation }) => {
             const allItemIds = new Set(items.map(item => item.id));
             setSelectedItems(allItemIds);
             setSelectAllMode(true);
+            console.log(`🛒 CartScreen: Auto-selected all items (${allItemIds.size} items)`);
         }
     }, [items]);
 
@@ -217,7 +231,9 @@ export const CartScreen = ({ navigation }) => {
 
     // ===== ОБРАБОТЧИКИ СОБЫТИЙ =====
 
-    const handleProductPress = (productId) => {
+    const handleProductPress = (product) => {
+        // Поддержка как productId, так и объекта продукта
+        const productId = typeof product === 'object' && product?.id ? product.id : product;
         navigation.navigate('ProductDetail', {
             productId,
             fromScreen: 'Cart'

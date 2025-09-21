@@ -66,20 +66,16 @@ export const DeepLinkHandler = () => {
             linksArray.slice(-3).forEach(link => processedLinks.current.add(link));
         }
 
-        console.log('🔗 Processing deep link:', url);
 
         try {
             const stopId = extractStopIdFromUrl(url);
 
             if (!stopId) {
-                console.log('⚠️ No stopId found in URL:', url);
                 return;
             }
 
-            console.log('🎯 Extracted stopId:', stopId);
 
             if (!user || user.role !== 'CLIENT') {
-                console.log('⚠️ User not authorized for notifications:', user?.role);
                 return;
             }
 

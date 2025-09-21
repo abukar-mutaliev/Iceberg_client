@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {View, StyleSheet, Text, TouchableOpacity} from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -79,8 +79,7 @@ export const MainScreen = ({ navigation, route }) => {
 
     const unreadCount = useSelector(state => state.notification?.unreadCount || 0);
 
-    useEffect(() => {
-    }, [unreadCount]);
+    // useEffect для unreadCount можно удалить, если он не используется
 
     const products = useSelector(selectProducts);
     const isProductsLoading = useSelector(selectProductsLoading);
@@ -101,6 +100,7 @@ export const MainScreen = ({ navigation, route }) => {
         banners: false,
         categories: false
     });
+    // Убираем forceUpdateKey, так как он вызывает проблемы со скроллом
 
     const refreshTimerRef = useRef(null);
     const isMountedRef = useRef(true);
@@ -111,14 +111,14 @@ export const MainScreen = ({ navigation, route }) => {
     const shouldRefreshData = useCallback(() => {
         const now = Date.now();
         const timeSinceLastFetch = now - lastFetchTime;
-        return !isProductsLoading && timeSinceLastFetch > REFRESH_INTERVAL;
-    }, [lastFetchTime, isProductsLoading]);
+        return timeSinceLastFetch > REFRESH_INTERVAL;
+    }, [lastFetchTime]);
 
     const hasCachedData = useCallback(() => {
-        return (Array.isArray(products) && products.length > 0) || 
-               (Array.isArray(activeBanners) && activeBanners.length > 0) || 
+        return (Array.isArray(products) && products.length > 0) ||
+               (Array.isArray(activeBanners) && activeBanners.length > 0) ||
                (Array.isArray(categories) && categories.length > 0);
-    }, [products, activeBanners, categories]);
+    }, [products?.length, activeBanners?.length, categories?.length]);
 
     const loadAllData = useCallback(async (refresh = false) => {
         if (loadingRef.current) {
@@ -150,7 +150,7 @@ export const MainScreen = ({ navigation, route }) => {
             }
         }
 
-        if (refresh || shouldRefreshData() || !dataLoaded) {
+        if (refresh || (!isProductsLoading && shouldRefreshData()) || !dataLoaded) {
 
             loadingRef.current = true;
             setLoadingStates({
@@ -224,18 +224,18 @@ export const MainScreen = ({ navigation, route }) => {
                 loadingRef.current = false;
             }
         }
-    }, [dispatch, isProductsLoading, shouldRefreshData, dataLoaded,
-        activeBanners, bannerStatus, categories, isCategoriesLoading, hasCachedData]);
+    }, [dispatch, shouldRefreshData, dataLoaded,
+        activeBanners?.length, bannerStatus, categories?.length, isCategoriesLoading, hasCachedData]);
 
     const loadMoreProducts = useCallback(() => {
-        if (!hasMore || isLoadingMore || isProductsLoading) {
+        if (!hasMore || isLoadingMore) {
             return;
         }
 
         const nextPage = currentPage + 1;
 
         dispatch(fetchProducts({ page: nextPage, limit: PRODUCTS_PER_PAGE }));
-    }, [dispatch, hasMore, isLoadingMore, isProductsLoading, currentPage]);
+    }, [dispatch, hasMore, isLoadingMore, currentPage]);
 
     useEffect(() => {
         isMountedRef.current = true;
@@ -294,6 +294,9 @@ export const MainScreen = ({ navigation, route }) => {
         };
     }, []);
 
+    // Корзина теперь обновляется автоматически через Redux селекторы
+    // useCartProduct в ProductCard сам реагирует на изменения состояния корзины
+
     useFocusEffect(
         useCallback(() => {
             if (route?.params?.resetProduct) {
@@ -310,7 +313,9 @@ export const MainScreen = ({ navigation, route }) => {
         }, [navigation, route?.params, isCartAvailable, dispatch, notifications, user?.role])
     );
 
-    const handleProductPress = useCallback((productId) => {
+    const handleProductPress = useCallback((product) => {
+        // Поддержка как productId, так и объекта продукта
+        const productId = typeof product === 'object' && product?.id ? product.id : product;
         navigation.navigate('ProductDetail', {
             productId,
             fromScreen: 'MainTab'
@@ -336,18 +341,21 @@ export const MainScreen = ({ navigation, route }) => {
 
             </>
         );
-    }, [handleDriverLocatorPress, navigation, isInitialLoading]);
+    }, [handleDriverLocatorPress, navigation]);
 
     const renderFooter = useCallback(() => (
         <View style={styles.bottomSpacer} />
     ), []);
 
     const isAnyLoading = loadingStates.products || loadingStates.banners || loadingStates.categories || isProductsLoading;
-    const hasAnyData = (Array.isArray(products) && products.length > 0) || 
-                       (Array.isArray(activeBanners) && activeBanners.length > 0) || 
-                       (Array.isArray(categories) && categories.length > 0);
+    const hasAnyData = (products?.length > 0) ||
+                       (activeBanners?.length > 0) ||
+                       (categories?.length > 0);
 
-    const shouldShowLoader = (isInitialLoading || (isAnyLoading && !hasAnyData)) && !hasCachedData();
+    const shouldShowLoader = useMemo(() => {
+        const cached = hasCachedData();
+        return (isInitialLoading || (isAnyLoading && !hasAnyData)) && !cached;
+    }, [isInitialLoading, isAnyLoading, hasAnyData, hasCachedData]);
 
     if (shouldShowLoader) {
         return (
@@ -423,7 +431,7 @@ export const MainScreen = ({ navigation, route }) => {
                 ListHeaderComponent={renderHeader}
                 ListFooterComponent={renderFooter}
                 hideLoader={isInitialLoading || (isAnyLoading && !hasAnyData)}
-                key={`products-${products.length}`}
+                key={`products-${products?.length || 0}`}
             />
         </View>
     );

@@ -165,6 +165,25 @@ export const useOrders = () => {
         }
     }, [dispatch, accessRights.canAssignOrders]);
 
+    const releaseOrder = useCallback(async (orderId, reason = null) => {
+        if (!accessRights.canAssignOrders) {
+            throw new Error('Access denied: Cannot release orders');
+        }
+
+        try {
+            // Используем OrderApi.releaseOrder напрямую
+            const response = await OrderApi.releaseOrder(orderId, reason);
+
+            if (response.status === 'success' && response.data) {
+                return { success: true, data: response.data };
+            } else {
+                throw new Error(response.error || 'Ошибка при снятии заказа с работы');
+            }
+        } catch (error) {
+            return { success: false, error: error.message || 'Ошибка при снятии заказа с работы' };
+        }
+    }, [accessRights.canAssignOrders]);
+
     const completeOrderStageAction = useCallback(async (orderId, comment = null) => {
         if (!accessRights.canUpdateOrderStatus) {
             throw new Error('Access denied: Cannot complete order stage');
@@ -405,6 +424,7 @@ export const useOrders = () => {
         updateStatus,
         assignOrderToEmployee,
         takeOrder,
+        releaseOrder,
         completeOrderStage: completeOrderStageAction,
         cancelOrderById,
         createOrder,

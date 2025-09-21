@@ -39,7 +39,6 @@ import {UserPublicProfileScreen} from "@screens/user/ui/UserPublicProfileScreen"
 import {AdminPanelScreen} from "@screens/admin/ui/AdminPanelScreen";
 import {AdminProductDetailScreen} from "@screens/admin/ui/AdminProductDetailScreen/ui/AdminProductDetailScreen";
 import {EmployeeManagementScreen} from "@screens/admin/ui/EmployeeManagementScreen";
-import OrderNotificationTestScreen from "@screens/admin/OrderNotificationTestScreen";
 import {UsersManagementScreen} from "@screens/user/ui/UsersManagementScreen";
 import {UserAddScreen} from "@screens/user/ui/UserAddScreen";
 import {DistrictsManagementScreen} from "@screens/district";
@@ -76,7 +75,8 @@ import {AddGroupMembersScreen} from "@/screens/chat/ui/AddGroupMembersScreen";
 import {EditGroupScreen} from "@/screens/chat/ui/EditGroupScreen";
 
 import {MyOrdersScreen} from "@screens/ordes/ui/MyOrdersScreen";
-import {OrderDetailsScreen} from "@screens/ordes/ui/OrderDetailsScreen";
+import {OrderDetailsClientScreen} from "@screens/ordes/ui/OrderDetailsClientScreen/ui/OrderDetailsClientScreen";
+import {OrderDetailsEmployeeScreen} from "@screens/ordes/ui/OrderDetailsEmployeeScreen/ui/OrderDetailsEmployeeScreen";
 import {StaffOrdersScreen} from "@screens/ordes/ui/StaffOrdersScreen";
 
 import {CheckoutScreen} from "@screens/cart/ui/CheckoutScreen/ui/CheckoutScreen";
@@ -524,7 +524,7 @@ const CartStackScreen = () => {
             />
             <CartStack.Screen
                 name="OrderDetails"
-                component={OrderDetailsScreen}
+                component={OrderDetailsClientScreen}
                 options={{
                     ...slideFromRight,
                     headerShown: false,
@@ -710,35 +710,57 @@ const NavigationWrapper = ({children}) => {
 
         const navigateToOrder = (params = {}) => {
             try {
-                console.log('📦 navigateToOrder called with params:', params);
-                
+
                 if (params.orderId) {
                     const orderId = parseInt(params.orderId);
-                    console.log('📦 Attempting to navigate to order:', orderId);
-                    
-                    try {
-                        console.log('📦 Trying StaffOrderDetails navigation...');
-                        navigation.navigate('StaffOrderDetails', {
-                            orderId: orderId,
-                            fromNotification: true,
-                            ...params
-                        });
-                        console.log('📦 ✅ StaffOrderDetails navigation successful');
-                    } catch (error) {
-                        console.warn('📦 StaffOrderDetails navigation failed, trying OrderDetails:', error.message);
+
+                    const userRole = navigation.getState()?.routes?.find(route =>
+                        route.name === 'Main'
+                    )?.state?.routes?.find(route =>
+                        route.name === 'ProfileTab'
+                    )?.params?.userRole || 'CLIENT';
+
+
+                    if (userRole === 'EMPLOYEE' || userRole === 'ADMIN') {
                         try {
-                            navigation.navigate('OrderDetails', {
-                                orderId: orderId,
-                                fromNotification: true,
-                                ...params
+                            navigation.navigate('Admin', {
+                                screen: 'StaffOrderDetails',
+                                params: {
+                                    orderId: orderId,
+                                    fromNotification: true,
+                                    ...params
+                                }
                             });
-                            console.log('📦 ✅ OrderDetails navigation successful');
-                        } catch (fallbackError) {
-                            console.error('📦 ❌ Both order navigations failed:', fallbackError);
+                        } catch (error) {
+                            console.warn('📦 StaffOrderDetails navigation failed, trying OrderDetails:', error.message);
+                            try {
+                                navigation.navigate('Cart', {
+                                    screen: 'OrderDetails',
+                                    params: {
+                                        orderId: orderId,
+                                        fromNotification: true,
+                                        ...params
+                                    }
+                                });
+                            } catch (fallbackError) {
+                                console.error('📦 ❌ Both order navigations failed:', fallbackError);
+                            }
+                        }
+                    } else {
+                        try {
+                            navigation.navigate('Cart', {
+                                screen: 'OrderDetails',
+                                params: {
+                                    orderId: orderId,
+                                    fromNotification: true,
+                                    ...params
+                                }
+                            });
+                        } catch (error) {
+                            console.error('📦 ❌ OrderDetails navigation failed:', error);
                         }
                     }
                 } else {
-                    console.log('📦 No orderId, navigating to MyOrders screen');
                     navigation.navigate('Cart', {
                         screen: 'MyOrders',
                         params
@@ -752,7 +774,6 @@ const NavigationWrapper = ({children}) => {
         // Функция навигации к чату
         const navigateToChat = (data) => {
             try {
-                console.log('💬 navigateToChat called with:', data);
                 
                 if (!data.roomId) {
                     console.warn('No roomId provided for chat navigation');
@@ -778,14 +799,11 @@ const NavigationWrapper = ({children}) => {
         // Функция навигации по URL
         const navigateToUrl = (url) => {
             try {
-                console.log('🔗 navigateToUrl called with:', url);
                 
-                // Парсим iceberg:// URL
                 if (url.startsWith('iceberg://')) {
                     const path = url.replace('iceberg://', '');
                     const [screen, id] = path.split('/');
                     
-                    console.log('🔗 Parsed URL:', { screen, id });
                     
                     if (screen === 'chat' && id) {
                         navigateToChat({ roomId: id });
@@ -1712,7 +1730,7 @@ const AdminStackScreen = () => {
             />
             <AdminStack.Screen
                 name="StaffOrderDetails"
-                component={OrderDetailsScreen}
+                component={OrderDetailsEmployeeScreen}
                 options={{
                     ...slideFromRight,
                     headerShown: false,
@@ -1731,15 +1749,6 @@ const AdminStackScreen = () => {
             <AdminStack.Screen
                 name="RewardSettings"
                 component={RewardSettingsScreen}
-                options={{
-                    ...slideFromRight,
-                    headerShown: false,
-                    gestureEnabled: true,
-                }}
-            />
-            <AdminStack.Screen
-                name="OrderNotificationTest"
-                component={OrderNotificationTestScreen}
                 options={{
                     ...slideFromRight,
                     headerShown: false,

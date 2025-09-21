@@ -1,4 +1,42 @@
 // Константы для системы обработки заказов
+export const CONSTANTS = {
+  // Cache settings
+  CACHE_KEY: 'staff_orders_cache',
+  CACHE_EXPIRY: 5 * 60 * 1000, // 5 minutes
+  
+  // Auto refresh
+  AUTO_REFRESH_INTERVAL: 30 * 1000, // 30 seconds
+  
+  // Timing
+  RECENT_ACTION_THRESHOLD: 30 * 1000, // 30 seconds
+  STATUS_UPDATE_DELAY: 1500, // 1.5 seconds
+  RELEASE_ORDER_DELAY: 1000, // 1 second
+  
+  // Rendering optimization
+  RENDER_BATCH_SIZE: 10,
+  INITIAL_RENDER_COUNT: 8,
+  WINDOW_SIZE: 10,
+  UPDATE_CELLS_BATCHING_PERIOD: 100,
+  
+  // Text limits
+  COMMENT_MAX_LENGTH: 500,
+  
+  // Status mappings - обновлено для пропуска этапа упаковки
+  ROLE_STATUS_MAPPING: {
+      'PICKER': ['PENDING'], // Сборщик работает с новыми заказами
+      'PACKER': [], // Этап упаковки убран - сборщик сразу передает курьерам
+      'COURIER': ['IN_DELIVERY'] // Курьеры работают с заказами в доставке
+  },
+
+  ROLE_HISTORY_MAPPING: {
+      'PICKER': ['IN_DELIVERY', 'DELIVERED', 'CANCELLED', 'RETURNED'], // Сборщик видит историю с момента передачи курьерам
+      'PACKER': [], // Этап упаковки убран
+      'COURIER': ['DELIVERED', 'CANCELLED', 'RETURNED'] // Курьеры видят завершенные заказы
+  },
+  
+  COMPLETED_STATUSES: ['DELIVERED', 'CANCELLED', 'RETURNED'],
+  CANCELLABLE_STATUSES: ['PENDING', 'CONFIRMED', 'IN_DELIVERY'],
+};
 
 // Новые статусы обработки заказов
 export const PROCESSING_STAGES = {
@@ -107,11 +145,11 @@ export const PROCESSING_ROLE_LABELS = {
   [PROCESSING_ROLES.SUPERVISOR]: 'Начальник смены'
 };
 
-// Маппинг ролей к этапам
+// Маппинг ролей к этапам - обновлено для пропуска этапа упаковки
 export const ROLE_STAGE_MAPPING = {
-  [PROCESSING_ROLES.PICKER]: PROCESSING_STAGES.PICKING,
-  [PROCESSING_ROLES.PACKER]: PROCESSING_STAGES.PACKING,
+  [PROCESSING_ROLES.PICKER]: PROCESSING_STAGES.PICKING, // Сборщик работает на этапе сборки
+  [PROCESSING_ROLES.PACKER]: null, // Этап упаковки убран - сборщик сразу передает курьерам
   [PROCESSING_ROLES.QUALITY_CHECKER]: PROCESSING_STAGES.QUALITY_CHECK,
-  [PROCESSING_ROLES.COURIER]: PROCESSING_STAGES.IN_DELIVERY,
+  [PROCESSING_ROLES.COURIER]: PROCESSING_STAGES.IN_DELIVERY, // Курьеры работают на этапе доставки
   [PROCESSING_ROLES.SUPERVISOR]: null // Супервизор видит все этапы
 }; 

@@ -79,7 +79,7 @@ export const OrderCard = ({
                               showClient = false,
                               showActions = false,
                               onStatusUpdate,
-                              
+
                               onDownloadInvoice,
                               onTakeOrder,
                               onReleaseOrder,
@@ -91,7 +91,9 @@ export const OrderCard = ({
                               processingStage = null,
                               showEmployeeInfo = false,
                               showStatusHistory = false,
-                              showProcessingHistory = false
+                              showProcessingHistory = false,
+                              isRecentlyProcessed = false,
+                              isHistoryOrder = false
                           }) => {
     if (!order) return null;
 
@@ -151,21 +153,22 @@ export const OrderCard = ({
         if (!order.orderItems || order.orderItems.length === 0) return null;
 
         const totalItems = order.orderItems.reduce((sum, item) => sum + item.quantity, 0);
-        const firstItem = order.orderItems[0];
 
         return (
             <View style={styles.orderItems}>
-                <View style={styles.itemInfo}>
-                    <Text style={styles.itemName}>
-                        {firstItem.product?.name || 'Товар'}
-                    </Text>
-                    <Text style={styles.itemQuantity}>
-                        {firstItem.quantity} {getBoxesText(firstItem.quantity)}
-                    </Text>
-                </View>
-                {order.orderItems.length > 1 && (
+                {order.orderItems.slice(0, 2).map((item, index) => (
+                    <View key={index} style={styles.itemInfo}>
+                        <Text style={styles.itemName}>
+                            {item.product?.name || 'Товар'}
+                        </Text>
+                        <Text style={styles.itemQuantity}>
+                            {item.quantity} {getBoxesText(item.quantity)}
+                        </Text>
+                    </View>
+                ))}
+                {order.orderItems.length > 2 && (
                     <Text style={styles.additionalItems}>
-                        +{order.orderItems.length - 1} товар(ов)
+                        +{order.orderItems.length - 2} товар(ов)
                     </Text>
                 )}
             </View>
@@ -475,7 +478,7 @@ export const OrderCard = ({
 
     return (
         <TouchableOpacity
-            style={[styles.container, isPriority && styles.priorityContainer, style]}
+            style={[styles.container, isPriority && styles.priorityContainer, isHistoryOrder && styles.historyOrderContainer, style]}
             onPress={onPress}
             activeOpacity={0.7}
         >
@@ -483,8 +486,20 @@ export const OrderCard = ({
                 <View style={styles.orderInfo}>
                     <Text style={styles.orderNumber}>{formattedNumber}</Text>
                     <Text style={styles.orderDate}>{formatDate(order.createdAt)}</Text>
+                    {isRecentlyProcessed && (
+                        <View style={styles.recentlyProcessedBadge}>
+                            <Icon name="check-circle" size={12} color="#4CAF50" />
+                            <Text style={styles.recentlyProcessedText}>Обработан</Text>
+                        </View>
+                    )}
+                    {isHistoryOrder && (
+                        <View style={styles.historyOrderBadge}>
+                            <Icon name="history" size={12} color="#1976d2" />
+                            <Text style={styles.historyOrderText}>История</Text>
+                        </View>
+                    )}
                 </View>
-                
+
                 <View style={styles.statusContainer}>
                     <View style={[styles.statusIndicator, { backgroundColor: statusColor }]}>
                         <Icon name={statusIcon} size={16} color="#fff" />
@@ -853,6 +868,43 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: '700',
         color: '#667eea',
+    },
+    recentlyProcessedBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: '#e8f5e8',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 8,
+        marginTop: 4,
+        alignSelf: 'flex-start',
+    },
+    recentlyProcessedText: {
+        fontSize: 10,
+        fontWeight: '600',
+        color: '#4CAF50',
+    },
+    historyOrderBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: '#e3f2fd',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 8,
+        marginTop: 4,
+        alignSelf: 'flex-start',
+    },
+    historyOrderText: {
+        fontSize: 10,
+        fontWeight: '600',
+        color: '#1976d2',
+    },
+    historyOrderContainer: {
+        borderLeftWidth: 3,
+        borderLeftColor: '#1976d2',
+        backgroundColor: '#fafafa',
     },
 });
 

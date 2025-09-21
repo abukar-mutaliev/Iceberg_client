@@ -70,6 +70,7 @@ export const CustomDatePicker = ({date, onDateChange, visible, onCancel}) => {
     const generateDays = () => {
         const days = [];
         const currentDate = new Date();
+        // Генерируем дни на 30 дней вперед от текущей даты
         for (let i = 0; i < 30; i++) {
             const newDate = new Date(currentDate);
             newDate.setDate(currentDate.getDate() + i);
@@ -473,5 +474,15 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(FontSize.size_lg) || 18,
         fontWeight: '600',
+    },
+    modalTitleContainer: {
+        flex: 1,
+    },
+    modalSubtitle: {
+        fontSize: normalizeFont(FontSize.size_sm) || 14,
+        color: Color.dark || '#000',
+        fontFamily: FontFamily.sFProText,
+        opacity: 0.7,
+        marginTop: 2,
     },
 });

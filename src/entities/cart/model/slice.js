@@ -84,13 +84,16 @@ export const fetchCart = createAsyncThunk(
                 return rejectWithValue('Корзина недоступна для данной роли');
             }
 
+            // При forceRefresh всегда делаем запрос к серверу, игнорируя кэш
             if (!forceRefresh && isCacheValid(state.cart.lastFetchTime)) {
                 return { data: state.cart, fromCache: true };
             }
 
+            console.log(`🛒 fetchCart: Making API request (forceRefresh: ${forceRefresh})`);
             const response = await CartService.getCart();
 
             if (response.status === 'success') {
+                console.log(`🛒 fetchCart: API response received, items: ${response.data?.items?.length || 0}`);
                 return { data: response.data, fromCache: false };
             } else {
                 throw new Error(response.message || 'Ошибка при загрузке корзины');
@@ -161,6 +164,10 @@ export const addToCart = createAsyncThunk(
                 return await addToGuestCart(productId, quantity, getState);
             }
 
+            // Найдем информацию о товаре для оптимистического обновления
+            const product = state.products?.items?.find(p => p.id === productId) ||
+                           state.products?.byId?.[productId];
+
             const service = useQuickAdd ? CartService.quickAddToCart : CartService.addToCart;
             const response = await service(productId, quantity);
 
@@ -170,7 +177,8 @@ export const addToCart = createAsyncThunk(
                     quantity,
                     stats: response.data.stats || null,
                     action: response.data.action || 'added',
-                    priceInfo: response.data.priceInfo || null
+                    priceInfo: response.data.priceInfo || null,
+                    product: product || null // Добавляем информацию о товаре
                 };
             } else {
                 throw new Error(response.message || 'Ошибка при добавлении товара в корзину');
@@ -584,12 +592,15 @@ const removeFromGuestCart = async (itemId, getState) => {
 // Вспомогательная функция для подсчета статистики
 const calculateCartStats = (items = [], clientType = 'RETAIL') => {
     const validItems = items.filter(item => item?.product && item.quantity > 0);
+    console.log(`🛒 calculateCartStats: Processing ${validItems.length} valid items`);
 
     return validItems.reduce((acc, item) => {
         const product = item.product;
         const itemsPerBox = product.itemsPerBox || 1;
         const boxPrice = product.boxPrice || (product.price * itemsPerBox);
-        
+
+        console.log(`🛒 calculateCartStats: Item ${product.name}, quantity: ${item.quantity}, price: ${product.price}, boxPrice: ${boxPrice}, itemsPerBox: ${itemsPerBox}`);
+
         let finalBoxPrice = boxPrice;
         let itemSavings = 0;
 
@@ -604,6 +615,8 @@ const calculateCartStats = (items = [], clientType = 'RETAIL') => {
 
         const itemTotal = item.quantity * finalBoxPrice;
         const totalItemsForThisProduct = item.quantity * itemsPerBox;
+
+        console.log(`🛒 calculateCartStats: Item total: ${itemTotal}, finalBoxPrice: ${finalBoxPrice}`);
 
         return {
             totalBoxes: acc.totalBoxes + item.quantity, // Количество коробок
@@ -711,13 +724,16 @@ const cartSlice = createSlice({
                 state.loading = false;
                 const { data, fromCache } = action.payload;
 
+                console.log(`🛒 fetchCart.fulfilled: fromCache=${fromCache}, items=${data?.items?.length || 0}, totalAmount=${data?.summary?.totalAmount || 0}`);
+
                 if (!fromCache) {
+                    console.log('🛒 fetchCart.fulfilled: Updating state with fresh data from server');
                     // Сортируем товары для стабильного порядка
                     const sortedItems = (data.items || []).sort((a, b) => {
                         // Сначала сортируем по ID записи в корзине для стабильности
                         return a.id - b.id;
                     });
-                    
+
                     state.items = sortedItems;
                     state.totalBoxes = data.summary?.totalBoxes || 0; // Количество коробок
                     state.totalItems = data.summary?.totalItems || 0; // Общее количество штук
@@ -730,7 +746,7 @@ const cartSlice = createSlice({
                     state.removedItems = data.removedItems || [];
                     state.updatedItems = data.updatedItems || [];
                     state.lastFetchTime = Date.now();
-                } else if (__DEV__) {
+                } else {
                     console.log('🔄 fetchCart.fulfilled: Skipping update because data is from cache');
                 }
             })
@@ -766,8 +782,10 @@ const cartSlice = createSlice({
                 state.error = null;
             })
             .addCase(addToCart.fulfilled, (state, action) => {
-                const { productId, quantity, stats, guestCart, action: actionType } = action.payload;
+                const { productId, quantity, stats, guestCart, action: actionType, product } = action.payload;
                 state.addingItems = removeFromArray(state.addingItems, productId);
+
+                console.log(`🛒 addToCart.fulfilled: Added ${quantity} items of product ${productId}, action: ${actionType}`);
 
                 if (guestCart) {
                     // Для гостевой корзины обновляем items напрямую с сортировкой
@@ -781,19 +799,83 @@ const cartSlice = createSlice({
                     state.totalAmount = calculatedStats.totalAmount;
                     state.totalSavings = calculatedStats.totalSavings;
                     state.itemsCount = calculatedStats.itemsCount;
-                } else if (stats) {
-                    // Для обычной корзины используем статистику с сервера
-                    state.totalBoxes = stats.totalBoxes || 0;
-                    state.totalItems = stats.totalItems || 0;
-                    state.totalAmount = stats.totalAmount || 0;
-                    state.totalSavings = stats.totalSavings || 0;
-                    state.itemsCount = stats.itemsCount || 0;
+                    console.log(`🛒 addToCart.fulfilled: Guest cart updated, totalAmount: ${calculatedStats.totalAmount}`);
+                } else {
+                    // Для обычной корзины - оптимистическое обновление массива items
+                    if (product && !Array.isArray(state.items)) {
+                        state.items = [];
+                    }
+
+                    if (product && Array.isArray(state.items)) {
+                        const existingItemIndex = state.items.findIndex(item =>
+                            item.productId === productId || item.product?.id === productId
+                        );
+
+                        if (existingItemIndex !== -1) {
+                            // Обновляем существующую позицию
+                            const oldQuantity = state.items[existingItemIndex].quantity;
+                            state.items[existingItemIndex] = {
+                                ...state.items[existingItemIndex],
+                                quantity: state.items[existingItemIndex].quantity + quantity,
+                                updatedAt: Date.now()
+                            };
+                            console.log(`🛒 addToCart.fulfilled: Updated existing item, quantity: ${oldQuantity} -> ${state.items[existingItemIndex].quantity}`);
+                        } else {
+                            // Добавляем новую позицию
+                            const newItem = {
+                                id: Date.now(), // Временный ID до синхронизации
+                                productId,
+                                quantity,
+                                product: {
+                                    id: product.id,
+                                    name: product.name,
+                                    price: product.price,
+                                    boxPrice: product.boxPrice,
+                                    itemsPerBox: product.itemsPerBox,
+                                    wholesalePrice: product.wholesalePrice,
+                                    wholesaleMinQty: product.wholesaleMinQty,
+                                    images: product.images || [],
+                                    stockQuantity: product.stockQuantity,
+                                    availableQuantity: product.availableQuantity
+                                },
+                                addedAt: Date.now()
+                            };
+                            state.items.push(newItem);
+                            console.log(`🛒 addToCart.fulfilled: Added new item, quantity: ${quantity}, price: ${product.price}, boxPrice: ${product.boxPrice}, itemsPerBox: ${product.itemsPerBox}`);
+                        }
+                    }
+
+                    if (stats) {
+                        // Используем статистику с сервера
+                        state.totalBoxes = stats.totalBoxes || 0;
+                        state.totalItems = stats.totalItems || 0;
+                        state.totalAmount = stats.totalAmount || 0;
+                        state.totalSavings = stats.totalSavings || 0;
+                        state.itemsCount = stats.itemsCount || 0;
+                        console.log(`🛒 addToCart.fulfilled: Server stats applied, totalAmount: ${stats.totalAmount}`);
+                    } else {
+                        // Если нет статистики с сервера, пересчитываем локально
+                        console.log(`🛒 addToCart.fulfilled: Calculating local stats, items count: ${state.items.length}`);
+                        const calculatedStats = calculateCartStats(state.items, state.clientType);
+                        state.totalBoxes = calculatedStats.totalBoxes;
+                        state.totalItems = calculatedStats.totalItems;
+                        state.totalAmount = calculatedStats.totalAmount;
+                        state.totalSavings = calculatedStats.totalSavings;
+                        state.itemsCount = calculatedStats.itemsCount;
+                        console.log(`🛒 addToCart.fulfilled: Local stats calculated, totalAmount: ${calculatedStats.totalAmount}, totalBoxes: ${calculatedStats.totalBoxes}`);
+                    }
+
+                    // Сбрасываем кэш чтобы при следующем входе в корзину данные обновились с сервера
+                    state.lastFetchTime = null;
+                    console.log('🛒 addToCart.fulfilled: Cache cleared (lastFetchTime = null)');
                 }
             })
             .addCase(addToCart.rejected, (state, action) => {
                 const productId = action.meta.arg.productId;
                 state.addingItems = removeFromArray(state.addingItems, productId);
                 state.error = action.payload;
+                // Сбрасываем кэш в случае ошибки, чтобы данные были синхронизированы при следующем запросе
+                state.lastFetchTime = null;
             })
 
             // ===== ОБНОВЛЕНИЕ ТОВАРА =====
@@ -803,7 +885,7 @@ const cartSlice = createSlice({
                 state.error = null;
             })
             .addCase(updateCartItem.fulfilled, (state, action) => {
-                const { itemId, quantity, guestCart } = action.payload;
+                const { itemId, quantity, guestCart, priceInfo } = action.payload;
                 state.updatingItems = removeFromArray(state.updatingItems, itemId);
 
                 if (guestCart) {
@@ -818,10 +900,21 @@ const cartSlice = createSlice({
                     state.totalSavings = stats.totalSavings;
                     state.itemsCount = stats.itemsCount;
                 } else {
-                    // Для авторизованных пользователей просто сбрасываем кеш
-                    // Это заставит следующий fetchCart загрузить актуальные данные с сервера
-                    if (__DEV__) {
-                        console.log('🔄 updateCartItem.fulfilled: Cache invalidated for authenticated user');
+                    // Для авторизованных пользователей - оптимистическое обновление
+                    if (Array.isArray(state.items)) {
+                        const itemIndex = state.items.findIndex(item => item.id === itemId);
+                        if (itemIndex !== -1) {
+                            state.items[itemIndex] = {
+                                ...state.items[itemIndex],
+                                quantity: quantity,
+                                updatedAt: Date.now()
+                            };
+                        }
+                    }
+
+                    // Обновляем статистику если она пришла с сервера
+                    if (priceInfo) {
+                        // Здесь можно обновить статистику на основе priceInfo
                     }
                 }
 
@@ -831,6 +924,8 @@ const cartSlice = createSlice({
                 const itemId = action.meta.arg.itemId;
                 state.updatingItems = removeFromArray(state.updatingItems, itemId);
                 state.error = action.payload;
+                // Сбрасываем кэш в случае ошибки
+                state.lastFetchTime = null;
             })
 
             // ===== УДАЛЕНИЕ ИЗ КОРЗИНЫ =====
@@ -842,12 +937,20 @@ const cartSlice = createSlice({
             .addCase(removeFromCart.fulfilled, (state, action) => {
                 const itemId = action.payload;
                 state.removingItems = removeFromArray(state.removingItems, itemId);
+
+                // Оптимистическое удаление товара из массива items
+                if (Array.isArray(state.items)) {
+                    state.items = state.items.filter(item => item.id !== itemId);
+                }
+
                 state.lastFetchTime = null;
             })
             .addCase(removeFromCart.rejected, (state, action) => {
                 const itemId = action.meta.arg;
                 state.removingItems = removeFromArray(state.removingItems, itemId);
                 state.error = action.payload;
+                // Сбрасываем кэш в случае ошибки
+                state.lastFetchTime = null;
             })
 
             // ===== ОЧИСТКА КОРЗИНЫ =====
@@ -992,6 +1095,12 @@ const cartSlice = createSlice({
                 state.lastFetchTime = null;
             })
 
+            .addCase(bulkUpdateQuantities.rejected, (state, action) => {
+                state.error = action.payload;
+                // Сбрасываем кэш в случае ошибки
+                state.lastFetchTime = null;
+            })
+
             .addCase(bulkRemoveItems.fulfilled, (state, action) => {
                 const { removedCount } = action.payload;
 
@@ -1002,6 +1111,12 @@ const cartSlice = createSlice({
                     timestamp: new Date().toISOString()
                 });
 
+                state.lastFetchTime = null;
+            })
+
+            .addCase(bulkRemoveItems.rejected, (state, action) => {
+                state.error = action.payload;
+                // Сбрасываем кэш в случае ошибки
                 state.lastFetchTime = null;
             })
 

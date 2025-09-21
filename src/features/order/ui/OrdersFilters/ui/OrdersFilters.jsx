@@ -11,6 +11,7 @@ import {
     StatusBar
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { DatePickerWheel } from '@shared/ui/Pickers/DatePickerWheel';
 
 const { width, height } = Dimensions.get('window');
 
@@ -71,10 +72,17 @@ export const OrdersFilters = React.memo(({
     const [showStatusModal, setShowStatusModal] = useState(false);
     const [localFilters, setLocalFilters] = useState(filters);
     const advancedScrollRef = useRef(null);
+    const searchInputRef = useRef(null);
+    const searchValueRef = useRef(filters.search || '');
+
+    // Состояние для календарей
+    const [showDateFromPicker, setShowDateFromPicker] = useState(false);
+    const [showDateToPicker, setShowDateToPicker] = useState(false);
 
     // Синхронизация с внешними фильтрами
     useEffect(() => {
         setLocalFilters(filters);
+        searchValueRef.current = filters.search || '';
     }, [filters]);
 
     // Количество активных фильтров
@@ -109,11 +117,13 @@ export const OrdersFilters = React.memo(({
 
     // Обработчик очистки поиска
     const handleClearSearch = useCallback(() => {
+        searchValueRef.current = '';
         handleFilterChange('search', '');
     }, [handleFilterChange]);
 
     // Обработчик изменения поиска
     const handleSearchChange = useCallback((text) => {
+        searchValueRef.current = text;
         handleFilterChange('search', text);
     }, [handleFilterChange]);
 
@@ -134,14 +144,35 @@ export const OrdersFilters = React.memo(({
         setShowStatusModal(false);
     }, []);
 
-    // Обработчики для текстовых полей
-    const handleDateFromChange = useCallback((text) => {
-        handleFilterChange('dateFrom', text);
+    // Обработчики для календарей
+    const handleDateFromChange = useCallback((date) => {
+        // Конвертируем Date в строку формата YYYY-MM-DD
+        const dateString = date ? date.toISOString().split('T')[0] : '';
+        handleFilterChange('dateFrom', dateString);
+        setShowDateFromPicker(false);
     }, [handleFilterChange]);
 
-    const handleDateToChange = useCallback((text) => {
-        handleFilterChange('dateTo', text);
+    const handleDateToChange = useCallback((date) => {
+        // Конвертируем Date в строку формата YYYY-MM-DD
+        const dateString = date ? date.toISOString().split('T')[0] : '';
+        handleFilterChange('dateTo', dateString);
+        setShowDateToPicker(false);
     }, [handleFilterChange]);
+
+    // Хелперы для работы с датами
+    const parseDateString = (dateString) => {
+        return dateString ? new Date(dateString) : null;
+    };
+
+    const formatDateForDisplay = (dateString) => {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        return date.toLocaleDateString('ru-RU', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+        });
+    };
 
     const handleMinAmountChange = useCallback((text) => {
         handleFilterChange('minAmount', text);
@@ -165,15 +196,17 @@ export const OrdersFilters = React.memo(({
             <View style={styles.searchInputContainer}>
                 <Icon name="search" size={20} color="#667eea" style={styles.searchIcon} />
                 <TextInput
+                    ref={searchInputRef}
                     style={styles.searchInput}
                     placeholder="Поиск по номеру, клиенту, адресу..."
                     placeholderTextColor="#a0aec0"
-                    value={localFilters.search || ''}
+                    value={searchValueRef.current}
                     onChangeText={handleSearchChange}
                     returnKeyType="search"
                     clearButtonMode="while-editing"
+                    keyboardShouldPersistTaps="handled"
                 />
-                {localFilters.search && (
+                {searchValueRef.current && (
                     <TouchableOpacity
                         onPress={handleClearSearch}
                         style={styles.clearSearchButton}
@@ -184,7 +217,7 @@ export const OrdersFilters = React.memo(({
                 )}
             </View>
         </View>
-    ), [localFilters.search, handleSearchChange, handleClearSearch]);
+    ), [handleSearchChange, handleClearSearch]);
 
     // Рендер быстрых фильтров
     const renderQuickFilters = useCallback(() => {
@@ -197,11 +230,11 @@ export const OrdersFilters = React.memo(({
 
         return (
             <View style={styles.quickFiltersContainer}>
-                <ScrollView 
-                    horizontal 
+                <ScrollView
+                    horizontal
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.quickFiltersContent}
-                    keyboardShouldPersistTaps="handled"
+                    keyboardShouldPersistTaps="always"
                 >
                     {quickFilters.map((filter) => (
                         <TouchableOpacity
@@ -265,10 +298,10 @@ export const OrdersFilters = React.memo(({
         if (!isExpanded) return null;
 
         return (
-            <ScrollView 
+            <ScrollView
                 style={styles.advancedFiltersContainer}
                 showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
+                keyboardShouldPersistTaps="always"
                 nestedScrollEnabled={true}
                 ref={advancedScrollRef}
             >
@@ -282,29 +315,23 @@ export const OrdersFilters = React.memo(({
                         <View style={styles.dateInputsContainer}>
                             <View style={styles.dateInputGroup}>
                                 <Text style={styles.dateInputLabel}>От:</Text>
-                                <View style={styles.dateInputContainer}>
-                                    <Icon name="event" size={16} color="#a0aec0" />
-                                    <TextInput
-                                        style={styles.dateInput}
-                                        placeholder="дд.мм.гггг"
-                                        placeholderTextColor="#a0aec0"
-                                        value={localFilters.dateFrom || ''}
-                                        onChangeText={handleDateFromChange}
-                                    />
-                                </View>
+                                <DatePickerWheel
+                                    date={parseDateString(localFilters.dateFrom)}
+                                    onDateChange={handleDateFromChange}
+                                    visible={showDateFromPicker}
+                                    onCancel={() => setShowDateFromPicker(false)}
+                                    onPress={() => setShowDateFromPicker(true)}
+                                />
                             </View>
                             <View style={styles.dateInputGroup}>
                                 <Text style={styles.dateInputLabel}>До:</Text>
-                                <View style={styles.dateInputContainer}>
-                                    <Icon name="event" size={16} color="#a0aec0" />
-                                    <TextInput
-                                        style={styles.dateInput}
-                                        placeholder="дд.мм.гггг"
-                                        placeholderTextColor="#a0aec0"
-                                        value={localFilters.dateTo || ''}
-                                        onChangeText={handleDateToChange}
-                                    />
-                                </View>
+                                <DatePickerWheel
+                                    date={parseDateString(localFilters.dateTo)}
+                                    onDateChange={handleDateToChange}
+                                    visible={showDateToPicker}
+                                    onCancel={() => setShowDateToPicker(false)}
+                                    onPress={() => setShowDateToPicker(true)}
+                                />
                             </View>
                         </View>
                     </View>
@@ -390,7 +417,7 @@ export const OrdersFilters = React.memo(({
                 </View>
             </ScrollView>
         );
-    }, [isExpanded, type, localFilters, handleDateFromChange, handleDateToChange, handleMinAmountChange, handleMaxAmountChange, handleWarehouseIdChange, handleDistrictIdChange]);
+    }, [isExpanded, type, localFilters, showDateFromPicker, showDateToPicker, handleDateFromChange, handleDateToChange, handleMinAmountChange, handleMaxAmountChange, handleWarehouseIdChange, handleDistrictIdChange]);
 
     // Рендер модального окна выбора статуса
     const renderStatusModal = useCallback(() => (
@@ -417,10 +444,10 @@ export const OrdersFilters = React.memo(({
                         </TouchableOpacity>
                     </View>
 
-                    <ScrollView 
-                        style={styles.statusList} 
+                    <ScrollView
+                        style={styles.statusList}
                         showsVerticalScrollIndicator={false}
-                        keyboardShouldPersistTaps="handled"
+                        keyboardShouldPersistTaps="always"
                     >
                         <TouchableOpacity
                             style={[

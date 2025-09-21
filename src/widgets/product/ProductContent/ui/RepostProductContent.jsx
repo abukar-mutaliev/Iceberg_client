@@ -80,7 +80,7 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
       } finally {
         setSearching(false);
       }
-    }, 300), // Уменьшил задержку для более быстрого поиска
+    }, 300), 
     [rooms]
   );
 

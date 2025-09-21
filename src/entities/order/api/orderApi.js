@@ -133,20 +133,7 @@ export const OrderApi = {
         const url = `/api/orders/${orderId}/complete-stage`;
         const data = comment ? { comment } : {};
 
-        console.log('OrderApi: завершение этапа заказа', {
-            orderId,
-            comment,
-            url,
-            data
-        });
-
         const response = await createProtectedRequest('PATCH', url, data);
-
-        console.log('OrderApi: ответ сервера на завершение этапа', {
-            orderId,
-            status: response.status,
-            data: response.data
-        });
 
         return response;
     },
@@ -154,6 +141,13 @@ export const OrderApi = {
     // Взять заказ в работу (самоназначение)
     takeOrder: (orderId, reason = null) => {
         const url = `/api/orders/${orderId}/take`;
+        const data = reason ? { reason } : {};
+        return createProtectedRequest('PATCH', url, data);
+    },
+
+    // Снять заказ с работы (отменить самоназначение)
+    releaseOrder: (orderId, reason = null) => {
+        const url = `/api/orders/${orderId}/release`;
         const data = reason ? { reason } : {};
         return createProtectedRequest('PATCH', url, data);
     },

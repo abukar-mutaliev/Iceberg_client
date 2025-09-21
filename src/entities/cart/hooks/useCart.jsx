@@ -286,19 +286,19 @@ export const useCartProduct = (productId) => {
         try {
             const result = await dispatch(addToCart({ productId, quantity: qty, useQuickAdd }));
 
-            // Дополнительно к middleware - принудительно перезагружаем корзину с задержкой (только если доступна)
+            // Для синхронизации с сервером - перезагружаем корзину через задержку
             if (result.type === 'cart/addToCart/fulfilled' && isCartAvailable) {
-                // Даем серверу время обработать операцию
+                // Даем время оптимистическим изменениям отобразиться перед синхронизацией
                 setTimeout(async () => {
                     await dispatch(fetchCart(true));
-                }, 300);
+                }, 500);
             }
 
             return result;
         } catch (error) {
             throw error;
         }
-    }, [dispatch, productId, isInCart, quantity, isCartAvailable]);
+    }, [dispatch, productId, isCartAvailable]);
 
     /**
      * Обновить количество товара в корзине (коробками)
@@ -311,11 +311,19 @@ export const useCartProduct = (productId) => {
 
         try {
             const result = await dispatch(updateCartItem({ itemId: cartItem.id, quantity: newQuantity }));
+
+            // Для синхронизации с сервером - перезагружаем корзину через задержку
+            if (result.type === 'cart/updateCartItem/fulfilled') {
+                setTimeout(async () => {
+                    await dispatch(fetchCart(true));
+                }, 500);
+            }
+
             return result;
         } catch (error) {
             throw error;
         }
-    }, [dispatch, cartItem, productId, quantity]);
+    }, [dispatch, cartItem]);
 
     const removeFromCartHandler = useCallback(async () => {
         if (!cartItem) {
@@ -325,19 +333,18 @@ export const useCartProduct = (productId) => {
         try {
             const result = await dispatch(removeFromCart(cartItem.id));
 
-            // Дополнительно к middleware - принудительно перезагружаем корзину с задержкой
+            // Для синхронизации с сервером - перезагружаем корзину через задержку
             if (result.type === 'cart/removeFromCart/fulfilled') {
-                // Даем серверу время обработать операцию
                 setTimeout(async () => {
                     await dispatch(fetchCart(true));
-                }, 300);
+                }, 500);
             }
 
             return result;
         } catch (error) {
             throw error;
         }
-    }, [dispatch, cartItem, productId, quantity]);
+    }, [dispatch, cartItem]);
 
     /**
      * Увеличить количество коробок на 1

@@ -8,7 +8,6 @@ import {
     StatusBar,
     ScrollView,
     ActivityIndicator,
-    Alert,
     KeyboardAvoidingView,
     Platform,
 } from 'react-native';
@@ -17,6 +16,7 @@ import {
     FontFamily
 } from '@app/styles/GlobalStyles';
 import { CustomTextInput } from '@shared/ui/CustomTextInput/CustomTextInput';
+import { Toast } from '@shared/ui/Toast';
 
 const normalize = (size) => {
     const scale = 375 / 375;
@@ -27,6 +27,8 @@ export const GuestCheckoutScreen = ({ navigation, route }) => {
     const { items = [], stats = {}, clientType } = route.params || {};
     
     const [loading, setLoading] = useState(false);
+    const [showSuccessToast, setShowSuccessToast] = useState(false);
+    const [validationError, setValidationError] = useState('');
     const [formData, setFormData] = useState({
         customerName: '',
         customerPhone: '',
@@ -42,19 +44,29 @@ export const GuestCheckoutScreen = ({ navigation, route }) => {
         }));
     };
 
+    // Обработчик скрытия Toast и навигации
+    const handleToastHide = () => {
+        setShowSuccessToast(false);
+        navigation.navigate('MainTab', {
+            screen: 'Main',
+            params: { clearGuestCart: true }
+        });
+    };
+
     const validateForm = () => {
         if (!formData.customerName.trim()) {
-            Alert.alert('Ошибка', 'Укажите ваше имя');
+            setValidationError('Укажите ваше имя');
             return false;
         }
         if (!formData.customerPhone.trim()) {
-            Alert.alert('Ошибка', 'Укажите номер телефона');
+            setValidationError('Укажите номер телефона');
             return false;
         }
         if (!formData.deliveryAddress.trim()) {
-            Alert.alert('Ошибка', 'Укажите адрес доставки');
+            setValidationError('Укажите адрес доставки');
             return false;
         }
+        setValidationError('');
         return true;
     };
 
@@ -66,23 +78,9 @@ export const GuestCheckoutScreen = ({ navigation, route }) => {
         try {
             await new Promise(resolve => setTimeout(resolve, 2000));
             
-            Alert.alert(
-                'Заказ принят!',
-                'Ваш заказ принят в обработку. Мы свяжемся с вами в ближайшее время для подтверждения.',
-                [
-                    {
-                        text: 'OK',
-                        onPress: () => {
-                            navigation.navigate('MainTab', { 
-                                screen: 'Main',
-                                params: { clearGuestCart: true }
-                            });
-                        }
-                    }
-                ]
-            );
+            setShowSuccessToast(true);
         } catch (error) {
-            Alert.alert('Ошибка', 'Не удалось создать заказ. Попробуйте позже.');
+            setValidationError('Не удалось создать заказ. Попробуйте позже.');
         } finally {
             setLoading(false);
         }
@@ -213,6 +211,28 @@ export const GuestCheckoutScreen = ({ navigation, route }) => {
                     </TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>
+
+            {/* Toast уведомление об успешном заказе */}
+            {showSuccessToast && (
+                <Toast
+                    message="Заказ принят в обработку! Мы свяжемся с вами в ближайшее время для подтверждения."
+                    type="success"
+                    duration={4000}
+                    onHide={handleToastHide}
+                    position="top"
+                />
+            )}
+
+            {/* Toast уведомление об ошибке валидации */}
+            {validationError && (
+                <Toast
+                    message={validationError}
+                    type="error"
+                    duration={3000}
+                    onHide={() => setValidationError('')}
+                    position="top"
+                />
+            )}
         </SafeAreaView>
     );
 };

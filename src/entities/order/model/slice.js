@@ -683,6 +683,7 @@ const orderSlice = createSlice({
                 state.localOrderActions[orderId] = {
                     taken: false,
                     completed: false,
+                    released: false,
                     timestamp: Date.now()
                 };
             }

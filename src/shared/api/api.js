@@ -66,26 +66,16 @@ const processQueue = (error, token = null) => {
 };
 
 export const getBaseUrl = () => {
-    // Сервер работает на порту 5001 (5000 занят)
-    // const baseUrl = 'http://212.67.11.134';
-    // const port = 5001; // Сервер запустился на порту 5001
-    //
-    // const serverUrl = `${baseUrl}:${port}`;
-    //
-    // console.log('🌐 [API] Using server URL:', serverUrl);
-    // console.log('🌐 [API] Server is running on port 5001 (5000 is busy)');
-    //
-    // return serverUrl;
 
-    // // Старый код на случай, если нужно будет вернуться к локальной разработке
 
-    // if (__DEV__) {
-    //     if (Platform.OS === 'android') {
-    //         return 'http://192.168.1.226:5000';
-    //     }
-    //     return 'http://localhost:5000';
-    // }
-    return 'http://212.67.11.134:5000';
+
+     if (__DEV__) {
+         if (Platform.OS === 'android') {
+             return 'http://192.168.1.226:5000';
+         }
+         return 'http://localhost:5000';
+     }
+    // return 'http://212.67.11.134:5000';
 
 };
 

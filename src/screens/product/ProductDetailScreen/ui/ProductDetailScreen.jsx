@@ -52,8 +52,6 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     const hasLoggedRef = useRef(false);
     
     if (process.env.NODE_ENV === 'development' && productId && !hasLoggedRef.current) {
-        console.log('ProductDetailScreen: Component mounting with params:', route.params);
-        console.log('ProductDetailScreen: Initial setup complete, productId:', productId);
         hasLoggedRef.current = true;
     }
 
@@ -64,7 +62,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     const isMountedRef = useRef(true);
     const timersRef = useRef([]);
     const scrollViewRef = useRef(null);
-    const scrollY = useRef(new Animated.Value(0)).current; // Стабилизируем Animated.Value
+    const scrollY = useRef(new Animated.Value(0)).current;
     const previousProductIdRef = useRef(productId);
     const isNavigatingRef = useRef(false);
     const backInterceptRef = useRef(false);
@@ -87,12 +85,10 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         };
     }, [productId, fromScreen, previousProductId, params.originalFromScreen, supplierId]);
 
-    // Перехватываем системную кнопку назад/жест назад: если пришли из чата, не возвращаемся в чат
     useEffect(() => {
         const sub = navigation.addListener('beforeRemove', (e) => {
             const origin = navigationParamsRef.current?.fromScreen || fromScreen;
             if (origin === 'ChatRoom' || origin === 'ChatList') {
-                // защита от рекурсии: reset тоже триггерит beforeRemove
                 if (backInterceptRef.current) return;
                 backInterceptRef.current = true;
                 e.preventDefault();
@@ -131,7 +127,6 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         try {
             if (!product?.id) return;
             
-            // Получаем или создаем комнату для товара
             const res = await ChatApi.getOrCreateProductRoom(product.id);
             const data = res?.data;
             const roomObj = data?.room || data?.data?.room;
@@ -145,7 +140,6 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 return;
             }
 
-            // Подготавливаем информацию о товаре для передачи в чат
             const productInfo = {
                 id: product.id,
                 name: product.name,
@@ -163,7 +157,6 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 ...product
             };
 
-            // Получаем название компании поставщика для заголовка
             const companyName = supplier?.companyName 
                 || supplier?.user?.companyName
                 || product.supplier?.companyName 
@@ -174,12 +167,9 @@ export const ProductDetailScreen = ({ route, navigation }) => {
 
             const roomTitle = companyName;
 
-            // Получаем текущего пользователя
             const currentUserId = currentUser?.id;
             
-            // Надежная навигация в ChatList стек
             try {
-                // Сначала переходим в ChatList таб, а затем в конкретную комнату
                 navigation.navigate('ChatList', {
                     screen: 'ChatRoom',
                     params: {
@@ -189,8 +179,8 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                         productInfo,
                         roomData: roomObj,
                         currentUserId,
-                        fromScreen: 'ProductDetail', // Указываем, что пришли из товара
-                        autoSendProduct: true // Флаг для автоматической отправки товара
+                        fromScreen: 'ProductDetail', 
+                        autoSendProduct: true
                     }
                 });
             } catch (err) {
@@ -226,10 +216,8 @@ export const ProductDetailScreen = ({ route, navigation }) => {
 
     const fadeAnim = useRef(new Animated.Value(1)).current;
 
-    // Загружаем категории для правильного отображения названий
     const categories = useSelector(selectCategories);
 
-    // Загружаем категории при инициализации
     useEffect(() => {
         if (!categories || categories.length === 0) {
             dispatch(fetchCategories());
@@ -274,10 +262,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     useEffect(() => {
         if (productId && productId !== previousProductIdRef.current) {
             if (previousProductIdRef.current) {
-                console.log('ProductDetailScreen: Очищаем состояние при смене продукта:', {
-                    from: previousProductIdRef.current,
-                    to: productId
-                });
+     
                 dispatch(resetCurrentProduct());
                 setOptimisticProduct(null);
             }
@@ -322,7 +307,6 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         }
         
         if (optimisticProduct) {
-            console.log('ProductDetailScreen: Используем оптимистичные данные:', optimisticProduct);
             return { ...product, ...optimisticProduct };
         }
         
@@ -344,7 +328,6 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 useNativeDriver: true,
             }),
         ]).start((finished) => {
-            // Проверяем, что анимация завершилась успешно и компонент все еще смонтирован
             if (!finished || !isMountedRef.current) {
                 return;
             }
@@ -378,8 +361,6 @@ export const ProductDetailScreen = ({ route, navigation }) => {
 
     useEffect(() => {
         if (!productId) {
-            console.warn('ProductDetailScreen: Нет productId в параметрах:', route.params);
-
             const possibleId = route.params?.id || route.params?.productId;
             if (possibleId) {
                 navigation.setParams({ productId: possibleId });
@@ -394,7 +375,6 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         }
 
         if (!navigation.getState) {
-            console.warn('ProductDetailScreen: Navigation state недоступен');
             return;
         }
 
@@ -402,7 +382,6 @@ export const ProductDetailScreen = ({ route, navigation }) => {
 
     const handleGoBack = useCallback(() => {
         if (isNavigatingRef.current) {
-            console.log('ProductDetailScreen: Навигация уже в процессе, игнорируем');
             return;
         }
 
@@ -442,8 +421,6 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     useEffect(() => {
         if (!isMountedRef.current || !error) return;
         
-        console.error('Ошибка при загрузке продукта:', error);
-
         if (error.includes('не найден') || error.includes('недоступен') || error.includes('Продукт не найден')) {
             createSafeTimeout(() => {
                 if (isMountedRef.current && navigation.canGoBack()) {
@@ -496,7 +473,6 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     const handleCartAdd = useCallback(async (quantity) => {
         try {
             await addToCart(quantity);
-            Alert.alert('Товар добавлен', `"${product?.name}" добавлен в корзину (${quantity} шт.)`);
         } catch (error) {
             console.error('Ошибка при добавлении в корзину:', error);
             Alert.alert('Ошибка', 'Не удалось добавить товар в корзину');
@@ -527,10 +503,8 @@ export const ProductDetailScreen = ({ route, navigation }) => {
             try {
                 if (isInCart) {
                     await updateQuantity(selectedQuantity);
-                    Alert.alert('Количество обновлено', `Количество "${product.name}" обновлено до ${selectedQuantity}`);
                 } else {
                     await addToCart(selectedQuantity);
-                    Alert.alert('Товар добавлен', `"${product.name}" добавлен в корзину (${selectedQuantity} шт.)`);
                 }
             } catch (error) {
                 console.error('Ошибка при работе с корзиной:', error);
