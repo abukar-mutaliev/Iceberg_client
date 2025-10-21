@@ -199,7 +199,10 @@ export const NotificationsScreen = ({ navigation }) => {
 
                     // Последний fallback - к списку остановок
                     try {
-                        navigation.navigate('StopsListScreen');
+                        navigation.navigate('Main', {
+                            screen: 'MainTab',
+                            params: { screen: 'StopsListScreen' }
+                        });
                         Alert.alert(
                             'Частичный успех',
                             `Перешли к списку остановок. Найдите остановку с ID ${targetStopId}`
@@ -265,16 +268,13 @@ export const NotificationsScreen = ({ navigation }) => {
                 text: 'К остановкам',
                 onPress: () => {
                     try {
-                        navigation.navigate('StopsListScreen');
+                        navigation.navigate('Main', {
+                            screen: 'MainTab',
+                            params: { screen: 'StopsListScreen' }
+                        });
                     } catch (error) {
-                        try {
-                            navigation.navigate('Main', {
-                                screen: 'MainTab',
-                                params: { screen: 'StopsListScreen' }
-                            });
-                        } catch (fallbackError) {
-                            Alert.alert('Ошибка', 'Не удалось открыть список остановок');
-                        }
+                        console.error('Navigation to StopsListScreen failed:', error);
+                        Alert.alert('Ошибка', 'Не удалось открыть список остановок');
                     }
                 }
             });

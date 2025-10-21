@@ -375,6 +375,7 @@ export const OrderApi = {
         const statusLabels = {
             'PENDING': 'Ожидает обработки',
             'CONFIRMED': 'Подтвержден',
+            'WAITING_STOCK': 'Ожидает товар',
             'IN_DELIVERY': 'В доставке',
             'DELIVERED': 'Доставлен',
             'CANCELLED': 'Отменен',
@@ -441,6 +442,32 @@ export const OrderApi = {
         deliveryDate.setDate(deliveryDate.getDate() + estimatedDays + additionalDays);
 
         return deliveryDate;
+    },
+
+    // ===== РАЗДЕЛЕНИЕ ЗАКАЗОВ =====
+
+    // Получить информацию о разделенных заказах по номеру оригинального заказа
+    getSplitOrderInfo: (originalOrderNumber) => {
+        const url = `/api/order-alternatives/split-orders/${originalOrderNumber}?_t=${Date.now()}`;
+        return createProtectedRequest('GET', url, null, {
+            headers: {
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+            }
+        });
+    },
+
+    // Проверить возможность разделения заказа
+    checkOrderSplitPossibility: (orderId) => {
+        const url = `/api/order-alternatives/orders/${orderId}/split-possibility?_t=${Date.now()}`;
+        return createProtectedRequest('GET', url, null, {
+            headers: {
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+            }
+        });
     }
 };
 

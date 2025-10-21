@@ -1,5 +1,5 @@
-import React, { useCallback } from 'react';
-import { View, Text, StyleSheet, RefreshControl, FlatList, ActivityIndicator } from 'react-native';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, RefreshControl, FlatList, Animated, Platform, StatusBar, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { OrderCard } from '@entities/order/ui/OrderCard';
 import { orderStateHelpers } from '@entities/order/lib/orderStateHelpers';
@@ -8,242 +8,439 @@ import { useStaffOrdersScreen } from '../hooks/useStaffOrdersScreen';
 import { StatusUpdateModal } from '../ui/StatusUpdateModal';
 import { OrdersHeader } from '../ui/OrdersHeader';
 import { OrdersSkeleton } from '../ui/OrdersSkeleton';
+import { WaitingStockOrderCard } from '../../WaitingStockOrderCard';
 import { ToastSimple } from '@shared/ui/Toast/ui/ToastSimple';
 
+// ============== Компоненты ==============
+
+const CardSeparator = React.memo(() => <View style={styles.cardSeparator} />);
+
+const EmptyOrdersList = React.memo(({ 
+  canViewAllOrders, 
+  showHistory, 
+  showWaitingStock, 
+  actualProcessingRole 
+}) => {
+  const getMessage = useCallback(() => {
+    if (canViewAllOrders) return 'Нет заказов для отображения';
+    if (showHistory) return 'История обработки пуста';
+    if (showWaitingStock) return 'Нет заказов, ожидающих поставки товаров на склад';
+    
+    const roleMessages = {
+      PICKER: 'новых заказов для сборки',
+      PACKER: 'заказов для упаковки',
+      COURIER: 'заказов для доставки',
+    };
+    
+    return `Нет ${roleMessages[actualProcessingRole] || 'заказов для обработки'}`;
+  }, [canViewAllOrders, showHistory, showWaitingStock, actualProcessingRole]);
+
+  return (
+    <View style={styles.emptyContainer}>
+      <Text style={styles.emptyText}>{getMessage()}</Text>
+    </View>
+  );
+});
+
+EmptyOrdersList.displayName = 'EmptyOrdersList';
+
+// ============== Логика прав доступа ==============
+
+const useOrderPermissions = (currentUser, actualProcessingRole, showHistory) => {
+  return useMemo(() => ({
+    canWorkWithOrders: currentUser?.role !== 'ADMIN' && 
+                       ['PICKER', 'COURIER'].includes(actualProcessingRole),
+    canUpdateOrderStatus: (status) => {
+      if (CONSTANTS.COMPLETED_STATUSES.includes(status)) return false;
+      if (currentUser?.role === 'ADMIN') return false;
+      if (showHistory && actualProcessingRole !== 'COURIER') return false;
+      return ['PICKER', 'COURIER'].includes(actualProcessingRole);
+    },
+  }), [currentUser?.role, actualProcessingRole, showHistory]);
+};
+
+// ============== Логика статуса заказа ==============
+
+const useOrderStatus = (order, localAction, actualProcessingRole, currentUser) => {
+  return useMemo(() => {
+    const isCompleted = localAction?.completed;
+    const isCompletedStatus = CONSTANTS.COMPLETED_STATUSES.includes(order.status);
+    const isRecentlyProcessed = isCompleted && !isCompletedStatus;
+    
+    const displayStatus = isRecentlyProcessed
+      ? {
+          PICKER: 'IN_DELIVERY',
+          PACKER: 'PACKING_COMPLETED',
+          COURIER: 'DELIVERED',
+        }[actualProcessingRole] || order.status
+      : order.status;
+
+    const isAssignedToMe = Boolean(
+      order.assignedTo?.id && 
+      currentUser?.employee?.id &&
+      order.assignedTo.id === currentUser.employee.id
+    );
+
+    return {
+      displayStatus,
+      isRecentlyProcessed,
+      isAssignedToMe,
+      isLocallyTaken: localAction?.taken,
+    };
+  }, [order.status, localAction, actualProcessingRole, currentUser]);
+};
+
+// ============== Компонент заказа ==============
+
+const OrderItem = React.memo(({
+  item,
+  localAction,
+  currentUser,
+  actualProcessingRole,
+  canViewAllOrders,
+  showHistory,
+  showWaitingStock,
+  downloadingInvoices,
+  permissions,
+  onPress,
+  onStatusUpdate,
+  onTakeOrder,
+  onReleaseOrder,
+  onDownloadInvoice,
+}) => {
+  // Хук вызывается здесь, внутри компонента-функции
+  const orderStatus = useOrderStatus(item, localAction, actualProcessingRole, currentUser);
+
+  if (showWaitingStock && item.status === 'WAITING_STOCK') {
+    return (
+      <WaitingStockOrderCard
+        order={item}
+        onPress={onPress}
+        showClient={canViewAllOrders}
+        showEmployeeInfo
+        isRecentlyProcessed={orderStatus.isRecentlyProcessed}
+      />
+    );
+  }
+
+  const canUpdateStatus = permissions.canUpdateOrderStatus(item.status) &&
+    (orderStatus.isAssignedToMe || orderStatus.isLocallyTaken);
+
+  return (
+    <OrderCard
+      order={{ ...item, status: orderStatus.displayStatus }}
+      onPress={onPress}
+      showClient={canViewAllOrders}
+      showActions
+      onStatusUpdate={canUpdateStatus ? onStatusUpdate : null}
+      onTakeOrder={permissions.canWorkWithOrders ? onTakeOrder : null}
+      onReleaseOrder={permissions.canWorkWithOrders && canUpdateStatus ? onReleaseOrder : null}
+      onDownloadInvoice={onDownloadInvoice}
+      canTake={permissions.canWorkWithOrders && orderStateHelpers.canTakeOrder(item, localAction, currentUser)}
+      isTakenByMe={permissions.canWorkWithOrders && orderStateHelpers.isTakenByCurrentUser(item, localAction, currentUser)}
+      downloadingInvoice={downloadingInvoices.has(item.id)}
+      showProcessingInfo={canViewAllOrders}
+      showEmployeeInfo
+      availableStatusesProvider={() => []}
+      isRecentlyProcessed={orderStatus.isRecentlyProcessed}
+      isHistoryOrder={showHistory}
+    />
+  );
+});
+
+OrderItem.displayName = 'OrderItem';
+
+// ============== Основной компонент ==============
+
 export const StaffOrdersScreen = () => {
-    const navigation = useNavigation();
+  const navigation = useNavigation();
+  
+  // Анимация для sticky tabs
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const headerRef = useRef(null);
 
-    // Используем кастомный хук для всей логики
-    const {
-        // Состояние
-        filters,
-        setFilters,
-        showHistory,
-        downloadingInvoices,
-        toastConfig,
-        setToastConfig,
+  const {
+    filters,
+    setFilters,
+    showHistory,
+    showWaitingStock,
+    downloadingInvoices,
+    toastConfig,
+    setToastConfig,
+    statusModalVisible,
+    selectedOrder,
+    availableStatuses,
+    selectedStatus,
+    statusComment,
+    updatingStatus,
+    staffOrders,
+    filteredOrders,
+    waitingStockCount,
+    isLoading,
+    isRefreshing,
+    isInitializing,
+    currentUser,
+    canViewAllOrders,
+    actualProcessingRole,
+    localOrderActions,
+    isWebSocketConnected,
+    handleRefreshData,
+    loadMore,
+    loadingMore,
+    handleTakeOrder,
+    handleReleaseOrder,
+    handleDownloadInvoice,
+    handleStatusUpdate,
+    handleConfirmStatusChange,
+    handleToggleHistory,
+    handleToggleWaitingStock,
+    handleToggleMain,
+    handleCloseStatusModal,
+    handleStatusSelect,
+    handleStatusCommentChange,
+  } = useStaffOrdersScreen();
 
-        // Модальное окно статуса
-        statusModalVisible,
-        selectedOrder,
-        availableStatuses,
-        selectedStatus,
-        statusComment,
-        updatingStatus,
+  const permissions = useOrderPermissions(currentUser, actualProcessingRole, showHistory);
 
-        // Данные
-        staffOrders,
-        filteredOrders,
-        isLoading,
-        isRefreshing,
-        isInitializing,
-        dataLoaded,
-        currentUser,
-        canViewAllOrders,
-        actualProcessingRole,
+  const handleGoBack = useCallback(() => {
+    navigation.goBack();
+  }, [navigation]);
 
-        // Actions
-        localOrderActions,
-        handleRefreshData,
-        handleTakeOrder,
-        handleReleaseOrder,
-        handleDownloadInvoice,
-        handleStatusUpdate,
-        handleConfirmStatusChange,
-        handleToggleHistory,
-        handleCloseStatusModal,
-        handleStatusSelect,
-        handleStatusCommentChange,
-    } = useStaffOrdersScreen();
+  const handleOrderPress = useCallback((orderId) => {
+    navigation.navigate('StaffOrderDetails', { orderId });
+  }, [navigation]);
 
-    // Обработчики для компонентов
-    const handleGoBack = useCallback(() => {
-        navigation.goBack();
-    }, [navigation]);
+  // Константы для sticky tabs
+  const headerTopPadding = Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0;
+  
+  // Высота заголовка с кнопкой "Назад" (без StatusBar padding)
+  // Вкладки начинают фиксироваться сразу после прокрутки заголовка для плавного перехода
+  const HEADER_HEIGHT = 60;
+  const stickyActivationPoint = HEADER_HEIGHT;
+  
+  // Вкладки начинают фиксироваться когда скролл достигает их позиции
+  const isSticky = scrollY.interpolate({
+    inputRange: [0, stickyActivationPoint, stickyActivationPoint + 1],
+    outputRange: [0, 0, 1],
+    extrapolate: 'clamp',
+  });
 
-    const handleOrderPress = useCallback((orderId) => {
-        navigation.navigate('StaffOrderDetails', { orderId });
-    }, [navigation]);
+  const stickyTabsElevation = scrollY.interpolate({
+    inputRange: [0, stickyActivationPoint, stickyActivationPoint + 50],
+    outputRange: [0, 2, 8],
+    extrapolate: 'clamp',
+  });
 
-    // Рендер карточки заказа
-    const renderOrderItem = useCallback(({ item }) => {
-        const localAction = localOrderActions[item.id];
-        const isCompleted = localAction?.completed;
-        const isCompletedStatus = CONSTANTS.COMPLETED_STATUSES.includes(item.status);
+  const stickyTabsShadowOpacity = scrollY.interpolate({
+    inputRange: [0, stickyActivationPoint, stickyActivationPoint + 50],
+    outputRange: [0, 0.1, 0.25],
+    extrapolate: 'clamp',
+  });
 
-        // В режиме истории показываем все завершенные заказы
-        if (showHistory) {
-            // В истории показываем все заказы, не скрываем завершенные
-        } else {
-            // В активном режиме скрываем завершенные заказы
-            if (isCompletedStatus) {
-                return null;
-            }
-        }
+  // Состояние для определения видимости sticky вкладок
+  const [stickyVisible, setStickyVisible] = React.useState(false);
+  
+  React.useEffect(() => {
+    const listenerId = scrollY.addListener(({ value }) => {
+      const shouldBeVisible = value >= stickyActivationPoint;
+      if (shouldBeVisible !== stickyVisible) {
+        setStickyVisible(shouldBeVisible);
+      }
+    });
+    
+    return () => scrollY.removeListener(listenerId);
+  }, [scrollY, stickyActivationPoint, stickyVisible]);
 
-        const canUpdateOrderStatus = (() => {
-            if (CONSTANTS.COMPLETED_STATUSES.includes(item.status)) {
-                return false;
-            }
-
-            if (canViewAllOrders) return true;
-
-            if (showHistory && actualProcessingRole && actualProcessingRole !== 'COURIER') {
-                return false;
-            }
-
-            const isAssignedToMe = Boolean(item.assignedTo?.id && currentUser?.employee?.id &&
-                item.assignedTo.id === currentUser.employee.id);
-            const isLocallyTaken = localAction?.taken;
-
-            return isAssignedToMe || isLocallyTaken;
-        })();
-
-        // Определяем, был ли заказ только что обработан
-        const isRecentlyProcessed = isCompleted && !isCompletedStatus;
-
-        return (
-            <OrderCard
-                order={{
-                    ...item,
-                    // Если заказ обработан локально, показываем следующий статус в цепочке
-                    status: isCompleted && !isCompletedStatus ?
-                        (actualProcessingRole === 'PICKER' ? 'IN_DELIVERY' : // Пропускаем этап упаковки
-                         actualProcessingRole === 'PACKER' ? 'PACKING_COMPLETED' : 'DELIVERED')
-                        : item.status
-                }}
-                onPress={() => handleOrderPress(item.id)}
-                showClient={canViewAllOrders}
-                showActions={true}
-                onStatusUpdate={canUpdateOrderStatus ? () => handleStatusUpdate(item.id) : null}
-                onTakeOrder={() => handleTakeOrder(item.id)}
-                onReleaseOrder={canUpdateOrderStatus ? () => handleReleaseOrder(item.id) : null}
-                onDownloadInvoice={() => handleDownloadInvoice(item.id)}
-                canTake={orderStateHelpers.canTakeOrder(item, localAction, currentUser)}
-                isTakenByMe={orderStateHelpers.isTakenByCurrentUser(item, localAction, currentUser)}
-                downloadingInvoice={downloadingInvoices.has(item.id)}
-                showProcessingInfo={canViewAllOrders}
-                showEmployeeInfo={true}
-                availableStatusesProvider={() => []}
-                isRecentlyProcessed={isRecentlyProcessed}
-                isHistoryOrder={showHistory}
-            />
-        );
-    }, [
-        canViewAllOrders,
-        showHistory,
-        actualProcessingRole,
-        localOrderActions,
-        currentUser,
-        handleOrderPress,
-        handleStatusUpdate,
-        handleTakeOrder,
-        handleReleaseOrder,
-        handleDownloadInvoice,
-        downloadingInvoices
-    ]);
-
-    // Показываем скелетон при инициализации
-    if (isInitializing || !currentUser) {
-        return <OrdersSkeleton onGoBack={handleGoBack} />;
-    }
+  const renderOrderItem = useCallback(({ item }) => {
+    const localAction = localOrderActions[item.id];
 
     return (
-        <View style={styles.container} keyboardShouldPersistTaps="always">
-            <FlatList
-                data={filteredOrders}
-                ListHeaderComponent={
-                    <OrdersHeader
-                        canViewAllOrders={canViewAllOrders}
-                        actualProcessingRole={actualProcessingRole}
-                        showHistory={showHistory}
-                        filters={filters}
-                        onFiltersChange={setFilters}
-                        onToggleHistory={handleToggleHistory}
-                        onGoBack={handleGoBack}
-                    />
-                }
-                renderItem={renderOrderItem}
-                keyExtractor={(item) => item.id.toString()}
-                keyboardShouldPersistTaps="always"
-                refreshControl={
-                    <RefreshControl
-                        refreshing={isRefreshing || isLoading}
-                        onRefresh={handleRefreshData}
-                    />
-                }
-                ListEmptyComponent={() => (
-                    <View style={styles.emptyContainer}>
-                        <Text style={styles.emptyText}>
-                            {canViewAllOrders
-                                ? 'Нет заказов для отображения'
-                                : showHistory
-                                    ? 'История обработки пуста'
-                                    : `Нет ${actualProcessingRole === 'PICKER' ? 'новых заказов для сборки' :
-                                        actualProcessingRole === 'PACKER' ? 'заказов для упаковки' :
-                                        actualProcessingRole === 'COURIER' ? 'заказов для доставки' : 'заказов для обработки'}`
-                            }
-                        </Text>
-                    </View>
-                )}
-                contentContainerStyle={styles.listContentContainer}
-                ItemSeparatorComponent={() => <View style={styles.cardSeparator} />}
-                removeClippedSubviews={true}
-                maxToRenderPerBatch={10}
-                initialNumToRender={8}
-                windowSize={10}
-            />
-
-            {/* Модальное окно изменения статуса */}
-            <StatusUpdateModal
-                visible={statusModalVisible}
-                selectedOrder={selectedOrder}
-                availableStatuses={availableStatuses}
-                selectedStatus={selectedStatus}
-                statusComment={statusComment}
-                updatingStatus={updatingStatus}
-                canViewAllOrders={canViewAllOrders}
-                onClose={handleCloseStatusModal}
-                onStatusSelect={handleStatusSelect}
-                onCommentChange={handleStatusCommentChange}
-                onConfirm={handleConfirmStatusChange}
-            />
-
-            {toastConfig && (
-                <ToastSimple
-                    message={toastConfig.message}
-                    type={toastConfig.type}
-                    duration={toastConfig.duration}
-                    onHide={() => setToastConfig(null)}
-                />
-            )}
-        </View>
+      <OrderItem
+        item={item}
+        localAction={localAction}
+        currentUser={currentUser}
+        actualProcessingRole={actualProcessingRole}
+        canViewAllOrders={canViewAllOrders}
+        showHistory={showHistory}
+        showWaitingStock={showWaitingStock}
+        downloadingInvoices={downloadingInvoices}
+        permissions={permissions}
+        onPress={() => handleOrderPress(item.id)}
+        onStatusUpdate={() => handleStatusUpdate(item.id)}
+        onTakeOrder={() => handleTakeOrder(item.id)}
+        onReleaseOrder={() => handleReleaseOrder(item.id)}
+        onDownloadInvoice={() => handleDownloadInvoice(item.id)}
+      />
     );
+  }, [
+    localOrderActions,
+    currentUser,
+    actualProcessingRole,
+    canViewAllOrders,
+    showHistory,
+    showWaitingStock,
+    downloadingInvoices,
+    permissions,
+    handleOrderPress,
+    handleStatusUpdate,
+    handleTakeOrder,
+    handleReleaseOrder,
+    handleDownloadInvoice,
+  ]);
+
+  if (isInitializing || !currentUser) {
+    return <OrdersSkeleton onGoBack={handleGoBack} />;
+  }
+
+  return (
+    <View style={styles.container} keyboardShouldPersistTaps="always">
+      {/* Sticky вкладки - появляются только при скролле */}
+      {stickyVisible && (currentUser?.role === 'EMPLOYEE' || currentUser?.role === 'ADMIN') && (
+        <Animated.View
+          style={[
+            styles.stickyTabsContainer,
+            {
+              opacity: isSticky,
+              elevation: stickyTabsElevation,
+              shadowOpacity: stickyTabsShadowOpacity,
+              top: 0,
+            },
+          ]}
+          pointerEvents="auto"
+        >
+          <OrdersHeader
+            canViewAllOrders={canViewAllOrders}
+            actualProcessingRole={actualProcessingRole}
+            showHistory={showHistory}
+            showWaitingStock={showWaitingStock}
+            filters={filters}
+            onFiltersChange={setFilters}
+            onToggleHistory={handleToggleHistory}
+            onToggleWaitingStock={handleToggleWaitingStock}
+            onToggleMain={handleToggleMain}
+            onGoBack={handleGoBack}
+            waitingStockCount={waitingStockCount}
+            isWebSocketConnected={isWebSocketConnected}
+            stickyMode={true}
+          />
+        </Animated.View>
+      )}
+
+      <Animated.FlatList
+        data={filteredOrders}
+        ListHeaderComponent={
+          <OrdersHeader
+            canViewAllOrders={canViewAllOrders}
+            actualProcessingRole={actualProcessingRole}
+            showHistory={showHistory}
+            showWaitingStock={showWaitingStock}
+            filters={filters}
+            onFiltersChange={setFilters}
+            onToggleHistory={handleToggleHistory}
+            onToggleWaitingStock={handleToggleWaitingStock}
+            onToggleMain={handleToggleMain}
+            onGoBack={handleGoBack}
+            waitingStockCount={waitingStockCount}
+            isWebSocketConnected={isWebSocketConnected}
+            stickyMode={false}
+          />
+        }
+        renderItem={renderOrderItem}
+        keyExtractor={(item) => item.id.toString()}
+        keyboardShouldPersistTaps="always"
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: false }
+        )}
+        scrollEventThrottle={16}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing || isLoading}
+            onRefresh={handleRefreshData}
+          />
+        }
+        ListEmptyComponent={
+          <EmptyOrdersList
+            canViewAllOrders={canViewAllOrders}
+            showHistory={showHistory}
+            showWaitingStock={showWaitingStock}
+            actualProcessingRole={actualProcessingRole}
+          />
+        }
+        contentContainerStyle={styles.listContentContainer}
+        ItemSeparatorComponent={CardSeparator}
+        removeClippedSubviews={false}
+        maxToRenderPerBatch={10}
+        initialNumToRender={8}
+        windowSize={10}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color="#667eea" style={{ marginVertical: 20 }} /> : null}
+      />
+
+      <StatusUpdateModal
+        visible={statusModalVisible}
+        selectedOrder={selectedOrder}
+        availableStatuses={availableStatuses}
+        selectedStatus={selectedStatus}
+        statusComment={statusComment}
+        updatingStatus={updatingStatus}
+        canViewAllOrders={canViewAllOrders}
+        onClose={handleCloseStatusModal}
+        onStatusSelect={handleStatusSelect}
+        onCommentChange={handleStatusCommentChange}
+        onConfirm={handleConfirmStatusChange}
+      />
+
+      {toastConfig && (
+        <ToastSimple
+          message={toastConfig.message}
+          type={toastConfig.type}
+          duration={toastConfig.duration}
+          onHide={() => setToastConfig(null)}
+        />
+      )}
+    </View>
+  );
 };
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#f8f9fa',
-    },
-    listContentContainer: {
-        paddingHorizontal: 10,
-        paddingTop: 24,
-    },
-    cardSeparator: {
-        height: 20,
-    },
-    emptyContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 20,
-        minHeight: 200,
-    },
-    emptyText: {
-        fontSize: 18,
-        color: '#666',
-        textAlign: 'center',
-        lineHeight: 24,
-    },
+  container: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+  },
+  stickyTabsContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    ...Platform.select({
+      android: {
+        elevation: 0,
+      },
+    }),
+  },
+  listContentContainer: {
+    paddingHorizontal: 10,
+  },
+  cardSeparator: {
+    height: 8,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    minHeight: 200,
+  },
+  emptyText: {
+    fontSize: 18,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 24,
+  },
 });

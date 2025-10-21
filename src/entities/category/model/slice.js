@@ -7,6 +7,13 @@ const initialState = {
     productsByCategory: {},
     isLoading: false,
     error: null,
+    lastFetchTime: null
+};
+
+const CACHE_EXPIRY_TIME = 15 * 60 * 1000; // 15 минут
+
+const isCacheValid = (lastFetchTime) => {
+    return lastFetchTime && Date.now() - lastFetchTime < CACHE_EXPIRY_TIME;
 };
 
 const handleError = (error) => {
@@ -73,20 +80,32 @@ export const createCategory = createAsyncThunk(
 
 export const fetchCategories = createAsyncThunk(
     'categories/fetchCategories',
-    async (_, {rejectWithValue}) => {
+    async (params = {}, {rejectWithValue, getState}) => {
         try {
+            const state = getState();
+            const { refresh = false } = params;
+            
+            // Проверяем кэш если не принудительное обновление
+            if (!refresh && isCacheValid(state.category.lastFetchTime) && state.category.categories && state.category.categories.length > 0) {
+                return { 
+                    data: state.category.categories, 
+                    fromCache: true 
+                };
+            }
+
             const response = await categoryApi.getCategories();
 
             // Проверка разных возможных форматов ответа API
             if (response && response.status === 'success') {
+                let categories = [];
                 // Проверяем наличие данных в разных форматах
                 if (Array.isArray(response.data)) {
-                    return response.data;
+                    categories = response.data;
+                } else if (response.data && response.data.categories) {
+                    categories = response.data.categories;
                 }
                 
-                if (response.data && response.data.categories) {
-                    return response.data.categories;
-                }
+                return { data: categories, fromCache: false };
             } else {
                 console.error('Invalid categories response format:', response);
                 return rejectWithValue('Некорректный формат ответа от сервера');
@@ -255,7 +274,10 @@ const categorySlice = createSlice({
                     state.isLoading = false;
                     state.error = null;
 
-                    state.categories = action.payload;
+                    if (!action.payload.fromCache) {
+                        state.categories = action.payload.data;
+                        state.lastFetchTime = Date.now();
+                    }
                 })
                 .addCase(fetchCategories.rejected, setRejected)
 

@@ -167,10 +167,19 @@ const AppInitializer = ({children}) => {
                 const accessTokenValid = tokens.accessToken ? authService.isTokenValid(tokens.accessToken) : false;
                 const refreshTokenValid = tokens.refreshToken ? authService.isTokenValid(tokens.refreshToken) : false;
 
+                console.log('🔍 Token validation:', {
+                    hasAccessToken: !!tokens.accessToken,
+                    hasRefreshToken: !!tokens.refreshToken,
+                    accessTokenValid,
+                    refreshTokenValid
+                });
+
                 if (!refreshTokenValid) {
-                    setLoadingText("Очистка данных...");
-                    await authService.clearTokens();
-                    logout();
+                    console.log('⚠️ Refresh token expired, need to re-login');
+                    setLoadingText("Сессия истекла...");
+                    // НЕ очищаем токены и НЕ вызываем logout - пусть пользователь сам войдет
+                    // Приложение покажет экран входа, но данные сохранятся
+                    await authService.clearTokens(); // Только очищаем токены, но не сбрасываем полностью состояние
                     setIsInitializing(false);
                     return;
                 }

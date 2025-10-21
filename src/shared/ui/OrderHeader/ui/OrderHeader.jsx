@@ -17,7 +17,14 @@ export const OrderHeader = ({ order }) => {
         <View style={styles.headerContainer}>
             <View style={styles.headerGradient}>
                 <View style={styles.headerContent}>
+                <View style={styles.badgeContainer}>
+                <View style={[styles.statusBadge, { backgroundColor: ORDER_STATUS_COLORS[order.status] }]}>
+                            <Icon name={ORDER_STATUS_ICONS[order.status]} size={16} color="#fff" />
+                            <Text style={styles.statusText}>{ORDER_STATUS_LABELS[order.status]}</Text>
+                        </View>
+                </View>
                     <View style={styles.headerTop}>
+                
                         <View style={styles.orderNumberContainer}>
                             <Text style={styles.orderNumber}>
                                 {formatOrderNumber(order.orderNumber)}
@@ -26,14 +33,11 @@ export const OrderHeader = ({ order }) => {
                                 {formatDate(order.createdAt)}
                             </Text>
                         </View>
-                        <View style={[styles.statusBadge, { backgroundColor: ORDER_STATUS_COLORS[order.status] }]}>
-                            <Icon name={ORDER_STATUS_ICONS[order.status]} size={16} color="#fff" />
-                            <Text style={styles.statusText}>{ORDER_STATUS_LABELS[order.status]}</Text>
-                        </View>
+                   
                     </View>
 
                     {/* Прогресс-бар */}
-                    {['PENDING', 'CONFIRMED', 'IN_DELIVERY', 'DELIVERED'].includes(order.status) && (
+                    {['PENDING', 'CONFIRMED', 'WAITING_STOCK', 'IN_DELIVERY', 'DELIVERED'].includes(order.status) && (
                         <View style={styles.progressContainer}>
                             <View style={styles.progressBar}>
                                 <View

@@ -4,6 +4,9 @@ import {AndroidShadow} from '@shared/ui/Shadow';
 import {MinusIcon, PlusIcon} from '@shared/ui/Icon/DetailScreenIcons';
 import {FontFamily, FontSize, Border, Color} from '@app/styles/GlobalStyles';
 import {useTheme} from "@app/providers/themeProvider/ThemeProvider";
+import {useAuth} from '@entities/auth/hooks/useAuth';
+import {useCartAvailability} from '@entities/cart';
+import {useToast} from '@shared/ui/Toast';
 import {HighlightChange} from '@shared/ui/HighlightChange/HighlightChange';
 import {RepostIcon} from "@shared/ui/Icon/Repost";
 
@@ -22,6 +25,9 @@ export const QuantityControl = ({
                                     autoCartManagement = false
                                 }) => {
     const {colors} = useTheme();
+    const {isAuthenticated, currentUser} = useAuth();
+    const {isCartAvailable} = useCartAvailability();
+    const {showWarning, showError} = useToast();
 
     const handleChange = async (value) => {
         const currentQuantity = autoCartManagement && !isInCart ? 0 : quantity;
@@ -30,6 +36,19 @@ export const QuantityControl = ({
         if (disabled || isUpdating) return;
 
         if (autoCartManagement) {
+            // Проверяем доступность корзины для текущего пользователя
+            if (!isCartAvailable) {
+                const userRole = currentUser?.role || 'неизвестна';
+                showWarning(
+                    `Только клиенты могут добавлять товары в корзину.`,
+                    {
+                        duration: 4000,
+                        position: 'top'
+                    }
+                );
+                return;
+            }
+
             try {
                 if (newQuantity === 0 && isInCart) {
                     if (onRemoveFromCart) {
@@ -46,6 +65,25 @@ export const QuantityControl = ({
                 }
             } catch (error) {
                 console.error('Ошибка при управлении корзиной:', error);
+                
+                // Показываем информативное сообщение об ошибке
+                if (error.message && error.message.includes('403')) {
+                    showError(
+                        'Доступ к корзине ограничен. Только клиенты могут добавлять товары.',
+                        {
+                            duration: 4000,
+                            position: 'top'
+                        }
+                    );
+                } else {
+                    showError(
+                        `Ошибка при работе с корзиной: ${error.message || 'Неизвестная ошибка'}`,
+                        {
+                            duration: 3000,
+                            position: 'top'
+                        }
+                    );
+                }
             }
         } else {
             if (newQuantity !== quantity && newQuantity >= minQuantity) {
@@ -57,8 +95,10 @@ export const QuantityControl = ({
     // Определяем отображаемое количество
     const displayQuantity = autoCartManagement && !isInCart ? 0 : quantity;
 
-    const canDecrease = displayQuantity > (autoCartManagement ? 0 : minQuantity) && !disabled && !isUpdating;
-    const canIncrease = displayQuantity < maxQuantity && !disabled && !isUpdating;
+    // Учитываем доступность корзины при определении возможности взаимодействия
+    const isCartControlAvailable = !autoCartManagement || isCartAvailable;
+    const canDecrease = displayQuantity > (autoCartManagement ? 0 : minQuantity) && !disabled && !isUpdating && isCartControlAvailable;
+    const canIncrease = displayQuantity < maxQuantity && !disabled && !isUpdating && isCartControlAvailable;
 
     return (
         <View style={[styles.container, style]}>
@@ -73,9 +113,9 @@ export const QuantityControl = ({
                 <View style={[
                     styles.controlInner,
                     {
-                        borderColor: disabled ? Color.colorSilver_100 : Color.primary,
-                        backgroundColor: disabled ? Color.colorSilver_200 : Color.card,
-                        opacity: disabled ? 0.6 : 1
+                        borderColor: disabled || !isCartControlAvailable ? Color.colorSilver_100 : Color.primary,
+                        backgroundColor: disabled || !isCartControlAvailable ? Color.colorSilver_200 : Color.card,
+                        opacity: disabled || !isCartControlAvailable ? 0.6 : 1
                     }
                 ]}>
                     <Pressable

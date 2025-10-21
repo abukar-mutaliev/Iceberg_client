@@ -117,15 +117,6 @@ const getStoredTokens = async () => {
         const tokensStr = await AsyncStorage.getItem(STORAGE_KEYS.TOKENS);
         const tokens = tokensStr ? JSON.parse(tokensStr) : null;
 
-        console.log('📖 [API] Retrieved tokens:', {
-            hasStoredData: !!tokensStr,
-            hasTokens: !!tokens,
-            hasAccessToken: !!tokens?.accessToken,
-            hasRefreshToken: !!tokens?.refreshToken,
-            accessTokenLength: tokens?.accessToken?.length || 0,
-            refreshTokenLength: tokens?.refreshToken?.length || 0
-        });
-
         return tokens;
     } catch (error) {
         console.error('❌ [API] Ошибка получения токенов:', error);
@@ -277,14 +268,29 @@ const handleRefreshToken = async (error, originalRequest) => {
 
         if (!tokens || !tokens.refreshToken) {
             console.error('handleRefreshToken: Токены или refresh token отсутствуют');
+            await removeTokens();
+            if (dispatchAction) {
+                // Только сбрасываем auth, но НЕ полностью приложение
+                dispatchAction({ type: 'auth/resetState' });
+            }
             throw new Error('Отсутствуют сохраненные токены');
         }
 
         const decoded = authService.decodeToken(tokens.refreshToken);
         const currentTime = Math.floor(Date.now() / 1000);
         if (!decoded || !decoded.exp || decoded.exp < currentTime) {
-            console.error('handleRefreshToken: Refresh token истек');
-            throw new Error('Refresh token истек');
+            console.warn('⚠️ handleRefreshToken: Refresh token истек - требуется повторный вход', {
+                hasDecoded: !!decoded,
+                exp: decoded?.exp,
+                currentTime,
+                timeExpired: currentTime - (decoded?.exp || 0)
+            });
+            await removeTokens();
+            if (dispatchAction) {
+                // Только сбрасываем auth, но НЕ полностью приложение
+                dispatchAction({ type: 'auth/resetState' });
+            }
+            throw new Error('Ваша сессия истекла. Пожалуйста, войдите снова');
         }
 
         const response = await axios.post(
@@ -327,10 +333,28 @@ const handleRefreshToken = async (error, originalRequest) => {
 
         processQueue(refreshError, null);
 
+        // НЕ сбрасываем состояние сразу для критичных операций (заказы, оплата)
+        const isCriticalOperation = originalRequest.url && (
+            originalRequest.url.includes('/checkout') ||
+            originalRequest.url.includes('/order-alternatives') ||
+            originalRequest.url.includes('/payments') ||
+            originalRequest.url.includes('/orders/my')
+        );
+
+        if (isCriticalOperation) {
+            console.warn('⚠️ Refresh token error during critical operation, not logging out immediately');
+            // Для критичных операций возвращаем ошибку но НЕ выбрасываем пользователя
+            return Promise.reject(Object.assign(refreshError, {
+                isCriticalOperation: true,
+                message: 'Сессия истекла. Пожалуйста, войдите снова для продолжения'
+            }));
+        }
+
+        // Для остальных операций только сбрасываем auth (НЕ полностью приложение)
         await removeTokens();
         if (dispatchAction) {
+            // НЕ сбрасываем RESET_APP_STATE - пусть пользователь войдет снова
             dispatchAction({ type: 'auth/resetState' });
-            dispatchAction({ type: 'RESET_APP_STATE' });
         }
 
         return Promise.reject(refreshError);
@@ -350,16 +374,112 @@ api.interceptors.request.use(async (config) => {
             url: config.url
         });
 
-        const tokens = await getStoredTokens();
-        if (tokens?.accessToken) {
-            config.headers.Authorization = `Bearer ${tokens.accessToken}`;
-            console.log('🔑 [API REQUEST] Authorization header set:', {
-                hasToken: !!tokens.accessToken,
-                tokenPrefix: `${tokens.accessToken.substring(0, 20)}...`,
-                url: config.url
-            });
-        } else {
-            console.warn('⚠️ [API REQUEST] No access token found for request:', config.url);
+        // Пропускаем проверку токена для endpoints авторизации
+        const isAuthEndpoint = 
+            config.url?.includes('/api/auth/login') ||
+            config.url?.includes('/api/auth/register') ||
+            config.url?.includes('/api/auth/refresh-token');
+
+        if (!isAuthEndpoint) {
+            const tokens = await getStoredTokens();
+            
+            if (tokens?.accessToken && tokens?.refreshToken) {
+                // Проверяем истечение access token ДО отправки запроса
+                const decoded = authService.decodeToken(tokens.accessToken);
+                const currentTime = Math.floor(Date.now() / 1000);
+                const isExpired = !decoded || !decoded.exp || decoded.exp <= currentTime;
+
+                if (isExpired) {
+                    console.log('⏰ [API REQUEST] Access token expired, refreshing before request:', config.url);
+                    
+                    // Проверяем refresh token
+                    const decodedRefresh = authService.decodeToken(tokens.refreshToken);
+                    const refreshExpired = !decodedRefresh || !decodedRefresh.exp || decodedRefresh.exp <= currentTime;
+
+                    if (refreshExpired) {
+                        console.warn('⚠️ [API REQUEST] Refresh token expired - user needs to re-login');
+                        await removeTokens();
+                        if (dispatchAction) {
+                            // НЕ сбрасываем полностью состояние приложения (RESET_APP_STATE)
+                            // Только очищаем auth состояние - пользователь увидит экран входа
+                            dispatchAction({ type: 'auth/resetState' });
+                        }
+                        return Promise.reject(new Error('Ваша сессия истекла. Пожалуйста, войдите снова для продолжения работы'));
+                    }
+
+                    if (!refreshExpired) {
+                        // Если токен уже обновляется, ждем завершения
+                        if (isRefreshing) {
+                            console.log('⏳ [API REQUEST] Token refresh already in progress, waiting...', config.url);
+                            return new Promise((resolve, reject) => {
+                                failedQueue.push({ resolve, reject });
+                            }).then((token) => {
+                                config.headers.Authorization = `Bearer ${token}`;
+                                return config;
+                            }).catch((err) => {
+                                return Promise.reject(err);
+                            });
+                        }
+
+                        isRefreshing = true;
+
+                        try {
+                            // Обновляем токен ПЕРЕД отправкой запроса
+                            const response = await axios.post(
+                                `${getBaseUrl()}/api/auth/refresh-token`,
+                                { refreshToken: tokens.refreshToken },
+                                {
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'Accept': 'application/json',
+                                    },
+                                }
+                            );
+
+                            let newAccessToken, newRefreshToken;
+                            if (response.data?.data?.accessToken) {
+                                newAccessToken = response.data.data.accessToken;
+                                newRefreshToken = response.data.data.refreshToken;
+                            } else if (response.data.accessToken) {
+                                newAccessToken = response.data.accessToken;
+                                newRefreshToken = response.data.refreshToken;
+                            }
+
+                            if (newAccessToken && newRefreshToken) {
+                                const newTokens = { accessToken: newAccessToken, refreshToken: newRefreshToken };
+                                await saveTokens(newTokens);
+                                setTokensAndUser(newTokens);
+                                config.headers.Authorization = `Bearer ${newAccessToken}`;
+                                console.log('✅ [API REQUEST] Token refreshed proactively before request');
+                                
+                                // Обрабатываем очередь ожидающих запросов
+                                processQueue(null, newAccessToken);
+                            }
+                        } catch (refreshError) {
+                            console.error('❌ [API REQUEST] Failed to refresh token proactively:', refreshError.message);
+                            processQueue(refreshError, null);
+                            // Продолжаем с текущим токеном, пусть response interceptor обработает 401
+                            config.headers.Authorization = `Bearer ${tokens.accessToken}`;
+                        } finally {
+                            isRefreshing = false;
+                        }
+                    } else {
+                        console.warn('⚠️ [API REQUEST] Refresh token also expired');
+                        config.headers.Authorization = `Bearer ${tokens.accessToken}`;
+                    }
+                } else {
+                    // Токен валидный, используем его
+                    config.headers.Authorization = `Bearer ${tokens.accessToken}`;
+                }
+
+                console.log('🔑 [API REQUEST] Authorization header set:', {
+                    hasToken: !!config.headers.Authorization,
+                    tokenPrefix: `${tokens.accessToken.substring(0, 20)}...`,
+                    url: config.url
+                });
+            } else {
+                console.warn('⚠️ [API REQUEST] No access token found for request:', config.url);
+            }
         }
 
         if (config.method === 'delete' && (!config.data || config.data === null)) {

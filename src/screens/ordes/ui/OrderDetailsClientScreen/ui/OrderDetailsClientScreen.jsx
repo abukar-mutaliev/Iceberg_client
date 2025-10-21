@@ -16,17 +16,26 @@ import { OrderHeader } from '@shared/ui/OrderHeader/ui/OrderHeader';
 import { DeliveryInfo } from '@shared/ui/DeliveryInfo/ui/DeliveryInfo';
 import { OrderItems } from '@shared/ui/OrderItems/ui/OrderItems';
 import { OrderLoadingState, OrderErrorState } from '@shared/ui/OrderLoadingState/ui/OrderLoadingState';
+import { WaitingStockIndicator, SplitOrderInfo, useSplitOrders } from '@entities/order';
 
 const styles = createOrderDetailsStyles();
 
 export const OrderDetailsClientScreen = () => {
     const route = useRoute();
     const navigation = useNavigation();
-    const { orderId } = route.params || {};
+    const { orderId, showSplitInfo, originalOrderNumber } = route.params || {};
+    
+    // Отладочная информация
+    console.log('OrderDetailsClientScreen - orderId:', orderId);
+    console.log('OrderDetailsClientScreen - showSplitInfo:', showSplitInfo);
+    console.log('OrderDetailsClientScreen - originalOrderNumber:', originalOrderNumber);
 
     // Хуки
     const { currentUser: user } = useAuth();
     const dispatch = useDispatch();
+    
+    // Хук для разделенных заказов
+    const { isSplitOrder, getOriginalOrderNumber } = useSplitOrders();
 
     // Состояние компонента
     const [cancelling, setCancelling] = useState(false);
@@ -46,6 +55,11 @@ export const OrderDetailsClientScreen = () => {
         refreshOrderDetails,
         setOrder
     } = useOrderDetails(orderId);
+    
+    // Отладочная информация о заказе
+    console.log('OrderDetailsClientScreen - order:', order);
+    console.log('OrderDetailsClientScreen - loading:', loading);
+    console.log('OrderDetailsClientScreen - error:', error);
 
     // Загрузка при фокусе экрана
     useFocusEffect(
@@ -114,6 +128,15 @@ export const OrderDetailsClientScreen = () => {
             ]
         );
     }, [order, orderId, user?.role, loadOrderDetails, dispatch]);
+
+    // Обработчик для нажатия на разделенные заказы
+    const handleSplitOrderPress = useCallback((splitOrder) => {
+        navigation.navigate('OrderDetails', { 
+            orderId: splitOrder.id,
+            showSplitInfo: true,
+            originalOrderNumber: originalOrderNumber || getOriginalOrderNumber(order)
+        });
+    }, [navigation, originalOrderNumber, getOriginalOrderNumber, order]);
 
     // Рендер кнопки отмены заказа
     const renderCancelButton = () => {
@@ -204,6 +227,16 @@ export const OrderDetailsClientScreen = () => {
                     {order && (
                         <>
                             <OrderHeader order={order} />
+                            <WaitingStockIndicator order={order} />
+                            
+                            {/* Информация о разделенных заказах */}
+                            {(showSplitInfo || isSplitOrder(order)) && (
+                                <SplitOrderInfo
+                                    originalOrderNumber={originalOrderNumber || getOriginalOrderNumber(order)}
+                                    onOrderPress={handleSplitOrderPress}
+                                />
+                            )}
+                            
                             <DeliveryInfo
                                 order={order}
                                 userRole={user?.role}

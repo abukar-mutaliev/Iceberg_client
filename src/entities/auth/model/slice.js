@@ -382,19 +382,22 @@ export const refreshToken = createAsyncThunk(
                     tokenExp: decoded?.exp,
                     currentTime,
                     isExpired: decoded?.exp < currentTime,
+                    timeUntilExpiry: decoded?.exp ? decoded.exp - currentTime : null
                 });
 
-                if (!decoded || !decoded.exp || decoded.exp < currentTime) {
-                    console.error('refreshToken thunk: refresh token истек или некорректен');
+                if (!decoded || !decoded.exp || decoded.exp <= currentTime) {
+                    console.warn('⚠️ refreshToken thunk: refresh token истек - требуется повторный вход');
                     await removeTokensFromStorage();
+                    // НЕ сбрасываем RESET_APP_STATE - только auth
                     dispatch({ type: 'auth/resetState' });
-                    throw new Error('Истёк срок действия сессии. Пожалуйста, войдите в систему снова.');
+                    throw new Error('Ваша сессия истекла. Пожалуйста, войдите снова для продолжения работы.');
                 }
             } catch (decodeError) {
                 console.error('refreshToken thunk: Ошибка декодирования refresh token:', decodeError);
                 await removeTokensFromStorage();
+                // НЕ сбрасываем RESET_APP_STATE - только auth
                 dispatch({ type: 'auth/resetState' });
-                throw new Error('Проблема с токеном авторизации. Пожалуйста, войдите в систему снова.');
+                throw new Error('Проблема с токеном авторизации. Пожалуйста, войдите снова.');
             }
 
             console.log('refreshToken thunk: Отправка запроса на обновление токена');
@@ -427,6 +430,7 @@ export const refreshToken = createAsyncThunk(
 
             if (error.response?.status === 401 || error.code === 'ERR_NETWORK') {
                 await removeTokensFromStorage();
+                // НЕ сбрасываем RESET_APP_STATE - только auth
                 dispatch({ type: 'auth/resetState' });
             }
 
@@ -500,6 +504,7 @@ const authSlice = createSlice({
                     state.user = {
                         id: decoded.userId,
                         role: decoded.role,
+                        token: action.payload.accessToken,
                     };
                 }
             } catch (error) {
@@ -507,7 +512,12 @@ const authSlice = createSlice({
             }
         },
         setUser: (state, action) => {
-            state.user = action.payload;
+            // Сохраняем токен при обновлении пользователя
+            const currentToken = state.user?.token;
+            state.user = {
+                ...action.payload,
+                token: currentToken || action.payload?.token
+            };
         },
         setEmail: (state, action) => {
             state.email = action.payload;

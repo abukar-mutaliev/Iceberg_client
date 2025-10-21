@@ -18,7 +18,22 @@ export const orderStateHelpers = {
         const wasRecentlyCleared = localAction?.timestamp &&
             (Date.now() - localAction.timestamp) < CONSTANTS.RECENT_ACTION_THRESHOLD;
 
-        if (order.assignedTo && order.assignedTo.id !== currentUser?.employee?.id && !wasRecentlyCleared) {
+        // Если заказ был недавно снят с работы, он доступен для взятия
+        const wasRecentlyReleased = localAction?.released && localAction?.timestamp &&
+            (Date.now() - localAction.timestamp) < CONSTANTS.RECENT_ACTION_THRESHOLD;
+
+        // Отладка
+        if (order.id === 11) { // Замените на ID проблемного заказа для отладки
+            console.log('🔍 canTakeOrder debug for order', order.id, {
+                assignedTo: order.assignedTo,
+                localAction,
+                wasRecentlyCleared,
+                wasRecentlyReleased,
+                canTakeBasedOnAssignment: !(order.assignedTo && order.assignedTo.id !== currentUser?.employee?.id && !wasRecentlyCleared && !wasRecentlyReleased)
+            });
+        }
+
+        if (order.assignedTo && order.assignedTo.id !== currentUser?.employee?.id && !wasRecentlyCleared && !wasRecentlyReleased) {
             return false;
         }
 
@@ -49,6 +64,16 @@ export const orderStateHelpers = {
             return false;
         }
 
+        // Отладка
+        if (order.id === 11) {
+            console.log('🔍 isTakenByCurrentUser debug for order', order.id, {
+                localAction,
+                orderAssignedTo: order.assignedTo,
+                currentUserEmployeeId: currentUser?.employee?.id,
+                localActionTaken: localAction?.taken
+            });
+        }
+
         if (localAction?.taken) {
             return true;
         }
@@ -66,11 +91,15 @@ export const orderStateHelpers = {
         }
 
         const wasRecentlyTaken = localAction?.taken && !localAction?.released;
+        const wasRecentlyReleased = localAction?.released && localAction?.timestamp &&
+            (Date.now() - localAction.timestamp) < CONSTANTS.RECENT_ACTION_THRESHOLD;
         const wasRecentlyCleared = localAction?.timestamp &&
             (Date.now() - localAction.timestamp) < CONSTANTS.RECENT_ACTION_THRESHOLD;
 
         if (wasRecentlyTaken) {
             return { id: currentUser?.employee?.id };
+        } else if (wasRecentlyReleased) {
+            return null; // Заказ был снят с работы, доступен для взятия
         } else if (wasRecentlyCleared) {
             return null;
         } else {

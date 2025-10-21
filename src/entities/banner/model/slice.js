@@ -3,10 +3,21 @@ import {bannerApi} from "@entities/banner/api/bannerApi";
 
 export const fetchBanners = createAsyncThunk(
     'banner/fetchBanners',
-    async (params = {}, { rejectWithValue }) => {
+    async (params = {}, { rejectWithValue, getState }) => {
         try {
+            const state = getState();
+            const { refresh = false } = params;
+            
+            // Проверяем кэш если не принудительное обновление
+            if (!refresh && isCacheValid(state.banner.lastFetchTime) && state.banner.banners && state.banner.banners.length > 0) {
+                return { 
+                    data: state.banner.banners, 
+                    fromCache: true 
+                };
+            }
+
             const response = await bannerApi.getBanners(params);
-            return response.data;
+            return { data: response.data, fromCache: false };
         } catch (error) {
             return rejectWithValue(error.response?.data || { message: error.message });
         }
@@ -67,7 +78,14 @@ const initialState = {
     supplierBanners: [],
     currentBanner: null,
     status: 'idle',
-    error: null
+    error: null,
+    lastFetchTime: null
+};
+
+const CACHE_EXPIRY_TIME = 10 * 60 * 1000; // 10 минут
+
+const isCacheValid = (lastFetchTime) => {
+    return lastFetchTime && Date.now() - lastFetchTime < CACHE_EXPIRY_TIME;
 };
 
 const bannerSlice = createSlice({
@@ -80,6 +98,13 @@ const bannerSlice = createSlice({
         clearCurrentBanner: (state) => {
             state.currentBanner = null;
         },
+        setBanners: (state, action) => {
+            state.banners = action.payload;
+            state.mainBanners = action.payload.filter(banner => banner.bannerType === 'MAIN');
+            state.supplierBanners = action.payload.filter(banner => banner.bannerType === 'SUPPLIER');
+            state.status = 'succeeded';
+            state.lastFetchTime = Date.now();
+        },
         resetBannerState: () => initialState
     },
     extraReducers: (builder) => {
@@ -89,9 +114,14 @@ const bannerSlice = createSlice({
             })
             .addCase(fetchBanners.fulfilled, (state, action) => {
                 state.status = 'succeeded';
-                state.banners = action.payload;
-                state.mainBanners = action.payload.filter(banner => banner.bannerType === 'MAIN');
-                state.supplierBanners = action.payload.filter(banner => banner.bannerType === 'SUPPLIER');
+                
+                if (!action.payload.fromCache) {
+                    state.banners = action.payload.data;
+                    state.mainBanners = action.payload.data.filter(banner => banner.bannerType === 'MAIN');
+                    state.supplierBanners = action.payload.data.filter(banner => banner.bannerType === 'SUPPLIER');
+                    state.lastFetchTime = Date.now();
+                }
+                
                 state.error = null;
             })
             .addCase(fetchBanners.rejected, (state, action) => {
@@ -193,6 +223,6 @@ const bannerSlice = createSlice({
     }
 });
 
-export const { setCurrentBanner, clearCurrentBanner, resetBannerState } = bannerSlice.actions;
+export const { setCurrentBanner, clearCurrentBanner, setBanners, resetBannerState } = bannerSlice.actions;
 
 export default bannerReducer = bannerSlice.reducer;

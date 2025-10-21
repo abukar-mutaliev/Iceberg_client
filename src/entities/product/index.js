@@ -7,6 +7,7 @@ export { useProductCard } from '@entities/product/hooks/useProductCard';
 export { useProductCardWithStock } from '@entities/product/hooks/useProductCardWithStock';
 export { useProductBox } from '@entities/product/hooks/useProductBox';
 export { useProductDetail } from '@entities/product/hooks/useProductDetail';
+export { useMainScreenRefresh } from '@entities/product/hooks/useMainScreenRefresh';
 
 export { default as productsReducer } from './model/slice';
 export * from './model/slice';

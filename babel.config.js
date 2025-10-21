@@ -14,13 +14,7 @@ module.exports = function (api) {
                         '.jsx',
                         '.ts',
                         '.tsx',
-                        '.json',
-                        '.png',
-                        '.jpg',
-                        '.jpeg',
-                        '.gif',
-                        '.webp',
-                        '.svg'
+                        '.json'
                     ],
                     alias: {
                         '@': './src',

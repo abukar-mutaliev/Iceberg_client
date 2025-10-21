@@ -17,6 +17,8 @@ export const selectRoomsList = createSelector(
     if (!roomIds || !roomsById) return EMPTY_ARRAY;
 
     return roomIds.map((id) => {
+      // Защита от undefined/null ID
+      if (!id) return null;
       const room = roomsById[id];
       if (!room) return null;
       

@@ -81,6 +81,7 @@ export const useCart = () => {
 
     // Базовые операции (только коробками)
     const loadCart = useCallback((forceRefresh = false) => {
+        console.log('🛒 useCart: Загрузка корзины', { forceRefresh });
         dispatch(fetchCart(forceRefresh));
     }, [dispatch]);
 
@@ -99,6 +100,7 @@ export const useCart = () => {
      * @param {boolean} useQuickAdd - Использовать быстрое добавление
      */
     const addProductToCart = useCallback((productId, quantity = 1, useQuickAdd = false) => {
+        console.log('🛒 useCart: Добавление товара в корзину', { productId, quantity, useQuickAdd });
         return dispatch(addToCart({ productId, quantity, useQuickAdd }));
     }, [dispatch]);
 
@@ -194,9 +196,10 @@ export const useCart = () => {
             if (guestCartStr) {
                 const guestCart = JSON.parse(guestCartStr);
                 dispatch(loadGuestCart(guestCart));
+                console.log('🛒 useCart: Гостевая корзина загружена из хранилища');
             }
         } catch (error) {
-            console.error('Ошибка при загрузке гостевой корзины:', error);
+            console.error('🛒 useCart: Ошибка при загрузке гостевой корзины:', error);
         }
     }, [dispatch]);
 
@@ -263,7 +266,7 @@ export const useCartProduct = (productId) => {
     const { isCartAvailable } = useCartAvailability();
 
     const isInCart = useSelector(state => selectIsProductInCart(state, productId));
-    const quantity = useSelector(state => selectProductQuantityInCart(state, productId));
+    const reduxQuantity = useSelector(state => selectProductQuantityInCart(state, productId));
     const cartItem = useSelector(state => selectCartItemByProductId(state, productId));
     const isAdding = useSelector(state => selectIsProductAdding(state, productId));
     const isUpdating = useSelector(state =>
@@ -272,6 +275,21 @@ export const useCartProduct = (productId) => {
     const isRemoving = useSelector(state =>
         cartItem ? selectIsCartItemRemoving(state, cartItem.id) : false
     );
+
+    // Локальное состояние для быстрых нажатий
+    const [localQuantity, setLocalQuantity] = useState(reduxQuantity);
+    const [pendingUpdates, setPendingUpdates] = useState(0);
+    const updateTimeoutRef = useRef(null);
+
+    // Синхронизируем локальное состояние с Redux при изменении
+    useEffect(() => {
+        setLocalQuantity(reduxQuantity);
+        setPendingUpdates(0);
+    }, [reduxQuantity]);
+
+    // Используем локальное количество для мгновенного отклика, Redux для финального состояния
+    const quantity = localQuantity;
+
 
     /**
      * Добавить товар в корзину (коробками)
@@ -286,12 +304,12 @@ export const useCartProduct = (productId) => {
         try {
             const result = await dispatch(addToCart({ productId, quantity: qty, useQuickAdd }));
 
-            // Для синхронизации с сервером - перезагружаем корзину через задержку
+            // Для синхронизации с сервером - перезагружаем корзину быстрее
             if (result.type === 'cart/addToCart/fulfilled' && isCartAvailable) {
-                // Даем время оптимистическим изменениям отобразиться перед синхронизацией
+                // Уменьшили задержку для более быстрой синхронизации
                 setTimeout(async () => {
                     await dispatch(fetchCart(true));
-                }, 500);
+                }, 200);
             }
 
             return result;
@@ -306,24 +324,82 @@ export const useCartProduct = (productId) => {
      */
     const updateQuantity = useCallback(async (newQuantity) => {
         if (!cartItem) {
+  
             return;
         }
+
+
 
         try {
             const result = await dispatch(updateCartItem({ itemId: cartItem.id, quantity: newQuantity }));
 
-            // Для синхронизации с сервером - перезагружаем корзину через задержку
+            // Синхронизируем с сервером быстрее для лучшего UX
             if (result.type === 'cart/updateCartItem/fulfilled') {
                 setTimeout(async () => {
                     await dispatch(fetchCart(true));
-                }, 500);
+                }, 100); // Уменьшили задержку с 500мс до 100мс
             }
 
             return result;
         } catch (error) {
+
             throw error;
         }
-    }, [dispatch, cartItem]);
+    }, [dispatch, cartItem, quantity, productId]);
+
+    /**
+     * Дебаунсированное обновление количества для быстрых нажатий
+     * @param {number} newQuantity - Новое количество коробок
+     * @param {number} delay - Задержка в миллисекундах (по умолчанию 500мс)
+     */
+    const debouncedUpdateQuantity = useCallback((newQuantity, delay = 500) => {
+        if (!cartItem) {
+            return;
+        }
+
+        // Мгновенно обновляем локальное состояние
+        setLocalQuantity(newQuantity);
+        setPendingUpdates(prev => prev + 1);
+
+
+
+        // Очищаем предыдущий таймер
+        if (updateTimeoutRef.current) {
+            clearTimeout(updateTimeoutRef.current);
+        }
+
+        // Устанавливаем новый таймер для отправки на сервер
+        updateTimeoutRef.current = setTimeout(async () => {
+            try {
+    
+                
+                // Отправляем только один запрос с итоговым количеством
+                const result = await dispatch(updateCartItem({ itemId: cartItem.id, quantity: newQuantity }));
+                
+                if (result.type === 'cart/updateCartItem/fulfilled') {
+                    setPendingUpdates(0);
+                    
+                    // Синхронизируем с сервером через небольшую задержку
+                    setTimeout(async () => {
+                        await dispatch(fetchCart(true));
+                    }, 200);
+                }
+            } catch (error) {
+                // Откатываем локальное состояние при ошибке
+                setLocalQuantity(reduxQuantity);
+                setPendingUpdates(0);
+            }
+        }, delay);
+    }, [dispatch, cartItem, reduxQuantity, productId, pendingUpdates]);
+
+    // Очистка таймера при размонтировании
+    useEffect(() => {
+        return () => {
+            if (updateTimeoutRef.current) {
+                clearTimeout(updateTimeoutRef.current);
+            }
+        };
+    }, []);
 
     const removeFromCartHandler = useCallback(async () => {
         if (!cartItem) {
@@ -347,20 +423,57 @@ export const useCartProduct = (productId) => {
     }, [dispatch, cartItem]);
 
     /**
-     * Увеличить количество коробок на 1
+     * Увеличить количество коробок на 1 с дебаунсингом для быстрых нажатий
      */
-    const incrementQuantity = useCallback(async () => {
+    const incrementQuantity = useCallback(() => {
         const newQuantity = quantity + 1;
-        return await updateQuantity(newQuantity);
-    }, [quantity, updateQuantity]);
+        debouncedUpdateQuantity(newQuantity);
+    }, [quantity, debouncedUpdateQuantity]);
 
     /**
-     * Уменьшить количество коробок на 1
+     * Уменьшить количество коробок на 1 с дебаунсингом для быстрых нажатий
      */
-    const decrementQuantity = useCallback(async () => {
-        const newQuantity = Math.max(0, quantity - 1);
-        return await updateQuantity(newQuantity);
-    }, [quantity, updateQuantity]);
+    const decrementQuantity = useCallback(() => {
+        const newQuantity = Math.max(1, quantity - 1); // Минимум 1 коробка
+        debouncedUpdateQuantity(newQuantity);
+    }, [quantity, debouncedUpdateQuantity]);
+
+    /**
+     * Немедленное обновление количества (для ручного ввода)
+     * @param {number} newQuantity - Новое количество коробок
+     */
+    const immediateUpdateQuantity = useCallback(async (newQuantity) => {
+        if (!cartItem) {
+            return;
+        }
+
+        // Очищаем дебаунсированный таймер
+        if (updateTimeoutRef.current) {
+            clearTimeout(updateTimeoutRef.current);
+        }
+
+        // Мгновенно обновляем локальное состояние
+        setLocalQuantity(newQuantity);
+        setPendingUpdates(0);
+
+        // Немедленно отправляем на сервер
+        try {
+
+            
+            const result = await dispatch(updateCartItem({ itemId: cartItem.id, quantity: newQuantity }));
+            
+            if (result.type === 'cart/updateCartItem/fulfilled') {
+                // Синхронизируем с сервером
+                setTimeout(async () => {
+                    await dispatch(fetchCart(true));
+                }, 100);
+            }
+        } catch (error) {
+            // Откатываем при ошибке
+            setLocalQuantity(reduxQuantity);
+            throw error;
+        }
+    }, [dispatch, cartItem, reduxQuantity, productId]);
 
     return {
         // Состояние
@@ -371,10 +484,12 @@ export const useCartProduct = (productId) => {
         isUpdating,
         isRemoving,
         isLoading: isAdding || isUpdating || isRemoving,
+        pendingUpdates, // количество ожидающих обновлений
 
         // Операции (только коробками)
         addToCart: addToCartHandler,
-        updateQuantity,
+        updateQuantity: immediateUpdateQuantity, // Немедленное обновление для ручного ввода
+        debouncedUpdateQuantity, // Дебаунсированное обновление для быстрых нажатий
         removeFromCart: removeFromCartHandler,
         incrementQuantity,
         decrementQuantity

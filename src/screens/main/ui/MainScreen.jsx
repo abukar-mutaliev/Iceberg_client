@@ -1,320 +1,215 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import {View, StyleSheet, Text, TouchableOpacity} from 'react-native';
+import { View, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
+
+// Redux imports
 import { fetchProducts } from '@entities/product/model/slice';
 import {
     selectProducts,
-    selectProductsLoading,
     selectProductsLoadingMore,
-    selectProductsError,
     selectProductsHasMore,
-    selectProductsCurrentPage
+    selectProductsCurrentPage,
+    selectProductsLoading
 } from '@entities/product/model/selectors';
 import { fetchBanners, selectActiveMainBanners, selectBannerStatus } from '@entities/banner';
 import { fetchCategories } from '@entities/category/model/slice';
+import { selectCategoriesLoading, selectCategories } from '@entities/category/model/selectors';
 import { fetchCart, useCartAvailability } from '@entities/cart';
 
+// UI Components
 import { Color } from '@app/styles/GlobalStyles';
 import { Header } from "@widgets/header";
 import { PromoBanner } from "@widgets/promoSlider";
 import { CategoriesBar } from "@widgets/categoriesBar";
 import { ProductsList } from "@widgets/product/productsList";
-
-import { selectCategories, selectCategoriesLoading, setCategories } from "@entities/category";
 import DriverLocator from "@features/driver/driverLocator/ui/DriverLocator";
-import { useFocusEffect } from '@react-navigation/native';
 
+// Hooks
 import { useNotifications } from '@entities/notification';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 
+// Constants
 const PRODUCTS_PER_PAGE = 10;
 const LOAD_MORE_THRESHOLD = 8;
-const REFRESH_INTERVAL = 300000;
-const CACHE_KEY = 'main_screen_cache';
-const CACHE_EXPIRY = 10 * 60 * 1000;
-
-
-// Функции для работы с кэшем
-const saveCacheData = async (data) => {
-    try {
-        const cacheData = {
-            timestamp: Date.now(),
-            data
-        };
-        await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
-    } catch (error) {
-        console.error('Ошибка сохранения кэша:', error);
-    }
-};
-
-const loadCacheData = async () => {
-    try {
-        const cacheStr = await AsyncStorage.getItem(CACHE_KEY);
-        if (cacheStr) {
-            const cache = JSON.parse(cacheStr);
-            const now = Date.now();
-            
-            if (now - cache.timestamp < CACHE_EXPIRY) {
-                const { timestamp, ...data } = cache;
-                return data;
-            } else {
-                await AsyncStorage.removeItem(CACHE_KEY);
-            }
-        }
-        return null;
-    } catch (error) {
-        console.error('Ошибка загрузки кэша:', error);
-        return null;
-    }
-};
-
+const CACHE_DURATION = 5 * 60 * 1000; // 5 минут
 
 export const MainScreen = ({ navigation, route }) => {
     const dispatch = useDispatch();
     const { isCartAvailable } = useCartAvailability();
     const { currentUser: user } = useAuth();
-
     const notifications = useNotifications(navigation);
 
-    const unreadCount = useSelector(state => state.notification?.unreadCount || 0);
-
-    // useEffect для unreadCount можно удалить, если он не используется
-
+    // Redux selectors
     const products = useSelector(selectProducts);
-    const isProductsLoading = useSelector(selectProductsLoading);
     const isLoadingMore = useSelector(selectProductsLoadingMore);
-    const productsError = useSelector(selectProductsError);
     const hasMore = useSelector(selectProductsHasMore);
     const currentPage = useSelector(selectProductsCurrentPage);
+    const productsLoading = useSelector(selectProductsLoading);
     const activeBanners = useSelector(selectActiveMainBanners);
-    const bannerStatus = useSelector(selectBannerStatus);
     const categories = useSelector(selectCategories);
-    const isCategoriesLoading = useSelector(selectCategoriesLoading);
+    const bannerStatus = useSelector(selectBannerStatus);
+    const categoriesLoading = useSelector(selectCategoriesLoading);
+    const unreadCount = useSelector(state => state.notification?.unreadCount || 0);
 
-    const [isInitialLoading, setIsInitialLoading] = useState(true);
-    const [dataLoaded, setDataLoaded] = useState(false);
-    const [lastFetchTime, setLastFetchTime] = useState(0);
-    const [loadingStates, setLoadingStates] = useState({
-        products: false,
-        banners: false,
-        categories: false
-    });
-    // Убираем forceUpdateKey, так как он вызывает проблемы со скроллом
+    // Local state
+    const [isInitialLoading, setIsInitialLoading] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [error, setError] = useState(null);
 
-    const refreshTimerRef = useRef(null);
+    // Refs
     const isMountedRef = useRef(true);
-    const loadingRef = useRef(false);
-    const initialLoadRef = useRef(false);
-    const cacheTimeoutRef = useRef(null);
+    const lastFetchTimeRef = useRef(0);
+    const isInitializedRef = useRef(false);
 
-    const shouldRefreshData = useCallback(() => {
+    // Проверка готовности данных
+    const isDataReady = useMemo(() => {
+        return products?.length > 0 && 
+               activeBanners !== undefined && 
+               categories?.length > 0;
+    }, [products?.length, activeBanners, categories?.length]);
+
+    // Проверка необходимости обновления кэша
+    const shouldRefreshCache = useCallback(() => {
         const now = Date.now();
-        const timeSinceLastFetch = now - lastFetchTime;
-        return timeSinceLastFetch > REFRESH_INTERVAL;
-    }, [lastFetchTime]);
+        const timeSinceLastFetch = now - lastFetchTimeRef.current;
+        return timeSinceLastFetch > CACHE_DURATION;
+    }, []);
 
-    const hasCachedData = useCallback(() => {
-        return (Array.isArray(products) && products.length > 0) ||
-               (Array.isArray(activeBanners) && activeBanners.length > 0) ||
-               (Array.isArray(categories) && categories.length > 0);
-    }, [products?.length, activeBanners?.length, categories?.length]);
-
-    const loadAllData = useCallback(async (refresh = false) => {
-        if (loadingRef.current) {
-            console.log('loadAllData: Пропуск загрузки - уже идет загрузка');
+    // Загрузка всех данных
+    const loadAllData = useCallback(async (forceRefresh = false) => {
+        // Если данные уже есть и кэш свежий, не загружаем
+        if (!forceRefresh && isDataReady && !shouldRefreshCache()) {
             return;
         }
 
-        if (!refresh && hasCachedData() && dataLoaded) {
-            setIsInitialLoading(false);
-            initialLoadRef.current = true;
-            return;
+        const isRefresh = forceRefresh || isRefreshing;
+        
+        if (isRefresh) {
+            setIsRefreshing(true);
+        } else if (!isInitializedRef.current) {
+            setIsInitialLoading(true);
         }
 
-        if (!refresh && !dataLoaded && !initialLoadRef.current) {
-            const cachedData = await loadCacheData();
-            if (cachedData) {
+        setError(null);
 
-                if (cachedData.products && cachedData.products.length > 0) {
-                }
-                if (cachedData.categories && cachedData.categories.length > 0) {
-                    dispatch(setCategories(cachedData.categories));
-                }
-                
+        try {
+            
+            await Promise.all([
+                dispatch(fetchProducts({ 
+                    page: 1, 
+                    limit: PRODUCTS_PER_PAGE, 
+                    refresh: forceRefresh 
+                })).unwrap(),
+                dispatch(fetchBanners({ 
+                    type: 'MAIN', 
+                    active: true, 
+                    refresh: forceRefresh 
+                })).unwrap(),
+                dispatch(fetchCategories({ 
+                    refresh: forceRefresh 
+                })).unwrap()
+            ]);
+
+            lastFetchTimeRef.current = Date.now();
+            isInitializedRef.current = true;
+            
+        } catch (err) {
+            console.error('MainScreen: Ошибка загрузки данных:', err);
+            if (isMountedRef.current) {
+                setError('Не удалось загрузить данные. Проверьте подключение к интернету.');
+            }
+        } finally {
+            if (isMountedRef.current) {
                 setIsInitialLoading(false);
-                initialLoadRef.current = true;
-                setDataLoaded(true);
-                setLastFetchTime(cachedData.timestamp || Date.now());
-                return;
+                setIsRefreshing(false);
             }
         }
+    }, [dispatch, isDataReady, shouldRefreshCache, isRefreshing]);
 
-        if (refresh || (!isProductsLoading && shouldRefreshData()) || !dataLoaded) {
-
-            loadingRef.current = true;
-            setLoadingStates({
-                products: true,
-                banners: true,
-                categories: true
-            });
-
-            try {
-                const promises = [];
-
-                const productsPromise = dispatch(fetchProducts({ page: 1, limit: PRODUCTS_PER_PAGE, refresh }))
-                    .finally(() => {
-                        if (isMountedRef.current) {
-                            setLoadingStates(prev => ({ ...prev, products: false }));
-                        }
-                    });
-                promises.push(productsPromise);
-
-                if (!activeBanners?.length && bannerStatus !== 'loading') {
-                    const bannersPromise = dispatch(fetchBanners({ type: 'MAIN', active: true }))
-                        .finally(() => {
-                            if (isMountedRef.current) {
-                                setLoadingStates(prev => ({ ...prev, banners: false }));
-                            }
-                        });
-                    promises.push(bannersPromise);
-                } else {
-                    setLoadingStates(prev => ({ ...prev, banners: false }));
-                }
-
-                if (refresh || !categories?.length || !dataLoaded) {
-                    const categoriesPromise = dispatch(fetchCategories())
-                        .finally(() => {
-                            if (isMountedRef.current) {
-                                setLoadingStates(prev => ({ ...prev, categories: false }));
-                            }
-                        });
-                    promises.push(categoriesPromise);
-                } else {
-                    setLoadingStates(prev => ({ ...prev, categories: false }));
-                }
-
-                await Promise.all(promises);
-
-                if (isMountedRef.current) {
-                    const currentTime = Date.now();
-                    setLastFetchTime(currentTime);
-                    setDataLoaded(true);
-                    setIsInitialLoading(false);
-                    initialLoadRef.current = true;
-
-                    const currentState = {
-                        products: products,
-                        banners: activeBanners,
-                        categories: categories
-                    };
-
-                    const cacheData = {
-                        timestamp: currentTime,
-                        ...currentState
-                    };
-                    await saveCacheData(cacheData);
-                }
-            } catch (error) {
-                if (isMountedRef.current) {
-                    setIsInitialLoading(false);
-                    initialLoadRef.current = true;
-                }
-            } finally {
-                loadingRef.current = false;
-            }
-        }
-    }, [dispatch, shouldRefreshData, dataLoaded,
-        activeBanners?.length, bannerStatus, categories?.length, isCategoriesLoading, hasCachedData]);
-
+    // Загрузка дополнительных продуктов
     const loadMoreProducts = useCallback(() => {
         if (!hasMore || isLoadingMore) {
             return;
         }
 
-        const nextPage = currentPage + 1;
-
-        dispatch(fetchProducts({ page: nextPage, limit: PRODUCTS_PER_PAGE }));
+        dispatch(fetchProducts({ 
+            page: currentPage + 1, 
+            limit: PRODUCTS_PER_PAGE 
+        }));
     }, [dispatch, hasMore, isLoadingMore, currentPage]);
 
+    // Принудительное обновление
+    const handleRefresh = useCallback(() => {
+        loadAllData(true);
+    }, [loadAllData]);
+
+    // Инициализация при монтировании
     useEffect(() => {
         isMountedRef.current = true;
-        
-        const initializeScreen = async () => {
-            if (hasCachedData()) {
-                if (!initialLoadRef.current) {
-                    setIsInitialLoading(false);
-                    initialLoadRef.current = true;
-                }
-                if (!dataLoaded) setDataLoaded(true);
-                if (!lastFetchTime) setLastFetchTime(Date.now());
-                return;
-            }
 
-            const cachedData = await loadCacheData();
-            if (cachedData) {
+        const initialize = async () => {
+            await loadAllData(false);
 
-                if (cachedData.categories && cachedData.categories.length > 0) {
-                    dispatch(setCategories(cachedData.categories));
-                }
-
-                if (!initialLoadRef.current) {
-                    setIsInitialLoading(false);
-                    initialLoadRef.current = true;
-                }
-                if (!dataLoaded) setDataLoaded(true);
-                if (!lastFetchTime) setLastFetchTime(cachedData.timestamp || Date.now());
-                return;
-            }
-
-            if (!initialLoadRef.current) {
-                loadAllData();
+            // Инициализация push уведомлений
+            if (notifications?.initializePushNotifications) {
+                notifications.initializePushNotifications();
             }
         };
 
-        initializeScreen();
-
-        if (!categories?.length && !isCategoriesLoading) {
-            dispatch(fetchCategories());
-        }
-
-        if (notifications.initializePushNotifications) {
-            notifications.initializePushNotifications();
-        }
-
+        initialize();
 
         return () => {
             isMountedRef.current = false;
-            if (refreshTimerRef.current) {
-                clearInterval(refreshTimerRef.current);
-            }
-            if (cacheTimeoutRef.current) {
-                clearTimeout(cacheTimeoutRef.current);
-            }
         };
     }, []);
 
-    // Корзина теперь обновляется автоматически через Redux селекторы
-    // useCartProduct в ProductCard сам реагирует на изменения состояния корзины
-
+    // Обработка фокуса экрана
     useFocusEffect(
         useCallback(() => {
+
+            // Сброс параметров навигации
             if (route?.params?.resetProduct) {
                 navigation.setParams({ resetProduct: undefined });
             }
 
-            if (isCartAvailable) {
+            // Принудительное обновление по запросу
+            if (route?.params?.refreshMainScreen) {
+                navigation.setParams({ refreshMainScreen: undefined });
+                handleRefresh();
+                return;
+            }
+
+            // Обновление корзины для доступных ролей
+            if (isCartAvailable && user) {
+                // Принудительно обновляем корзину при фокусе экрана для синхронизации
                 dispatch(fetchCart(true));
             }
 
+            // Обновление уведомлений для клиентов
             if (notifications?.refreshNotifications && user?.role === 'CLIENT') {
                 notifications.refreshNotifications();
             }
-        }, [navigation, route?.params, isCartAvailable, dispatch, notifications, user?.role])
+
+            // Проверка и обновление устаревшего кэша
+            if (isInitializedRef.current && shouldRefreshCache()) {
+                loadAllData(false);
+            }
+        }, [
+            route?.params,
+            navigation,
+            isCartAvailable,
+            user,
+            dispatch,
+            notifications,
+            shouldRefreshCache,
+            loadAllData,
+            handleRefresh
+        ])
     );
 
+    // Обработчики
     const handleProductPress = useCallback((product) => {
-        // Поддержка как productId, так и объекта продукта
         const productId = typeof product === 'object' && product?.id ? product.id : product;
         navigation.navigate('ProductDetail', {
             productId,
@@ -326,99 +221,84 @@ export const MainScreen = ({ navigation, route }) => {
         navigation.navigate('StopsListScreen');
     }, [navigation]);
 
-    const handleRefresh = useCallback(() => {
-        loadAllData(true);
-    }, [loadAllData]);
-
-    const renderHeader = useCallback(() => {
-
-        return (
-            <>
-                <Header navigation={navigation} />
-                <PromoBanner hideLoader={true} />
-                <CategoriesBar hideLoader={true} />
-                <DriverLocator onPress={handleDriverLocatorPress} />
-
-            </>
-        );
-    }, [handleDriverLocatorPress, navigation]);
+    // Компоненты рендеринга
+    const renderHeader = useCallback(() => (
+        <>
+            <Header navigation={navigation} />
+            <PromoBanner hideLoader={isDataReady} />
+            <CategoriesBar hideLoader={isDataReady} />
+            <DriverLocator onPress={handleDriverLocatorPress} />
+        </>
+    ), [navigation, isDataReady, handleDriverLocatorPress]);
 
     const renderFooter = useCallback(() => (
         <View style={styles.bottomSpacer} />
     ), []);
 
-    const isAnyLoading = loadingStates.products || loadingStates.banners || loadingStates.categories || isProductsLoading;
-    const hasAnyData = (products?.length > 0) ||
-                       (activeBanners?.length > 0) ||
-                       (categories?.length > 0);
+    const renderSkeletonLoader = useCallback(() => (
+        <View style={styles.skeletonContainer}>
+            {[...Array(8)].map((_, index) => (
+                <View key={`skeleton-${index}`} style={styles.skeletonProductCard}>
+                    <View style={styles.skeletonProductImage} />
+                    <View style={styles.skeletonProductContent}>
+                        <View style={styles.skeletonLineWide} />
+                        <View style={styles.skeletonLine} />
+                        <View style={styles.skeletonPrice} />
+                    </View>
+                </View>
+            ))}
+        </View>
+    ), []);
 
-    const shouldShowLoader = useMemo(() => {
-        const cached = hasCachedData();
-        return (isInitialLoading || (isAnyLoading && !hasAnyData)) && !cached;
-    }, [isInitialLoading, isAnyLoading, hasAnyData, hasCachedData]);
+    const renderErrorState = useCallback(() => (
+        <View style={styles.messageContainer}>
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
+                <Text style={styles.retryButtonText}>Повторить</Text>
+            </TouchableOpacity>
+        </View>
+    ), [error, handleRefresh]);
 
-    if (shouldShowLoader) {
+    const renderEmptyState = useCallback(() => (
+        <View style={styles.messageContainer}>
+            <Text style={styles.messageText}>Товары не найдены</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
+                <Text style={styles.retryButtonText}>Обновить</Text>
+            </TouchableOpacity>
+        </View>
+    ), [handleRefresh]);
+
+    // Рендер состояний загрузки
+    if (isInitialLoading && !isDataReady) {
         return (
             <View style={styles.container}>
-                <Header navigation={navigation} />
-                <PromoBanner hideLoader={false} />
-                <CategoriesBar hideLoader={false} />
-                {/* Скелетон списка товаров */}
-                <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
-                    {[...Array(8)].map((_, i) => (
-                        <View key={i} style={styles.skeletonProductCard}>
-                            <View style={styles.skeletonProductImage} />
-                            <View style={styles.skeletonProductContent}>
-                                <View style={styles.skeletonLineWide} />
-                                <View style={styles.skeletonLine} />
-                                <View style={styles.skeletonPrice} />
-                            </View>
-                        </View>
-                    ))}
-                </View>
+                {renderHeader()}
+                {renderSkeletonLoader()}
             </View>
         );
     }
 
-    // Обработка ошибок
-    if (productsError) {
+    // Рендер ошибки
+    if (error && !isDataReady) {
         return (
             <View style={styles.container}>
-                <Header navigation={navigation} />
-                <View style={styles.messageContainer}>
-                    <Text style={styles.errorText}>Ошибка загрузки товаров: {productsError}</Text>
-                    <TouchableOpacity
-                        style={styles.retryButton}
-                        onPress={handleRefresh}
-                    >
-                        <Text style={styles.retryButtonText}>Повторить</Text>
-                    </TouchableOpacity>
-                </View>
+                {renderHeader()}
+                {renderErrorState()}
             </View>
         );
     }
 
-    // Обработка пустого состояния
-    if (!Array.isArray(products) || products.length === 0) {
+    // Рендер пустого состояния
+    if (!products?.length && isInitializedRef.current) {
         return (
             <View style={styles.container}>
-                <Header navigation={navigation} />
-                <PromoBanner hideLoader={false} />
-                <CategoriesBar hideLoader={false} />
-                <DriverLocator onPress={handleDriverLocatorPress} />
-                <View style={styles.messageContainer}>
-                    <Text style={styles.messageText}>Товары не найдены</Text>
-                    <TouchableOpacity
-                        style={styles.retryButton}
-                        onPress={handleRefresh}
-                    >
-                        <Text style={styles.retryButtonText}>Обновить</Text>
-                    </TouchableOpacity>
-                </View>
+                {renderHeader()}
+                {renderEmptyState()}
             </View>
         );
     }
 
+    // Основной рендер
     return (
         <View style={styles.container}>
             <ProductsList
@@ -430,8 +310,9 @@ export const MainScreen = ({ navigation, route }) => {
                 hasMore={hasMore}
                 ListHeaderComponent={renderHeader}
                 ListFooterComponent={renderFooter}
-                hideLoader={isInitialLoading || (isAnyLoading && !hasAnyData)}
-                key={`products-${products?.length || 0}`}
+                hideLoader={isDataReady}
+                refreshing={isRefreshing}
+                onRefresh={handleRefresh}
             />
         </View>
     );
@@ -442,11 +323,9 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: Color.colorLightMode,
     },
-    loadingContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        paddingHorizontal: 20,
+    skeletonContainer: {
+        paddingHorizontal: 16,
+        paddingTop: 8,
     },
     skeletonProductCard: {
         flexDirection: 'row',

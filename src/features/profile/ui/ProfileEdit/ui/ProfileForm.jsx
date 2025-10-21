@@ -74,8 +74,6 @@ const ProfileFormComponent = ({
                     });
                 }
             } else {
-                // Для последующих обновлений initialValues, обновляем только отсутствующие поля
-                // Это предотвратит потерю значений districts и warehouseId при повторных инициализациях
                 setFormValues(prevValues => {
                     const updatedValues = { ...prevValues };
                     let hasChanges = false;
@@ -102,29 +100,13 @@ const ProfileFormComponent = ({
                         hasChanges = true;
                     }
 
-                    // Логируем обновление значений для отладки только если есть изменения
-                    if (__DEV__ && hasChanges && userType === 'employee') {
-                        console.log('ProfileForm: Обновление значений для employee', {
-                            districts: updatedValues.districts,
-                            warehouseId: updatedValues.warehouseId
-                        });
-                    }
-
                     return hasChanges ? updatedValues : prevValues;
                 });
             }
         }
-    }, [initialValues, userType]); // Убрали formValues из зависимостей
+    }, [initialValues, userType]);
 
     const handleFieldChange = useCallback((fieldId, value) => {
-        // Для отладки gender поля и полей сотрудника (только в dev режиме)
-        if (__DEV__ && (fieldId === 'gender' || (userType === 'employee' && (fieldId === 'districts' || fieldId === 'warehouseId')))) {
-            console.log('ProfileForm: handleFieldChange', {
-                fieldId,
-                value,
-                userType
-            });
-        }
 
         setFormValues(prev => ({
             ...prev,
@@ -157,14 +139,6 @@ const ProfileFormComponent = ({
 
         setFormErrors(errors);
 
-        // Для отладки валидации employee
-        if (__DEV__ && userType === 'employee' && !isValid) {
-            console.log('ProfileForm: Ошибки валидации employee', {
-                errors,
-                districts: formValues.districts,
-                warehouseId: formValues.warehouseId
-            });
-        }
 
         return isValid;
     }, [formValues, fieldsConfig, userType]);
@@ -177,13 +151,6 @@ const ProfileFormComponent = ({
                 formValuesKeys: Object.keys(formValues)
             });
 
-            // Специальная отладка для employee
-            if (__DEV__ && userType === 'employee') {
-                console.log('ProfileForm: Отправка данных employee', {
-                    districts: formValues.districts,
-                    warehouseId: formValues.warehouseId
-                });
-            }
 
             onSave(formValues);
         } else {
@@ -193,13 +160,6 @@ const ProfileFormComponent = ({
                 gender: formValues.gender
             });
 
-            // Специальная отладка для employee при ошибке валидации
-            if (__DEV__ && userType === 'employee') {
-                console.log('ProfileForm: Ошибка валидации для employee', {
-                    districts: formValues.districts,
-                    warehouseId: formValues.warehouseId
-                });
-            }
         }
     }, [validateForm, formValues, onSave, userType]);
 
@@ -228,13 +188,6 @@ const ProfileFormComponent = ({
         >
             <View style={styles.formContainer}>
                 {sortedFields.map(field => {
-                    // Для отладки gender поля
-                    if (__DEV__ && field.id === 'gender') {
-                        console.log('ProfileForm: Rendering gender field', {
-                            value: formValues[field.id],
-                            formValuesGender: formValues.gender
-                        });
-                    }
                     return (
                         <DynamicFormField
                             key={field.id}

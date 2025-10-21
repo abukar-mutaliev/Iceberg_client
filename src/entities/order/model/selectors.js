@@ -77,6 +77,11 @@ export const selectOrdersStatsState = (state) => {
     return ordersState.stats || EMPTY_OBJECT;
 };
 
+export const selectOrderCountsState = (state) => {
+    const ordersState = selectOrdersState(state);
+    return ordersState.orderCounts || EMPTY_OBJECT;
+};
+
 export const selectOrdersOperations = (state) => {
     const ordersState = selectOrdersState(state);
     return ordersState.operations || EMPTY_OBJECT;
@@ -93,11 +98,16 @@ export const selectOrdersNotifications = (state) => {
 export const selectStaffOrders = createSelector(
     [selectStaffOrdersState],
     (staffOrders) => {
+        // Логирование отключено для производительности
+        // Включить только для отладки
+        
         // Дополнительная проверка на случай, если data не определена
         if (!staffOrders || !Array.isArray(staffOrders.data)) {
+            // Логируем только ошибки
             console.warn('Staff orders data is not an array, returning empty array');
             return EMPTY_ARRAY;
         }
+        
         return staffOrders.data;
     }
 );
@@ -448,6 +458,95 @@ export const selectStaffOrdersStats = createSelector(
                 return acc;
             }, {})
         };
+    }
+);
+
+// Селектор для получения количества заказов, ожидающих поступления товара
+export const selectWaitingStockCount = createSelector(
+    [selectStaffOrders],
+    (orders) => {
+        if (!Array.isArray(orders)) return 0;
+        return orders.filter(order => order.status === 'WAITING_STOCK').length;
+    }
+);
+
+// Селектор для получения количества из orderCounts (для бейджей)
+export const selectWaitingStockCountFromCounts = createSelector(
+    [selectOrderCountsState],
+    (orderCounts) => {
+        return orderCounts?.waitingStockCount || 0;
+    }
+);
+
+// Объединенный селектор - использует orderCounts если доступны, иначе считает из staffOrders
+export const selectWaitingStockCountCombined = createSelector(
+    [selectOrderCountsState, selectStaffOrders],
+    (orderCounts, orders) => {
+        // Если счетчики загружены и не старые (меньше 5 минут), используем их
+        // НО ТОЛЬКО если там есть данные (не 0 при наличии заказов)
+        const countsAge = orderCounts?.lastFetchTime ? Date.now() - orderCounts.lastFetchTime : Infinity;
+        const hasRecentCounts = orderCounts?.lastFetchTime && countsAge < 5 * 60 * 1000;
+        
+        // Считаем из staffOrders для проверки
+        const ordersCount = Array.isArray(orders) ? orders.filter(order => order.status === 'WAITING_STOCK').length : 0;
+        
+        // Используем orderCounts только если они свежие И соответствуют реальности
+        // Если orderCounts показывает 0, но в staffOrders есть заказы - доверяем staffOrders
+        if (hasRecentCounts && orderCounts.waitingStockCount !== undefined) {
+            // Если счетчики показывают 0, но есть заказы - используем расчет из staffOrders
+            if (orderCounts.waitingStockCount === 0 && ordersCount > 0) {
+                console.log('📊 [selectWaitingStockCountCombined] orderCounts показывает 0, но есть заказы - используем staffOrders', {
+                    orderCountsValue: orderCounts.waitingStockCount,
+                    staffOrdersCount: ordersCount,
+                    age: Math.round(countsAge / 1000) + 's'
+                });
+                return ordersCount;
+            }
+            
+            console.log('📊 [selectWaitingStockCountCombined] Using orderCounts', {
+                count: orderCounts.waitingStockCount,
+                age: Math.round(countsAge / 1000) + 's',
+                lastFetchTime: orderCounts.lastFetchTime ? new Date(orderCounts.lastFetchTime).toISOString() : null
+            });
+            return orderCounts.waitingStockCount;
+        }
+        
+        // Иначе считаем из staffOrders
+        if (!Array.isArray(orders)) {
+            console.log('📊 [selectWaitingStockCountCombined] staffOrders not array, returning 0');
+            return 0;
+        }
+        
+        console.log('📊 [selectWaitingStockCountCombined] Calculating from staffOrders', {
+            count: ordersCount,
+            totalOrders: orders.length,
+            countsAge: countsAge === Infinity ? 'never fetched' : Math.round(countsAge / 1000) + 's'
+        });
+        return ordersCount;
+    }
+);
+
+// Селектор для получения количества заказов, ожидающих поступления товара от конкретного поставщика
+export const selectSupplierWaitingStockCount = createSelector(
+    [selectStaffOrders, (state, supplierId) => supplierId],
+    (orders, supplierId) => {
+        if (!Array.isArray(orders) || !supplierId) return 0;
+        
+        // Фильтруем заказы со статусом WAITING_STOCK
+        const waitingOrders = orders.filter(order => order.status === 'WAITING_STOCK');
+        
+        // Фильтруем заказы, содержащие товары от этого поставщика
+        const ordersWithSupplierProducts = waitingOrders.filter(order => {
+            if (!order.items || !Array.isArray(order.items)) return false;
+            
+            // Проверяем, есть ли в заказе товары от этого поставщика
+            return order.items.some(item => {
+                const productSupplierId = item.product?.supplierId || item.product?.supplier?.id;
+                return productSupplierId === supplierId;
+            });
+        });
+        
+        return ordersWithSupplierProducts.length;
     }
 );
 

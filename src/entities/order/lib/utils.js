@@ -3,6 +3,7 @@
 export const ORDER_STATUSES = {
     PENDING: 'PENDING',
     CONFIRMED: 'CONFIRMED',
+    WAITING_STOCK: 'WAITING_STOCK',
     IN_DELIVERY: 'IN_DELIVERY',
     DELIVERED: 'DELIVERED',
     CANCELLED: 'CANCELLED',
@@ -12,6 +13,7 @@ export const ORDER_STATUSES = {
 export const ORDER_STATUS_LABELS = {
     [ORDER_STATUSES.PENDING]: 'Ожидает обработки',
     [ORDER_STATUSES.CONFIRMED]: 'Подтвержден',
+    [ORDER_STATUSES.WAITING_STOCK]: 'Ожидает поступления товара',
     [ORDER_STATUSES.IN_DELIVERY]: 'В доставке',
     [ORDER_STATUSES.DELIVERED]: 'Доставлен',
     [ORDER_STATUSES.CANCELLED]: 'Отменен',
@@ -21,6 +23,7 @@ export const ORDER_STATUS_LABELS = {
 export const ORDER_STATUS_COLORS = {
     [ORDER_STATUSES.PENDING]: '#ffc107',
     [ORDER_STATUSES.CONFIRMED]: '#17a2b8',
+    [ORDER_STATUSES.WAITING_STOCK]: '#fd7e14',
     [ORDER_STATUSES.IN_DELIVERY]: '#007bff',
     [ORDER_STATUSES.DELIVERED]: '#28a745',
     [ORDER_STATUSES.CANCELLED]: '#dc3545',
@@ -87,12 +90,13 @@ export const isPriorityOrder = (order) => {
  */
 export const canCancelOrder = (status, userRole = 'CLIENT') => {
     if (userRole === 'CLIENT') {
-        return status === ORDER_STATUSES.PENDING;
+        return [ORDER_STATUSES.PENDING, ORDER_STATUSES.WAITING_STOCK].includes(status);
     }
 
     return [
         ORDER_STATUSES.PENDING,
         ORDER_STATUSES.CONFIRMED,
+        ORDER_STATUSES.WAITING_STOCK,
         ORDER_STATUSES.IN_DELIVERY
     ].includes(status);
 }; 
@@ -113,10 +117,15 @@ export const getAvailableStatuses = (currentStatus) => {
     const transitions = {
         [ORDER_STATUSES.PENDING]: [
             { value: ORDER_STATUSES.CONFIRMED, label: ORDER_STATUS_LABELS[ORDER_STATUSES.CONFIRMED], color: '#28a745' },
+            { value: ORDER_STATUSES.WAITING_STOCK, label: ORDER_STATUS_LABELS[ORDER_STATUSES.WAITING_STOCK], color: '#fd7e14' },
             { value: ORDER_STATUSES.CANCELLED, label: ORDER_STATUS_LABELS[ORDER_STATUSES.CANCELLED], color: '#dc3545' }
         ],
         [ORDER_STATUSES.CONFIRMED]: [
-            { value: ORDER_STATUSES.IN_DELIVERY, label: ORDER_STATUS_LABELS[ORDER_STATUSES.IN_DELIVERY], color: '#fd7e14' },
+            { value: ORDER_STATUSES.IN_DELIVERY, label: ORDER_STATUS_LABELS[ORDER_STATUSES.IN_DELIVERY], color: '#007bff' },
+            { value: ORDER_STATUSES.CANCELLED, label: ORDER_STATUS_LABELS[ORDER_STATUSES.CANCELLED], color: '#dc3545' }
+        ],
+        [ORDER_STATUSES.WAITING_STOCK]: [
+            { value: ORDER_STATUSES.CONFIRMED, label: ORDER_STATUS_LABELS[ORDER_STATUSES.CONFIRMED], color: '#28a745' },
             { value: ORDER_STATUSES.CANCELLED, label: ORDER_STATUS_LABELS[ORDER_STATUSES.CANCELLED], color: '#dc3545' }
         ],
         [ORDER_STATUSES.IN_DELIVERY]: [

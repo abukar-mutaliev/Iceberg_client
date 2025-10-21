@@ -200,12 +200,21 @@ export const ProfileInfo = ({ onProductPress }) => {
                                 : item.icon
                             }
                         </View>
-                        <Text style={[
-                            styles.menuItemText,
-                            activeItemId === item.id && styles.activeMenuItemText
-                        ]}>
-                            {item.title}
-                        </Text>
+                        <View style={styles.menuItemTextContainer}>
+                            <Text style={[
+                                styles.menuItemText,
+                                activeItemId === item.id && styles.activeMenuItemText
+                            ]}>
+                                {item.title}
+                            </Text>
+                            {item.badgeCount > 0 && (
+                                <View style={styles.menuBadge}>
+                                    <Text style={styles.menuBadgeText}>
+                                        {item.badgeCount > 99 ? '99+' : item.badgeCount}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
                         <IconRight color={activeItemId === item.id ? '#fff' : undefined} />
                     </TouchableOpacity>
                 ))}
@@ -314,12 +323,32 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    menuItemText: {
+    menuItemTextContainer: {
         flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
         marginLeft: normalize(15),
+    },
+    menuItemText: {
         fontSize: normalizeFont(16),
         color: '#222222',
         fontFamily: FontFamily.sFProText,
+    },
+    menuBadge: {
+        backgroundColor: '#FF3B30',
+        borderRadius: normalize(10),
+        minWidth: normalize(20),
+        height: normalize(20),
+        paddingHorizontal: normalize(6),
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginLeft: normalize(8),
+    },
+    menuBadgeText: {
+        color: '#fff',
+        fontSize: normalizeFont(11),
+        fontWeight: '700',
+        textAlign: 'center',
     },
     activeMenuItem: {
         backgroundColor: Color.blue2,

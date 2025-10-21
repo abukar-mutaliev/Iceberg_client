@@ -2,12 +2,14 @@ import React, { memo, useCallback } from 'react';
 import { View, Text, Image, StyleSheet, Pressable, Alert } from 'react-native';
 import { Color, Border, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { useProductCard } from "@entities/product";
+import { useToast } from '@shared/ui/Toast';
 import {AddToCartButton} from "@shared/ui/Cart/ui/AddToCartButton";
 import * as navigation from "@shared/utils/NavigationRef";
 
 const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
 
 const ProductCardComponent = ({ product, onPress, onGoToCart, width }) => {
+    const { showError, showWarning } = useToast();
     const {
         productId,
         productData,
@@ -32,13 +34,20 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width }) => {
             await handleAddToCart(1); // Добавляем 1 коробку
             // Можно добавить уведомление об успешном добавлении
         } catch (error) {
-            Alert.alert(
-                'Ошибка',
-                'Не удалось добавить товар в корзину. Попробуйте снова.',
-                [{ text: 'OK' }]
-            );
+            console.error('ProductCard: Error adding to cart:', error);
+            if (error.message && error.message.includes('403')) {
+                showWarning('Корзина доступна только для клиентов', {
+                    duration: 4000,
+                    position: 'top'
+                });
+            } else {
+                showError('Не удалось добавить товар в корзину', {
+                    duration: 3000,
+                    position: 'top'
+                });
+            }
         }
-    }, [handleAddToCart]);
+    }, [handleAddToCart, showError, showWarning]);
 
     const handleGoToCart = useCallback(() => {
         navigation.navigate('Cart');

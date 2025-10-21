@@ -4,12 +4,13 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchFavorites } from '@entities/favorites';
+import { loadUserProfile } from '@entities/auth';
 import { useCartAutoLoad, useCartAvailability, CartAuthHandler } from '@entities/cart';
+import { useOrderCountsBackground } from '@entities/order';
 import { AuthDialog } from "@entities/auth/ui/AuthDialog";
 import PushNotificationService from "@shared/services/PushNotificationService";
 import { usePushTokenAutoRegistration } from '@shared/hooks/usePushTokenAutoRegistration';
 
-// Компонент ErrorBoundary для перехвата ошибок рендеринга
 class ErrorBoundary extends React.Component {
     constructor(props) {
         super(props);
@@ -23,7 +24,6 @@ class ErrorBoundary extends React.Component {
     componentDidCatch(error, errorInfo) {
         console.error('AppContainer ErrorBoundary caught an error:', error, errorInfo);
 
-        // Логируем подробную информацию об ошибке
         if (error.message && error.message.includes('Malformed calls from JS')) {
             console.error('Detected Malformed calls from JS error - likely SVG/Native component issue');
         }
@@ -67,20 +67,21 @@ export const AppContainer = ({ children, onNavigateToAuth }) => {
     const {isCartAvailable} = useCartAvailability();
     const tokens = useSelector((state) => state.auth?.tokens);
 
-    // Состояние для контроля инициализации
     const [isInitialized, setIsInitialized] = useState(false);
     const pushInitializationAttempted = useRef(false);
-
-    // Автоматическая загрузка корзины при запуске приложения (только для клиентов)
+    // Автоматическая загрузка корзины при запуске приложения (только для клиентов и неавторизованных)
     useCartAutoLoad({
-        loadOnMount: isCartAvailable,
+        loadOnMount: isCartAvailable, // Загружаем для доступных ролей
         loadOnAuthChange: isCartAvailable,
-        autoMergeGuestCart: isCartAvailable,
-        enableReservationCheck: isCartAvailable
+        autoMergeGuestCart: isCartAvailable && isAuthenticated, // Объединяем только при авторизации
+        enableReservationCheck: isCartAvailable && isAuthenticated // Проверка резерва только для авторизованных
     });
 
     // Используем кастомный хук для автоматической регистрации push токенов
     usePushTokenAutoRegistration();
+
+    // Фоновая загрузка счетчиков заказов (для бейджей)
+    useOrderCountsBackground();
 
     useEffect(() => {
         try {
@@ -92,22 +93,45 @@ export const AppContainer = ({ children, onNavigateToAuth }) => {
         }
     }, [setAuthDialogRef]);
 
-    // Безопасная загрузка избранного
+    // Безопасная загрузка профиля и избранного
     useEffect(() => {
-        if (isAuthenticated && !isInitialized) {
-            setIsInitialized(true);
+        const loadData = async () => {
+            if (isAuthenticated && !isInitialized && tokens) {
+                // Проверяем валидность токенов перед загрузкой данных
+                const { authService } = await import('@shared/api/api');
+                
+                // Проверяем refresh token
+                const isRefreshTokenValid = tokens.refreshToken ? 
+                    authService.isTokenValid(tokens.refreshToken) : false;
+                
+                if (!isRefreshTokenValid) {
+                    console.error('❌ AppContainer: Refresh token invalid, not loading profile');
+                    return;
+                }
+                
+                setIsInitialized(true);
 
-            // Добавляем небольшую задержку для стабилизации
-            const timer = setTimeout(() => {
-                dispatch(fetchFavorites())
+                // Сначала загружаем профиль (для employee данных)
+                console.log('📊 AppContainer: Loading user profile on app startup');
+                dispatch(loadUserProfile())
                     .catch(err => {
-                        console.error('AppContainer: Ошибка при загрузке избранного:', err);
+                        console.error('AppContainer: Ошибка при загрузке профиля:', err);
                     });
-            }, 100);
 
-            return () => clearTimeout(timer);
-        }
-    }, [isAuthenticated, dispatch, isInitialized]);
+                // Затем загружаем избранное
+                const timer = setTimeout(() => {
+                    dispatch(fetchFavorites())
+                        .catch(err => {
+                            console.error('AppContainer: Ошибка при загрузке избранного:', err);
+                        });
+                }, 100);
+
+                return () => clearTimeout(timer);
+            }
+        };
+        
+        loadData();
+    }, [isAuthenticated, dispatch, isInitialized, tokens]);
 
     // Безопасные обработчики навигации
     const handleLogin = React.useCallback(() => {

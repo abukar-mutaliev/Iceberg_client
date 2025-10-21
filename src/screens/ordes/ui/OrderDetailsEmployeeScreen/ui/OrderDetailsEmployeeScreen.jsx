@@ -21,15 +21,18 @@ import { DeliveryInfo } from '@shared/ui/DeliveryInfo/ui/DeliveryInfo';
 import { OrderItems } from '@shared/ui/OrderItems/ui/OrderItems';
 import { OrderProcessingHistory } from '@shared/ui/OrderProcessingHistory/ui/OrderProcessingHistory';
 import { OrderLoadingState, OrderErrorState } from '@shared/ui/OrderLoadingState/ui/OrderLoadingState';
+import { WaitingStockInfo } from '@shared/ui/WaitingStockInfo';
 
 const styles = createOrderDetailsStyles();
 
 // Вспомогательные функции для проверки условий
 const canEmployeeTakeOrder = (employeeRole, status, isAdmin = false) => {
+    // Админы не могут брать заказы в работу - только просматривают
+    if (isAdmin) return false;
+    
     if (employeeRole === 'PICKER' && status === 'PENDING') return true;
     if (employeeRole === 'PACKER') return false; // PACKER больше не может брать заказы
     if (employeeRole === 'COURIER' && status === 'IN_DELIVERY') return true;
-    if (isAdmin) return ['PENDING', 'CONFIRMED', 'IN_DELIVERY'].includes(status);
     return false;
 };
 
@@ -37,7 +40,10 @@ const isOrderAssignedToEmployee = (employeeId, assignedId, hasLocalReleased) => 
     return employeeId && assignedId && employeeId === assignedId && !hasLocalReleased;
 };
 
-const shouldShowWorkButtons = (isAssignedToMe, actualStatus) => {
+const shouldShowWorkButtons = (isAssignedToMe, actualStatus, isAdmin = false) => {
+    // Админы не могут завершать этапы - только просматривают
+    if (isAdmin) return false;
+    
     return isAssignedToMe && ['PENDING', 'CONFIRMED', 'IN_DELIVERY'].includes(actualStatus);
 };
 
@@ -303,7 +309,7 @@ export const OrderDetailsEmployeeScreen = () => {
         if (localOrderState.lastAction === 'taken' && !isAssignedToMe && localOrderState.temporarySteps.length > 0 && !hasLocalReleased) {
             return {
                 showTakeButton: false,
-                showCompleteButton: shouldShowWorkButtons(true, actualStatus),
+                showCompleteButton: shouldShowWorkButtons(true, actualStatus, isAdmin),
                 showReleaseButton: true,
                 canTakeOrder: false,
                 canCompleteStage: true,
@@ -342,7 +348,7 @@ export const OrderDetailsEmployeeScreen = () => {
         if (isAssignedToMe) {
             return {
                 showTakeButton: false,
-                showCompleteButton: shouldShowWorkButtons(isAssignedToMe, actualStatus),
+                showCompleteButton: shouldShowWorkButtons(isAssignedToMe, actualStatus, isAdmin),
                 showReleaseButton: true,
                 canTakeOrder: false,
                 canCompleteStage: true,
@@ -884,6 +890,7 @@ export const OrderDetailsEmployeeScreen = () => {
                     {order && (
                         <>
                             <OrderHeader order={order} />
+                            <WaitingStockInfo order={order} />
                             <DeliveryInfo
                                 order={order}
                                 userRole={user?.role}

@@ -107,8 +107,7 @@ export const ChatListScreen = ({navigation}) => {
     const loadedProductsRef = useRef(new Set());
 
     useEffect(() => {
-        console.log('📱 ChatListScreen: Component mounted, loading cache and fetching rooms...');
-        console.log('📱 ChatListScreen: Current rooms count:', rooms?.length || 0);
+  
         dispatch(loadRoomsCache());
         dispatch(fetchRooms({page: 1}));
     }, [dispatch]);
@@ -400,7 +399,10 @@ export const ChatListScreen = ({navigation}) => {
 
     const openRoom = (room) => {
         const rid = room?.id ?? room?.roomId;
-        if (!rid) return;
+        if (!rid) {
+            console.warn('ChatListScreen: Trying to open room without valid ID:', room);
+            return;
+        }
         dispatch(setActiveRoom(rid));
         const productInfo = room?.product ? {id: room.product?.id, supplier: room.product?.supplier} : undefined;
         navigation.navigate('ChatRoom', {
@@ -422,7 +424,7 @@ export const ChatListScreen = ({navigation}) => {
         const lastMessage = item.lastMessage;
 
         if (__DEV__) {
-            console.log('🎯 ChatList renderItem - lastMessage determination for room:', item.id, {
+            console.log('🎯 ChatList renderItem - lastMessage determination for room:', item?.id ?? item?.roomId ?? 'no-id', {
                 hasItemLastMessage: !!item.lastMessage,
                 itemStructure: {
                     id: item.id,
@@ -464,7 +466,7 @@ export const ChatListScreen = ({navigation}) => {
                     senderId,
                     currentUserId,
                     isOwnMessage,
-                    roomId: item.id,
+                    roomId: item?.id ?? item?.roomId ?? 'no-id',
                     lastMessageId: lastMessage?.id,
                     messageStatus,
                     shouldShowTicks: isOwnMessage
@@ -490,15 +492,15 @@ export const ChatListScreen = ({navigation}) => {
             }
 
             if (__DEV__) {
-                console.log('isOwnMessage determination:', {
-                    roomId: item.id,
-                    roomType: item.type,
-                    currentUserId,
-                    senderId,
-                    isOwnMessage,
-                    senderPrefix,
-                    lastMessageKeys: lastMessage ? Object.keys(lastMessage) : null
-                });
+            console.log('isOwnMessage determination:', {
+                roomId: item?.id ?? item?.roomId ?? 'no-id',
+                roomType: item.type,
+                currentUserId,
+                senderId,
+                isOwnMessage,
+                senderPrefix,
+                lastMessageKeys: lastMessage ? Object.keys(lastMessage) : null
+            });
             }
         }
 
@@ -523,7 +525,7 @@ export const ChatListScreen = ({navigation}) => {
         }
 
         if (__DEV__) {
-            console.log('ChatList: Final messageStatus for room:', item.id, ':', messageStatus, {
+            console.log('ChatList: Final messageStatus for room:', item?.id ?? item?.roomId ?? 'no-id', ':', messageStatus, {
                 lastMessageStatus: lastMessage?.status,
                 lastMessageReadAt: lastMessage?.readAt,
                 lastMessageDeliveredAt: lastMessage?.deliveredAt,
@@ -534,7 +536,7 @@ export const ChatListScreen = ({navigation}) => {
         // Отладочная информация о статусе
         if (__DEV__) {
             console.log('Message status calculation:', {
-                roomId: item.id,
+                roomId: item?.id ?? item?.roomId ?? 'no-id',
                 messageId: lastMessage?.id,
                 calculatedStatus: messageStatus,
                 originalStatus: lastMessage?.status,
@@ -606,7 +608,7 @@ export const ChatListScreen = ({navigation}) => {
         // Отладочная информация
         if (__DEV__) {
             console.log('ChatList renderItem:', {
-                roomId: item.id,
+                roomId: item?.id ?? item?.roomId ?? 'no-id',
                 type: item.type,
                 title,
                 currentUserId,
@@ -652,7 +654,7 @@ export const ChatListScreen = ({navigation}) => {
                                     isOwnMessage,
                                     messageStatus,
                                     lastMessageId: lastMessage?.id,
-                                    roomId: item.id
+                                    roomId: item?.id ?? item?.roomId ?? 'no-id'
                                 })}
                                 <StatusTicks status={messageStatus}/>
                             </View>
@@ -672,7 +674,11 @@ export const ChatListScreen = ({navigation}) => {
         );
     }, [getChatTitle, getRoomAvatar, openRoom, currentUserId]);
 
-    const keyExtractor = useCallback((item) => String(item.id), []);
+    const keyExtractor = useCallback((item) => {
+        // Безопасное извлечение ключа с обработкой undefined/null
+        const id = item?.id ?? item?.roomId ?? 'unknown';
+        return String(id);
+    }, []);
 
     const getItemLayout = useCallback((data, index) => ({
         length: 72,
@@ -741,7 +747,7 @@ export const ChatListScreen = ({navigation}) => {
 
             <FlatList
                 data={memoizedRooms}
-                keyExtractor={(item) => item.id.toString()}
+                keyExtractor={keyExtractor}
                 renderItem={renderItem}
                 onEndReached={handleLoadMore}
                 onEndReachedThreshold={0.1}

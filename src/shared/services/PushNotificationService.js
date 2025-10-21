@@ -13,33 +13,27 @@ class PushNotificationService {
         this.navigateToOrderFunc = null;
         this.navigateToChatFunc = null;
         this.navigateToUrlFunc = null;
+        this.navigateToOrderChoiceFunc = null;
     }
 
     // Инициализация сервиса
     async initialize() {
         try {
             if (this.isInitialized) {
-                console.log('🔔 PushNotificationService уже инициализирован');
                 return true;
             }
-
-            console.log('🚀 Инициализация PushNotificationService с OneSignal');
-
             // Инициализируем OneSignal
             const success = await OneSignalService.initialize(this.oneSignalAppId);
             
             if (!success) {
-                console.error('❌ OneSignal инициализация не удалась');
                 return false;
             }
 
             this.isInitialized = true;
-            console.log('✅ PushNotificationService инициализирован с OneSignal');
             
             return true;
 
         } catch (error) {
-            console.error('❌ Ошибка инициализации PushNotificationService:', error);
             return false;
         }
     }
@@ -47,7 +41,6 @@ class PushNotificationService {
     // Инициализация для пользователя
     async initializeForUser(user) {
         try {
-            console.log('👤 Инициализация PushNotificationService для пользователя:', user.id);
 
             // Инициализируем базовый сервис
             const baseInitResult = await this.initialize();
@@ -58,15 +51,12 @@ class PushNotificationService {
             // Настраиваем OneSignal для пользователя
             const userInitResult = await OneSignalService.initializeForUser(user);
             if (!userInitResult) {
-                console.error('❌ OneSignal инициализация для пользователя не удалась');
                 return false;
             }
 
-            console.log('✅ PushNotificationService настроен для пользователя:', user.id);
             return true;
 
         } catch (error) {
-            console.error('❌ Ошибка initializeForUser:', error);
             return false;
         }
     }
@@ -74,9 +64,7 @@ class PushNotificationService {
     // Очистка контекста пользователя
     async clearUserContext() {
         try {
-            console.log('🧹 Очистка контекста пользователя');
             await OneSignalService.clearUserContext();
-            console.log('✅ Контекст пользователя очищен');
         } catch (error) {
             console.error('❌ Ошибка очистки контекста:', error);
         }
@@ -105,11 +93,12 @@ class PushNotificationService {
     }
 
     // Установка функций навигации
-    setNavigationFunctions(navigateToStops, navigateToOrder, navigateToChat, navigateToUrl) {
+    setNavigationFunctions(navigateToStops, navigateToOrder, navigateToChat, navigateToUrl, navigateToOrderChoice = null) {
         this.navigateToStopsFunc = navigateToStops;
         this.navigateToOrderFunc = navigateToOrder;
         this.navigateToChatFunc = navigateToChat;
         this.navigateToUrlFunc = navigateToUrl;
+        this.navigateToOrderChoiceFunc = navigateToOrderChoice;
 
         this.setNavigationReady();
     }
@@ -136,6 +125,8 @@ class PushNotificationService {
         // Обработка навигации
         if (data.stopId || data.type === 'STOP_NOTIFICATION' || data.type === 'STOP_UPDATE' || data.type === 'STOP_CANCEL') {
             this.navigateToStop(data);
+        } else if (data.choiceId || data.type === 'ORDER_CHOICE') {
+            this.navigateToOrderChoice(data);
         } else if (data.orderId || data.type === 'ORDER_STATUS') {
             this.navigateToOrder(data);
         } else if (data.productId || data.type === 'PRODUCT_NOTIFICATION' || data.type === 'PROMOTION') {
@@ -158,12 +149,21 @@ class PushNotificationService {
 
     // Навигация к заказам
     navigateToOrder(data) {
-        console.log('📦 Навигация к заказу вызвана:', data);
         if (this.navigateToOrderFunc && typeof this.navigateToOrderFunc === 'function') {
-            console.log('📦 Выполняется навигация к заказу:', data.orderId);
             this.navigateToOrderFunc(data);
         } else {
             console.warn('⚠️ navigateToOrderFunc не установлена');
+        }
+    }
+
+    // Навигация к предложениям выбора
+    navigateToOrderChoice(data) {
+        if (this.navigateToOrderChoiceFunc && typeof this.navigateToOrderChoiceFunc === 'function') {
+            this.navigateToOrderChoiceFunc(data);
+        } else {
+            if (data.orderId) {
+                this.navigateToOrder({ orderId: data.orderId });
+            }
         }
     }
 

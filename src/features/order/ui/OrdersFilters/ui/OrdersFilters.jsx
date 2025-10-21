@@ -339,14 +339,14 @@ export const OrdersFilters = React.memo(({
                     {/* Сумма заказа */}
                     <View style={styles.filterGroup}>
                         <View style={styles.filterGroupHeader}>
-                            <Icon name="attach-money" size={20} color="#667eea" />
+                            <Text style={[styles.filterGroupTitle, { fontSize: 20, color: '#667eea' }]}>₽</Text>
                             <Text style={styles.filterGroupTitle}>Сумма заказа</Text>
                         </View>
                         <View style={styles.amountInputsContainer}>
                             <View style={styles.amountInputGroup}>
                                 <Text style={styles.amountInputLabel}>От:</Text>
                                 <View style={styles.amountInputContainer}>
-                                    <Icon name="attach-money" size={16} color="#a0aec0" />
+                                    <Text style={[styles.amountInput, { fontSize: 16, color: '#a0aec0', marginRight: 8 }]}>₽</Text>
                                     <TextInput
                                         style={styles.amountInput}
                                         placeholder="0"
@@ -360,7 +360,7 @@ export const OrdersFilters = React.memo(({
                             <View style={styles.amountInputGroup}>
                                 <Text style={styles.amountInputLabel}>До:</Text>
                                 <View style={styles.amountInputContainer}>
-                                    <Icon name="attach-money" size={16} color="#a0aec0" />
+                                    <Text style={[styles.amountInput, { fontSize: 16, color: '#a0aec0', marginRight: 8 }]}>₽</Text>
                                     <TextInput
                                         style={styles.amountInput}
                                         placeholder="∞"

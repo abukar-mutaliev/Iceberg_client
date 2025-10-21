@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
+import { useAuth } from '@entities/auth/hooks/useAuth';
 import { fetchRooms, sendProduct } from '@entities/chat/model/slice';
 import { selectRoomsList } from '@entities/chat/model/selectors';
 import ChatApi from '@entities/chat/api/chatApi';
@@ -21,6 +22,7 @@ import { debounce } from 'lodash';
 export const RepostProductContent = ({ product, currentUser, onClose }) => {
   const navigation = useNavigation();
   const dispatch = useDispatch();
+  const { isAuthenticated } = useAuth();
   
   const [activeTab, setActiveTab] = useState('chats'); // 'chats' или 'search'
   const [searchQuery, setSearchQuery] = useState('');
@@ -31,10 +33,12 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
   const rooms = useSelector(selectRoomsList) || [];
   const currentUserId = currentUser?.id;
 
-  // Загружаем существующие чаты при открытии
+  // Загружаем существующие чаты при открытии (только для авторизованных пользователей)
   useEffect(() => {
-    dispatch(fetchRooms({ page: 1 }));
-  }, [dispatch]);
+    if (isAuthenticated) {
+      dispatch(fetchRooms({ page: 1 }));
+    }
+  }, [dispatch, isAuthenticated]);
 
   // Дебаунсированный поиск пользователей
   const searchUsersDebounced = useCallback(

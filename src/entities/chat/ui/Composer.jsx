@@ -1,15 +1,17 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { View, TextInput, TouchableOpacity, Text, StyleSheet, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { Border, Padding, Color } from '@app/styles/GlobalStyles';
-import { sendText, sendImages } from '@entities/chat/model/slice';
+import { sendText, sendImages, addOptimisticMessage } from '@entities/chat/model/slice';
 import { AttachmentPreview } from './AttachmentPreview';
 import { AttachIcon } from '@shared/ui/Icon/AttachIcon';
 import { CameraIcon } from '@shared/ui/Icon/CameraIcon';
 
 export const Composer = ({ roomId, onTyping }) => {
   const dispatch = useDispatch();
+  const currentUserId = useSelector(state => state.auth?.user?.id);
+  const currentUser = useSelector(state => state.auth?.user);
   const [text, setText] = useState('');
   const [files, setFiles] = useState([]);
   const [captions, setCaptions] = useState({});
@@ -72,21 +74,77 @@ export const Composer = ({ roomId, onTyping }) => {
   const doSend = async () => {
     if (!canSend || isSendingRef.current) return;
     isSendingRef.current = true;
+    
+    // Генерируем временный ID для отслеживания оптимистичного сообщения
+    const temporaryId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Сохраняем текущие значения
+    const currentText = text.trim();
+    const currentFiles = [...files];
+    const currentCaptions = { ...captions };
+    
+    // Очищаем форму немедленно для лучшего UX
+    if (currentText.length > 0) {
+      setText('');
+    }
+    if (currentFiles.length > 0) {
+      setFiles([]);
+      setCaptions({});
+    }
+    onTyping?.(false);
+    
     try {
-      if (files.length > 0) {
-        // FormData files
-        const orderedCaptions = files.map((f) => captions[f.uri || f.name] || '');
-        await dispatch(sendImages({ roomId, files, captions: orderedCaptions }));
-        setFiles([]);
-        setCaptions({});
+      if (currentFiles.length > 0) {
+        // Для изображений пока не реализуем оптимистичные обновления (сложнее из-за обработки)
+        const orderedCaptions = currentFiles.map((f) => currentCaptions[f.uri || f.name] || '');
+        await dispatch(sendImages({ roomId, files: currentFiles, captions: orderedCaptions }));
       }
-      if (text.trim().length > 0) {
-        await dispatch(sendText({ roomId, content: text.trim() }));
-        setText('');
+      
+      if (currentText.length > 0) {
+        // Создаем оптимистичное сообщение
+        const optimisticMessage = {
+          id: temporaryId, // Используем temporaryId как ID
+          temporaryId, // Также сохраняем для поиска
+          roomId,
+          type: 'TEXT',
+          content: currentText,
+          senderId: currentUserId,
+          sender: {
+            id: currentUserId,
+            name: currentUser?.name || currentUser?.firstName || 'Вы',
+            avatar: currentUser?.avatar,
+            role: currentUser?.role,
+          },
+        };
+        
+        // Добавляем сообщение в UI немедленно
+        if (__DEV__) {
+          console.log('📤 Composer: Adding optimistic message:', {
+            temporaryId,
+            content: currentText,
+            roomId
+          });
+        }
+        dispatch(addOptimisticMessage({ roomId, message: optimisticMessage }));
+        
+        // Отправляем на сервер в фоне
+        if (__DEV__) {
+          console.log('📤 Composer: Sending message to server:', { temporaryId, roomId });
+        }
+        dispatch(sendText({ roomId, content: currentText, temporaryId }));
+      }
+    } catch (error) {
+      console.error('Ошибка отправки сообщения:', error);
+      // В случае ошибки возвращаем текст обратно
+      if (currentText.length > 0) {
+        setText(currentText);
+      }
+      if (currentFiles.length > 0) {
+        setFiles(currentFiles);
+        setCaptions(currentCaptions);
       }
     } finally {
       isSendingRef.current = false;
-      onTyping?.(false);
     }
   };
 

@@ -35,6 +35,7 @@ export const useChatSocket = () => {
   const dispatch = useDispatch();
   const roomsState = useSelector((s) => s.chat?.rooms);
   const isAuthenticated = useSelector((s) => !!s.auth?.user?.id);
+  const currentUserId = useSelector((s) => s.auth?.user?.id);
   const socketRef = useRef(null);
   const joinedRoomsRef = useRef(new Set());
   const appStateRef = useRef(AppState.currentState);
@@ -85,10 +86,21 @@ export const useChatSocket = () => {
         const tokensStr = await AsyncStorage.getItem('tokens');
         const tokens = tokensStr ? JSON.parse(tokensStr) : null;
         const token = tokens?.accessToken;
+        const refreshToken = tokens?.refreshToken;
         const baseUrl = getBaseUrl();
 
-        if (!token) {
+        if (!token || !refreshToken) {
+          console.log('🔌 No tokens available, skipping WebSocket connection');
           return; // not authenticated; skip sockets
+        }
+
+        // Проверяем валидность refresh token перед подключением
+        const { authService } = await import('@shared/api/api');
+        const isRefreshTokenValid = authService.isTokenValid(refreshToken);
+        
+        if (!isRefreshTokenValid) {
+          console.error('❌ Refresh token expired, skipping WebSocket connection');
+          return;
         }
 
         console.log('🔌 Attempting to connect to WebSocket:', { baseUrl, hasToken: !!token });
@@ -170,9 +182,28 @@ export const useChatSocket = () => {
               error.message?.includes('Token expired') || 
               error.message?.includes('unauthorized')) {
             try {
-              console.log('🔄 JWT expired, trying to refresh token and reconnect...');
-              const { validateAndRefreshTokens } = require('@shared/api/api');
-              const refreshResult = await validateAndRefreshTokens(true); // force refresh
+              console.log('🔄 JWT expired, checking if we can refresh token...');
+              
+              // Проверяем валидность refresh token перед попыткой обновления
+              const currentTokensStr = await AsyncStorage.getItem('tokens');
+              const currentTokens = currentTokensStr ? JSON.parse(currentTokensStr) : null;
+              
+              if (!currentTokens?.refreshToken) {
+                console.error('❌ No refresh token available, cannot reconnect WebSocket');
+                return;
+              }
+              
+              const { authService } = require('@shared/api/api');
+              const isRefreshTokenValid = authService.isTokenValid(currentTokens.refreshToken);
+              
+              if (!isRefreshTokenValid) {
+                console.error('❌ Refresh token expired, cannot reconnect WebSocket');
+                return;
+              }
+              
+              console.log('🔄 Refresh token is valid, trying to refresh access token...');
+              const { setAuthorizationHeader } = require('@shared/api/api');
+              const refreshResult = await setAuthorizationHeader(true); // force refresh
               
               if (refreshResult) {
                 console.log('✅ Token refreshed successfully');
@@ -215,7 +246,8 @@ export const useChatSocket = () => {
             hasContent: !!payload?.message?.content,
             timestamp: new Date().toISOString()
           });
-          dispatch(receiveSocketMessage(payload));
+          // Передаем currentUserId для проверки оптимистичных сообщений
+          dispatch(receiveSocketMessage({ ...payload, currentUserId }));
         });
 
         socket.on('chat:message:deleted', (payload) => {

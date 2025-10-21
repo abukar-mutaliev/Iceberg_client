@@ -10,6 +10,7 @@ import { FeedbacksList } from '@entities/feedback/ui/FeedbacksList';
 import { FeedbackAvatars } from '@entities/feedback/ui/FeedbackAvatars';
 import { Border } from '@app/styles/GlobalStyles';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { useAuth } from '@entities/auth/hooks/useAuth';
 import { ScrollableBackgroundGradient } from "@shared/ui/BackgroundGradient";
 import {HighlightChange} from "@shared/ui/HighlightChange/HighlightChange";
 import { ReusableModal } from "@shared/ui/Modal/ui/ReusableModal";
@@ -39,6 +40,7 @@ export const ProductContent = React.memo(({
                                               currentUser,
                                           }) => {
     const { colors } = useTheme();
+    const { isAuthenticated } = useAuth();
     const [feedbacksHeight, setFeedbacksHeight] = useState(500);
     const [isRepostModalVisible, setIsRepostModalVisible] = useState(false);
 
@@ -112,14 +114,16 @@ export const ProductContent = React.memo(({
                             autoCartManagement={autoCartManagement}
                         />
 
-                        {/* Иконка репоста товара */}
-                        <TouchableOpacity
-                            style={styles.repostButton}
-                            onPress={() => setIsRepostModalVisible(true)}
-                            activeOpacity={0.7}
-                        >
-                            <RepostIcon width={24} height={24} color="#FFFFFF"/>
-                        </TouchableOpacity>
+                        {/* Иконка репоста товара - только для авторизованных пользователей */}
+                        {isAuthenticated && (
+                            <TouchableOpacity
+                                style={styles.repostButton}
+                                onPress={() => setIsRepostModalVisible(true)}
+                                activeOpacity={0.7}
+                            >
+                                <RepostIcon width={24} height={24} color="#FFFFFF"/>
+                            </TouchableOpacity>
+                        )}
                     </View>
 
                     <View style={styles.ratingContainer}>
@@ -179,20 +183,22 @@ export const ProductContent = React.memo(({
                 </View>
             )}
 
-            {/* Модальное окно репоста товара */}
-            <ReusableModal
-                visible={isRepostModalVisible}
-                onClose={() => setIsRepostModalVisible(false)}
-                title="Отправить товар"
-                height={85}
-                fullScreenOnKeyboard={true}
-            >
-                <RepostProductContent 
-                    product={safeProduct}
-                    currentUser={currentUser}
+            {/* Модальное окно репоста товара - только для авторизованных пользователей */}
+            {isAuthenticated && (
+                <ReusableModal
+                    visible={isRepostModalVisible}
                     onClose={() => setIsRepostModalVisible(false)}
-                />
-            </ReusableModal>
+                    title="Отправить товар"
+                    height={85}
+                    fullScreenOnKeyboard={true}
+                >
+                    <RepostProductContent 
+                        product={safeProduct}
+                        currentUser={currentUser}
+                        onClose={() => setIsRepostModalVisible(false)}
+                    />
+                </ReusableModal>
+            )}
         </View>
     );
 });

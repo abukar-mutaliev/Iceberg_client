@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useMemo } from 'react';
 import { View, Text, Pressable, StyleSheet, Animated, Dimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSelector } from 'react-redux';
 import {
     HomeIcon,
     SearchIcon,
@@ -11,6 +12,7 @@ import {
 } from '@shared/ui/Icon/TabBarIcons';
 import { useCartAvailability } from '@entities/cart';
 import { useAuth } from '@entities/auth/hooks/useAuth';
+import { selectWaitingStockCountCombined, selectSupplierWaitingStockCount } from '@entities/order';
 
 const { width } = Dimensions.get('window');
 
@@ -18,6 +20,17 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
     const insets = useSafeAreaInsets();
     const { isCartAvailable } = useCartAvailability();
     const { currentUser } = useAuth();
+    
+    // Получаем ID поставщика, если пользователь является поставщиком
+    const supplierId = currentUser?.supplier?.id;
+    
+    // Получаем количество заказов, ожидающих поступления товара (комбинированный селектор)
+    const waitingStockCount = useSelector(selectWaitingStockCountCombined);
+    
+    // Получаем количество заказов, ожидающих товары от конкретного поставщика
+    const supplierWaitingStockCount = useSelector(state => 
+        selectSupplierWaitingStockCount(state, supplierId)
+    );
 
     // Защита от множественных нажатий
     const isNavigating = useRef(false);
@@ -27,6 +40,45 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
     const isOrdersAvailable = useMemo(() => {
         return currentUser?.role === 'CLIENT';
     }, [currentUser?.role]);
+    
+    // Вычисляем количество для отображения в бейдже и флаг показа
+    const { shouldShowBadge, badgeCount } = useMemo(() => {
+        const role = currentUser?.role;
+        const processingRole = currentUser?.employee?.processingRole;
+        
+        // Для администраторов - показываем заказы WAITING_STOCK
+        if (role === 'ADMIN' && waitingStockCount > 0) {
+            return {
+                shouldShowBadge: true,
+                badgeCount: waitingStockCount
+            };
+        }
+        
+        // Для обычных сотрудников (SUPERVISOR и без processingRole)
+        // НЕ показываем для PICKER и COURIER
+        if (role === 'EMPLOYEE' && waitingStockCount > 0) {
+            const restrictedRoles = ['PICKER', 'COURIER'];
+            if (!restrictedRoles.includes(processingRole)) {
+                return {
+                    shouldShowBadge: true,
+                    badgeCount: waitingStockCount
+                };
+            }
+        }
+        
+        // Для поставщиков
+        if (role === 'SUPPLIER' && supplierWaitingStockCount > 0) {
+            return {
+                shouldShowBadge: true,
+                badgeCount: supplierWaitingStockCount
+            };
+        }
+        
+        return {
+            shouldShowBadge: false,
+            badgeCount: 0
+        };
+    }, [currentUser?.role, currentUser?.employee?.processingRole, waitingStockCount, supplierWaitingStockCount]);
 
     // Фильтруем скрытые вкладки
     const visibleRoutes = useMemo(() => {
@@ -120,6 +172,10 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
                 {visibleRoutes.map((route, visibleIndex) => {
                     const actualIndex = state.routes.findIndex(r => r.key === route.key);
                     const isActive = state.index === actualIndex;
+                    
+                    // Показываем бейдж только для вкладки ProfileTab
+                    const showBadge = route.name === 'ProfileTab' && shouldShowBadge;
+                    const displayBadgeCount = showBadge ? badgeCount : 0;
 
                     return (
                         <TabItem
@@ -128,6 +184,8 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
                             label={getTabLabel(route.name)}
                             isActive={isActive}
                             onPress={() => handleTabPress(route, visibleIndex, actualIndex)}
+                            showBadge={showBadge}
+                            badgeCount={displayBadgeCount}
                         />
                     );
                 })}
@@ -136,7 +194,7 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
     );
 };
 
-const TabItem = ({ icon, label, isActive, onPress }) => {
+const TabItem = ({ icon, label, isActive, onPress, showBadge, badgeCount }) => {
     return (
         <Pressable
             onPress={onPress}
@@ -145,7 +203,16 @@ const TabItem = ({ icon, label, isActive, onPress }) => {
             delayPressOut={0} // Убираем задержку отпускания
         >
             <View style={styles.iconContainer}>
-                {icon}
+                <View style={styles.iconWrapper}>
+                    {icon}
+                    {showBadge && (
+                        <View style={styles.badge}>
+                            <Text style={styles.badgeText}>
+                                {badgeCount > 99 ? '99+' : badgeCount}
+                            </Text>
+                        </View>
+                    )}
+                </View>
                 <View style={styles.textContainer}>
                     <Text style={[
                         styles.tabText,
@@ -190,6 +257,11 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
+    iconWrapper: {
+        position: 'relative',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
     textContainer: {
         marginTop: 5,
         alignItems: "center"
@@ -204,5 +276,25 @@ const styles = StyleSheet.create({
     },
     inactiveText: {
         color: "#BEBEBE"
+    },
+    badge: {
+        position: 'absolute',
+        top: -6,
+        right: -10,
+        backgroundColor: '#FF3B30',
+        borderRadius: 10,
+        minWidth: 18,
+        height: 18,
+        paddingHorizontal: 4,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: '#fff',
+    },
+    badgeText: {
+        color: '#fff',
+        fontSize: 10,
+        fontWeight: '700',
+        textAlign: 'center',
     }
 });

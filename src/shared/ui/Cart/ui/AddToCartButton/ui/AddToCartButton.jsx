@@ -8,7 +8,9 @@ import {
     Animated
 } from 'react-native';
 import { useDispatch } from 'react-redux';
-import { useCartProduct, useCart } from '@entities/cart';
+import { useCartProduct, useCart, useCartAvailability } from '@entities/cart';
+import { useAuth } from '@entities/auth/hooks/useAuth';
+import { useToast } from '@shared/ui/Toast';
 import { PlusIcon } from '@shared/ui/Icon/PlusIcon';
 import { CartIcon } from '@shared/ui/Icon/CartIcon';
 import {
@@ -28,7 +30,12 @@ const AddButtonComponent = ({
                                 size = 'default'
                             }) => {
     const dispatch = useDispatch();
+    const { isCartAvailable } = useCartAvailability();
+    const { currentUser } = useAuth();
+    const { showError, showWarning } = useToast();
     const [scaleAnim] = useState(new Animated.Value(1));
+    const [iconScaleAnim] = useState(new Animated.Value(1));
+    const [isAnimating, setIsAnimating] = useState(false);
 
     const productId = product?.id || product?.originalData?.id;
 
@@ -45,6 +52,29 @@ const AddButtonComponent = ({
     const isLoading = isAdding || isUpdating || isRemoving;
 
     const productData = product?.originalData || product;
+
+    // Анимация при изменении состояния загрузки
+    useEffect(() => {
+        if (isLoading && !isAnimating) {
+            setIsAnimating(true);
+            // Анимация масштабирования иконки
+            Animated.sequence([
+                Animated.timing(iconScaleAnim, {
+                    toValue: 0.8,
+                    duration: 150,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(iconScaleAnim, {
+                    toValue: 1,
+                    duration: 150,
+                    useNativeDriver: true,
+                }),
+            ]).start();
+        } else if (!isLoading && isAnimating) {
+            // Сброс анимации при завершении загрузки
+            setIsAnimating(false);
+        }
+    }, [isLoading, isAnimating, iconScaleAnim]);
     
     // Определяем доступность товара
     const isActive = productData?.isActive !== false; // по умолчанию true, если не указано
@@ -63,8 +93,26 @@ const AddButtonComponent = ({
     const backgroundColor = isWhite ? Color.colorLightMode : Color.purpleSoft;
     const iconColor = isWhite ? Color.purpleSoft : Color.colorLightMode;
     const disabledColor = Color.colorSilver_100;
+    const successColor = '#4CAF50';
+
+    // Определяем текущие цвета на основе состояния загрузки
+    const currentBackgroundColor = isLoading ? successColor : backgroundColor;
+    const currentIconColor = isLoading ? Color.colorLightMode : iconColor;
 
     const handlePress = useCallback(async () => {
+        // Проверяем доступность корзины перед любыми действиями
+        if (!isCartAvailable && (onPress || (!isInCart && productId))) {
+            const userRole = currentUser?.role || 'неизвестна';
+            showWarning(
+                `Только клиенты могут добавлять товары в корзину.`,
+                {
+                    duration: 4000,
+                    position: 'top'
+                }
+            );
+            return;
+        }
+
         Animated.sequence([
             Animated.timing(scaleAnim, {
                 toValue: 0.95,
@@ -87,32 +135,64 @@ const AddButtonComponent = ({
                 await onPress();
             } else if (productId && isAvailable && !isInCart) {
                 await addToCart(1);
+                // Анимация успешного добавления
+                Animated.sequence([
+                    Animated.timing(scaleAnim, {
+                        toValue: 1.1,
+                        duration: 150,
+                        useNativeDriver: true,
+                    }),
+                    Animated.timing(scaleAnim, {
+                        toValue: 1,
+                        duration: 150,
+                        useNativeDriver: true,
+                    }),
+                ]).start();
             } else if (isInCart && onGoToCart) {
                 onGoToCart();
             }
         } catch (error) {
             console.error('Ошибка при работе с корзиной:', error);
+            
+            // Показываем информативное сообщение об ошибке
+            if (error.message && error.message.includes('403')) {
+                showWarning('Корзина доступна только для клиентов', {
+                    duration: 4000,
+                    position: 'top'
+                });
+            } else {
+                showError(`Ошибка при работе с корзиной: ${error.message || 'Неизвестная ошибка'}`, {
+                    duration: 3000,
+                    position: 'top'
+                });
+            }
         }
-    }, [onPress, onGoToCart, productId, isAvailable, isInCart, addToCart, scaleAnim]);
+    }, [onPress, onGoToCart, productId, isAvailable, isInCart, addToCart, scaleAnim, isCartAvailable, currentUser, showError, showWarning]);
 
     if (cartLoading) {
         return (
-            <View style={[
+            <Animated.View style={[
                 styles.container,
-                { width: containerSize, height: containerSize },
+                { 
+                    width: containerSize, 
+                    height: containerSize,
+                    transform: [{ scale: scaleAnim }]
+                },
                 style
             ]}>
-                <View style={[
+                <Animated.View style={[
                     styles.background,
-                    { backgroundColor: Color.colorSilver_100 }
+                    { backgroundColor: currentBackgroundColor }
                 ]} />
                 <View style={styles.buttonContent}>
-                    <ActivityIndicator
-                        size="small"
-                        color={Color.textSecondary}
-                    />
+                    <Animated.View style={{ transform: [{ scale: iconScaleAnim }] }}>
+                        <ActivityIndicator
+                            size="small"
+                            color={currentIconColor}
+                        />
+                    </Animated.View>
                 </View>
-            </View>
+            </Animated.View>
         );
     }
 
@@ -162,12 +242,14 @@ const AddButtonComponent = ({
                     disabled={isLoading}
                 >
                     {isLoading ? (
-                        <ActivityIndicator
-                            size="small"
-                            color={Color.colorLightMode}
-                        />
+                        <Animated.View style={{ transform: [{ scale: iconScaleAnim }] }}>
+                            <ActivityIndicator
+                                size="small"
+                                color={Color.colorLightMode}
+                            />
+                        </Animated.View>
                     ) : (
-                        <View style={styles.cartButtonContent}>
+                        <Animated.View style={[{ transform: [{ scale: iconScaleAnim }] }, styles.cartButtonContent]}>
                             <CartIconWhite size={24} />
 
                             {quantity > 0 && (
@@ -177,7 +259,7 @@ const AddButtonComponent = ({
                                     </Text>
                                 </View>
                             )}
-                        </View>
+                        </Animated.View>
                     )}
                 </Pressable>
             </Animated.View>
@@ -194,11 +276,11 @@ const AddButtonComponent = ({
             },
             style
         ]}>
-            <View style={[
+            <Animated.View style={[
                 styles.background,
                 {
-                    backgroundColor: isLoading ? disabledColor : backgroundColor,
-                    opacity: isLoading ? 0.7 : 1
+                    backgroundColor: currentBackgroundColor,
+                    opacity: isLoading ? 0.9 : 1
                 }
             ]} />
             <Pressable
@@ -206,22 +288,28 @@ const AddButtonComponent = ({
                 onPress={handlePress}
                 disabled={isLoading || !isAvailable}
             >
-                {isLoading ? (
-                    <ActivityIndicator
-                        size="small"
-                        color={iconColor}
-                    />
-                ) : (
-                    <PlusIcon size={iconSize} color={iconColor} />
-                )}
+                <Animated.View style={{ transform: [{ scale: iconScaleAnim }] }}>
+                    {isLoading ? (
+                        <CartIconWhite size={iconSize} />
+                    ) : (
+                        <PlusIcon size={iconSize} color={currentIconColor} />
+                    )}
+                </Animated.View>
             </Pressable>
         </Animated.View>
     );
 };
 
 export const AddToCartButton = memo(AddButtonComponent, (prevProps, nextProps) => {
-
-    return false;
+    // Проверяем основные поля продукта для оптимизации перерендеринга
+    if (prevProps.product?.id !== nextProps.product?.id) return false;
+    if (prevProps.style !== nextProps.style) return false;
+    if (prevProps.isWhite !== nextProps.isWhite) return false;
+    if (prevProps.size !== nextProps.size) return false;
+    if (prevProps.onPress !== nextProps.onPress) return false;
+    if (prevProps.onGoToCart !== nextProps.onGoToCart) return false;
+    
+    return true;
 });
 
 const styles = StyleSheet.create({

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useSelector, useDispatch } from 'react-redux';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useRoute } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
     Text,
     TouchableOpacity,
@@ -56,11 +57,16 @@ const normalize = (size) => {
     return Math.round(size * scale);
 };
 
+// Константы для кэширования
+const CART_CACHE_KEY = 'cart_cache';
+const CART_CACHE_DURATION = 2 * 60 * 1000; // 2 минуты
+
 
 
 export const CartScreen = ({ navigation }) => {
     // ===== ОСНОВНЫЕ ХУКИ =====
     const dispatch = useDispatch();
+    const route = useRoute();
     const { isCartAvailable, isAuthenticated, isGuest } = useCartAvailability();
     
     // Получаем роль пользователя для проверки доступа к заказам
@@ -111,48 +117,235 @@ export const CartScreen = ({ navigation }) => {
     const [showClientTypeModal, setShowClientTypeModal] = useState(false);
     const [showGuestCheckoutModal, setShowGuestCheckoutModal] = useState(false);
     const [showGuestNotification, setShowGuestNotification] = useState(true);
+    const [isInitialLoading, setIsInitialLoading] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+
+    // ===== REFS =====
+    const lastFetchTimeRef = useRef(0);
+    const isInitializedRef = useRef(false);
+    const isMountedRef = useRef(true);
+
+    // ===== ФУНКЦИИ КЭШИРОВАНИЯ =====
+    
+    // Проверка необходимости обновления кэша
+    const shouldRefreshCache = useCallback(() => {
+        const now = Date.now();
+        const timeSinceLastFetch = now - lastFetchTimeRef.current;
+        return timeSinceLastFetch > CART_CACHE_DURATION;
+    }, []);
+
+    // Сохранение кэша корзины
+    const saveCartCache = useCallback(async (cartData) => {
+        try {
+            const cacheData = {
+                items: cartData.items || [],
+                stats: cartData.stats || {},
+                timestamp: Date.now(),
+                isEmpty: cartData.isEmpty || false
+            };
+            await AsyncStorage.setItem(CART_CACHE_KEY, JSON.stringify(cacheData));
+            console.log('🛒 CartScreen: Кэш корзины сохранен');
+        } catch (error) {
+            console.warn('🛒 CartScreen: Ошибка сохранения кэша:', error);
+        }
+    }, []);
+
+    // Загрузка кэша корзины
+    const loadCartCache = useCallback(async () => {
+        try {
+            const cachedData = await AsyncStorage.getItem(CART_CACHE_KEY);
+            if (cachedData) {
+                const parsed = JSON.parse(cachedData);
+                const isExpired = Date.now() - parsed.timestamp > CART_CACHE_DURATION;
+                
+                if (!isExpired && parsed.items?.length > 0) {
+                    console.log('🛒 CartScreen: Используем кэшированные данные корзины');
+                    return parsed;
+                }
+            }
+        } catch (error) {
+            console.warn('🛒 CartScreen: Ошибка загрузки кэша:', error);
+        }
+        return null;
+    }, []);
+
+    // ===== ФУНКЦИИ ЗАГРУЗКИ =====
+    
+    // Загрузка корзины с кэшированием
+    const loadCartData = useCallback(async (forceRefresh = false) => {
+        // Если данные уже есть и кэш свежий, не загружаем
+        if (!forceRefresh && items?.length > 0 && !shouldRefreshCache()) {
+            console.log('🛒 CartScreen: Используем существующие данные корзины');
+            return;
+        }
+
+        const isRefresh = forceRefresh || isRefreshing;
+        
+        if (isRefresh) {
+            setIsRefreshing(true);
+        } else if (!isInitializedRef.current) {
+            setIsInitialLoading(true);
+        }
+
+        try {
+            console.log('🛒 CartScreen: Загрузка корзины с сервера...');
+            const result = await dispatch(fetchCart(forceRefresh)).unwrap();
+            
+            lastFetchTimeRef.current = Date.now();
+            isInitializedRef.current = true;
+            
+            // Сохраняем в кэш
+            await saveCartCache(result);
+            
+            console.log('🛒 CartScreen: Корзина успешно загружена');
+        } catch (error) {
+            console.error('🛒 CartScreen: Ошибка загрузки корзины:', error);
+            
+            // Пытаемся загрузить из кэша при ошибке
+            const cachedData = await loadCartCache();
+            if (cachedData) {
+                console.log('🛒 CartScreen: Используем кэшированные данные при ошибке');
+            }
+        } finally {
+            if (isMountedRef.current) {
+                setIsInitialLoading(false);
+                setIsRefreshing(false);
+            }
+        }
+    }, [dispatch, items?.length, shouldRefreshCache, isRefreshing, saveCartCache, loadCartCache]);
 
     // ===== ИНИЦИАЛИЗАЦИЯ =====
-    // Временно отключаем useCartAutoLoad чтобы избежать конфликтов с useFocusEffect
-    // useCartAutoLoad({
-    //     loadOnMount: true,
-    //     loadOnAuthChange: true,
-    //     autoMergeGuestCart: true,
-    // });
-
+    
     // Логируем начальное состояние
     console.log(`🛒 CartScreen: Initial render - items: ${items?.length || 0}, totalAmount: ${totalAmount}, loading: ${loading}`);
 
-    // Загрузка корзины при фокусе на экране (только если корзина доступна)
+    // ===== ЭФФЕКТЫ =====
+    
+    // Инициализация при монтировании
+    useEffect(() => {
+        isMountedRef.current = true;
+        
+        const initialize = async () => {
+            console.log('🛒 CartScreen: Инициализация компонента');
+            
+            if (isCartAvailable) {
+                // Сначала пытаемся загрузить из кэша
+                const cachedData = await loadCartCache();
+                if (cachedData) {
+                    console.log('🛒 CartScreen: Загружены кэшированные данные');
+                }
+                
+                // Затем загружаем свежие данные
+                await loadCartData(false);
+            }
+        };
+        
+        initialize();
+        
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, []);
+
+    // Ref для отслеживания обработанных timestamp, чтобы избежать повторных обновлений
+    const lastProcessedTimestampRef = useRef(null);
+
+    // Загрузка корзины при фокусе на экране
     useFocusEffect(
         useCallback(() => {
-            if (isCartAvailable) {
-                console.log('🛒 CartScreen: Screen focused, force loading cart from server');
-                console.log(`🛒 CartScreen: Current cart state - items: ${items?.length || 0}, totalAmount: ${totalAmount || 0}`);
-                // Всегда загружаем свежие данные с сервера при входе в корзину
-                dispatch(fetchCart(true));
-            } else {
-                console.log('🛒 CartScreen: Cart not available for current role, skipping load');
+            console.log('🛒 CartScreen: Экран получил фокус');
+            
+            // Если есть параметр forceRefresh, обрабатываем его СРАЗУ в useFocusEffect
+            const timestamp = route.params?.timestamp;
+            const shouldForceRefresh = route.params?.forceRefresh;
+            
+            // ОТЛАДКА: логируем все условия
+            console.log('🔍 CartScreen: Проверка forceRefresh параметров', {
+                shouldForceRefresh,
+                isCartAvailable,
+                timestamp,
+                lastProcessedTimestamp: lastProcessedTimestampRef.current,
+                timestampsDifferent: timestamp !== lastProcessedTimestampRef.current,
+                allConditionsMet: shouldForceRefresh && isCartAvailable && timestamp && timestamp !== lastProcessedTimestampRef.current
+            });
+            
+            if (shouldForceRefresh && isCartAvailable && timestamp && timestamp !== lastProcessedTimestampRef.current) {
+                console.log('🔄 CartScreen: Обнаружен forceRefresh в useFocusEffect, принудительно обновляем корзину', { timestamp });
+                
+                // Сохраняем timestamp, чтобы не обрабатывать его повторно
+                lastProcessedTimestampRef.current = timestamp;
+                
+                // Очищаем параметры СРАЗУ
+                navigation.setParams({ forceRefresh: undefined, timestamp: undefined });
+                
+                // Очищаем кэш и принудительно перезагружаем корзину
+                console.log('📱 CartScreen: Clearing cache and force reloading in useFocusEffect...');
+                clearCartCache().then(() => {
+                    console.log('📱 CartScreen: Cache cleared, dispatching fetchCart from useFocusEffect');
+                    dispatch(fetchCart(true)).unwrap().then(() => {
+                        console.log('✅ CartScreen: Cart data force reloaded in useFocusEffect');
+                    }).catch(err => {
+                        console.error('❌ CartScreen: Error reloading cart in useFocusEffect:', err);
+                    });
+                });
+                return;
             }
-        }, [dispatch, isCartAvailable, items?.length, totalAmount])
+            
+            if (isCartAvailable) {
+                console.log(`🛒 CartScreen: Текущее состояние корзины - items: ${items?.length || 0}, totalAmount: ${totalAmount || 0}`);
+                
+                // Проверяем, нужно ли обновить кэш
+                if (shouldRefreshCache()) {
+                    console.log('🛒 CartScreen: Кэш устарел, обновляем данные');
+                    loadCartData(true);
+                } else {
+                    console.log('🛒 CartScreen: Кэш свежий, используем существующие данные');
+                }
+            } else {
+                console.log('🛒 CartScreen: Корзина недоступна для текущей роли');
+            }
+        }, [isCartAvailable, items?.length, totalAmount, shouldRefreshCache, loadCartData, route.params?.forceRefresh, route.params?.timestamp, dispatch, navigation, clearCartCache])
     );
 
-    // ===== ЭФФЕКТЫ =====
-
-    // Логирование изменений состояния корзины
+    // Логирование изменений состояния корзины (только критичные изменения)
     useEffect(() => {
-        console.log(`🛒 CartScreen: Cart state changed - items: ${items?.length || 0}, totalAmount: ${totalAmount || 0}, loading: ${loading}`);
-    }, [items, totalAmount, loading]);
+        if (loading) return; // Не логируем промежуточные состояния загрузки
+        console.log(`🛒 CartScreen: Состояние корзины обновлено - items: ${items?.length || 0}, totalAmount: ${totalAmount || 0}`);
+    }, [items?.length, totalAmount, loading]);
 
-    // Автоматический выбор всех товаров при загрузке
+    // Автоматический выбор всех товаров при загрузке и очистка при пустой корзине
     useEffect(() => {
-        if (items && items.length > 0 && selectedItems.size === 0) {
+        if (!items || items.length === 0) {
+            // Очищаем выбранные товары если корзина пуста
+            if (selectedItems.size > 0) {
+                console.log('🛒 CartScreen: Корзина пуста, очищаем selectedItems');
+                setSelectedItems(new Set());
+                setSelectAllMode(false);
+            }
+            return;
+        }
+
+        // Автоматически выбираем все товары если ничего не выбрано
+        if (selectedItems.size === 0) {
             const allItemIds = new Set(items.map(item => item.id));
             setSelectedItems(allItemIds);
             setSelectAllMode(true);
             console.log(`🛒 CartScreen: Auto-selected all items (${allItemIds.size} items)`);
+        } else {
+            // Удаляем из выбранных товары, которых больше нет в корзине
+            const currentItemIds = new Set(items.map(item => item.id));
+            const updatedSelectedItems = new Set(
+                Array.from(selectedItems).filter(id => currentItemIds.has(id))
+            );
+            
+            if (updatedSelectedItems.size !== selectedItems.size) {
+                console.log(`🛒 CartScreen: Удалены несуществующие товары из выборки (${selectedItems.size} -> ${updatedSelectedItems.size})`);
+                setSelectedItems(updatedSelectedItems);
+                setSelectAllMode(updatedSelectedItems.size === items.length);
+            }
         }
-    }, [items]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [items?.length, items]);
 
     // Обработка ошибок (исключаем ошибки авторизации, так как у нас есть специальный UI для этого)
     useEffect(() => {
@@ -175,7 +368,7 @@ export const CartScreen = ({ navigation }) => {
 
     // ===== ВЫЧИСЛЯЕМЫЕ ЗНАЧЕНИЯ =====
 
-    // Статистика для выбранных товаров
+    // Статистика для выбранных товаров с мгновенным обновлением
     const selectedStats = useMemo(() => {
         if (!items || items.length === 0 || selectedItems.size === 0) {
             return {
@@ -230,6 +423,12 @@ export const CartScreen = ({ navigation }) => {
     }, [items, selectedItems, clientType]);
 
     // ===== ОБРАБОТЧИКИ СОБЫТИЙ =====
+
+    // Принудительное обновление корзины
+    const handleRefresh = useCallback(() => {
+        console.log('🛒 CartScreen: Принудительное обновление корзины');
+        loadCartData(true);
+    }, [loadCartData]);
 
     const handleProductPress = (product) => {
         // Поддержка как productId, так и объекта продукта
@@ -415,7 +614,7 @@ export const CartScreen = ({ navigation }) => {
     // ===== УСЛОВНЫЙ РЕНДЕР =====
 
     // Состояние загрузки
-    if (loading && (!items || items.length === 0)) {
+    if (isInitialLoading && (!items || items.length === 0)) {
         return (
             <SafeAreaView style={styles.container}>
                 <StatusBar
@@ -438,7 +637,7 @@ export const CartScreen = ({ navigation }) => {
                     barStyle="dark-content"
                     backgroundColor={Color.background || '#FFFFFF'}
                 />
-                <EmptyCartView navigation={navigation} />
+                <EmptyCartView key="empty-cart" navigation={navigation} />
             </SafeAreaView>
         );
     }
@@ -535,19 +734,23 @@ export const CartScreen = ({ navigation }) => {
                     getItemLayout={null}
                     keyboardShouldPersistTaps="handled"
                     keyboardDismissMode="on-drag"
+                    refreshing={isRefreshing}
+                    onRefresh={handleRefresh}
                 />
 
                 {/* Блок "К оплате" */}
-                <CartSummary
-                    stats={selectedStats}
-                    selectedCount={selectedItems.size}
-                    totalCount={items.length}
-                    onCheckout={handleCheckout}
-                    disabled={hasProblematicItems || selectedItems.size === 0}
-                    loading={loading || validating}
-                    clientType={clientType}
-                    showSavings={isWholesale}
-                />
+                <View style={styles.cartSummaryContainer}>
+                    <CartSummary
+                        stats={selectedStats}
+                        selectedCount={selectedItems.size}
+                        totalCount={items.length}
+                        onCheckout={handleCheckout}
+                        disabled={hasProblematicItems || selectedItems.size === 0}
+                        loading={isInitialLoading || isRefreshing || validating}
+                        clientType={clientType}
+                        showSavings={isWholesale}
+                    />
+                </View>
             </KeyboardAvoidingView>
 
             {/* Модал валидации */}
@@ -680,7 +883,7 @@ const styles = StyleSheet.create({
 
     listContent: {
         paddingTop: normalize(8),
-        paddingBottom: normalize(100),
+        paddingBottom: normalize(120), // Увеличиваем отступ снизу
     },
     
     myOrdersContainer: {
@@ -710,5 +913,12 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
         color: '#3339B0',
+    },
+
+    cartSummaryContainer: {
+        backgroundColor: '#FFFFFF',
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(193, 199, 222, 0.20)',
+        paddingBottom: normalize(40), 
     },
 });

@@ -30,6 +30,12 @@ import { Loader } from "@shared/ui/Loader";
 
 const { width: screenWidth, height: screenHeight} = Dimensions.get('window');
 
+// Коэффициенты масштабирования
+const scaleUI = Math.min(screenWidth / 400, screenHeight / 800);
+
+// Масштабирование позиций районов только для планшетов (ширина > 500px)
+const scaleDistricts = screenWidth > 500 ? screenWidth / 400 : 1;
+
 export const InteractiveMap = ({ onDistrictSelect }) => {
     const [selectedRegion, setSelectedRegion] = useState(null);
     const [showInfo, setShowInfo] = useState(false);
@@ -129,13 +135,13 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
             Component: Malgobek,
             style: {
                 position: 'absolute',
-                left: 117,
-                top: -2,
+                left: 117 * scaleDistricts,
+                top: -2 * scaleDistricts,
                 zIndex: 2,
             },
             width: screenWidth * 0.35,
             height: screenHeight * 0.15,
-            hitSlop: {top: 10, bottom: 10, left: 10, right: 10},
+            hitSlop: {top: 10 * scaleDistricts, bottom: 10 * scaleDistricts, left: 10 * scaleDistricts, right: 10 * scaleDistricts},
             pressableStyle: {
                 borderRadius: 8,
             }
@@ -145,8 +151,8 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
             Component: Nazran,
             style: {
                 position: 'absolute',
-                left: 155,
-                top: 78,
+                left: 155 * scaleDistricts,
+                top: 78 * scaleDistricts,
                 zIndex: 5,
             },
             width: screenWidth * 0.34,
@@ -161,8 +167,8 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
             Component: Sunzha,
             style: {
                 position: 'absolute',
-                right: 25,
-                top: 40,
+                right: 25 * scaleDistricts,
+                top: 40 * scaleDistricts,
                 zIndex: 1,
             },
             width: screenWidth * 0.33,
@@ -177,8 +183,8 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
             Component: Prigorodny,
             style: {
                 position: 'absolute',
-                left: 152,
-                top: 124,
+                left: 152 * scaleDistricts,
+                top: 124 * scaleDistricts,
                 zIndex: 4,
             },
             width: screenWidth * 0.31,
@@ -193,13 +199,13 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
             Component: Dzheirakh,
             style: {
                 position: 'absolute',
-                left: 150,
-                top: 261,
+                left: 150 * scaleDistricts,
+                top: 261 * scaleDistricts,
                 zIndex: 3,
             },
             width: screenWidth * 0.45,
             height: screenHeight * 0.17,
-            hitSlop: {top: 5, bottom: 5, left: 5, right: 5},
+            hitSlop: {top: 5 * scaleDistricts, bottom: 5 * scaleDistricts, left: 5 * scaleDistricts, right: 5 * scaleDistricts},
             pressableStyle: {
                 borderRadius: 10,
             }
@@ -557,13 +563,13 @@ const styles = StyleSheet.create({
     },
     sideControls: {
         position: 'absolute',
-        left: 16,
-        top: 200, // Исправлено с '50%' на числовое значение
-        marginTop: -75,
+        left: 16 * scaleUI,
+        top: 200 * scaleUI,
+        marginTop: -75 * scaleUI,
         zIndex: 100,
         backgroundColor: 'rgba(255, 255, 255, 0.95)',
         borderRadius: 12,
-        padding: 8,
+        padding: 8 * scaleUI,
         elevation: 6,
         shadowColor: '#000',
         shadowOffset: {
@@ -575,12 +581,12 @@ const styles = StyleSheet.create({
     },
     sideControlButton: {
         backgroundColor: '#3b82f6',
-        width: 44,
-        height: 44,
+        width: 44 * scaleUI,
+        height: 44 * scaleUI,
         borderRadius: 8,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 8,
+        marginBottom: 8 * scaleUI,
         elevation: 2,
         shadowColor: '#000',
         shadowOffset: {
@@ -592,7 +598,7 @@ const styles = StyleSheet.create({
     },
     sideControlButtonText: {
         color: '#ffffff',
-        fontSize: 20,
+        fontSize: 20 * scaleUI,
         fontWeight: 'bold',
     },
     sideResetButton: {
@@ -601,7 +607,7 @@ const styles = StyleSheet.create({
     },
     sideResetButtonText: {
         color: '#ffffff',
-        fontSize: 18,
+        fontSize: 18 * scaleUI,
         fontWeight: 'bold',
     },
     gestureContainer: {
@@ -615,22 +621,22 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         width: screenWidth,
         height: screenHeight * 0.5,
-        paddingTop: 20,
+        paddingTop: 20 * scaleUI,
     },
     instruction: {
         position: 'absolute',
-        bottom: 2,
-        left: 16,
-        right: 16,
+        bottom: 2 * scaleUI,
+        left: 16 * scaleUI,
+        right: 16 * scaleUI,
         backgroundColor: 'rgba(59, 130, 246, 0.9)',
-        paddingHorizontal: 16,
-        paddingVertical: 5,
+        paddingHorizontal: 16 * scaleUI,
+        paddingVertical: 5 * scaleUI,
         borderRadius: 8,
     },
     instructionText: {
         color: '#ffffff',
         textAlign: 'center',
-        fontSize: 14,
+        fontSize: 14 * scaleUI,
         fontWeight: '500',
     },
     bottomPanel: {

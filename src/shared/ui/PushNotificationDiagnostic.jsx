@@ -23,7 +23,8 @@ export const PushNotificationDiagnostic = () => {
         const timestamp = new Date().toISOString();
         const logEntry = { timestamp, message, type };
         setLogs(prev => [...prev, logEntry]);
-        console.log(`[${type.toUpperCase()}] ${message}`);
+        // Временно отключены логи OneSignal
+        // console.log(`[${type.toUpperCase()}] ${message}`);
     };
 
     // Копирование логов в буфер обмена

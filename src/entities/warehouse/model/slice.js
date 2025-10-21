@@ -46,7 +46,7 @@ export const fetchWarehouses = createAsyncThunk(
                 return { data: state.warehouse.warehouses, fromCache: true };
             }
 
-            const response = await WarehouseService.getWarehouses();
+            const response = await WarehouseService.getWarehouses({ limit: 1000 });
 
             let warehouses = [];
             

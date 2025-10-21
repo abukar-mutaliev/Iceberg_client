@@ -78,9 +78,14 @@ import {MyOrdersScreen} from "@screens/ordes/ui/MyOrdersScreen";
 import {OrderDetailsClientScreen} from "@screens/ordes/ui/OrderDetailsClientScreen/ui/OrderDetailsClientScreen";
 import {OrderDetailsEmployeeScreen} from "@screens/ordes/ui/OrderDetailsEmployeeScreen/ui/OrderDetailsEmployeeScreen";
 import {StaffOrdersScreen} from "@screens/ordes/ui/StaffOrdersScreen";
+import {OrderSuccessScreen} from "@screens/ordes/ui/OrderSuccessScreen";
+import {OrderChoicesListScreen} from "@screens/order/ui/OrderChoicesListScreen";
 
 import {CheckoutScreen} from "@screens/cart/ui/CheckoutScreen/ui/CheckoutScreen";
 import {GuestCheckoutScreen} from "@screens/cart/ui/GuestCheckoutScreen/ui/GuestCheckoutScreen";
+import {PreauthorizationInfoScreen} from "@screens/cart/ui/PreauthorizationInfoScreen/ui/PreauthorizationInfoScreen";
+import {OrderChoiceScreen} from "@screens/order/ui/OrderChoiceScreen";
+import {PaymentScreen} from "@screens/payment";
 import {JoinTeamScreen} from "@screens/profile/ui/JoinTeamScreen";
 
 import {EmployeeRewardsScreen} from "@screens/rewards/ui/EmployeeRewardsScreen/EmployeeRewardsScreen";
@@ -1158,29 +1163,6 @@ export const AppNavigator = () => {
                                 }}
                             />
                             <Stack.Screen
-                                name="StopsListScreen"
-                                component={StopsListScreen}
-                                options={{
-                                    ...slideFromRight,
-                                    headerShown: false,
-                                    gestureEnabled: true,
-                                    cardStyle: {
-                                        backgroundColor: '#ffffff',
-                                        ...Platform.select({
-                                            ios: {
-                                                shadowColor: '#000',
-                                                shadowOffset: {width: -3, height: 0},
-                                                shadowOpacity: 0.25,
-                                                shadowRadius: 6,
-                                            },
-                                            android: {
-                                                elevation: 6,
-                                            },
-                                        }),
-                                    },
-                                }}
-                            />
-                            <Stack.Screen
                                 name="AddStop"
                                 component={AddStopScreen}
                                 options={{
@@ -1314,6 +1296,124 @@ export const AppNavigator = () => {
                                             },
                                             android: {
                                                 elevation: 6,
+                                            },
+                                        }),
+                                    },
+                                }}
+                            />
+                            <Stack.Screen
+                                name="PreauthorizationInfo"
+                                component={PreauthorizationInfoScreen}
+                                options={{
+                                    ...slideFromRight,
+                                    headerShown: false,
+                                    gestureEnabled: true,
+                                    cardStyle: {
+                                        backgroundColor: '#ffffff',
+                                        ...Platform.select({
+                                            ios: {
+                                                shadowColor: '#000',
+                                                shadowOffset: {width: -3, height: 0},
+                                                shadowOpacity: 0.25,
+                                                shadowRadius: 6,
+                                            },
+                                            android: {
+                                                elevation: 6,
+                                            },
+                                        }),
+                                    },
+                                }}
+                            />
+                            <Stack.Screen
+                                name="OrderChoice"
+                                component={OrderChoiceScreen}
+                                options={{
+                                    ...slideFromRight,
+                                    headerShown: false,
+                                    gestureEnabled: true,
+                                    cardStyle: {
+                                        backgroundColor: '#ffffff',
+                                        ...Platform.select({
+                                            ios: {
+                                                shadowColor: '#000',
+                                                shadowOffset: {width: -3, height: 0},
+                                                shadowOpacity: 0.25,
+                                                shadowRadius: 6,
+                                            },
+                                            android: {
+                                                elevation: 6,
+                                            },
+                                        }),
+                                    },
+                                }}
+                            />
+
+                            <Stack.Screen
+                                name="OrderSuccess"
+                                component={OrderSuccessScreen}
+                                options={{
+                                    ...slideFromRight,
+                                    headerShown: false,
+                                    gestureEnabled: false,
+                                    cardStyle: {
+                                        backgroundColor: '#f8f9fa',
+                                        ...Platform.select({
+                                            ios: {
+                                                shadowColor: '#000',
+                                                shadowOffset: {width: -3, height: 0},
+                                                shadowOpacity: 0.25,
+                                                shadowRadius: 6,
+                                            },
+                                            android: {
+                                                elevation: 6,
+                                            },
+                                        }),
+                                    },
+                                }}
+                            />
+
+                            <Stack.Screen
+                                name="PaymentScreen"
+                                component={PaymentScreen}
+                                options={{
+                                    ...slideFromRight,
+                                    headerShown: false,
+                                    gestureEnabled: false,
+                                    cardStyle: {
+                                        backgroundColor: '#FFFFFF',
+                                        ...Platform.select({
+                                            ios: {
+                                                shadowColor: '#000',
+                                                shadowOffset: {width: -3, height: 0},
+                                                shadowOpacity: 0.25,
+                                                shadowRadius: 6,
+                                            },
+                                            android: {
+                                                elevation: 6,
+                                            },
+                                        }),
+                                    },
+                                }}
+                            />
+
+                            <Stack.Screen
+                                name="OrderChoicesList"
+                                component={OrderChoicesListScreen}
+                                options={{
+                                    ...slideFromRight,
+                                    headerShown: false,
+                                    gestureEnabled: true,
+                                    cardStyle: {
+                                        backgroundColor: '#ffffff',
+                                        ...Platform.select({
+                                            ios: {
+                                                shadowColor: '#000',
+                                                shadowOffset: {width: -3, height: 0},
+                                                shadowOpacity: 0.25,
+                                                shadowRadius: 6,
+                                            },
+                                            android: {
+                                                elevation: 8,
                                             },
                                         }),
                                     },
@@ -1992,6 +2092,29 @@ const MainStackScreen = () => {
                     headerShown: false,
                     gestureEnabled: false,
                     animationEnabled: false,
+                }}
+            />
+            <MainStack.Screen
+                name="StopsListScreen"
+                component={StopsListScreen}
+                options={{
+                    ...slideFromRight,
+                    headerShown: false,
+                    gestureEnabled: true,
+                    cardStyle: {
+                        backgroundColor: '#ffffff',
+                        ...Platform.select({
+                            ios: {
+                                shadowColor: '#000',
+                                shadowOffset: {width: -3, height: 0},
+                                shadowOpacity: 0.25,
+                                shadowRadius: 6,
+                            },
+                            android: {
+                                elevation: 6,
+                            },
+                        }),
+                    },
                 }}
             />
 

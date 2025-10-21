@@ -63,6 +63,15 @@ const initialState = {
         lastFetchTime: null
     },
 
+    // Счетчики заказов (для бейджей)
+    orderCounts: {
+        waitingStockCount: 0,
+        total: 0,
+        loading: false,
+        error: null,
+        lastFetchTime: null
+    },
+
     // Состояния операций
     operations: {
         updating: [], // ID заказов, которые обновляются
@@ -146,6 +155,96 @@ export const fetchMyOrders = createAsyncThunk(
     }
 );
 
+// Получение счетчиков заказов (легковесный запрос для бейджей)
+export const fetchOrderCounts = createAsyncThunk(
+    'orders/fetchOrderCounts',
+    async (_, { rejectWithValue, getState }) => {
+        try {
+            const state = getState();
+            const userRole = state.auth?.user?.role;
+            const currentUser = state.auth?.user;
+
+            if (!['ADMIN', 'EMPLOYEE'].includes(userRole)) {
+                return rejectWithValue('Доступ запрещен');
+            }
+
+            // Для EMPLOYEE требуем только employeeId (warehouseId может быть null для SUPERVISOR)
+            if (userRole === 'EMPLOYEE') {
+                // Детальное логирование структуры currentUser
+                console.log('🔍 fetchOrderCounts: проверяем структуру currentUser', {
+                    hasCurrentUser: !!currentUser,
+                    currentUserKeys: currentUser ? Object.keys(currentUser) : [],
+                    hasEmployee: !!currentUser?.employee,
+                    employeeValue: currentUser?.employee,
+                    employeeKeys: currentUser?.employee ? Object.keys(currentUser.employee) : []
+                });
+                
+                if (!currentUser?.employee?.id) {
+                    console.warn('⚠️ fetchOrderCounts: employee данные ещё не загружены, пропускаем', {
+                        hasEmployee: !!currentUser?.employee,
+                        hasEmployeeId: !!currentUser?.employee?.id
+                    });
+                    return rejectWithValue('Employee данные ещё не загружены');
+                }
+            }
+
+            console.log('fetchOrderCounts: загрузка счетчиков заказов', {
+                role: userRole,
+                employeeId: currentUser?.employee?.id,
+                warehouseId: currentUser?.employee?.warehouseId
+            });
+
+            // Получаем только счетчики - сервер уже фильтрует по складу сотрудника
+            const response = await OrderApi.getOrders({
+                page: 1,
+                limit: 100, // Достаточно для подсчета
+                _t: Date.now()
+            });
+
+            if (response.status === 'success') {
+                console.log('🔍 fetchOrderCounts: полный ответ от сервера', {
+                    status: response.status,
+                    hasData: !!response.data,
+                    dataIsArray: Array.isArray(response.data),
+                    dataLength: Array.isArray(response.data) ? response.data.length : 'not array',
+                    hasDataData: !!response.data?.data,
+                    dataDataType: Array.isArray(response.data?.data) ? 'array' : typeof response.data?.data,
+                    dataDataLength: response.data?.data?.length,
+                    hasWaitingStockCount: !!response.waitingStockCount,
+                    waitingStockCountValue: response.waitingStockCount
+                });
+                
+                // Сервер может вернуть массив в response.data или response.data.data
+                const orders = Array.isArray(response.data) ? response.data : (response.data?.data || []);
+                
+                // ВАЖНО: Используем waitingStockCount от СЕРВЕРА, а не считаем на клиенте!
+                // Сервер возвращает правильное количество из всей базы, а не только из загруженных 100
+                const waitingStockCount = response.waitingStockCount ?? 
+                    orders.filter(order => order.status === 'WAITING_STOCK').length;
+                
+                console.log('fetchOrderCounts: счетчики получены', {
+                    total: orders.length,
+                    waitingStockFromServer: response.waitingStockCount,
+                    waitingStockFromClient: orders.filter(order => order.status === 'WAITING_STOCK').length,
+                    waitingStockFinal: waitingStockCount,
+                    warehouseId: currentUser?.employee?.warehouseId,
+                    sampleOrders: orders.slice(0, 3).map(o => ({ id: o.id, status: o.status, warehouse: o.warehouse?.name }))
+                });
+                
+                return { 
+                    waitingStockCount,
+                    total: orders.length
+                };
+            } else {
+                throw new Error(response.message || 'Ошибка при загрузке счетчиков');
+            }
+        } catch (error) {
+            console.error('Ошибка при загрузке счетчиков заказов:', error);
+            return rejectWithValue(error.message || 'Ошибка при загрузке счетчиков');
+        }
+    }
+);
+
 // Получение заказов (для персонала)
 export const fetchStaffOrders = createAsyncThunk(
     'orders/fetchStaffOrders',
@@ -167,7 +266,12 @@ export const fetchStaffOrders = createAsyncThunk(
                 lastFetchTime: state.order.staffOrders.lastFetchTime
             });
 
-            if (!forceRefresh && isCacheValid(state.order.staffOrders.lastFetchTime)) {
+            // Кэш НЕ используется если запрашивается другая страница
+            const requestedPage = requestParams.page || 1;
+            const cachedPage = state.order.staffOrders.page || 1;
+            const isPageChange = requestedPage !== cachedPage;
+
+            if (!forceRefresh && !isPageChange && isCacheValid(state.order.staffOrders.lastFetchTime)) {
                 console.log('fetchStaffOrders: возвращаем данные из кэша');
                 return { data: state.order.staffOrders, fromCache: true };
             }
@@ -183,7 +287,16 @@ export const fetchStaffOrders = createAsyncThunk(
             const response = await OrderApi.getOrders(requestParamsWithTimestamp);
 
             if (response.status === 'success') {
-                return { data: response.data, fromCache: false, filters: requestParams };
+                // Возвращаем весь ответ, включая data, pagination, waitingStockCount
+                return { 
+                    data: {
+                        data: response.data,
+                        pagination: response.pagination,
+                        waitingStockCount: response.waitingStockCount
+                    }, 
+                    fromCache: false, 
+                    filters: requestParams 
+                };
             } else {
                 throw new Error(response.message || 'Ошибка при загрузке заказов');
             }
@@ -727,7 +840,6 @@ const orderSlice = createSlice({
 
             // ===== ПОЛУЧЕНИЕ ЗАКАЗОВ ПЕРСОНАЛА =====
             .addCase(fetchStaffOrders.pending, (state) => {
-                console.log('fetchStaffOrders.pending');
                 state.staffOrders.loading = true;
                 state.staffOrders.error = null;
             })
@@ -735,37 +847,100 @@ const orderSlice = createSlice({
                 state.staffOrders.loading = false;
                 const { data, fromCache, filters } = action.payload;
 
-                console.log('fetchStaffOrders.fulfilled:', {
-                    fromCache,
-                    dataLength: data?.data?.length || 0,
-                    total: data?.total || 0,
-                    page: data?.page || 1,
-                    pages: data?.pages || 1,
-                    filters,
-                    data: data,
-                    dataKeys: data ? Object.keys(data) : []
-                });
+            
 
                 if (!fromCache) {
-                    state.staffOrders.data = data.data || [];
-                    state.staffOrders.total = data.total || 0;
-                    state.staffOrders.page = data.page || 1;
-                    state.staffOrders.pages = data.pages || 1;
-                    state.staffOrders.hasMore = data.page < data.pages;
+                    // Логирование отключено для производительности
+                    // console.log('🔍 fetchStaffOrders.fulfilled: структура data', {
+                    //     hasData: !!data,
+                    //     waitingStockCount: data?.waitingStockCount
+                    // });
+                    
+                    // Проверяем, что data.data является массивом
+                    const ordersData = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);
+                    
+                    // Сохраняем локальные изменения assignedToId при обновлении данных
+                    const updatedOrdersData = ordersData.map(newOrder => {
+                        const existingOrder = state.staffOrders.data.find(o => o.id === newOrder.id);
+                        
+                        // Если заказ был локально взят в работу и новые данные показывают что он не назначен,
+                        // сохраняем локальное назначение
+                        if (existingOrder && state.localOrderActions[newOrder.id]?.taken && !newOrder.assignedToId) {
+                            return {
+                                ...newOrder,
+                                assignedToId: existingOrder.assignedToId,
+                                assignedTo: existingOrder.assignedTo
+                            };
+                        }
+                        
+                        return newOrder;
+                    });
+                    
+                    const newPage = data.pagination?.page || data.page || 1;
+                    const currentPage = state.staffOrders.page || 1;
+                    
+                    // Если это первая страница или принудительное обновление - заменяем данные
+                    // Если это следующая страница - добавляем к существующим
+                    if (newPage === 1) {
+                        state.staffOrders.data = updatedOrdersData;
+                    } else if (newPage > currentPage) {
+                        // Добавляем новые заказы, избегая дублей
+                        const existingIds = new Set(state.staffOrders.data.map(o => o.id));
+                        const newOrders = updatedOrdersData.filter(order => !existingIds.has(order.id));
+                        state.staffOrders.data = [...state.staffOrders.data, ...newOrders];
+                    } else {
+                        // Если загружается та же или предыдущая страница - заменяем
+                        state.staffOrders.data = updatedOrdersData;
+                    }
+                    
+                    state.staffOrders.total = data.pagination?.total || data.total || 0;
+                    state.staffOrders.page = newPage;
+                    state.staffOrders.pages = data.pagination?.pages || data.pages || 1;
+                    state.staffOrders.hasMore = newPage < (data.pagination?.pages || data.pages || 1);
                     state.staffOrders.lastFetchTime = Date.now();
+                    
+                    // Обновляем счётчик WAITING_STOCK из ответа сервера
+                    const waitingStockCount = data.waitingStockCount || data.pagination?.waitingStockCount;
+                    if (waitingStockCount !== undefined) {
+                        // console.log('✅ Обновляем waitingStockCount из ответа сервера:', waitingStockCount);
+                        state.orderCounts.waitingStockCount = waitingStockCount;
+                        state.orderCounts.lastFetchTime = Date.now();
+                    }
+                    // Не логируем предупреждение - это нормально для некоторых запросов
+        
 
                     if (filters) {
+                        // ВАЖНО: Если в новых фильтрах нет status, явно очищаем его
+                        // Это предотвращает сохранение старого значения status при переключении вкладок
                         state.staffOrders.filters = {
                             ...state.staffOrders.filters,
-                            ...filters
+                            ...filters,
+                            // Если status не передан в новых фильтрах, явно устанавливаем null
+                            status: filters.status !== undefined ? filters.status : null
                         };
                     }
                 }
             })
             .addCase(fetchStaffOrders.rejected, (state, action) => {
-                console.log('fetchStaffOrders.rejected:', action.payload);
                 state.staffOrders.loading = false;
                 state.staffOrders.error = action.payload;
+            })
+
+            // ===== ПОЛУЧЕНИЕ СЧЕТЧИКОВ ЗАКАЗОВ =====
+            .addCase(fetchOrderCounts.pending, (state) => {
+                state.orderCounts.loading = true;
+                state.orderCounts.error = null;
+            })
+            .addCase(fetchOrderCounts.fulfilled, (state, action) => {
+                state.orderCounts.loading = false;
+                state.orderCounts.waitingStockCount = action.payload.waitingStockCount;
+                state.orderCounts.total = action.payload.total;
+                state.orderCounts.lastFetchTime = Date.now();
+                state.orderCounts.error = null;
+            })
+            .addCase(fetchOrderCounts.rejected, (state, action) => {
+                state.orderCounts.loading = false;
+                state.orderCounts.error = action.payload;
             })
 
             // ===== ПОЛУЧЕНИЕ ДЕТАЛЕЙ ЗАКАЗА =====
@@ -925,6 +1100,49 @@ const orderSlice = createSlice({
                     id: `take_error_${Date.now()}`,
                     type: 'error',
                     message: `Ошибка при взятии заказа в работу: ${action.payload}`,
+                    timestamp: new Date().toISOString(),
+                    orderId: orderId,
+                    autoHide: true,
+                    duration: 5000
+                });
+            })
+
+            // ===== ЗАВЕРШЕНИЕ ЭТАПА ЗАКАЗА =====
+            .addCase(completeOrderStage.pending, (state, action) => {
+                const orderId = action.meta.arg.orderId;
+                state.operations.updating = addToArray(state.operations.updating, orderId);
+                state.error = null;
+            })
+            .addCase(completeOrderStage.fulfilled, (state, action) => {
+                const { orderId, comment, result } = action.payload;
+                state.operations.updating = removeFromArray(state.operations.updating, orderId);
+
+                state.notifications.unshift({
+                    id: `complete_stage_${Date.now()}`,
+                    type: 'success',
+                    message: 'Этап заказа успешно завершен',
+                    timestamp: new Date().toISOString(),
+                    orderId: orderId,
+                    autoHide: true,
+                    duration: 3000
+                });
+
+                // Очищаем кеш для обновления данных
+                state.staffOrders.lastFetchTime = null;
+                const cacheKey = `order_${orderId}`;
+                if (state.cache[cacheKey]) {
+                    state.cache[cacheKey].lastFetchTime = null;
+                }
+            })
+            .addCase(completeOrderStage.rejected, (state, action) => {
+                const orderId = action.meta.arg.orderId;
+                state.operations.updating = removeFromArray(state.operations.updating, orderId);
+                state.error = action.payload;
+
+                state.notifications.unshift({
+                    id: `complete_stage_error_${Date.now()}`,
+                    type: 'error',
+                    message: `Ошибка при завершении этапа: ${action.payload}`,
                     timestamp: new Date().toISOString(),
                     orderId: orderId,
                     autoHide: true,

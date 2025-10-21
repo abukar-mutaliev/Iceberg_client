@@ -34,7 +34,7 @@ export const GuestCheckoutScreen = ({ navigation, route }) => {
         customerPhone: '',
         deliveryAddress: '',
         comment: '',
-        paymentMethod: 'CASH'
+        paymentMethod: 'ONLINE' // Только онлайн оплата
     });
 
     const handleFieldChange = (field, value) => {
@@ -189,8 +189,10 @@ export const GuestCheckoutScreen = ({ navigation, route }) => {
                             onChangeText={(value) => handleFieldChange('comment', value)}
                             placeholder="Дополнительные пожелания (необязательно)"
                             multiline
-                            numberOfLines={2}
+                            numberOfLines={3}
                             style={styles.textArea}
+                            inputStyle={styles.textAreaInput}
+                            labelStyle={styles.textAreaLabel}
                         />
                     </View>
                 </ScrollView>
@@ -215,7 +217,7 @@ export const GuestCheckoutScreen = ({ navigation, route }) => {
             {/* Toast уведомление об успешном заказе */}
             {showSuccessToast && (
                 <Toast
-                    message="Заказ принят в обработку! Мы свяжемся с вами в ближайшее время для подтверждения."
+                    message="Заказ принят в обработку!"
                     type="success"
                     duration={4000}
                     onHide={handleToastHide}
@@ -371,8 +373,27 @@ const styles = StyleSheet.create({
         color: '#3339B0',
     },
     textArea: {
-        minHeight: normalize(80),
+        minHeight: normalize(100),
         textAlignVertical: 'top',
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: '#E1E5E9',
+        borderRadius: normalize(12),
+        padding: normalize(16),
+        marginTop: normalize(8),
+    },
+    textAreaInput: {
+        minHeight: normalize(60),
+        fontSize: normalize(16),
+        color: '#333333',
+        lineHeight: normalize(22),
+        textAlignVertical: 'top',
+    },
+    textAreaLabel: {
+        fontSize: normalize(16),
+        fontWeight: '600',
+        color: '#333333',
+        marginBottom: normalize(8),
     },
     footer: {
         paddingHorizontal: normalize(20),

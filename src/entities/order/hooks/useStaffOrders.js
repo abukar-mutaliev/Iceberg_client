@@ -65,11 +65,32 @@ export const useStaffOrders = () => {
     const autoRefreshRef = useRef(null);
     const isMountedRef = useRef(true);
     const initialLoadRef = useRef(false);
+    const loadingInProgressRef = useRef(false); // Защита от множественных параллельных загрузок
     
     const staffOrders = useSelector(selectStaffOrders);
     const isLoading = useSelector(selectStaffOrdersLoading);
     
     const loadInitialData = useCallback(async (forceRefresh = false) => {
+        // Защита от множественных одновременных вызовов
+        if (loadingInProgressRef.current) {
+            if (!forceRefresh) {
+                console.log('⚠️ loadInitialData уже выполняется, пропускаем');
+                return;
+            }
+            // Даже для forceRefresh ждем завершения предыдущей загрузки
+            console.log('⚠️ loadInitialData уже выполняется, ждем завершения...');
+            await new Promise(resolve => {
+                const checkInterval = setInterval(() => {
+                    if (!loadingInProgressRef.current) {
+                        clearInterval(checkInterval);
+                        resolve();
+                    }
+                }, 100);
+            });
+        }
+        
+        loadingInProgressRef.current = true;
+        
         try {
             // Try cache first on initial load
             if (!forceRefresh && !dataLoaded && !initialLoadRef.current) {
@@ -99,8 +120,9 @@ export const useStaffOrders = () => {
                 throw ordersResult.reason;
             }
 
-            // Clear local actions when updating data
-            dispatch(clearAllLocalOrderActions());
+            // НЕ очищаем локальные действия при обновлении - они должны сохраняться
+            // чтобы UI корректно отображал состояние после действий сотрудника
+            // dispatch(clearAllLocalOrderActions());
 
             // Save to cache
             const currentTime = Date.now();
@@ -120,6 +142,7 @@ export const useStaffOrders = () => {
             Alert.alert('Error', 'Failed to load data. Check your internet connection.');
         } finally {
             setInitializing(false);
+            loadingInProgressRef.current = false; // Освобождаем блокировку
         }
     }, [dispatch, dataLoaded]);
     
@@ -135,15 +158,15 @@ export const useStaffOrders = () => {
         }
     }, [loadInitialData]);
     
-    // Auto refresh setup
+    // Auto refresh setup - DISABLED because WebSocket provides real-time updates
     useEffect(() => {
         isMountedRef.current = true;
         
-        // Auto refresh every 30 seconds
-        autoRefreshRef.current = setInterval(() => {
-            if (!isMountedRef.current) return;
-            dispatch(fetchStaffOrders({ forceRefresh: true })).catch(() => {});
-        }, CONSTANTS.AUTO_REFRESH_INTERVAL);
+        // Auto refresh disabled - WebSocket handles real-time updates
+        // autoRefreshRef.current = setInterval(() => {
+        //     if (!isMountedRef.current) return;
+        //     dispatch(fetchStaffOrders({ forceRefresh: true })).catch(() => {});
+        // }, CONSTANTS.AUTO_REFRESH_INTERVAL);
 
         return () => {
             isMountedRef.current = false;
@@ -153,6 +176,96 @@ export const useStaffOrders = () => {
         };
     }, [dispatch]);
     
+    // Подгрузка следующей страницы
+    const [loadingMore, setLoadingMore] = useState(false);
+    const autoLoadingRef = useRef(false);
+    
+    const loadMore = useCallback(async () => {
+        // Проверяем есть ли еще страницы
+        const state = dispatch((_, getState) => getState());
+        const orderState = state.order?.staffOrders;
+        
+        if (!orderState || loadingMore || isLoading) {
+            return;
+        }
+        
+        const currentPage = orderState.page || 1;
+        const totalPages = orderState.pages || 1;
+        const hasMore = orderState.hasMore !== false && currentPage < totalPages;
+        
+        // Логирование отключено для производительности
+        // console.log('📄 loadMore: проверка пагинации', {
+        //     currentPage,
+        //     totalPages,
+        //     hasMore
+        // });
+        
+        if (!hasMore) {
+            // console.log('📄 loadMore: больше нет страниц');
+            return;
+        }
+        
+        setLoadingMore(true);
+        try {
+            const nextPage = currentPage + 1;
+            // console.log(`📄 Загрузка страницы ${nextPage}...`);
+            
+            await dispatch(fetchStaffOrders({ 
+                page: nextPage,
+                forceRefresh: false 
+            })).unwrap();
+            
+            // console.log(`✅ Страница ${nextPage} загружена`);
+        } catch (error) {
+            console.error('Ошибка при загрузке следующей страницы:', error);
+        } finally {
+            setLoadingMore(false);
+        }
+    }, [dispatch, loadingMore, isLoading]);
+    
+    // Автозагрузка следующих страниц при недостаточном количестве данных
+    // (полезно когда клиентская фильтрация оставляет мало заказов)
+    const autoLoadMore = useCallback(async () => {
+        if (autoLoadingRef.current || loadingMore || isLoading) {
+            return;
+        }
+        
+        autoLoadingRef.current = true;
+        
+        try {
+            // Загружаем до 5 страниц или пока не наберется минимум 10 заказов
+            const MAX_AUTO_PAGES = 5;
+            let pagesLoaded = 0;
+            
+            while (pagesLoaded < MAX_AUTO_PAGES) {
+                const state = dispatch((_, getState) => getState());
+                const orderState = state.order?.staffOrders;
+                
+                if (!orderState) break;
+                
+                const hasMore = orderState.hasMore !== false && 
+                               (orderState.page || 1) < (orderState.pages || 1);
+                
+                // Прекращаем если больше нет страниц или уже достаточно данных
+                if (!hasMore || (orderState.data?.length || 0) >= 40) {
+                    break;
+                }
+                
+                await loadMore();
+                pagesLoaded++;
+                
+                // Небольшая задержка между запросами
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+            
+            // console.log(`📄 Автозагрузка завершена: загружено ${pagesLoaded} дополнительных страниц`);
+        } catch (error) {
+            console.error('Ошибка при автозагрузке:', error);
+        } finally {
+            autoLoadingRef.current = false;
+        }
+    }, [dispatch, loadMore, loadingMore, isLoading]);
+    
     return {
         staffOrders,
         isLoading,
@@ -161,6 +274,9 @@ export const useStaffOrders = () => {
         dataLoaded,
         lastFetchTime,
         loadInitialData,
-        handleRefresh
+        handleRefresh,
+        loadMore,
+        loadingMore,
+        autoLoadMore
     };
 };

@@ -4,7 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import { ProfileInfo } from "@features/profile";
 import { ProfileHeader } from "@widgets/ProfileHeader";
-import { fetchProfile, selectProfileLoading, selectProfile, clearProfile } from '@entities/profile';
+import { fetchProfile, selectProfileLoading, selectProfile, selectProfileError, clearProfile } from '@entities/profile';
 import { normalize } from '@shared/lib/normalize';
 import { useAuth } from "@entities/auth/hooks/useAuth";
 
@@ -14,29 +14,33 @@ export const ProfileScreen = ({ onProductPress }) => {
     const { isAuthenticated, currentUser } = useAuth();
     const isProfileLoading = useSelector(selectProfileLoading);
     const profile = useSelector(selectProfile);
+    const profileError = useSelector(selectProfileError);
 
     const [isInitialLoading, setIsInitialLoading] = useState(true);
     const profileRequestSent = useRef(false);
 
     const screenKey = `profile-screen-${currentUser?.id || 'no-user'}`;
 
+    // Очистка профиля при смене пользователя
     useEffect(() => {
         if (isAuthenticated && profile && currentUser && profile.id !== currentUser.id) {
-
+            console.log('Очистка профиля из-за смены пользователя');
             dispatch(clearProfile());
             profileRequestSent.current = false;
         }
     }, [profile, currentUser, isAuthenticated, dispatch]);
 
+    // Загрузка профиля только если он не загружен или не соответствует текущему пользователю
     useEffect(() => {
         const loadProfile = async () => {
             if (isAuthenticated && !profileRequestSent.current && (!profile || (currentUser && profile?.id !== currentUser.id))) {
                 profileRequestSent.current = true;
+                console.log('Загрузка профиля в ProfileScreen');
 
                 try {
                     await dispatch(fetchProfile()).unwrap();
                 } catch (error) {
-                    console.error('Ошибка загрузки профиля:', error);
+                    console.error('Ошибка загрузки профиля в ProfileScreen:', error);
                     profileRequestSent.current = false;
                 }
             }
@@ -47,26 +51,40 @@ export const ProfileScreen = ({ onProductPress }) => {
         return () => {
             profileRequestSent.current = false;
         };
-    }, [dispatch, isAuthenticated, currentUser, profile]);
+    }, [dispatch, isAuthenticated, currentUser]);
 
+    // Управление состоянием загрузки
     useEffect(() => {
         if (!isProfileLoading && (profile || !isAuthenticated)) {
             setIsInitialLoading(false);
         }
     }, [isProfileLoading, profile, isAuthenticated]);
 
+    // Настройка навигации
     useEffect(() => {
         navigation.setOptions({
             headerShown: false,
         });
     }, [navigation]);
 
-
-    if (isInitialLoading) {
+    // Показываем загрузку только при первой загрузке
+    if (isInitialLoading && isProfileLoading) {
         return (
             <SafeAreaView style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#007AFF" />
                 <Text style={styles.loadingText}>Загрузка профиля...</Text>
+            </SafeAreaView>
+        );
+    }
+
+    // Обработка ошибок профиля (если ProfileInfo не справился)
+    if (profileError && !isProfileLoading) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <ScrollView contentContainerStyle={styles.errorContainer}>
+                    <Text style={styles.errorText}>Ошибка загрузки профиля</Text>
+                    <Text style={styles.errorDetails}>{profileError}</Text>
+                </ScrollView>
             </SafeAreaView>
         );
     }
@@ -108,5 +126,24 @@ const styles = StyleSheet.create({
         marginTop: normalize(10),
         fontSize: normalize(16),
         color: '#666',
+    },
+    errorContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: normalize(20),
+    },
+    errorText: {
+        fontSize: normalize(18),
+        fontWeight: '600',
+        color: '#FF3B30',
+        textAlign: 'center',
+        marginBottom: normalize(10),
+    },
+    errorDetails: {
+        fontSize: normalize(14),
+        color: '#666',
+        textAlign: 'center',
+        lineHeight: normalize(20),
     }
 });

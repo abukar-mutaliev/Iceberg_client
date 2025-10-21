@@ -28,6 +28,7 @@ const getBoxesText = (count) => {
 const ORDER_STATUS_COLORS = {
     PENDING: '#FFA726',
     CONFIRMED: '#42A5F5',
+    WAITING_STOCK: '#fd7e14',
     IN_DELIVERY: '#5C6BC0',
     DELIVERED: '#66BB6A',
     CANCELLED: '#EF5350',
@@ -37,6 +38,7 @@ const ORDER_STATUS_COLORS = {
 const ORDER_STATUS_ICONS = {
     PENDING: 'schedule',
     CONFIRMED: 'check-circle',
+    WAITING_STOCK: 'inventory',
     IN_DELIVERY: 'local-shipping',
     DELIVERED: 'done-all',
     CANCELLED: 'cancel',
@@ -47,6 +49,7 @@ const getOrderProgress = (status) => {
     const progressMap = {
         PENDING: 25,
         CONFIRMED: 50,
+        WAITING_STOCK: 30,
         IN_DELIVERY: 75,
         DELIVERED: 100,
         CANCELLED: 0,
@@ -543,7 +546,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#fff',
         borderRadius: 12,
         padding: 16,
-        marginBottom: 12,
+        marginBottom: 8,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.08,

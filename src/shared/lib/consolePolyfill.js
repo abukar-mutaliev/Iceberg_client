@@ -33,6 +33,16 @@ const originalConsole = {
 const noop = () => {};
 
 /**
+ * Проверяет, является ли сообщение ошибкой OneSignal
+ */
+const isOneSignalError = (...args) => {
+    const message = args.join(' ');
+    return message.includes('RNOneSignal') || 
+           message.includes('OneSignal native module') || 
+           message.includes('OneSignal') && message.includes('not loaded');
+};
+
+/**
  * Инициализация полифилла консоли
  */
 export const initConsolePolyfill = () => {
@@ -60,6 +70,22 @@ export const initConsolePolyfill = () => {
         console.profileEnd = noop;
         console.timeLog = noop;
         console.timeStamp = noop;
+    } else {
+        // В режиме разработки фильтруем ошибки OneSignal
+        const originalError = console.error;
+        const originalWarn = console.warn;
+        
+        console.error = (...args) => {
+            if (!isOneSignalError(...args)) {
+                originalError(...args);
+            }
+        };
+        
+        console.warn = (...args) => {
+            if (!isOneSignalError(...args)) {
+                originalWarn(...args);
+            }
+        };
     }
 };
 

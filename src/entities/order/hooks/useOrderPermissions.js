@@ -9,9 +9,11 @@ export const useOrderPermissions = (currentUser) => {
 
     const canViewAllOrders = useMemo(() => {
         if (!currentUser) return false;
-        const isSuperAdmin = currentUser?.role === 'ADMIN' && currentUser?.profile?.isSuperAdmin;
+        // Админы всегда могут видеть все заказы
+        const isAdmin = currentUser?.role === 'ADMIN';
+        // Обычные сотрудники (не PICKER/PACKER/COURIER) тоже могут видеть все заказы
         const isGeneralStaff = currentUser?.role === 'EMPLOYEE' && !['PICKER', 'PACKER', 'COURIER'].includes(actualProcessingRole);
-        return isSuperAdmin || isGeneralStaff;
+        return isAdmin || isGeneralStaff;
     }, [currentUser, actualProcessingRole]);
 
     // Стабилизируем массивы, чтобы они не пересоздавались при каждом рендере
@@ -24,16 +26,6 @@ export const useOrderPermissions = (currentUser) => {
         actualProcessingRole ? (CONSTANTS.ROLE_HISTORY_MAPPING[actualProcessingRole] || []) : [],
         [actualProcessingRole]
     );
-
-    console.log('🔐 useOrderPermissions: результат', {
-        userRole: currentUser?.role,
-        actualProcessingRole,
-        canViewAllOrders,
-        relevantStatuses,
-        historyStatuses,
-        userProfile: currentUser?.profile,
-        userEmployee: currentUser?.employee
-    });
 
     return {
         canViewAllOrders,

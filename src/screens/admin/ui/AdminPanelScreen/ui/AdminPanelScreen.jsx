@@ -85,8 +85,11 @@ export const AdminPanelScreen = () => {
     }, [navigation]);
 
     const handleStopsListPress = useCallback(() => {
-        // Переходим к StopsListScreen в корневом стеке
-        navigation.getParent()?.navigate('StopsListScreen') || navigation.navigate('StopsListScreen');
+        // Переходим к StopsListScreen в MainStack
+        navigation.navigate('Main', {
+            screen: 'MainTab',
+            params: { screen: 'StopsListScreen' }
+        });
     }, [navigation]);
 
     const handleAddStopPress = useCallback(() => {

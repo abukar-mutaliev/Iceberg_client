@@ -24,6 +24,20 @@ export const selectCategoriesError = createSelector(
     (categoryState) => categoryState.error || null
 );
 
+export const selectCategoryLastFetchTime = createSelector(
+    [selectCategoryState],
+    (categoryState) => categoryState.lastFetchTime || null
+);
+
+export const selectCategoryCacheValid = createSelector(
+    [selectCategoryLastFetchTime],
+    (lastFetchTime) => {
+        if (!lastFetchTime) return false;
+        const CACHE_EXPIRY_TIME = 15 * 60 * 1000; // 15 минут
+        return Date.now() - lastFetchTime < CACHE_EXPIRY_TIME;
+    }
+);
+
 // Мемоизированный селектор для продуктов по категориям
 export const selectProductsByCategory = createSelector(
     [selectCategoryState, (state, categoryId) => categoryId],

@@ -38,6 +38,9 @@ const ChatApi = {
   deleteRoom: (roomId) => chatApiModule.delete(`/rooms/${roomId}`),
 
   leaveRoom: (roomId, payload = {}) => chatApiModule.post(`/rooms/${roomId}/leave`, payload),
+
+  // Предзагрузка аватара группы
+  preloadAvatar: (formData) => chatApiModule.post('/upload/avatar', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
 };
 
 export default ChatApi;

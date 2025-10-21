@@ -170,31 +170,36 @@ export const cartReloadMiddleware = (store) => (next) => (action) => {
         }
 
         if (isAuthenticated) {
+            // Пропускаем автоматическую перезагрузку для updateCartItem - это делается в хуке с дебаунсингом
+            if (action.type === 'cart/updateCartItem/fulfilled') {
+                if (__DEV__) {
+                    console.log(`🔄 CartReloadMiddleware: Skipping auto-reload for updateCartItem (handled in hook with debouncing)`);
+                }
+                return;
+            }
+
             if (__DEV__) {
                 console.log(`🔄 CartReloadMiddleware: Auto-reloading cart after ${action.type}`);
             }
 
-            let delay = 200;
+            let delay = 100;
 
             switch (action.type) {
                 case 'cart/addToCart/fulfilled':
-                    delay = 300;
+                    delay = 150; // Уменьшили с 300мс до 150мс
                     break;
                 case 'cart/removeFromCart/fulfilled':
-                    delay = 200;
-                    break;
-                case 'cart/updateCartItem/fulfilled':
-                    delay = 200;
+                    delay = 100; // Уменьшили с 200мс до 100мс
                     break;
                 case 'cart/bulkUpdateQuantities/fulfilled':
                 case 'cart/bulkRemoveItems/fulfilled':
-                    delay = 500;
+                    delay = 200; // Уменьшили с 500мс до 200мс
                     break;
                 case 'cart/setClientType/fulfilled':
-                    delay = 400;
+                    delay = 200; // Уменьшили с 400мс до 200мс
                     break;
                 default:
-                    delay = 200;
+                    delay = 100; // Уменьшили с 200мс до 100мс
             }
 
             setTimeout(() => {
@@ -239,9 +244,18 @@ export const cartReloadMiddleware = (store) => (next) => (action) => {
         const isAuthError = errorMessage.includes('не авторизован') || 
                            errorMessage.includes('Не авторизован') || 
                            errorMessage.includes('недоступна для данной роли') ||
-                           errorMessage.includes('unauthorized');
+                           errorMessage.includes('Доступ запрещен') ||
+                           errorMessage.includes('Корзина недоступна') ||
+                           errorMessage.includes('unauthorized') ||
+                           errorMessage.includes('403');
 
-        if (!isAuthError) {
+        // Только логируем ошибки авторизации в DEV режиме, не показываем пользователю
+        if (isAuthError) {
+            if (__DEV__) {
+                console.log(`🔒 CartReloadMiddleware: Auth/Role error (expected):`, errorMessage);
+            }
+        } else {
+            // Показываем только реальные ошибки
             store.dispatch(addNotification({
                 id: `error_${Date.now()}`,
                 type: 'error',
@@ -251,10 +265,10 @@ export const cartReloadMiddleware = (store) => (next) => (action) => {
                 icon: '⚠️',
                 action: 'error'
             }));
-        }
 
-        if (__DEV__) {
-            console.error(`❌ CartReloadMiddleware: Error in ${action.type}:`, errorMessage);
+            if (__DEV__) {
+                console.error(`❌ CartReloadMiddleware: Error in ${action.type}:`, errorMessage);
+            }
         }
     }
 

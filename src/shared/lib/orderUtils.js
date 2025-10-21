@@ -58,9 +58,9 @@ export const formatDate = (dateString) => {
 // Проверка прав доступа
 export const canCancelOrder = (status, userRole = 'CLIENT') => {
     if (userRole === 'CLIENT') {
-        return status === 'PENDING';
+        return ['PENDING', 'WAITING_STOCK'].includes(status);
     }
-    return ['PENDING', 'CONFIRMED', 'IN_DELIVERY'].includes(status);
+    return ['PENDING', 'CONFIRMED', 'WAITING_STOCK', 'IN_DELIVERY'].includes(status);
 };
 
 export const canDownloadInvoice = (userRole) => {
@@ -68,15 +68,25 @@ export const canDownloadInvoice = (userRole) => {
 };
 
 export const getOrderProgress = (status) => {
-    const progressMap = {
-        PENDING: 0,
-        CONFIRMED: 33,
-        IN_DELIVERY: 66,
-        DELIVERED: 100,
-        CANCELLED: 0,
-        RETURNED: 0
-    };
-    return progressMap[status] || 0;
+    const statusOrder = [
+        'PENDING',
+        'CONFIRMED', 
+        'WAITING_STOCK',
+        'IN_DELIVERY',
+        'DELIVERED'
+    ];
+    
+    const currentIndex = statusOrder.indexOf(status);
+    if (currentIndex === -1) return 0;
+    
+    // Для WAITING_STOCK показываем промежуточный прогресс
+    if (status === 'WAITING_STOCK') {
+        return 20; // 20% - между PENDING и CONFIRMED
+    }
+    
+    // Для остальных статусов рассчитываем прогресс
+    const progress = Math.round(((currentIndex + 1) / statusOrder.length) * 100);
+    return progress;
 };
 
 export const canViewProcessingHistory = (userRole) => {

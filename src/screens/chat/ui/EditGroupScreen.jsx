@@ -16,6 +16,7 @@ import {
 import { useDispatch, useSelector } from 'react-redux';
 import { updateRoom, fetchRoom } from '@entities/chat/model/slice';
 import { getBaseUrl } from '@shared/api/api';
+import ChatApi from '@entities/chat/api/chatApi';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 
@@ -30,6 +31,8 @@ export const EditGroupScreen = ({ route, navigation }) => {
   const [groupAvatar, setGroupAvatar] = useState(null); // { uri, type, name } или null
   const [currentAvatarUri, setCurrentAvatarUri] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [avatarPreloadStatus, setAvatarPreloadStatus] = useState(null); // 'uploading', 'success', 'error'
+  const [preloadedAvatarPath, setPreloadedAvatarPath] = useState(null); // Путь к предзагруженному аватару
 
   // Инициализация данных группы
   useEffect(() => {
@@ -60,17 +63,92 @@ export const EditGroupScreen = ({ route, navigation }) => {
     return true;
   };
 
+  // Получение размера файла изображения
+  const getImageFileSize = async (imageUri) => {
+    try {
+      const response = await fetch(imageUri, { method: 'HEAD' });
+      const contentLength = response.headers.get('content-length');
+      return contentLength ? parseInt(contentLength, 10) : 0;
+    } catch (error) {
+      console.warn('Не удалось определить размер файла:', error);
+      return 0;
+    }
+  };
+
   const processImage = async (imageUri) => {
     try {
-      const manipulatedImage = await ImageManipulator.manipulateAsync(
-        imageUri,
-        [{ resize: { width: 300, height: 300 } }],
-        { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
-      );
-      return manipulatedImage;
+      // Определяем размер исходного файла
+      const originalSize = await getImageFileSize(imageUri);
+      const maxSizeWithoutCompression = 2 * 1024 * 1024; // 2MB - максимальный размер без сжатия
+      
+      console.log('📸 Анализ изображения для редактирования группы:', {
+        originalUri: imageUri,
+        fileSizeMB: Math.round(originalSize / (1024 * 1024) * 100) / 100,
+        needsCompression: originalSize > maxSizeWithoutCompression
+      });
+      
+      // Если файл ≤ 2MB - оставляем как есть (сохраняем качество)
+      if (originalSize <= maxSizeWithoutCompression && originalSize > 0) {
+        console.log('✅ Файл ≤ 2MB, оставляем оригинальное качество');
+        return { uri: imageUri };
+      }
+      
+      // Если файл > 2MB - сжимаем до ~2MB с максимальным качеством
+      console.log('📉 Файл > 2MB, сжимаем до 2MB с сохранением качества');
+      
+      // Итеративное сжатие для достижения целевого размера ~2MB
+      let currentUri = imageUri;
+      let currentSize = originalSize;
+      let quality = 0.9; // Начинаем с высокого качества
+      let dimensions = 800; // Начинаем с больших размеров
+      
+      // Максимум 3 итерации сжатия
+      for (let iteration = 1; iteration <= 3; iteration++) {
+        const manipulatedImage = await ImageManipulator.manipulateAsync(
+          currentUri,
+          [{ resize: { width: dimensions, height: dimensions } }],
+          { 
+            compress: quality,
+            format: ImageManipulator.SaveFormat.JPEG 
+          }
+        );
+        
+        const newSize = await getImageFileSize(manipulatedImage.uri);
+        
+        console.log(`📸 Итерация ${iteration}:`, {
+          dimensions: `${dimensions}x${dimensions}`,
+          quality,
+          resultSizeMB: Math.round(newSize / (1024 * 1024) * 100) / 100
+        });
+        
+        // Если достигли целевого размера или это последняя итерация
+        if (newSize <= maxSizeWithoutCompression || iteration === 3) {
+          console.log('✅ Сжатие завершено:', {
+            originalSizeMB: Math.round(originalSize / (1024 * 1024) * 100) / 100,
+            finalSizeMB: Math.round(newSize / (1024 * 1024) * 100) / 100,
+            compressionRatio: originalSize > 0 ? Math.round((1 - newSize / originalSize) * 100) : 0,
+            iterations: iteration
+          });
+          return manipulatedImage;
+        }
+        
+        // Корректируем параметры для следующей итерации
+        if (newSize > maxSizeWithoutCompression * 1.5) {
+          // Если все еще слишком большой - уменьшаем размеры
+          dimensions = Math.max(400, dimensions - 200);
+        } else {
+          // Если близко к цели - только снижаем качество
+          quality = Math.max(0.6, quality - 0.15);
+        }
+        
+        currentUri = manipulatedImage.uri;
+        currentSize = newSize;
+      }
+      
+      return { uri: currentUri };
     } catch (error) {
       console.error('Ошибка обработки изображения:', error);
-      throw error;
+      throw new Error('Не удалось обработать изображение. Попробуйте выбрать другое фото.');
     }
   };
 
@@ -83,17 +161,22 @@ export const EditGroupScreen = ({ route, navigation }) => {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality: 0.9, // Высокое качество - умное сжатие обработает размер
       });
 
       if (!result.canceled && result.assets[0]) {
         const processedImage = await processImage(result.assets[0].uri);
-        setGroupAvatar({
+        const avatarData = {
           uri: processedImage.uri,
           type: 'image/jpeg',
           name: `group_avatar_${Date.now()}.jpg`
-        });
+        };
+        
+        setGroupAvatar(avatarData);
         setCurrentAvatarUri(processedImage.uri);
+        
+        // Запускаем фоновую предзагрузку
+        preloadAvatar(avatarData);
       }
     } catch (error) {
       console.error('Ошибка при выборе изображения:', error);
@@ -115,17 +198,22 @@ export const EditGroupScreen = ({ route, navigation }) => {
       const result = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality: 0.9, // Высокое качество - умное сжатие обработает размер
       });
 
       if (!result.canceled && result.assets[0]) {
         const processedImage = await processImage(result.assets[0].uri);
-        setGroupAvatar({
+        const avatarData = {
           uri: processedImage.uri,
           type: 'image/jpeg',
           name: `group_avatar_${Date.now()}.jpg`
-        });
+        };
+        
+        setGroupAvatar(avatarData);
         setCurrentAvatarUri(processedImage.uri);
+        
+        // Запускаем фоновую предзагрузку
+        preloadAvatar(avatarData);
       }
     } catch (error) {
       console.error('Ошибка при съемке фото:', error);
@@ -149,6 +237,62 @@ export const EditGroupScreen = ({ route, navigation }) => {
   const removeAvatar = () => {
     setGroupAvatar({ remove: true }); // Специальный флаг для удаления
     setCurrentAvatarUri(null);
+    setAvatarPreloadStatus(null);
+    setPreloadedAvatarPath(null);
+  };
+
+  // Функция для фоновой предзагрузки аватара с повторными попытками
+  const preloadAvatar = async (avatarData) => {
+    setAvatarPreloadStatus('uploading');
+    
+    const uploadWithRetry = async (attempt = 1) => {
+      try {
+        console.log(`🔄 Предзагрузка аватара группы (попытка ${attempt}/3)...`);
+        
+        // Создаем FormData только для аватара
+        const formData = new FormData();
+        formData.append('avatar', {
+          uri: avatarData.uri,
+          type: avatarData.type,
+          name: avatarData.name,
+        });
+        
+        // Используем API предзагрузки
+        const response = await ChatApi.preloadAvatar(formData);
+        const uploadedPath = response?.data?.data?.avatarPath || response?.data?.avatarPath;
+        
+        if (uploadedPath) {
+          setPreloadedAvatarPath(uploadedPath);
+          setAvatarPreloadStatus('success');
+          console.log('✅ Аватар группы успешно предзагружен:', uploadedPath);
+          return;
+        } else {
+          throw new Error('Сервер не вернул путь к загруженному файлу');
+        }
+      } catch (error) {
+        console.log(`❌ Попытка ${attempt} неудачна:`, error.message);
+        
+        if (attempt < 3) {
+          // Экспоненциальная задержка: 1с, 2с, 4с
+          const delay = 1000 * Math.pow(2, attempt - 1);
+          console.log(`⏳ Ожидание ${delay}мс перед попыткой ${attempt + 1}...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return uploadWithRetry(attempt + 1);
+        } else {
+          throw error; // Последняя попытка - выбрасываем ошибку
+        }
+      }
+    };
+    
+    try {
+      await uploadWithRetry();
+    } catch (error) {
+      console.error('❌ Финальная ошибка предзагрузки аватара группы:', error);
+      setAvatarPreloadStatus('error');
+      
+      // Логируем, но не показываем алерт - это фоновый процесс
+      console.log('ℹ️ Предзагрузка не удалась, будет использован fallback при сохранении');
+    }
   };
 
   const handleSave = async () => {
@@ -169,11 +313,43 @@ export const EditGroupScreen = ({ route, navigation }) => {
         if (groupAvatar.remove) {
           formData.append('removeAvatar', 'true');
         } else {
-          formData.append('avatar', {
-            uri: groupAvatar.uri,
-            type: groupAvatar.type,
-            name: groupAvatar.name,
-          });
+          // Используем предзагруженный аватар если доступен
+          if (avatarPreloadStatus === 'success' && preloadedAvatarPath) {
+            console.log('✅ Используем предзагруженный аватар для редактирования группы:', preloadedAvatarPath);
+            formData.append('preloadedAvatarPath', preloadedAvatarPath);
+          } else if (avatarPreloadStatus === 'uploading') {
+            // Ждем завершения предзагрузки (до 5 секунд для редактирования)
+            console.log('⏳ Ожидание завершения предзагрузки аватара...');
+            const maxWaitTime = 5000; // 5 секунд для редактирования
+            const checkInterval = 500;
+            let waitedTime = 0;
+            
+            while (avatarPreloadStatus === 'uploading' && waitedTime < maxWaitTime) {
+              await new Promise(resolve => setTimeout(resolve, checkInterval));
+              waitedTime += checkInterval;
+            }
+            
+            if (avatarPreloadStatus === 'success' && preloadedAvatarPath) {
+              console.log('✅ Дождались предзагрузки для редактирования:', preloadedAvatarPath);
+              formData.append('preloadedAvatarPath', preloadedAvatarPath);
+            } else {
+              // Fallback - загружаем напрямую
+              console.log('⚠️ Предзагрузка не завершилась, загружаем напрямую');
+              formData.append('avatar', {
+                uri: groupAvatar.uri,
+                type: groupAvatar.type,
+                name: groupAvatar.name,
+              });
+            }
+          } else {
+            // Fallback - загружаем напрямую
+            console.log('📸 Загружаем аватар напрямую при редактировании');
+            formData.append('avatar', {
+              uri: groupAvatar.uri,
+              type: groupAvatar.type,
+              name: groupAvatar.name,
+            });
+          }
         }
       }
       
@@ -186,16 +362,8 @@ export const EditGroupScreen = ({ route, navigation }) => {
         // Обновляем данные группы
         await dispatch(fetchRoom(roomId));
         
-        Alert.alert(
-          'Успех', 
-          'Информация о группе обновлена!',
-          [
-            {
-              text: 'OK',
-              onPress: () => navigation.goBack()
-            }
-          ]
-        );
+        // Возвращаемся назад без алерта для лучшего UX
+        navigation.goBack();
       } else {
         throw new Error(result.payload || 'Ошибка обновления группы');
       }
@@ -247,7 +415,26 @@ export const EditGroupScreen = ({ route, navigation }) => {
               activeOpacity={0.7}
             >
               {currentAvatarUri ? (
-                <Image source={{ uri: currentAvatarUri }} style={styles.avatarImage} />
+                <View style={styles.avatarImageContainer}>
+                  <Image source={{ uri: currentAvatarUri }} style={styles.avatarImage} />
+                  {/* Индикаторы статуса предзагрузки */}
+                  {avatarPreloadStatus === 'uploading' && (
+                    <View style={styles.uploadingOverlay}>
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                      <Text style={styles.uploadingText}>Загрузка...</Text>
+                    </View>
+                  )}
+                  {avatarPreloadStatus === 'success' && (
+                    <View style={styles.successOverlay}>
+                      <Text style={styles.successText}>✓</Text>
+                    </View>
+                  )}
+                  {avatarPreloadStatus === 'error' && (
+                    <View style={styles.errorOverlay}>
+                      <Text style={styles.errorText}>⚠</Text>
+                    </View>
+                  )}
+                </View>
               ) : (
                 <View style={styles.avatarPlaceholder}>
                   <Text style={styles.avatarPlaceholderText}>👥</Text>
@@ -360,9 +547,63 @@ const styles = StyleSheet.create({
     borderColor: '#E5E5E5',
     borderStyle: 'dashed',
   },
+  avatarImageContainer: {
+    width: '100%',
+    height: '100%',
+    position: 'relative',
+  },
   avatarImage: {
     width: '100%',
     height: '100%',
+  },
+  uploadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  uploadingText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  successOverlay: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    width: 24,
+    height: 24,
+    backgroundColor: '#4CAF50',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  successText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  errorOverlay: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    width: 24,
+    height: 24,
+    backgroundColor: '#F44336',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
   avatarPlaceholder: {
     width: '100%',

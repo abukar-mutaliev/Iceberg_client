@@ -37,10 +37,13 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     headerContent: {
         gap: 16,
     },
+    badgeContainer: {
+        alignItems: 'flex-end',
+    },
     headerTop: {
-        flexDirection: 'row',
+        flexDirection: 'column',
         justifyContent: 'space-between',
-        alignItems: 'flex-start',
+        alignItems: 'center',
     },
     orderNumberContainer: {
         flex: 1,
@@ -466,7 +469,7 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
         borderRadius: 16,
         width: '100%',
         maxWidth: 500,
-        maxHeight: '80%',
+        maxHeight: '85%',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
@@ -710,5 +713,87 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
         fontSize: 16,
         color: '#fff',
         fontWeight: '500',
+    },
+
+    // WaitingStockInfo стили
+    waitingStockInfo: {
+        backgroundColor: '#fff3cd',
+        borderRadius: 12,
+        padding: 16,
+        marginHorizontal: 20,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: '#ffeaa7',
+        shadowColor: '#fd7e14',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 2,
+    },
+    waitingStockHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    waitingStockIcon: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: '#fd7e14',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    waitingStockIconOverdue: {
+        backgroundColor: '#dc3545',
+    },
+    waitingStockTextContainer: {
+        flex: 1,
+    },
+    waitingStockTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#333',
+        marginBottom: 4,
+    },
+    waitingStockSubtitle: {
+        fontSize: 14,
+        color: '#666',
+    },
+    waitingStockDetails: {
+        backgroundColor: 'rgba(255,255,255,0.7)',
+        borderRadius: 8,
+        padding: 12,
+        marginBottom: 12,
+    },
+    waitingStockDetailRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 6,
+    },
+    waitingStockDetailLabel: {
+        fontSize: 14,
+        color: '#666',
+        fontWeight: '500',
+    },
+    waitingStockDetailValue: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#fd7e14',
+    },
+    waitingStockDetailValueOverdue: {
+        color: '#dc3545',
+    },
+    waitingStockMessage: {
+        backgroundColor: 'rgba(255,255,255,0.5)',
+        borderRadius: 8,
+        padding: 12,
+    },
+    waitingStockMessageText: {
+        fontSize: 13,
+        color: '#666',
+        lineHeight: 18,
+        fontStyle: 'italic',
     },
 });

@@ -21,10 +21,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { OrderApi } from '@entities/order';
 import { getBaseUrl } from '@shared/api/api';
 import { Loader } from "@shared/ui/Loader";
+import { getOrderProgress } from '@shared/lib/orderUtils';
+import { 
+    useOrderAlternatives, 
+    ChoiceNotificationBanner,
+    SplitOrderIndicator,
+    SplitOrderInfo,
+    useSplitOrders
+} from '@entities/order';
 
 const ORDER_STATUSES = {
     PENDING: 'PENDING',
     CONFIRMED: 'CONFIRMED',
+    WAITING_STOCK: 'WAITING_STOCK',
     IN_DELIVERY: 'IN_DELIVERY',
     DELIVERED: 'DELIVERED',
     CANCELLED: 'CANCELLED',
@@ -34,6 +43,7 @@ const ORDER_STATUSES = {
 const ORDER_STATUS_LABELS = {
     [ORDER_STATUSES.PENDING]: 'Ожидает',
     [ORDER_STATUSES.CONFIRMED]: 'Подтвержден',
+    [ORDER_STATUSES.WAITING_STOCK]: 'Ожидает товар',
     [ORDER_STATUSES.IN_DELIVERY]: 'В доставке',
     [ORDER_STATUSES.DELIVERED]: 'Доставлен',
     [ORDER_STATUSES.CANCELLED]: 'Отменен',
@@ -44,6 +54,7 @@ const ORDER_STATUS_LABELS = {
 const STATUS_ICONS = {
     [ORDER_STATUSES.PENDING]: 'schedule',
     [ORDER_STATUSES.CONFIRMED]: 'check-circle',
+    [ORDER_STATUSES.WAITING_STOCK]: 'inventory',
     [ORDER_STATUSES.IN_DELIVERY]: 'local-shipping',
     [ORDER_STATUSES.DELIVERED]: 'task-alt',
     [ORDER_STATUSES.CANCELLED]: 'cancel',
@@ -54,6 +65,7 @@ const STATUS_ICONS = {
 const STATUS_GRADIENTS = {
     [ORDER_STATUSES.PENDING]: ['#FFA726', '#FFB74D'],
     [ORDER_STATUSES.CONFIRMED]: ['#42A5F5', '#64B5F6'],
+    [ORDER_STATUSES.WAITING_STOCK]: ['#fd7e14', '#ff8c00'],
     [ORDER_STATUSES.IN_DELIVERY]: ['#5C6BC0', '#7986CB'],
     [ORDER_STATUSES.DELIVERED]: ['#66BB6A', '#81C784'],
     [ORDER_STATUSES.CANCELLED]: ['#EF5350', '#F8BBD9'],
@@ -64,6 +76,7 @@ const STATUS_GRADIENTS = {
 const ACTIVE_STATUSES = [
     ORDER_STATUSES.PENDING,
     ORDER_STATUSES.CONFIRMED,
+    ORDER_STATUSES.WAITING_STOCK,
     ORDER_STATUSES.IN_DELIVERY
 ];
 
@@ -138,11 +151,12 @@ const formatOrderNumber = (orderNumber) => {
 
 const canCancelOrder = (status, userRole = 'CLIENT') => {
     if (userRole === 'CLIENT') {
-        return status === ORDER_STATUSES.PENDING;
+        return [ORDER_STATUSES.PENDING, ORDER_STATUSES.WAITING_STOCK].includes(status);
     }
     return [
         ORDER_STATUSES.PENDING,
         ORDER_STATUSES.CONFIRMED,
+        ORDER_STATUSES.WAITING_STOCK,
         ORDER_STATUSES.IN_DELIVERY
     ].includes(status);
 };
@@ -152,6 +166,21 @@ const { width, height } = Dimensions.get('window');
 export const MyOrdersScreen = () => {
     const navigation = useNavigation();
     const dispatch = useDispatch();
+    
+    // Хук для альтернативных предложений
+    const {
+        choices,
+        hasActiveChoices,
+        urgentChoices,
+        loadMyChoices
+    } = useOrderAlternatives();
+    
+    // Хук для разделенных заказов
+    const {
+        isSplitOrder,
+        getOriginalOrderNumber,
+        groupOrdersByOriginal
+    } = useSplitOrders();
     
     // Состояние компонента
     const [orders, setOrders] = useState([]);
@@ -164,6 +193,7 @@ export const MyOrdersScreen = () => {
     const [selectedStatus, setSelectedStatus] = useState('ALL');
     const [dataLoaded, setDataLoaded] = useState(false);
     const [lastFetchTime, setLastFetchTime] = useState(0);
+    const [showChoiceBanner, setShowChoiceBanner] = useState(true);
     const [stats, setStats] = useState({
         totalOrders: 0,
         totalAmount: 0,
@@ -246,8 +276,15 @@ export const MyOrdersScreen = () => {
                 sortOrder: 'desc'
             });
 
+            console.log('MyOrdersScreen: Получен ответ от API:', {
+                success: response.success,
+                hasData: !!response.data,
+                dataLength: response.data?.length || 0,
+                message: response.message
+            });
+
             if (response.status === 'success') {
-                const ordersData = response.data?.data || [];
+                const ordersData = response.data || [];
                 setOrders(ordersData);
                 
                 // Вычисляем статистику только для активных заказов
@@ -289,6 +326,7 @@ export const MyOrdersScreen = () => {
                     useNativeDriver: true,
                 }).start();
             } else {
+                console.error('MyOrdersScreen: Неожиданный формат ответа:', response);
                 throw new Error(response.message || 'Ошибка при загрузке заказов');
             }
         } catch (err) {
@@ -395,13 +433,13 @@ export const MyOrdersScreen = () => {
                     initializeScreen();
                 }
 
-                // Автоматическое обновление каждую минуту для получения новых заказов
-                autoRefreshRef.current = setInterval(() => {
-                    if (isMountedRef.current && dataLoaded) {
-                        console.log('MyOrdersScreen: Автоматическое обновление заказов');
-                        loadOrdersRef.current?.(true);
-                    }
-                }, AUTO_REFRESH_INTERVAL);
+                // Автоматическое обновление отключено - WebSocket обеспечивает real-time обновления
+                // autoRefreshRef.current = setInterval(() => {
+                //     if (isMountedRef.current && dataLoaded) {
+                //         console.log('MyOrdersScreen: Автоматическое обновление заказов');
+                //         loadOrdersRef.current?.(true);
+                //     }
+                // }, AUTO_REFRESH_INTERVAL);
             }
 
             return () => {
@@ -454,19 +492,46 @@ export const MyOrdersScreen = () => {
         setSearchQuery('');
     }, []);
 
+    // Обработчики для альтернативных предложений
+    const handleChoicePress = useCallback((choices) => {
+        // Если передано одно предложение (старый формат), используем его
+        if (choices && !Array.isArray(choices)) {
+            navigation.navigate('OrderChoice', {
+                choiceId: choices.id,
+                orderId: choices.orderId
+            });
+            return;
+        }
+        
+        // Если передано несколько предложений, переходим к списку
+        if (Array.isArray(choices) && choices.length > 0) {
+            navigation.navigate('OrderChoicesList');
+        }
+    }, [navigation]);
+
+    const handleDismissChoiceBanner = useCallback(() => {
+        setShowChoiceBanner(false);
+    }, []);
+
+    // Обработчик для нажатия на разделенные заказы
+    const handleSplitOrderPress = useCallback((order) => {
+        if (isSplitOrder(order)) {
+            const originalNumber = getOriginalOrderNumber(order);
+            // Переходим к деталям оригинального заказа
+            navigation.navigate('OrderDetails', { 
+                orderId: order.id,
+                showSplitInfo: true,
+                originalOrderNumber: originalNumber
+            });
+        } else {
+            // Обычный заказ
+            handleOrderPress(order.id);
+        }
+    }, [isSplitOrder, getOriginalOrderNumber, navigation, handleOrderPress]);
+
     // Получаем прогресс статуса заказа (для прогресс-бара)
     const getStatusProgress = useCallback((status) => {
-        const statusOrder = [
-            ORDER_STATUSES.PENDING,
-            ORDER_STATUSES.CONFIRMED,
-            ORDER_STATUSES.IN_DELIVERY,
-            ORDER_STATUSES.DELIVERED
-        ];
-        
-        const currentIndex = statusOrder.indexOf(status);
-        if (currentIndex === -1) return 0;
-        
-        return (currentIndex + 1) / statusOrder.length;
+        return getOrderProgress(status) / 100; // Конвертируем в десятичное значение для анимации
     }, []);
 
     // Статусы для фильтра
@@ -501,11 +566,7 @@ export const MyOrdersScreen = () => {
         }
         
         const firstImage = product.images[0];
-        console.log('MyOrdersScreen getProductImage:', {
-            productName: product.name,
-            firstImage,
-            imageType: typeof firstImage
-        });
+
         
         let imageUrl = '';
         
@@ -536,7 +597,6 @@ export const MyOrdersScreen = () => {
         }
         
         const fullUrl = `${getBaseUrl()}${finalPath}`;
-        console.log('MyOrdersScreen: Сформированный URL:', fullUrl);
         
         return { uri: fullUrl };
     }, []);
@@ -686,9 +746,18 @@ export const MyOrdersScreen = () => {
                 ]}
             >
                 <TouchableOpacity
-                    onPress={() => handleOrderPress(item.id)}
+                    onPress={() => handleSplitOrderPress(item)}
                     activeOpacity={0.8}
                 >
+                    {/* Индикатор разделенного заказа */}
+                    {isSplitOrder(item) && (
+                        <SplitOrderIndicator 
+                            order={item}
+                            onPress={() => handleSplitOrderPress(item)}
+                            style={styles.splitOrderIndicator}
+                        />
+                    )}
+
                     {/* Заголовок карточки */}
                     <View style={styles.orderHeader}>
                         <View style={styles.orderMainInfo}>
@@ -727,7 +796,7 @@ export const MyOrdersScreen = () => {
                                 <View 
                                     style={[
                                         styles.progressFill, 
-                                        { width: (statusProgress * 100 / 100) * 300, backgroundColor: statusGradient[0] } // Исправлено с процентов на абсолютное значение
+                                        { width: `${statusProgress * 100}%`, backgroundColor: statusGradient[0] }
                                     ]} 
                                 />
                             </View>
@@ -952,6 +1021,15 @@ export const MyOrdersScreen = () => {
         <View>
             {/* Современный заголовок */}
             {renderModernHeader()}
+            
+            {/* Баннер с предложениями выбора */}
+            {hasActiveChoices && showChoiceBanner && (
+                <ChoiceNotificationBanner
+                    choices={choices}
+                    onPress={handleChoicePress}
+                    onDismiss={handleDismissChoiceBanner}
+                />
+            )}
             
             {/* Табы */}
             {orders.length > 0 && renderModernTabs()}
@@ -1706,5 +1784,9 @@ const styles = StyleSheet.create({
     },
     scrollContent: {
         padding: 16,
+    },
+    // Стили для разделенных заказов
+    splitOrderIndicator: {
+        marginBottom: 8,
     },
 });

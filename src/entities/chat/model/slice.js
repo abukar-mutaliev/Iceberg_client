@@ -384,14 +384,31 @@ export const fetchMessages = createAsyncThunk(
 
 export const sendText = createAsyncThunk(
     'chat/sendText',
-    async ({ roomId, content }, { rejectWithValue }) => {
+    async ({ roomId, content, temporaryId }, { rejectWithValue, dispatch, getState }) => {
       try {
         const form = new FormData();
         form.append('type', 'TEXT');
         form.append('content', content);
         const res = await ChatApi.sendMessage(roomId, form);
-        return res?.data?.data || res?.data;
+        const serverMessage = res?.data?.data?.message || res?.data?.message || res?.data?.data || res?.data;
+        
+        if (__DEV__) {
+          console.log('📤 sendText thunk completed:', {
+            temporaryId,
+            serverMessageId: serverMessage?.id,
+            roomId: serverMessage?.roomId
+          });
+        }
+        
+        return serverMessage;
       } catch (e) {
+        // Если есть temporaryId, помечаем сообщение как неудачное
+        if (temporaryId) {
+          if (__DEV__) {
+            console.log('❌ sendText failed, marking optimistic message as failed:', { temporaryId, error: e.message });
+          }
+          dispatch(markOptimisticMessageFailed({ temporaryId, error: e.message || 'Ошибка отправки сообщения' }));
+        }
         return rejectWithValue(e.message || 'Ошибка отправки сообщения');
       }
     }
@@ -496,7 +513,8 @@ export const createRoom = createAsyncThunk(
     async (formData, { rejectWithValue }) => {
       try {
         const res = await ChatApi.createRoom(formData);
-        return res?.data?.data || res?.data;
+        // Исправляем извлечение комнаты из ответа сервера
+        return res?.data?.data?.room || res?.data?.room || res?.data?.data || res?.data;
       } catch (e) {
         return rejectWithValue(e.message || 'Ошибка создания комнаты');
       }
@@ -508,7 +526,8 @@ export const updateRoom = createAsyncThunk(
     async ({ roomId, formData }, { rejectWithValue }) => {
       try {
         const res = await ChatApi.updateRoom(roomId, formData);
-        return res?.data?.data || res?.data;
+        // Исправляем извлечение комнаты из ответа сервера
+        return res?.data?.data?.room || res?.data?.room || res?.data?.data || res?.data;
       } catch (e) {
         return rejectWithValue(e.message || 'Ошибка обновления комнаты');
       }
@@ -586,8 +605,75 @@ const chatSlice = createSlice({
       const { roomId, userIds } = action.payload || {};
       state.typingByRoomId[roomId] = Array.isArray(userIds) ? userIds : [];
     },
+    // Добавляем optimistic сообщение немедленно в UI
+    addOptimisticMessage(state, action) {
+      const { roomId, message } = action.payload;
+      if (!roomId || !message) return;
+      
+      ensureRoomBucket(state, roomId);
+      
+      // Добавляем сообщение с флагом isOptimistic для отслеживания статуса
+      const optimisticMessage = {
+        ...message,
+        isOptimistic: true,
+        status: 'SENDING',
+        createdAt: new Date().toISOString(),
+      };
+      
+      if (__DEV__) {
+        console.log('➕ addOptimisticMessage: Adding to store:', {
+          temporaryId: message.temporaryId,
+          messageId: message.id,
+          roomId,
+          content: message.content
+        });
+      }
+      
+      upsertMessagesDesc(state.messages[roomId], [optimisticMessage]);
+      
+      // Обновляем lastMessage комнаты
+      const roomUpdate = { 
+        id: roomId, 
+        updatedAt: optimisticMessage.createdAt, 
+        lastMessage: optimisticMessage 
+      };
+      upsertRooms(state, [roomUpdate]);
+      
+      // Обновляем кэш
+      updateMessageCache(roomId, state.messages[roomId]);
+      
+      if (__DEV__) {
+        console.log('➕ addOptimisticMessage: Added successfully, store now has:', {
+          roomId,
+          messageIds: state.messages[roomId].ids,
+          temporaryMessages: state.messages[roomId].ids.filter(id => 
+            state.messages[roomId].byId[id]?.temporaryId
+          )
+        });
+      }
+    },
+    // Помечаем сообщение как ошибочное при неудачной отправке
+    markOptimisticMessageFailed(state, action) {
+      const { temporaryId, error } = action.payload;
+      if (!temporaryId) return;
+      
+      // Ищем сообщение во всех комнатах
+      Object.keys(state.messages).forEach(roomId => {
+        const bucket = state.messages[roomId];
+        if (!bucket) return;
+        
+        Object.keys(bucket.byId).forEach(messageId => {
+          const message = bucket.byId[messageId];
+          if (message?.temporaryId === temporaryId) {
+            message.status = 'FAILED';
+            message.error = error;
+            updateMessageCache(roomId, bucket);
+          }
+        });
+      });
+    },
     receiveSocketMessage(state, action) {
-      const { roomId, message } = action.payload || {};
+      const { roomId, message, currentUserId } = action.payload || {};
 
       if (!roomId || !message) {
         console.warn('⚠️ receiveSocketMessage: Invalid payload', action.payload);
@@ -601,6 +687,73 @@ const chatSlice = createSlice({
           console.log(`⚠️ receiveSocketMessage: Message ${message.id} already exists, skipping duplicate processing`);
         }
         return;
+      }
+      
+      // Проверяем, не является ли это наше собственное сообщение, которое уже обработано через HTTP
+      if (currentUserId && message.senderId === currentUserId) {
+        // Проверяем, есть ли уже сообщение с таким ID (обработанное через sendText.fulfilled)
+        if (state.messages[roomId]?.byId?.[message.id]) {
+          if (__DEV__) {
+            console.log('⚠️ receiveSocketMessage: Our own message already processed via HTTP, skipping WebSocket duplicate');
+          }
+          return;
+        }
+        
+        // Ищем оптимистичное сообщение с тем же содержимым (только если нет серверного сообщения)
+        const bucket = state.messages[roomId];
+        if (bucket) {
+          const optimisticMessage = bucket.ids
+            .map(id => bucket.byId[id])
+            .find(msg => 
+              msg?.isOptimistic && 
+              msg?.content === message.content &&
+              msg?.type === message.type
+            );
+          
+          if (optimisticMessage) {
+            if (__DEV__) {
+              console.log('🔄 receiveSocketMessage: Found matching optimistic message, updating via WebSocket');
+            }
+            
+            // Обновляем оптимистичное сообщение данными с сервера
+            const messageId = bucket.ids.find(id => bucket.byId[id] === optimisticMessage);
+            if (messageId) {
+              // Удаляем временное сообщение
+              delete bucket.byId[messageId];
+              const tempIndex = bucket.ids.indexOf(messageId);
+              if (tempIndex >= 0) {
+                bucket.ids.splice(tempIndex, 1);
+              }
+              
+              // Добавляем серверное сообщение
+              bucket.byId[message.id] = {
+                ...optimisticMessage,
+                ...message,
+                isOptimistic: false,
+                status: message.status || 'SENT'
+              };
+              
+              if (tempIndex >= 0) {
+                bucket.ids.splice(tempIndex, 0, message.id);
+              } else {
+                bucket.ids.push(message.id);
+              }
+              
+              // Обновляем lastMessage если это было последнее сообщение
+              if (state.rooms.byId[roomId]?.lastMessage?.id === optimisticMessage.id) {
+                const roomUpdate = { 
+                  id: roomId, 
+                  updatedAt: message.createdAt, 
+                  lastMessage: bucket.byId[message.id]
+                };
+                upsertRooms(state, [roomUpdate]);
+              }
+              
+              updateMessageCache(roomId, bucket);
+              return;
+            }
+          }
+        }
       }
 
       if (__DEV__) {
@@ -942,7 +1095,135 @@ const chatSlice = createSlice({
         .addCase(sendText.fulfilled, (state, action) => {
           const message = action.payload?.message || action.payload;
           const roomId = message?.roomId;
+          const temporaryId = action.meta.arg.temporaryId;
+          
+          if (__DEV__) {
+            console.log('📤 sendText.fulfilled:', { 
+              temporaryId, 
+              messageId: message?.id, 
+              roomId,
+              hasTemporaryId: !!temporaryId
+            });
+          }
+          
+          // Если использовались оптимистичные обновления, находим и обновляем временное сообщение
+          if (temporaryId && roomId && state.messages[roomId]) {
+            if (__DEV__) {
+              console.log('🔍 sendText.fulfilled: Searching for optimistic message:', {
+                temporaryId,
+                roomId,
+                availableMessageIds: state.messages[roomId].ids,
+                messagesWithTempIds: state.messages[roomId].ids.map(id => ({
+                  id,
+                  temporaryId: state.messages[roomId].byId[id]?.temporaryId,
+                  isOptimistic: state.messages[roomId].byId[id]?.isOptimistic,
+                  content: state.messages[roomId].byId[id]?.content
+                }))
+              });
+            }
+            
+            // Ищем временное сообщение
+            // Временные сообщения используют temporaryId как ключ в store
+            let foundMessageKey = null;
+            
+            // Сначала пробуем найти напрямую по temporaryId как ключу
+            if (state.messages[roomId].byId[temporaryId]) {
+              foundMessageKey = temporaryId;
+            } else {
+              // Если не найдено, ищем по полю temporaryId
+              for (const messageId of state.messages[roomId].ids) {
+                const msg = state.messages[roomId].byId[messageId];
+                if (msg?.temporaryId === temporaryId) {
+                  foundMessageKey = messageId;
+                  break;
+                }
+              }
+            }
+            
+            if (foundMessageKey) {
+              if (__DEV__) {
+                console.log('🔄 sendText.fulfilled: Found optimistic message to update:', {
+                  temporaryId,
+                  foundMessageKey,
+                  newMessageId: message.id
+                });
+              }
+              
+              // Заменяем временное сообщение на серверное
+              const oldMessage = state.messages[roomId].byId[foundMessageKey];
+              const updatedMessage = {
+                ...oldMessage,
+                ...message,
+                id: message.id, // Новый серверный ID
+                temporaryId: undefined, // Убираем временный ID
+                isOptimistic: false,
+                status: message.status || 'SENT'
+              };
+              
+              // Удаляем старое временное сообщение
+              delete state.messages[roomId].byId[foundMessageKey];
+              const tempIndex = state.messages[roomId].ids.indexOf(foundMessageKey);
+              if (tempIndex >= 0) {
+                state.messages[roomId].ids.splice(tempIndex, 1);
+              }
+              
+              // Добавляем обновленное сообщение с новым ID
+              state.messages[roomId].byId[message.id] = updatedMessage;
+              
+              // Вставляем новое сообщение в то же место в массиве ids
+              if (tempIndex >= 0) {
+                state.messages[roomId].ids.splice(tempIndex, 0, message.id);
+              } else {
+                state.messages[roomId].ids.push(message.id);
+              }
+              
+              // Обновляем lastMessage если это было последнее сообщение
+              if (state.rooms.byId[roomId]?.lastMessage?.temporaryId === temporaryId || 
+                  state.rooms.byId[roomId]?.lastMessage?.id === foundMessageKey) {
+                const roomUpdate = { 
+                  id: roomId, 
+                  updatedAt: updatedMessage.createdAt, 
+                  lastMessage: updatedMessage 
+                };
+                upsertRooms(state, [roomUpdate]);
+              }
+              
+              updateMessageCache(roomId, state.messages[roomId]);
+              
+              if (__DEV__) {
+                console.log('✅ sendText.fulfilled: Successfully replaced optimistic message:', {
+                  temporaryId,
+                  oldKey: foundMessageKey,
+                  newId: message.id,
+                  finalMessageIds: state.messages[roomId].ids,
+                  temporaryMessagesLeft: state.messages[roomId].ids.filter(id => 
+                    state.messages[roomId].byId[id]?.temporaryId
+                  )
+                });
+              }
+              
+              return;
+            } else {
+              if (__DEV__) {
+                console.warn('⚠️ sendText.fulfilled: Could not find optimistic message:', {
+                  temporaryId,
+                  roomId,
+                  availableMessages: state.messages[roomId].ids.map(id => ({
+                    id,
+                    temporaryId: state.messages[roomId].byId[id]?.temporaryId
+                  }))
+                });
+              }
+            }
+          }
+          
+          // Обрабатываем только если не было оптимистичного обновления или не нашли временное сообщение
           if (!roomId) return;
+          
+          if (__DEV__) {
+            console.log('📤 sendText.fulfilled: Adding new message (no optimistic update)');
+          }
+          
           upsertRooms(state, [{ id: roomId, updatedAt: message.createdAt, lastMessage: message }]);
           ensureRoomBucket(state, roomId);
           upsertMessagesDesc(state.messages[roomId], [message]);
@@ -1149,5 +1430,5 @@ const chatSlice = createSlice({
   },
 });
 
-export const { setActiveRoom, setTyping, receiveSocketMessage, receiveMessage, receiveMessageDeleted, updateMessageStatus, updateUserOnlineStatus, setConnectionStatus } = chatSlice.actions;
+export const { setActiveRoom, setTyping, receiveSocketMessage, receiveMessage, receiveMessageDeleted, updateMessageStatus, updateUserOnlineStatus, setConnectionStatus, addOptimisticMessage, markOptimisticMessageFailed } = chatSlice.actions;
 export default chatSlice.reducer;

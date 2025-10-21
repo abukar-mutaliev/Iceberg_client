@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Alert } from 'react-native';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { fetchProfile } from '@entities/profile';
 import { logout } from '@entities/auth';
 import {
@@ -12,6 +12,7 @@ import IconAdmin from "@shared/ui/Icon/IconAdmin";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { FavouritesIcon } from '@shared/ui/Icon/TabBarIcons';
 import { getPermissionsByRole, hasPermission } from '@shared/config/permissions';
+import { selectWaitingStockCountCombined, selectSupplierWaitingStockCount } from '@entities/order';
 
 export const useProfileInfo = (isAuthenticated, tokens, currentUser, navigation) => {
     const dispatch = useDispatch();
@@ -24,7 +25,43 @@ export const useProfileInfo = (isAuthenticated, tokens, currentUser, navigation)
     const userPermissions = currentUser?.role ? getPermissionsByRole(currentUser.role) : [];
     const isAdmin = currentUser?.role === 'ADMIN';
     const isEmployee = currentUser?.role === 'EMPLOYEE';
+    const isSupplier = currentUser?.role === 'SUPPLIER';
     const hasAdminAccess = hasPermission(userPermissions, 'access:admin');
+    
+    // Получаем ID поставщика
+    const supplierId = currentUser?.supplier?.id;
+    
+    // Получаем количество заказов WAITING_STOCK (комбинированный селектор)
+    const waitingStockCount = useSelector(selectWaitingStockCountCombined);
+    const supplierWaitingStockCount = useSelector(state => 
+        selectSupplierWaitingStockCount(state, supplierId)
+    );
+    
+    // Вычисляем количество для бейджа на кнопке "Заказы"
+    const ordersBadgeCount = useMemo(() => {
+        const processingRole = currentUser?.employee?.processingRole;
+        
+        // Для администраторов - показываем заказы WAITING_STOCK
+        if (isAdmin && waitingStockCount > 0) {
+            return waitingStockCount;
+        }
+        
+        // Для обычных сотрудников (SUPERVISOR и без processingRole)
+        // НЕ показываем для PICKER и COURIER
+        if (isEmployee && waitingStockCount > 0) {
+            const restrictedRoles = ['PICKER', 'COURIER'];
+            if (!restrictedRoles.includes(processingRole)) {
+                return waitingStockCount;
+            }
+        }
+        
+        // Для поставщиков
+        if (isSupplier && supplierWaitingStockCount > 0) {
+            return supplierWaitingStockCount;
+        }
+        
+        return 0;
+    }, [isAdmin, isEmployee, isSupplier, currentUser?.employee?.processingRole, waitingStockCount, supplierWaitingStockCount]);
 
     useEffect(() => {
         setIsProfileLoaded(!!currentUser);
@@ -74,15 +111,16 @@ export const useProfileInfo = (isAuthenticated, tokens, currentUser, navigation)
     // Формируем пункты меню в зависимости от роли
     let menuItems = [...baseMenuItems];
 
-    // Добавляем пункт "Заказы" для админов, сотрудников и водителей
-    if (canViewOrders) {
+    // Добавляем пункт "Заказы" для админов, сотрудников, водителей и поставщиков
+    if (canViewOrders || isSupplier) {
         menuItems.push({
             id: 'orders',
             title: 'Заказы',
             icon: <Icon name="receipt-long" size={24} color="#666666" />,
+            badgeCount: ordersBadgeCount,
             onPress: () => {
-                // Для админов и сотрудников переходим к StaffOrders через AdminStack
-                if (isAdmin || isEmployee) {
+                // Для админов, сотрудников и поставщиков переходим к StaffOrders через AdminStack
+                if (isAdmin || isEmployee || isSupplier) {
                     navigation.navigate('Admin', {
                         screen: 'StaffOrders',
                         params: { fromScreen: 'Profile' }

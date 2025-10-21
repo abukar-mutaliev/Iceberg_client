@@ -13,15 +13,15 @@ export const ProfileHeader = () => {
 
     const componentKey = `profile-header-${currentUser?.id || 'no-user'}`;
 
-
-
-
     const getUserFullName = () => {
         if (!profile || !currentUser) return 'Пользователь';
 
         // Проверяем соответствие ID профиля и пользователя
-        if (profile.id !== currentUser.id) {
-            console.warn('Несоответствие ID профиля и пользователя!');
+        if (profile.id && currentUser.id && profile.id !== currentUser.id) {
+            console.warn('Несоответствие ID профиля и пользователя!', {
+                profileId: profile.id,
+                userId: currentUser.id
+            });
         }
 
         const { role } = currentUser;

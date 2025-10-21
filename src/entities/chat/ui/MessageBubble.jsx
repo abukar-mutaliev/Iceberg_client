@@ -20,6 +20,25 @@ const Avatar = ({uri}) => {
 };
 
 const StatusTicks = React.memo(({status}) => {
+    // Отправляется (оптимистичное сообщение) - как в WhatsApp
+    if (status === 'SENDING') {
+        return (
+            <View style={styles.ticksContainer}>
+                <Text style={[styles.tick, styles.tickSending]}>✓</Text>
+            </View>
+        );
+    }
+    
+    // Ошибка отправки
+    if (status === 'FAILED') {
+        return (
+            <View style={styles.ticksContainer}>
+                <Text style={[styles.tick, styles.tickFailed]}>❌</Text>
+            </View>
+        );
+    }
+    
+    // Прочитано
     if (status === 'read' || status === 'READ') {
         return (
             <View style={styles.ticksContainer}>
@@ -28,6 +47,8 @@ const StatusTicks = React.memo(({status}) => {
             </View>
         );
     }
+    
+    // Доставлено
     if (status === 'DELIVERED') {
         return (
             <View style={styles.ticksContainer}>
@@ -36,6 +57,8 @@ const StatusTicks = React.memo(({status}) => {
             </View>
         );
     }
+    
+    // Отправлено
     if (status === 'SENT') {
         return (
             <View style={styles.ticksContainer}>
@@ -44,6 +67,7 @@ const StatusTicks = React.memo(({status}) => {
         );
     }
 
+    // По умолчанию - одна галочка
     return (
         <View style={styles.ticksContainer}>
             <Text style={[styles.tick]}>✓</Text>
@@ -675,6 +699,15 @@ const styles = StyleSheet.create({
     },
     tickRead: {
         color: '#4FC3F7',
+    },
+    tickSending: {
+        color: '#B0B0B0', // Серый для отправки (как в WhatsApp)
+        fontSize: 10,
+        opacity: 0.7,
+    },
+    tickFailed: {
+        color: '#F44336', // Красный для ошибки
+        fontSize: 12,
     },
 
     ownTailContainer: {

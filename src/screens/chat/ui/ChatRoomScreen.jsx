@@ -505,7 +505,13 @@ export const ChatRoomScreen = ({route, navigation}) => {
                             data={messages}
                             extraData={[partnerAvatar, currentUserId, messages.length, selectedMessages.size]}
                             inverted
-                            keyExtractor={(item) => String(item.id)}
+                            keyExtractor={(item) => {
+                                // Безопасное извлечение уникального ключа
+                                if (item.temporaryId) {
+                                    return `temp_${item.temporaryId}`;
+                                }
+                                return `msg_${item.id}`;
+                            }}
                             renderItem={renderItem}
                             onEndReachedThreshold={0.2}
                             onEndReached={onEndReached}

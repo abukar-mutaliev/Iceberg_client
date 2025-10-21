@@ -23,15 +23,17 @@ export const CONSTANTS = {
   
   // Status mappings - обновлено для пропуска этапа упаковки
   ROLE_STATUS_MAPPING: {
-      'PICKER': ['PENDING'], // Сборщик работает с новыми заказами
+      'PICKER': ['PENDING', 'CONFIRMED'], // Сборщик работает с новыми и подтвержденными заказами (БЕЗ WAITING_STOCK!)
       'PACKER': [], // Этап упаковки убран - сборщик сразу передает курьерам
-      'COURIER': ['IN_DELIVERY'] // Курьеры работают с заказами в доставке
+      'COURIER': ['IN_DELIVERY'] // Курьеры работают с заказами в доставке (БЕЗ WAITING_STOCK!)
   },
 
   ROLE_HISTORY_MAPPING: {
-      'PICKER': ['IN_DELIVERY', 'DELIVERED', 'CANCELLED', 'RETURNED'], // Сборщик видит историю с момента передачи курьерам
+      'PICKER': ['DELIVERED', 'CANCELLED', 'RETURNED'], // Сборщик видит только завершенные заказы
       'PACKER': [], // Этап упаковки убран
-      'COURIER': ['DELIVERED', 'CANCELLED', 'RETURNED'] // Курьеры видят завершенные заказы
+      'COURIER': ['DELIVERED', 'CANCELLED', 'RETURNED'], // Курьеры видят завершенные заказы
+      'SUPERVISOR': ['DELIVERED', 'CANCELLED', 'RETURNED'], // Обычные сотрудники видят завершенные заказы
+      'null': ['DELIVERED', 'CANCELLED', 'RETURNED'] // По умолчанию для сотрудников без processingRole
   },
   
   COMPLETED_STATUSES: ['DELIVERED', 'CANCELLED', 'RETURNED'],

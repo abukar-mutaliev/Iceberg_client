@@ -84,6 +84,29 @@ export const fetchCart = createAsyncThunk(
                 return rejectWithValue('Корзина недоступна для данной роли');
             }
 
+            // Для неавторизованных пользователей НЕ делаем запрос к серверу
+            if (!isAuthenticated) {
+                console.log(`🛒 fetchCart: Guest user detected, returning local cart state`);
+                return { 
+                    data: {
+                        items: state.cart?.items || [],
+                        summary: {
+                            totalBoxes: state.cart?.totalBoxes || 0,
+                            totalItems: state.cart?.totalItems || 0,
+                            totalAmount: state.cart?.totalAmount || 0,
+                            totalSavings: state.cart?.totalSavings || 0,
+                            itemsCount: state.cart?.itemsCount || 0
+                        },
+                        clientType: 'RETAIL',
+                        hasUnavailableItems: false,
+                        unavailableCount: 0,
+                        removedItems: [],
+                        updatedItems: []
+                    }, 
+                    fromCache: true 
+                };
+            }
+
             // При forceRefresh всегда делаем запрос к серверу, игнорируя кэш
             if (!forceRefresh && isCacheValid(state.cart.lastFetchTime)) {
                 return { data: state.cart, fromCache: true };
@@ -121,6 +144,19 @@ export const fetchCartStats = createAsyncThunk(
                 return rejectWithValue('Статистика корзины недоступна для данной роли');
             }
 
+            // Для неавторизованных пользователей возвращаем локальную статистику
+            if (!isAuthenticated) {
+                console.log(`🛒 fetchCartStats: Guest user detected, returning local cart stats`);
+                return {
+                    totalBoxes: state.cart?.totalBoxes || 0,
+                    totalItems: state.cart?.totalItems || 0,
+                    totalAmount: state.cart?.totalAmount || 0,
+                    totalSavings: state.cart?.totalSavings || 0,
+                    itemsCount: state.cart?.itemsCount || 0,
+                    clientType: 'RETAIL'
+                };
+            }
+
             const response = await CartService.getCartStats();
 
             if (response.status === 'success') {
@@ -137,8 +173,31 @@ export const fetchCartStats = createAsyncThunk(
 
 export const fetchDetailedCartStats = createAsyncThunk(
     'cart/fetchDetailedCartStats',
-    async (_, { rejectWithValue }) => {
+    async (_, { rejectWithValue, getState }) => {
         try {
+            const state = getState();
+            const isAuthenticated = state.auth?.user?.id;
+            const userRole = state.auth?.user?.role;
+
+            // Проверяем, доступна ли корзина для текущей роли
+            const isCartAvailable = userRole === 'CLIENT' || !isAuthenticated;
+
+            if (!isCartAvailable) {
+                console.log(`🛒 fetchDetailedCartStats: Detailed cart stats not available for role ${userRole || 'unknown'}, skipping fetch`);
+                return rejectWithValue('Детальная статистика корзины недоступна для данной роли');
+            }
+
+            // Для неавторизованных пользователей возвращаем базовую статистику
+            if (!isAuthenticated) {
+                console.log(`🛒 fetchDetailedCartStats: Guest user detected, returning basic stats`);
+                return {
+                    bySupplier: {},
+                    byCategory: {},
+                    recommendations: [],
+                    warnings: []
+                };
+            }
+
             const response = await CartService.getDetailedCartStats();
 
             if (response.status === 'success') {
@@ -724,10 +783,8 @@ const cartSlice = createSlice({
                 state.loading = false;
                 const { data, fromCache } = action.payload;
 
-                console.log(`🛒 fetchCart.fulfilled: fromCache=${fromCache}, items=${data?.items?.length || 0}, totalAmount=${data?.summary?.totalAmount || 0}`);
 
                 if (!fromCache) {
-                    console.log('🛒 fetchCart.fulfilled: Updating state with fresh data from server');
                     // Сортируем товары для стабильного порядка
                     const sortedItems = (data.items || []).sort((a, b) => {
                         // Сначала сортируем по ID записи в корзине для стабильности
@@ -785,7 +842,6 @@ const cartSlice = createSlice({
                 const { productId, quantity, stats, guestCart, action: actionType, product } = action.payload;
                 state.addingItems = removeFromArray(state.addingItems, productId);
 
-                console.log(`🛒 addToCart.fulfilled: Added ${quantity} items of product ${productId}, action: ${actionType}`);
 
                 if (guestCart) {
                     // Для гостевой корзины обновляем items напрямую с сортировкой
@@ -819,7 +875,6 @@ const cartSlice = createSlice({
                                 quantity: state.items[existingItemIndex].quantity + quantity,
                                 updatedAt: Date.now()
                             };
-                            console.log(`🛒 addToCart.fulfilled: Updated existing item, quantity: ${oldQuantity} -> ${state.items[existingItemIndex].quantity}`);
                         } else {
                             // Добавляем новую позицию
                             const newItem = {
@@ -841,7 +896,6 @@ const cartSlice = createSlice({
                                 addedAt: Date.now()
                             };
                             state.items.push(newItem);
-                            console.log(`🛒 addToCart.fulfilled: Added new item, quantity: ${quantity}, price: ${product.price}, boxPrice: ${product.boxPrice}, itemsPerBox: ${product.itemsPerBox}`);
                         }
                     }
 
@@ -852,22 +906,18 @@ const cartSlice = createSlice({
                         state.totalAmount = stats.totalAmount || 0;
                         state.totalSavings = stats.totalSavings || 0;
                         state.itemsCount = stats.itemsCount || 0;
-                        console.log(`🛒 addToCart.fulfilled: Server stats applied, totalAmount: ${stats.totalAmount}`);
                     } else {
                         // Если нет статистики с сервера, пересчитываем локально
-                        console.log(`🛒 addToCart.fulfilled: Calculating local stats, items count: ${state.items.length}`);
                         const calculatedStats = calculateCartStats(state.items, state.clientType);
                         state.totalBoxes = calculatedStats.totalBoxes;
                         state.totalItems = calculatedStats.totalItems;
                         state.totalAmount = calculatedStats.totalAmount;
                         state.totalSavings = calculatedStats.totalSavings;
                         state.itemsCount = calculatedStats.itemsCount;
-                        console.log(`🛒 addToCart.fulfilled: Local stats calculated, totalAmount: ${calculatedStats.totalAmount}, totalBoxes: ${calculatedStats.totalBoxes}`);
                     }
 
                     // Сбрасываем кэш чтобы при следующем входе в корзину данные обновились с сервера
                     state.lastFetchTime = null;
-                    console.log('🛒 addToCart.fulfilled: Cache cleared (lastFetchTime = null)');
                 }
             })
             .addCase(addToCart.rejected, (state, action) => {
@@ -883,6 +933,7 @@ const cartSlice = createSlice({
                 const itemId = action.meta.arg.itemId;
                 state.updatingItems = addToArray(state.updatingItems, itemId);
                 state.error = null;
+                // Убрали оптимистическое обновление - теперь это делается локально в хуке
             })
             .addCase(updateCartItem.fulfilled, (state, action) => {
                 const { itemId, quantity, guestCart, priceInfo } = action.payload;
@@ -924,7 +975,7 @@ const cartSlice = createSlice({
                 const itemId = action.meta.arg.itemId;
                 state.updatingItems = removeFromArray(state.updatingItems, itemId);
                 state.error = action.payload;
-                // Сбрасываем кэш в случае ошибки
+                // Откат теперь происходит локально в хуке
                 state.lastFetchTime = null;
             })
 
@@ -1031,18 +1082,40 @@ const cartSlice = createSlice({
             })
             .addCase(checkout.fulfilled, (state, action) => {
                 state.loading = false;
-                state.items = [];
-                state.totalItems = 0;
-                state.totalAmount = 0;
-                state.totalSavings = 0;
-                state.itemsCount = 0;
-                state.hasUnavailableItems = false;
-                state.unavailableCount = 0;
-                state.isValidated = false;
-                state.validationIssues = [];
-                state.canProceedToCheckout = false;
-                state.checkoutData = null;
-                state.lastFetchTime = null;
+                
+                // Проверяем, требуется ли сохранить корзину
+                // Корзина НЕ очищается в следующих случаях:
+                // 1. Требуется выбор клиента (товары недоступны, нужна замена/ожидание)
+                // 2. Онлайн оплата - корзина очистится после успешной оплаты в PaymentScreen
+                const requiresClientChoice = action.payload?.order?.requiresClientChoice;
+                const orderStatus = action.payload?.order?.status;
+                const isOnlinePayment = orderStatus === 'PENDING_PAYMENT';
+                
+                const shouldKeepCart = requiresClientChoice || isOnlinePayment;
+                
+                if (shouldKeepCart) {
+                    console.log('🛒 Корзина НЕ очищается:', {
+                        requiresClientChoice,
+                        isOnlinePayment,
+                        orderStatus
+                    });
+                    // Сбрасываем кэш для возможной перезагрузки
+                    state.lastFetchTime = null;
+                } else {
+                    console.log('🗑️ Корзина очищается - заказ успешно оформлен (не онлайн оплата)');
+                    state.items = [];
+                    state.totalItems = 0;
+                    state.totalAmount = 0;
+                    state.totalSavings = 0;
+                    state.itemsCount = 0;
+                    state.hasUnavailableItems = false;
+                    state.unavailableCount = 0;
+                    state.isValidated = false;
+                    state.validationIssues = [];
+                    state.canProceedToCheckout = false;
+                    state.checkoutData = null;
+                    state.lastFetchTime = null;
+                }
             })
             .addCase(checkout.rejected, (state, action) => {
                 state.loading = false;

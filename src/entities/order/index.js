@@ -26,6 +26,7 @@ export { default as orderProcessingReducer } from './model/slice';
 export {
     fetchMyOrders,
     fetchStaffOrders,
+    fetchOrderCounts,
     fetchOrderDetails,
     fetchOrdersStats,
     updateOrderStatus,
@@ -37,7 +38,7 @@ export {
     exportOrders,
     clearError,
     clearSpecificError,
-    clearCache,  
+    clearCache,
     setStaffOrdersFilters,
     resetStaffOrdersFilters,
     addNotification,
@@ -45,7 +46,9 @@ export {
     clearNotifications,
     updatePreferences,
     updateOrderInList,
-    removeOrderFromList
+    removeOrderFromList,
+    setLocalOrderAction,
+    clearLocalOrderAction
 
 } from './model/slice';
 
@@ -66,7 +69,11 @@ export {
     selectOrderAccessRights,
     selectOrdersDashboardData,
     selectLocalOrderActions,
-    selectHasLocalOrderAction
+    selectHasLocalOrderAction,
+    selectWaitingStockCount,
+    selectWaitingStockCountFromCounts,
+    selectWaitingStockCountCombined,
+    selectSupplierWaitingStockCount
 } from './model/selectors';
 
 // Хуки
@@ -87,12 +94,30 @@ export { useOrderFiltering } from './hooks/useOrderFiltering';
 
 export { useOrderNotifications as useOrderNotificationsNew } from './hooks/useOrderNotifications';
 
+// Хуки для альтернативных предложений
+export { useOrderAlternatives, useOrderChoice } from './hooks/useOrderAlternatives';
+
+// Хуки для разделенных заказов
+export { useSplitOrders } from './hooks/useSplitOrders';
+
+// Хук для фоновой загрузки счетчиков
+export { useOrderCountsBackground } from './hooks/useOrderCountsBackground';
+
 export { OrderCard } from './ui/OrderCard';
 export { default as OrderNotificationTester } from './ui/OrderNotificationTester';
+
+// UI компоненты для альтернативных предложений
+export { OrderChoiceCard } from './ui/OrderChoiceCard';
+export { ChoiceNotificationBanner } from './ui/ChoiceNotificationBanner';
+export { WaitingStockIndicator } from './ui/WaitingStockIndicator';
+export { WaitingStockBadge } from './ui/WaitingStockBadge';
+export { SplitOrderIndicator } from './ui/SplitOrderIndicator';
+export { SplitOrderInfo } from './ui/SplitOrderInfo';
 
 // API
 export { OrderApi } from './api';
 export { OrderNotificationApi } from './api/orderNotificationApi';
+export { OrderAlternativesApi } from './api/orderAlternativesApi';
 
 // Утилиты
 export {
@@ -112,6 +137,17 @@ export {
 
 // Константы
 export { CONSTANTS } from './lib/constants';
+
+// Константы для альтернативных предложений
+export {
+    CHOICE_TYPES,
+    CHOICE_STATUS,
+    ALTERNATIVE_TYPES,
+    CHOICE_TYPE_LABELS,
+    ALTERNATIVE_TYPE_LABELS,
+    ALTERNATIVE_TYPE_ICONS,
+    ALTERNATIVE_TYPE_COLORS
+} from './api/orderAlternativesApi';
 
 export { orderStateHelpers } from './lib/orderStateHelpers';
 

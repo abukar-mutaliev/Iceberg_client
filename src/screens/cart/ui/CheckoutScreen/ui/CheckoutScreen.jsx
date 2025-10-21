@@ -10,7 +10,10 @@ import {
     ActivityIndicator,
     KeyboardAvoidingView,
     Platform,
+    Alert,
 } from 'react-native';
+import { CommonActions } from '@react-navigation/native';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import {
     Color,
     FontFamily
@@ -20,7 +23,6 @@ import { CustomTextInput } from '@shared/ui/CustomTextInput/CustomTextInput';
 import { CartService, clearCart, clearCartCache } from '@entities/cart';
 import { AddressPickerModal, DeliveryAddressApi } from '@entities/deliveryAddress';
 import { useDispatch } from 'react-redux';
-import { Toast } from '@shared/ui/Toast';
 
 const normalize = (size) => {
     const scale = 375 / 375;
@@ -38,35 +40,36 @@ export const CheckoutScreen = ({ navigation, route }) => {
     const [formData, setFormData] = useState({
         comment: '',
         expectedDeliveryDate: null,
-        paymentMethod: 'CASH'
+        paymentMethod: 'ONLINE' // Только онлайн оплата
     });
-    const [showSuccessToast, setShowSuccessToast] = useState(false);
-    const [orderNumber, setOrderNumber] = useState('');
 
-    // Обработчик скрытия Toast и навигации
-    const handleToastHide = () => {
-        setShowSuccessToast(false);
-        navigation.navigate('MainTab', {
-            screen: 'Cart',
-            params: { refresh: true }
-        });
-    };
 
     useEffect(() => {
         const loadDefaultAddress = async () => {
             try {
                 setAddressLoading(true);
                 const response = await DeliveryAddressApi.getDefaultAddress();
-                const defaultAddress = response.data || response;
                 
-                if (defaultAddress) {
-                    setSelectedAddress(defaultAddress);
-                    console.log('✅ Default address loaded:', defaultAddress);
-                } else {
-                    console.log('ℹ️ No default address found');
+                // Безопасная обработка ответа - проверяем все возможные варианты структуры
+                let defaultAddress = null;
+                if (response && response.data !== null && response.data !== undefined) {
+                    defaultAddress = response.data;
+                } else if (response && response.data === null) {
+                    // Адрес по умолчанию не установлен
+                    defaultAddress = null;
+                } else if (response && !response.data) {
+                    // Прямой ответ без обертки data
+                    defaultAddress = response;
                 }
+                
+                        if (defaultAddress) {
+                            setSelectedAddress(defaultAddress);
+                        } else {
+                            setSelectedAddress(null);
+                        }
             } catch (error) {
                 console.error('❌ Error loading default address:', error);
+                setSelectedAddress(null);
             } finally {
                 setAddressLoading(false);
             }
@@ -84,7 +87,6 @@ export const CheckoutScreen = ({ navigation, route }) => {
 
     const handleAddressSelected = (address) => {
         setSelectedAddress(address);
-        console.log('✅ Address selected:', address);
         setShowAddressPicker(false);
     };
 
@@ -96,30 +98,51 @@ export const CheckoutScreen = ({ navigation, route }) => {
 
         setLoading(true);
         try {
+            console.log('✅ Создание заказа перед оплатой');
             const result = await CartService.checkout({
                 addressId: selectedAddress.id,
-                deliveryAddress: `${selectedAddress.title}: ${selectedAddress.address}`,
                 comment: formData.comment,
                 expectedDeliveryDate: formData.expectedDeliveryDate,
-                paymentMethod: formData.paymentMethod
+                paymentMethod: formData.paymentMethod,
+                usePreauthorization: true // Включаем предавторизацию по умолчанию
             });
-
 
             const order = result.data?.order;
 
-            // Очищаем корзину после успешного создания заказа
-            try {
-                await dispatch(clearCart()).unwrap();
-                dispatch(clearCartCache()); // Синхронный action, без unwrap
-                console.log('✅ Cart cleared successfully after order creation');
-            } catch (error) {
-                console.error('❌ Error clearing cart after order:', error);
-                // Продолжаем выполнение даже если очистка корзины не удалась
+            // Проверяем, требуется ли выбор клиента
+            if (order?.requiresClientChoice) {
+                console.log('⚠️ Требуется выбор клиента, переход к OrderChoice');
+                
+                // НЕ очищаем корзину - она может понадобиться для замены товаров
+                
+                // Переходим к экрану выбора альтернатив
+                setTimeout(() => {
+                    navigation.navigate('OrderChoice', {
+                        choiceId: order.clientChoiceId,
+                        orderId: order.id,
+                        fromCheckout: true
+                    });
+                }, 100);
+                return;
             }
 
-            // Сохраняем номер заказа и показываем Toast
-            setOrderNumber(order?.orderNumber || 'N/A');
-            setShowSuccessToast(true);
+            // Обычное завершение заказа - переходим к оплате
+            console.log('💳 Заказ создан, переход к оплате', {
+                orderId: order?.id,
+                orderNumber: order?.orderNumber,
+                totalAmount: order?.totalAmount
+            });
+
+            // НЕ очищаем корзину - она очистится после успешной оплаты в PaymentScreen
+            
+            // Переходим к экрану оплаты
+            navigation.navigate('PaymentScreen', {
+                orderId: order?.id,
+                orderNumber: order?.orderNumber,
+                totalAmount: order?.totalAmount,
+                usePreauthorization: false, // Для обычных заказов без предавторизации
+                returnScreen: 'MyOrders'
+            });
 
         } catch (error) {
             console.error('❌ Checkout error:', error);
@@ -261,50 +284,48 @@ export const CheckoutScreen = ({ navigation, route }) => {
                             onChangeText={(value) => handleFieldChange('comment', value)}
                             placeholder="Дополнительные пожелания (необязательно)"
                             multiline
-                            numberOfLines={2}
+                            numberOfLines={3}
                             style={styles.textArea}
+                            inputStyle={styles.textAreaInput}
+                            labelStyle={styles.textAreaLabel}
                         />
                     </View>
 
                     {/* Способ оплаты */}
                     <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Способ оплаты</Text>
-                        <View style={styles.paymentOptions}>
+                        <View style={styles.sectionHeader}>
+                            <Text style={styles.sectionTitle}>Способ оплаты</Text>
                             <TouchableOpacity
-                                style={[
-                                    styles.paymentOption,
-                                    formData.paymentMethod === 'CASH' && styles.paymentOptionSelected
-                                ]}
-                                onPress={() => handleFieldChange('paymentMethod', 'CASH')}
+                                style={styles.infoButton}
+                                onPress={() => navigation.navigate('PreauthorizationInfo', {
+                                    orderAmount: stats.finalPrice || stats.totalAmount || 0,
+                                    orderNumber: 'новый заказ'
+                                })}
                             >
-                                <View style={[
-                                    styles.radio,
-                                    formData.paymentMethod === 'CASH' && styles.radioSelected
-                                ]}>
-                                    {formData.paymentMethod === 'CASH' && (
-                                        <View style={styles.radioDot} />
-                                    )}
-                                </View>
-                                <Text style={styles.paymentText}>Наличными при доставке</Text>
+                                <Icon name="info-outline" size={20} color="#667eea" />
+                                <Text style={styles.infoButtonText}>Как это работает?</Text>
                             </TouchableOpacity>
+                        </View>
 
-                            <TouchableOpacity
-                                style={[
-                                    styles.paymentOption,
-                                    formData.paymentMethod === 'CARD' && styles.paymentOptionSelected
-                                ]}
-                                onPress={() => handleFieldChange('paymentMethod', 'CARD')}
-                            >
-                                <View style={[
-                                    styles.radio,
-                                    formData.paymentMethod === 'CARD' && styles.radioSelected
-                                ]}>
-                                    {formData.paymentMethod === 'CARD' && (
-                                        <View style={styles.radioDot} />
-                                    )}
+                        {/* Онлайн оплата */}
+                        <View style={styles.onlinePaymentInfo}>
+                            <View style={styles.paymentMethodCard}>
+                                <Icon name="payment" size={24} color="#667eea" />
+                                <View style={styles.paymentMethodContent}>
+                                    <Text style={styles.paymentMethodTitle}>Онлайн оплата</Text>
+                                    <Text style={styles.paymentMethodDescription}>
+                                        Безопасная оплата через ЮКасса
+                                    </Text>
                                 </View>
-                                <Text style={styles.paymentText}>Картой при доставке</Text>
-                            </TouchableOpacity>
+                            </View>
+
+                            {/* Информация о предавторизации */}
+                            <View style={styles.preauthorizationInfo}>
+                                <Icon name="security" size={16} color="#28a745" />
+                                <Text style={styles.preauthorizationText}>
+                                    Средства будут заблокированы на карте, но списаны только после подтверждения наличия товаров
+                                </Text>
+                            </View>
                         </View>
                     </View>
                 </ScrollView>
@@ -338,16 +359,6 @@ export const CheckoutScreen = ({ navigation, route }) => {
                 currentAddress={selectedAddress}
             />
 
-            {/* Toast уведомление об успешном заказе */}
-            {showSuccessToast && (
-                <Toast
-                    message={`Заказ №${orderNumber} успешно создан! Мы свяжемся с вами для подтверждения.`}
-                    type="success"
-                    duration={4000}
-                    onHide={handleToastHide}
-                    position="top"
-                />
-            )}
         </SafeAreaView>
     );
 };
@@ -416,7 +427,48 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
         color: '#000000',
+    },
+
+    sectionHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
         marginBottom: normalize(16),
+    },
+
+    infoButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: normalize(4),
+        paddingHorizontal: normalize(8),
+    },
+
+    infoButtonText: {
+        fontSize: normalize(12),
+        fontFamily: FontFamily.sFProText || 'SF Pro Text',
+        color: '#667eea',
+        marginLeft: normalize(4),
+        fontWeight: '500',
+    },
+
+    preauthorizationInfo: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#f0f8ff',
+        padding: normalize(12),
+        borderRadius: normalize(8),
+        marginBottom: normalize(16),
+        borderWidth: 1,
+        borderColor: '#b8daff',
+    },
+
+    preauthorizationText: {
+        fontSize: normalize(12),
+        fontFamily: FontFamily.sFProText || 'SF Pro Text',
+        color: '#0c5460',
+        lineHeight: normalize(16),
+        marginLeft: normalize(8),
+        flex: 1,
     },
 
     orderInfo: {
@@ -475,55 +527,60 @@ const styles = StyleSheet.create({
     },
 
     textArea: {
-        minHeight: normalize(80),
+        minHeight: normalize(100),
+        textAlignVertical: 'top',
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: '#E1E5E9',
+        borderRadius: normalize(12),
+        padding: normalize(16),
+        marginTop: normalize(8),
+    },
+    textAreaInput: {
+        minHeight: normalize(60),
+        fontSize: normalize(16),
+        color: '#333333',
+        lineHeight: normalize(22),
         textAlignVertical: 'top',
     },
+    textAreaLabel: {
+        fontSize: normalize(16),
+        fontWeight: '600',
+        color: '#333333',
+        marginBottom: normalize(8),
+    },
 
-    paymentOptions: {
+    onlinePaymentInfo: {
         gap: normalize(12),
     },
 
-    paymentOption: {
+    paymentMethodCard: {
         flexDirection: 'row',
         alignItems: 'center',
         padding: normalize(16),
         backgroundColor: '#F8F9FF',
         borderRadius: normalize(12),
         borderWidth: 1,
-        borderColor: 'transparent',
+        borderColor: '#667eea',
+        gap: normalize(12),
     },
 
-    paymentOptionSelected: {
-        borderColor: '#3339B0',
-        backgroundColor: '#F0F1FF',
+    paymentMethodContent: {
+        flex: 1,
     },
 
-    radio: {
-        width: normalize(20),
-        height: normalize(20),
-        borderRadius: normalize(10),
-        borderWidth: 2,
-        borderColor: '#C1C7DE',
-        marginRight: normalize(12),
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-
-    radioSelected: {
-        borderColor: '#3339B0',
-    },
-
-    radioDot: {
-        width: normalize(8),
-        height: normalize(8),
-        borderRadius: normalize(4),
-        backgroundColor: '#3339B0',
-    },
-
-    paymentText: {
+    paymentMethodTitle: {
         fontSize: normalize(16),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
+        fontWeight: '600',
         color: '#000000',
+        marginBottom: normalize(4),
+    },
+
+    paymentMethodDescription: {
+        fontSize: normalize(14),
+        fontFamily: FontFamily.sFProText || 'SF Pro Text',
+        color: 'rgba(60, 60, 67, 0.60)',
     },
 
     footer: {

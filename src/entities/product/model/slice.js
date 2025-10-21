@@ -210,6 +210,19 @@ const productsSlice = createSlice({
         clearCurrentProduct: (state) => {
             state.currentProduct = null;
         },
+        setProducts: (state, action) => {
+            const products = action.payload;
+            state.items = products;
+            state.byId = {};
+            products.forEach(product => {
+                if (product?.id) {
+                    state.byId[product.id] = product;
+                }
+            });
+            state.lastFetchTime = Date.now();
+            state.fetchCompleted = true;
+            state.loading = false;
+        },
         clearProductsCache: (state) => {
             state.lastFetchTime = null;
             state.fetchCompleted = false;
@@ -259,6 +272,8 @@ const productsSlice = createSlice({
                 state.error = null;
             })
             .addCase(fetchProducts.fulfilled, (state, action) => {
+
+                
                 state.loading = false;
                 state.loadingMore = false;
                 state.fetchCompleted = true;
@@ -393,7 +408,6 @@ const productsSlice = createSlice({
                     const updatedProduct = updatePayload.product || updatePayload;
 
                     if (!updatedProduct?.id) {
-                        console.warn('Обновленный продукт не содержит ID:', updatedProduct);
                         return;
                     }
 
@@ -463,6 +477,7 @@ export const {
     clearProductsCache,
     resetFetchCompleted,
     setCurrentProductFromCache,
-    updateProductOptimistic
+    updateProductOptimistic,
+    setProducts
 } = productsSlice.actions;
 export default productsSlice.reducer;

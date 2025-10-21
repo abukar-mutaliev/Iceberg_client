@@ -4,18 +4,22 @@ const path = require('path');
 const config = getDefaultConfig(__dirname);
 
 // Добавление алиасов для путей
-config.resolver.alias = {
-    '@': path.resolve(__dirname, 'src'),
-    '@app': path.resolve(__dirname, 'src/app'),
-    '@shared': path.resolve(__dirname, 'src/shared'),
-    '@assets': path.resolve(__dirname, 'assets'),
-    '@features': path.resolve(__dirname, 'src/features'),
-    '@widgets': path.resolve(__dirname, 'src/widgets'),
-    '@screens': path.resolve(__dirname, 'src/screens'),
-    '@entities': path.resolve(__dirname, 'src/entities'),
-    '@services': path.resolve(__dirname, 'src/services'),
-    '@styles': path.resolve(__dirname, 'src/styles'),
-};
+    config.resolver = {
+        ...config.resolver,
+        alias: {
+            '@': path.resolve(__dirname, 'src'),
+            '@app': path.resolve(__dirname, 'src/app'),
+            '@shared': path.resolve(__dirname, 'src/shared'),
+            '@assets': path.resolve(__dirname, 'assets'),
+            '@features': path.resolve(__dirname, 'src/features'),
+            '@widgets': path.resolve(__dirname, 'src/widgets'),
+            '@screens': path.resolve(__dirname, 'src/screens'),
+            '@entities': path.resolve(__dirname, 'src/entities'),
+            '@services': path.resolve(__dirname, 'src/services'),
+            '@styles': path.resolve(__dirname, 'src/styles'),
+        },
+        sourceExts: ['js', 'jsx', 'ts', 'tsx', 'json'],
+    };
 
 // Безопасная настройка SVG трансформера
 try {

@@ -19,6 +19,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { createRoom } from '@entities/chat/model/slice';
 import ChatApi from '@entities/chat/api/chatApi';
 import { getBaseUrl } from '@shared/api/api';
+import NetInfo from '@react-native-community/netinfo';
 
 export const CreateGroupScreen = ({ navigation }) => {
   const dispatch = useDispatch();
@@ -31,7 +32,10 @@ export const CreateGroupScreen = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [creatingStep, setCreatingStep] = useState(''); // Текущий шаг создания для UI
   const [groupAvatar, setGroupAvatar] = useState(null); // { uri, type, name }
+  const [avatarPreloadStatus, setAvatarPreloadStatus] = useState(null); // 'uploading', 'success', 'error'
+  const [preloadedAvatarPath, setPreloadedAvatarPath] = useState(null); // Путь к предзагруженному аватару
 
   // Поиск пользователей
   const searchUsers = async (query) => {
@@ -110,17 +114,92 @@ export const CreateGroupScreen = ({ navigation }) => {
     return true;
   };
 
+  // Получение размера файла изображения
+  const getImageFileSize = async (imageUri) => {
+    try {
+      const response = await fetch(imageUri, { method: 'HEAD' });
+      const contentLength = response.headers.get('content-length');
+      return contentLength ? parseInt(contentLength, 10) : 0;
+    } catch (error) {
+      console.warn('Не удалось определить размер файла:', error);
+      return 0;
+    }
+  };
+
   const processImage = async (imageUri) => {
     try {
-      const manipulatedImage = await ImageManipulator.manipulateAsync(
-        imageUri,
-        [{ resize: { width: 300, height: 300 } }],
-        { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
-      );
-      return manipulatedImage;
+      // Определяем размер исходного файла
+      const originalSize = await getImageFileSize(imageUri);
+      const maxSizeWithoutCompression = 2 * 1024 * 1024; // 2MB - максимальный размер без сжатия
+      
+      console.log('📸 Анализ изображения:', {
+        originalUri: imageUri,
+        fileSizeMB: Math.round(originalSize / (1024 * 1024) * 100) / 100,
+        needsCompression: originalSize > maxSizeWithoutCompression
+      });
+      
+      // Если файл ≤ 2MB - оставляем как есть (сохраняем качество)
+      if (originalSize <= maxSizeWithoutCompression && originalSize > 0) {
+        console.log('✅ Файл ≤ 2MB, оставляем оригинальное качество');
+        return { uri: imageUri };
+      }
+      
+      // Если файл > 2MB - сжимаем до ~2MB с максимальным качеством
+      console.log('📉 Файл > 2MB, сжимаем до 2MB с сохранением качества');
+      
+      // Итеративное сжатие для достижения целевого размера ~2MB
+      let currentUri = imageUri;
+      let currentSize = originalSize;
+      let quality = 0.9; // Начинаем с высокого качества
+      let dimensions = 800; // Начинаем с больших размеров
+      
+      // Максимум 3 итерации сжатия
+      for (let iteration = 1; iteration <= 3; iteration++) {
+        const manipulatedImage = await ImageManipulator.manipulateAsync(
+          currentUri,
+          [{ resize: { width: dimensions, height: dimensions } }],
+          { 
+            compress: quality,
+            format: ImageManipulator.SaveFormat.JPEG 
+          }
+        );
+        
+        const newSize = await getImageFileSize(manipulatedImage.uri);
+        
+        console.log(`📸 Итерация ${iteration}:`, {
+          dimensions: `${dimensions}x${dimensions}`,
+          quality,
+          resultSizeMB: Math.round(newSize / (1024 * 1024) * 100) / 100
+        });
+        
+        // Если достигли целевого размера или это последняя итерация
+        if (newSize <= maxSizeWithoutCompression || iteration === 3) {
+          console.log('✅ Сжатие завершено:', {
+            originalSizeMB: Math.round(originalSize / (1024 * 1024) * 100) / 100,
+            finalSizeMB: Math.round(newSize / (1024 * 1024) * 100) / 100,
+            compressionRatio: originalSize > 0 ? Math.round((1 - newSize / originalSize) * 100) : 0,
+            iterations: iteration
+          });
+          return manipulatedImage;
+        }
+        
+        // Корректируем параметры для следующей итерации
+        if (newSize > maxSizeWithoutCompression * 1.5) {
+          // Если все еще слишком большой - уменьшаем размеры
+          dimensions = Math.max(400, dimensions - 200);
+        } else {
+          // Если близко к цели - только снижаем качество
+          quality = Math.max(0.6, quality - 0.15);
+        }
+        
+        currentUri = manipulatedImage.uri;
+        currentSize = newSize;
+      }
+      
+      return { uri: currentUri };
     } catch (error) {
       console.error('Ошибка обработки изображения:', error);
-      throw error;
+      throw new Error('Не удалось обработать изображение. Попробуйте выбрать другое фото.');
     }
   };
 
@@ -133,16 +212,32 @@ export const CreateGroupScreen = ({ navigation }) => {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality: 0.9, // Высокое качество - сжатие будет умным
+        allowsMultipleSelection: false, // Убираем множественный выбор для стабильности
       });
 
       if (!result.canceled && result.assets[0]) {
+        // Показываем информацию о процессе обработки
+        const originalSize = await getImageFileSize(result.assets[0].uri);
+        if (originalSize > 2 * 1024 * 1024) {
+          Alert.alert(
+            'Обработка изображения',
+            `Изображение большое (${Math.round(originalSize / (1024 * 1024) * 100) / 100}MB), выполняется оптимизация...`,
+            [{ text: 'OK' }]
+          );
+        }
+        
         const processedImage = await processImage(result.assets[0].uri);
-        setGroupAvatar({
+        const avatarData = {
           uri: processedImage.uri,
           type: 'image/jpeg',
           name: `group_avatar_${Date.now()}.jpg`
-        });
+        };
+        
+        setGroupAvatar(avatarData);
+        
+        // Запускаем фоновую предзагрузку
+        preloadAvatar(avatarData);
       }
     } catch (error) {
       console.error('Ошибка при выборе изображения:', error);
@@ -164,16 +259,31 @@ export const CreateGroupScreen = ({ navigation }) => {
       const result = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality: 0.9, // Высокое качество - сжатие будет умным
       });
 
       if (!result.canceled && result.assets[0]) {
+        // Показываем информацию о процессе обработки
+        const originalSize = await getImageFileSize(result.assets[0].uri);
+        if (originalSize > 2 * 1024 * 1024) {
+          Alert.alert(
+            'Обработка фото',
+            `Фотография большая (${Math.round(originalSize / (1024 * 1024) * 100) / 100}MB), выполняется оптимизация...`,
+            [{ text: 'OK' }]
+          );
+        }
+        
         const processedImage = await processImage(result.assets[0].uri);
-        setGroupAvatar({
+        const avatarData = {
           uri: processedImage.uri,
           type: 'image/jpeg',
           name: `group_avatar_${Date.now()}.jpg`
-        });
+        };
+        
+        setGroupAvatar(avatarData);
+        
+        // Запускаем фоновую предзагрузку
+        preloadAvatar(avatarData);
       }
     } catch (error) {
       console.error('Ошибка при съемке фото:', error);
@@ -195,6 +305,92 @@ export const CreateGroupScreen = ({ navigation }) => {
 
   const removeAvatar = () => {
     setGroupAvatar(null);
+    setAvatarPreloadStatus(null);
+    setPreloadedAvatarPath(null);
+  };
+
+  // Функция для фоновой предзагрузки аватара с повторными попытками
+  const preloadAvatar = async (avatarData) => {
+    setAvatarPreloadStatus('uploading');
+    
+    const uploadWithRetry = async (attempt = 1) => {
+      try {
+        console.log(`🔄 Предзагрузка аватара (попытка ${attempt}/3)...`);
+        
+        // Создаем FormData только для аватара
+        const formData = new FormData();
+        formData.append('avatar', {
+          uri: avatarData.uri,
+          type: avatarData.type,
+          name: avatarData.name,
+        });
+        
+        // Используем специальный API endpoint для предзагрузки аватаров с таймаутом
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Превышено время ожидания загрузки')), 30000); // 30 секунд
+        });
+        
+        const response = await Promise.race([
+          ChatApi.preloadAvatar(formData),
+          timeoutPromise
+        ]);
+        const uploadedPath = response?.data?.data?.avatarPath || response?.data?.avatarPath;
+        
+        if (uploadedPath) {
+          setPreloadedAvatarPath(uploadedPath);
+          setAvatarPreloadStatus('success');
+          console.log('✅ Аватар успешно предзагружен:', uploadedPath);
+          return;
+        } else {
+          throw new Error('Сервер не вернул путь к загруженному файлу');
+        }
+      } catch (error) {
+        console.log(`❌ Попытка ${attempt} неудачна:`, error.message);
+        
+        if (attempt < 3) {
+          // Экспоненциальная задержка: 1с, 2с, 4с
+          const delay = 1000 * Math.pow(2, attempt - 1);
+          console.log(`⏳ Ожидание ${delay}мс перед попыткой ${attempt + 1}...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return uploadWithRetry(attempt + 1);
+        } else {
+          throw error; // Последняя попытка - выбрасываем ошибку
+        }
+      }
+    };
+    
+    try {
+      await uploadWithRetry();
+    } catch (error) {
+      console.error('❌ Финальная ошибка предзагрузки аватара:', error);
+      setAvatarPreloadStatus('error');
+      
+      // Логируем, но не показываем алерт - это фоновый процесс
+      // Пользователь может продолжить создание группы
+      // Аватар будет загружен при создании группы как fallback
+      console.log('ℹ️ Предзагрузка не удалась, будет использован fallback при создании группы');
+    }
+  };
+
+  // Функция повторных попыток с экспоненциальной задержкой
+  const retryWithBackoff = async (fn, maxRetries = 3, baseDelay = 1000) => {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn(attempt); // Передаем номер попытки в функцию
+      } catch (error) {
+        console.log(`Попытка ${attempt}/${maxRetries} неудачна:`, error.message);
+        
+        if (attempt === maxRetries) {
+          throw error; // Последняя попытка - выбрасываем ошибку
+        }
+        
+        // Экспоненциальная задержка: 2с, 4с, 8с
+        const delay = baseDelay * Math.pow(2, attempt - 1);
+        console.log(`Ожидание ${delay}мс перед следующей попыткой...`);
+        setCreatingStep(`Повторная попытка через ${delay/1000}с...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
   };
 
   const createGroup = async () => {
@@ -208,9 +404,40 @@ export const CreateGroupScreen = ({ navigation }) => {
       return;
     }
 
+    // Проверяем сетевое соединение перед началом
     setCreating(true);
+    setCreatingStep('Проверка соединения...');
+    
+    try {
+      const netInfo = await NetInfo.fetch();
+      if (!netInfo.isConnected || !netInfo.isInternetReachable) {
+        throw new Error('Отсутствует интернет-соединение. Проверьте подключение к сети.');
+      }
+      
+      if (netInfo.type === 'cellular' && netInfo.details?.strength < 2) {
+        console.warn('⚠️ Слабый сигнал сотовой сети, создание может занять больше времени');
+        setCreatingStep('Слабый сигнал сети...');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    } catch (netError) {
+      setCreating(false);
+      setCreatingStep('');
+      Alert.alert('Нет соединения', netError.message || 'Проверьте подключение к интернету');
+      return;
+    }
+
+    setCreatingStep('Подготовка данных...');
+    
     try {
       const memberIds = selectedUsers.map(user => user.id);
+      
+      console.log('🏗️ Создание группы началось:', {
+        groupName: groupName.trim(),
+        membersCount: memberIds.length,
+        hasAvatar: !!groupAvatar
+      });
+      
+      setCreatingStep('Формирование запроса...');
       
       // Создаем FormData для отправки на сервер
       const formData = new FormData();
@@ -223,37 +450,149 @@ export const CreateGroupScreen = ({ navigation }) => {
       formData.append('admins', JSON.stringify([])); // Создатель автоматически становится владельцем
       
       // Добавляем аватар, если он выбран
-      if (groupAvatar) {
-        formData.append('avatar', {
-          uri: groupAvatar.uri,
-          type: groupAvatar.type,
-          name: groupAvatar.name,
-        });
+      if (groupAvatar && groupAvatar.uri) {
+        if (avatarPreloadStatus === 'success' && preloadedAvatarPath) {
+          // Используем предзагруженный аватар
+          setCreatingStep('Использование загруженного аватара...');
+          formData.append('preloadedAvatarPath', preloadedAvatarPath);
+          console.log('✅ Используем предзагруженный аватар:', preloadedAvatarPath);
+        } else if (avatarPreloadStatus === 'uploading') {
+          // Ждем завершения предзагрузки
+          setCreatingStep('Ожидание загрузки аватара...');
+          
+          // Ждем до 10 секунд завершения предзагрузки
+          const maxWaitTime = 10000; // 10 секунд
+          const checkInterval = 500; // Проверяем каждые 500мс
+          let waitedTime = 0;
+          
+          while (avatarPreloadStatus === 'uploading' && waitedTime < maxWaitTime) {
+            await new Promise(resolve => setTimeout(resolve, checkInterval));
+            waitedTime += checkInterval;
+          }
+          
+          if (avatarPreloadStatus === 'success' && preloadedAvatarPath) {
+            formData.append('preloadedAvatarPath', preloadedAvatarPath);
+            console.log('✅ Дождались предзагрузки аватара:', preloadedAvatarPath);
+          } else {
+            // Fallback - загружаем аватар напрямую
+            setCreatingStep('Загрузка аватара...');
+            formData.append('avatar', {
+              uri: groupAvatar.uri,
+              type: groupAvatar.type,
+              name: groupAvatar.name,
+            });
+            console.log('⚠️ Предзагрузка не завершилась, загружаем напрямую');
+          }
+        } else {
+          // Fallback - загружаем аватар напрямую
+          setCreatingStep('Загрузка аватара...');
+          formData.append('avatar', {
+            uri: groupAvatar.uri,
+            type: groupAvatar.type,
+            name: groupAvatar.name,
+          });
+          console.log('📸 Загружаем аватар напрямую (предзагрузка недоступна)');
+        }
       }
       
-      const result = await dispatch(createRoom(formData));
+      setCreatingStep('Создание группы...');
+      
+      // Используем систему повторных попыток с обновлением статуса
+      const result = await retryWithBackoff(async (attempt) => {
+        if (attempt > 1) {
+          setCreatingStep(`Повторная попытка ${attempt}/3...`);
+        }
+        console.log(`📡 Отправка запроса на создание группы (попытка ${attempt})...`);
+        return await dispatch(createRoom(formData));
+      }, 3, 2000); // 3 попытки с задержкой 2с, 4с, 8с
 
       if (result.type.endsWith('/fulfilled')) {
-        Alert.alert(
-          'Успех', 
-          'Группа создана успешно!',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                navigation.goBack();
+        const createdRoom = result.payload;
+        
+        console.log('✅ Группа создана успешно:', {
+          roomId: createdRoom.id,
+          title: createdRoom.title
+        });
+                // Правильная навигация через Main Tab Navigator
+        navigation.navigate('Main', {
+          screen: 'ChatList',
+          params: {
+            screen: 'ChatMain' // Переходим к списку чатов в ChatStack
+          }
+        });
+        
+        // Небольшая задержка для корректной навигации к созданной группе
+        setTimeout(() => {
+          navigation.navigate('Main', {
+            screen: 'ChatList',
+            params: {
+              screen: 'ChatRoom',
+              params: {
+                roomId: createdRoom.id,
+                roomTitle: createdRoom.title,
+                fromScreen: 'ChatList'
               }
             }
-          ]
-        );
+          });
+        }, 200);
       } else {
         throw new Error(result.payload || 'Ошибка создания группы');
       }
     } catch (error) {
-      console.error('Ошибка создания группы:', error);
-      Alert.alert('Ошибка', error.message || 'Не удалось создать группу');
+      console.error('❌ Финальная ошибка создания группы:', error);
+      
+      // Детальная обработка различных типов ошибок
+      let errorMessage = 'Не удалось создать группу';
+      let errorTitle = 'Ошибка сети';
+      let showRetryWithoutAvatar = false;
+      
+      if (error.message?.includes('Network')) {
+        errorMessage = 'Проблема с интернет-соединением. Проверьте подключение и попробуйте снова.';
+        errorTitle = 'Нет соединения';
+        showRetryWithoutAvatar = !!groupAvatar;
+      } else if (error.message?.includes('timeout')) {
+        errorMessage = 'Запрос выполняется слишком долго. Проверьте скорость интернета и повторите попытку.';
+        errorTitle = 'Превышено время ожидания';
+        showRetryWithoutAvatar = !!groupAvatar;
+      } else if (error.message?.includes('400')) {
+        errorMessage = 'Неверные данные для создания группы. Проверьте название и участников.';
+        errorTitle = 'Ошибка данных';
+      } else if (error.message?.includes('413') || error.message?.includes('Payload Too Large')) {
+        errorMessage = 'Изображение слишком большое. Попробуйте выбрать фото меньшего размера.';
+        errorTitle = 'Файл слишком большой';
+        showRetryWithoutAvatar = true;
+      } else if (error.message) {
+        errorMessage = error.message;
+        showRetryWithoutAvatar = !!groupAvatar;
+      }
+      
+      const alertButtons = [
+        { text: 'Попробовать ещё раз', onPress: createGroup }
+      ];
+      
+      // Добавляем опцию создания без аватара если есть проблемы с загрузкой
+      if (showRetryWithoutAvatar) {
+        alertButtons.unshift({
+          text: 'Создать без фото',
+          onPress: async () => {
+            const originalAvatar = groupAvatar;
+            setGroupAvatar(null); // Временно убираем аватар
+            try {
+              await createGroup();
+            } catch (retryError) {
+              setGroupAvatar(originalAvatar); // Возвращаем аватар если не удалось
+              throw retryError;
+            }
+          }
+        });
+      }
+      
+      alertButtons.push({ text: 'Отмена', style: 'cancel' });
+      
+      Alert.alert(errorTitle, errorMessage, alertButtons);
     } finally {
       setCreating(false);
+      setCreatingStep(''); // Очищаем статус
     }
   };
 
@@ -326,7 +665,14 @@ export const CreateGroupScreen = ({ navigation }) => {
           style={[styles.createButton, (creating || !groupName.trim() || selectedUsers.length === 0) && styles.createButtonDisabled]}
         >
           {creating ? (
-            <ActivityIndicator size="small" color="#FFFFFF" />
+            <View style={styles.creatingContainer}>
+              <ActivityIndicator size="small" color="#FFFFFF" />
+              {creatingStep && (
+                <Text style={styles.creatingStepText} numberOfLines={1}>
+                  {creatingStep}
+                </Text>
+              )}
+            </View>
           ) : (
             <Text style={styles.createButtonText}>Создать</Text>
           )}
@@ -348,7 +694,26 @@ export const CreateGroupScreen = ({ navigation }) => {
                 activeOpacity={0.7}
               >
                 {groupAvatar ? (
-                  <Image source={{ uri: groupAvatar.uri }} style={styles.avatarImage} />
+                  <View style={styles.avatarImageContainer}>
+                    <Image source={{ uri: groupAvatar.uri }} style={styles.avatarImage} />
+                    {/* Индикатор статуса предзагрузки */}
+                    {avatarPreloadStatus === 'uploading' && (
+                      <View style={styles.uploadingOverlay}>
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                        <Text style={styles.uploadingText}>Загрузка...</Text>
+                      </View>
+                    )}
+                    {avatarPreloadStatus === 'success' && (
+                      <View style={styles.successOverlay}>
+                        <Text style={styles.successText}>✓</Text>
+                      </View>
+                    )}
+                    {avatarPreloadStatus === 'error' && (
+                      <View style={styles.errorOverlay}>
+                        <Text style={styles.errorText}>⚠</Text>
+                      </View>
+                    )}
+                  </View>
                 ) : (
                   <View style={styles.avatarPlaceholder}>
                     <Text style={styles.avatarPlaceholderText}>📷</Text>
@@ -487,8 +852,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
-    minWidth: 80,
+    minWidth: 120, // Увеличено для отображения прогресса
     alignItems: 'center',
+    justifyContent: 'center',
   },
   createButtonDisabled: {
     backgroundColor: '#C7C7CC',
@@ -497,6 +863,20 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  creatingContainer: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 24,
+  },
+  creatingStepText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 4,
+    textAlign: 'center',
+    maxWidth: 100,
   },
   content: {
     flex: 1,
@@ -550,10 +930,64 @@ const styles = StyleSheet.create({
     borderColor: '#E5E5E5',
     borderStyle: 'dashed',
   },
+  avatarImageContainer: {
+    width: '100%',
+    height: '100%',
+    position: 'relative',
+  },
   avatarImage: {
     width: '100%',
     height: '100%',
     borderRadius: 50,
+  },
+  uploadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  uploadingText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  successOverlay: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    width: 20,
+    height: 20,
+    backgroundColor: '#4CAF50',
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  successText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  errorOverlay: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    width: 20,
+    height: 20,
+    backgroundColor: '#F44336',
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   avatarPlaceholder: {
     width: '100%',

@@ -23,13 +23,7 @@ export const DynamicFormField = ({
                                      error = null,
                                      scrollViewRef,
                                  }) => {
-    // Для отладки gender поля
-    if (__DEV__ && field.id === 'gender') {
-        console.log('DynamicFormField: gender field render', {
-            value,
-            valueType: typeof value
-        });
-    }
+
     const [showDropdown, setShowDropdown] = useState(false);
     const [rotateAnimation] = useState(new Animated.Value(0));
     const [fieldValue, setFieldValue] = useState(value);
@@ -44,13 +38,7 @@ export const DynamicFormField = ({
     }, [showDropdown]);
 
     useEffect(() => {
-        // Для отладки gender поля
-        if (__DEV__ && field.id === 'gender') {
-            console.log('DynamicFormField: useEffect value changed', {
-                oldValue: fieldValue,
-                newValue: value
-            });
-        }
+    
         setFieldValue(value);
     }, [value, field.id, fieldValue]);
 
@@ -97,10 +85,6 @@ export const DynamicFormField = ({
     };
 
     const handleChangeText = (text) => {
-        // Для отладки gender поля
-        if (__DEV__ && field.id === 'gender') {
-            console.log('DynamicFormField: gender text changed', { text });
-        }
         setFieldValue(text);
         onChange(field.id, text);
     };
@@ -116,12 +100,6 @@ export const DynamicFormField = ({
     };
 
     const handleOptionSelect = (option) => {
-        // Для отладки gender поля
-        if (__DEV__ && field.id === 'gender') {
-            console.log('DynamicFormField: gender option selected', {
-                optionValue: option.value
-            });
-        }
         onChange(field.id, option.value);
         setShowDropdown(false);
     };
@@ -130,10 +108,7 @@ export const DynamicFormField = ({
 
     const getSelectedOptionLabel = () => {
         if (!value) {
-            // Для отладки gender поля
-            if (__DEV__ && field.id === 'gender') {
-                console.log('DynamicFormField: gender value is null/undefined', { value });
-            }
+    
             return '';
         }
 
@@ -144,10 +119,6 @@ export const DynamicFormField = ({
             }).join(', ');
         } else {
             const option = options.find(opt => opt.value === value || opt.id === value);
-            // Для отладки gender поля
-            if (__DEV__ && field.id === 'gender' && !option) {
-                console.log('DynamicFormField: gender option not found', { value });
-            }
             return option ? option.label || option.name : '';
         }
     };
@@ -227,7 +198,7 @@ export const DynamicFormField = ({
                         {showDropdown && (
                             <View style={[
                                 styles.dropdown,
-                                { maxHeight: normalize(200) }
+                                { maxHeight: normalize(300) }
                             ]}>
                                 {options.map((option) => (
                                     <Pressable
@@ -280,7 +251,7 @@ export const DynamicFormField = ({
                         {showDropdown && (
                             <View style={[
                                 styles.dropdown,
-                                { maxHeight: normalize(200) }
+                                { maxHeight: normalize(300) }
                             ]}>
                                 {options.map((option) => {
                                     const isSelected = Array.isArray(value) && (value.includes(option.value) || value.includes(option.id));

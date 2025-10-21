@@ -42,7 +42,8 @@ export const CartItem = React.memo(({
         removeFromCart,
         incrementQuantity: originalIncrementQuantity,
         decrementQuantity,
-        updateQuantity
+        updateQuantity,
+        debouncedUpdateQuantity
     } = useCartProduct(item.productId || item.product?.id);
 
     // Хук для работы с избранным
@@ -54,18 +55,18 @@ export const CartItem = React.memo(({
     } = useFavoriteStatus(item.productId || item.product?.id);
 
     const product = item.product;
-    const isLoading = isUpdating || isRemoving;
+    const isLoading = isRemoving; // Убираем isUpdating из общего состояния загрузки
     const maxQuantity = product?.stockQuantity || 100;
 
     // Обертка для incrementQuantity с учетом максимального количества
-    const incrementQuantity = useCallback(async () => {
+    const incrementQuantity = useCallback(() => {
         const newQuantity = quantity + 1;
         const finalQuantity = newQuantity > maxQuantity ? maxQuantity : newQuantity;
 
         if (finalQuantity !== quantity) {
-            return await updateQuantity(finalQuantity);
+            debouncedUpdateQuantity(finalQuantity);
         }
-    }, [quantity, maxQuantity, updateQuantity]);
+    }, [quantity, maxQuantity, debouncedUpdateQuantity]);
 
     // Состояние для редактирования количества
     const [isEditingQuantity, setIsEditingQuantity] = useState(false);
@@ -80,7 +81,7 @@ export const CartItem = React.memo(({
 
     // Обработчики для ввода количества
     const handleQuantityPress = () => {
-        if (!isLoading) {
+        if (!isRemoving) {
             setIsEditingQuantity(true);
             setInputValue(quantity.toString());
         }
@@ -100,7 +101,7 @@ export const CartItem = React.memo(({
         const finalQuantity = newQuantity > maxQuantity ? maxQuantity : newQuantity;
 
         if (finalQuantity !== quantity) {
-            await updateQuantity(finalQuantity);
+            await updateQuantity(finalQuantity); // Используем немедленное обновление для ручного ввода
         }
         setIsEditingQuantity(false);
     };
@@ -233,14 +234,14 @@ export const CartItem = React.memo(({
                     style={styles.content}
                     onPress={handlePress}
                     activeOpacity={0.9}
-                    disabled={isLoading}
+                    disabled={isRemoving}
                 >
                     {/* Чекбокс */}
                     <TouchableOpacity
                         style={styles.checkboxClickArea}
                         onPress={handleCheckboxPress}
                         activeOpacity={1}
-                        disabled={isLoading}
+                        disabled={isRemoving}
                     >
                         <Animated.View
                             style={[
@@ -368,19 +369,15 @@ export const CartItem = React.memo(({
                                 <TouchableOpacity
                                     style={[styles.quantityButton, styles.minusButton]}
                                     onPress={decrementQuantity}
-                                    disabled={isLoading || quantity <= 1}
+                                    disabled={quantity <= 1}
                                     activeOpacity={0.7}
                                 >
-                                    {isUpdating ? (
-                                        <ActivityIndicator size="small" color="#0073E6" />
-                                    ) : (
-                                        <Text style={[
-                                            styles.quantityButtonText,
-                                            { opacity: quantity <= 1 ? 0.5 : 1 }
-                                        ]}>
-                                            −
-                                        </Text>
-                                    )}
+                                    <Text style={[
+                                        styles.quantityButtonText,
+                                        { opacity: quantity <= 1 ? 0.5 : 1 }
+                                    ]}>
+                                        −
+                                    </Text>
                                 </TouchableOpacity>
 
                                 {/* Отображение количества */}
@@ -399,7 +396,7 @@ export const CartItem = React.memo(({
                                             textAlign="center"
                                         />
                                     ) : (
-                                        <TouchableOpacity onPress={handleQuantityPress} disabled={isLoading}>
+                                        <TouchableOpacity onPress={handleQuantityPress} style={styles.quantityTextContainer}>
                                             <Text style={styles.quantityText}>
                                                 {quantity}
                                             </Text>
@@ -411,22 +408,15 @@ export const CartItem = React.memo(({
                                 <TouchableOpacity
                                     style={[styles.quantityButton, styles.plusButton]}
                                     onPress={incrementQuantity}
-                                    disabled={
-                                        isLoading ||
-                                        quantity >= (product?.stockQuantity || 100)
-                                    }
+                                    disabled={quantity >= (product?.stockQuantity || 100)}
                                     activeOpacity={0.7}
                                 >
-                                    {isUpdating ? (
-                                        <ActivityIndicator size="small" color="#0073E6" />
-                                    ) : (
-                                        <Text style={[
-                                            styles.quantityButtonText,
-                                            { opacity: quantity >= (product?.stockQuantity || 100) ? 0.5 : 1 }
-                                        ]}>
-                                            +
-                                        </Text>
-                                    )}
+                                    <Text style={[
+                                        styles.quantityButtonText,
+                                        { opacity: quantity >= (product?.stockQuantity || 100) ? 0.5 : 1 }
+                                    ]}>
+                                        +
+                                    </Text>
                                 </TouchableOpacity>
                             </View>
                         </View>
@@ -671,6 +661,14 @@ const styles = StyleSheet.create({
         backgroundColor: '#F8F9FB',
     },
 
+    quantityTextContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative',
+        minHeight: normalize(32),
+        minWidth: normalize(32),
+    },
+
     quantityText: {
         color: '#0073E6',
         fontSize: normalize(14),
@@ -679,6 +677,7 @@ const styles = StyleSheet.create({
         includeFontPadding: false,
         textAlign: 'center',
     },
+
 
     quantityInput: {
         color: '#0073E6',
