@@ -268,6 +268,9 @@ const rewardSlice = createSlice({
             .addCase(fetchEmployeeRewards.pending, (state) => {
                 state.employeeRewardsLoading = true;
                 state.employeeRewardsError = null;
+                // Очищаем старые данные при начале загрузки
+                state.employeeRewards = [];
+                state.employeeStatistics = null;
             })
             .addCase(fetchEmployeeRewards.fulfilled, (state, action) => {
                 state.employeeRewardsLoading = false;
@@ -304,6 +307,9 @@ const rewardSlice = createSlice({
             .addCase(fetchMyRewards.pending, (state) => {
                 state.employeeRewardsLoading = true;
                 state.employeeRewardsError = null;
+                // Очищаем старые данные при начале загрузки
+                state.employeeRewards = [];
+                state.employeeStatistics = null;
             })
             .addCase(fetchMyRewards.fulfilled, (state, action) => {
                 state.employeeRewardsLoading = false;
@@ -340,6 +346,9 @@ const rewardSlice = createSlice({
             .addCase(fetchAllEmployeesStats.pending, (state) => {
                 state.allEmployeesStatsLoading = true;
                 state.allEmployeesStatsError = null;
+                // Очищаем старые данные при начале загрузки
+                state.allEmployeesStats = [];
+                state.totalStats = null;
             })
             .addCase(fetchAllEmployeesStats.fulfilled, (state, action) => {
                 state.allEmployeesStatsLoading = false;
@@ -513,6 +522,8 @@ const rewardSlice = createSlice({
             .addCase(fetchAllPendingRewards.pending, (state) => {
                 state.pendingRewardsLoading = true;
                 state.pendingRewardsError = null;
+                // Очищаем старые данные при начале загрузки
+                state.pendingRewards = [];
             })
             .addCase(fetchAllPendingRewards.fulfilled, (state, action) => {
                 state.pendingRewardsLoading = false;

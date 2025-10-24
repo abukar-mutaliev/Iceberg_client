@@ -13,7 +13,9 @@ import {
     ErrorState,
     EmptyState,
     StatisticsView,
-    RewardsListView
+    RewardsListView,
+    MonthSelector,
+    MonthlySummaryCard
 } from './components';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 
@@ -39,6 +41,14 @@ export const EmployeeRewardsScreen = React.memo(({ navigation }) => {
     // Кастомные хуки
     const dataHook = useEmployeeRewardsData(viewMode, employeeId);
     const navigationHook = useEmployeeRewardsNavigation(navigation, route.params);
+    
+    // Деструктурируем дополнительные поля для фильтра по месяцам
+    const {
+        selectedMonth,
+        selectedYear,
+        handleMonthChange,
+        employeeStatistics
+    } = dataHook;
 
     // Получаем данные в зависимости от режима
     const currentData = React.useMemo(() => {
@@ -113,6 +123,13 @@ export const EmployeeRewardsScreen = React.memo(({ navigation }) => {
         }, [navigationHook.handleBackNavigation])
     );
 
+    // Эффект для перезагрузки данных при изменении выбранного месяца
+    useEffect(() => {
+        if (hasAccess) {
+            dataHook.loadData();
+        }
+    }, [selectedMonth, selectedYear]);
+
     // Эффект для очистки данных при размонтировании
     useEffect(() => {
         return () => {
@@ -126,60 +143,126 @@ export const EmployeeRewardsScreen = React.memo(({ navigation }) => {
             // Проверка прав доступа
             if (!hasAccess) {
                 return (
-                    <View style={styles.contentContainer}>
-                        <ErrorState
-                            onRetry={() => {}}
-                            errorMessage="Недостаточно прав для просмотра вознаграждений"
+                    <>
+                        <MonthSelector
+                            selectedMonth={selectedMonth}
+                            selectedYear={selectedYear}
+                            onMonthChange={handleMonthChange}
                         />
-                    </View>
+                        <View style={styles.contentContainer}>
+                            <ErrorState
+                                onRetry={() => {}}
+                                errorMessage="Недостаточно прав для просмотра вознаграждений"
+                            />
+                        </View>
+                    </>
                 );
             }
 
-            // Загрузка
-            if (dataHook.loadingStates.isAnyLoading && !refreshing) {
-                return <LoadingState />;
+            // Загрузка (показываем ТОЛЬКО при первой загрузке, не при смене месяца)
+            if (dataHook.loadingStates.isAnyLoading && !refreshing && currentData.length === 0) {
+                return (
+                    <>
+                        <MonthSelector
+                            selectedMonth={selectedMonth}
+                            selectedYear={selectedYear}
+                            onMonthChange={handleMonthChange}
+                        />
+                        <LoadingState />
+                    </>
+                );
             }
 
             // Ошибка
             if (dataHook.hasErrors) {
-                return <ErrorState onRetry={handleRetry} />;
+                return (
+                    <>
+                        {/* Фильтр остается видимым даже при ошибке */}
+                        <MonthSelector
+                            selectedMonth={selectedMonth}
+                            selectedYear={selectedYear}
+                            onMonthChange={handleMonthChange}
+                        />
+                        <ErrorState onRetry={handleRetry} />
+                    </>
+                );
             }
 
-            // Пустое состояние
-            if (!dataHook.hasDataToShow && !dataHook.loadingStates.isAnyLoading) {
-                return <EmptyState />;
-            }
+            return (
+                <>
+                    {/* Фильтр по месяцам - ВСЕГДА ПОКАЗЫВАЕМ */}
+                    <MonthSelector
+                        selectedMonth={selectedMonth}
+                        selectedYear={selectedYear}
+                        onMonthChange={handleMonthChange}
+                    />
 
-            // Режим статистики для админов
-            if (dataHook.isStatisticsMode) {
-                if (navigationHook.isAdminMode) {
-                    return (
-                        <StatisticsView
-                            totalStats={dataHook.totalStats}
+                    {/* Итоговая карточка для режима просмотра вознаграждений сотрудника */}
+                    {(dataHook.isViewingSpecificEmployee || (isEmployee && viewMode === 'employee')) && employeeStatistics && dataHook.hasDataToShow && (
+                        <MonthlySummaryCard
+                            statistics={employeeStatistics}
+                            selectedMonth={selectedMonth}
+                            selectedYear={selectedYear}
+                            isEmployee={isEmployee}
+                            alwaysShow={false}
+                        />
+                    )}
+
+                    {/* Пустое состояние для режима списка */}
+                    {!dataHook.hasDataToShow && !dataHook.loadingStates.isAnyLoading && !dataHook.isStatisticsMode && (
+                        <EmptyState 
+                            selectedMonth={selectedMonth}
+                            selectedYear={selectedYear}
+                            viewMode={viewMode}
+                        />
+                    )}
+
+                    {/* Режим статистики для админов */}
+                    {dataHook.isStatisticsMode && (
+                        <>
+                            {navigationHook.isAdminMode ? (
+                                <>
+                                    {dataHook.hasDataToShow ? (
+                                        <StatisticsView
+                                            totalStats={dataHook.totalStats}
+                                            filteredData={searchHook.filteredData}
+                                            searchQuery={searchHook.searchQuery}
+                                            searchPlaceholder={searchHook.searchPlaceholder}
+                                            onSearchChange={searchHook.setSearchQuery}
+                                            onPendingCardClick={navigationHook.handlePendingCardClick}
+                                            onViewEmployeeRewards={navigationHook.handleViewEmployeeRewards}
+                                        />
+                                    ) : !dataHook.loadingStates.isAnyLoading && (
+                                        <EmptyState 
+                                            selectedMonth={selectedMonth}
+                                            selectedYear={selectedYear}
+                                            viewMode={viewMode}
+                                        />
+                                    )}
+                                </>
+                            ) : (
+                                // Сотрудники видят пустое состояние в режиме статистики
+                                <EmptyState 
+                                    selectedMonth={selectedMonth}
+                                    selectedYear={selectedYear}
+                                    viewMode={viewMode}
+                                />
+                            )}
+                        </>
+                    )}
+
+                    {/* Режим списка вознаграждений */}
+                    {!dataHook.isStatisticsMode && dataHook.hasDataToShow && (
+                        <RewardsListView
                             filteredData={searchHook.filteredData}
                             searchQuery={searchHook.searchQuery}
                             searchPlaceholder={searchHook.searchPlaceholder}
+                            showEmployee={dataHook.isViewingPending}
                             onSearchChange={searchHook.setSearchQuery}
-                            onPendingCardClick={navigationHook.handlePendingCardClick}
-                            onViewEmployeeRewards={navigationHook.handleViewEmployeeRewards}
+                            onProcessReward={dataHook.handleProcessReward}
                         />
-                    );
-                } else {
-                    // Сотрудники видят пустое состояние в режиме статистики
-                    return <EmptyState />;
-                }
-            }
-
-            // Режим списка вознаграждений
-            return (
-                <RewardsListView
-                    filteredData={searchHook.filteredData}
-                    searchQuery={searchHook.searchQuery}
-                    searchPlaceholder={searchHook.searchPlaceholder}
-                    showEmployee={dataHook.isViewingPending}
-                    onSearchChange={searchHook.setSearchQuery}
-                    onProcessReward={dataHook.handleProcessReward}
-                />
+                    )}
+                </>
             );
         } catch (error) {
             console.error('Error in EmployeeRewardsScreen renderContent:', error);

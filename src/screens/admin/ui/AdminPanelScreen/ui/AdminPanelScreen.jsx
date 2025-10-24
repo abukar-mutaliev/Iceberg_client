@@ -46,19 +46,15 @@ export const AdminPanelScreen = () => {
 
     // Проверка прав доступа - разрешаем доступ администраторам и сотрудникам
     useEffect(() => {
-        // Проверяем, является ли пользователь администратором или сотрудником
         const isAdmin = currentUser?.role === 'ADMIN';
         const isEmployee = currentUser?.role === 'EMPLOYEE';
 
-        // Если пользователь не администратор и не сотрудник, и не имеет права доступа - перенаправляем назад
         if (!isAdmin && !isEmployee && !hasPermission('access:admin')) {
             navigation.goBack();
         }
     }, [currentUser, hasPermission, navigation]);
 
     const handleProductManagementPress = useCallback(() => {
-        console.log('AdminPanel: Переход к управлению продуктами');
-        // Теперь навигация происходит внутри AdminStack
         navigation.navigate('ProductManagement', {
             fromScreen: 'AdminPanel',
             returnTo: 'AdminPanel'
@@ -66,8 +62,6 @@ export const AdminPanelScreen = () => {
     }, [navigation]);
 
     const handleCategoriesManagementPress = useCallback(() => {
-        console.log('AdminPanel: Переход к управлению категориями');
-        // Теперь навигация происходит внутри AdminStack
         navigation.navigate('CategoriesManagement', {
             fromScreen: 'AdminPanel',
             returnTo: 'AdminPanel'
@@ -108,20 +102,14 @@ export const AdminPanelScreen = () => {
     }, [navigation]);
 
     const handleStaffOrdersPress = useCallback(() => {
-        // Переходим к экрану управления заказами
-        // Пока используем заглушку, в будущем можно добавить реальный экран
-        console.log('AdminPanel: Переход к управлению заказами');
-        // TODO: Добавить навигацию к экрану управления заказами
-        // navigation.navigate('OrdersManagement');
+
     }, [navigation]);
 
     const handleEmployeeManagementPress = useCallback(() => {
-        console.log('AdminPanel: Переход к управлению сотрудниками');
         navigation.navigate('EmployeeManagement');
     }, [navigation]);
 
     const handleRewardsStatisticsPress = useCallback(() => {
-        console.log('AdminPanel: Переход к статистике вознаграждений');
         navigation.navigate('EmployeeRewards', {
             fromScreen: 'AdminPanel',
             viewMode: 'statistics'
@@ -129,7 +117,6 @@ export const AdminPanelScreen = () => {
     }, [navigation]);
 
     const handleRewardSettingsPress = useCallback(() => {
-        console.log('AdminPanel: Переход к настройкам вознаграждений');
         navigation.navigate('RewardSettings');
     }, [navigation]);
 
@@ -171,28 +158,7 @@ export const AdminPanelScreen = () => {
             />
 
             <ScrollView style={styles.scrollView}>
-                {/* Добавляем новый раздел для управления категориями */}
-                <AdminSection title="Управление категориями">
-                    <AdminMenuItem
-                        icon={<IconCategory color={Color.blue2} />}
-                        title="Список категорий"
-                        onPress={handleCategoriesManagementPress}
-                    />
-                </AdminSection>
-
-                {/* Новый раздел для управления районами */}
-                <AdminSection title="Управление районами">
-                    <AdminMenuItem
-                        icon={<IconDistrict color={Color.blue2} />}
-                        title="Список районов"
-                        onPress={handleDistrictsManagementPress}
-                    />
-                    <AdminMenuItem
-                        icon={<IconDistrict color={Color.blue2} />}
-                        title="Добавить район"
-                        onPress={handleAddDistrictPress}
-                    />
-                </AdminSection>
+                
 
                 {/* Раздел для управления вознаграждениями - только для администраторов */}
                 {isAdmin && (
@@ -210,7 +176,7 @@ export const AdminPanelScreen = () => {
                     </AdminSection>
                 )}
 
-                {/* ИСПРАВЛЕННАЯ секция управления продуктами */}
+                {/*Управления продуктами */}
                 <AdminSection title="Управление продуктами">
                     <AdminMenuItem
                         icon={<IconProducts color={Color.blue2} />}
@@ -238,16 +204,7 @@ export const AdminPanelScreen = () => {
                 </AdminSection>
 
 
-                {/* Управление сотрудниками - показываем только администраторам */}
-                {isAdmin && (
-                    <AdminSection title="Управление сотрудниками">
-                        <AdminMenuItem
-                            icon={<IconUser color={Color.blue2} />}
-                            title="Районы сотрудников"
-                            onPress={handleEmployeeManagementPress}
-                        />
-                    </AdminSection>
-                )}
+       
 
                 {/* Секцию управления пользователями показываем только администраторам */}
                 {isAdmin && (
@@ -272,6 +229,35 @@ export const AdminPanelScreen = () => {
                         )}
                     </AdminSection>
                 )}
+                         {/* Управление сотрудниками - показываем только администраторам */}
+                         {isAdmin && (
+                    <AdminSection title="Управление районами и складами сотрудников">
+                        <AdminMenuItem
+                            icon={<IconUser color={Color.blue2} />}
+                            title="Районы и склады сотрудников"
+                            onPress={handleEmployeeManagementPress}
+                        />
+                    </AdminSection>
+                )}
+    
+                {/* Новый раздел для управления районами */}
+                <AdminSection title="Управление районами и складами">
+                    <AdminMenuItem
+                        icon={<IconDistrict color={Color.blue2} />}
+                        title="Список районов и складов"
+                        onPress={handleDistrictsManagementPress}
+                    />
+   
+                </AdminSection>
+
+                {/* Раздел для управления категориями */}
+                <AdminSection title="Управление категориями">
+                    <AdminMenuItem
+                        icon={<IconCategory color={Color.blue2} />}
+                        title="Список категорий"
+                        onPress={handleCategoriesManagementPress}
+                    />
+                </AdminSection>
             </ScrollView>
 
             <View style={styles.footer}>

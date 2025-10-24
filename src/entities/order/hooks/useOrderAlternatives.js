@@ -186,11 +186,7 @@ export const useOrderChoice = (choiceId) => {
             
             if (result.success) {
                 setChoiceDetails(result.data);
-                console.log('📱 useOrderChoice: Детали предложения загружены', {
-                    choiceId,
-                    choiceType: result.data?.choiceType,
-                    alternativesCount: result.data?.alternatives?.length || 0
-                });
+                
             } else {
                 throw new Error(result.error);
             }

@@ -319,6 +319,11 @@ export const MyOrdersScreen = () => {
                 };
                 await saveCacheData(cacheData);
 
+                // Обновляем список альтернативных предложений
+                if (loadMyChoices) {
+                    await loadMyChoices();
+                }
+
                 // Анимация появления
                 Animated.timing(fadeAnim, {
                     toValue: 1,
@@ -338,7 +343,7 @@ export const MyOrdersScreen = () => {
                 setRefreshing(false);
             }
         }
-    }, [hasAccess, dataLoaded]); // Убрали fadeAnim из зависимостей
+    }, [hasAccess, dataLoaded, loadMyChoices]); // Добавили loadMyChoices для обновления выборов
 
     // Обновляем ссылку на актуальную версию loadOrders
     useEffect(() => {
@@ -424,6 +429,11 @@ export const MyOrdersScreen = () => {
                                 console.log('MyOrdersScreen: Инициализация - начинаем загрузку данных');
                                 loadOrdersRef.current?.();
                             }
+                            
+                            // Загружаем альтернативные предложения
+                            if (loadMyChoices) {
+                                loadMyChoices();
+                            }
                         } catch (error) {
                             console.error('MyOrdersScreen - Ошибка инициализации:', error);
                             setLoading(false);
@@ -448,7 +458,7 @@ export const MyOrdersScreen = () => {
                     clearInterval(autoRefreshRef.current);
                 }
             };
-        }, [hasAccess, dataLoaded])
+        }, [hasAccess, dataLoaded, loadMyChoices])
     );
 
     // Обработчики
@@ -476,6 +486,10 @@ export const MyOrdersScreen = () => {
                             await OrderApi.cancelMyOrder(orderId, 'Отменен клиентом');
                             Alert.alert('Успех', 'Заказ успешно отменен');
                             loadOrdersRef.current?.();
+                            // Обновляем альтернативные предложения после отмены
+                            if (loadMyChoices) {
+                                loadMyChoices();
+                            }
                         } catch (err) {
                             Alert.alert('Ошибка', err.message || 'Не удалось отменить заказ');
                         }
@@ -483,7 +497,7 @@ export const MyOrdersScreen = () => {
                 }
             ]
         );
-    }, [orders]);
+    }, [orders, loadMyChoices]);
 
     // Переключение табов
     const handleTabChange = useCallback((tab) => {

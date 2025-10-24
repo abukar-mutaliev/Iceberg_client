@@ -34,9 +34,7 @@ const WarehouseQuantityInput = ({ warehouse, quantity, onQuantityChange, onRemov
         <View style={styles.quantityItem}>
             <View style={styles.quantityInfo}>
                 <Text style={styles.quantityWarehouseName}>{warehouse.name}</Text>
-                {warehouse.address && (
-                    <Text style={styles.quantityWarehouseAddress}>{warehouse.address}</Text>
-                )}
+        
             </View>
             <View style={styles.quantityControls}>
                 <TextInput
@@ -301,22 +299,7 @@ export const WarehouseQuantityPicker = ({
                                             ]}>
                                                 {item.name}
                                             </Text>
-                                            {item.address && (
-                                                <Text style={[
-                                                    styles.warehouseAddress,
-                                                    isSelected && styles.selectedItemText
-                                                ]}>
-                                                    {item.address}
-                                                </Text>
-                                            )}
-                                            {item.district && (
-                                                <Text style={[
-                                                    styles.warehouseDistrict,
-                                                    isSelected && styles.selectedItemText
-                                                ]}>
-                                                    Район: {item.district.name}
-                                                </Text>
-                                            )}
+                                 
                                         </View>
                                         <View style={styles.checkboxContainer}>
                                             <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
@@ -442,14 +425,14 @@ const styles = StyleSheet.create({
         backgroundColor: Color.colorLightMode,
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
-        maxHeight: '90%',
+        maxHeight: '95%',
         paddingBottom: normalize(20),
     },
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        padding: normalize(20),
+        padding: normalize(12),
         borderBottomWidth: 1,
         borderBottomColor: Color.border || '#E0E0E0',
     },
@@ -471,14 +454,14 @@ const styles = StyleSheet.create({
     },
     searchContainer: {
         paddingHorizontal: normalize(20),
-        paddingBottom: normalize(10),
-        paddingTop: normalize(10),
+        paddingBottom: normalize(5),
+        paddingTop: normalize(5),
     },
     searchInput: {
         backgroundColor: Color.backgroundLight || '#F5F5F5',
         borderRadius: 8,
         paddingHorizontal: normalize(15),
-        paddingVertical: normalize(12),
+        paddingVertical: normalize(5),
         fontSize: normalizeFont(16),
         fontFamily: FontFamily.sFProText,
         color: Color.textPrimary,
@@ -490,7 +473,6 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: normalize(20),
-        paddingVertical: normalize(10),
         borderBottomWidth: 1,
         borderBottomColor: Color.border || '#E0E0E0',
     },
@@ -504,7 +486,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingVertical: normalize(15),
+        paddingVertical: normalize(5),
         paddingHorizontal: normalize(20),
         borderBottomWidth: 1,
         borderBottomColor: Color.border || '#E0E0E0',
@@ -521,18 +503,6 @@ const styles = StyleSheet.create({
         color: Color.textPrimary,
         fontFamily: FontFamily.sFProDisplay,
         marginBottom: normalize(4),
-    },
-    warehouseAddress: {
-        fontSize: normalizeFont(14),
-        color: Color.textSecondary,
-        fontFamily: FontFamily.sFProText,
-        marginBottom: normalize(2),
-    },
-    warehouseDistrict: {
-        fontSize: normalizeFont(14),
-        color: Color.blue2 || '#007AFF',
-        fontFamily: FontFamily.sFProText,
-        fontWeight: '500',
     },
     selectedItemText: {
         color: '#3B43A2',
@@ -573,7 +543,7 @@ const styles = StyleSheet.create({
     quantitiesSection: {
         borderTopWidth: 1,
         borderTopColor: Color.border || '#E0E0E0',
-        maxHeight: 200,
+        maxHeight: 400,
     },
     quantitiesTitle: {
         fontSize: normalizeFont(16),
@@ -591,7 +561,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingVertical: normalize(10),
+        paddingVertical: normalize(5),
         paddingHorizontal: normalize(15),
         backgroundColor: Color.backgroundLight || '#F8F8F8',
         borderRadius: 8,
@@ -619,7 +589,6 @@ const styles = StyleSheet.create({
     },
     quantityInput: {
         width: 60,
-        height: 35,
         borderWidth: 1,
         borderColor: Color.border || '#E0E0E0',
         borderRadius: 4,
@@ -628,6 +597,7 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(14),
         fontFamily: FontFamily.sFProText,
         backgroundColor: Color.colorLightMode,
+
     },
     removeButton: {
         width: 25,

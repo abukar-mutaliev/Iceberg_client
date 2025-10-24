@@ -49,6 +49,7 @@ export const OrderApi = {
             priority: params.priority,
             includeNearbyDistricts: params.includeNearbyDistricts || false,
             availableForPickup: params.availableForPickup || false,
+            history: params.history,
             _t: Date.now()
         };
 
@@ -63,6 +64,8 @@ export const OrderApi = {
         console.log('OrderApi: getOrders вызван', {
             url,
             params: filteredParams,
+            hasHistoryParam: filteredParams.history !== undefined,
+            historyValue: filteredParams.history,
             timestamp: new Date().toISOString()
         });
 

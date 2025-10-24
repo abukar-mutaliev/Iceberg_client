@@ -95,8 +95,6 @@ export const WaitingStockOrderCard = ({
                         ? `${getBaseUrl()}/uploads/${item.product.images[0].replace(/\\/g, '/')}`
                         : null;
                     
-
-                    
                     return (
                         <View key={index} style={styles.productItem}>
                             {/* Изображение товара */}

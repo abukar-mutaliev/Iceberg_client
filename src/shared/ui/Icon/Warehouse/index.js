@@ -1,0 +1,1 @@
+export { IconWarehouse } from './IconWarehouse';

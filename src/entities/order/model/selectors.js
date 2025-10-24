@@ -495,33 +495,25 @@ export const selectWaitingStockCountCombined = createSelector(
         if (hasRecentCounts && orderCounts.waitingStockCount !== undefined) {
             // Если счетчики показывают 0, но есть заказы - используем расчет из staffOrders
             if (orderCounts.waitingStockCount === 0 && ordersCount > 0) {
-                console.log('📊 [selectWaitingStockCountCombined] orderCounts показывает 0, но есть заказы - используем staffOrders', {
-                    orderCountsValue: orderCounts.waitingStockCount,
-                    staffOrdersCount: ordersCount,
-                    age: Math.round(countsAge / 1000) + 's'
-                });
+                // Отключаем логирование для производительности
+                // console.log('📊 [selectWaitingStockCountCombined] orderCounts показывает 0, но есть заказы - используем staffOrders');
                 return ordersCount;
             }
             
-            console.log('📊 [selectWaitingStockCountCombined] Using orderCounts', {
-                count: orderCounts.waitingStockCount,
-                age: Math.round(countsAge / 1000) + 's',
-                lastFetchTime: orderCounts.lastFetchTime ? new Date(orderCounts.lastFetchTime).toISOString() : null
-            });
+            // Отключаем логирование для производительности
+            // console.log('📊 [selectWaitingStockCountCombined] Using orderCounts', { count: orderCounts.waitingStockCount });
             return orderCounts.waitingStockCount;
         }
         
         // Иначе считаем из staffOrders
         if (!Array.isArray(orders)) {
-            console.log('📊 [selectWaitingStockCountCombined] staffOrders not array, returning 0');
+            // Логируем только ошибки
+            // console.log('📊 [selectWaitingStockCountCombined] staffOrders not array, returning 0');
             return 0;
         }
         
-        console.log('📊 [selectWaitingStockCountCombined] Calculating from staffOrders', {
-            count: ordersCount,
-            totalOrders: orders.length,
-            countsAge: countsAge === Infinity ? 'never fetched' : Math.round(countsAge / 1000) + 's'
-        });
+        // Отключаем логирование для производительности
+        // console.log('📊 [selectWaitingStockCountCombined] Calculating from staffOrders', { count: ordersCount });
         return ordersCount;
     }
 );

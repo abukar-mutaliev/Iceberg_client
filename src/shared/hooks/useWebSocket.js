@@ -11,7 +11,17 @@ export const useWebSocket = (onMessage, onError) => {
     const reconnectTimeoutRef = useRef(null);
     const reconnectAttempts = useRef(0);
     const maxReconnectAttempts = 5;
+    const isConnectingRef = useRef(false); // Флаг для предотвращения множественных подключений
     const [isConnected, setIsConnected] = useState(false);
+    
+    // Сохраняем callback'и в ref чтобы не пересоздавать connect
+    const onMessageRef = useRef(onMessage);
+    const onErrorRef = useRef(onError);
+    
+    useEffect(() => {
+        onMessageRef.current = onMessage;
+        onErrorRef.current = onError;
+    }, [onMessage, onError]);
 
     const connect = useCallback(async () => {
         if (!currentUser?.id) {
@@ -19,9 +29,24 @@ export const useWebSocket = (onMessage, onError) => {
             return;
         }
 
+        // Предотвращаем множественные одновременные попытки подключения
+        if (isConnectingRef.current) {
+            console.log('🔌 Orders WebSocket: Already connecting, skipping...');
+            return;
+        }
+
+        // Если уже подключены, не переподключаемся
+        if (socketRef.current?.connected) {
+            console.log('🔌 Orders WebSocket: Already connected');
+            return;
+        }
+
+        isConnectingRef.current = true;
+
         try {
             const baseUrl = getBaseUrl();
-            const socketUrl = baseUrl; // Подключаемся к корневому namespace
+            // Socket.IO автоматически добавляет /socket.io/ к URL, поэтому используем HTTP URL
+            const socketUrl = baseUrl;
             
             console.log('🔌 Attempting to connect to Orders WebSocket:', {
                 baseUrl,
@@ -90,29 +115,40 @@ export const useWebSocket = (onMessage, onError) => {
             socketRef.current.on('connect', () => {
                 console.log('🔌 Orders WebSocket connected successfully');
                 reconnectAttempts.current = 0;
+                isConnectingRef.current = false; // Сбрасываем флаг подключения
                 setIsConnected(true);
             });
 
             socketRef.current.on('disconnect', (reason) => {
                 console.log('🔌 Orders WebSocket disconnected:', reason);
                 setIsConnected(false);
+                isConnectingRef.current = false; // Сбрасываем флаг при отключении
                 
                 // Переподключение только для определенных причин
                 const shouldReconnect = reason === 'io server disconnect' || 
-                                      reason === 'io client disconnect' || 
                                       reason === 'ping timeout' || 
-                                      reason === 'transport close' ||
-                                      reason === 'transport error';
+                                      reason === 'transport close';
+                
+                // НЕ переподключаемся при transport error - это обычно означает проблему с сервером
+                const shouldNotReconnect = reason === 'transport error' || 
+                                          reason === 'io client disconnect';
+                
+                if (shouldNotReconnect) {
+                    console.log('⚠️ Not reconnecting due to:', reason);
+                    return;
+                }
                 
                 if (shouldReconnect && reconnectAttempts.current < maxReconnectAttempts) {
+                    // Увеличиваем счетчик ДО переподключения
+                    reconnectAttempts.current++;
+                    
                     const baseDelay = 1000;
                     const maxDelay = 10000;
-                    const delay = Math.min(baseDelay * Math.pow(2, reconnectAttempts.current), maxDelay);
+                    const delay = Math.min(baseDelay * Math.pow(2, reconnectAttempts.current - 1), maxDelay);
                     
-                    console.log(`🔄 Scheduling reconnection in ${delay}ms (attempt ${reconnectAttempts.current + 1}/${maxReconnectAttempts})`);
+                    console.log(`🔄 Scheduling reconnection in ${delay}ms (attempt ${reconnectAttempts.current}/${maxReconnectAttempts})`);
                     
                     reconnectTimeoutRef.current = setTimeout(() => {
-                        reconnectAttempts.current++;
                         connect();
                     }, delay);
                 } else if (reconnectAttempts.current >= maxReconnectAttempts) {
@@ -123,6 +159,7 @@ export const useWebSocket = (onMessage, onError) => {
             socketRef.current.on('connect_error', async (error) => {
                 console.log('❌ Orders WebSocket connection error:', error);
                 setIsConnected(false);
+                isConnectingRef.current = false; // Сбрасываем флаг при ошибке
                 
                 // Если ошибка связана с JWT, пытаемся обновить токен и переподключиться
                 if (error.message?.includes('jwt expired') || 
@@ -152,6 +189,8 @@ export const useWebSocket = (onMessage, onError) => {
                                     socketRef.current.removeAllListeners();
                                     socketRef.current = null;
                                 }
+                                // Сбрасываем счетчик попыток
+                                reconnectAttempts.current = 0;
                                 // Переподключаемся с новым токеном через короткую задержку
                                 setTimeout(() => {
                                     connect().catch(err => {
@@ -167,23 +206,24 @@ export const useWebSocket = (onMessage, onError) => {
                     }
                 }
                 
-                onError?.(error);
+                onErrorRef.current?.(error);
             });
 
             socketRef.current.on('order_update', (data) => {
                 console.log('📨 Received order_update:', data);
-                onMessage?.(data);
+                onMessageRef.current?.(data);
             });
 
             socketRef.current.on('orders_list_update', (data) => {
                 console.log('📨 Received orders_list_update:', data);
-                onMessage?.(data);
+                onMessageRef.current?.(data);
             });
 
         } catch (error) {
-            onError?.(error);
+            isConnectingRef.current = false; // Сбрасываем флаг при ошибке
+            onErrorRef.current?.(error);
         }
-    }, [currentUser?.id, onMessage, onError]);
+    }, [currentUser?.id]); // Убираем onMessage и onError из зависимостей
 
     const disconnect = useCallback(() => {
         if (reconnectTimeoutRef.current) {
@@ -197,6 +237,7 @@ export const useWebSocket = (onMessage, onError) => {
         }
         
         reconnectAttempts.current = 0;
+        isConnectingRef.current = false; // Сбрасываем флаг подключения
         setIsConnected(false);
     }, []);
 
@@ -212,27 +253,43 @@ export const useWebSocket = (onMessage, onError) => {
 
     const forceReconnect = useCallback(() => {
         console.log('🔄 Force reconnecting WebSocket...');
-        disconnect();
+        
+        // Останавливаем текущие попытки переподключения
+        if (reconnectTimeoutRef.current) {
+            clearTimeout(reconnectTimeoutRef.current);
+            reconnectTimeoutRef.current = null;
+        }
+        
+        // Отключаем текущее соединение
+        if (socketRef.current) {
+            socketRef.current.disconnect();
+            socketRef.current = null;
+        }
+        
+        // Сбрасываем состояние
         reconnectAttempts.current = 0;
+        isConnectingRef.current = false;
+        setIsConnected(false);
+        
+        // Переподключаемся через задержку
         setTimeout(() => {
             connect().catch(error => {
                 console.error('❌ Ошибка принудительного переподключения:', error);
             });
         }, 1000);
-    }, [connect, disconnect]);
+    }, []); // Убираем зависимости
 
     // Обработка состояний приложения для стабильности соединения
     useEffect(() => {
         const handleAppStateChange = (nextAppState) => {
-            console.log('📱 App state changed:', nextAppState, 'WebSocket connected:', isConnected);
+            console.log('📱 App state changed:', nextAppState, 'WebSocket connected:', socketRef.current?.connected);
             
             if (nextAppState === 'active') {
                 // Проверяем, нужно ли переподключиться
                 const needsReconnect = !socketRef.current || 
-                                     !socketRef.current.connected || 
-                                     !isConnected;
+                                     !socketRef.current.connected;
                 
-                if (needsReconnect) {
+                if (needsReconnect && currentUser?.id) {
                     console.log('🔄 App became active, reconnecting WebSocket...');
                     // Сбрасываем счетчик попыток переподключения
                     reconnectAttempts.current = 0;
@@ -252,20 +309,20 @@ export const useWebSocket = (onMessage, onError) => {
         return () => {
             subscription?.remove();
         };
-    }, [connect, isConnected]);
+    }, [currentUser?.id]); // Убираем connect и isConnected из зависимостей
 
     useEffect(() => {
         if (currentUser?.id) {
             connect().catch(error => {
                 console.error('❌ Ошибка подключения к WebSocket:', error);
-                onError?.(error);
+                onErrorRef.current?.(error);
             });
         }
 
         return () => {
             disconnect();
         };
-    }, [currentUser?.id, connect, disconnect, onError]);
+    }, [currentUser?.id]); // Убираем connect, disconnect и onError из зависимостей
 
     return {
         isConnected,

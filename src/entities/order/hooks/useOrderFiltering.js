@@ -8,47 +8,40 @@ export const useOrderFiltering = (staffOrders, filters, canViewAllOrders, actual
             return [];
         }
 
-        // Логирование отключено для производительности
-        // console.log('🔍 useOrderFiltering: начало фильтрации', {
-        //     staffOrdersLength: staffOrders.length,
-        //     showWaitingStock,
-        //     showHistory,
-        //     canViewAllOrders,
-        //     actualProcessingRole
-        // });
+        // Временное логирование для отладки проблем с вкладками
+        if (showWaitingStock || showHistory) {
+            console.log('🔍 useOrderFiltering: начало фильтрации', {
+                staffOrdersLength: staffOrders.length,
+                showWaitingStock,
+                showHistory,
+                firstOrderStatus: staffOrders[0]?.status,
+                statuses: staffOrders.slice(0, 5).map(o => o.status)
+            });
+        }
 
         let filtered = [...staffOrders];
 
         // Фильтрация по режимам просмотра (для всех сотрудников и админов)
         if (showWaitingStock && !showHistory) {
-            // В режиме "Ожидают поставки" фильтруем ТОЛЬКО по статусу WAITING_STOCK
-            // Хотя сервер должен фильтровать, добавляем защиту на клиенте
+            // В режиме "Ожидают поставки" фильтруем ТОЛЬКО заказы со статусом WAITING_STOCK
+            // Дополнительная защита на клиенте для случаев когда сервер вернул не те данные
             filtered = filtered.filter(order => order.status === 'WAITING_STOCK');
-            // console.log('✅ useOrderFiltering: режим WAITING_STOCK - отфильтрованы заказы', {
-            //     ordersCount: filtered.length
+            
+            // console.log('✅ useOrderFiltering: режим WAITING_STOCK - фильтруем по статусу', {
+            //     totalOrders: staffOrders.length,
+            //     waitingStockOrders: filtered.length
             // });
         } else if (showHistory && !showWaitingStock) {
-            // В режиме "История" показываем завершенные заказы
-            const historyStatuses = ['DELIVERED', 'CANCELLED', 'RETURNED'];
+            // В режиме "История" сервер уже загрузил все завершенные заказы
+            // Не применяем дополнительную фильтрацию на клиенте - показываем все что пришло
+            // Это позволяет видеть все завершенные заказы (DELIVERED, CANCELLED, RETURNED)
+            // которые вернул сервер через параметр history=true
             
-            // Для сборщиков и курьеров - показываем все заказы которые они обрабатывали
-            // и которые уже не в их зоне ответственности
-            const restrictedRoles = ['PICKER', 'PACKER', 'COURIER'];
-            if (!canViewAllOrders && restrictedRoles.includes(actualProcessingRole)) {
-                // Для сборщика: показываем завершенные + заказы переданные курьеру (IN_DELIVERY)
-                // Для курьера: показываем только завершенные (DELIVERED, CANCELLED, RETURNED)
-                if (actualProcessingRole === 'PICKER') {
-                    // Сборщик видит заказы которые передал курьеру + полностью завершенные
-                    const pickerHistoryStatuses = ['IN_DELIVERY', 'DELIVERED', 'CANCELLED', 'RETURNED'];
-                    filtered = filtered.filter(order => pickerHistoryStatuses.includes(order.status));
-                } else {
-                    // Для курьера и упаковщика - только завершенные
-                    filtered = filtered.filter(order => historyStatuses.includes(order.status));
-                }
-            } else {
-                // Для админов и обычных сотрудников - только завершенные
-                filtered = filtered.filter(order => historyStatuses.includes(order.status));
-            }
+            // ПРИМЕЧАНИЕ: Клиентская фильтрация отключена для истории
+            // так как сервер уже вернул нужные данные через параметр history=true
+            // console.log('✅ useOrderFiltering: режим История - показываем все заказы с сервера', {
+            //     ordersCount: filtered.length
+            // });
         } else if (!showHistory && !showWaitingStock) {
             // В режиме "Активные" показываем заказы
             const excludedStatuses = ['DELIVERED', 'CANCELLED', 'RETURNED', 'WAITING_STOCK'];

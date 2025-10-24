@@ -52,6 +52,10 @@ export const employeeApiMethods = {
 
     // Получение статистики по районам
     getDistrictStats: () => employeeApi.get('/stats/districts'),
+
+    // Обновление склада сотрудника (только для админов)
+    updateEmployeeWarehouse: (employeeId, warehouseId) => 
+        employeeApi.put(`/${employeeId}/warehouse`, { warehouseId }),
 };
 
 export { userApiMethods as userApi, employeeApiMethods as employeeApi };

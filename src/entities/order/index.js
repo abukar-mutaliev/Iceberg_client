@@ -41,6 +41,7 @@ export {
     clearCache,
     setStaffOrdersFilters,
     resetStaffOrdersFilters,
+    clearStaffOrdersData,
     addNotification,
     removeNotification,
     clearNotifications,

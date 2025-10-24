@@ -262,8 +262,8 @@ const styles = StyleSheet.create({
         backgroundColor: Color.colorLightMode,
         borderTopLeftRadius: Border.radius.large,
         borderTopRightRadius: Border.radius.large,
-        maxHeight: '90%',
-        minHeight: '60%',
+        maxHeight: '95%',
+        minHeight: '90%',
     },
     header: {
         flexDirection: 'row',
@@ -327,6 +327,7 @@ const styles = StyleSheet.create({
         paddingVertical: normalize(12),
         borderBottomWidth: 1,
         borderBottomColor: Color.border,
+        paddingHorizontal: normalize(12)
     },
     selectedDistrictItem: {
         backgroundColor: 'rgba(0, 123, 255, 0.1)',

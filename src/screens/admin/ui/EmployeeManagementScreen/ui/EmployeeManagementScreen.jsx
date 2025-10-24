@@ -20,6 +20,7 @@ import IconEmployee from '@shared/ui/Icon/Profile/IconPersona';
 import { MapPinIcon } from '@shared/ui/Icon/DistrictManagement/MapPinIcon';
 import IconEdit from '@shared/ui/Icon/Profile/IconEdit';
 import EmployeeDistrictsModal from "@entities/user/ui/EmployeeDistrictsModal/ui/EmployeeDistrictsModal";
+import { EmployeeWarehouseModal } from "@entities/user/ui/EmployeeWarehouseModal";
 
 export const EmployeeManagementScreen = () => {
     const navigation = useNavigation();
@@ -33,6 +34,9 @@ export const EmployeeManagementScreen = () => {
     // Состояние для модального окна районов
     const [districtsModalVisible, setDistrictsModalVisible] = useState(false);
     const [selectedEmployee, setSelectedEmployee] = useState(null);
+    
+    // Состояние для модального окна склада
+    const [warehouseModalVisible, setWarehouseModalVisible] = useState(false);
 
     // Загрузка сотрудников при монтировании
     useEffect(() => {
@@ -97,6 +101,17 @@ export const EmployeeManagementScreen = () => {
         loadEmployees(); // Перезагружаем список сотрудников
     };
 
+    // Открытие модального окна для редактирования склада
+    const handleEditWarehouse = (employee) => {
+        setSelectedEmployee(employee);
+        setWarehouseModalVisible(true);
+    };
+
+    // Успешное обновление склада
+    const handleWarehouseUpdated = () => {
+        loadEmployees(); // Перезагружаем список сотрудников
+    };
+
     // Рендер карточки сотрудника
     const renderEmployeeCard = ({ item }) => {
         const districtsCount = item.districts?.length || 0;
@@ -118,21 +133,37 @@ export const EmployeeManagementScreen = () => {
                 </View>
 
                 <View style={styles.employeeStats}>
-                                    <View style={styles.statItem}>
-                    <MapPinIcon size={16} color={Color.textSecondary} />
-                    <Text style={styles.statText}>
-                        {districtsCount === 0 
-                            ? 'Районы не назначены' 
-                            : `${districtsCount} район${districtsCount > 1 ? 'ов' : ''}`
-                        }
-                    </Text>
-                </View>
+                    <View style={styles.statItem}>
+                        <MapPinIcon size={16} color={Color.textSecondary} />
+                        <Text style={styles.statText}>
+                            {districtsCount === 0 
+                                ? 'Районы не назначены' 
+                                : `${districtsCount} район${districtsCount > 1 ? 'ов' : ''}`
+                            }
+                        </Text>
+                    </View>
                     <View style={styles.statItem}>
                         <Text style={styles.statText}>
                             {ordersCount} заказ{ordersCount !== 1 ? 'ов' : ''}
                         </Text>
                     </View>
                 </View>
+
+                {/* Информация о складе */}
+                {item.warehouse && (
+                    <View style={styles.warehouseContainer}>
+                        <Text style={styles.warehouseTitle}>Склад работы:</Text>
+                        <View style={styles.warehouseInfo}>
+                            <Text style={styles.warehouseName}>{item.warehouse.name}</Text>
+                            <Text style={styles.warehouseAddress}>{item.warehouse.address}</Text>
+                            {item.warehouse.district && (
+                                <Text style={styles.warehouseDistrict}>
+                                    {item.warehouse.district.name}
+                                </Text>
+                            )}
+                        </View>
+                    </View>
+                )}
 
                 {/* Список назначенных районов */}
                 {item.districts && item.districts.length > 0 && (
@@ -150,13 +181,24 @@ export const EmployeeManagementScreen = () => {
                     </View>
                 )}
 
-                <TouchableOpacity
-                    style={styles.editButton}
-                    onPress={() => handleEditDistricts(item)}
-                >
-                    <IconEdit width={16} height={16} color={Color.colorLightMode} />
-                    <Text style={styles.editButtonText}>Редактировать районы</Text>
-                </TouchableOpacity>
+                {/* Кнопки действий */}
+                <View style={styles.actionButtons}>
+                    <TouchableOpacity
+                        style={[styles.editButton, styles.editButtonHalf]}
+                        onPress={() => handleEditDistricts(item)}
+                    >
+                        <IconEdit width={16} height={16} color={Color.colorLightMode} />
+                        <Text style={styles.editButtonText}>Районы</Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity
+                        style={[styles.editButton, styles.editButtonHalf]}
+                        onPress={() => handleEditWarehouse(item)}
+                    >
+                        <IconEdit width={16} height={16} color={Color.colorLightMode} />
+                        <Text style={styles.editButtonText}>Склад</Text>
+                    </TouchableOpacity>
+                </View>
             </View>
         );
     };
@@ -234,6 +276,17 @@ export const EmployeeManagementScreen = () => {
                     setSelectedEmployee(null);
                 }}
                 onSuccess={handleDistrictsUpdated}
+            />
+
+            {/* Модальное окно для редактирования склада */}
+            <EmployeeWarehouseModal
+                visible={warehouseModalVisible}
+                employee={selectedEmployee}
+                onClose={() => {
+                    setWarehouseModalVisible(false);
+                    setSelectedEmployee(null);
+                }}
+                onSuccess={handleWarehouseUpdated}
             />
         </SafeAreaView>
     );
@@ -346,6 +399,45 @@ const styles = StyleSheet.create({
         color: Color.colorLightMode,
         fontWeight: '500',
     },
+    warehouseContainer: {
+        marginBottom: normalize(12),
+        padding: normalize(12),
+        backgroundColor: Color.colorLightGray,
+        borderRadius: Border.radius.small,
+    },
+    warehouseTitle: {
+        fontSize: normalizeFont(FontSize.size_sm),
+        fontFamily: FontFamily.sFProText,
+        fontWeight: '600',
+        color: Color.textPrimary,
+        marginBottom: normalize(6),
+    },
+    warehouseInfo: {
+        marginLeft: normalize(8),
+    },
+    warehouseName: {
+        fontSize: normalizeFont(FontSize.size_sm),
+        fontFamily: FontFamily.sFProDisplay,
+        fontWeight: '600',
+        color: Color.blue2,
+        marginBottom: normalize(2),
+    },
+    warehouseAddress: {
+        fontSize: normalizeFont(FontSize.size_xs),
+        fontFamily: FontFamily.sFProText,
+        color: Color.textSecondary,
+        marginBottom: normalize(2),
+    },
+    warehouseDistrict: {
+        fontSize: normalizeFont(FontSize.size_xs),
+        fontFamily: FontFamily.sFProText,
+        color: Color.textSecondary,
+    },
+    actionButtons: {
+        flexDirection: 'row',
+        gap: normalize(8),
+        marginTop: normalize(8),
+    },
     editButton: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -353,7 +445,9 @@ const styles = StyleSheet.create({
         backgroundColor: Color.blue2,
         paddingVertical: normalize(10),
         borderRadius: Border.radius.medium,
-        marginTop: normalize(8),
+    },
+    editButtonHalf: {
+        flex: 1,
     },
     editButtonText: {
         fontSize: normalizeFont(FontSize.size_sm),

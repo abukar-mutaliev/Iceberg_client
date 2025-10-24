@@ -103,6 +103,8 @@ export const useChatSocket = () => {
           return;
         }
 
+        // Socket.IO автоматически добавляет /socket.io/ к URL, поэтому используем HTTP URL
+        // но принудительно включаем WebSocket transport
         console.log('🔌 Attempting to connect to WebSocket:', { baseUrl, hasToken: !!token });
         
         const socket = io(baseUrl, {
@@ -174,7 +176,8 @@ export const useChatSocket = () => {
             description: error.description,
             context: error.context,
             timestamp: new Date().toISOString(),
-            baseUrl
+            baseUrl,
+            wsUrl
           });
           
           // Если ошибка связана с JWT, пытаемся обновить токен и переподключиться

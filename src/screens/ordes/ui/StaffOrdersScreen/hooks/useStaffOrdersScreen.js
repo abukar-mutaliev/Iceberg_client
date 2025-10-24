@@ -9,7 +9,7 @@ import { useStaffOrders } from '@entities/order/hooks/useStaffOrders';
 import { useOrderPermissions } from '@entities/order/hooks/useOrderPermissions';
 import { useOrderFiltering } from '@entities/order/hooks/useOrderFiltering';
 import { useRealtimeOrders } from '@entities/order/hooks/useRealtimeOrders';
-import { selectLocalOrderActions, setLocalOrderAction, clearLocalOrderAction, updateOrderInList, selectWaitingStockCountCombined, fetchStaffOrders } from '@entities/order';
+import { selectLocalOrderActions, setLocalOrderAction, clearLocalOrderAction, updateOrderInList, selectWaitingStockCountCombined, fetchStaffOrders, clearStaffOrdersData } from '@entities/order';
 import { orderStateHelpers } from '@entities/order/lib/orderStateHelpers';
 import { getAvailableStatuses, CONSTANTS } from '@entities/order';
 
@@ -34,6 +34,18 @@ export const useStaffOrdersScreen = () => {
 
     // Refs
     const isMountedRef = useRef(true);
+    const loadMoreTimeoutRef = useRef(null);
+    const lastLoadMoreTimeRef = useRef(0);
+    
+    // Cleanup при размонтировании
+    useEffect(() => {
+        return () => {
+            isMountedRef.current = false;
+            if (loadMoreTimeoutRef.current) {
+                clearTimeout(loadMoreTimeoutRef.current);
+            }
+        };
+    }, []);
 
     // Хуки данных
     const {
@@ -67,15 +79,11 @@ export const useStaffOrdersScreen = () => {
 
     // Подписка на WebSocket при загрузке данных
     useEffect(() => {
-        console.log('🔌 WebSocket subscription effect:', {
-            isWebSocketConnected,
-            isMounted: isMountedRef.current,
-            employeeId: currentUser?.employee?.id,
-            warehouseId: currentUser?.employee?.warehouseId
-        });
+        // Отключаем подробное логирование для производительности
+        // console.log('🔌 WebSocket subscription effect');
         
         if (isWebSocketConnected && isMountedRef.current && currentUser?.employee?.id) {
-            console.log('✅ Subscribing to WebSocket orders');
+            // console.log('✅ Subscribing to WebSocket orders');
             // Добавляем небольшую задержку для полного установления соединения
             const subscriptionTimeout = setTimeout(() => {
                 subscribeToOrders({
@@ -91,7 +99,7 @@ export const useStaffOrdersScreen = () => {
 
         return () => {
             if (isWebSocketConnected) {
-                console.log('❌ Unsubscribing from WebSocket orders');
+                // console.log('❌ Unsubscribing from WebSocket orders');
                 unsubscribeFromOrders();
             }
         };
@@ -123,7 +131,8 @@ export const useStaffOrdersScreen = () => {
         // Если после загрузки новой страницы количество отфильтрованных заказов НЕ увеличилось
         if (prevFilteredCountRef.current === currentCount && currentCount === 0 && staffOrders.length > 0) {
             emptyPagesCountRef.current += 1;
-            console.log(`⚠️ Пустая страница после фильтрации (${emptyPagesCountRef.current} подряд)`);
+            // Отключаем логирование - слишком много шума
+            // console.log(`⚠️ Пустая страница после фильтрации (${emptyPagesCountRef.current} подряд)`);
         } else {
             // Сбрасываем счетчик если данные появились
             emptyPagesCountRef.current = 0;
@@ -133,28 +142,54 @@ export const useStaffOrdersScreen = () => {
     }, [filteredOrders.length, staffOrders.length]);
     
     // Автозагрузка дополнительных страниц если данных мало после фильтрации
-    useEffect(() => {
-        if (dataLoaded && !isLoading && !showHistory && !showWaitingStock) {
-            // Запускаем автозагрузку только для активных заказов
-            // (для истории и ожидающих не нужно)
-            const timer = setTimeout(() => {
-                autoLoadMore();
-            }, 500); // Задержка для избежания конфликтов
-            
-            return () => clearTimeout(timer);
-        }
-    }, [dataLoaded, isLoading, showHistory, showWaitingStock, autoLoadMore]);
-
+    // ОТКЛЮЧЕНО - вызывает множественные рендеры и запросы
+    // Вместо этого используем ручную загрузку через onEndReached в FlatList
+    // useEffect(() => {
+    //     if (dataLoaded && !isLoading && !showHistory && !showWaitingStock) {
+    //         // Запускаем автозагрузку только для активных заказов
+    //         // (для истории и ожидающих не нужно)
+    //         const timer = setTimeout(() => {
+    //             autoLoadMore();
+    //         }, 500); // Задержка для избежания конфликтов
+    //         
+    //         return () => clearTimeout(timer);
+    //     }
+    // }, [dataLoaded, isLoading, showHistory, showWaitingStock, autoLoadMore]);
+    
     // Условный loadMore который предотвращает бесконечную загрузку при пустых результатах фильтрации
     const conditionalLoadMore = useCallback(() => {
-        // Если загрузили более 3 пустых страниц подряд - прекращаем загрузку
-        if (emptyPagesCountRef.current >= 3 && filteredOrders.length === 0) {
-            console.log('🛑 Прекращаем загрузку: 3+ пустых страниц подряд после фильтрации');
+        // Предотвращаем слишком частые вызовы (debounce 1 секунда)
+        const now = Date.now();
+        if (now - lastLoadMoreTimeRef.current < 1000) {
+            // Отключаем логирование частых вызовов - слишком много шума
             return;
         }
         
-        loadMore();
-    }, [loadMore, filteredOrders.length]);
+        // Если загрузили более 3 пустых страниц подряд - прекращаем загрузку
+        if (emptyPagesCountRef.current >= 3 && filteredOrders.length === 0) {
+            // Логируем только первый раз
+            if (emptyPagesCountRef.current === 3) {
+                console.log('🛑 Прекращаем загрузку: 3+ пустых страниц подряд после фильтрации');
+            }
+            return;
+        }
+        
+        // Если уже идет загрузка или обновление - не загружаем
+        if (isLoading || loadingMore || isRefreshing) {
+            return;
+        }
+        
+        // Очищаем предыдущий таймаут
+        if (loadMoreTimeoutRef.current) {
+            clearTimeout(loadMoreTimeoutRef.current);
+        }
+        
+        // Устанавливаем таймаут для debounce
+        loadMoreTimeoutRef.current = setTimeout(() => {
+            lastLoadMoreTimeRef.current = Date.now();
+            loadMore();
+        }, 300);
+    }, [loadMore, filteredOrders.length, isLoading, loadingMore, isRefreshing]);
     
     // Мемоизированные значения
     const stableLocalOrderActions = useMemo(() => localOrderActions || {}, [localOrderActions]);
@@ -354,15 +389,22 @@ export const useStaffOrdersScreen = () => {
         if (showHistory) {
             // Если уже показываем историю, выключаем её
             setShowHistory(false);
-            // Загружаем все заказы
+            // Очищаем старые данные перед загрузкой новых
+            dispatch(clearStaffOrdersData());
+            // Загружаем активные заказы (без завершенных статусов)
             dispatch(fetchStaffOrders({ forceRefresh: true }));
         } else {
             // Включаем историю и выключаем ожидающие поставки
             setShowHistory(true);
             setShowWaitingStock(false);
-            // Загружаем заказы со статусами истории (DELIVERED, CANCELLED, RETURNED)
-            // Сервер не поддерживает множественные статусы, поэтому загрузим все и отфильтруем на клиенте
-            dispatch(fetchStaffOrders({ forceRefresh: true }));
+            // Очищаем старые данные перед загрузкой новых
+            dispatch(clearStaffOrdersData());
+            // Небольшая задержка чтобы Redux успел применить очистку
+            setTimeout(() => {
+                // Загружаем все завершенные заказы для истории
+                console.log('🔍 handleToggleHistory: загружаем историю с параметром history=true');
+                dispatch(fetchStaffOrders({ history: true, forceRefresh: true }));
+            }, 50);
         }
         // Сбрасываем счетчик пустых страниц при переключении вкладки
         emptyPagesCountRef.current = 0;
@@ -373,14 +415,24 @@ export const useStaffOrdersScreen = () => {
         if (showWaitingStock) {
             // Если уже показываем ожидающие поставки, выключаем их
             setShowWaitingStock(false);
-            // Загружаем все заказы
-            dispatch(fetchStaffOrders({ forceRefresh: true }));
+            // Очищаем старые данные перед загрузкой новых
+            dispatch(clearStaffOrdersData());
+            // Небольшая задержка чтобы Redux успел применить очистку
+            setTimeout(() => {
+                // Загружаем все активные заказы
+                dispatch(fetchStaffOrders({ forceRefresh: true }));
+            }, 50);
         } else {
             // Включаем ожидающие поставки и выключаем историю
             setShowWaitingStock(true);
             setShowHistory(false);
-            // Загружаем только заказы WAITING_STOCK
-            dispatch(fetchStaffOrders({ status: 'WAITING_STOCK', forceRefresh: true }));
+            // Очищаем старые данные перед загрузкой новых
+            dispatch(clearStaffOrdersData());
+            // Небольшая задержка чтобы Redux успел применить очистку
+            setTimeout(() => {
+                // Загружаем только заказы WAITING_STOCK
+                dispatch(fetchStaffOrders({ status: 'WAITING_STOCK', forceRefresh: true }));
+            }, 50);
         }
         // Сбрасываем счетчик пустых страниц при переключении вкладки
         emptyPagesCountRef.current = 0;
@@ -391,11 +443,16 @@ export const useStaffOrdersScreen = () => {
         // Сбрасываем обе вкладки при переключении на основную
         setShowHistory(false);
         setShowWaitingStock(false);
+        // Очищаем старые данные перед загрузкой новых
+        dispatch(clearStaffOrdersData());
         // Сбрасываем счетчик пустых страниц при переключении вкладки
         emptyPagesCountRef.current = 0;
         prevFilteredCountRef.current = 0;
-        // Загружаем все активные заказы
-        dispatch(fetchStaffOrders({ forceRefresh: true }));
+        // Небольшая задержка чтобы Redux успел применить очистку
+        setTimeout(() => {
+            // Загружаем все активные заказы
+            dispatch(fetchStaffOrders({ forceRefresh: true }));
+        }, 50);
     }, [dispatch]);
 
     const handleCloseStatusModal = useCallback(() => {

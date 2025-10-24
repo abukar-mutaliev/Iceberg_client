@@ -693,6 +693,16 @@ const orderSlice = createSlice({
             state.staffOrders.filters = initialState.staffOrders.filters;
         },
 
+        // Очистка данных заказов персонала (при смене вкладки/фильтра)
+        clearStaffOrdersData: (state) => {
+            state.staffOrders.data = [];
+            state.staffOrders.total = 0;
+            state.staffOrders.page = 1;
+            state.staffOrders.pages = 1;
+            state.staffOrders.hasMore = false;
+            // НЕ очищаем lastFetchTime - он нужен для кэша
+        },
+
         // Добавление уведомления
         addNotification: (state, action) => {
             const newNotification = {
@@ -1399,6 +1409,7 @@ export const {
     clearCache,
     setStaffOrdersFilters,
     resetStaffOrdersFilters,
+    clearStaffOrdersData,
     addNotification,
     removeNotification,
     clearNotifications,

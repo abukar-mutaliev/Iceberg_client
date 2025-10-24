@@ -186,13 +186,11 @@ const notificationSlice = createSlice({
     },
     extraReducers: (builder) => {
         builder
-            // fetchUnreadCount
             .addCase(fetchUnreadCount.pending, (state) => {
                 // Не устанавливаем loading для быстрого запроса
             })
             .addCase(fetchUnreadCount.fulfilled, (state, action) => {
                 state.unreadCount = action.payload;
-                console.log('🔔 Unread count updated:', action.payload);
             })
             .addCase(fetchUnreadCount.rejected, (state, action) => {
                 console.error('❌ Failed to load unread count:', action.payload);
@@ -215,7 +213,6 @@ const notificationSlice = createSlice({
                 state.hasNextPage = action.payload.hasNextPage;
                 state.currentPage = action.payload.currentPage;
                 state.lastFetchTime = Date.now();
-                console.log('🔔 Notifications loaded:', action.payload.notifications.length);
             })
             .addCase(fetchNotifications.rejected, (state, action) => {
                 state.isLoading = false;
@@ -266,7 +263,6 @@ const notificationSlice = createSlice({
                 state.isLoading = false;
                 state.settings = action.payload;
                 state.error = null;
-                console.log('🔔 Notification settings loaded:', action.payload);
             })
             .addCase(fetchNotificationSettings.rejected, (state, action) => {
                 state.isLoading = false;
@@ -304,10 +300,7 @@ const notificationSlice = createSlice({
                 state.error = action.payload;
             })
 
-            // Обработка сброса состояния приложения
             .addCase('RESET_APP_STATE', (state) => {
-                console.log('🔔 Resetting notification state');
-                // Сброс всех полей к начальному состоянию
                 Object.assign(state, initialState);
             });
     }

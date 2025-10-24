@@ -43,7 +43,13 @@ export const StatisticsView = React.memo(({
     const { currentUser: user } = useAuth();
     const isAdmin = user?.role === 'ADMIN';
 
-        return (
+    // Подсчитываем общую сумму к выплате всем сотрудникам
+    const totalToPayAll = filteredData.reduce((sum, employee) => {
+        const toPay = (employee.pendingAmount || 0) + (employee.approvedAmount || 0);
+        return sum + toPay;
+    }, 0);
+
+    return (
         <>
             <View style={styles.statsContainer}>
                 {/* Показываем pending карточку только администраторам */}
@@ -55,14 +61,27 @@ export const StatisticsView = React.memo(({
                 )}
                 {/* Показываем общую статистику только администраторам */}
                 {isAdmin && totalStats && (
-                    <StatsCard
-                        title="Общая статистика"
-                        stats={[
-                            { label: 'Выплачено', value: `${totalStats.paidAmount?.toLocaleString() || 0} ₽` },
-                            { label: 'Одобрено', value: `${totalStats.approvedAmount?.toLocaleString() || 0} ₽` },
-                            { label: 'Всего', value: `${totalStats.totalAmount?.toLocaleString() || 0} ₽` }
-                        ]}
-                    />
+                    <>
+                        <StatsCard
+                            title="Общая статистика"
+                            stats={[
+                                { label: 'Выплачено', value: `${totalStats.paidAmount?.toLocaleString() || 0} ₽` },
+                                { label: 'Одобрено', value: `${totalStats.approvedAmount?.toLocaleString() || 0} ₽` },
+                                { label: 'Всего', value: `${totalStats.totalAmount?.toLocaleString() || 0} ₽` }
+                            ]}
+                        />
+                        
+                        {/* Карточка с общей суммой к выплате */}
+                        {totalToPayAll > 0 && (
+                            <View style={styles.toPayCard}>
+                                <Text style={styles.toPayTitle}>💰 Общая сумма к выплате сотрудникам</Text>
+                                <Text style={styles.toPayAmount}>{totalToPayAll.toLocaleString()} ₽</Text>
+                                <Text style={styles.toPayHint}>
+                                    (В ожидании + Одобрено для всех сотрудников)
+                                </Text>
+                            </View>
+                        )}
+                    </>
                 )}
             </View>
 
