@@ -139,7 +139,8 @@ const WarehouseCard = React.memo(({ warehouse }) => {
                 address: warehouse.warehouse.address || warehouse.warehouseAddress || warehouse.address,
                 district: warehouse.warehouse.district || warehouse.district,
                 totalQuantity: warehouse.totalQuantity || warehouse.quantity || 0,
-                availableQuantity: warehouse.availableQuantity || warehouse.quantity || 0
+                availableQuantity: warehouse.availableQuantity || warehouse.quantity || 0,
+                priceInfo: warehouse.priceInfo || warehouse.productStock?.priceInfo
             };
         }
 
@@ -150,12 +151,21 @@ const WarehouseCard = React.memo(({ warehouse }) => {
             address: warehouse.warehouseAddress || warehouse.address,
             district: warehouse.district,
             totalQuantity: warehouse.totalQuantity || warehouse.quantity || 0,
-            availableQuantity: warehouse.availableQuantity || warehouse.quantity || 0
+            availableQuantity: warehouse.availableQuantity || warehouse.quantity || 0,
+            priceInfo: warehouse.priceInfo || warehouse.productStock?.priceInfo
         };
     }, [warehouse]);
 
     const reservedQuantity = warehouseData.totalQuantity - warehouseData.availableQuantity;
     const hasReserved = reservedQuantity > 0;
+    
+    // Получаем информацию о ценах
+    const priceInfo = warehouseData.priceInfo;
+    const warehousePrice = priceInfo?.warehousePrice;
+    const effectivePrice = priceInfo?.effectivePrice ?? warehousePrice;
+    const basePrice = priceInfo?.basePrice;
+    const discount = priceInfo?.discount;
+    const discountPercent = priceInfo?.discountPercent;
 
     return (
         <View style={styles.warehouseCard}>
@@ -173,6 +183,41 @@ const WarehouseCard = React.memo(({ warehouse }) => {
                     <Text style={styles.warehouseQuantityLabel}>доступно</Text>
                 </View>
             </View>
+
+            {/* Информация о ценах */}
+            {(effectivePrice || basePrice) && (
+                <View style={styles.priceInfoContainer}>
+                    <View style={styles.priceRow}>
+                        <Text style={styles.priceLabel}>Цена за коробку:</Text>
+                        <Text style={styles.priceValue}>
+                            {effectivePrice ? parseFloat(effectivePrice).toFixed(0) : parseFloat(basePrice).toFixed(0)} ₽
+                        </Text>
+                    </View>
+                    {warehousePrice !== null && warehousePrice !== undefined && (
+                        <View style={styles.warehousePriceRow}>
+                            <Text style={styles.warehousePriceLabel}>Цена для склада:</Text>
+                            <Text style={styles.warehousePriceValue}>
+                                {parseFloat(warehousePrice).toFixed(0)} ₽
+                            </Text>
+                        </View>
+                    )}
+                    {warehousePrice !== null && warehousePrice !== undefined && basePrice && discount < 0 && (
+                        <View style={styles.discountRow}>
+                            <Text style={styles.discountText}>
+                                Скидка: {Math.abs(discount).toFixed(0)} ₽ ({Math.abs(discountPercent || 0).toFixed(1)}%)
+                            </Text>
+                            <Text style={styles.basePriceText}>
+                                Базовая: {parseFloat(basePrice).toFixed(0)} ₽
+                            </Text>
+                        </View>
+                    )}
+                    {warehousePrice === null && basePrice && (
+                        <Text style={styles.fallbackPriceText}>
+                            Используется базовая цена: {parseFloat(basePrice).toFixed(0)} ₽
+                        </Text>
+                    )}
+                </View>
+            )}
 
             {warehouseData.district && (
                 <View style={styles.warehouseDistrict}>
@@ -431,6 +476,74 @@ const styles = StyleSheet.create({
         color: Color.textSecondary,
         fontFamily: FontFamily.sFProText,
         fontStyle: 'italic',
+    },
+    priceInfoContainer: {
+        marginTop: normalize(8),
+        paddingTop: normalize(8),
+        borderTopWidth: 0.5,
+        borderTopColor: Color.border,
+    },
+    priceRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: normalize(4),
+    },
+    priceLabel: {
+        fontSize: normalizeFont(12),
+        color: Color.textSecondary,
+        fontFamily: FontFamily.sFProText,
+    },
+    priceValue: {
+        fontSize: normalizeFont(16),
+        fontWeight: '700',
+        color: Color.blue2,
+        fontFamily: FontFamily.sFProDisplay,
+    },
+    warehousePriceRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginTop: normalize(4),
+        paddingTop: normalize(4),
+        borderTopWidth: 0.5,
+        borderTopColor: Color.border,
+    },
+    warehousePriceLabel: {
+        fontSize: normalizeFont(11),
+        color: Color.textSecondary,
+        fontFamily: FontFamily.sFProText,
+    },
+    warehousePriceValue: {
+        fontSize: normalizeFont(14),
+        fontWeight: '600',
+        color: '#3B43A2',
+        fontFamily: FontFamily.sFProDisplay,
+    },
+    discountRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginTop: normalize(4),
+    },
+    discountText: {
+        fontSize: normalizeFont(11),
+        color: '#4CAF50',
+        fontFamily: FontFamily.sFProText,
+        fontWeight: '500',
+    },
+    basePriceText: {
+        fontSize: normalizeFont(10),
+        color: Color.textSecondary,
+        fontFamily: FontFamily.sFProText,
+        textDecorationLine: 'line-through',
+    },
+    fallbackPriceText: {
+        fontSize: normalizeFont(10),
+        color: Color.textSecondary,
+        fontFamily: FontFamily.sFProText,
+        fontStyle: 'italic',
+        marginTop: normalize(4),
     },
 });
 

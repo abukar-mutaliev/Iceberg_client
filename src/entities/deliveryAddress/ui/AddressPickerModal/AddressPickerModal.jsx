@@ -7,7 +7,6 @@ import {
     Modal,
     ScrollView,
     ActivityIndicator,
-    Alert,
     Switch
 } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
@@ -19,6 +18,7 @@ import { selectProfile, fetchProfile } from '@entities/profile';
 import CustomButton from "@shared/ui/Button/CustomButton";
 import { IconEdit } from '@shared/ui/Icon/Profile/IconEdit';
 import IconDelete from '@shared/ui/Icon/Profile/IconDelete';
+import { GlobalAlert } from '@shared/ui/CustomAlert';
 
 const normalize = (size) => size;
 const MAX_ADDRESSES = 3;
@@ -169,7 +169,7 @@ export const AddressPickerModal = ({
             // Пользователь может выбрать адрес из профиля или создать новый
         } catch (error) {
             console.error('Ошибка загрузки адресов:', error);
-            Alert.alert('Ошибка', 'Не удалось загрузить адреса');
+            GlobalAlert.showError('Ошибка', 'Не удалось загрузить адреса');
         } finally {
             setLoading(false);
         }
@@ -233,13 +233,13 @@ export const AddressPickerModal = ({
 
     const handleCreateAddress = async () => {
         if (!addressForm.title || !addressForm.address || !addressForm.districtId) {
-            Alert.alert('Ошибка', 'Заполните все обязательные поля');
+            GlobalAlert.showError('Ошибка', 'Заполните все обязательные поля');
             return;
         }
 
         // Проверяем лимит адресов только для новых адресов
         if (!editingAddress && addresses.length >= MAX_ADDRESSES) {
-            Alert.alert('Ошибка', `Максимальное количество адресов: ${MAX_ADDRESSES}`);
+            GlobalAlert.showError('Ошибка', `Максимальное количество адресов: ${MAX_ADDRESSES}`);
             return;
         }
 
@@ -288,7 +288,7 @@ export const AddressPickerModal = ({
                         
                     } catch (profileError) {
                         console.error('❌ Failed to sync with profile:', profileError);
-                        Alert.alert('Предупреждение', 'Адрес обновлен, но не удалось синхронизировать изменения с профилем');
+                        GlobalAlert.showWarning('Предупреждение', 'Адрес обновлен, но не удалось синхронизировать изменения с профилем');
                     }
                 }
                 
@@ -313,7 +313,7 @@ export const AddressPickerModal = ({
             resetForm();
         } catch (error) {
             console.error('Ошибка сохранения адреса:', error);
-            Alert.alert('Ошибка', 'Не удалось сохранить адрес');
+            GlobalAlert.showError('Ошибка', 'Не удалось сохранить адрес');
         } finally {
             setLoading(false);
         }
@@ -322,7 +322,7 @@ export const AddressPickerModal = ({
     const handleEditAddress = (address) => {
         // Не позволяем редактировать адрес из профиля (с ID 'profile')
         if (address.id === 'profile' || address.isFromProfile) {
-            Alert.alert('Информация', 'Адрес из профиля нельзя редактировать. Сначала сохраните его как новый адрес.');
+            GlobalAlert.showInfo('Информация', 'Адрес из профиля нельзя редактировать. Сначала сохраните его как новый адрес.');
             return;
         }
         
@@ -345,39 +345,32 @@ export const AddressPickerModal = ({
     const handleDeleteAddress = async (address) => {
         // Не позволяем удалять адрес из профиля (с ID 'profile')
         if (address.id === 'profile' || address.isFromProfile) {
-            Alert.alert('Информация', 'Адрес из профиля нельзя удалить. Он управляется через настройки профиля.');
+            GlobalAlert.showInfo('Информация', 'Адрес из профиля нельзя удалить. Он управляется через настройки профиля.');
             return;
         }
         
-        Alert.alert(
+        GlobalAlert.showConfirm(
             'Удаление адреса',
             `Вы уверены, что хотите удалить адрес "${address.title}"?`,
-            [
-                { text: 'Отмена', style: 'cancel' },
-                {
-                    text: 'Удалить',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            setLoading(true);
-                            await DeliveryAddressApi.deleteAddress(address.id);
-                            await loadAddresses();
-                            
-                            // Если удаленный адрес был выбран, сбрасываем выбор
-                            if (selectedAddress?.id === address.id) {
-                                setSelectedAddress(null);
-                            }
-                            
-                            Alert.alert('Успех', 'Адрес удален');
-                        } catch (error) {
-                            console.error('Ошибка удаления адреса:', error);
-                            Alert.alert('Ошибка', 'Не удалось удалить адрес');
-                        } finally {
-                            setLoading(false);
-                        }
+            async () => {
+                try {
+                    setLoading(true);
+                    await DeliveryAddressApi.deleteAddress(address.id);
+                    await loadAddresses();
+                    
+                    // Если удаленный адрес был выбран, сбрасываем выбор
+                    if (selectedAddress?.id === address.id) {
+                        setSelectedAddress(null);
                     }
+                    
+                    GlobalAlert.showSuccess('', 'Адрес удален');
+                } catch (error) {
+                    console.error('Ошибка удаления адреса:', error);
+                    GlobalAlert.showError('Ошибка', 'Не удалось удалить адрес');
+                } finally {
+                    setLoading(false);
                 }
-            ]
+            }
         );
     };
 
@@ -386,23 +379,23 @@ export const AddressPickerModal = ({
         const profileAddressObj = allAddresses.find(addr => addr.isFromProfile);
         
         if (profileAddressObj) {
-            setSelectedAddress(profileAddressObj);
-            onAddressSelected(profileAddressObj);
+            // Автоматически создаем адрес в базе данных
+            await handleCreateFromProfileAddress();
         } else {
-            Alert.alert('Ошибка', 'Адрес в профиле не найден');
+            GlobalAlert.showError('Ошибка', 'Адрес в профиле не найден');
         }
     };
 
     const handleCreateFromProfileAddress = async () => {
 
         if (!hasProfileAddress) {
-            Alert.alert('Ошибка', 'Адрес в профиле не заполнен');
+            GlobalAlert.showError('Ошибка', 'Адрес в профиле не заполнен');
             return;
         }
 
         // Проверяем лимит адресов (только для сохраненных адресов, не считая адрес из профиля)
         if (addresses.length >= MAX_ADDRESSES) {
-            Alert.alert('Ошибка', `Максимальное количество адресов: ${MAX_ADDRESSES}`);
+            GlobalAlert.showError('Ошибка', `Максимальное количество адресов: ${MAX_ADDRESSES}`);
             return;
         }
 
@@ -428,7 +421,7 @@ export const AddressPickerModal = ({
             
         } catch (error) {
             console.error('Ошибка создания адреса из профиля:', error);
-            Alert.alert('Ошибка', 'Не удалось создать адрес из профиля');
+            GlobalAlert.showError('Ошибка', 'Не удалось создать адрес из профиля');
         } finally {
             setLoading(false);
         }
@@ -444,63 +437,74 @@ export const AddressPickerModal = ({
                 selectedAddress?.id === address.id && styles.selectedAddressItem
             ]}
         >
-            <TouchableOpacity
-                style={styles.addressContent}
-                onPress={() => {
-                    setSelectedAddress(address);
-                }}
-            >
-                <View style={styles.addressHeader}>
-                    <View style={styles.addressTitleContainer}>
-                        {selectedAddress?.id === address.id && (
-                            <Text style={styles.selectedIndicator}>✓</Text>
-                        )}
-                        <Text style={styles.addressTitle}>{address.title}</Text>
-                    </View>
-                    <View style={styles.addressBadges}>
-                        {address.isFromProfile && (
-                            <Text style={styles.profileBadge}>👤 Из профиля</Text>
-                        )}
-                     
-                        {address.isDefault && (
-                            <Text style={styles.defaultBadge}>По умолчанию</Text>
-                        )}
-                        {selectedAddress?.id === address.id && (
-                            <Text style={styles.selectedBadge}>Выбран</Text>
-                        )}
-                    </View>
-                </View>
-                <Text style={styles.addressText}>{address.address}</Text>
-                <Text style={styles.districtText}>{address.district?.name}</Text>
-            </TouchableOpacity>
-            
-            {/* Кнопки управления адресом */}
-            <View style={styles.addressActions}>
-                            {!address.isFromProfile && (
-                                <>
-                                    <TouchableOpacity
-                                        style={styles.actionButton}
-                                        onPress={() => handleEditAddress(address)}
-                                    >
-                                        <IconEdit width={20} height={20} color="#3339B0" />
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={[styles.actionButton, styles.deleteButton]}
-                                        onPress={() => handleDeleteAddress(address)}
-                                    >
-                                        <IconDelete width={18} height={18} color="#DC3545" />
-                                    </TouchableOpacity>
-                                </>
+            <View style={styles.addressTopRow}>
+                <TouchableOpacity
+                    style={styles.addressContent}
+                    onPress={async () => {
+                        // Если это адрес из профиля (id: 'profile'), автоматически создаем его
+                        if (address.id === 'profile' || address.isFromProfile) {
+                            await handleCreateFromProfileAddress();
+                        } else {
+                            setSelectedAddress(address);
+                        }
+                    }}
+                >
+                    <View style={styles.addressHeader}>
+                        <View style={styles.addressTitleContainer}>
+                            {selectedAddress?.id === address.id && (
+                                <Text style={styles.selectedIndicator}>✓</Text>
                             )}
-                {address.isFromProfile && (
-                    <TouchableOpacity
-                        style={styles.actionButton}
-                        onPress={() => handleCreateFromProfileAddress()}
-                    >
-                        <Text style={styles.actionButtonText}>💾</Text>
-                    </TouchableOpacity>
-                )}
+                            <Text style={styles.addressTitle} numberOfLines={2}>
+                                {address.title}
+                            </Text>
+                        </View>
+                    </View>
+                    <Text style={styles.addressText}>{address.address}</Text>
+                    <Text style={styles.districtText}>{address.district?.name}</Text>
+                </TouchableOpacity>
+
+                {/* Кнопки управления адресом */}
+                <View style={styles.addressActions}>
+                    {!address.isFromProfile && (
+                        <>
+                            <TouchableOpacity
+                                style={styles.actionButton}
+                                onPress={() => handleEditAddress(address)}
+                            >
+                                <IconEdit width={20} height={20} color="#3339B0" />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.actionButton, styles.deleteButton]}
+                                onPress={() => handleDeleteAddress(address)}
+                            >
+                                <IconDelete width={18} height={18} color="#DC3545" />
+                            </TouchableOpacity>
+                        </>
+                    )}
+                    {address.isFromProfile && (
+                        <TouchableOpacity
+                            style={styles.actionButton}
+                            onPress={() => handleCreateFromProfileAddress()}
+                        >
+                            <Text style={styles.actionButtonText}>💾</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
             </View>
+
+            {(address.isDefault || selectedAddress?.id === address.id || address.isFromProfile) && (
+                <View style={styles.addressBadgesRow}>
+                    {address.isDefault && (
+                        <Text style={styles.defaultBadge}>По умолчанию</Text>
+                    )}
+                    {selectedAddress?.id === address.id && (
+                        <Text style={styles.selectedBadge}>Выбран</Text>
+                    )}
+                    {address.isFromProfile && (
+                        <Text style={styles.profileBadge}>👤 Из профиля</Text>
+                    )}
+                </View>
+            )}
         </View>
     );
 
@@ -777,20 +781,28 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.1,
         shadowRadius: 2,
         elevation: 2,
-        flexDirection: 'row',
-        alignItems: 'center'
+        paddingVertical: 12,
+        gap: 2,
     },
     selectedAddressItem: {
         borderColor: '#007AFF',
         borderWidth: 2
     },
+    addressTopRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        paddingHorizontal: 16,
+        gap: 12,
+    },
     addressContent: {
         flex: 1,
-        padding: 16
+        gap: 6,
     },
     addressActions: {
         flexDirection: 'row',
-        paddingRight: 12
+        paddingRight: 12,
+        alignItems: 'center',
+        gap: 4,
     },
     actionButton: {
         padding: 8,
@@ -818,8 +830,9 @@ const styles = StyleSheet.create({
     },
     addressTitleContainer: {
         flexDirection: 'row',
-        alignItems: 'center',
-        flex: 1
+        alignItems: 'flex-start',
+        flex: 1,
+        marginRight: 8,
     },
     selectedIndicator: {
         fontSize: 16,
@@ -831,11 +844,19 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '600',
         color: '#000000',
-        flex: 1
+        flex: 1,
+        flexShrink: 1,
+        minWidth: 0,
     },
-    addressBadges: {
+    addressBadgesRow: {
         flexDirection: 'row',
-        gap: 4
+        flexWrap: 'wrap',
+        gap: 6,
+        marginTop: 8,
+        alignSelf: 'flex-end',
+        justifyContent: 'flex-end',
+        alignItems: 'center',
+        paddingHorizontal: 16,
     },
     defaultBadge: {
         fontSize: 12,
@@ -843,7 +864,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#E3F2FD',
         paddingHorizontal: 8,
         paddingVertical: 4,
-        borderRadius: 12
+        borderRadius: 12,
     },
     profileBadge: {
         fontSize: 12,

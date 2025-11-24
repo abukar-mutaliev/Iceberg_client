@@ -28,7 +28,7 @@ export const LogViewer = () => {
             const logLines = logContent.split('\n').filter(line => line.trim());
             setLogs(logLines);
             
-            Alert.alert('Успех', `Загружено ${logLines.length} записей из файла ${latestLogFile}`);
+            Alert.alert('Готово', `Загружено ${logLines.length} записей из файла ${latestLogFile}`);
         } catch (error) {
             Alert.alert('Ошибка', `Не удалось загрузить логи: ${error.message}`);
         } finally {
@@ -38,7 +38,7 @@ export const LogViewer = () => {
 
     const clearLogs = () => {
         setLogs([]);
-        Alert.alert('Успех', 'Логи очищены');
+        Alert.alert('Готово', 'Логи очищены');
     };
 
     return (

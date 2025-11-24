@@ -5,7 +5,6 @@ import {
     StyleSheet,
     ScrollView,
     TouchableOpacity,
-    Alert,
     SafeAreaView,
     Modal,
     FlatList,
@@ -24,6 +23,7 @@ import { MapPinIcon } from '@shared/ui/Icon/DistrictManagement/MapPinIcon';
 import { fetchAllDistricts } from '@entities/district/model/slice';
 import { authApi } from '@entities/auth/api/authApi';
 import { useAuth } from '@entities/auth/hooks/useAuth';
+import { useCustomAlert } from '@shared/ui/CustomAlert';
 
 const roleOptions = [
     { value: 'EMPLOYEE', label: 'Сотрудник', description: 'Работа в офисе или на складе' },
@@ -35,6 +35,7 @@ export const JoinTeamScreen = () => {
     const navigation = useNavigation();
     const dispatch = useDispatch();
     const { currentUser } = useAuth();
+    const { showError, showSuccess } = useCustomAlert();
     
     const { districts, isLoading: districtsLoading } = useSelector(state => state.district);
 
@@ -78,12 +79,12 @@ export const JoinTeamScreen = () => {
     // Обработчик отправки заявки
     const handleSubmit = async () => {
         if (!selectedRole) {
-            Alert.alert('Ошибка', 'Пожалуйста, выберите желаемую роль');
+            showError('Ошибка', 'Пожалуйста, выберите желаемую роль');
             return;
         }
 
         if ((selectedRole === 'DRIVER' || selectedRole === 'EMPLOYEE') && selectedDistricts.length === 0) {
-            Alert.alert('Ошибка', 'Пожалуйста, выберите хотя бы один район для работы');
+            showError('Ошибка', 'Пожалуйста, выберите хотя бы один район для работы');
             return;
         }
 
@@ -104,12 +105,13 @@ export const JoinTeamScreen = () => {
 
             console.log('Ответ сервера:', response);
 
-            Alert.alert(
+            showSuccess(
                 'Заявка отправлена!',
                 'Ваша заявка успешно отправлена. Администратор рассмотрит её в ближайшее время.',
                 [
                     {
                         text: 'OK',
+                        style: 'primary',
                         onPress: () => navigation.goBack()
                     }
                 ]
@@ -117,7 +119,7 @@ export const JoinTeamScreen = () => {
 
         } catch (error) {
             console.error('Ошибка отправки заявки:', error);
-            Alert.alert(
+            showError(
                 'Ошибка',
                 error.response?.data?.message || error.message || 'Не удалось отправить заявку'
             );

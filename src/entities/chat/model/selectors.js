@@ -26,11 +26,7 @@ export const selectRoomsList = createSelector(
       // Если комната не в unreadByRoomId, считаем что unread = 0
       const actualUnread = unreadByRoomId?.[id] ?? 0;
 
-      if (__DEV__ && actualUnread > 0) {
-        console.log(`🎯 Selector: Room ${id} unread count: ${actualUnread} (from unreadByRoomId)`);
-      }
-
-            // Получаем последнее сообщение с актуальным статусом
+      // Получаем последнее сообщение с актуальным статусом
       let lastMessage = null;
 
       // Сначала проверяем сообщения в store (они содержат актуальный статус)
@@ -114,34 +110,6 @@ export const selectRoomsList = createSelector(
             };
           }
         }
-      }
-      
-      // Отладочная информация для диагностики
-      if (__DEV__) {
-        console.log(`📋 selectRoomsList debug for room ${id} (${room.title || 'No title'}):`, {
-          roomId: id,
-          roomType: room.type,
-          hasMessages: !!messages?.[id],
-          messagesCount: messages?.[id]?.ids?.length || 0,
-          lastMessage,
-          finalLastMessage: lastMessage,
-          lastMessageStatus: lastMessage?.status?.toUpperCase() || lastMessage?.status,
-          lastMessageDeliveredAt: lastMessage?.deliveredAt,
-          lastMessageReadAt: lastMessage?.readAt,
-          lastMessageSenderId: lastMessage?.senderId,
-          currentUserId: currentUserId,
-          isOwnMessage: lastMessage?.senderId === currentUserId,
-          roomLastMessage: room.lastMessage,
-          roomLastMessageStatus: room.lastMessage?.status,
-          messagesStructure: messages?.[id] ? {
-            hasIds: !!messages[id].ids,
-            hasById: !!messages[id].byId,
-            idsLength: messages[id].ids?.length,
-            byIdKeys: messages[id].byId ? Object.keys(messages[id].byId) : null,
-            sampleMessage: messages[id].byId && messages[id].ids?.length > 0 ?
-              messages[id].byId[messages[id].ids[messages[id].ids.length - 1]] : null
-          } : null
-        });
       }
 
       // Обрабатываем участников чата

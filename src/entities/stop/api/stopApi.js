@@ -128,6 +128,16 @@ export const stopApi = {
             console.error(`Error in deleteStop(${stopId}) API call:`, error);
             throw error; // Всегда пробрасываем ошибку
         }
+    },
+
+    getStopProducts: async (stopId) => {
+        try {
+            const response = await createProtectedRequest('get', `/api/stops/${stopId}/products`);
+            return response;
+        } catch (error) {
+            console.error(`Error in getStopProducts(${stopId}) API call:`, error);
+            throw error;
+        }
     }
 };
 

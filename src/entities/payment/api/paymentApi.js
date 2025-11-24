@@ -1,7 +1,7 @@
 import { api } from '@shared/api/api';
 
 /**
- * API для работы с платежами через ЮKassa
+ * API для работы с платежами через Т-Бизнес
  */
 export const PaymentApi = {
     /**
@@ -44,7 +44,7 @@ export const PaymentApi = {
 
     /**
      * Проверить статус платежа
-     * @param {string} paymentId - ID платежа в ЮKassa
+     * @param {string} paymentId - ID платежа в Т-Бизнес
      * @returns {Promise<Object>} Статус платежа
      */
     checkPaymentStatus: async (paymentId) => {
@@ -62,7 +62,7 @@ export const PaymentApi = {
 
     /**
      * Отменить платеж
-     * @param {string} paymentId - ID платежа в ЮKassa
+     * @param {string} paymentId - ID платежа в Т-Бизнес
      * @returns {Promise<Object>} Результат отмены
      */
     cancelPayment: async (paymentId) => {

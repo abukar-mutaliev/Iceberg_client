@@ -10,6 +10,7 @@ import { OrdersHeader } from '../ui/OrdersHeader';
 import { OrdersSkeleton } from '../ui/OrdersSkeleton';
 import { WaitingStockOrderCard } from '../../WaitingStockOrderCard';
 import { ToastSimple } from '@shared/ui/Toast/ui/ToastSimple';
+import { Loader } from '@shared/ui/Loader';
 
 // ============== Компоненты ==============
 
@@ -19,12 +20,16 @@ const EmptyOrdersList = React.memo(({
   canViewAllOrders, 
   showHistory, 
   showWaitingStock, 
-  actualProcessingRole 
+  actualProcessingRole,
+  isLoading 
 }) => {
   const getMessage = useCallback(() => {
-    if (canViewAllOrders) return 'Нет заказов для отображения';
     if (showHistory) return 'История обработки пуста';
     if (showWaitingStock) return 'Нет заказов, ожидающих поставки товаров на склад';
+    
+    if (canViewAllOrders) {
+      return 'Нет активных заказов для отображения.\nВсе заказы обработаны или находятся в истории.';
+    }
     
     const roleMessages = {
       PICKER: 'новых заказов для сборки',
@@ -35,9 +40,24 @@ const EmptyOrdersList = React.memo(({
     return `Нет ${roleMessages[actualProcessingRole] || 'заказов для обработки'}`;
   }, [canViewAllOrders, showHistory, showWaitingStock, actualProcessingRole]);
 
+  // Показываем лоадер во время загрузки вместо сообщения о пустом списке
+  if (isLoading) {
+    return (
+      <View style={styles.emptyContainer}>
+        <Loader 
+          type="youtube" 
+          text="Загружаем заказы..." 
+        />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.emptyContainer}>
       <Text style={styles.emptyText}>{getMessage()}</Text>
+      {!showHistory && !showWaitingStock && (
+        <Text style={styles.emptyHint}>Потяните вниз для обновления</Text>
+      )}
     </View>
   );
 });
@@ -45,6 +65,19 @@ const EmptyOrdersList = React.memo(({
 EmptyOrdersList.displayName = 'EmptyOrdersList';
 
 // ============== Логика прав доступа ==============
+
+// Проверка соответствия статуса заказа роли сотрудника
+const isStatusMatchingRole = (employeeRole, status) => {
+  // PICKER работает с заказами в статусе PENDING или CONFIRMED
+  if (employeeRole === 'PICKER') {
+    return ['PENDING', 'CONFIRMED'].includes(status);
+  }
+  // COURIER работает с заказами в статусе IN_DELIVERY
+  if (employeeRole === 'COURIER') {
+    return status === 'IN_DELIVERY';
+  }
+  return false;
+};
 
 const useOrderPermissions = (currentUser, actualProcessingRole, showHistory) => {
   return useMemo(() => ({
@@ -54,6 +87,11 @@ const useOrderPermissions = (currentUser, actualProcessingRole, showHistory) => 
       if (CONSTANTS.COMPLETED_STATUSES.includes(status)) return false;
       if (currentUser?.role === 'ADMIN') return false;
       if (showHistory && actualProcessingRole !== 'COURIER') return false;
+      
+      // ⚠️ ВАЖНО: Проверяем соответствие статуса роли сотрудника
+      // PICKER не может работать с IN_DELIVERY, COURIER не может работать с PENDING/CONFIRMED
+      if (!isStatusMatchingRole(actualProcessingRole, status)) return false;
+      
       return ['PICKER', 'COURIER'].includes(actualProcessingRole);
     },
   }), [currentUser?.role, actualProcessingRole, showHistory]);
@@ -126,6 +164,11 @@ const OrderItem = React.memo(({
   const canUpdateStatus = permissions.canUpdateOrderStatus(item.status) &&
     (orderStatus.isAssignedToMe || orderStatus.isLocallyTaken);
 
+  // ⚠️ ВАЖНО: Проверяем соответствие статуса заказа роли сотрудника для кнопки "Взять в работу"
+  const canTakeOrder = permissions.canWorkWithOrders && 
+                       isStatusMatchingRole(actualProcessingRole, item.status) &&
+                       orderStateHelpers.canTakeOrder(item, localAction, currentUser);
+
   return (
     <OrderCard
       order={{ ...item, status: orderStatus.displayStatus }}
@@ -133,10 +176,10 @@ const OrderItem = React.memo(({
       showClient={canViewAllOrders}
       showActions
       onStatusUpdate={canUpdateStatus ? onStatusUpdate : null}
-      onTakeOrder={permissions.canWorkWithOrders ? onTakeOrder : null}
+      onTakeOrder={canTakeOrder ? onTakeOrder : null}
       onReleaseOrder={permissions.canWorkWithOrders && canUpdateStatus ? onReleaseOrder : null}
       onDownloadInvoice={onDownloadInvoice}
-      canTake={permissions.canWorkWithOrders && orderStateHelpers.canTakeOrder(item, localAction, currentUser)}
+      canTake={canTakeOrder}
       isTakenByMe={permissions.canWorkWithOrders && orderStateHelpers.isTakenByCurrentUser(item, localAction, currentUser)}
       downloadingInvoice={downloadingInvoices.has(item.id)}
       showProcessingInfo={canViewAllOrders}
@@ -355,7 +398,7 @@ export const StaffOrdersScreen = () => {
         scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
-            refreshing={isRefreshing || isLoading}
+            refreshing={isRefreshing}
             onRefresh={handleRefreshData}
           />
         }
@@ -365,6 +408,7 @@ export const StaffOrdersScreen = () => {
             showHistory={showHistory}
             showWaitingStock={showWaitingStock}
             actualProcessingRole={actualProcessingRole}
+            isLoading={isLoading}
           />
         }
         contentContainerStyle={styles.listContentContainer}
@@ -442,5 +486,12 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     lineHeight: 24,
+  },
+  emptyHint: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    marginTop: 12,
+    fontStyle: 'italic',
   },
 });

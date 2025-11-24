@@ -320,6 +320,15 @@ export const logout = createAsyncThunk(
                 console.warn('⚠️ Logout: ошибка деактивации OneSignal токена:', oneSignalError);
             }
 
+            // Очищаем кэш чатов
+            try {
+                console.log('🔄 Logout: очистка кэша чатов...');
+                await AsyncStorage.removeItem('chat.rooms');
+                console.log('✅ Logout: кэш чатов очищен');
+            } catch (cacheError) {
+                console.warn('⚠️ Logout: ошибка очистки кэша чатов:', cacheError);
+            }
+
             dispatch({ type: 'RESET_APP_STATE' });
 
             const { auth } = getState();

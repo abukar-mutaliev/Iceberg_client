@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import { Platform, Alert } from 'react-native';
+import { Platform } from 'react-native';
+import { GlobalAlert } from '@shared/ui/CustomAlert';
 
 /**
  * Конвертирует blob в base64 строку
@@ -160,16 +161,18 @@ export const downloadPDFFile = async (pdfBlob, filename) => {
         
         if (isSharingAvailable) {
             // Показываем диалог с опциями
-            Alert.alert(
+            GlobalAlert.showInfo(
                 'Накладная готова',
                 'PDF накладная успешно сформирована. Что вы хотите сделать?',
                 [
                     {
                         text: 'Открыть',
+                        style: 'primary',
                         onPress: () => openFile(fileUri, safeFilename)
                     },
                     {
                         text: 'Поделиться',
+                        style: 'primary',
                         onPress: () => shareFile(fileUri, safeFilename)
                     },
                     {
@@ -179,7 +182,7 @@ export const downloadPDFFile = async (pdfBlob, filename) => {
                 ]
             );
         } else {
-            Alert.alert(
+            GlobalAlert.showSuccess(
                 'Накладная сохранена',
                 `Файл ${safeFilename} сохранен в папке приложения`
             );
@@ -194,7 +197,7 @@ export const downloadPDFFile = async (pdfBlob, filename) => {
     } catch (error) {
         console.error('Ошибка при сохранении PDF файла:', error);
         
-        Alert.alert(
+        GlobalAlert.showError(
             'Ошибка',
             `Не удалось сохранить файл: ${error.message}`
         );
@@ -214,7 +217,7 @@ export const openFile = async (fileUri, filename) => {
         await shareFile(fileUri, filename);
     } catch (error) {
         console.error('Ошибка при открытии файла:', error);
-        Alert.alert(
+        GlobalAlert.showError(
             'Ошибка',
             'Не удалось открыть файл'
         );
@@ -229,7 +232,7 @@ export const shareFile = async (fileUri, filename) => {
         const isSharingAvailable = await Sharing.isAvailableAsync();
         
         if (!isSharingAvailable) {
-            Alert.alert(
+            GlobalAlert.showError(
                 'Ошибка',
                 'Функция шаринга недоступна на этом устройстве'
             );
@@ -243,7 +246,7 @@ export const shareFile = async (fileUri, filename) => {
         });
     } catch (error) {
         console.error('Ошибка при sharing файла:', error);
-        Alert.alert(
+        GlobalAlert.showError(
             'Ошибка',
             'Не удалось поделиться файлом'
         );

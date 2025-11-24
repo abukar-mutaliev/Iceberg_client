@@ -10,7 +10,6 @@ import {
     ActivityIndicator,
     KeyboardAvoidingView,
     Platform,
-    Alert,
 } from 'react-native';
 import { CommonActions } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -19,10 +18,13 @@ import {
     FontFamily
 } from '@app/styles/GlobalStyles';
 import { CustomTextInput } from '@shared/ui/CustomTextInput/CustomTextInput';
+import { useCustomAlert } from '@shared/ui/CustomAlert';
 
 import { CartService, clearCart, clearCartCache } from '@entities/cart';
 import { AddressPickerModal, DeliveryAddressApi } from '@entities/deliveryAddress';
-import { useDispatch } from 'react-redux';
+import { useDelivery, DeliveryTypeSelector, DeliveryInfo } from '@entities/delivery';
+import WarehouseService from '@entities/warehouse/api/warehouseApi';
+import { useDispatch, useSelector } from 'react-redux';
 
 const normalize = (size) => {
     const scale = 375 / 375;
@@ -32,16 +34,34 @@ const normalize = (size) => {
 export const CheckoutScreen = ({ navigation, route }) => {
     const { items = [], stats = {}, clientType } = route.params || {};
     const dispatch = useDispatch();
+    const { showError } = useCustomAlert();
+
+    // Delivery hook
+    const {
+        deliveryType,
+        deliveryCost,
+        deliveryDistance,
+        isFreeDelivery,
+        calculating,
+        warehouseName,
+        freeDeliveryInfo,
+        totalWithDelivery,
+        calculateDeliveryFee,
+        setDeliveryType: setDeliveryTypeAction,
+        clearDeliveryCalculation,
+    } = useDelivery();
 
     const [loading, setLoading] = useState(false);
     const [addressLoading, setAddressLoading] = useState(true);
     const [showAddressPicker, setShowAddressPicker] = useState(false);
     const [selectedAddress, setSelectedAddress] = useState(null);
+    const [warehouseId, setWarehouseId] = useState(null);
     const [formData, setFormData] = useState({
         comment: '',
         expectedDeliveryDate: null,
         paymentMethod: 'ONLINE' // Только онлайн оплата
     });
+    const [selectedWarehouse, setSelectedWarehouse] = useState(null);
 
 
     useEffect(() => {
@@ -62,14 +82,64 @@ export const CheckoutScreen = ({ navigation, route }) => {
                     defaultAddress = response;
                 }
                 
-                        if (defaultAddress) {
-                            setSelectedAddress(defaultAddress);
-                        } else {
-                            setSelectedAddress(null);
+                if (defaultAddress) {
+                    const districtId = defaultAddress.district?.id || defaultAddress.districtId;
+                    
+                    console.log('📍 Загружен адрес по умолчанию:', {
+                        id: defaultAddress.id,
+                        title: defaultAddress.title,
+                        districtId,
+                        districtName: defaultAddress.district?.name,
+                        hasDistrictId: !!districtId
+                    });
+                    
+                    setSelectedAddress(defaultAddress);
+                    
+                    // Получаем склад для района адреса
+                    if (districtId) {
+                        console.log('📍 Загрузка склада для района:', districtId);
+                        try {
+                            const warehousesResponse = await WarehouseService.getWarehousesByDistrict(districtId);
+                            console.log('🏭 Ответ складов:', warehousesResponse);
+                            
+                            // Извлекаем массив складов из ответа
+                            const warehouses = warehousesResponse.data?.warehouses || warehousesResponse.data || [];
+                            console.log('📦 Извлечено складов:', warehouses.length);
+                            
+                            if (warehousesResponse.status === 'success' && warehouses.length > 0) {
+                                const warehouse = warehouses[0]; // Берем первый активный склад
+                                console.log('✅ Найден склад:', {
+                                    id: warehouse.id,
+                                    name: warehouse.name,
+                                    districtId: warehouse.districtId
+                                });
+                                setWarehouseId(warehouse.id);
+                                setSelectedWarehouse(warehouse);
+                            } else {
+                                console.warn('⚠️ Склад не найден для района:', districtId);
+                                setWarehouseId(null);
+                                setSelectedWarehouse(null);
+                            }
+                        } catch (warehouseError) {
+                            console.error('❌ Error loading warehouse:', warehouseError);
+                            setWarehouseId(null);
+                            setSelectedWarehouse(null);
                         }
+                    } else {
+                        console.warn('⚠️ У адреса нет districtId:', defaultAddress);
+                        setWarehouseId(null);
+                        setSelectedWarehouse(null);
+                    }
+                } else {
+                    setSelectedAddress(null);
+                    setWarehouseId(null);
+                    setSelectedWarehouse(null);
+                }
             } catch (error) {
                 console.error('❌ Error loading default address:', error);
                 setSelectedAddress(null);
+                setWarehouseId(null);
+                setSelectedWarehouse(null);
             } finally {
                 setAddressLoading(false);
             }
@@ -78,6 +148,63 @@ export const CheckoutScreen = ({ navigation, route }) => {
         loadDefaultAddress();
     }, []);
 
+    // Эффект для расчета доставки при изменении адреса или типа доставки
+    useEffect(() => {
+        const calculateDelivery = async () => {
+            console.log('🔍 Проверка условий для расчета доставки:', {
+                deliveryType,
+                hasAddress: !!selectedAddress,
+                addressId: selectedAddress?.id,
+                hasWarehouse: !!warehouseId,
+                warehouseId,
+                orderAmount: stats.totalAmount || 0,
+                addressLoading
+            });
+
+            // Расчитываем только для доставки курьером
+            if (deliveryType !== 'DELIVERY') {
+                console.log('⏭️ Пропуск расчета: тип доставки не DELIVERY');
+                return;
+            }
+
+            if (!selectedAddress) {
+                console.log('⏭️ Пропуск расчета: адрес не выбран');
+                return;
+            }
+
+            if (!warehouseId) {
+                console.log('⏭️ Пропуск расчета: склад не определен');
+                return;
+            }
+
+            if (addressLoading) {
+                console.log('⏭️ Пропуск расчета: адрес еще загружается');
+                return;
+            }
+
+            try {
+                console.log('🚚 Начинаем расчет стоимости доставки', {
+                    warehouseId,
+                    addressId: selectedAddress.id,
+                    orderAmount: stats.totalAmount || 0
+                });
+
+                await calculateDeliveryFee(
+                    warehouseId,
+                    selectedAddress.id,
+                    stats.totalAmount || 0
+                );
+
+                console.log('✅ Расчет доставки завершен успешно');
+            } catch (error) {
+                console.error('❌ Ошибка расчета доставки:', error);
+                // Ошибка расчета не блокирует оформление заказа
+            }
+        };
+
+        calculateDelivery();
+    }, [selectedAddress, deliveryType, warehouseId, stats.totalAmount, calculateDeliveryFee, addressLoading]);
+
     const handleFieldChange = (field, value) => {
         setFormData(prev => ({
             ...prev,
@@ -85,25 +212,107 @@ export const CheckoutScreen = ({ navigation, route }) => {
         }));
     };
 
-    const handleAddressSelected = (address) => {
-        setSelectedAddress(address);
+    const handleAddressSelected = async (address) => {
         setShowAddressPicker(false);
+        setAddressLoading(true);
+        setSelectedAddress(address);
+        clearDeliveryCalculation();
+
+        // Получаем склад для района нового адреса
+        const districtId = address?.district?.id || address?.districtId;
+        let resolvedWarehouse = null;
+
+        if (districtId) {
+            console.log('📍 Загрузка склада для нового адреса, район:', districtId);
+            try {
+                const warehousesResponse = await WarehouseService.getWarehousesByDistrict(districtId);
+                console.log('🏭 Ответ складов:', warehousesResponse);
+
+                // Извлекаем массив складов из ответа
+                const warehouses = warehousesResponse.data?.warehouses || warehousesResponse.data || [];
+                console.log('📦 Извлечено складов:', warehouses.length);
+
+                if (warehousesResponse.status === 'success' && warehouses.length > 0) {
+                    resolvedWarehouse = warehouses[0];
+                    console.log('✅ Найден склад:', {
+                        id: resolvedWarehouse.id,
+                        name: resolvedWarehouse.name,
+                        districtId: resolvedWarehouse.districtId
+                    });
+                    setWarehouseId(resolvedWarehouse.id);
+                    setSelectedWarehouse(resolvedWarehouse);
+                } else {
+                    console.warn('⚠️ Склад не найден для района:', districtId);
+                    setWarehouseId(null);
+                    setSelectedWarehouse(null);
+                }
+            } catch (error) {
+                console.error('❌ Error loading warehouse for new address:', error);
+                setWarehouseId(null);
+                setSelectedWarehouse(null);
+            }
+        } else {
+            console.warn('⚠️ Адрес не имеет districtId:', address);
+            setWarehouseId(null);
+            setSelectedWarehouse(null);
+        }
+
+        try {
+            if (
+                deliveryType === 'DELIVERY' &&
+                resolvedWarehouse?.id &&
+                address?.id
+            ) {
+                console.log('🚚 Перерасчет доставки после выбора нового адреса', {
+                    warehouseId: resolvedWarehouse.id,
+                    addressId: address.id,
+                    orderAmount: stats.totalAmount || 0
+                });
+
+                await calculateDeliveryFee(
+                    resolvedWarehouse.id,
+                    address.id,
+                    stats.totalAmount || 0
+                );
+            }
+        } catch (error) {
+            console.error('❌ Ошибка при перерасчете доставки после выбора адреса:', error);
+        } finally {
+            setAddressLoading(false);
+        }
+    };
+
+    const handleDeliveryTypeChange = (type) => {
+        console.log('🔄 Изменение типа доставки:', type);
+        setDeliveryTypeAction(type);
+
+        // Если выбран самовывоз, очищаем расчет доставки
+        if (type === 'PICKUP') {
+            console.log('🚚 Очистка расчета доставки для самовывоза');
+            clearDeliveryCalculation();
+        }
     };
 
     const handleSubmit = async () => {
-        if (!selectedAddress) {
-            Alert.alert('Ошибка', 'Выберите адрес доставки');
+        if (!selectedAddress && deliveryType === 'DELIVERY') {
+            showError('Ошибка', 'Выберите адрес доставки');
             return;
         }
 
         setLoading(true);
         try {
-            console.log('✅ Создание заказа перед оплатой');
+            console.log('✅ Создание заказа перед оплатой', {
+                deliveryType,
+                deliveryFee: deliveryCost,
+                addressId: selectedAddress?.id
+            });
+            
             const result = await CartService.checkout({
-                addressId: selectedAddress.id,
+                addressId: selectedAddress?.id,
                 comment: formData.comment,
                 expectedDeliveryDate: formData.expectedDeliveryDate,
                 paymentMethod: formData.paymentMethod,
+                deliveryType: deliveryType, // Передаем тип доставки: DELIVERY или PICKUP
                 usePreauthorization: true // Включаем предавторизацию по умолчанию
             });
 
@@ -130,7 +339,9 @@ export const CheckoutScreen = ({ navigation, route }) => {
             console.log('💳 Заказ создан, переход к оплате', {
                 orderId: order?.id,
                 orderNumber: order?.orderNumber,
-                totalAmount: order?.totalAmount
+                totalAmount: order?.totalAmount,
+                itemsCount: stats.totalItems || 0,
+                boxesCount: stats.totalBoxes || 0
             });
 
             // НЕ очищаем корзину - она очистится после успешной оплаты в PaymentScreen
@@ -140,6 +351,8 @@ export const CheckoutScreen = ({ navigation, route }) => {
                 orderId: order?.id,
                 orderNumber: order?.orderNumber,
                 totalAmount: order?.totalAmount,
+                itemsCount: stats.totalItems || 0,
+                boxesCount: stats.totalBoxes || 0,
                 usePreauthorization: false, // Для обычных заказов без предавторизации
                 returnScreen: 'MyOrders'
             });
@@ -155,7 +368,7 @@ export const CheckoutScreen = ({ navigation, route }) => {
                 errorMessage = error.message;
             }
 
-            Alert.alert('Ошибка', errorMessage);
+            showError('Ошибка', errorMessage);
         } finally {
             setLoading(false);
         }
@@ -218,10 +431,50 @@ export const CheckoutScreen = ({ navigation, route }) => {
                                     </Text>
                                 </View>
                             )}
+                            
+                            {/* Сумма товаров */}
+                            <View style={styles.orderRow}>
+                                <Text style={styles.orderLabel}>Сумма товаров:</Text>
+                                <Text style={styles.orderValue}>
+                                    {formatPrice(stats.totalAmount || 0)}
+                                </Text>
+                            </View>
+                            
+                            {/* Стоимость доставки */}
+                            {deliveryType === 'DELIVERY' && deliveryCost > 0 && (
+                                <View style={styles.orderRow}>
+                                    <Text style={styles.orderLabel}>
+                                        {isFreeDelivery ? 'Доставка (бесплатно):' : 'Доставка:'}
+                                    </Text>
+                                    <Text style={isFreeDelivery ? styles.savingsValue : styles.orderValue}>
+                                        {isFreeDelivery ? '0 ₽' : formatPrice(deliveryCost)}
+                                    </Text>
+                                </View>
+                            )}
+
+                            {/* Для самовывоза показываем информацию о бесплатной доставке */}
+                            {deliveryType === 'PICKUP' && (
+                                <View style={styles.orderRow}>
+                                    <Text style={styles.orderLabel}>Самовывоз:</Text>
+                                    <Text style={styles.savingsValue}>Бесплатно</Text>
+                                </View>
+                            )}
                             <View style={[styles.orderRow, styles.totalRow]}>
                                 <Text style={styles.totalLabel}>Итого:</Text>
                                 <Text style={styles.totalValue}>
-                                    {formatPrice(stats.finalPrice || stats.totalAmount || 0)}
+                                    {(() => {
+                                        const baseAmount = stats.finalPrice || stats.totalAmount || 0;
+                                        const deliveryAmount = deliveryType === 'DELIVERY' ? deliveryCost : 0;
+                                        const total = baseAmount + deliveryAmount;
+                                        console.log('💰 Расчет итоговой суммы:', {
+                                            deliveryType,
+                                            baseAmount,
+                                            deliveryCost,
+                                            deliveryAmount,
+                                            total
+                                        });
+                                        return formatPrice(total);
+                                    })()}
                                 </Text>
                             </View>
                         </View>
@@ -229,9 +482,18 @@ export const CheckoutScreen = ({ navigation, route }) => {
 
                     {/* Форма заказа */}
                     <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Данные для доставки</Text>
+                        
+                        {/* Выбор типа доставки */}
+                        <View style={styles.deliveryTypeSection}>
+                            <DeliveryTypeSelector
+                                selectedType={deliveryType}
+                                onTypeChange={handleDeliveryTypeChange}
+                                disabled={loading}
+                            />
+                        </View>
 
-                        {/* Выбор адреса */}
+              
+                        {deliveryType === 'DELIVERY' && (
                         <View style={styles.addressSection}>
                             <Text style={styles.addressLabel}>Адрес доставки *</Text>
                             
@@ -277,6 +539,46 @@ export const CheckoutScreen = ({ navigation, route }) => {
                                 </TouchableOpacity>
                             )}
                         </View>
+                        )}
+
+
+                        {/* Информация о доставке - только для доставки */}
+                        {deliveryType === 'DELIVERY' && (
+                            <View style={styles.deliveryAddressSection}>
+                                <View style={styles.deliveryInfoSection}>
+                                    <DeliveryInfo
+                                        deliveryType={deliveryType}
+                                        deliveryCost={deliveryCost}
+                                        deliveryDistance={deliveryDistance}
+                                        isFreeDelivery={isFreeDelivery}
+                                        calculating={calculating}
+                                        warehouseName={warehouseName}
+                                        freeDeliveryInfo={freeDeliveryInfo}
+                                    />
+                                </View>
+                            </View>
+                        )}
+
+                        {/* Для самовывоза показываем информацию о складе */}
+                        {deliveryType === 'PICKUP' && (selectedWarehouse || warehouseName) && (
+                            <View style={styles.pickupInfoSection}>
+                                <DeliveryInfo
+                                    deliveryType={deliveryType}
+                                    warehouseName={selectedWarehouse?.name || warehouseName}
+                                    warehouseAddress={
+                                        selectedWarehouse?.address ||
+                                        selectedWarehouse?.fullAddress ||
+                                        selectedWarehouse?.formattedAddress ||
+                                        [
+                                            selectedWarehouse?.city,
+                                            selectedWarehouse?.street,
+                                            selectedWarehouse?.house
+                                        ].filter(Boolean).join(', ') ||
+                                        null
+                                    }
+                                />
+                            </View>
+                        )}
 
                         <CustomTextInput
                             label="Комментарий к заказу"
@@ -314,7 +616,7 @@ export const CheckoutScreen = ({ navigation, route }) => {
                                 <View style={styles.paymentMethodContent}>
                                     <Text style={styles.paymentMethodTitle}>Онлайн оплата</Text>
                                     <Text style={styles.paymentMethodDescription}>
-                                        Безопасная оплата через ЮКасса
+                                        Безопасная оплата через Т-Бизнес
                                     </Text>
                                 </View>
                             </View>
@@ -335,10 +637,10 @@ export const CheckoutScreen = ({ navigation, route }) => {
                     <TouchableOpacity
                         style={[
                             styles.submitButton, 
-                            (loading || addressLoading || !selectedAddress) && styles.submitButtonDisabled
+                            (loading || addressLoading || (deliveryType === 'DELIVERY' && !selectedAddress)) && styles.submitButtonDisabled
                         ]}
                         onPress={handleSubmit}
-                        disabled={loading || addressLoading || !selectedAddress}
+                        disabled={loading || addressLoading || (deliveryType === 'DELIVERY' && !selectedAddress)}
                     >
                         {loading ? (
                             <ActivityIndicator color="#FFFFFF" size="small" />
@@ -725,5 +1027,24 @@ const styles = StyleSheet.create({
         borderRadius: normalize(4),
         marginTop: normalize(4),
         alignSelf: 'flex-start',
+    },
+
+    // Стили для секций доставки
+    deliveryTypeSection: {
+        marginBottom: normalize(16),
+        marginTop: normalize(12),
+    },
+
+    deliveryInfoSection: {
+        marginBottom: normalize(16),
+    },
+
+    deliveryAddressSection: {
+        marginBottom: normalize(12),
+    },
+
+    pickupInfoSection: {
+        marginTop: normalize(12),
+        marginBottom: normalize(16),
     },
 });

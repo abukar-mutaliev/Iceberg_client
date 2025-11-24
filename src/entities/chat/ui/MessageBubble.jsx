@@ -1,21 +1,28 @@
 import React, {memo, useState} from 'react';
 import {View, Text, Image, TouchableOpacity, StyleSheet} from 'react-native';
 import {ProductCard} from '@entities/product/ui/ProductCard';
+import {VoiceMessageBubble} from './VoiceMessageBubble';
+import {MessageErrorActions} from './MessageErrorActions';
 import {getBaseUrl} from '@shared/api/api';
 
-const Avatar = ({uri}) => {
+const Avatar = ({uri, onPress}) => {
     const imageSource = uri ? {uri} : null;
 
     return (
-        <View style={styles.avatar}>
+        <TouchableOpacity 
+            style={styles.avatar} 
+            onPress={onPress}
+            activeOpacity={onPress ? 0.7 : 1}
+            disabled={!onPress}
+        >
             {imageSource ? (
                 <Image source={imageSource} style={styles.avatarImage} resizeMode="cover"/>
             ) : (
                 <View style={styles.avatarPlaceholder}>
-                    <Text style={styles.avatarPlaceholderText}>��</Text>
+                    <Text style={styles.avatarPlaceholderText}>👤</Text>
                 </View>
             )}
-        </View>
+        </TouchableOpacity>
     );
 };
 
@@ -101,7 +108,9 @@ const BubbleContainer = ({
                              isSelected = false,
                              canDelete = false,
                              onToggleSelection,
-                             onLongPress
+                             onLongPress,
+                             // Пропс для открытия профиля при клике на аватар
+                             onAvatarPress
                          }) => {
     const [textWidth, setTextWidth] = useState(0);
     const [timeWidth, setTimeWidth] = useState(0);
@@ -156,7 +165,7 @@ const BubbleContainer = ({
             {/* Аватар вверху для входящих сообщений */}
             {!isOwn && showAvatar && (
                 <View style={styles.avatarContainer}>
-                    <Avatar uri={avatarUri}/>
+                    <Avatar uri={avatarUri} onPress={onAvatarPress}/>
                 </View>
             )}
 
@@ -188,10 +197,13 @@ const BubbleContainer = ({
                                 <View style={styles.textContainer}>
                                     {children}
                                 </View>
-                                <View style={styles.messageFooter}>
-                                    <Text style={styles.timestamp}>{time}</Text>
-                                    {isOwn && <StatusTicks status={status}/>}
-                                </View>
+                                {/* Футер с временем показываем только если time не пустое */}
+                                {time && (
+                                    <View style={styles.messageFooter}>
+                                        <Text style={styles.timestamp}>{time}</Text>
+                                        {isOwn && <StatusTicks status={status}/>}
+                                    </View>
+                                )}
                             </>
                         )}
                     </View>
@@ -223,7 +235,8 @@ const TextMessage = ({
                          isSelected,
                          canDelete,
                          onToggleSelection,
-                         onLongPress
+                         onLongPress,
+                         onAvatarPress
                      }) => (
     <BubbleContainer
         isOwn={isOwn}
@@ -238,6 +251,7 @@ const TextMessage = ({
         canDelete={canDelete}
         onToggleSelection={onToggleSelection}
         onLongPress={onLongPress}
+        onAvatarPress={onAvatarPress}
     >
         <Text style={styles.messageText}>{text}</Text>
     </BubbleContainer>
@@ -256,7 +270,8 @@ const ImageMessage = ({
                           isSelected,
                           canDelete,
                           onToggleSelection,
-                          onLongPress
+                          onLongPress,
+                          onAvatarPress
                       }) => {
     return (
         <BubbleContainer
@@ -272,6 +287,7 @@ const ImageMessage = ({
             canDelete={canDelete}
             onToggleSelection={onToggleSelection}
             onLongPress={onLongPress}
+            onAvatarPress={onAvatarPress}
         >
             <View style={styles.imageContainer}>
                 {attachments.map((attachment, index) => (
@@ -313,7 +329,8 @@ const ProductMessage = ({
                             isSelected,
                             canDelete,
                             onToggleSelection,
-                            onLongPress
+                            onLongPress,
+                            onAvatarPress
                         }) => {
 
     const transformedProduct = {
@@ -347,6 +364,7 @@ const ProductMessage = ({
             canDelete={canDelete}
             onToggleSelection={onToggleSelection}
             onLongPress={onLongPress}
+            onAvatarPress={onAvatarPress}
         >
             <View style={styles.productCardContainer}>
                 <ProductCard
@@ -354,6 +372,7 @@ const ProductMessage = ({
                     productId={productId}
                     onPress={() => onOpenProduct?.(productId)}
                     width={250}
+                    compact={true}
                 />
             </View>
         </BubbleContainer>
@@ -379,7 +398,11 @@ export const MessageBubble = memo(({
                                        isSelected = false,
                                        canDelete = false,
                                        onToggleSelection,
-                                       onLongPress
+                                       onLongPress,
+                                       onRetryMessage,
+                                       onCancelMessage,
+                                       isRetrying = false,
+                                       onAvatarPress
                                    }) => {
     const isOwn = message?.senderId === currentUserId;
     const createdAt = message?.createdAt ? new Date(message.createdAt) : null;
@@ -437,7 +460,71 @@ export const MessageBubble = memo(({
                 canDelete={canDelete}
                 onToggleSelection={onToggleSelection}
                 onLongPress={onLongPress}
+                onAvatarPress={onAvatarPress}
             />
+        );
+    }
+
+    if (message.type === 'VOICE') {
+        // Получаем аудио вложение
+        const voiceAttachment = message?.attachments?.find(att => att.type === 'VOICE');
+        
+        if (!voiceAttachment) {
+            return (
+                <TextMessage
+                    text="[Голосовое сообщение недоступно]"
+                    isOwn={isOwn}
+                    time={time}
+                    status={status}
+                    avatarUri={avatarUri}
+                    showAvatar={showAvatar}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={isSelected}
+                    canDelete={canDelete}
+                    onToggleSelection={onToggleSelection}
+                    onLongPress={onLongPress}
+                    onAvatarPress={onAvatarPress}
+                />
+            );
+        }
+
+        // Для голосовых сообщений используем BubbleContainer, но время и статус передаем в компонент
+        return (
+            <View>
+                <BubbleContainer
+                    isOwn={isOwn}
+                    time={''}  // Пустое время - VoiceMessageBubble сам его отобразит
+                    status={''}  // Пустой статус - VoiceMessageBubble сам отобразит галочки
+                    avatarUri={avatarUri}
+                    showAvatar={showAvatar}
+                    text={''}
+                    hasImage={false}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={isSelected}
+                    canDelete={canDelete}
+                    onToggleSelection={onToggleSelection}
+                    onLongPress={onLongPress}
+                    onAvatarPress={onAvatarPress}
+                >
+                    <VoiceMessageBubble
+                        messageId={message.id}
+                        attachment={voiceAttachment}
+                        isOwnMessage={isOwn}
+                        time={time}
+                        status={status}
+                    />
+                </BubbleContainer>
+                
+                {/* Показываем кнопки retry/cancel только для своих сообщений */}
+                {isOwn && message.status === 'FAILED' && message.isRetryable && (
+                    <MessageErrorActions
+                        message={message}
+                        onRetry={() => onRetryMessage?.(message)}
+                        onCancel={() => onCancelMessage?.(message)}
+                        isRetrying={isRetrying}
+                    />
+                )}
+            </View>
         );
     }
 
@@ -474,6 +561,7 @@ export const MessageBubble = memo(({
                     canDelete={canDelete}
                     onToggleSelection={onToggleSelection}
                     onLongPress={onLongPress}
+                    onAvatarPress={onAvatarPress}
                 >
                     <Text style={styles.messageText}>Ошибка отображения товара</Text>
                 </BubbleContainer>
@@ -496,6 +584,7 @@ export const MessageBubble = memo(({
                     canDelete={canDelete}
                     onToggleSelection={onToggleSelection}
                     onLongPress={onLongPress}
+                    onAvatarPress={onAvatarPress}
                 >
                     <Text style={styles.messageText}>Данные о товаре не найдены</Text>
                 </BubbleContainer>
@@ -517,6 +606,7 @@ export const MessageBubble = memo(({
                 canDelete={canDelete}
                 onToggleSelection={onToggleSelection}
                 onLongPress={onLongPress}
+                onAvatarPress={onAvatarPress}
             />
         );
     }
@@ -534,6 +624,7 @@ export const MessageBubble = memo(({
             canDelete={canDelete}
             onToggleSelection={onToggleSelection}
             onLongPress={onLongPress}
+            onAvatarPress={onAvatarPress}
         />
     );
 }, (prevProps, nextProps) => {
@@ -579,7 +670,7 @@ const styles = StyleSheet.create({
         width: 32,
         height: 32,
         borderRadius: 16,
-        backgroundColor: '#E1E1E1',
+        backgroundColor: '#E0E0E0',
         justifyContent: 'center',
         alignItems: 'center',
         overflow: 'hidden',
@@ -594,12 +685,12 @@ const styles = StyleSheet.create({
         height: 32,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#BDBDBD',
+        backgroundColor: '#E0E0E0',
         borderRadius: 16,
     },
     avatarPlaceholderText: {
-        fontSize: 14,
-        color: '#757575',
+        fontSize: 16,
+        color: '#666666',
     },
     avatarSpacer: {
         width: 40,
@@ -607,7 +698,7 @@ const styles = StyleSheet.create({
 
     // Пузырь
     bubbleWrapper: {
-        maxWidth: '75%',
+        maxWidth: '85%',
         alignItems: 'flex-start',
     },
     ownBubbleWrapper: {
@@ -764,15 +855,15 @@ const styles = StyleSheet.create({
     imageContainer: {
         overflow: 'visible',
         borderRadius: 13,
-        minWidth: 150,
+        minWidth: 180,
     },
     imageWrapper: {
         position: 'relative',
         marginBottom: 0,
     },
     messageImage: {
-        width: 200,
-        height: 200,
+        width: 250,
+        height: 250,
         backgroundColor: '#F0F0F0',
         borderRadius: 13,
     },
@@ -817,8 +908,7 @@ const styles = StyleSheet.create({
     productCardContainer: {
         alignItems: 'center',
         justifyContent: 'center',
-        minHeight: 162, 
-        marginTop: 15,
+        width: 250,
     },
 });
 

@@ -23,7 +23,7 @@ export const OrderAssignment = ({ orderId, stage, onAssignmentComplete }) => {
       setLoading(true);
       const result = await assignOrder(orderId, stage, employeeId, 'MEDIUM');
       if (result.success) {
-        Alert.alert('Успех', 'Заказ успешно назначен');
+        Alert.alert('Готово', 'Заказ успешно назначен');
         onAssignmentComplete?.(result.data);
       } else {
         Alert.alert('Ошибка', result.error);

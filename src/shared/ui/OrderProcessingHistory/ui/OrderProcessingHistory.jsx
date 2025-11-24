@@ -14,6 +14,14 @@ export const OrderProcessingHistory = ({ order, userRole, temporarySteps = [] })
         if (!order?.statusHistory || order.statusHistory.length === 0) return [];
 
         const processingSteps = [];
+        
+        // Кэш для хранения последних известных сотрудников по ролям
+        // Используется для заполнения информации в старых записях без имени
+        const lastKnownEmployees = {
+            PICKER: { name: '', position: '' },
+            PACKER: { name: '', position: '' },
+            COURIER: { name: '', position: '' }
+        };
 
         // Анализируем каждый статус в истории
         order.statusHistory.forEach((historyItem, index) => {
@@ -167,20 +175,28 @@ export const OrderProcessingHistory = ({ order, userRole, temporarySteps = [] })
             let employeePosition = '';
 
             if (comment) {
+                // Сначала удаляем маркер employee_id из комментария для правильного парсинга
+                const cleanComment = comment.replace(/\[employee_id:\d+\]/g, '').trim();
+                
                 const specialPatterns = [
+                    // Паттерны для комментариев завершения этапов (новый формат)
+                    /завершена\. обработано сотрудником (.+?) \((.+?)\)/i,
+                    /завершен\. обработано сотрудником (.+?) \((.+?)\)/i,
+                    /обработано сотрудником (.+?) \((.+?)\)/i,
+                    // Паттерны для комментариев взятия в работу
                     /заказ назначен сотруднику (.+?) \((.+?)\)\. взял заказ в работу/i,
                     /(.+?) \((.+?)\) взял заказ в работу/i,
                     /заказ назначен сотруднику (.+?) \((.+?)\)/i,
-                    /обработано сотрудником (.+?) \((.+?)\)/i,
                     /автоматически назначен сотруднику (.+?) \((.+?)\)/i,
                     /заказ переназначен сотруднику (.+?) \((.+?)\)/i,
+                    // Паттерны для снятия с работы
                     /заказ снят с работы сотрудником (.+?) \((.+?)\)/i,
                     /заказ снят с работы сотрудником (.+?)$/i,
                 ];
 
                 let foundMatch = false;
                 for (const pattern of specialPatterns) {
-                    const match = comment.match(pattern);
+                    const match = cleanComment.match(pattern);
                     if (match && match[1]) {
                         employeeName = match[1].trim();
                         if (match[2]) {
@@ -202,7 +218,7 @@ export const OrderProcessingHistory = ({ order, userRole, temporarySteps = [] })
                     ];
 
                     for (const pattern of generalPatterns) {
-                        const match = comment.match(pattern);
+                        const match = cleanComment.match(pattern);
                         if (match) {
                             if (match[2]) {
                                 employeeName = match[1].trim();
@@ -234,6 +250,20 @@ export const OrderProcessingHistory = ({ order, userRole, temporarySteps = [] })
                 }
             }
 
+            // Если нашли имя сотрудника, сохраняем его в кэш для этой роли
+            if (employeeName && role) {
+                lastKnownEmployees[role] = {
+                    name: employeeName,
+                    position: employeePosition
+                };
+            }
+            
+            // Если имя не найдено, но есть роль - пытаемся использовать последнего известного сотрудника
+            if (!employeeName && role && lastKnownEmployees[role]?.name) {
+                employeeName = lastKnownEmployees[role].name;
+                employeePosition = lastKnownEmployees[role].position;
+            }
+
             const stepData = {
                 status: actualStatus,
                 role,
@@ -241,7 +271,7 @@ export const OrderProcessingHistory = ({ order, userRole, temporarySteps = [] })
                 stepType,
                 employeeName,
                 employeePosition,
-                comment,
+                comment: comment ? comment.replace(/\[employee_id:\d+\]/g, '').trim() : comment, // Удаляем маркер из отображаемого комментария
                 createdAt,
                 originalStatus: status
             };

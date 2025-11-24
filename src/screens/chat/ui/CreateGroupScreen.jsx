@@ -46,7 +46,7 @@ export const CreateGroupScreen = ({ navigation }) => {
 
     setLoadingUsers(true);
     try {
-      const response = await ChatApi.searchUsers(query.trim());
+      const response = await ChatApi.searchUsers(query.trim(), 2000); // Увеличен лимит до 2000
       const userData = response?.data?.data?.users || response?.data?.users || [];
       // Исключаем текущего пользователя из списка
       const filteredUsers = userData.filter(user => user.id !== currentUser?.id);

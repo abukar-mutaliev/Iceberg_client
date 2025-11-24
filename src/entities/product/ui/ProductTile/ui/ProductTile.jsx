@@ -115,15 +115,42 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
                 category = firstCategory ? firstCategory.trim() : 'БАСКЕТ';
             }
 
+            // Получаем priceInfo из product или originalData
+            const priceInfo = product?.priceInfo || product?.originalData?.priceInfo || null;
+            
+            // Определяем цену: приоритет отдается цене из фургона (stopPrice/effectivePrice)
+            let displayPrice = safeNumber(product.price, 0);
+            
+            if (priceInfo) {
+                // Если есть цена фургона (stopPrice), используем её
+                if (priceInfo.stopPrice !== null && priceInfo.stopPrice !== undefined) {
+                    const itemsPerBox = product.itemsPerBox || product.originalData?.itemsPerBox || 1;
+                    // stopPrice - это цена за коробку, делим на itemsPerBox для получения цены за штуку
+                    displayPrice = safeNumber(priceInfo.stopPrice / itemsPerBox, displayPrice);
+                } 
+                // Если нет stopPrice, но есть effectivePrice (эффективная цена фургона)
+                else if (priceInfo.effectivePrice) {
+                    const itemsPerBox = product.itemsPerBox || product.originalData?.itemsPerBox || 1;
+                    // effectivePrice - это цена за коробку, делим на itemsPerBox для получения цены за штуку
+                    displayPrice = safeNumber(priceInfo.effectivePrice / itemsPerBox, displayPrice);
+                }
+                // Если есть warehousePrice, но нет stopPrice, используем warehousePrice
+                else if (priceInfo.warehousePrice !== null && priceInfo.warehousePrice !== undefined) {
+                    const itemsPerBox = product.itemsPerBox || product.originalData?.itemsPerBox || 1;
+                    displayPrice = safeNumber(priceInfo.warehousePrice / itemsPerBox, displayPrice);
+                }
+            }
+
             return {
                 id: product.id,
                 name: safeString(product.name || product.title, 'Товар'),
                 category: category,
-                price: safeNumber(product.price, 0),
+                price: displayPrice, // Используем цену из фургона если доступна
                 image: getProductImage(product),
                 stockQuantity: safeNumber(product.stockQuantity, 0),
                 availableQuantity: safeNumber(product.availableQuantity, product.stockQuantity || 0),
-                isActive: product.isActive !== false
+                isActive: product.isActive !== false,
+                priceInfo: priceInfo // Сохраняем priceInfo для возможного использования
             };
         } catch (error) {
             console.error('ProductTile: Ошибка при обработке данных продукта:', error);

@@ -67,7 +67,7 @@ export const NavigationDebugger = ({ navigation }) => {
                         try {
                             console.log(`🧪 Testing: ${method}`);
                             navigationAttempts[index]();
-                            Alert.alert('Успех', `${method} работает!`);
+                            Alert.alert('Готово', `${method} работает!`);
                         } catch (error) {
                             console.error(`❌ ${method} failed:`, error.message);
                             Alert.alert('Ошибка', `${method}: ${error.message}`);

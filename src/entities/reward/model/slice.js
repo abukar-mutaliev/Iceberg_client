@@ -143,6 +143,23 @@ export const fetchAllPendingRewards = createAsyncThunk(
     }
 );
 
+export const batchProcessRewards = createAsyncThunk(
+    'rewards/batchProcessRewards',
+    async ({ employeeId, data }, { rejectWithValue }) => {
+        try {
+            const response = await rewardApi.batchProcessRewards(employeeId, data);
+            return {
+                employeeId: parseInt(employeeId),
+                ...response.data,
+                dateFrom: data.dateFrom,
+                dateTo: data.dateTo
+            };
+        } catch (error) {
+            return rejectWithValue(error.response?.data?.message || 'Ошибка массовой обработки вознаграждений');
+        }
+    }
+);
+
 const initialState = {
     // Настройки вознаграждений
     settings: [],
@@ -552,6 +569,72 @@ const rewardSlice = createSlice({
             .addCase(fetchAllPendingRewards.rejected, (state, action) => {
                 state.pendingRewardsLoading = false;
                 state.pendingRewardsError = action.payload;
+            });
+
+        // Batch process rewards
+        builder
+            .addCase(batchProcessRewards.pending, (state) => {
+                state.processingReward = true;
+                state.processingError = null;
+            })
+            .addCase(batchProcessRewards.fulfilled, (state, action) => {
+                state.processingReward = false;
+                
+                console.log('✅ Массовая обработка завершена:', action.payload);
+                
+                // Обновляем статус всех вознаграждений сотрудника со статусами PENDING/APPROVED на новый статус
+                const { employeeId, newStatus, dateFrom, dateTo } = action.payload;
+                
+                // Обновляем employeeRewards
+                state.employeeRewards = state.employeeRewards.map(reward => {
+                    // Проверяем что это вознаграждение подходит для обработки
+                    const matchesEmployee = reward.employeeId === employeeId || reward.employee?.id === employeeId;
+                    const matchesStatus = reward.status === 'PENDING' || reward.status === 'APPROVED';
+                    
+                    // Проверяем фильтр по датам если он был применен
+                    let matchesDateFilter = true;
+                    if (dateFrom || dateTo) {
+                        const rewardDate = new Date(reward.createdAt);
+                        if (dateFrom && rewardDate < new Date(dateFrom)) matchesDateFilter = false;
+                        if (dateTo && rewardDate > new Date(dateTo)) matchesDateFilter = false;
+                    }
+                    
+                    if (matchesEmployee && matchesStatus && matchesDateFilter) {
+                        return {
+                            ...reward,
+                            status: newStatus,
+                            processedAt: new Date().toISOString(),
+                            updatedAt: new Date().toISOString()
+                        };
+                    }
+                    return reward;
+                });
+                
+                // Очищаем employeeStatistics для принудительной перезагрузки
+                state.employeeStatistics = null;
+                
+                // Удаляем обработанные вознаграждения из pendingRewards
+                state.pendingRewards = state.pendingRewards.filter(reward => {
+                    const matchesEmployee = reward.employeeId === employeeId || reward.employee?.id === employeeId;
+                    const matchesStatus = reward.status === 'PENDING' || reward.status === 'APPROVED';
+                    
+                    let matchesDateFilter = true;
+                    if (dateFrom || dateTo) {
+                        const rewardDate = new Date(reward.createdAt);
+                        if (dateFrom && rewardDate < new Date(dateFrom)) matchesDateFilter = false;
+                        if (dateTo && rewardDate > new Date(dateTo)) matchesDateFilter = false;
+                    }
+                    
+                    // Оставляем только те, которые НЕ были обработаны
+                    return !(matchesEmployee && matchesStatus && matchesDateFilter);
+                });
+                
+                console.log('✅ Списки обновлены после массовой обработки');
+            })
+            .addCase(batchProcessRewards.rejected, (state, action) => {
+                state.processingReward = false;
+                state.processingError = action.payload;
+                console.error('❌ batchProcessRewards.rejected:', action.payload);
             });
     }
 });

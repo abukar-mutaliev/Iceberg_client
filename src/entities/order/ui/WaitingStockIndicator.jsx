@@ -60,7 +60,7 @@ export const WaitingStockIndicator = ({
                 </View>
                 <View style={styles.textContainer}>
                     <Text style={styles.title}>
-                        {isOverdue ? '⚠️ Ожидание просрочено' : '📦 Ожидает поступления товара'}
+                        {isOverdue ? '⚠️ Ожидание просрочено' : '📦 Ожидает поступления'}
                     </Text>
                     <Text style={styles.subtitle}>
                         {daysSinceCreated === 0 

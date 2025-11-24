@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { View, ScrollView, RefreshControl, Animated, Alert, StatusBar, TouchableOpacity, Text, Modal, TextInput } from 'react-native';
+import { View, ScrollView, RefreshControl, Animated, StatusBar, TouchableOpacity, Text, Modal, TextInput } from 'react-native';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -10,6 +10,7 @@ import { selectHasLocalOrderAction, selectLocalOrderActions } from '@entities/or
 import { clearLocalOrderAction, setLocalOrderAction } from '@entities/order/model/slice';
 import { CONSTANTS } from '@entities/order/lib/constants';
 import { ToastSimple } from '@shared/ui/Toast/ui/ToastSimple';
+import { useCustomAlert } from '@shared/ui/CustomAlert';
 
 // Импорты общих компонентов и утилит
 import { useOrderDetails } from '@shared/hooks/useOrderDetails';
@@ -36,6 +37,23 @@ const canEmployeeTakeOrder = (employeeRole, status, isAdmin = false) => {
     return false;
 };
 
+// Проверка, соответствует ли статус заказа роли сотрудника
+const isStatusMatchingRole = (employeeRole, status) => {
+    // PICKER работает с заказами в статусе PENDING или CONFIRMED
+    if (employeeRole === 'PICKER') {
+        return ['PENDING', 'CONFIRMED'].includes(status);
+    }
+    // COURIER работает с заказами в статусе IN_DELIVERY
+    if (employeeRole === 'COURIER') {
+        return status === 'IN_DELIVERY';
+    }
+    // PACKER больше не используется, но для совместимости
+    if (employeeRole === 'PACKER') {
+        return false;
+    }
+    return false;
+};
+
 const isOrderAssignedToEmployee = (employeeId, assignedId, hasLocalReleased) => {
     return employeeId && assignedId && employeeId === assignedId && !hasLocalReleased;
 };
@@ -56,6 +74,7 @@ export const OrderDetailsEmployeeScreen = () => {
     const { currentUser: user } = useAuth();
     const { downloadInvoice, completeOrderStage, takeOrder, releaseOrder } = useOrders();
     const dispatch = useDispatch();
+    const { showError, showSuccess } = useCustomAlert();
 
     // Состояние компонента
     const [taking, setTaking] = useState(false);
@@ -160,11 +179,38 @@ export const OrderDetailsEmployeeScreen = () => {
         }
     }, [order?.assignedTo?.id, order?.status, order?.statusHistory?.length, orderId, dispatch]);
 
+    // Ref для отслеживания предыдущего orderId
+    const previousOrderIdRef = useRef(null);
+
+    // Очистка состояния при смене orderId
+    useEffect(() => {
+        // Если orderId изменился, очищаем старое состояние заказа
+        if (previousOrderIdRef.current && previousOrderIdRef.current !== orderId) {
+            console.log('OrderDetailsEmployeeScreen - orderId changed, clearing state');
+            setOrder(null);
+        }
+    }, [orderId, setOrder]);
+
     // Загрузка при фокусе экрана
     useFocusEffect(
         useCallback(() => {
-            loadOrderDetails();
-        }, [loadOrderDetails])
+            // Загружаем если:
+            // 1. Заказ еще не загружен (!order)
+            // 2. Или это другой заказ (orderId !== previousOrderIdRef.current)
+            // 3. Или произошла ошибка (error)
+            const isDifferentOrder = orderId !== previousOrderIdRef.current;
+            const shouldLoad = !order || isDifferentOrder || error;
+            
+            if (shouldLoad) {
+                console.log('OrderDetailsEmployeeScreen - loading order:', orderId, {
+                    isDifferentOrder,
+                    hasOrder: !!order,
+                    hasError: !!error
+                });
+                previousOrderIdRef.current = orderId;
+                loadOrderDetails();
+            }
+        }, [orderId, order, error, loadOrderDetails])
     );
 
     // Запуск анимации при загрузке заказа
@@ -287,6 +333,24 @@ export const OrderDetailsEmployeeScreen = () => {
         const actualAssignedId = localOrderState.assignedToId !== null ? localOrderState.assignedToId :
                                 (localOrderState.lastAction === 'released' ? null : order?.assignedTo?.id);
         const actualStatus = localOrderState.status || order?.status;
+
+        // ⚠️ ВАЖНО: Если статус заказа не соответствует роли сотрудника, не показываем кнопки
+        // Например, PICKER не должен видеть кнопки для заказа со статусом IN_DELIVERY (это для курьера)
+        if (actualStatus && !isStatusMatchingRole(employeeRole, actualStatus) && !isAdmin) {
+            console.log('🚫 Статус заказа не соответствует роли сотрудника:', {
+                employeeRole,
+                actualStatus,
+                orderId: order?.id
+            });
+            return {
+                showTakeButton: false,
+                showCompleteButton: false,
+                showReleaseButton: false,
+                canTakeOrder: false,
+                canCompleteStage: false,
+                canReleaseOrder: false
+            };
+        }
 
         // Проверяем, является ли заказ завершенным или уже обработанным
         const isOrderCompleted = actualStatus && CONSTANTS.COMPLETED_STATUSES.includes(actualStatus);
@@ -464,7 +528,7 @@ export const OrderDetailsEmployeeScreen = () => {
             }, 100);
         } catch (e) {
             console.error('Ошибка при взятии заказа в работу:', e);
-            Alert.alert('Ошибка', e.message || 'Не удалось взять заказ');
+            showError('Ошибка', e.message || 'Не удалось взять заказ');
 
             // Очищаем состояния в случае ошибки
             setLocalOrderState(prevState => ({
@@ -480,7 +544,7 @@ export const OrderDetailsEmployeeScreen = () => {
         } finally {
             setTaking(false);
         }
-    }, [orderId, takeOrder, user?.employee, order?.status, dispatch, loadOrderDetails]);
+    }, [orderId, takeOrder, user?.employee, order?.status, dispatch, loadOrderDetails, showError]);
 
     // Обработка завершения этапа
     const handleProcessOrder = useCallback(async () => {
@@ -560,11 +624,11 @@ export const OrderDetailsEmployeeScreen = () => {
             }
         } catch (err) {
             console.error('Ошибка при обработке заказа:', err);
-            Alert.alert('Ошибка', err.message || 'Не удалось завершить этап заказа');
+            showError('Ошибка', err.message || 'Не удалось завершить этап заказа');
         } finally {
             setProcessingOrder(false);
         }
-    }, [orderId, processingComment, completeOrderStage, user?.employee, order?.status, loadOrderDetails]);
+    }, [orderId, processingComment, completeOrderStage, user?.employee, order?.status, loadOrderDetails, showError]);
 
     // Обработка снятия заказа с работы
     const handleReleaseOrder = useCallback(async () => {
@@ -599,11 +663,11 @@ export const OrderDetailsEmployeeScreen = () => {
 
         } catch (err) {
             console.error('❌ Ошибка при снятии заказа с работы:', err);
-            Alert.alert('Ошибка', err.message || 'Не удалось снять заказ с работы');
+            showError('Ошибка', err.message || 'Не удалось снять заказ с работы');
         } finally {
             setReleasing(false);
         }
-    }, [orderId, releaseOrder, order?.status, dispatch, loadOrderDetails]);
+    }, [orderId, releaseOrder, order?.status, dispatch, loadOrderDetails, showError]);
 
     // Обработка скачивания накладной
     const handleDownloadInvoice = useCallback(async () => {
@@ -612,17 +676,32 @@ export const OrderDetailsEmployeeScreen = () => {
             const result = await downloadInvoice(orderId);
 
             if (result.success) {
-                Alert.alert('Успех', `Накладная "${result.filename}" успешно сохранена`);
+                showSuccess( `Накладная "${result.filename}" успешно сохранена`);
             } else {
                 throw new Error(result.error || 'Не удалось скачать накладную');
             }
         } catch (err) {
             console.error('Ошибка при скачивании накладной:', err);
-            Alert.alert('Ошибка', err.message || 'Не удалось скачать накладную');
+            showError('Ошибка', err.message || 'Не удалось скачать накладную');
         } finally {
             setDownloadingInvoice(false);
         }
-    }, [orderId, downloadInvoice]);
+    }, [orderId, downloadInvoice, showSuccess, showError]);
+
+    // Обработчик для нажатия на товар
+    const handleProductPress = useCallback((productId) => {
+        if (!productId) return;
+        
+        // Для сотрудников и админов используем навигацию через стек Admin
+        try {
+            navigation.navigate('ProductDetail', {
+                productId,
+                fromScreen: 'StaffOrderDetails'
+            });
+        } catch (error) {
+            console.error('Navigation error:', error);
+        }
+    }, [navigation]);
 
     // Рендер кнопок действий
     const renderEmployeeActions = () => {
@@ -896,7 +975,10 @@ export const OrderDetailsEmployeeScreen = () => {
                                 userRole={user?.role}
                                 assignedTo={order.assignedTo}
                             />
-                            <OrderItems order={order} />
+                            <OrderItems 
+                                order={order}
+                                onProductPress={handleProductPress}
+                            />
                             <OrderProcessingHistory
                                 order={order}
                                 userRole={user?.role}

@@ -4,7 +4,6 @@ import {
     ScrollView,
     StyleSheet,
     SafeAreaView,
-    Alert,
     TouchableOpacity,
 } from 'react-native';
 import { useDispatch } from 'react-redux';
@@ -18,6 +17,7 @@ import { useToast } from '@shared/ui/Toast';
 import { Loader } from '@shared/ui/Loader';
 import Text from '@shared/ui/Text/Text';
 import { Color } from '@app/styles/GlobalStyles';
+import { useCustomAlert } from '@shared/ui/CustomAlert';
 
 import {
     StaticBackgroundGradient,
@@ -48,6 +48,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     const { colors } = useTheme();
     const { isAuthenticated, currentUser } = useAuth();
     const { showError, showWarning } = useToast();
+    const { showError: showCustomError, showInfo } = useCustomAlert();
 
     // Кастомные хуки для разделения логики
     const {
@@ -250,7 +251,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     // Обработчик вопроса о продукте
     const handleAskQuestion = useCallback(async () => {
         if (!isAuthenticated) {
-            Alert.alert('Требуется авторизация', 'Для отправки вопросов необходимо войти в систему');
+            showInfo('Требуется авторизация', 'Для отправки вопросов необходимо войти в систему');
             return;
         }
 
@@ -316,9 +317,9 @@ export const ProductDetailScreen = ({ route, navigation }) => {
             }
         } catch (e) {
             console.error('Open product chat error', e);
-            Alert.alert('Ошибка', 'Не удалось открыть чат');
+            showCustomError('Ошибка', 'Не удалось открыть чат');
         }
-    }, [enrichedProduct, supplier, navigation, currentUser, isAuthenticated]);
+    }, [enrichedProduct, supplier, navigation, currentUser, isAuthenticated, showInfo, showCustomError]);
 
     // Мемоизированные компоненты
     const displayProduct = useMemo(() => {

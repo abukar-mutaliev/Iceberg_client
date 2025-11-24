@@ -6,7 +6,6 @@ import {
   FlatList,
   TouchableOpacity,
   TextInput,
-  Alert,
   RefreshControl,
   ActivityIndicator
 } from 'react-native';
@@ -17,8 +16,10 @@ import {
   PROCESSING_ROLE_COLORS,
   PROCESSING_ROLE_ICONS
 } from '@entities/admin/lib/constants';
+import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 
 export const ProcessingRolesScreen = () => {
+  const { showAlert } = useCustomAlert();
   const {
     employees,
     loading,
@@ -50,10 +51,20 @@ export const ProcessingRolesScreen = () => {
   // Обработка ошибок
   useEffect(() => {
     if (error) {
-      Alert.alert('Ошибка', error);
+      showAlert({
+        type: 'error',
+        title: 'Ошибка',
+        message: error,
+        buttons: [
+          {
+            text: 'OK',
+            style: 'primary'
+          }
+        ]
+      });
       clearErrors();
     }
-  }, [error, clearErrors]);
+  }, [error, clearErrors, showAlert]);
 
   // Обработка поиска
   const handleSearch = useCallback((text) => {
@@ -71,16 +82,42 @@ export const ProcessingRolesScreen = () => {
     try {
       const result = await assignRole(employeeId, processingRole);
       if (result.success) {
-        Alert.alert('Успех', 'Должность успешно назначена');
+        showAlert({
+          type: 'success',
+          title: 'Готово',
+          message: 'Должность успешно назначена',
+          autoClose: true,
+          autoCloseDuration: 2000
+        });
         setShowAssignmentModal(false);
         setSelectedEmployee(null);
       } else {
-        Alert.alert('Ошибка', result.error);
+        showAlert({
+          type: 'error',
+          title: 'Ошибка',
+          message: result.error,
+          buttons: [
+            {
+              text: 'OK',
+              style: 'primary'
+            }
+          ]
+        });
       }
     } catch (error) {
-      Alert.alert('Ошибка', 'Не удалось назначить должность');
+      showAlert({
+        type: 'error',
+        title: 'Ошибка',
+        message: 'Не удалось назначить должность',
+        buttons: [
+          {
+            text: 'OK',
+            style: 'primary'
+          }
+        ]
+      });
     }
-  }, [assignRole]);
+  }, [assignRole, showAlert]);
 
   // Открытие модального окна назначения
   const handleOpenAssignment = useCallback((employee) => {

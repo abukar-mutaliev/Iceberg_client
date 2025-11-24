@@ -1,12 +1,12 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { Alert } from 'react-native';
 import {
     fetchEmployeeRewards,
     fetchMyRewards,
     fetchAllEmployeesStats,
     fetchAllPendingRewards,
     processReward,
+    batchProcessRewards,
     clearEmployeeRewards
 } from '@/entities/reward/model/slice';
 import {
@@ -21,6 +21,7 @@ import {
     selectEmployeeStatistics
 } from '@/entities/reward/model/selectors';
 import { useAuth } from '@entities/auth/hooks/useAuth';
+import { GlobalAlert } from '@shared/ui/CustomAlert';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -47,8 +48,10 @@ export const useEmployeeRewardsData = (viewMode, employeeId) => {
     const [selectedYear, setSelectedYear] = useState(currentDate.getFullYear());
 
     // Проверяем доступность для роли пользователя
+    // Роль EMPLOYEE включает всех сотрудников: обычных, PICKER, COURIER, PACKER и т.д.
+    // через поле employee.processingRole
     const isAdmin = user?.role === 'ADMIN';
-    const isEmployee = user?.role === 'EMPLOYEE';
+    const isEmployee = user?.role === 'EMPLOYEE'; // включает PICKER, COURIER и др.
     const hasAccess = isAdmin || isEmployee;
 
     // Selectors
@@ -130,17 +133,54 @@ export const useEmployeeRewardsData = (viewMode, employeeId) => {
     const handleProcessReward = useCallback(async (rewardId, status, comment) => {
         // Проверяем права доступа
         if (!hasAccess) {
-            Alert.alert('Ошибка', 'Недостаточно прав для выполнения операции');
+            GlobalAlert.showError('Ошибка', 'Недостаточно прав для выполнения операции');
             return;
         }
 
         try {
             await dispatch(processReward({ id: rewardId, status, comment })).unwrap();
-            Alert.alert('Успех', 'Статус вознаграждения обновлен');
+            GlobalAlert.showSuccess('', 'Статус вознаграждения обновлен');
         } catch (error) {
-            Alert.alert('Ошибка', error || 'Не удалось обновить статус');
+            GlobalAlert.showError('Ошибка', error || 'Не удалось обновить статус');
         }
     }, [dispatch, hasAccess]);
+
+    // Массовая обработка вознаграждений
+    const handleBatchProcessRewards = useCallback(async (employeeId) => {
+        // Проверяем права доступа (только админы)
+        if (!isAdmin) {
+            GlobalAlert.showError('Ошибка', 'Недостаточно прав для выполнения операции');
+            return;
+        }
+
+        // Показываем подтверждение
+        GlobalAlert.showConfirm(
+            'Подтверждение',
+            'Пометить все необработанные вознаграждения как выплаченные?',
+            async () => {
+                try {
+                    const result = await dispatch(batchProcessRewards({
+                        employeeId,
+                        data: {
+                            status: 'PAID',
+                            dateFrom: dateRange?.dateFrom,
+                            dateTo: dateRange?.dateTo
+                        }
+                    })).unwrap();
+
+                    GlobalAlert.showSuccess(
+                        '',
+                        `Выплачено вознаграждений: ${result.processedCount} на сумму ${result.totalAmount} руб.`
+                    );
+
+                    // Перезагружаем данные
+                    loadData(true);
+                } catch (error) {
+                    GlobalAlert.showError('Ошибка', error || 'Не удалось выполнить массовую выплату');
+                }
+            }
+        );
+    }, [dispatch, isAdmin, dateRange, loadData]);
 
     // Cleanup
     const clearData = useCallback(() => {
@@ -205,6 +245,7 @@ export const useEmployeeRewardsData = (viewMode, employeeId) => {
         // Actions
         loadData,
         handleProcessReward,
+        handleBatchProcessRewards,
         clearData
     };
 }; 

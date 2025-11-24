@@ -63,16 +63,6 @@ const upsertRooms = (state, rooms) => {
       }
     }
 
-    // Отладка для проверки lastMessage при сохранении
-    if (__DEV__) {
-      console.log('📥 upsertRooms: Saving room:', {
-        roomId: room.id,
-        hasLastMessage: !!room.lastMessage,
-        lastMessage: room.lastMessage,
-        existingRoom: state.rooms.byId[room.id]
-      });
-    }
-
     state.rooms.byId[room.id] = { ...(state.rooms.byId[room.id] || {}), ...room };
     if (!state.rooms.ids.includes(room.id)) state.rooms.ids.push(room.id);
   }
@@ -156,7 +146,7 @@ const updateMessageCache = async (roomId, bucket) => {
     const messagesToCache = bucket.ids.slice(0, 30).map(id => bucket.byId[id]).filter(Boolean);
     await AsyncStorage.setItem(CACHE_KEYS.roomMessages(roomId), JSON.stringify(messagesToCache));
   } catch (e) {
-    console.warn('Ошибка обновления кэша сообщений:', e);
+    // Ошибка обновления кэша сообщений
   }
 };
 
@@ -187,36 +177,24 @@ export const loadRoomMessagesCache = createAsyncThunk('chat/loadRoomMessagesCach
 
 export const fetchRooms = createAsyncThunk(
     'chat/fetchRooms',
-    async ({ page = 1, limit = 20 } = {}, { rejectWithValue, dispatch }) => {
-      try {
-        const res = await ChatApi.getRooms({ page, limit });
-        const root = (res && res.data) ? res.data : {};
-        const dataNode = root?.data ?? root ?? {};
-        let roomsRaw = Array.isArray(dataNode)
-            ? dataNode
-            : (dataNode.rooms ?? dataNode.items ?? dataNode.data ?? []);
-        if (!Array.isArray(roomsRaw)) roomsRaw = [];
-        
-        // Отладка структуры данных
-        if (__DEV__ && roomsRaw.length > 0) {
-          console.log('🔍 fetchRooms raw data structure:', {
-            firstItem: roomsRaw[0],
-            hasRoom: !!roomsRaw[0]?.room,
-            hasUnreadCount: roomsRaw[0]?.unreadCount !== undefined,
-            hasUnread: roomsRaw[0]?.unread !== undefined,
-            unreadCount: roomsRaw[0]?.unreadCount,
-            unread: roomsRaw[0]?.unread,
-            roomStructure: roomsRaw[0]?.room ? {
-              id: roomsRaw[0].room.id,
-              hasUnreadCount: roomsRaw[0].room?.unreadCount !== undefined,
-              hasUnread: roomsRaw[0].room?.unread !== undefined,
-              unreadCount: roomsRaw[0].room?.unreadCount,
-              unread: roomsRaw[0].room?.unread,
-              hasLastMessage: !!roomsRaw[0].room.lastMessage,
-              lastMessage: roomsRaw[0].room.lastMessage
-            } : null
-          });
-        }
+    async ({ page = 1, limit = 20, forceRefresh = false } = {}, { rejectWithValue, dispatch, getState }) => {
+        try {
+            // Проверяем авторизацию перед загрузкой
+            const state = getState();
+            const isAuthenticated = state.auth?.isAuthenticated;
+            const currentUserId = state.auth?.user?.id;
+            
+            if (!isAuthenticated || !currentUserId) {
+                return rejectWithValue('Требуется авторизация для просмотра чатов');
+            }
+            
+            const res = await ChatApi.getRooms({ page, limit });
+            const root = (res && res.data) ? res.data : {};
+            const dataNode = root?.data ?? root ?? {};
+            let roomsRaw = Array.isArray(dataNode)
+                ? dataNode
+                : (dataNode.rooms ?? dataNode.items ?? dataNode.data ?? []);
+            if (!Array.isArray(roomsRaw)) roomsRaw = [];
 
         const rooms = roomsRaw.map((it) => {
           if (it && it.room && typeof it.room === 'object') {
@@ -229,16 +207,6 @@ export const fetchRooms = createAsyncThunk(
             if (it.unreadCount !== undefined) room.unreadCount = it.unreadCount;
             if (it.unread !== undefined) room.unread = it.unread;
 
-            // Отладка для проверки lastMessage (только если есть проблемы)
-            if (__DEV__ && (room.unreadCount > 0 || room.unread > 0)) {
-              console.log('🔍 fetchRooms mapping room:', {
-                roomId: room.id,
-                hasLastMessage: !!room.lastMessage,
-                copiedUnreadCount: room.unreadCount,
-                copiedUnread: room.unread
-              });
-            }
-
             return room;
           }
           return it;
@@ -246,17 +214,10 @@ export const fetchRooms = createAsyncThunk(
 
         // Загружаем последние сообщения для каждой комнаты, чтобы иметь актуальные статусы
         if (page === 1 && rooms.length > 0) {
-          console.log('🔄 fetchRooms: Loading last messages for rooms:', rooms.map(r => ({
-            id: r.id,
-            hasLastMessage: !!r.lastMessage,
-            title: r.title || 'No title'
-          })));
-
           const loadMessagesPromises = rooms.map(async (room) => {
             try {
               // Всегда загружаем последнее сообщение, даже если room.lastMessage есть
               // Это гарантирует актуальные данные
-              console.log(`📨 fetchRooms: Requesting messages for room ${room.id} (${room.title || 'No title'})`);
               const messagesRes = await ChatApi.getMessages(room.id, { limit: 1 });
               const messagesData = messagesRes?.data?.data || messagesRes?.data || [];
 
@@ -268,35 +229,14 @@ export const fetchRooms = createAsyncThunk(
                   roomId: room.id,
                   message: lastMessage
                 }));
-
-                console.log(`✅ fetchRooms: Successfully loaded last message for room ${room.id}:`, {
-                  messageId: lastMessage.id,
-                  status: lastMessage.status,
-                  deliveredAt: lastMessage.deliveredAt,
-                  readAt: lastMessage.readAt,
-                  senderId: lastMessage.senderId,
-                  hasSender: !!lastMessage.sender,
-                  content: lastMessage.content?.substring(0, 30) + '...'
-                });
-              } else {
-                console.log(`❌ fetchRooms: No messages found for room ${room.id}`);
               }
             } catch (error) {
-              console.warn(`❌ fetchRooms: Failed to load messages for room ${room.id}:`, {
-                error: error.message,
-                roomId: room.id,
-                roomTitle: room.title
-              });
+              // Ошибка загрузки сообщений для комнаты
             }
           });
 
           // Ждем загрузки всех сообщений
-          console.log('⏳ fetchRooms: Waiting for all message loads to complete...');
-          const results = await Promise.allSettled(loadMessagesPromises);
-          const successCount = results.filter(r => r.status === 'fulfilled').length;
-          const failCount = results.filter(r => r.status === 'rejected').length;
-
-          console.log(`✅ fetchRooms: Message loading completed - Success: ${successCount}, Failed: ${failCount}`);
+          await Promise.allSettled(loadMessagesPromises);
         }
 
         const pagination = root?.pagination ?? dataNode?.pagination ?? dataNode?.meta ?? null;
@@ -361,7 +301,7 @@ export const fetchRoomAvatar = createAsyncThunk(
 
 export const fetchMessages = createAsyncThunk(
     'chat/fetchMessages',
-    async ({ roomId, limit = 30, cursorId = null, direction = 'backward' }, { rejectWithValue }) => {
+    async ({ roomId, limit = 15, cursorId = null, direction = 'backward' }, { rejectWithValue }) => {
       try {
         const params = { limit };
         if (cursorId) params.cursorId = cursorId;
@@ -372,12 +312,147 @@ export const fetchMessages = createAsyncThunk(
         const hasMore = (res?.data?.pagination?.hasMore ?? (messages.length >= limit));
 
         if (!cursorId) {
-          try { await AsyncStorage.setItem(CACHE_KEYS.roomMessages(roomId), JSON.stringify(messages.slice(0, 30))); } catch {}
+          try { await AsyncStorage.setItem(CACHE_KEYS.roomMessages(roomId), JSON.stringify(messages.slice(0, 15))); } catch {}
         }
 
         return { roomId, messages, hasMore };
       } catch (e) {
         return rejectWithValue(e.message || 'Ошибка загрузки сообщений');
+      }
+    }
+);
+
+// Отправка голосового сообщения
+// Вспомогательная функция для проверки сетевой ошибки
+const isNetworkError = (error) => {
+  return error.message === 'Network Error' || 
+         error.message?.includes('Network') ||
+         error.message?.includes('сетевым подключением') ||
+         error.code === 'ECONNABORTED' ||
+         error.code === 'ERR_NETWORK';
+};
+
+// Функция задержки для retry
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+export const sendVoice = createAsyncThunk(
+    'chat/sendVoice',
+    async ({ roomId, voice, temporaryId, retryCount = 0 }, { rejectWithValue, dispatch, getState }) => {
+      const MAX_RETRIES = 5;
+      const RETRY_DELAYS = [1000, 2000, 3000, 5000, 10000]; // Прогрессивная задержка
+      
+      try {
+        const form = new FormData();
+        form.append('type', 'VOICE');
+        form.append('duration', voice.duration.toString());
+        
+        // Добавляем waveform как JSON строку
+        if (voice.waveform && Array.isArray(voice.waveform)) {
+          form.append('waveform', JSON.stringify(voice.waveform));
+        }
+
+        // Добавляем аудио файл
+        const audioFile = {
+          uri: Platform.OS === 'android' 
+            ? (voice.uri?.startsWith('file://') ? voice.uri : `file://${voice.uri}`)
+            : voice.uri,
+          type: voice.type || 'audio/aac',
+          name: voice.name || `voice_${Date.now()}.aac`
+        };
+
+        form.append('voice', audioFile);
+
+        if (__DEV__) {
+          console.log('📤 sendVoice: Отправка голосового сообщения', {
+            roomId,
+            duration: voice.duration,
+            durationString: voice.duration.toString(),
+            uri: audioFile.uri,
+            type: audioFile.type,
+            hasTemporaryId: !!temporaryId,
+            attempt: retryCount + 1,
+            maxRetries: MAX_RETRIES,
+            voiceData: voice // ✅ Полный объект voice для проверки
+          });
+        }
+
+        // Обновляем счётчик попыток в UI
+        if (temporaryId && retryCount > 0) {
+          dispatch(updateMessageRetryCount({
+            temporaryId,
+            retryCount,
+            maxRetries: MAX_RETRIES
+          }));
+        }
+
+        const res = await ChatApi.sendMessage(roomId, form);
+        const serverMessage = res?.data?.data?.message || res?.data?.message || res?.data?.data || res?.data;
+        
+        if (__DEV__) {
+          console.log('✅ sendVoice.fulfilled:', { 
+            serverMessage,
+            messageId: serverMessage?.id,
+            attemptNumber: retryCount + 1
+          });
+        }
+
+        // Если есть temporaryId, обновляем оптимистичное сообщение
+        if (temporaryId && serverMessage) {
+          dispatch(updateOptimisticMessage({
+            roomId,
+            temporaryId,
+            newMessage: serverMessage,
+          }));
+        }
+
+        return serverMessage;
+      } catch (error) {
+        if (__DEV__) {
+          console.error('❌ sendVoice error:', {
+            error: error.message,
+            attempt: retryCount + 1,
+            maxRetries: MAX_RETRIES
+          });
+        }
+        
+        // Проверяем, является ли это сетевой ошибкой и есть ли ещё попытки
+        if (isNetworkError(error) && retryCount < MAX_RETRIES - 1) {
+          const nextRetryCount = retryCount + 1;
+          const delayMs = RETRY_DELAYS[retryCount] || 10000;
+          
+          if (__DEV__) {
+            console.log(`🔄 Повторная попытка ${nextRetryCount + 1}/${MAX_RETRIES} через ${delayMs}ms`);
+          }
+          
+          // Ждём перед повторной попыткой
+          await delay(delayMs);
+          
+          // Рекурсивно вызываем sendVoice с увеличенным счётчиком
+          return dispatch(sendVoice({ 
+            roomId, 
+            voice, 
+            temporaryId, 
+            retryCount: nextRetryCount 
+          })).unwrap();
+        }
+        
+        // Если исчерпаны все попытки или это не сетевая ошибка
+        if (temporaryId) {
+          dispatch(markOptimisticMessageFailed({ 
+            temporaryId, 
+            error: error.message || 'Ошибка отправки голосового сообщения',
+            retryCount,
+            isRetryable: isNetworkError(error)
+          }));
+        }
+        
+        return rejectWithValue({
+          message: error.response?.data?.message || 
+                   error.message || 
+                   'Ошибка отправки голосового сообщения',
+          retryCount,
+          isRetryable: isNetworkError(error)
+        });
       }
     }
 );
@@ -392,21 +467,10 @@ export const sendText = createAsyncThunk(
         const res = await ChatApi.sendMessage(roomId, form);
         const serverMessage = res?.data?.data?.message || res?.data?.message || res?.data?.data || res?.data;
         
-        if (__DEV__) {
-          console.log('📤 sendText thunk completed:', {
-            temporaryId,
-            serverMessageId: serverMessage?.id,
-            roomId: serverMessage?.roomId
-          });
-        }
-        
         return serverMessage;
       } catch (e) {
         // Если есть temporaryId, помечаем сообщение как неудачное
         if (temporaryId) {
-          if (__DEV__) {
-            console.log('❌ sendText failed, marking optimistic message as failed:', { temporaryId, error: e.message });
-          }
           dispatch(markOptimisticMessageFailed({ temporaryId, error: e.message || 'Ошибка отправки сообщения' }));
         }
         return rejectWithValue(e.message || 'Ошибка отправки сообщения');
@@ -620,15 +684,6 @@ const chatSlice = createSlice({
         createdAt: new Date().toISOString(),
       };
       
-      if (__DEV__) {
-        console.log('➕ addOptimisticMessage: Adding to store:', {
-          temporaryId: message.temporaryId,
-          messageId: message.id,
-          roomId,
-          content: message.content
-        });
-      }
-      
       upsertMessagesDesc(state.messages[roomId], [optimisticMessage]);
       
       // Обновляем lastMessage комнаты
@@ -641,20 +696,63 @@ const chatSlice = createSlice({
       
       // Обновляем кэш
       updateMessageCache(roomId, state.messages[roomId]);
+    },
+    // Обновляем счётчик попыток отправки
+    updateMessageRetryCount(state, action) {
+      const { temporaryId, retryCount, maxRetries } = action.payload;
+      if (!temporaryId) return;
       
-      if (__DEV__) {
-        console.log('➕ addOptimisticMessage: Added successfully, store now has:', {
-          roomId,
-          messageIds: state.messages[roomId].ids,
-          temporaryMessages: state.messages[roomId].ids.filter(id => 
-            state.messages[roomId].byId[id]?.temporaryId
-          )
+      Object.keys(state.messages).forEach(roomId => {
+        const bucket = state.messages[roomId];
+        if (!bucket) return;
+        
+        Object.keys(bucket.byId).forEach(messageId => {
+          const message = bucket.byId[messageId];
+          if (message?.temporaryId === temporaryId) {
+            message.retryCount = retryCount;
+            message.maxRetries = maxRetries;
+            message.status = 'SENDING';
+          }
         });
-      }
+      });
+    },
+    // Отмена отправки сообщения
+    cancelFailedMessage(state, action) {
+      const { temporaryId, roomId } = action.payload;
+      if (!temporaryId || !roomId) return;
+      
+      const bucket = state.messages[roomId];
+      if (!bucket) return;
+      
+      // Удаляем сообщение из хранилища
+      Object.keys(bucket.byId).forEach(messageId => {
+        const message = bucket.byId[messageId];
+        if (message?.temporaryId === temporaryId) {
+          delete bucket.byId[messageId];
+          const index = bucket.ids.indexOf(messageId);
+          if (index >= 0) {
+            bucket.ids.splice(index, 1);
+          }
+          
+          // Обновляем lastMessage если это было последнее сообщение
+          if (state.rooms.byId[roomId]?.lastMessage?.temporaryId === temporaryId ||
+              state.rooms.byId[roomId]?.lastMessage?.id === messageId) {
+            // Находим новое последнее сообщение
+            const lastMessageId = bucket.ids[bucket.ids.length - 1];
+            const newLastMessage = lastMessageId ? bucket.byId[lastMessageId] : null;
+            
+            if (newLastMessage) {
+              state.rooms.byId[roomId].lastMessage = newLastMessage;
+            }
+          }
+          
+          updateMessageCache(roomId, bucket);
+        }
+      });
     },
     // Помечаем сообщение как ошибочное при неудачной отправке
     markOptimisticMessageFailed(state, action) {
-      const { temporaryId, error } = action.payload;
+      const { temporaryId, error, retryCount = 0, isRetryable = false } = action.payload;
       if (!temporaryId) return;
       
       // Ищем сообщение во всех комнатах
@@ -667,25 +765,130 @@ const chatSlice = createSlice({
           if (message?.temporaryId === temporaryId) {
             message.status = 'FAILED';
             message.error = error;
+            message.retryCount = retryCount;
+            message.isRetryable = isRetryable;
+            message.error = error;
             updateMessageCache(roomId, bucket);
           }
         });
       });
     },
+    // Обновляем оптимистичное сообщение данными с сервера
+    updateOptimisticMessage(state, action) {
+      const { roomId, temporaryId, newMessage } = action.payload;
+      if (!roomId || !temporaryId || !newMessage) return;
+      
+      const bucket = state.messages[roomId];
+      if (!bucket) return;
+      
+      // ✅ Ищем сообщение по temporaryId - оно может быть как ключом, так и полем
+      let foundMessageKey = null;
+      
+      // Сначала проверяем, есть ли сообщение с ключом === temporaryId
+      if (bucket.byId[temporaryId]) {
+        foundMessageKey = temporaryId;
+      } else {
+        // Если нет, ищем по полю temporaryId
+        for (const messageId of Object.keys(bucket.byId)) {
+          const msg = bucket.byId[messageId];
+          if (msg?.temporaryId === temporaryId) {
+            foundMessageKey = messageId;
+            break;
+          }
+        }
+      }
+      
+      if (!foundMessageKey) {
+        // Сообщение не найдено, возможно уже было обновлено
+        if (__DEV__) {
+          console.warn('⚠️ updateOptimisticMessage: Temporary message not found', { 
+            temporaryId, 
+            roomId,
+            availableKeys: Object.keys(bucket.byId).slice(0, 5) 
+          });
+        }
+        return;
+      }
+      
+      // Проверяем, не существует ли уже серверное сообщение
+      if (bucket.byId[newMessage.id]) {
+        // Серверное сообщение уже есть, просто удаляем временное
+        delete bucket.byId[foundMessageKey];
+        const tempIndex = bucket.ids.indexOf(foundMessageKey);
+        if (tempIndex >= 0) {
+          bucket.ids.splice(tempIndex, 1);
+        }
+        updateMessageCache(roomId, bucket);
+        
+        if (__DEV__) {
+          console.log('✅ updateOptimisticMessage: Removed duplicate temporary message', {
+            temporaryId,
+            serverId: newMessage.id,
+            roomId
+          });
+        }
+        return;
+      }
+      
+      const oldMessage = bucket.byId[foundMessageKey];
+      const updatedMessage = {
+        ...oldMessage,
+        ...newMessage,
+        id: newMessage.id,
+        temporaryId: temporaryId, // ✅ Сохраняем temporaryId для стабильного keyExtractor
+        isOptimistic: false,
+        status: newMessage.status || 'SENT'
+      };
+      
+      // ✅ Обновляем сообщение in-place для более плавного перехода
+      // Если ключ изменился (temporaryId -> serverId), переносим данные
+      if (foundMessageKey !== newMessage.id) {
+        delete bucket.byId[foundMessageKey];
+        bucket.byId[newMessage.id] = updatedMessage;
+        
+        // Заменяем ключ в массиве ids
+        const tempIndex = bucket.ids.indexOf(foundMessageKey);
+        if (tempIndex >= 0) {
+          bucket.ids[tempIndex] = newMessage.id;
+        } else {
+          bucket.ids.push(newMessage.id);
+        }
+      } else {
+        // Если ключ не изменился, просто обновляем данные
+        bucket.byId[newMessage.id] = updatedMessage;
+      }
+      
+      // Обновляем lastMessage
+      if (state.rooms.byId[roomId]?.lastMessage?.temporaryId === temporaryId || 
+          state.rooms.byId[roomId]?.lastMessage?.id === foundMessageKey) {
+        const roomUpdate = { 
+          id: roomId, 
+          updatedAt: updatedMessage.createdAt, 
+          lastMessage: updatedMessage 
+        };
+        upsertRooms(state, [roomUpdate]);
+      }
+      
+      updateMessageCache(roomId, bucket);
+      
+      if (__DEV__) {
+        console.log('✅ updateOptimisticMessage: Successfully updated', {
+          temporaryId,
+          newId: newMessage.id,
+          roomId
+        });
+      }
+    },
     receiveSocketMessage(state, action) {
       const { roomId, message, currentUserId } = action.payload || {};
 
       if (!roomId || !message) {
-        console.warn('⚠️ receiveSocketMessage: Invalid payload', action.payload);
         return;
       }
 
       // Проверяем, не обрабатывали ли мы уже это сообщение
       const existingMessage = state.messages[roomId]?.byId?.[message.id];
       if (existingMessage) {
-        if (__DEV__) {
-          console.log(`⚠️ receiveSocketMessage: Message ${message.id} already exists, skipping duplicate processing`);
-        }
         return;
       }
       
@@ -693,9 +896,6 @@ const chatSlice = createSlice({
       if (currentUserId && message.senderId === currentUserId) {
         // Проверяем, есть ли уже сообщение с таким ID (обработанное через sendText.fulfilled)
         if (state.messages[roomId]?.byId?.[message.id]) {
-          if (__DEV__) {
-            console.log('⚠️ receiveSocketMessage: Our own message already processed via HTTP, skipping WebSocket duplicate');
-          }
           return;
         }
         
@@ -711,10 +911,6 @@ const chatSlice = createSlice({
             );
           
           if (optimisticMessage) {
-            if (__DEV__) {
-              console.log('🔄 receiveSocketMessage: Found matching optimistic message, updating via WebSocket');
-            }
-            
             // Обновляем оптимистичное сообщение данными с сервера
             const messageId = bucket.ids.find(id => bucket.byId[id] === optimisticMessage);
             if (messageId) {
@@ -756,20 +952,6 @@ const chatSlice = createSlice({
         }
       }
 
-      if (__DEV__) {
-        console.log('📨 Processing socket message:', {
-          roomId,
-          messageId: message.id,
-          messageType: message.type,
-          content: message.content?.substring(0, 50),
-          senderId: message.senderId,
-          hasSender: !!message.sender,
-          status: message.status,
-          deliveredAt: message.deliveredAt,
-          readAt: message.readAt
-        });
-      }
-
       // Обрабатываем информацию об отправителе для обогащения участников
       if (message.sender && message.senderId) {
         upsertParticipant(state, {
@@ -806,14 +988,6 @@ const chatSlice = createSlice({
           const oldUnread = state.unreadByRoomId[roomId] || 0;
           const newUnread = oldUnread + 1;
           state.unreadByRoomId[roomId] = newUnread;
-
-          if (__DEV__) {
-            console.log(`📊 WebSocket: Updated unread count for room ${roomId}: ${oldUnread} -> ${newUnread} (message time: ${message.createdAt})`);
-          }
-        } else {
-          if (__DEV__) {
-            console.log(`📊 WebSocket: Skipping unread count increment for room ${roomId} - message already counted in API data (message time: ${message.createdAt}, fetch time: ${new Date(state.lastRoomsFetchTime).toISOString()})`);
-          }
         }
       }
 
@@ -831,22 +1005,7 @@ const chatSlice = createSlice({
       const { roomId, message } = action.payload || {};
 
       if (!roomId || !message) {
-        console.warn('⚠️ receiveMessage: Invalid payload', action.payload);
         return;
-      }
-
-      if (__DEV__) {
-        console.log('📨 Processing regular message:', {
-          roomId,
-          messageId: message.id,
-          messageType: message.type,
-          content: message.content?.substring(0, 50),
-          senderId: message.senderId,
-          hasSender: !!message.sender,
-          status: message.status,
-          deliveredAt: message.deliveredAt,
-          readAt: message.readAt
-        });
       }
 
       // Обрабатываем информацию об отправителе для обогащения участников
@@ -904,19 +1063,6 @@ const chatSlice = createSlice({
         if (deliveredAt) message.deliveredAt = deliveredAt;
         if (readAt) message.readAt = readAt;
 
-        console.log('Redux: Updated message status:', {
-          messageId,
-          status,
-          deliveredAt,
-          readAt,
-          message: {
-            id: message.id,
-            status: message.status,
-            deliveredAt: message.deliveredAt,
-            readAt: message.readAt
-          }
-        });
-
         // Обновляем кэш сообщений
         updateMessageCache(roomId, roomMessages);
       }
@@ -930,13 +1076,6 @@ const chatSlice = createSlice({
           deliveredAt: deliveredAt || room.lastMessage.deliveredAt,
           readAt: readAt || room.lastMessage.readAt
         };
-
-        console.log('Redux: Updated room lastMessage status:', {
-          roomId,
-          messageId,
-          status,
-          lastMessage: room.lastMessage
-        });
       }
     },
     updateUserOnlineStatus(state, action) {
@@ -1011,10 +1150,6 @@ const chatSlice = createSlice({
                 // Инициализируем счетчик только если он еще не существует
                 const unreadCount = room.unreadCount ?? room.unread ?? 0;
                 state.unreadByRoomId[room.id] = unreadCount;
-
-                if (__DEV__ && unreadCount > 0) {
-                  console.log(`📊 Initialized unread count for NEW room ${room.id}: ${unreadCount}`);
-                }
               }
             });
           }
@@ -1097,31 +1232,8 @@ const chatSlice = createSlice({
           const roomId = message?.roomId;
           const temporaryId = action.meta.arg.temporaryId;
           
-          if (__DEV__) {
-            console.log('📤 sendText.fulfilled:', { 
-              temporaryId, 
-              messageId: message?.id, 
-              roomId,
-              hasTemporaryId: !!temporaryId
-            });
-          }
-          
           // Если использовались оптимистичные обновления, находим и обновляем временное сообщение
           if (temporaryId && roomId && state.messages[roomId]) {
-            if (__DEV__) {
-              console.log('🔍 sendText.fulfilled: Searching for optimistic message:', {
-                temporaryId,
-                roomId,
-                availableMessageIds: state.messages[roomId].ids,
-                messagesWithTempIds: state.messages[roomId].ids.map(id => ({
-                  id,
-                  temporaryId: state.messages[roomId].byId[id]?.temporaryId,
-                  isOptimistic: state.messages[roomId].byId[id]?.isOptimistic,
-                  content: state.messages[roomId].byId[id]?.content
-                }))
-              });
-            }
-            
             // Ищем временное сообщение
             // Временные сообщения используют temporaryId как ключ в store
             let foundMessageKey = null;
@@ -1141,14 +1253,6 @@ const chatSlice = createSlice({
             }
             
             if (foundMessageKey) {
-              if (__DEV__) {
-                console.log('🔄 sendText.fulfilled: Found optimistic message to update:', {
-                  temporaryId,
-                  foundMessageKey,
-                  newMessageId: message.id
-                });
-              }
-              
               // Заменяем временное сообщение на серверное
               const oldMessage = state.messages[roomId].byId[foundMessageKey];
               const updatedMessage = {
@@ -1190,39 +1294,12 @@ const chatSlice = createSlice({
               
               updateMessageCache(roomId, state.messages[roomId]);
               
-              if (__DEV__) {
-                console.log('✅ sendText.fulfilled: Successfully replaced optimistic message:', {
-                  temporaryId,
-                  oldKey: foundMessageKey,
-                  newId: message.id,
-                  finalMessageIds: state.messages[roomId].ids,
-                  temporaryMessagesLeft: state.messages[roomId].ids.filter(id => 
-                    state.messages[roomId].byId[id]?.temporaryId
-                  )
-                });
-              }
-              
               return;
-            } else {
-              if (__DEV__) {
-                console.warn('⚠️ sendText.fulfilled: Could not find optimistic message:', {
-                  temporaryId,
-                  roomId,
-                  availableMessages: state.messages[roomId].ids.map(id => ({
-                    id,
-                    temporaryId: state.messages[roomId].byId[id]?.temporaryId
-                  }))
-                });
-              }
             }
           }
           
           // Обрабатываем только если не было оптимистичного обновления или не нашли временное сообщение
           if (!roomId) return;
-          
-          if (__DEV__) {
-            console.log('📤 sendText.fulfilled: Adding new message (no optimistic update)');
-          }
           
           upsertRooms(state, [{ id: roomId, updatedAt: message.createdAt, lastMessage: message }]);
           ensureRoomBucket(state, roomId);
@@ -1238,6 +1315,31 @@ const chatSlice = createSlice({
           upsertMessagesDesc(state.messages[roomId], [message]);
           updateMessageCache(roomId, state.messages[roomId]);
         })
+        .addCase(sendVoice.fulfilled, (state, action) => {
+          // ✅ Если был temporaryId, то updateOptimisticMessage уже обработал сообщение
+          // Ничего не делаем в fulfilled чтобы избежать дубликатов
+          const temporaryId = action.meta?.arg?.temporaryId;
+          
+          if (temporaryId) {
+            // Оптимистичное обновление уже произошло в thunk через updateOptimisticMessage
+            return;
+          }
+          
+          // Если temporaryId не было, добавляем сообщение (fallback для старой логики)
+          const message = action.payload?.message || action.payload;
+          const roomId = message?.roomId;
+          
+          if (!roomId) return;
+          
+          const messageExists = state.messages[roomId]?.byId[message.id];
+          
+          if (!messageExists) {
+            upsertRooms(state, [{ id: roomId, updatedAt: message.createdAt, lastMessage: message }]);
+            ensureRoomBucket(state, roomId);
+            upsertMessagesDesc(state.messages[roomId], [message]);
+            updateMessageCache(roomId, state.messages[roomId]);
+          }
+        })
         .addCase(sendProduct.fulfilled, (state, action) => {
           const message = action.payload?.message || action.payload;
           const roomId = message?.roomId;
@@ -1250,29 +1352,21 @@ const chatSlice = createSlice({
         .addCase(deleteMessage.fulfilled, (state, action) => {
             const { messageId, roomId: rid, deletedForAll, currentUserId } = action.payload;
 
-            console.log('Redux: deleteMessage.fulfilled', { messageId, rid, deletedForAll, currentUserId });
-
             // Если указан roomId, используем его, иначе ищем по messageId
             const roomId = rid || Object.keys(state.messages).find(r =>
                 state.messages[r]?.byId?.[messageId]
             );
 
-            console.log('Redux: Найден roomId для удаления:', roomId);
-
             if (!roomId || !state.messages[roomId]) {
-                console.log('Redux: roomId не найден или сообщения не существуют');
                 return;
             }
 
             ensureRoomBucket(state, roomId);
 
             if (deletedForAll) {
-                console.log('Redux: Удаляем сообщение для всех');
                 // Удаляем сообщение для всех - полностью убираем из store
                 delete state.messages[roomId].byId[messageId];
                 state.messages[roomId].ids = state.messages[roomId].ids.filter(id => id !== messageId);
-
-                console.log('Redux: Сообщение удалено из store, оставшиеся ID:', state.messages[roomId].ids);
 
                 // Также обновляем lastMessage в комнате если это было последнее сообщение
                 const room = state.rooms.byId[roomId];
@@ -1291,7 +1385,6 @@ const chatSlice = createSlice({
                     }
                 }
             } else {
-                console.log('Redux: Скрываем сообщение для пользователя');
                 const message = state.messages[roomId].byId[messageId];
                 if (message) {
                     if (!message.hiddenForUserIds) {
@@ -1301,24 +1394,17 @@ const chatSlice = createSlice({
                     // Добавляем текущего пользователя в список скрытых
                     if (currentUserId && !message.hiddenForUserIds.includes(currentUserId)) {
                         message.hiddenForUserIds.push(currentUserId);
-                        console.log('Redux: Добавлен пользователь в hiddenForUserIds:', currentUserId);
                     }
                 }
             }
 
             // Обновляем кэш сообщений
             updateMessageCache(roomId, state.messages[roomId]);
-            console.log('Redux: Кэш сообщений обновлен');
         })
         .addCase(markAsRead.fulfilled, (state, action) => {
           const { roomId } = action.payload;
 
-          const oldUnread = state.unreadByRoomId[roomId] || 0;
           state.unreadByRoomId[roomId] = 0;
-
-          if (__DEV__) {
-            console.log(`📖 Mark as read: Reset unread count for room ${roomId}: ${oldUnread} -> 0`);
-          }
 
           const currentUserId = action.meta?.arg?.currentUserId;
           const roomMessages = state.messages[roomId];
@@ -1361,7 +1447,7 @@ const chatSlice = createSlice({
             try {
                 AsyncStorage.removeItem(CACHE_KEYS.roomMessages(roomId));
             } catch (e) {
-                console.warn('Ошибка очистки кэша сообщений:', e);
+                // Ошибка очистки кэша сообщений
             }
         })
         .addCase(leaveRoom.fulfilled, (state, action) => {
@@ -1380,7 +1466,7 @@ const chatSlice = createSlice({
             try {
                 AsyncStorage.removeItem(CACHE_KEYS.roomMessages(roomId));
             } catch (e) {
-                console.warn('Ошибка очистки кэша сообщений:', e);
+                // Ошибка очистки кэша сообщений
             }
         })
         .addCase(fetchRoomAvatar.fulfilled, (state, action) => {
@@ -1430,5 +1516,19 @@ const chatSlice = createSlice({
   },
 });
 
-export const { setActiveRoom, setTyping, receiveSocketMessage, receiveMessage, receiveMessageDeleted, updateMessageStatus, updateUserOnlineStatus, setConnectionStatus, addOptimisticMessage, markOptimisticMessageFailed } = chatSlice.actions;
+export const { 
+  setActiveRoom, 
+  setTyping, 
+  receiveSocketMessage, 
+  receiveMessage, 
+  receiveMessageDeleted, 
+  updateMessageStatus, 
+  updateUserOnlineStatus, 
+  setConnectionStatus, 
+  addOptimisticMessage, 
+  markOptimisticMessageFailed, 
+  updateOptimisticMessage,
+  updateMessageRetryCount,
+  cancelFailedMessage 
+} = chatSlice.actions;
 export default chatSlice.reducer;

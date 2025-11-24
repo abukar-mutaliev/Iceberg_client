@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, StyleSheet, Dimensions, RefreshControl, Text as RNText } from 'react-native';
+import { View, StyleSheet, Dimensions, RefreshControl, Text as RNText, Pressable } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import Text from '@shared/ui/Text/Text';
@@ -8,7 +8,9 @@ import { SupplierHeader } from '@features/supplier/ui/SupplierHeader/SupplierHea
 import { BestFeedbacks } from '@features/supplier/ui/BestFeedbacks/BestFeedbacks';
 import { ScrollableBackgroundGradient } from '@shared/ui/BackgroundGradient';
 import { resetCurrentProduct } from "@entities/product";
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
+import { selectUser } from '@entities/auth';
+import { Color, FontFamily, FontSize, Border, Shadow, Padding } from '@app/styles/GlobalStyles';
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -34,6 +36,10 @@ const SupplierContent = React.memo(({
     const { colors } = useTheme();
     const scrollViewRef = useRef(null);
     const dispatch = useDispatch();
+    
+    // Получаем текущего пользователя для проверки роли
+    const currentUser = useSelector(selectUser);
+    const isSupplier = useMemo(() => currentUser?.role === 'SUPPLIER', [currentUser?.role]);
 
     const contentHeight = SCREEN_HEIGHT * 2;
 
@@ -136,6 +142,15 @@ const SupplierContent = React.memo(({
         }
     };
 
+    // Обработчики навигации к возвратам товаров
+    const handleStagnantProductsPress = useCallback(() => {
+        navigation.navigate('StagnantProducts');
+    }, [navigation]);
+
+    const handleProductReturnsPress = useCallback(() => {
+        navigation.navigate('ProductReturns');
+    }, [navigation]);
+
     const noProductsContainerStyle = useMemo(() => [
         styles.noProductsContainer,
         { backgroundColor: colors.cardBackground }
@@ -188,6 +203,45 @@ const SupplierContent = React.memo(({
         );
     }, [hasFeedbacks, reviews, handleProductPress]);
 
+    // Рендер карточек возвратов товаров для поставщиков
+    const renderReturnCards = useCallback(() => {
+        return (
+            <View style={styles.returnCardsContainer}>
+                <Pressable
+                    style={({ pressed }) => [
+                        styles.returnCard,
+                        styles.returnCardStagnant,
+                        pressed && styles.returnCardPressed,
+                    ]}
+                    onPress={handleStagnantProductsPress}
+                    android_ripple={{ color: 'rgba(255, 149, 0, 0.2)' }}
+                >
+                    <RNText style={styles.returnCardIcon}>⚠️</RNText>
+                    <RNText style={styles.returnCardTitle}>Залежавшиеся товары</RNText>
+                    <RNText style={styles.returnCardDescription}>
+                        Товары без продаж более 3 недель
+                    </RNText>
+                </Pressable>
+
+                <Pressable
+                    style={({ pressed }) => [
+                        styles.returnCard,
+                        styles.returnCardReturns,
+                        pressed && styles.returnCardPressed,
+                    ]}
+                    onPress={handleProductReturnsPress}
+                    android_ripple={{ color: 'rgba(106, 90, 224, 0.2)' }}
+                >
+                    <RNText style={styles.returnCardIcon}>📦</RNText>
+                    <RNText style={styles.returnCardTitle}>Мои возвраты</RNText>
+                    <RNText style={styles.returnCardDescription}>
+                        Статус и история возвратов
+                    </RNText>
+                </Pressable>
+            </View>
+        );
+    }, [handleStagnantProductsPress, handleProductReturnsPress]);
+
     // Рендерим компонент
     return (
         <View style={styles.container}>
@@ -213,6 +267,7 @@ const SupplierContent = React.memo(({
                     onGoBack={handleGoBack}
                 />
 
+                {isSupplier && renderReturnCards()}
                 {renderProducts()}
                 {renderFeedbacks()}
 
@@ -248,6 +303,53 @@ const styles = StyleSheet.create({
     },
     noProductsText: {
         fontSize: SCREEN_WIDTH * 0.037,
+    },
+    // Карточки возвратов
+    returnCardsContainer: {
+        flexDirection: 'row',
+        gap: 12,
+        paddingHorizontal: SCREEN_WIDTH * 0.037,
+        marginTop: SCREEN_WIDTH * 0.047,
+        marginBottom: SCREEN_WIDTH * 0.037,
+    },
+    returnCard: {
+        flex: 1,
+        borderRadius: 16,
+        padding: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: 120,
+    },
+    returnCardStagnant: {
+        backgroundColor: 'rgba(255, 149, 0, 0.1)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 149, 0, 0.3)',
+    },
+    returnCardReturns: {
+        backgroundColor: 'rgba(106, 90, 224, 0.1)',
+        borderWidth: 1,
+        borderColor: 'rgba(106, 90, 224, 0.3)',
+    },
+    returnCardPressed: {
+        opacity: 0.7,
+        transform: [{ scale: 0.97 }],
+    },
+    returnCardIcon: {
+        fontSize: 32,
+        marginBottom: 8,
+    },
+    returnCardTitle: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: Color.textPrimary,
+        textAlign: 'center',
+        marginBottom: 4,
+    },
+    returnCardDescription: {
+        fontSize: 11,
+        color: Color.textSecondary,
+        textAlign: 'center',
+        lineHeight: 14,
     },
     debugContainer: {
         padding: 10,

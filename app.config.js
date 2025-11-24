@@ -40,15 +40,11 @@ export default {
                     android: {
                         usesCleartextTraffic: true,
                         networkSecurityConfig: './network_security_config.xml',
-                        // Включаем remote debugging для preview сборок
-                        ...(IS_PREVIEW && {
-                            enableProguardInReleaseBuilds: false,
-                            enableShrinkResourcesInReleaseBuilds: false,
-                        }),
+                        // Отключаем proguard и shrink во всех релизных сборках для стабильной работы OneSignal
+                        enableProguardInReleaseBuilds: false,
+                        enableShrinkResourcesInReleaseBuilds: false,
                         // Дополнительные настройки для preview-debug
                         ...(IS_PREVIEW_DEBUG && {
-                            enableProguardInReleaseBuilds: false,
-                            enableShrinkResourcesInReleaseBuilds: false,
                             enableHermes: true,
                             enableProfiling: true,
                         }),
@@ -90,6 +86,8 @@ export default {
             googleMapsApiKey: 'AIzaSyDev-AMb24bvlQn3a-b4DGsItiYB6su6_E',
             yandexMapsApiKey: '17ee620d-aee1-482c-acc9-c7144fd46087',
             expoPushToken: true,
+            // OneSignal App ID для нативной конфигурации плагина
+            oneSignalAppId: 'a1bde379-4211-4fb9-89e2-3e94530a7041',
         },
         owner: 'abuingush',
         runtimeVersion: '1.0.0',
@@ -103,7 +101,6 @@ export default {
             package: 'com.abuingush.iceberg',
             versionCode: 9,
             icon: './assets/icon.png',
-            googleServicesFile: './google-services.json',
             adaptiveIcon: {
                 foregroundImage: './assets/icon.png',
                 backgroundColor: '#E3F2FD',

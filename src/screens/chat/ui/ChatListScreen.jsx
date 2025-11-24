@@ -11,25 +11,11 @@ import {getBaseUrl} from '@shared/api/api';
 
 // Исправленный компонент для отображения галочек статуса сообщения
 const StatusTicks = React.memo(({status}) => {
-    // Отладочная информация для диагностики обновления статуса
-    if (__DEV__) {
-        console.log('🚀 ChatList StatusTicks COMPONENT RENDERED:', {
-            status,
-            normalizedStatus: status?.toUpperCase(),
-            willShowBlueTicks: status === 'READ' || status === 'read',
-            willShowGrayTicks: status === 'DELIVERED' || status === 'delivered',
-            willShowOneTick: status === 'SENT' || !status
-        });
-    }
-
     // Нормализуем статус для правильной обработки
     const normalizedStatus = status?.toUpperCase?.() || status;
 
     // Исправленная логика - проверяем оба варианта
     if (normalizedStatus === 'READ' || normalizedStatus === 'read') {
-        if (__DEV__) {
-            console.log('✅ StatusTicks: RENDERING BLUE TICKS for status:', status);
-        }
         return (
             <View style={styles.ticksContainer}>
                 <Text style={[styles.tick, styles.tickRead]}>✓</Text>
@@ -38,9 +24,6 @@ const StatusTicks = React.memo(({status}) => {
         );
     }
     if (normalizedStatus === 'DELIVERED' || normalizedStatus === 'delivered') {
-        if (__DEV__) {
-            console.log('✅ StatusTicks: RENDERING GRAY TICKS for status:', status);
-        }
         return (
             <View style={styles.ticksContainer}>
                 <Text style={styles.tick}>✓</Text>
@@ -49,9 +32,6 @@ const StatusTicks = React.memo(({status}) => {
         );
     }
     if (normalizedStatus === 'SENT') {
-        if (__DEV__) {
-            console.log('✅ StatusTicks: RENDERING ONE GRAY TICK for status:', status);
-        }
         return (
             <View style={styles.ticksContainer}>
                 <Text style={[styles.tick]}>✓</Text>
@@ -60,9 +40,6 @@ const StatusTicks = React.memo(({status}) => {
     }
 
     // Default case - одна серая галочка
-    if (__DEV__) {
-        console.log('✅ StatusTicks: RENDERING DEFAULT ONE GRAY TICK for status:', status);
-    }
     return (
         <View style={styles.ticksContainer}>
             <Text style={[styles.tick]}>✓</Text>
@@ -81,28 +58,6 @@ export const ChatListScreen = ({navigation}) => {
     const hasMore = useSelector((s) => s.chat?.rooms?.hasMore);
     const connection = useSelector((s) => s.chat?.connection);
 
-      // Отладочная информация
-  if (__DEV__) {
-    console.log('ChatListScreen render:', {
-      currentUserId,
-      roomsCount: rooms.length,
-      participantsCount: Object.keys(participantsById).length,
-            sampleRoom: rooms[0] ? {
-                id: rooms[0].id,
-                type: rooms[0].type,
-                title: rooms[0].title,
-                participants: rooms[0].participants?.map(p => ({
-                    id: p?.userId ?? p?.user?.id,
-                    name: p?.user?.name || p?.name,
-                    role: p?.user?.role || p?.role
-                })),
-                lastMessage: rooms[0].lastMessage,
-                messages: rooms[0].messages?.length || 0,
-                lastMessageStatus: rooms[0].lastMessage?.status
-            } : null
-        });
-    }
-
     const memoizedRooms = useMemo(() => rooms, [rooms]);
     const loadedProductsRef = useRef(new Set());
 
@@ -112,24 +67,9 @@ export const ChatListScreen = ({navigation}) => {
         dispatch(fetchRooms({page: 1}));
     }, [dispatch]);
 
-    // Убираем все автоматические обновления - websocket должен работать сам!
-    // useEffect(() => {
-    //   const interval = setInterval(() => {
-    //     if (__DEV__) {
-    //       console.log('ChatListScreen: Syncing with websocket updates');
-    //     }
-    //     dispatch(fetchRooms({ page: 1 }));
-    //   }, 5000); // Обновляем каждые 5 секунд для websocket синхронизации
-
-    //   return () => clearInterval(interval);
-    // }, [dispatch]);
-
     // Дополнительное обновление при фокусе экрана для получения новых сообщений
     useEffect(() => {
         const unsubscribe = navigation.addListener('focus', () => {
-            if (__DEV__) {
-                console.log('ChatListScreen: Screen focused, refreshing for new messages');
-            }
             dispatch(fetchRooms({page: 1, forceRefresh: true}));
         });
         return unsubscribe;
@@ -140,9 +80,6 @@ export const ChatListScreen = ({navigation}) => {
 
     // Обработчик для pull-to-refresh
     const handleRefresh = useCallback(() => {
-        if (__DEV__) {
-            console.log('ChatListScreen: Manual refresh triggered');
-        }
         dispatch(fetchRooms({page: 1, forceRefresh: true}));
     }, [dispatch]);
 
@@ -155,9 +92,6 @@ export const ChatListScreen = ({navigation}) => {
         subset.forEach((room) => {
             const hasParticipants = Array.isArray(room?.participants) && room.participants.length > 0;
             if (!hasParticipants && room?.id) {
-                if (__DEV__) {
-                    console.log('Fetching room participants for room:', room.id);
-                }
                 dispatch(fetchRoom(room.id));
             }
 
@@ -204,38 +138,6 @@ export const ChatListScreen = ({navigation}) => {
         // ИГНОРИРУЕМ room.title, так как он содержит неправильное имя
         // if (room?.title) return room.title;
 
-        // Отладочная информация для диагностики
-        if (__DEV__) {
-            console.log('getChatTitle called for room:', {
-                roomId: room.id,
-                roomTitle: room.title,
-                currentUserId,
-                participants: room.participants?.map(p => ({
-                    id: p?.userId ?? p?.user?.id,
-                    name: p?.user?.name || p?.name,
-                    role: p?.user?.role || p?.role,
-                    isCurrentUser: (p?.userId ?? p?.user?.id) === currentUserId
-                })),
-                lastMessage: room.lastMessage,
-                messagesCount: room.messages?.length,
-                lastMessageStatus: room.messages && room.messages.length > 0 ? room.messages[room.messages.length - 1]?.status : null,
-                lastMessageStructure: room.messages && room.messages.length > 0 ? {
-                    id: room.messages[room.messages.length - 1]?.id,
-                    content: room.messages[room.messages.length - 1]?.content,
-                    type: room.messages[room.messages.length - 1]?.type,
-                    createdAt: room.messages[room.messages.length - 1]?.createdAt,
-                    senderId: room.messages[room.messages.length - 1]?.senderId,
-                    sender_id: room.messages[room.messages.length - 1]?.sender_id,
-                    userId: room.messages[room.messages.length - 1]?.userId,
-                    user_id: room.messages[room.messages.length - 1]?.user_id,
-                    fromUserId: room.messages[room.messages.length - 1]?.fromUserId,
-                    from_user_id: room.messages[room.messages.length - 1]?.from_user_id,
-                    status: room.messages[room.messages.length - 1]?.status,
-                    allFields: room.messages[room.messages.length - 1] ? Object.keys(room.messages[room.messages.length - 1]) : null
-                } : null
-            });
-        }
-
         // Для групповых чатов сразу возвращаем название группы
         if (room?.type === 'GROUP' && room?.title) {
             return room.title;
@@ -256,21 +158,6 @@ export const ChatListScreen = ({navigation}) => {
 
             if (partner) {
                 const partnerUser = partner.user || partner;
-
-                // Отладочная информация для диагностики
-                if (__DEV__) {
-                    console.log('getChatTitle - partner found:', {
-                        roomId: room.id,
-                        partner,
-                        partnerUser,
-                        currentUserId,
-                        participants: room.participants.map(p => ({
-                            id: p?.userId ?? p?.user?.id,
-                            name: p?.user?.name || p?.name,
-                            role: p?.user?.role || p?.role
-                        }))
-                    });
-                }
 
                 // Для поставщиков показываем название компании
                 if (partnerUser?.role === 'SUPPLIER') {
@@ -299,10 +186,6 @@ export const ChatListScreen = ({navigation}) => {
 
                 // Если ничего не найдено, показываем ID пользователя
                 return `Пользователь #${partnerUser.id || partner.id}`;
-            } else {
-                if (__DEV__) {
-                    console.log('getChatTitle - no partner found for room:', room.id);
-                }
             }
         }
 
@@ -390,17 +273,12 @@ export const ChatListScreen = ({navigation}) => {
     const handleLoadMore = useCallback(() => {
         if (loading || !hasMore) return;
 
-        if (__DEV__) {
-            console.log('ChatListScreen: Loading more rooms, page:', page + 1);
-        }
-
         dispatch(fetchRooms({page: page + 1}));
     }, [dispatch, loading, hasMore, page]);
 
     const openRoom = (room) => {
         const rid = room?.id ?? room?.roomId;
         if (!rid) {
-            console.warn('ChatListScreen: Trying to open room without valid ID:', room);
             return;
         }
         dispatch(setActiveRoom(rid));
@@ -423,28 +301,6 @@ export const ChatListScreen = ({navigation}) => {
         // Приоритет: item.lastMessage (содержит senderId) > lastMessageFromMessages
         const lastMessage = item.lastMessage;
 
-        if (__DEV__) {
-            console.log('🎯 ChatList renderItem - lastMessage determination for room:', item?.id ?? item?.roomId ?? 'no-id', {
-                hasItemLastMessage: !!item.lastMessage,
-                itemStructure: {
-                    id: item.id,
-                    title: item.title,
-                    type: item.type,
-                    hasLastMessage: !!item.lastMessage,
-                    lastMessage: item.lastMessage,
-                    hasMessages: !!item.messages,
-                    messagesLength: item.messages?.length
-                },
-                finalLastMessage: lastMessage ? {
-                    id: lastMessage.id,
-                    content: lastMessage.content?.substring(0, 30),
-                    senderId: lastMessage.senderId,
-                    status: lastMessage.status,
-                    createdAt: lastMessage.createdAt
-                } : null
-            });
-        }
-
         // Определяем, является ли последнее сообщение нашим
         let isOwnMessage = false;
         let senderPrefix = ''; // Объявляем здесь чтобы использовать позже
@@ -460,18 +316,6 @@ export const ChatListScreen = ({navigation}) => {
                 lastMessage.sender?.id;
 
             isOwnMessage = senderId === currentUserId;
-
-            if (__DEV__) {
-                console.log('👤 ChatList: isOwnMessage determination:', {
-                    senderId,
-                    currentUserId,
-                    isOwnMessage,
-                    roomId: item?.id ?? item?.roomId ?? 'no-id',
-                    lastMessageId: lastMessage?.id,
-                    messageStatus,
-                    shouldShowTicks: isOwnMessage
-                });
-            }
 
             // Для групповых чатов показываем имя отправителя в превью
             if (item.type === 'GROUP' && lastMessage.sender) {
@@ -489,18 +333,6 @@ export const ChatListScreen = ({navigation}) => {
                         senderPrefix = `${senderName}: `;
                     }
                 }
-            }
-
-            if (__DEV__) {
-            console.log('isOwnMessage determination:', {
-                roomId: item?.id ?? item?.roomId ?? 'no-id',
-                roomType: item.type,
-                currentUserId,
-                senderId,
-                isOwnMessage,
-                senderPrefix,
-                lastMessageKeys: lastMessage ? Object.keys(lastMessage) : null
-            });
             }
         }
 
@@ -524,33 +356,6 @@ export const ChatListScreen = ({navigation}) => {
             }
         }
 
-        if (__DEV__) {
-            console.log('ChatList: Final messageStatus for room:', item?.id ?? item?.roomId ?? 'no-id', ':', messageStatus, {
-                lastMessageStatus: lastMessage?.status,
-                lastMessageReadAt: lastMessage?.readAt,
-                lastMessageDeliveredAt: lastMessage?.deliveredAt,
-                isOwnMessage
-            });
-        }
-
-        // Отладочная информация о статусе
-        if (__DEV__) {
-            console.log('Message status calculation:', {
-                roomId: item?.id ?? item?.roomId ?? 'no-id',
-                messageId: lastMessage?.id,
-                calculatedStatus: messageStatus,
-                originalStatus: lastMessage?.status,
-                deliveredAt: lastMessage?.deliveredAt,
-                readAt: lastMessage?.readAt,
-                isOwnMessage,
-                participantsCount: item.participants?.length,
-                // Добавляем информацию для отслеживания динамического обновления
-                willShowTicks: lastMessage && isOwnMessage,
-                ticksStatus: messageStatus,
-                messageContent: lastMessage?.content?.substring(0, 30)
-            });
-        }
-
         // Упрощенная логика для последнего сообщения
         let preview = '';
         let time = '';
@@ -565,7 +370,7 @@ export const ChatListScreen = ({navigation}) => {
             } else if (lastMessage.content && lastMessage.content.trim()) {
                 messageContent = lastMessage.content.trim();
             } else {
-                messageContent = 'Сообщение';
+                messageContent = 'Голосовое сообщение';
             }
 
             // Используем senderPrefix который мы определили ранее
@@ -589,36 +394,7 @@ export const ChatListScreen = ({navigation}) => {
                         month: '2-digit'
                     });
                 }
-
-                // Отладочная информация о времени
-                if (__DEV__) {
-                    console.log('Time calculation:', {
-                        messageDate: lastMessage.createdAt,
-                        parsedDate: messageDate,
-                        diffInHours,
-                        calculatedTime: time,
-                        // Добавляем сравнение с текущим временем
-                        currentTime: now.toLocaleTimeString('ru-RU'),
-                        timeDifference: `${Math.round(diffInHours * 60)} минут`
-                    });
-                }
             }
-        }
-
-        // Отладочная информация
-        if (__DEV__) {
-            console.log('ChatList renderItem:', {
-                roomId: item?.id ?? item?.roomId ?? 'no-id',
-                type: item.type,
-                title,
-                currentUserId,
-                lastMessage: item.lastMessage,
-                messagesCount: item.messages?.length,
-                preview,
-                time,
-                isOwnMessage,
-                messageStatus
-            });
         }
 
         return (
@@ -649,13 +425,6 @@ export const ChatListScreen = ({navigation}) => {
                         {/* Показываем галочки слева от сообщения для своих сообщений */}
                         {lastMessage && isOwnMessage && (
                             <View style={styles.statusContainerLeft}>
-                                {__DEV__ && console.log('🎯 ChatList: CONDITION PASSED, RENDERING StatusTicks:', {
-                                    lastMessage: !!lastMessage,
-                                    isOwnMessage,
-                                    messageStatus,
-                                    lastMessageId: lastMessage?.id,
-                                    roomId: item?.id ?? item?.roomId ?? 'no-id'
-                                })}
                                 <StatusTicks status={messageStatus}/>
                             </View>
                         )}
@@ -695,39 +464,6 @@ export const ChatListScreen = ({navigation}) => {
             </View>
         ) : null
     ), [loading]);
-
-    // Отслеживаем изменения в Redux store для динамического обновления галочек
-    useEffect(() => {
-        if (__DEV__) {
-            console.log('ChatListScreen: Redux store updated, re-rendering for dynamic status updates', {
-                roomsCount: rooms.length,
-                hasRooms: rooms.length > 0,
-                sampleRoomLastMessage: rooms[0]?.lastMessage ? {
-                    id: rooms[0].lastMessage.id,
-                    status: rooms[0].lastMessage.status,
-                    content: rooms[0].lastMessage.content?.substring(0, 20),
-                    createdAt: rooms[0].lastMessage.createdAt
-                } : null
-            });
-        }
-    }, [rooms]); // Убираем неопределенные переменные participants и messages
-
-    // Убираем дополнительное обновление - websocket должен работать сам!
-    // useEffect(() => {
-    //   // Слушаем изменения в сообщениях для мгновенного обновления
-    //   const checkForNewMessages = () => {
-    //     if (__DEV__) {
-    //       console.log('ChatListScreen: Checking for new messages via websocket');
-    //     }
-    //     // Обновляем список чатов для получения новых сообщений
-    //     dispatch(fetchRooms({ page: 1 }));
-    //   };
-
-    //   // Проверяем новые сообщения каждые 3 секунды для websocket
-    //   const messageInterval = setInterval(checkForNewMessages, 3000);
-
-    //   return () => clearInterval(messageInterval);
-    // }, [dispatch]);
 
     return (
         <View style={styles.container}>

@@ -1,17 +1,23 @@
 import React from 'react';
-import { View, Text, Image } from 'react-native';
+import { View, Text, Image, TouchableOpacity } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { formatAmount, formatBoxesCount, formatImageUrl } from '@shared/lib/orderUtils';
 import { createOrderDetailsStyles } from '@shared/ui/OrderDetailsStyles';
 
 const styles = createOrderDetailsStyles();
 
-export const OrderItems = ({ order }) => {
+export const OrderItems = ({ order, onProductPress }) => {
     if (!order) return null;
 
     const items = order?.items || order?.orderItems || [];
 
     if (items.length === 0) return null;
+
+    const handleItemPress = (item) => {
+        if (onProductPress && item.product?.id) {
+            onProductPress(item.product.id);
+        }
+    };
 
     return (
         <View style={styles.modernCard}>
@@ -24,10 +30,16 @@ export const OrderItems = ({ order }) => {
 
             <View style={styles.itemsList}>
                 {items.map((item, index) => (
-                    <View key={index} style={[
-                        styles.itemContainer,
-                        index === items.length - 1 && styles.lastItem
-                    ]}>
+                    <TouchableOpacity
+                        key={index}
+                        style={[
+                            styles.itemContainer,
+                            index === items.length - 1 && styles.lastItem
+                        ]}
+                        onPress={() => handleItemPress(item)}
+                        activeOpacity={0.7}
+                        disabled={!item.product?.id}
+                    >
                         {/* Изображение товара */}
                         <View style={styles.imageContainer}>
                             {(() => {
@@ -112,7 +124,7 @@ export const OrderItems = ({ order }) => {
                                 </Text>
                             </View>
                         </View>
-                    </View>
+                    </TouchableOpacity>
                 ))}
             </View>
         </View>

@@ -3,24 +3,31 @@ import {
     View,
     Text,
     TouchableOpacity,
-    Modal,
-    FlatList,
     StyleSheet,
     TextInput,
-    Switch,
-    ScrollView
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
 import { useWarehouses } from '@entities/warehouse/hooks/useWarehouses';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 
-// Компонент для указания количества коробок на склад
-const WarehouseQuantityInput = ({ warehouse, quantity, onQuantityChange, onRemove }) => {
+// Компонент для указания количества коробок и цены на склад
+const WarehouseQuantityInput = ({ warehouse, quantity, warehousePrice, stopPrice, onQuantityChange, onPriceChange, onStopPriceChange, onRemove, basePrice, isAdmin = false }) => {
     const [inputValue, setInputValue] = useState(quantity.toString());
+    const [priceValue, setPriceValue] = useState(warehousePrice ? warehousePrice.toString() : '');
+    const [stopPriceValue, setStopPriceValue] = useState(stopPrice ? stopPrice.toString() : '');
 
     useEffect(() => {
         setInputValue(quantity.toString());
     }, [quantity]);
+
+    useEffect(() => {
+        setPriceValue(warehousePrice ? warehousePrice.toString() : '');
+    }, [warehousePrice]);
+
+    useEffect(() => {
+        setStopPriceValue(stopPrice ? stopPrice.toString() : '');
+    }, [stopPrice]);
 
     const handleQuantityChange = (text) => {
         setInputValue(text);
@@ -30,21 +37,69 @@ const WarehouseQuantityInput = ({ warehouse, quantity, onQuantityChange, onRemov
         }
     };
 
+    const handlePriceChange = (text) => {
+        setPriceValue(text);
+        const numValue = parseFloat(text.replace(',', '.'));
+        if (text === '' || text === null) {
+            onPriceChange(warehouse.id, null);
+        } else if (!isNaN(numValue) && numValue > 0) {
+            onPriceChange(warehouse.id, numValue);
+        }
+    };
+
+    const handleStopPriceChange = (text) => {
+        setStopPriceValue(text);
+        const numValue = parseFloat(text.replace(',', '.'));
+        if (text === '' || text === null) {
+            onStopPriceChange(warehouse.id, null);
+        } else if (!isNaN(numValue) && numValue > 0) {
+            onStopPriceChange(warehouse.id, numValue);
+        }
+    };
+
     return (
         <View style={styles.quantityItem}>
             <View style={styles.quantityInfo}>
                 <Text style={styles.quantityWarehouseName}>{warehouse.name}</Text>
-        
             </View>
             <View style={styles.quantityControls}>
-                <TextInput
-                    style={styles.quantityInput}
-                    value={inputValue}
-                    onChangeText={handleQuantityChange}
-                    keyboardType="numeric"
-                    placeholder="0"
-                    maxLength={4}
-                />
+                <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Кол-во коробок</Text>
+                    <TextInput
+                        style={styles.quantityInput}
+                        value={inputValue}
+                        onChangeText={handleQuantityChange}
+                        keyboardType="numeric"
+                        placeholder="0"
+                        maxLength={4}
+                    />
+                </View>
+                {isAdmin && (
+                    <View style={styles.pricesRow}>
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.inputLabel}>Цена склада (₽)</Text>
+                            <TextInput
+                                style={styles.priceInput}
+                                value={priceValue}
+                                onChangeText={handlePriceChange}
+                                keyboardType="decimal-pad"
+                                placeholder={basePrice ? basePrice.toString() : "Авто"}
+                                maxLength={10}
+                            />
+                        </View>
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.inputLabel}>Цена фургона (₽)</Text>
+                            <TextInput
+                                style={styles.priceInput}
+                                value={stopPriceValue}
+                                onChangeText={handleStopPriceChange}
+                                keyboardType="decimal-pad"
+                                placeholder={basePrice ? basePrice.toString() : "Авто"}
+                                maxLength={10}
+                            />
+                        </View>
+                    </View>
+                )}
                 <TouchableOpacity
                     style={styles.removeButton}
                     onPress={() => onRemove(warehouse.id)}
@@ -57,54 +112,28 @@ const WarehouseQuantityInput = ({ warehouse, quantity, onQuantityChange, onRemov
 };
 
 export const WarehouseQuantityPicker = ({
-    selectedWarehouseQuantities = [], // [{warehouseId, quantity}, ...]
+    selectedWarehouseQuantities = [], // [{warehouseId, quantity, warehousePrice?, stopPrice?}, ...]
     onSelectWarehouseQuantities,
     error,
     isWarning = false,
-    disabled = false
+    disabled = false,
+    basePrice = null, // Базовая цена за коробку для подсказки
+    isAdmin = false // Флаг, разрешено ли устанавливать цены
 }) => {
+    const navigation = useNavigation();
     const { warehouses, loading: loadingWarehouses } = useWarehouses({ autoLoad: true });
-    const [modalVisible, setModalVisible] = useState(false);
-    const [searchText, setSearchText] = useState('');
-    const [filteredWarehouses, setFilteredWarehouses] = useState(warehouses);
-    const [tempSelectedWarehouses, setTempSelectedWarehouses] = useState([]);
-    const [warehouseQuantities, setWarehouseQuantities] = useState({}); // {warehouseId: quantity}
-    const [selectAll, setSelectAll] = useState(false);
 
-    // Инициализация при открытии модального окна
-    useEffect(() => {
-        if (modalVisible) {
-            const selectedIds = selectedWarehouseQuantities.map(item => item.warehouseId);
-            setTempSelectedWarehouses(selectedIds);
-
-            // Инициализируем количества
-            const quantitiesMap = {};
-            selectedWarehouseQuantities.forEach(item => {
-                quantitiesMap[item.warehouseId] = item.quantity;
-            });
-            setWarehouseQuantities(quantitiesMap);
-        }
-    }, [modalVisible, selectedWarehouseQuantities]);
-
-    // Обновление списка складов при изменении поиска
-    useEffect(() => {
-        if (!warehouses || loadingWarehouses) {
-            setFilteredWarehouses([]);
-            return;
-        }
-
-        if (!searchText) {
-            setFilteredWarehouses(warehouses);
-            return;
-        }
-
-        const filtered = warehouses.filter(warehouse =>
-            warehouse.name.toLowerCase().includes(searchText.toLowerCase()) ||
-            (warehouse.address && warehouse.address.toLowerCase().includes(searchText.toLowerCase())) ||
-            (warehouse.district && warehouse.district.name && warehouse.district.name.toLowerCase().includes(searchText.toLowerCase()))
-        );
-        setFilteredWarehouses(filtered);
-    }, [searchText, warehouses, loadingWarehouses]);
+    // Обработчик открытия экрана выбора складов
+    const handleOpenSelection = () => {
+        navigation.navigate('WarehouseSelection', {
+            selectedWarehouseQuantities,
+            basePrice,
+            isAdmin,
+            onSelectWarehouseQuantities: (result) => {
+                onSelectWarehouseQuantities(result);
+            }
+        });
+    };
 
     // Определяем текст для кнопки
     const getButtonText = () => {
@@ -122,89 +151,6 @@ export const WarehouseQuantityPicker = ({
         return `${selectedWarehouseQuantities.length} складов, ${totalBoxes} коробок`;
     };
 
-    // Обработчик выбора склада
-    const handleWarehouseToggle = (warehouseId) => {
-        setTempSelectedWarehouses(prev => {
-            if (prev.includes(warehouseId)) {
-                // Удаляем склад и его количество
-                const newSelected = prev.filter(id => id !== warehouseId);
-                setWarehouseQuantities(current => {
-                    const updated = {...current};
-                    delete updated[warehouseId];
-                    return updated;
-                });
-                return newSelected;
-            } else {
-                // Добавляем склад с количеством 1 по умолчанию
-                setWarehouseQuantities(current => ({
-                    ...current,
-                    [warehouseId]: 1
-                }));
-                return [...prev, warehouseId];
-            }
-        });
-    };
-
-    // Обработчик изменения количества
-    const handleQuantityChange = (warehouseId, quantity) => {
-        setWarehouseQuantities(prev => ({
-            ...prev,
-            [warehouseId]: quantity
-        }));
-    };
-
-    // Обработчик удаления склада
-    const handleRemoveWarehouse = (warehouseId) => {
-        setTempSelectedWarehouses(prev => prev.filter(id => id !== warehouseId));
-        setWarehouseQuantities(current => {
-            const updated = {...current};
-            delete updated[warehouseId];
-            return updated;
-        });
-    };
-
-    // Обработчик "Выбрать все"
-    const handleSelectAll = () => {
-        if (selectAll) {
-            setTempSelectedWarehouses([]);
-            setWarehouseQuantities({});
-            setSelectAll(false);
-        } else {
-            const allIds = warehouses.map(w => w.id);
-            setTempSelectedWarehouses(allIds);
-            const allQuantities = {};
-            warehouses.forEach(w => {
-                allQuantities[w.id] = 1; // По умолчанию 1 коробка
-            });
-            setWarehouseQuantities(allQuantities);
-            setSelectAll(true);
-        }
-    };
-
-    // Обработчик применения выбора
-    const handleApply = () => {
-        const result = tempSelectedWarehouses
-            .filter(id => warehouseQuantities[id] > 0) // Только склады с количеством > 0
-            .map(warehouseId => ({
-                warehouseId,
-                quantity: warehouseQuantities[warehouseId] || 1
-            }));
-
-        onSelectWarehouseQuantities(result);
-        setModalVisible(false);
-        setSearchText('');
-    };
-
-    // Обработчик отмены
-    const handleCancel = () => {
-        setModalVisible(false);
-        setSearchText('');
-    };
-
-    // Получаем выбранные склады с их данными для отображения количеств
-    const selectedWarehousesData = tempSelectedWarehouses
-        .map(id => warehouses.find(w => w.id === id))
-        .filter(Boolean);
 
     return (
         <View style={styles.container}>
@@ -215,7 +161,7 @@ export const WarehouseQuantityPicker = ({
                     error && !isWarning ? styles.pickerButtonError : null,
                     disabled || loadingWarehouses ? styles.pickerButtonDisabled : null
                 ]}
-                onPress={() => !disabled && !loadingWarehouses && setModalVisible(true)}
+                onPress={() => !disabled && !loadingWarehouses && handleOpenSelection()}
                 disabled={disabled || loadingWarehouses}
             >
                 <Text style={[
@@ -231,122 +177,6 @@ export const WarehouseQuantityPicker = ({
             {error ? (
                 <Text style={isWarning ? styles.warningText : styles.errorText}>{error}</Text>
             ) : null}
-
-            <Modal
-                visible={modalVisible}
-                transparent={true}
-                animationType="slide"
-                onRequestClose={handleCancel}
-            >
-                <View style={styles.modalBackdrop}>
-                    <TouchableOpacity
-                        style={styles.backdropTouchable}
-                        activeOpacity={1}
-                        onPress={handleCancel}
-                    />
-
-                    <View style={styles.modalContent}>
-                        <View style={styles.header}>
-                            <Text style={styles.modalTitle}>Выберите склады и укажите количества</Text>
-                            <TouchableOpacity
-                                style={styles.closeButton}
-                                onPress={handleCancel}
-                            >
-                                <Text style={styles.closeButtonText}>Отмена</Text>
-                            </TouchableOpacity>
-                        </View>
-
-                        <View style={styles.searchContainer}>
-                            <TextInput
-                                style={styles.searchInput}
-                                placeholder="Поиск склада..."
-                                value={searchText}
-                                onChangeText={setSearchText}
-                                placeholderTextColor="#999"
-                            />
-                        </View>
-
-                        <TouchableOpacity
-                            style={styles.selectAllContainer}
-                            onPress={handleSelectAll}
-                        >
-                            <Text style={styles.selectAllText}>
-                                {selectAll ? 'Снять выделение' : 'Выбрать все'}
-                            </Text>
-                            <Switch
-                                value={selectAll || (tempSelectedWarehouses.length === warehouses.length && warehouses.length > 0)}
-                                onValueChange={handleSelectAll}
-                            />
-                        </TouchableOpacity>
-
-                        <FlatList
-                            data={filteredWarehouses}
-                            keyExtractor={(item) => item.id.toString()}
-                            renderItem={({ item }) => {
-                                const isSelected = tempSelectedWarehouses.includes(item.id);
-                                return (
-                                    <TouchableOpacity
-                                        style={[
-                                            styles.warehouseItem,
-                                            isSelected && styles.selectedItem
-                                        ]}
-                                        onPress={() => handleWarehouseToggle(item.id)}
-                                    >
-                                        <View style={styles.warehouseInfo}>
-                                            <Text style={[
-                                                styles.warehouseName,
-                                                isSelected && styles.selectedItemText
-                                            ]}>
-                                                {item.name}
-                                            </Text>
-                                 
-                                        </View>
-                                        <View style={styles.checkboxContainer}>
-                                            <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
-                                                {isSelected && <Text style={styles.checkmark}>✓</Text>}
-                                            </View>
-                                        </View>
-                                    </TouchableOpacity>
-                                );
-                            }}
-                            ListEmptyComponent={() => (
-                                <View style={styles.emptyContainer}>
-                                    <Text style={styles.emptyText}>
-                                        {loadingWarehouses ? 'Загрузка складов...' : searchText ? 'Склады не найдены' : 'Список складов пуст'}
-                                    </Text>
-                                </View>
-                            )}
-                        />
-
-                        {/* Секция для указания количеств выбранных складов */}
-                        {selectedWarehousesData.length > 0 && (
-                            <View style={styles.quantitiesSection}>
-                                <Text style={styles.quantitiesTitle}>Укажите количество коробок:</Text>
-                                <ScrollView style={styles.quantitiesList} showsVerticalScrollIndicator={false}>
-                                    {selectedWarehousesData.map(warehouse => (
-                                        <WarehouseQuantityInput
-                                            key={warehouse.id}
-                                            warehouse={warehouse}
-                                            quantity={warehouseQuantities[warehouse.id] || 1}
-                                            onQuantityChange={handleQuantityChange}
-                                            onRemove={handleRemoveWarehouse}
-                                        />
-                                    ))}
-                                </ScrollView>
-                            </View>
-                        )}
-
-                        <View style={styles.footer}>
-                            <TouchableOpacity
-                                style={[styles.footerButton, styles.applyButton]}
-                                onPress={handleApply}
-                            >
-                                <Text style={styles.applyButtonText}>Применить</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </View>
-            </Modal>
         </View>
     );
 };
@@ -540,6 +370,60 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
     },
+    commonPricesSection: {
+        borderTopWidth: 1,
+        borderTopColor: Color.border || '#E0E0E0',
+        padding: normalize(20),
+        backgroundColor: Color.backgroundLight || '#F8F8F8',
+    },
+    commonPricesTitle: {
+        fontSize: normalizeFont(14),
+        fontWeight: '600',
+        color: Color.textPrimary,
+        fontFamily: FontFamily.sFProDisplay,
+        marginBottom: normalize(12),
+    },
+    commonPricesRow: {
+        flexDirection: 'row',
+        gap: normalize(8),
+        alignItems: 'flex-end',
+    },
+    commonPriceInputContainer: {
+        flex: 1,
+    },
+    commonPriceLabel: {
+        fontSize: normalizeFont(10),
+        color: Color.textSecondary,
+        fontFamily: FontFamily.sFProText,
+        marginBottom: normalize(4),
+    },
+    commonPriceInput: {
+        width: '100%',
+        borderWidth: 1,
+        borderColor: Color.border || '#E0E0E0',
+        borderRadius: 4,
+        paddingHorizontal: normalize(8),
+        paddingVertical: normalize(8),
+        textAlign: 'center',
+        fontSize: normalizeFont(12),
+        fontFamily: FontFamily.sFProText,
+        backgroundColor: Color.colorLightMode,
+    },
+    applyCommonPriceButton: {
+        backgroundColor: '#3B43A2',
+        paddingHorizontal: normalize(16),
+        paddingVertical: normalize(10),
+        borderRadius: 4,
+        justifyContent: 'center',
+        alignItems: 'center',
+        minWidth: 80,
+    },
+    applyCommonPriceButtonText: {
+        color: '#FFFFFF',
+        fontSize: normalizeFont(12),
+        fontWeight: '600',
+        fontFamily: FontFamily.sFProText,
+    },
     quantitiesSection: {
         borderTopWidth: 1,
         borderTopColor: Color.border || '#E0E0E0',
@@ -584,20 +468,44 @@ const styles = StyleSheet.create({
     },
     quantityControls: {
         flexDirection: 'row',
+        alignItems: 'flex-end',
+        gap: normalize(8),
+        flexWrap: 'wrap',
+    },
+    pricesRow: {
+        flexDirection: 'row',
+        gap: normalize(8),
+    },
+    inputGroup: {
         alignItems: 'center',
-        gap: normalize(10),
+    },
+    inputLabel: {
+        fontSize: normalizeFont(10),
+        color: Color.textSecondary,
+        fontFamily: FontFamily.sFProText,
+        marginBottom: normalize(4),
     },
     quantityInput: {
-        width: 60,
+        width: 65,
         borderWidth: 1,
         borderColor: Color.border || '#E0E0E0',
         borderRadius: 4,
-        paddingHorizontal: normalize(8),
+        paddingHorizontal: normalize(4),
         textAlign: 'center',
-        fontSize: normalizeFont(14),
+        fontSize: normalizeFont(11),
         fontFamily: FontFamily.sFProText,
         backgroundColor: Color.colorLightMode,
-
+    },
+    priceInput: {
+        width: 65,
+        borderWidth: 1,
+        borderColor: Color.border || '#E0E0E0',
+        borderRadius: 4,
+        paddingHorizontal: normalize(4),
+        textAlign: 'center',
+        fontSize: normalizeFont(11),
+        fontFamily: FontFamily.sFProText,
+        backgroundColor: Color.colorLightMode,
     },
     removeButton: {
         width: 25,

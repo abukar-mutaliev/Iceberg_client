@@ -18,14 +18,36 @@ const initialState = {
     },
 
     staffOrders: {
-        data: [],
-        total: 0,
-        page: 1,
-        pages: 1,
+        // Активные заказы (без history флага)
+        activeOrders: {
+            data: [],
+            total: 0,
+            page: 1,
+            pages: 1,
+            lastFetchTime: null,
+            hasMore: false
+        },
+        // Заказы ожидающие поставки (status=WAITING_STOCK)
+        waitingStockOrders: {
+            data: [],
+            total: 0,
+            page: 1,
+            pages: 1,
+            lastFetchTime: null,
+            hasMore: false
+        },
+        // Исторические заказы (с history=true)
+        historyOrders: {
+            data: [],
+            total: 0,
+            page: 1,
+            pages: 1,
+            lastFetchTime: null,
+            hasMore: false
+        },
+        // Общие состояния
         loading: false,
         error: null,
-        lastFetchTime: null,
-        hasMore: false,
         filters: {
             status: null,
             warehouseId: null,
@@ -178,7 +200,7 @@ export const fetchOrderCounts = createAsyncThunk(
                     employeeValue: currentUser?.employee,
                     employeeKeys: currentUser?.employee ? Object.keys(currentUser.employee) : []
                 });
-                
+
                 if (!currentUser?.employee?.id) {
                     console.warn('⚠️ fetchOrderCounts: employee данные ещё не загружены, пропускаем', {
                         hasEmployee: !!currentUser?.employee,
@@ -213,15 +235,15 @@ export const fetchOrderCounts = createAsyncThunk(
                     hasWaitingStockCount: !!response.waitingStockCount,
                     waitingStockCountValue: response.waitingStockCount
                 });
-                
+
                 // Сервер может вернуть массив в response.data или response.data.data
                 const orders = Array.isArray(response.data) ? response.data : (response.data?.data || []);
-                
+
                 // ВАЖНО: Используем waitingStockCount от СЕРВЕРА, а не считаем на клиенте!
                 // Сервер возвращает правильное количество из всей базы, а не только из загруженных 100
-                const waitingStockCount = response.waitingStockCount ?? 
+                const waitingStockCount = response.waitingStockCount ??
                     orders.filter(order => order.status === 'WAITING_STOCK').length;
-                
+
                 console.log('fetchOrderCounts: счетчики получены', {
                     total: orders.length,
                     waitingStockFromServer: response.waitingStockCount,
@@ -230,8 +252,8 @@ export const fetchOrderCounts = createAsyncThunk(
                     warehouseId: currentUser?.employee?.warehouseId,
                     sampleOrders: orders.slice(0, 3).map(o => ({ id: o.id, status: o.status, warehouse: o.warehouse?.name }))
                 });
-                
-                return { 
+
+                return {
                     waitingStockCount,
                     total: orders.length
                 };
@@ -259,21 +281,30 @@ export const fetchStaffOrders = createAsyncThunk(
 
             const { forceRefresh = false, ...requestParams } = params;
 
+            // Определяем, это запрос истории или активных заказов
+            const isHistory = !!requestParams.history;
+            const isWaitingStock = requestParams.status === 'WAITING_STOCK';
+            const targetStorage = isHistory
+                ? state.order.staffOrders.historyOrders
+                : (isWaitingStock ? state.order.staffOrders.waitingStockOrders : state.order.staffOrders.activeOrders);
+
             console.log('fetchStaffOrders: параметры запроса', {
                 forceRefresh,
                 requestParams,
-                cacheValid: isCacheValid(state.order.staffOrders.lastFetchTime),
-                lastFetchTime: state.order.staffOrders.lastFetchTime
+                isHistory,
+                isWaitingStock,
+                cacheValid: isCacheValid(targetStorage.lastFetchTime),
+                lastFetchTime: targetStorage.lastFetchTime
             });
 
             // Кэш НЕ используется если запрашивается другая страница
             const requestedPage = requestParams.page || 1;
-            const cachedPage = state.order.staffOrders.page || 1;
+            const cachedPage = targetStorage.page || 1;
             const isPageChange = requestedPage !== cachedPage;
 
-            if (!forceRefresh && !isPageChange && isCacheValid(state.order.staffOrders.lastFetchTime)) {
+            if (!forceRefresh && !isPageChange && isCacheValid(targetStorage.lastFetchTime)) {
                 console.log('fetchStaffOrders: возвращаем данные из кэша');
-                return { data: state.order.staffOrders, fromCache: true };
+                return { data: targetStorage, fromCache: true, isHistory, isWaitingStock, filters: requestParams };
             }
 
             console.log('fetchStaffOrders: делаем запрос к серверу');
@@ -287,15 +318,17 @@ export const fetchStaffOrders = createAsyncThunk(
             const response = await OrderApi.getOrders(requestParamsWithTimestamp);
 
             if (response.status === 'success') {
-                // Возвращаем весь ответ, включая data, pagination, waitingStockCount
-                return { 
+                // Возвращаем весь ответ, включая data, pagination, waitingStockCount и isHistory
+                return {
                     data: {
                         data: response.data,
                         pagination: response.pagination,
                         waitingStockCount: response.waitingStockCount
-                    }, 
-                    fromCache: false, 
-                    filters: requestParams 
+                    },
+                    fromCache: false,
+                    filters: requestParams,
+                    isHistory,
+                    isWaitingStock
                 };
             } else {
                 throw new Error(response.message || 'Ошибка при загрузке заказов');
@@ -694,13 +727,35 @@ const orderSlice = createSlice({
         },
 
         // Очистка данных заказов персонала (при смене вкладки/фильтра)
-        clearStaffOrdersData: (state) => {
-            state.staffOrders.data = [];
-            state.staffOrders.total = 0;
-            state.staffOrders.page = 1;
-            state.staffOrders.pages = 1;
-            state.staffOrders.hasMore = false;
-            // НЕ очищаем lastFetchTime - он нужен для кэша
+        clearStaffOrdersData: (state, action) => {
+            const target = action?.payload?.target; // 'active', 'history', или undefined (очистить оба)
+
+            if (!target || target === 'active') {
+                state.staffOrders.activeOrders.data = [];
+                state.staffOrders.activeOrders.total = 0;
+                state.staffOrders.activeOrders.page = 1;
+                state.staffOrders.activeOrders.pages = 1;
+                state.staffOrders.activeOrders.hasMore = false;
+                // НЕ очищаем lastFetchTime - он нужен для кэша
+            }
+
+            if (!target || target === 'waiting') {
+                state.staffOrders.waitingStockOrders.data = [];
+                state.staffOrders.waitingStockOrders.total = 0;
+                state.staffOrders.waitingStockOrders.page = 1;
+                state.staffOrders.waitingStockOrders.pages = 1;
+                state.staffOrders.waitingStockOrders.hasMore = false;
+                // НЕ очищаем lastFetchTime - он нужен для кэша
+            }
+
+            if (!target || target === 'history') {
+                state.staffOrders.historyOrders.data = [];
+                state.staffOrders.historyOrders.total = 0;
+                state.staffOrders.historyOrders.page = 1;
+                state.staffOrders.historyOrders.pages = 1;
+                state.staffOrders.historyOrders.hasMore = false;
+                // НЕ очищаем lastFetchTime - он нужен для кэша
+            }
         },
 
         // Добавление уведомления
@@ -763,11 +818,20 @@ const orderSlice = createSlice({
                 };
             }
 
-            // Обновляем в списке заказов персонала
-            const staffOrderIndex = state.staffOrders.data.findIndex(order => order.id === orderId);
-            if (staffOrderIndex !== -1) {
-                state.staffOrders.data[staffOrderIndex] = {
-                    ...state.staffOrders.data[staffOrderIndex],
+            // Обновляем в активных заказах персонала
+            const activeOrderIndex = state.staffOrders.activeOrders.data.findIndex(order => order.id === orderId);
+            if (activeOrderIndex !== -1) {
+                state.staffOrders.activeOrders.data[activeOrderIndex] = {
+                    ...state.staffOrders.activeOrders.data[activeOrderIndex],
+                    ...updates
+                };
+            }
+
+            // Обновляем в исторических заказах персонала
+            const historyOrderIndex = state.staffOrders.historyOrders.data.findIndex(order => order.id === orderId);
+            if (historyOrderIndex !== -1) {
+                state.staffOrders.historyOrders.data[historyOrderIndex] = {
+                    ...state.staffOrders.historyOrders.data[historyOrderIndex],
                     ...updates
                 };
             }
@@ -789,9 +853,19 @@ const orderSlice = createSlice({
             state.myOrders.data = state.myOrders.data.filter(order => order.id !== orderId);
             state.myOrders.total = Math.max(0, state.myOrders.total - 1);
 
-            // Удаляем из списка заказов персонала
-            state.staffOrders.data = state.staffOrders.data.filter(order => order.id !== orderId);
-            state.staffOrders.total = Math.max(0, state.staffOrders.total - 1);
+            // Удаляем из активных заказов персонала
+            const wasInActive = state.staffOrders.activeOrders.data.some(order => order.id === orderId);
+            if (wasInActive) {
+                state.staffOrders.activeOrders.data = state.staffOrders.activeOrders.data.filter(order => order.id !== orderId);
+                state.staffOrders.activeOrders.total = Math.max(0, state.staffOrders.activeOrders.total - 1);
+            }
+
+            // Удаляем из исторических заказов персонала
+            const wasInHistory = state.staffOrders.historyOrders.data.some(order => order.id === orderId);
+            if (wasInHistory) {
+                state.staffOrders.historyOrders.data = state.staffOrders.historyOrders.data.filter(order => order.id !== orderId);
+                state.staffOrders.historyOrders.total = Math.max(0, state.staffOrders.historyOrders.total - 1);
+            }
 
             // Очищаем детали заказа, если он был загружен
             if (state.orderDetails.data && state.orderDetails.data.id === orderId) {
@@ -853,26 +927,42 @@ const orderSlice = createSlice({
                 state.staffOrders.loading = true;
                 state.staffOrders.error = null;
             })
+            // В файле orderSlice.js, в extraReducers, секция fetchStaffOrders.fulfilled
+
             .addCase(fetchStaffOrders.fulfilled, (state, action) => {
                 state.staffOrders.loading = false;
-                const { data, fromCache, filters } = action.payload;
-
-            
+                const { data, fromCache, filters, isHistory, isWaitingStock } = action.payload;
 
                 if (!fromCache) {
-                    // Логирование отключено для производительности
-                    // console.log('🔍 fetchStaffOrders.fulfilled: структура data', {
-                    //     hasData: !!data,
-                    //     waitingStockCount: data?.waitingStockCount
-                    // });
-                    
                     // Проверяем, что data.data является массивом
                     const ordersData = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);
-                    
+
+                    // Определяем, в какое хранилище сохранять данные
+                    const targetStorage = isHistory
+                        ? state.staffOrders.historyOrders
+                        : (isWaitingStock ? state.staffOrders.waitingStockOrders : state.staffOrders.activeOrders);
+
+                    const newPage = data.pagination?.page || data.page || 1;
+
+                    // КРИТИЧНО: Проверяем, загружается ли это первая страница или подгрузка
+                    const isFirstPage = newPage === 1;
+                    const requestedStatus = filters?.status; // Проверяем запрошенный статус
+
+                    console.log('📦 Redux: обработка fetchStaffOrders', {
+                        isHistory,
+                        isFirstPage,
+                        newPage,
+                        requestedStatus,
+                        incomingOrders: ordersData.length,
+                        existingOrders: targetStorage.data.length,
+                        incomingStatuses: ordersData.slice(0, 3).map(o => o.status),
+                        existingStatuses: targetStorage.data.slice(0, 3).map(o => o.status)
+                    });
+
                     // Сохраняем локальные изменения assignedToId при обновлении данных
                     const updatedOrdersData = ordersData.map(newOrder => {
-                        const existingOrder = state.staffOrders.data.find(o => o.id === newOrder.id);
-                        
+                        const existingOrder = targetStorage.data.find(o => o.id === newOrder.id);
+
                         // Если заказ был локально взят в работу и новые данные показывают что он не назначен,
                         // сохраняем локальное назначение
                         if (existingOrder && state.localOrderActions[newOrder.id]?.taken && !newOrder.assignedToId) {
@@ -882,46 +972,46 @@ const orderSlice = createSlice({
                                 assignedTo: existingOrder.assignedTo
                             };
                         }
-                        
+
                         return newOrder;
                     });
-                    
-                    const newPage = data.pagination?.page || data.page || 1;
-                    const currentPage = state.staffOrders.page || 1;
-                    
-                    // Если это первая страница или принудительное обновление - заменяем данные
-                    // Если это следующая страница - добавляем к существующим
-                    if (newPage === 1) {
-                        state.staffOrders.data = updatedOrdersData;
-                    } else if (newPage > currentPage) {
-                        // Добавляем новые заказы, избегая дублей
-                        const existingIds = new Set(state.staffOrders.data.map(o => o.id));
-                        const newOrders = updatedOrdersData.filter(order => !existingIds.has(order.id));
-                        state.staffOrders.data = [...state.staffOrders.data, ...newOrders];
+
+                    // КРИТИЧНО: Логика объединения или замены данных
+                    if (isFirstPage) {
+                        // Если это первая страница - ЗАМЕНЯЕМ данные (обновление или смена фильтра)
+                        targetStorage.data = updatedOrdersData;
+                        console.log('✅ Redux: заменили данные (первая страница)', {
+                            newCount: updatedOrdersData.length,
+                            statuses: updatedOrdersData.slice(0, 3).map(o => o.status)
+                        });
                     } else {
-                        // Если загружается та же или предыдущая страница - заменяем
-                        state.staffOrders.data = updatedOrdersData;
+                        // Если это не первая страница - ДОБАВЛЯЕМ к существующим (пагинация)
+                        // Объединяем по ID, чтобы избежать дублей
+                        const existingIds = new Set(targetStorage.data.map(o => o.id));
+                        const newOrders = updatedOrdersData.filter(o => !existingIds.has(o.id));
+                        targetStorage.data = [...targetStorage.data, ...newOrders];
+                        console.log('✅ Redux: добавили новые заказы (пагинация)', {
+                            existing: targetStorage.data.length - newOrders.length,
+                            added: newOrders.length,
+                            total: targetStorage.data.length
+                        });
                     }
-                    
-                    state.staffOrders.total = data.pagination?.total || data.total || 0;
-                    state.staffOrders.page = newPage;
-                    state.staffOrders.pages = data.pagination?.pages || data.pages || 1;
-                    state.staffOrders.hasMore = newPage < (data.pagination?.pages || data.pages || 1);
-                    state.staffOrders.lastFetchTime = Date.now();
-                    
+
+                    targetStorage.total = data.pagination?.total || data.total || 0;
+                    targetStorage.page = newPage;
+                    targetStorage.pages = data.pagination?.pages || data.pages || 1;
+                    targetStorage.hasMore = newPage < (data.pagination?.pages || data.pages || 1);
+                    targetStorage.lastFetchTime = Date.now();
+
                     // Обновляем счётчик WAITING_STOCK из ответа сервера
                     const waitingStockCount = data.waitingStockCount || data.pagination?.waitingStockCount;
                     if (waitingStockCount !== undefined) {
-                        // console.log('✅ Обновляем waitingStockCount из ответа сервера:', waitingStockCount);
                         state.orderCounts.waitingStockCount = waitingStockCount;
                         state.orderCounts.lastFetchTime = Date.now();
                     }
-                    // Не логируем предупреждение - это нормально для некоторых запросов
-        
 
                     if (filters) {
                         // ВАЖНО: Если в новых фильтрах нет status, явно очищаем его
-                        // Это предотвращает сохранение старого значения status при переключении вкладок
                         state.staffOrders.filters = {
                             ...state.staffOrders.filters,
                             ...filters,
@@ -1398,8 +1488,8 @@ const orderSlice = createSlice({
                 state.availableOrders.error = action.payload;
             })
 
-            // ===== СКАЧИВАНИЕ НАКЛАДНОЙ - УБРАНО =====
-            // Обработка скачивания накладной перенесена в UI компоненты
+        // ===== СКАЧИВАНИЕ НАКЛАДНОЙ - УБРАНО =====
+        // Обработка скачивания накладной перенесена в UI компоненты
     },
 });
 

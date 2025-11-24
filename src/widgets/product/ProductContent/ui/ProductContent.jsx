@@ -58,9 +58,10 @@ export const ProductContent = React.memo(({
         averageRating: product?.averageRating || 0,
         description: product?.description || '',
         id: product?.id || null,
-        supplierId: product.supplierId || null,
-        stockQuantity: product.stockQuantity || 0,
-        availableQuantity: product.availableQuantity || product.stockQuantity || 0,
+        supplierId: product?.supplierId || null,
+        supplier: product?.supplier || null,
+        stockQuantity: product?.stockQuantity || 0,
+        availableQuantity: product?.availableQuantity || product?.stockQuantity || 0,
     }), [product]);
 
     const effectiveMaxQuantity = useMemo(() => {
@@ -91,10 +92,21 @@ export const ProductContent = React.memo(({
                     }
                 ]}>
                     <View style={styles.typeContainer}>
-
                         <HighlightChange value={safeProduct.name}>
                             <ProductInfo type={safeProduct.type} name={safeProduct.name} category={safeProduct.categories} />
                         </HighlightChange>
+                        
+                        {/* Иконка репоста товара - только для авторизованных пользователей */}
+                        {isAuthenticated && (
+                            <TouchableOpacity
+                                style={styles.repostButton}
+                                onPress={() => setIsRepostModalVisible(true)}
+                                activeOpacity={0.7}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            >
+                                <RepostIcon width={24} height={24} color="#FFFFFF"/>
+                            </TouchableOpacity>
+                        )}
                     </View>
 
                     <View style={styles.priceContainer}>
@@ -114,16 +126,7 @@ export const ProductContent = React.memo(({
                             autoCartManagement={autoCartManagement}
                         />
 
-                        {/* Иконка репоста товара - только для авторизованных пользователей */}
-                        {isAuthenticated && (
-                            <TouchableOpacity
-                                style={styles.repostButton}
-                                onPress={() => setIsRepostModalVisible(true)}
-                                activeOpacity={0.7}
-                            >
-                                <RepostIcon width={24} height={24} color="#FFFFFF"/>
-                            </TouchableOpacity>
-                        )}
+                       
                     </View>
 
                     <View style={styles.ratingContainer}>
@@ -270,13 +273,18 @@ const styles = StyleSheet.create({
         paddingRight: 16,
         bottom: 8,
     },
+    typeContainer: {
+        position: 'relative',
+    },
     repostButton: {
         width: 40,
         height: 40,
         position: 'absolute',
-        top: 58, 
+        top: 20, 
         right: 5,
         alignItems: 'center',
         justifyContent: 'center',
+        zIndex: 100,
+        elevation: 5,
     },
 });

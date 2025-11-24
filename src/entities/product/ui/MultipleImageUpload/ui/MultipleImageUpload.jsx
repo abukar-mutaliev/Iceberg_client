@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
     },
     photoContainer: {
         width: "100%",
-        aspectRatio: 1,
+        height: 100,
         borderWidth: 1,
         borderColor: "#ccc",
         borderRadius: 8,

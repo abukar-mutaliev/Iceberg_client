@@ -13,7 +13,7 @@ export const ORDER_STATUSES = {
 export const ORDER_STATUS_LABELS = {
     [ORDER_STATUSES.PENDING]: 'Ожидает обработки',
     [ORDER_STATUSES.CONFIRMED]: 'Подтвержден',
-    [ORDER_STATUSES.WAITING_STOCK]: 'Ожидает поступления товара',
+    [ORDER_STATUSES.WAITING_STOCK]: 'Ожидает поступления',
     [ORDER_STATUSES.IN_DELIVERY]: 'В доставке',
     [ORDER_STATUSES.DELIVERED]: 'Доставлен',
     [ORDER_STATUSES.CANCELLED]: 'Отменен',

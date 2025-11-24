@@ -20,6 +20,20 @@ const normalize = (size) => {
     return Math.round(size * scale);
 };
 
+// Функция склонения числительных
+const pluralize = (count, one, few, many) => {
+    const mod10 = count % 10;
+    const mod100 = count % 100;
+    
+    if (mod10 === 1 && mod100 !== 11) {
+        return one;
+    } else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) {
+        return few;
+    } else {
+        return many;
+    }
+};
+
 // Компонент конфетти
 const ConfettiPiece = ({ delay, color }) => {
     const translateY = useRef(new Animated.Value(-50)).current;
@@ -76,6 +90,8 @@ export const OrderSuccessScreen = ({ navigation, route }) => {
     // Логирование для отладки
     console.log('🎉 OrderSuccessScreen received params:', {
         hasSplitInfo: !!splitInfo,
+        isChoiceResult,
+        itemsCountFromParams: route?.params?.itemsCount,
         immediateOrderItemsCount: splitInfo?.immediateOrder?.orderItems?.length || 0,
         waitingOrderItemsCount: splitInfo?.waitingOrder?.orderItems?.length || 0,
         immediateOrder: splitInfo?.immediateOrder ? {
@@ -115,12 +131,30 @@ export const OrderSuccessScreen = ({ navigation, route }) => {
     // Подсчет товаров (общее количество штук, не позиций)
     const immediateItemsCount = immediateOrder?.orderItems?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
     const waitingItemsCount = waitingOrder?.orderItems?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
-    const itemsCount = splitInfo ? (immediateItemsCount + waitingItemsCount) : (route?.params?.itemsCount || 0);
     
     // Подсчет коробов (количество уникальных товаров)
     const immediateBoxesCount = immediateOrder?.orderItems?.length || 0;
     const waitingBoxesCount = waitingOrder?.orderItems?.length || 0;
-    const totalBoxesCount = splitInfo ? (immediateBoxesCount + waitingBoxesCount) : 0;
+    
+    // Для обычного заказа проверяем параметры, если их нет - вычисляем значения по умолчанию
+    let itemsCount = 0;
+    let totalBoxesCount = 0;
+    
+    if (splitInfo) {
+        // Для разделенного заказа
+        itemsCount = immediateItemsCount + waitingItemsCount;
+        totalBoxesCount = immediateBoxesCount + waitingBoxesCount;
+    } else {
+        // Для обычного заказа берем из параметров
+        itemsCount = route?.params?.itemsCount || 0;
+        totalBoxesCount = route?.params?.boxesCount || 0;
+        
+        // Если данные не переданы, показываем хотя бы информацию что заказ оформлен
+        // (для старых версий где не передавались эти параметры)
+        if (itemsCount === 0 && totalBoxesCount === 0) {
+            console.warn('⚠️ OrderSuccessScreen: itemsCount и boxesCount не переданы для обычного заказа');
+        }
+    }
     
     // ID заказов для навигации
     const immediateOrderId = immediateOrder?.id;
@@ -286,8 +320,10 @@ export const OrderSuccessScreen = ({ navigation, route }) => {
                             <View style={styles.divider} />
 
                             <View style={styles.orderDetailRow}>
-                                <Text style={styles.detailLabel}>Количество коробов</Text>
-                                <Text style={styles.detailValue}>{immediateBoxesCount} шт.</Text>
+                                <Text style={styles.detailLabel}>Количество коробок</Text>
+                                <Text style={styles.detailValue}>
+                                    {immediateBoxesCount} {pluralize(immediateBoxesCount, 'коробка', 'коробки', 'коробок')}
+                                </Text>
                             </View>
 
                             {/* Список товаров немедленного заказа */}
@@ -347,8 +383,10 @@ export const OrderSuccessScreen = ({ navigation, route }) => {
                             <View style={styles.divider} />
 
                             <View style={styles.orderDetailRow}>
-                                <Text style={styles.detailLabel}>Количество коробов</Text>
-                                <Text style={styles.detailValue}>{waitingBoxesCount} шт.</Text>
+                                <Text style={styles.detailLabel}>Количество коробок</Text>
+                                <Text style={styles.detailValue}>
+                                    {waitingBoxesCount} {pluralize(waitingBoxesCount, 'коробка', 'коробки', 'коробок')}
+                                </Text>
                             </View>
 
                             {/* Список товаров ожидающего заказа */}
@@ -400,6 +438,20 @@ export const OrderSuccessScreen = ({ navigation, route }) => {
                                 <Text style={styles.detailValue}>{itemsCount} шт.</Text>
                             </View>
 
+                            {/* Показываем количество коробок, если оно есть */}
+                            {totalBoxesCount > 0 && (
+                                <>
+                                    <View style={styles.divider} />
+
+                                    <View style={styles.orderDetailRow}>
+                                        <Text style={styles.detailLabel}>Количество коробок</Text>
+                                        <Text style={styles.detailValue}>
+                                            {totalBoxesCount} {pluralize(totalBoxesCount, 'коробка', 'коробки', 'коробок')}
+                                        </Text>
+                                    </View>
+                                </>
+                            )}
+
                             <View style={styles.divider} />
                         </>
                     )}
@@ -415,8 +467,10 @@ export const OrderSuccessScreen = ({ navigation, route }) => {
                             <View style={styles.divider} />
 
                             <View style={styles.orderDetailRow}>
-                                <Text style={styles.detailLabel}>Всего коробов</Text>
-                                <Text style={styles.detailValue}>{totalBoxesCount} шт.</Text>
+                                <Text style={styles.detailLabel}>Всего коробок</Text>
+                                <Text style={styles.detailValue}>
+                                    {totalBoxesCount} {pluralize(totalBoxesCount, 'коробка', 'коробки', 'коробок')}
+                                </Text>
                             </View>
 
                             <View style={styles.divider} />

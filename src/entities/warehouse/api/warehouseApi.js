@@ -35,9 +35,17 @@ const WarehouseService = {
     deleteWarehouse: (warehouseId) =>
         warehouseApi.delete(`/${warehouseId}`),
 
+    // Добавить товар на склад
+    addProductToWarehouse: (warehouseId, data) =>
+        warehouseApi.post(`/${warehouseId}/products`, data),
+
     // Обновить остатки товара на складе
     updateProductStock: (warehouseId, productId, data) =>
         warehouseApi.put(`/${warehouseId}/products/${productId}`, data),
+    
+    // Обновить остатки товара на складе по ID записи ProductStock
+    updateProductStockById: (productStockId, data) =>
+        warehouseApi.put(`/products/${productStockId}`, data),
 
     // Массовое обновление остатков
     bulkUpdateStock: (warehouseId, products) =>
@@ -53,7 +61,41 @@ const WarehouseService = {
         console.log('[WarehouseService] URL:', `/find-with-product/${productId}`);
         console.log('[WarehouseService] Params:', params);
         return warehouseApi.get(`/find-with-product/${productId}`, params);
-    }
+    },
+
+    // ==================== Warehouse Sales & Statistics ====================
+    
+    // Получить продажи склада
+    getWarehouseSales: (warehouseId, params = {}) =>
+        warehouseApi.get(`/${warehouseId}/sales`, params),
+
+    // Создать прямую продажу
+    createDirectSale: (warehouseId, data) =>
+        warehouseApi.post(`/${warehouseId}/direct-sales`, data),
+
+    // Получить общую статистику склада
+    getWarehouseStatistics: (warehouseId, params = {}) =>
+        warehouseApi.get(`/${warehouseId}/statistics`, params),
+
+    // Получить статистику продаж склада
+    getSalesStatistics: (warehouseId, params = {}) =>
+        warehouseApi.get(`/${warehouseId}/sales/statistics`, params),
+
+    // Получить сравнительную статистику складов (только для админов)
+    getComparisonStatistics: (params = {}) =>
+        warehouseApi.get('/statistics/comparison', params),
+
+    // Обновить цену товара на складе
+    updateProductPrice: (warehouseId, productId, data) =>
+        warehouseApi.put(`/${warehouseId}/products/${productId}/price`, data),
+
+    // Массовое обновление цен товаров на складе
+    bulkUpdatePrices: (warehouseId, data) =>
+        warehouseApi.put(`/${warehouseId}/products/prices`, data),
+    
+    // Получить товары по оборачиваемости
+    getProductsByTurnover: (warehouseId, type, params = {}) =>
+        warehouseApi.get(`/${warehouseId}/products/turnover/${type}`, params)
 };
 
 export default WarehouseService; 

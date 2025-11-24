@@ -203,6 +203,76 @@ export const findWarehousesWithProduct = createAsyncThunk(
     }
 );
 
+// Создать склад
+export const createWarehouse = createAsyncThunk(
+    'warehouse/createWarehouse',
+    async (warehouseData, { rejectWithValue }) => {
+        try {
+            console.log('Creating warehouse with data:', warehouseData);
+            const response = await WarehouseService.createWarehouse(warehouseData);
+            
+            let warehouse = null;
+            if (response.data?.status === 'success') {
+                warehouse = response.data.data;
+            } else if (response.data?.warehouse) {
+                warehouse = response.data.warehouse;
+            } else {
+                warehouse = response.data;
+            }
+            
+            console.log('Warehouse created successfully:', warehouse);
+            return warehouse;
+        } catch (error) {
+            console.error('Ошибка при создании склада:', error);
+            const errorMessage = error.response?.data?.message || error.message || 'Ошибка при создании склада';
+            return rejectWithValue(errorMessage);
+        }
+    }
+);
+
+// Обновить склад
+export const updateWarehouse = createAsyncThunk(
+    'warehouse/updateWarehouse',
+    async ({ id, warehouseData }, { rejectWithValue }) => {
+        try {
+            console.log('Updating warehouse:', id, 'with data:', warehouseData);
+            const response = await WarehouseService.updateWarehouse(id, warehouseData);
+            
+            let warehouse = null;
+            if (response.data?.status === 'success') {
+                warehouse = response.data.data;
+            } else if (response.data?.warehouse) {
+                warehouse = response.data.warehouse;
+            } else {
+                warehouse = response.data;
+            }
+            
+            console.log('Warehouse updated successfully:', warehouse);
+            return warehouse;
+        } catch (error) {
+            console.error(`Ошибка при обновлении склада ${id}:`, error);
+            const errorMessage = error.response?.data?.message || error.message || 'Ошибка при обновлении склада';
+            return rejectWithValue(errorMessage);
+        }
+    }
+);
+
+// Удалить склад
+export const deleteWarehouse = createAsyncThunk(
+    'warehouse/deleteWarehouse',
+    async (warehouseId, { rejectWithValue }) => {
+        try {
+            console.log('Deleting warehouse:', warehouseId);
+            await WarehouseService.deleteWarehouse(warehouseId);
+            return warehouseId;
+        } catch (error) {
+            console.error(`Ошибка при удалении склада ${warehouseId}:`, error);
+            const errorMessage = error.response?.data?.message || error.message || 'Ошибка при удалении склада';
+            return rejectWithValue(errorMessage);
+        }
+    }
+);
+
 const warehouseSlice = createSlice({
     name: 'warehouse',
     initialState,
@@ -345,6 +415,62 @@ const warehouseSlice = createSlice({
                 const productId = action.meta.arg.productId;
                 state.warehousesWithProductLoading[productId] = false;
                 state.warehousesWithProductError[productId] = action.payload;
+            })
+
+            // Создание склада
+            .addCase(createWarehouse.pending, (state) => {
+                state.warehousesLoading = true;
+                state.warehousesError = null;
+            })
+            .addCase(createWarehouse.fulfilled, (state, action) => {
+                state.warehousesLoading = false;
+                state.warehouses.push(action.payload);
+                state.lastFetchTime = Date.now();
+            })
+            .addCase(createWarehouse.rejected, (state, action) => {
+                state.warehousesLoading = false;
+                state.warehousesError = action.payload;
+            })
+
+            // Обновление склада
+            .addCase(updateWarehouse.pending, (state) => {
+                state.warehousesLoading = true;
+                state.warehousesError = null;
+            })
+            .addCase(updateWarehouse.fulfilled, (state, action) => {
+                state.warehousesLoading = false;
+                const updatedWarehouse = action.payload;
+                const index = state.warehouses.findIndex(w => w?.id === updatedWarehouse.id);
+                if (index !== -1) {
+                    state.warehouses[index] = updatedWarehouse;
+                }
+                if (state.currentWarehouse?.id === updatedWarehouse.id) {
+                    state.currentWarehouse = updatedWarehouse;
+                }
+                state.lastFetchTime = Date.now();
+            })
+            .addCase(updateWarehouse.rejected, (state, action) => {
+                state.warehousesLoading = false;
+                state.warehousesError = action.payload;
+            })
+
+            // Удаление склада
+            .addCase(deleteWarehouse.pending, (state) => {
+                state.warehousesLoading = true;
+                state.warehousesError = null;
+            })
+            .addCase(deleteWarehouse.fulfilled, (state, action) => {
+                state.warehousesLoading = false;
+                const deletedId = action.payload;
+                state.warehouses = state.warehouses.filter(w => w?.id !== deletedId);
+                if (state.currentWarehouse?.id === deletedId) {
+                    state.currentWarehouse = null;
+                }
+                state.lastFetchTime = Date.now();
+            })
+            .addCase(deleteWarehouse.rejected, (state, action) => {
+                state.warehousesLoading = false;
+                state.warehousesError = action.payload;
             });
     }
 });

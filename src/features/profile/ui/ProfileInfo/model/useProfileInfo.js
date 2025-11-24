@@ -13,6 +13,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { FavouritesIcon } from '@shared/ui/Icon/TabBarIcons';
 import { getPermissionsByRole, hasPermission } from '@shared/config/permissions';
 import { selectWaitingStockCountCombined, selectSupplierWaitingStockCount } from '@entities/order';
+import { selectTotalAlertsCount, fetchStockStats } from '@entities/stockAlert';
 
 export const useProfileInfo = (isAuthenticated, tokens, currentUser, navigation) => {
     const dispatch = useDispatch();
@@ -28,19 +29,36 @@ export const useProfileInfo = (isAuthenticated, tokens, currentUser, navigation)
     const isSupplier = currentUser?.role === 'SUPPLIER';
     const hasAdminAccess = hasPermission(userPermissions, 'access:admin');
     
-    // Получаем ID поставщика
+    // Получаем ID поставщика и роль сотрудника
     const supplierId = currentUser?.supplier?.id;
-    
+    const processingRole = currentUser?.employee?.processingRole;
+
+    // Проверка доступа к уведомлениям об остатках
+    const restrictedRoles = ['PICKER', 'COURIER'];
+    const canViewStockAlerts = isAdmin || (isEmployee && !restrictedRoles.includes(processingRole));
+
     // Получаем количество заказов WAITING_STOCK (комбинированный селектор)
     const waitingStockCount = useSelector(selectWaitingStockCountCombined);
-    const supplierWaitingStockCount = useSelector(state => 
+    const supplierWaitingStockCount = useSelector(state =>
         selectSupplierWaitingStockCount(state, supplierId)
     );
+
+    // Получаем количество уведомлений об остатках товаров
+    const stockAlertsCount = useSelector(selectTotalAlertsCount);
+
+    // Автоматическая загрузка статистики остатков при загрузке профиля
+    useEffect(() => {
+        if (isAuthenticated && currentUser && canViewStockAlerts) {
+            console.log('📊 ProfileInfo: Loading stock alerts stats for user with access');
+            dispatch(fetchStockStats())
+                .catch(err => {
+                    console.error('ProfileInfo: Ошибка при загрузке статистики остатков:', err?.message || err);
+                });
+        }
+    }, [isAuthenticated, currentUser, canViewStockAlerts, dispatch]);
     
     // Вычисляем количество для бейджа на кнопке "Заказы"
     const ordersBadgeCount = useMemo(() => {
-        const processingRole = currentUser?.employee?.processingRole;
-        
         // Для администраторов - показываем заказы WAITING_STOCK
         if (isAdmin && waitingStockCount > 0) {
             return waitingStockCount;
@@ -61,7 +79,7 @@ export const useProfileInfo = (isAuthenticated, tokens, currentUser, navigation)
         }
         
         return 0;
-    }, [isAdmin, isEmployee, isSupplier, currentUser?.employee?.processingRole, waitingStockCount, supplierWaitingStockCount]);
+    }, [isAdmin, isEmployee, isSupplier, processingRole, waitingStockCount, supplierWaitingStockCount]);
 
     useEffect(() => {
         setIsProfileLoaded(!!currentUser);
@@ -105,22 +123,26 @@ export const useProfileInfo = (isAuthenticated, tokens, currentUser, navigation)
         }] : []),
     ];
 
-    const canAccessAdminPanel = isAdmin || isEmployee || hasAdminAccess;
+    // Проверка доступа к панели администратора
+    // Сборщики (PICKER) и курьеры (COURIER) не имеют доступа
+    const canAccessAdminPanel = (isAdmin || hasAdminAccess) ||
+                                (isEmployee && !restrictedRoles.includes(processingRole));
+
     const canViewOrders = isAdmin || isEmployee || currentUser?.role === 'DRIVER';
 
     // Формируем пункты меню в зависимости от роли
     let menuItems = [...baseMenuItems];
 
-    // Добавляем пункт "Заказы" для админов, сотрудников, водителей и поставщиков
-    if (canViewOrders || isSupplier) {
+    // Добавляем пункт "Заказы" для админов, сотрудников и водителей
+    if (canViewOrders) {
         menuItems.push({
             id: 'orders',
             title: 'Заказы',
             icon: <Icon name="receipt-long" size={24} color="#666666" />,
             badgeCount: ordersBadgeCount,
             onPress: () => {
-                // Для админов, сотрудников и поставщиков переходим к StaffOrders через AdminStack
-                if (isAdmin || isEmployee || isSupplier) {
+                // Для админов и сотрудников переходим к StaffOrders через AdminStack
+                if (isAdmin || isEmployee) {
                     navigation.navigate('Admin', {
                         screen: 'StaffOrders',
                         params: { fromScreen: 'Profile' }
@@ -132,6 +154,22 @@ export const useProfileInfo = (isAuthenticated, tokens, currentUser, navigation)
                         params: { fromScreen: 'Profile' }
                     });
                 }
+            },
+        });
+    }
+
+    // Добавляем пункт "Остатки товаров" для админов и сотрудников без роли
+    if (canViewStockAlerts) {
+        menuItems.push({
+            id: 'stock-alerts',
+            title: 'Остатки товаров',
+            icon: <Icon name="inventory" size={24} color="#666666" />,
+            badgeCount: stockAlertsCount,
+            onPress: () => {
+                navigation.navigate('Admin', {
+                    screen: 'StockAlerts',
+                    params: { fromScreen: 'Profile' }
+                });
             },
         });
     }

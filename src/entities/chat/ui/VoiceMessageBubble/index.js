@@ -1,0 +1,2 @@
+export { VoiceMessageBubble } from './VoiceMessageBubble';
+

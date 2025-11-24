@@ -4,6 +4,7 @@ import { userSelectors } from '@/entities/user';
 
 export const useEmployeeRewardsNavigation = (navigation, routeParams) => {
     const user = useSelector(userSelectors.selectUser);
+    // Роль EMPLOYEE включает всех сотрудников: обычных, PICKER, COURIER, PACKER и т.д.
     const isAdminMode = useMemo(() => user?.role === 'ADMIN', [user?.role]);
 
     // Определяем режим по умолчанию в зависимости от роли пользователя

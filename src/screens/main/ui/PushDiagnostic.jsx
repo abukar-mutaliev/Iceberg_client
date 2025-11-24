@@ -29,7 +29,7 @@ export const PushDiagnostic = ({ navigation }) => {
         try {
             const success = await notifications.forceTokenRefresh();
             if (success) {
-                Alert.alert('Успех', 'Токен обновлен');
+                Alert.alert('Готово', 'Токен обновлен');
                 await checkStatus(); // Обновляем статус
             } else {
                 Alert.alert('Ошибка', 'Не удалось обновить токен');

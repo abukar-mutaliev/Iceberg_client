@@ -25,12 +25,6 @@ export const OrdersHeader = ({
     const { currentUser: currentUserFromAuth } = useAuth();
     const currentUser = currentUserProp || currentUserFromAuth;
 
-    // Отладка отключена для производительности
-    // console.log('🔍 OrdersHeader: проверка условия показа вкладок', {
-    //     role: currentUser?.role,
-    //     canViewAllOrders,
-    //     stickyMode
-    // });
 
     // В sticky режиме показываем только вкладки (БЕЗ заголовка и фильтров)
     if (stickyMode) {

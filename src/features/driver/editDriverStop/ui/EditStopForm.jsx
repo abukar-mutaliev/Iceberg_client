@@ -25,8 +25,16 @@ import { PhotoUpload } from './PhotoUpload';
 import { LocationInput } from '@features/driver/addDriverStop/ui/LocationInput';
 import { CustomDatePicker, CustomTimePicker } from '@shared/ui/Pickers/CustomDatePicker';
 import { DistrictPicker } from "@shared/ui/Pickers/DistrictPicker";
+import { StopProductsSelector } from '@features/driver/addDriverStop/ui/StopProductsSelector';
+import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 
 export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
+  const { 
+    showError: showAlertError, 
+    showWarning: showAlertWarning,
+    showSuccess: showAlertSuccess 
+  } = useCustomAlert();
+  
   // Вспомогательные функции объявляем до использования
   const processInitialPhoto = (photoData) => {
     if (!photoData) return null;
@@ -82,6 +90,14 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
   const [truckNumber, setTruckNumber] = useState(stopData?.truckNumber || '');
   const [selectedDistrict, setSelectedDistrict] = useState(stopData?.districtId || null);
   const [showDistrictPicker, setShowDistrictPicker] = useState(false);
+  const [warehouseId, setWarehouseId] = useState(stopData?.warehouseId || null);
+  const [selectedProducts, setSelectedProducts] = useState(
+    stopData?.products?.map(sp => ({
+      productId: sp.product?.id || sp.productId,
+      quantity: sp.quantity,
+      stopPrice: sp.stopPrice ?? null // Включаем stopPrice из существующих данных
+    })) || []
+  );
 
   // Добавляем логирование при инициализации значения mapLocation
   const initialMapLocation = normalizeMapLocation(stopData?.mapLocation) || '';
@@ -427,12 +443,20 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
     const formData = new FormData();
     formData.append('address', address);
     formData.append('districtId', selectedDistrict);
+    if (warehouseId) {
+      formData.append('warehouseId', warehouseId);
+    }
     formData.append('startTime', startTimeIso);
     formData.append('endTime', endTimeIso);
     formData.append('mapLocation', locationData.mapLocation);
     formData.append('description', description);
     formData.append('truckModel', truckModel);
     formData.append('truckNumber', truckNumber);
+
+    // Добавляем товары если они выбраны
+    if (selectedProducts.length > 0) {
+      formData.append('products', JSON.stringify(selectedProducts));
+    }
 
     if (photoWasChanged && photoForSubmit) {
       formData.append('photo', photoForSubmit);
@@ -455,13 +479,50 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
         onSave(formData)
             .then((result) => {
               logData('Остановка успешно обновлена', result);
-              Alert.alert('Успех', 'Остановка успешно обновлена', [
+              showAlertSuccess('Готово', 'Остановка успешно обновлена', [
                 {text: 'OK', onPress: () => onClose()}
               ]);
             })
             .catch((error) => {
               logData('Ошибка при обновлении остановки', error);
-              Alert.alert('Ошибка', error || 'Не удалось обновить остановку');
+              
+              // Обработка ошибок валидации товаров
+              if (error && error.errors && Array.isArray(error.errors)) {
+                const stockErrors = error.errors.filter(err => err.type === 'INSUFFICIENT_STOCK');
+                const priceErrors = error.errors.filter(err => err.type === 'PRICE_VALIDATION' || err.message?.includes('цена'));
+                
+                if (stockErrors.length > 0) {
+                  const errorMessages = stockErrors.map(err => {
+                    const productName = err.productName || `Товар #${err.productId}`;
+                    const requested = err.requested || 0;
+                    const available = err.available || 0;
+                    const shortage = err.shortage || 0;
+                    return `${productName}: запрошено ${requested}, доступно ${available} (не хватает ${shortage})`;
+                  });
+                  
+                  showAlertError(
+                    'Недостаточно товара на складе',
+                    errorMessages.join('\n\n') + '\n\nПожалуйста, уменьшите количество товаров или выберите другой склад.',
+                    [{ text: 'OK' }]
+                  );
+                } else if (priceErrors.length > 0) {
+                  const errorMessages = priceErrors.map(err => {
+                    const productName = err.productName || `Товар #${err.productId}`;
+                    return `${productName}: ${err.message}`;
+                  });
+                  
+                  showAlertError(
+                    'Ошибка валидации цен',
+                    errorMessages.join('\n\n') + '\n\nПожалуйста, исправьте цены товаров.',
+                    [{ text: 'OK' }]
+                  );
+                } else {
+                  showAlertError('Ошибка', error?.message || 'Не удалось обновить остановку', [{ text: 'OK' }]);
+                }
+              } else {
+                showAlertError('Ошибка', error?.message || error || 'Не удалось обновить остановку', [{ text: 'OK' }]);
+              }
+              
               setFormSubmitted(false);
             })
             .finally(() => {
@@ -470,11 +531,11 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
       } else {
         setIsSubmitting(false);
         setFormSubmitted(false);
-        Alert.alert('Ошибка', 'Функция сохранения не определена');
+        showAlertError('Ошибка', 'Функция сохранения не определена', [{ text: 'OK' }]);
       }
     } catch (error) {
       logData('Ошибка при обработке сохранения:', error);
-      Alert.alert('Ошибка', 'Произошла ошибка при сохранении данных');
+      showAlertError('Ошибка', 'Произошла ошибка при сохранении данных', [{ text: 'OK' }]);
       setIsSubmitting(false);
       setFormSubmitted(false);
     }
@@ -555,11 +616,28 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
                           setSelectedDistrict={(districtId) => {
                             setSelectedDistrict(districtId);
                             setErrors(prev => ({...prev, district: ''}));
+                            // Сбрасываем склад и товары при смене района
+                            setWarehouseId(null);
+                            setSelectedProducts([]);
                           }}
                           showDistrictPicker={showDistrictPicker}
                           setShowDistrictPicker={setShowDistrictPicker}
                           error={errors.district}
                         />
+                        
+                        {/* Блок для выбора склада и товаров */}
+                        {selectedDistrict && (
+                          <StopProductsSelector
+                            warehouseId={warehouseId}
+                            districtId={selectedDistrict}
+                            selectedProducts={selectedProducts}
+                            onWarehouseChange={setWarehouseId}
+                            onProductsChange={setSelectedProducts}
+                            showAlertError={showAlertError}
+                            showAlertWarning={showAlertWarning}
+                          />
+                        )}
+                        
                         <Text style={styles.label}>Адрес остановки *</Text>
                         <TextInput
                           style={[styles.input, errors.address ? styles.inputError : null]}

@@ -66,7 +66,8 @@ const ProductFormContent = React.memo(({
     handleSupplierChange,
     handleWarehouseQuantitiesChange,
     handleImagesChange,
-    handleSubmit
+    handleSubmit,
+    user
 }) => {
     // Добавляем состояния для хранения высоты текстовых полей
     const [nameHeight, setNameHeight] = useState(30);
@@ -191,6 +192,8 @@ const ProductFormContent = React.memo(({
                     onSelectWarehouseQuantities={handleWarehouseQuantitiesChange}
                     error={errors.warehouseQuantities}
                     isWarning={errors.warehouseQuantities && errors.warehouseQuantities.includes("будет добавлен на все")}
+                    basePrice={formData.boxPrice ? parseFloat(formData.boxPrice) : null}
+                    isAdmin={user?.role === 'ADMIN'}
                 />
             </View>
 
@@ -527,12 +530,23 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
                 console.log('[EditProductModal] Найденные склады в ответе:', warehouses);
 
                 if (warehouses.length > 0) {
-                    // Извлекаем склады с количествами из ответа
-                    const warehouseQuantities = warehouses.map(w => ({
-                        warehouseId: w.warehouseId || w.id,
-                        quantity: w.quantity || w.stockQuantity || w.amount || 0
-                    }));
-                    console.log('[EditProductModal] Загружены склады продукта с количествами:', warehouseQuantities);
+                    // Извлекаем склады с количествами и ценами из ответа
+                    const warehouseQuantities = warehouses.map(w => {
+                        const item = {
+                            warehouseId: w.warehouseId || w.id,
+                            quantity: w.quantity || w.stockQuantity || w.amount || 0
+                        };
+                        // Добавляем warehousePrice если он есть
+                        if (w.warehousePrice !== undefined && w.warehousePrice !== null) {
+                            item.warehousePrice = w.warehousePrice;
+                        }
+                        // Добавляем stopPrice если он есть (хотя обычно его нет при загрузке складов)
+                        if (w.stopPrice !== undefined && w.stopPrice !== null) {
+                            item.stopPrice = w.stopPrice;
+                        }
+                        return item;
+                    });
+                    console.log('[EditProductModal] Загружены склады продукта с количествами и ценами:', warehouseQuantities);
                     return warehouseQuantities;
                 } else {
                     console.log('[EditProductModal] Склады не найдены для товара:', productId);
@@ -1076,6 +1090,7 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
                         handleWarehouseQuantitiesChange={handleWarehouseQuantitiesChange}
                         handleImagesChange={handleImagesChange}
                         handleSubmit={handleSubmit}
+                        user={user}
                     />
                 </ScrollView>
             ) : (

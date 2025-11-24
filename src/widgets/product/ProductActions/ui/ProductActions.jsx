@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { StyleSheet, View, Alert, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 import {deleteProduct, fetchProductById, resetCurrentProduct, updateProductOptimistic} from '@entities/product';
@@ -10,6 +10,7 @@ import { IconChange } from "@shared/ui/Icon/Profile";
 import { Color, FontFamily } from "@app/styles/GlobalStyles";
 import { useAuth } from "@entities/auth/hooks/useAuth";
 import { EditProductModal } from "@widgets/product/EditProductModal";
+import { GlobalAlert } from '@shared/ui/CustomAlert';
 
 
 // Кастомный хук для проверки прав доступа к продукту
@@ -24,7 +25,23 @@ const useProductPermissions = (isAuthenticated, currentUser, productSupplierId) 
         const isEmployee = userRole === 'EMPLOYEE';
         const isSupplier = userRole === 'SUPPLIER';
 
-        if (isAdmin || isEmployee) {
+        // Проверка для администраторов
+        if (isAdmin) {
+            return { canEdit: true, canDelete: true };
+        }
+
+        // Проверка для сотрудников с учетом их роли
+        if (isEmployee) {
+            const processingRole = currentUser?.employee?.processingRole;
+            const restrictedRoles = ['PICKER', 'COURIER'];
+            
+            // Сборщики и курьеры НЕ могут редактировать и удалять продукты
+            if (restrictedRoles.includes(processingRole)) {
+                console.log('ProductActions: Доступ запрещен для роли', processingRole);
+                return { canEdit: false, canDelete: false };
+            }
+            
+            // Супервайзеры и обычные сотрудники могут редактировать и удалять
             return { canEdit: true, canDelete: true };
         }
 
@@ -232,71 +249,61 @@ export const ProductActions = React.memo(({
     const handleDelete = useCallback(() => {
         if (!product?.id || !product?.name) return;
 
-        Alert.alert(
+        GlobalAlert.showConfirm(
             'Подтверждение удаления',
             `Вы уверены, что хотите удалить товар "${product.name}"?`,
-            [
-                {
-                    text: 'Отмена',
-                    style: 'cancel',
-                },
-                {
-                    text: 'Удалить',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            await dispatch(deleteProduct(product.id)).unwrap();
-                            Alert.alert('Успех', 'Товар успешно удален');
+            async () => {
+                try {
+                    await dispatch(deleteProduct(product.id)).unwrap();
+                    GlobalAlert.showSuccess('', 'Товар успешно удален');
 
-                            // Сбрасываем текущий продукт в Redux
-                            dispatch(resetCurrentProduct());
+                    // Сбрасываем текущий продукт в Redux
+                    dispatch(resetCurrentProduct());
 
-                            // Определяем, куда вернуться на основе навигационного контекста
-                            const navigationState = navigation.getState();
-                            const routes = navigationState?.routes || [];  
-                            const currentRoute = routes[navigationState?.index];
-                            
-                            // Отладочная информация для навигации после удаления
-                            console.log('ProductActions - Delete Navigation:', currentRoute?.name, currentRoute?.params);
-                            
-                            if (currentRoute?.name === 'ProductDetail') {
-                                // Проверяем параметры текущего роута
-                                const currentParams = currentRoute.params || {};
-                                const fromScreen = currentParams.fromScreen;
-                                const originalFromScreen = currentParams.originalFromScreen;
-                                
-                                if (fromScreen === 'ProductManagement' && originalFromScreen === 'AdminPanel') {
-                                    navigation.navigate('MainTab', {
-                                        screen: 'ProductManagement',
-                                        params: { fromScreen: 'AdminPanel' }
-                                    });
-                                } else if (fromScreen === 'ProductManagement') {
-                                    navigation.navigate('MainTab', {
-                                        screen: 'ProductManagement'
-                                    });
-                                } else {
-                                    navigation.goBack();
-                                }
-                            } else if (currentRoute?.name === 'ProductManagement') {
-                                // Если мы на ProductManagement, проверяем его параметры
-                                const currentParams = currentRoute.params || {};
-                                const fromScreen = currentParams.fromScreen;
-                                
-                                if (fromScreen === 'AdminPanel') {
-                                    // Остаемся на том же экране, просто товар удален из списка
-                                    return;
-                                } else {
-                                    navigation.goBack();
-                                }
-                            } else {
-                                navigation.goBack();
-                            }
-                        } catch (error) {
-                            Alert.alert('Ошибка', error.toString());
+                    // Определяем, куда вернуться на основе навигационного контекста
+                    const navigationState = navigation.getState();
+                    const routes = navigationState?.routes || [];  
+                    const currentRoute = routes[navigationState?.index];
+                    
+                    // Отладочная информация для навигации после удаления
+                    console.log('ProductActions - Delete Navigation:', currentRoute?.name, currentRoute?.params);
+                    
+                    if (currentRoute?.name === 'ProductDetail') {
+                        // Проверяем параметры текущего роута
+                        const currentParams = currentRoute.params || {};
+                        const fromScreen = currentParams.fromScreen;
+                        const originalFromScreen = currentParams.originalFromScreen;
+                        
+                        if (fromScreen === 'ProductManagement' && originalFromScreen === 'AdminPanel') {
+                            navigation.navigate('MainTab', {
+                                screen: 'ProductManagement',
+                                params: { fromScreen: 'AdminPanel' }
+                            });
+                        } else if (fromScreen === 'ProductManagement') {
+                            navigation.navigate('MainTab', {
+                                screen: 'ProductManagement'
+                            });
+                        } else {
+                            navigation.goBack();
                         }
-                    },
-                },
-            ]
+                    } else if (currentRoute?.name === 'ProductManagement') {
+                        // Если мы на ProductManagement, проверяем его параметры
+                        const currentParams = currentRoute.params || {};
+                        const fromScreen = currentParams.fromScreen;
+                        
+                        if (fromScreen === 'AdminPanel') {
+                            // Остаемся на том же экране, просто товар удален из списка
+                            return;
+                        } else {
+                            navigation.goBack();
+                        }
+                    } else {
+                        navigation.goBack();
+                    }
+                } catch (error) {
+                    GlobalAlert.showError('Ошибка', error.toString());
+                }
+            }
         );
     }, [dispatch, product?.id, product?.name, navigation]);
 
@@ -332,7 +339,7 @@ export const ProductActions = React.memo(({
 
         } catch (error) {
             console.error('ProductActions: Ошибка при обработке обновленных данных:', error);
-            Alert.alert('Предупреждение', 'Данные обновлены, но возможны проблемы с синхронизацией');
+            GlobalAlert.showWarning('Предупреждение', 'Данные обновлены, но возможны проблемы с синхронизацией');
         }
     }, [dispatch, onProductUpdated]);
 

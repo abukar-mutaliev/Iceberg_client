@@ -1,13 +1,24 @@
-import React from 'react';
-import { View, Text } from 'react-native';
+import React, { useCallback } from 'react';
+import { View, Text, TouchableOpacity, Clipboard } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { formatDate, canViewProcessingHistory } from '@shared/lib/orderUtils';
 import { createOrderDetailsStyles } from '@shared/ui/OrderDetailsStyles';
+import { useCustomAlert } from '@shared/ui/CustomAlert';
 
 const styles = createOrderDetailsStyles();
 
 export const DeliveryInfo = ({ order, userRole, assignedTo }) => {
     if (!order) return null;
+
+    const { showInfo } = useCustomAlert();
+    const canCopyAddress = canViewProcessingHistory(userRole);
+
+    const handleCopyAddress = useCallback(() => {
+        if (!order?.deliveryAddress) return;
+
+        Clipboard.setString(order.deliveryAddress);
+        showInfo('Скопировано', 'Адрес доставки скопирован в буфер обмена');
+    }, [order?.deliveryAddress, showInfo]);
 
     return (
         <View style={styles.modernCard}>
@@ -22,7 +33,19 @@ export const DeliveryInfo = ({ order, userRole, assignedTo }) => {
                         <Icon name="location-on" size={20} color="#667eea" />
                     </View>
                     <View style={styles.infoContent}>
-                        <Text style={styles.infoLabel}>Адрес доставки</Text>
+                        <View style={styles.infoLabelRow}>
+                            <Text style={styles.infoLabel}>Адрес доставки</Text>
+                            {canCopyAddress && (
+                                <TouchableOpacity
+                                    style={styles.copyButtonInline}
+                                    onPress={handleCopyAddress}
+                                    activeOpacity={0.7}
+                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                >
+                                    <Icon name="content-copy" size={16} color="#667eea" />
+                                </TouchableOpacity>
+                            )}
+                        </View>
                         <Text style={styles.infoValue}>{order.deliveryAddress}</Text>
                     </View>
                 </View>

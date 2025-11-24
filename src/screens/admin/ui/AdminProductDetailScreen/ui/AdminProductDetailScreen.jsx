@@ -25,6 +25,8 @@ import { useAdminPermissions } from "@features/admin/hooks/useAdminPermissions";
 import { useProductEdit } from "@features/admin/hooks/useProductEdit";
 import { AdminProductBasicInfo, AdminProductEditForm, AdminProductHeader } from "@features/admin";
 import {ProductWarehouseInfo} from "@entities/product";
+import { StagnantProductWarning } from "./StagnantProductWarning";
+import { AdminWarehouseInfo } from "@widgets/warehouse/AdminWarehouseInfo";
 
 export const AdminProductDetailScreen = () => {
     const navigation = useNavigation();
@@ -35,6 +37,7 @@ export const AdminProductDetailScreen = () => {
     // Получаем ID продукта из параметров навигации
     const productId = route.params?.productId;
     const fromScreen = route.params?.fromScreen || 'ProductManagement';
+    const warehousesData = route.params?.warehousesData; // Данные о залежавшихся товарах на складах
 
     const [isInitialized, setIsInitialized] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
@@ -242,7 +245,7 @@ export const AdminProductDetailScreen = () => {
                             if (response.status === 'success') {
                                 const { action, hasOrders, hasSupplies } = response.data || {};
                                 
-                                let title = 'Успех';
+                                let title = 'Готово';
                                 let message = response.message;
                                 
                                 // Дополняем сообщение в зависимости от типа операции
@@ -451,14 +454,35 @@ export const AdminProductDetailScreen = () => {
                     />
                 )}
 
-                {/* Информация о складах - используем правильный компонент */}
-                <ProductWarehouseInfo
-                    warehousesWithStock={warehousesWithStock}
-                    totalStock={totalStock}
-                    availableStock={availableStock}
-                    loading={stockLoading}
-                    error={stockError}
-                />
+                {/* Предупреждение о залежавшемся товаре */}
+                {warehousesData && warehousesData.length > 0 && (
+                    <StagnantProductWarning warehousesData={warehousesData} />
+                )}
+
+                {/* Информация о складах с возможностью редактирования цен (только для админов) */}
+                {canEdit ? (
+                    <AdminWarehouseInfo
+                        warehousesWithStock={warehousesWithStock}
+                        totalStock={totalStock}
+                        availableStock={availableStock}
+                        loading={stockLoading}
+                        error={stockError}
+                        productId={productId}
+                        productBasePrice={displayProduct?.boxPrice || (displayProduct?.price * (displayProduct?.itemsPerBox || 1))}
+                        onPriceUpdated={() => {
+                            // Обновляем данные складов после изменения цены
+                            refreshProductStock();
+                        }}
+                    />
+                ) : (
+                    <ProductWarehouseInfo
+                        warehousesWithStock={warehousesWithStock}
+                        totalStock={totalStock}
+                        availableStock={availableStock}
+                        loading={stockLoading}
+                        error={stockError}
+                    />
+                )}
             </ScrollView>
         </SafeAreaView>
     );

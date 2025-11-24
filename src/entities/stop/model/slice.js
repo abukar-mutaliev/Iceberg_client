@@ -21,6 +21,26 @@ const isCacheValid = (lastFetchTime) => {
 
 // Обработчик ошибок для более дружественных сообщений
 const handleError = (error) => {
+    // Если ошибка уже является объектом с данными (после createProtectedRequest)
+    // createProtectedRequest выбрасывает error.response?.data || error
+    if (error && typeof error === 'object' && !error.response) {
+        // Проверяем, есть ли массив ошибок
+        if (error.errors && Array.isArray(error.errors)) {
+            return {
+                status: error.status || 'error',
+                message: error.message || 'Произошла ошибка',
+                errors: error.errors,
+                code: error.code || 400
+            };
+        }
+        
+        // Если это объект с ошибкой, возвращаем его полностью
+        if (error.status || error.message) {
+            return error;
+        }
+    }
+    
+    // Если это стандартная axios ошибка с response
     if (error.code === 'ECONNABORTED') {
         return 'Превышено время ожидания. Проверьте подключение к сети.';
     }
@@ -29,14 +49,25 @@ const handleError = (error) => {
         return 'Ошибка сети. Проверьте подключение.';
     }
     
-    // Если это ошибка валидации с массивом ошибок, возвращаем полную структуру
-    if (error.response?.data?.status === 'error' && 
-        error.response?.data?.errors && 
-        Array.isArray(error.response?.data?.errors)) {
-        return error.response.data;
+    const responseData = error.response?.data;
+    
+    // Если есть массив ошибок, возвращаем полную структуру (независимо от status)
+    if (responseData?.errors && Array.isArray(responseData.errors)) {
+        return {
+            status: responseData.status || 'error',
+            message: responseData.message || 'Произошла ошибка',
+            errors: responseData.errors,
+            code: error.response?.status || responseData.code
+        };
     }
     
-    return error.response?.data?.message || 'Произошла ошибка';
+    // Если это объект с ошибкой, возвращаем его полностью
+    if (responseData && typeof responseData === 'object' && responseData.status) {
+        return responseData;
+    }
+    
+    // Иначе возвращаем строку с сообщением
+    return responseData?.message || 'Произошла ошибка';
 };
 
 export const fetchAllStops = createAsyncThunk(
@@ -97,7 +128,12 @@ export const createStop = createAsyncThunk(
             // Добавляем данные остановки в FormData
             for (const [key, value] of Object.entries(stopData)) {
                 if (key !== 'photo' && value !== null && value !== undefined) {
-                    formData.append(key, value);
+                    // Если это массив products, преобразуем в JSON строку
+                    if (key === 'products' && Array.isArray(value)) {
+                        formData.append(key, JSON.stringify(value));
+                    } else {
+                        formData.append(key, value);
+                    }
                 }
             }
 
@@ -135,6 +171,9 @@ export const updateStop = createAsyncThunk(
                             } else {
                                 formData.append(key, value);
                             }
+                        } else if (key === 'products' && Array.isArray(value)) {
+                            // Если это массив products, преобразуем в JSON строку
+                            formData.append(key, JSON.stringify(value));
                         } else {
                             formData.append(key, value);
                         }

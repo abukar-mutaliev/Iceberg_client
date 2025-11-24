@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   Modal,
-  Alert,
   ActivityIndicator,
   ScrollView
 } from 'react-native';
@@ -16,6 +15,7 @@ import {
   PROCESSING_ROLE_ICONS,
   PROCESSING_ROLE_DESCRIPTIONS
 } from '../../lib/constants';
+import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 
 export const ProcessingRoleAssignment = ({ 
   employee, 
@@ -25,6 +25,7 @@ export const ProcessingRoleAssignment = ({
   loading = false 
 }) => {
   const [selectedRole, setSelectedRole] = useState(null);
+  const { showAlert } = useCustomAlert();
 
   const handleRoleSelect = (role) => {
     setSelectedRole(role);
@@ -32,24 +33,39 @@ export const ProcessingRoleAssignment = ({
 
   const handleConfirm = () => {
     if (!selectedRole) {
-      Alert.alert('Ошибка', 'Пожалуйста, выберите должность');
+      showAlert({
+        type: 'warning',
+        title: 'Ошибка',
+        message: 'Пожалуйста, выберите должность',
+        buttons: [
+          {
+            text: 'OK',
+            style: 'primary'
+          }
+        ]
+      });
       return;
     }
 
-    Alert.alert(
-      'Подтверждение',
-      `Назначить сотруднику ${employee.profile?.name || employee.name} должность "${PROCESSING_ROLE_LABELS[selectedRole]}"?`,
-      [
-        { text: 'Отмена', style: 'cancel' },
-        { 
-          text: 'Назначить', 
+    showAlert({
+      type: 'confirm',
+      title: 'Подтверждение',
+      message: `Назначить сотруднику ${employee.profile?.name || employee.name} должность "${PROCESSING_ROLE_LABELS[selectedRole]}"?`,
+      buttons: [
+        {
+          text: 'Отмена',
+          style: 'cancel'
+        },
+        {
+          text: 'Назначить',
+          style: 'primary',
           onPress: () => {
             onAssign(employee.profile?.id || employee.id, selectedRole);
             setSelectedRole(null);
           }
         }
       ]
-    );
+    });
   };
 
   const handleCancel = () => {

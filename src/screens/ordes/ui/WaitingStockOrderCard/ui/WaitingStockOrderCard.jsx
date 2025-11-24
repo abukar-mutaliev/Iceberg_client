@@ -8,7 +8,7 @@ import {
     Image,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { formatAmount, formatOrderNumber } from "@entities/order/lib/utils";
+import { formatAmount, formatOrderNumber, getStatusLabel } from "@entities/order/lib/utils";
 import { getBaseUrl } from "@shared/api/api";
 
 const { width } = Dimensions.get('window');
@@ -177,7 +177,7 @@ export const WaitingStockOrderCard = ({
                 </View>
                 <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
                     <Icon name={statusIcon} size={16} color="#fff" />
-                    <Text style={styles.statusText}>Ожидает поставки</Text>
+                    <Text style={styles.statusText}>{getStatusLabel(order.status)}</Text>
                 </View>
             </View>
 

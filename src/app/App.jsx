@@ -8,6 +8,7 @@ import {useAuth} from "@entities/auth/hooks/useAuth";
 import {authService} from "@shared/api/api";
 import {PersistGate} from "redux-persist/integration/react";
 import {persistor} from "@app/store/store";
+import {useDispatch} from "react-redux";
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {initConsolePolyfill} from '@shared/lib/consolePolyfill';
 import {testNetworkConnection} from '@shared/api/api';
@@ -126,6 +127,7 @@ const AppInitializer = ({children}) => {
     const [error, setError] = useState(null);
     const [loadingText, setLoadingText] = useState("Инициализация...");
     const {refreshToken, logout} = useAuth();
+    const dispatch = useDispatch();
     const hasInitialized = useRef(false);
 
     usePushTokenAutoRegistration();
@@ -177,9 +179,9 @@ const AppInitializer = ({children}) => {
                 if (!refreshTokenValid) {
                     console.log('⚠️ Refresh token expired, need to re-login');
                     setLoadingText("Сессия истекла...");
-                    // НЕ очищаем токены и НЕ вызываем logout - пусть пользователь сам войдет
-                    // Приложение покажет экран входа, но данные сохранятся
-                    await authService.clearTokens(); // Только очищаем токены, но не сбрасываем полностью состояние
+                    // Сбрасываем состояние Redux и очищаем токены
+                    dispatch({ type: 'auth/resetState' });
+                    await authService.clearTokens();
                     setIsInitializing(false);
                     return;
                 }
@@ -187,10 +189,20 @@ const AppInitializer = ({children}) => {
                 if (!accessTokenValid && refreshTokenValid) {
                     setLoadingText("Обновление токена...");
                     try {
-                        await refreshToken();
+                        const result = await refreshToken();
+                        if (result && !result.error) {
+                            console.log('✅ App: Token refreshed successfully on initialization');
+                        } else {
+                            console.warn('⚠️ App: Token refresh returned error:', result?.error || result);
+                            await authService.clearTokens();
+                            setIsInitializing(false);
+                            return;
+                        }
                     } catch (refreshError) {
+                        console.error('❌ App: Failed to refresh token on initialization:', refreshError?.message || refreshError);
                         await authService.clearTokens();
-                        logout();
+                        setIsInitializing(false);
+                        return;
                     }
                 }
 
@@ -198,8 +210,10 @@ const AppInitializer = ({children}) => {
                 try {
                     const pushService = await import('@shared/services/PushNotificationService');
                     await pushService.default.initialize();
+                    console.log('✅ App: Push notifications initialized successfully');
                 } catch (pushError) {
-                    // Ошибка инициализации push-уведомлений
+                    console.warn('⚠️ App: Push notification initialization failed (non-critical):', pushError?.message || pushError);
+                    // Ошибка инициализации push-уведомлений не критична - продолжаем работу
                 }
 
                 setLoadingText("Завершение...");

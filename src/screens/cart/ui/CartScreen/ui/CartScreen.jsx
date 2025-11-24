@@ -9,7 +9,6 @@ import {
     StyleSheet,
     FlatList,
     ActivityIndicator,
-    Alert,
     SafeAreaView,
     StatusBar,
     Dimensions,
@@ -22,6 +21,7 @@ import {
     Color,
     FontFamily
 } from '@app/styles/GlobalStyles';
+import { useCustomAlert } from '@shared/ui/CustomAlert';
 
 import {
     CartSummary,
@@ -108,6 +108,9 @@ export const CartScreen = ({ navigation }) => {
         isWholesale,
         setClientType: changeClientType
     } = useClientType();
+
+    // Хук для кастомных алертов
+    const { showError } = useCustomAlert();
 
     // ===== ЛОКАЛЬНОЕ СОСТОЯНИЕ =====
     const [selectedItems, setSelectedItems] = useState(new Set());
@@ -356,15 +359,15 @@ export const CartScreen = ({ navigation }) => {
                                error.includes('unauthorized');
             
             if (!isAuthError) {
-                Alert.alert('Ошибка', error, [
-                    { text: 'OK', onPress: clearError }
+                showError('Ошибка', error, [
+                    { text: 'OK', style: 'primary', onPress: clearError }
                 ]);
             } else {
                 // Для ошибок авторизации просто очищаем ошибку без показа алерта
                 clearError();
             }
         }
-    }, [error, clearError]);
+    }, [error, clearError, showError]);
 
     // ===== ВЫЧИСЛЯЕМЫЕ ЗНАЧЕНИЯ =====
 
@@ -489,7 +492,7 @@ export const CartScreen = ({ navigation }) => {
             setShowValidationModal(true);
         } catch (error) {
             console.error('Detailed validation error:', error);
-            Alert.alert('Ошибка', 'Не удалось выполнить валидацию корзины');
+            showError('Ошибка', 'Не удалось выполнить валидацию корзины');
         }
     };
 
@@ -503,7 +506,7 @@ export const CartScreen = ({ navigation }) => {
                 setShowClientTypeModal(false);
             }
         } catch (error) {
-            Alert.alert('Ошибка', 'Не удалось изменить тип клиента');
+            showError('Ошибка', 'Не удалось изменить тип клиента');
         }
     };
 

@@ -71,7 +71,9 @@
         "EXPO_USE_CLEARTEXT_TRAFFIC": "true",
         "EXPO_PUBLIC_BUILD_TYPE": "preview",
         "EXPO_DEBUG": "false",
-        "YANDEX_MAPS_API_KEY": "17ee620d-aee1-482c-acc9-c7144fd46087"
+        "YANDEX_MAPS_API_KEY": "17ee620d-aee1-482c-acc9-c7144fd46087",
+        "EXPO_PUBLIC_ONESIGNAL_APP_ID": "4ad5c8d5-4818-4e13-beac-fb1ec63285ad"
+
       },
       "channel": "preview",
       "cache": {

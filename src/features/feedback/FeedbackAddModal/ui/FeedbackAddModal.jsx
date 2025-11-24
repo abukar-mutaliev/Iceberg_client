@@ -386,7 +386,7 @@ export const FeedbackAddModal = ({
                                     styles.commentInput,
                                     {
                                         backgroundColor: colors.card || '#F9F9F9',
-                                        color: colors.text,
+                                        color: '#000000',
                                         borderColor: colors.border || '#E0E0E0',
                                     },
                                 ]}
@@ -461,7 +461,7 @@ export const FeedbackAddModal = ({
                                     ]}
                                     onPress={handleClose}
                                 >
-                                    <Text style={[styles.buttonText, { color: colors.text }]}>
+                                    <Text style={[styles.buttonText, { color: colors.primary || '#5E00FF' }]}>
                                         Отмена
                                     </Text>
                                 </TouchableOpacity>

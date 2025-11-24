@@ -8,70 +8,81 @@ export const useOrderFiltering = (staffOrders, filters, canViewAllOrders, actual
             return [];
         }
 
-        // Временное логирование для отладки проблем с вкладками
-        if (showWaitingStock || showHistory) {
-            console.log('🔍 useOrderFiltering: начало фильтрации', {
-                staffOrdersLength: staffOrders.length,
-                showWaitingStock,
-                showHistory,
-                firstOrderStatus: staffOrders[0]?.status,
-                statuses: staffOrders.slice(0, 5).map(o => o.status)
-            });
-        }
+        console.log('🔍 useOrderFiltering START:', {
+            inputCount: staffOrders.length,
+            showWaitingStock,
+            showHistory,
+            statusesSample: staffOrders.slice(0, 3).map(o => ({ id: o.id, status: o.status }))
+        });
 
         let filtered = [...staffOrders];
 
-        // Фильтрация по режимам просмотра (для всех сотрудников и админов)
+        // КРИТИЧНО: Фильтрация по режимам просмотра
         if (showWaitingStock && !showHistory) {
-            // В режиме "Ожидают поставки" фильтруем ТОЛЬКО заказы со статусом WAITING_STOCK
-            // Дополнительная защита на клиенте для случаев когда сервер вернул не те данные
+            // Режим "Ожидают поставки" - ТОЛЬКО WAITING_STOCK
             filtered = filtered.filter(order => order.status === 'WAITING_STOCK');
             
-            // console.log('✅ useOrderFiltering: режим WAITING_STOCK - фильтруем по статусу', {
-            //     totalOrders: staffOrders.length,
-            //     waitingStockOrders: filtered.length
-            // });
+            console.log('✅ useOrderFiltering: WAITING_STOCK режим', {
+                inputCount: staffOrders.length,
+                outputCount: filtered.length
+            });
         } else if (showHistory && !showWaitingStock) {
-            // В режиме "История" сервер уже загрузил все завершенные заказы
-            // Не применяем дополнительную фильтрацию на клиенте - показываем все что пришло
-            // Это позволяет видеть все завершенные заказы (DELIVERED, CANCELLED, RETURNED)
-            // которые вернул сервер через параметр history=true
+            // Режим "История" - только завершенные заказы
+            let historicalStatuses;
             
-            // ПРИМЕЧАНИЕ: Клиентская фильтрация отключена для истории
-            // так как сервер уже вернул нужные данные через параметр history=true
-            // console.log('✅ useOrderFiltering: режим История - показываем все заказы с сервера', {
-            //     ordersCount: filtered.length
-            // });
+            if (actualProcessingRole === 'PICKER') {
+                // Для сборщика: IN_DELIVERY - это уже история (передал курьеру)
+                historicalStatuses = ['IN_DELIVERY', 'DELIVERED', 'CANCELLED', 'RETURNED'];
+            } else if (actualProcessingRole === 'COURIER') {
+                // Для курьера: только полностью завершенные
+                historicalStatuses = ['DELIVERED', 'CANCELLED', 'RETURNED'];
+            } else {
+                // Для админов и других: стандартные завершенные
+                historicalStatuses = ['DELIVERED', 'CANCELLED', 'RETURNED'];
+            }
+            
+            filtered = filtered.filter(order => historicalStatuses.includes(order.status));
+            
+            console.log('✅ useOrderFiltering: История', {
+                role: actualProcessingRole || 'admin',
+                historicalStatuses,
+                inputCount: staffOrders.length,
+                outputCount: filtered.length
+            });
         } else if (!showHistory && !showWaitingStock) {
-            // В режиме "Активные" показываем заказы
+            // Режим "Активные" - исключаем историю и WAITING_STOCK
             const excludedStatuses = ['DELIVERED', 'CANCELLED', 'RETURNED', 'WAITING_STOCK'];
             
             if (canViewAllOrders) {
-                // Админы и обычные сотрудники видят ВСЕ заказы (включая доставленные)
-                // Никакой дополнительной фильтрации не применяем
-                // console.log('✅ useOrderFiltering: Админ/обычный сотрудник - показываем все заказы', {
-                //     totalOrders: filtered.length
-                // });
+                // Админы видят активные заказы (без истории и WAITING_STOCK)
+                filtered = filtered.filter(order => !excludedStatuses.includes(order.status));
             } else if (actualProcessingRole) {
-                // Для ограниченных ролей применяем специфичную фильтрацию
+                // Для ограниченных ролей - специфичная фильтрация
                 const restrictedRoles = ['PICKER', 'PACKER', 'COURIER'];
+                
                 if (restrictedRoles.includes(actualProcessingRole)) {
-                    // Сервер уже отфильтровал по статусам (PICKER: PENDING+CONFIRMED, COURIER: IN_DELIVERY)
-                    // Но мы дополнительно проверяем на клиенте для защиты
+                    // Роли с жесткой фильтрацией по статусам
                     const roleStatusMapping = {
-                        'PICKER': ['PENDING', 'CONFIRMED'],
-                        'COURIER': ['IN_DELIVERY'],
-                        'PACKER': []
+                        'PICKER': ['PENDING', 'CONFIRMED'], // Сборщик: ожидающие и подтвержденные
+                        'COURIER': ['IN_DELIVERY'], // Курьер: только в доставке
+                        'PACKER': [] // Упаковщик - пока не используется
                     };
+                    
                     const allowedStatuses = roleStatusMapping[actualProcessingRole];
                     if (allowedStatuses && allowedStatuses.length > 0) {
                         filtered = filtered.filter(order => allowedStatuses.includes(order.status));
                     }
                 } else {
-                    // Для обычных сотрудников - исключаем завершенные и ожидающие
+                    // Обычные сотрудники - исключаем только завершенные и WAITING_STOCK
                     filtered = filtered.filter(order => !excludedStatuses.includes(order.status));
                 }
             }
+            
+            console.log('✅ useOrderFiltering: Активные', {
+                role: actualProcessingRole || (canViewAllOrders ? 'admin' : 'employee'),
+                inputCount: staffOrders.length,
+                outputCount: filtered.length
+            });
         }
 
         // Поиск
@@ -83,23 +94,23 @@ export const useOrderFiltering = (staffOrders, filters, canViewAllOrders, actual
                 order?.client?.phone?.toLowerCase().includes(searchLower) ||
                 order?.deliveryAddress?.toLowerCase().includes(searchLower) ||
                 order?.comment?.toLowerCase().includes(searchLower) ||
-                // Поиск по названиям товаров в заказе
                 order?.orderItems?.some(item =>
                     item?.product?.name?.toLowerCase().includes(searchLower)
                 )
             );
         }
 
-        // Остальные фильтры
+        // Фильтр по статусу
         if (filters?.status && filters.status !== 'all') {
             filtered = filtered.filter(order => order?.status === filters.status);
         }
 
+        // Фильтр по приоритету
         if (filters?.priority && filters.priority !== 'all') {
             filtered = filtered.filter(order => order?.priority === filters.priority);
         }
 
-        // Фильтрация по складу (для персонала)
+        // Фильтр по складу
         if (filters?.warehouseId) {
             const warehouseId = parseInt(filters.warehouseId);
             if (!isNaN(warehouseId)) {
@@ -107,7 +118,7 @@ export const useOrderFiltering = (staffOrders, filters, canViewAllOrders, actual
             }
         }
 
-        // Фильтрация по району (для персонала)
+        // Фильтр по району
         if (filters?.districtId) {
             const districtId = parseInt(filters.districtId);
             if (!isNaN(districtId)) {
@@ -115,7 +126,7 @@ export const useOrderFiltering = (staffOrders, filters, canViewAllOrders, actual
             }
         }
 
-        // Фильтрация по диапазону дат
+        // Фильтр по диапазону дат
         if (filters?.dateFrom || filters?.dateTo) {
             try {
                 let startDate = null;
@@ -135,10 +146,7 @@ export const useOrderFiltering = (staffOrders, filters, canViewAllOrders, actual
                     if (!order?.createdAt) return false;
                     const orderDate = new Date(order.createdAt);
 
-                    // Проверяем нижнюю границу
                     if (startDate && orderDate < startDate) return false;
-
-                    // Проверяем верхнюю границу
                     if (endDate && orderDate > endDate) return false;
 
                     return true;
@@ -148,7 +156,7 @@ export const useOrderFiltering = (staffOrders, filters, canViewAllOrders, actual
             }
         }
 
-        // Фильтрация по диапазону суммы
+        // Фильтр по диапазону суммы
         if (filters?.minAmount || filters?.maxAmount) {
             try {
                 const minAmount = filters.minAmount ? parseFloat(filters.minAmount) : null;
@@ -158,10 +166,7 @@ export const useOrderFiltering = (staffOrders, filters, canViewAllOrders, actual
                     const orderAmount = order?.totalAmount;
                     if (typeof orderAmount !== 'number') return false;
 
-                    // Проверяем нижнюю границу
                     if (minAmount !== null && orderAmount < minAmount) return false;
-
-                    // Проверяем верхнюю границу
                     if (maxAmount !== null && orderAmount > maxAmount) return false;
 
                     return true;
@@ -171,12 +176,19 @@ export const useOrderFiltering = (staffOrders, filters, canViewAllOrders, actual
             }
         }
 
-        // Логируем только если результат пустой для диагностики
+        console.log('🎯 useOrderFiltering RESULT:', {
+            finalCount: filtered.length,
+            showWaitingStock,
+            showHistory
+        });
+
+        // Предупреждение только если результат пустой
         if (filtered.length === 0 && staffOrders.length > 0) {
-            console.log('⚠️ useOrderFiltering: фильтрация не дала результатов', {
+            console.warn('⚠️ useOrderFiltering: все заказы отфильтрованы!', {
                 initialCount: staffOrders.length,
                 showHistory,
-                showWaitingStock
+                showWaitingStock,
+                initialStatusesSample: staffOrders.slice(0, 5).map(o => ({ id: o.id, status: o.status }))
             });
         }
 

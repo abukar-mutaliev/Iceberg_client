@@ -11,11 +11,21 @@ export const useOrderCountsBackground = () => {
     const dispatch = useDispatch();
     // Читаем напрямую из Redux state для надёжности
     const currentUser = useSelector(state => state.auth?.user);
+    const tokens = useSelector(state => state.auth?.tokens);
     const intervalRef = useRef(null);
     const isMountedRef = useRef(true);
 
     useEffect(() => {
         isMountedRef.current = true;
+        
+        // Проверяем наличие токенов перед загрузкой
+        if (!tokens || !tokens.accessToken || !tokens.refreshToken) {
+            console.log('ℹ️ [useOrderCountsBackground] Skipping - no valid tokens', {
+                hasAccessToken: !!tokens?.accessToken,
+                hasRefreshToken: !!tokens?.refreshToken
+            });
+            return;
+        }
         
         // Загружаем счетчики для сотрудников и админов
         // Для сотрудников сервер вернёт только заказы их склада
@@ -94,6 +104,6 @@ export const useOrderCountsBackground = () => {
                 intervalRef.current = null;
             }
         };
-    }, [currentUser?.role, currentUser?.id, currentUser?.employee?.id, currentUser?.employee?.warehouseId, dispatch]);
+    }, [currentUser?.role, currentUser?.id, currentUser?.employee?.id, currentUser?.employee?.warehouseId, tokens, dispatch]);
 };
 

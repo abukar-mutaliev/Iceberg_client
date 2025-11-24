@@ -6,8 +6,10 @@ import IconWarehouse from '@shared/ui/Icon/Warehouse/IconWarehouse';
 import { MapPinIcon } from '@shared/ui/Icon/DistrictManagement/MapPinIcon';
 import IconEdit from '@shared/ui/Icon/Profile/IconEdit';
 import IconDelete from '@shared/ui/Icon/Profile/IconDelete';
+import { useNavigation } from '@react-navigation/native';
 
-export const WarehouseListItem = ({ warehouse, onEdit, onDelete }) => {
+export const WarehouseListItem = ({ warehouse, onEdit, onDelete, onViewStatistics }) => {
+    const navigation = useNavigation();
     const handleDelete = () => {
         Alert.alert(
             'Подтверждение удаления',
@@ -70,6 +72,23 @@ export const WarehouseListItem = ({ warehouse, onEdit, onDelete }) => {
             </View>
 
             <View style={styles.actions}>
+                {onViewStatistics && (
+                    <TouchableOpacity
+                        style={[styles.actionButton, styles.statsButton]}
+                        onPress={() => {
+                            if (onViewStatistics) {
+                                onViewStatistics(warehouse);
+                            } else {
+                                navigation.navigate('WarehouseStatistics', {
+                                    warehouseId: warehouse.id,
+                                    warehouseName: warehouse.name
+                                });
+                            }
+                        }}
+                    >
+                        <Text style={styles.statsButtonText}>📊</Text>
+                    </TouchableOpacity>
+                )}
                 <TouchableOpacity
                     style={styles.actionButton}
                     onPress={() => onEdit(warehouse)}
@@ -178,6 +197,12 @@ const styles = StyleSheet.create({
     },
     deleteButton: {
         backgroundColor: '#FFE6E6',
+    },
+    statsButton: {
+        backgroundColor: '#E3F2FD',
+    },
+    statsButtonText: {
+        fontSize: normalizeFont(FontSize.size_md),
     },
 });
 

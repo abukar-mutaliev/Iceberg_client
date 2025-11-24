@@ -9,10 +9,10 @@ import {
     Animated,
     Dimensions,
     TextInput,
-    Alert,
 } from 'react-native';
 import { useCartProduct } from '@entities/cart';
 import { useFavoriteStatus } from '@entities/favorites/hooks/useFavoriteStatus';
+import { useCustomAlert } from '@shared/ui/CustomAlert';
 
 import {
     Color,
@@ -54,6 +54,9 @@ export const CartItem = React.memo(({
         isAuthenticated 
     } = useFavoriteStatus(item.productId || item.product?.id);
 
+    // Хук для кастомных алертов
+    const { showError, showInfo } = useCustomAlert();
+
     const product = item.product;
     const isLoading = isRemoving; // Убираем isUpdating из общего состояния загрузки
     const maxQuantity = product?.stockQuantity || 100;
@@ -91,7 +94,7 @@ export const CartItem = React.memo(({
         const newQuantity = parseInt(inputValue, 10);
 
         if (isNaN(newQuantity) || newQuantity < 1) {
-            Alert.alert('Ошибка', 'Количество должно быть больше 0');
+            showError('Ошибка', 'Количество должно быть больше 0');
             setInputValue(quantity.toString());
             setIsEditingQuantity(false);
             return;
@@ -198,10 +201,9 @@ export const CartItem = React.memo(({
     // Обработчик для кнопки избранного
     const handleFavoritePress = useCallback(async () => {
         if (!isAuthenticated) {
-            Alert.alert(
+            showInfo(
                 'Требуется авторизация',
-                'Для добавления товаров в избранное необходимо войти в аккаунт',
-                [{ text: 'OK' }]
+                'Для добавления товаров в избранное необходимо войти в аккаунт'
             );
             return;
         }
@@ -210,9 +212,9 @@ export const CartItem = React.memo(({
             await toggleFavorite();
         } catch (error) {
             console.error('Ошибка при работе с избранным:', error);
-            Alert.alert('Ошибка', 'Не удалось обновить избранное');
+            showError('Ошибка', 'Не удалось обновить избранное');
         }
-    }, [toggleFavorite, isAuthenticated]);
+    }, [toggleFavorite, isAuthenticated, showInfo, showError]);
 
     return (
         <Animated.View

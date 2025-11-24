@@ -181,17 +181,17 @@ export const useStaffOrders = () => {
     const autoLoadingRef = useRef(false);
     
     const loadMore = useCallback(async () => {
-        // Проверяем есть ли еще страницы
+        // loadMore работает только с активными заказами
         const state = dispatch((_, getState) => getState());
-        const orderState = state.order?.staffOrders;
+        const activeOrdersState = state.order?.staffOrders?.activeOrders;
         
-        if (!orderState || loadingMore || isLoading) {
+        if (!activeOrdersState || loadingMore || isLoading) {
             return;
         }
         
-        const currentPage = orderState.page || 1;
-        const totalPages = orderState.pages || 1;
-        const hasMore = orderState.hasMore !== false && currentPage < totalPages;
+        const currentPage = activeOrdersState.page || 1;
+        const totalPages = activeOrdersState.pages || 1;
+        const hasMore = activeOrdersState.hasMore !== false && currentPage < totalPages;
         
         // Логирование отключено для производительности
         // console.log('📄 loadMore: проверка пагинации', {
@@ -239,15 +239,15 @@ export const useStaffOrders = () => {
             
             while (pagesLoaded < MAX_AUTO_PAGES) {
                 const state = dispatch((_, getState) => getState());
-                const orderState = state.order?.staffOrders;
+                const activeOrdersState = state.order?.staffOrders?.activeOrders;
                 
-                if (!orderState) break;
+                if (!activeOrdersState) break;
                 
-                const hasMore = orderState.hasMore !== false && 
-                               (orderState.page || 1) < (orderState.pages || 1);
+                const hasMore = activeOrdersState.hasMore !== false && 
+                               (activeOrdersState.page || 1) < (activeOrdersState.pages || 1);
                 
                 // Прекращаем если больше нет страниц или уже достаточно данных
-                if (!hasMore || (orderState.data?.length || 0) >= 40) {
+                if (!hasMore || (activeOrdersState.data?.length || 0) >= 40) {
                     break;
                 }
                 

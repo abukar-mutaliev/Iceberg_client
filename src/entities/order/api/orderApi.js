@@ -44,8 +44,11 @@ export const OrderApi = {
             districtId: params.districtId,
             dateFrom: params.dateFrom,
             dateTo: params.dateTo,
-            sortBy: params.sortBy || 'createdAt',
-            sortOrder: params.sortOrder || 'desc',
+            // Для истории не передаем sortBy/sortOrder - сервер использует updatedAt
+            ...(params.history ? {} : {
+                sortBy: params.sortBy || 'createdAt',
+                sortOrder: params.sortOrder || 'desc'
+            }),
             priority: params.priority,
             includeNearbyDistricts: params.includeNearbyDistricts || false,
             availableForPickup: params.availableForPickup || false,
@@ -378,7 +381,7 @@ export const OrderApi = {
         const statusLabels = {
             'PENDING': 'Ожидает обработки',
             'CONFIRMED': 'Подтвержден',
-            'WAITING_STOCK': 'Ожидает товар',
+            'WAITING_STOCK': 'Ожидает поступления', // ИСПРАВЛЕНО: синхронизировано с utils.js
             'IN_DELIVERY': 'В доставке',
             'DELIVERED': 'Доставлен',
             'CANCELLED': 'Отменен',

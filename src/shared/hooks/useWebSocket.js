@@ -58,12 +58,14 @@ export const useWebSocket = (onMessage, onError) => {
             
             // ВСЕГДА получаем свежий токен из AsyncStorage для надежности
             let token = null;
+            let refreshToken = null;
             try {
                 // Сначала пробуем получить из tokens объекта
                 const tokensStr = await AsyncStorage.getItem('tokens');
                 if (tokensStr) {
                     const tokens = JSON.parse(tokensStr);
                     token = tokens.accessToken;
+                    refreshToken = tokens.refreshToken;
                 }
                 
                 // Если не нашли в tokens, пробуем прямой ключ
@@ -74,6 +76,31 @@ export const useWebSocket = (onMessage, onError) => {
                 // В крайнем случае используем токен из currentUser
                 if (!token && currentUser?.token) {
                     token = currentUser.token;
+                }
+                
+                // Проверяем валидность токена и обновляем если истек
+                if (token && refreshToken) {
+                    const { authService } = await import('@shared/api/api');
+                    const isAccessTokenValid = authService.isTokenValid(token);
+                    
+                    if (!isAccessTokenValid) {
+                        console.log('🔄 Orders WebSocket: Access token expired, refreshing...');
+                        try {
+                            const refreshed = await authService.refreshAccessToken();
+                            if (refreshed?.accessToken) {
+                                token = refreshed.accessToken;
+                                console.log('✅ Orders WebSocket: Token refreshed successfully');
+                            } else {
+                                console.error('❌ Orders WebSocket: Failed to refresh token');
+                                isConnectingRef.current = false;
+                                return;
+                            }
+                        } catch (refreshError) {
+                            console.error('❌ Orders WebSocket: Error refreshing token:', refreshError);
+                            isConnectingRef.current = false;
+                            return;
+                        }
+                    }
                 }
                 
                 console.log('🔑 Orders WebSocket token retrieved:', {
@@ -110,6 +137,31 @@ export const useWebSocket = (onMessage, onError) => {
                 // Heartbeat для поддержания соединения
                 pingTimeout: 60000,
                 pingInterval: 25000
+            });
+
+            // Обработчик попытки переподключения - обновляем токен перед каждой попыткой
+            socketRef.current.io.on('reconnect_attempt', async (attempt) => {
+                console.log(`🔄 Orders WebSocket reconnection attempt #${attempt} - refreshing token...`);
+                try {
+                    const currentTokensStr = await AsyncStorage.getItem('tokens');
+                    const currentTokens = currentTokensStr ? JSON.parse(currentTokensStr) : null;
+                    
+                    if (currentTokens?.accessToken && currentTokens?.refreshToken) {
+                        const { authService } = await import('@shared/api/api');
+                        const isAccessTokenValid = authService.isTokenValid(currentTokens.accessToken);
+                        
+                        if (!isAccessTokenValid) {
+                            console.log('🔄 Orders WebSocket: Access token expired on reconnect, refreshing...');
+                            const refreshed = await authService.refreshAccessToken();
+                            if (refreshed?.accessToken && socketRef.current) {
+                                socketRef.current.auth = { token: refreshed.accessToken };
+                                console.log('✅ Orders WebSocket: Token refreshed for reconnection attempt');
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error('❌ Orders WebSocket: Error refreshing token on reconnect:', err.message);
+                }
             });
 
             socketRef.current.on('connect', () => {
@@ -164,6 +216,7 @@ export const useWebSocket = (onMessage, onError) => {
                 // Если ошибка связана с JWT, пытаемся обновить токен и переподключиться
                 if (error.message?.includes('jwt expired') || 
                     error.message?.includes('Token expired') || 
+                    error.message?.includes('jwt invalid') ||
                     error.message?.includes('unauthorized')) {
                     
                     // ВАЖНО: Отключаем автоматическое переподключение для обновления токена
@@ -173,36 +226,48 @@ export const useWebSocket = (onMessage, onError) => {
                     }
                     
                     try {
-                        console.log('🔄 JWT expired, refreshing token...');
-                        const { setAuthorizationHeader } = require('@shared/api/api');
-                        const refreshResult = await setAuthorizationHeader(true); // force refresh
+                        console.log('🔄 Orders WebSocket: JWT error, refreshing token...');
                         
-                        if (refreshResult) {
-                            console.log('✅ Token refreshed successfully');
-                            // Получаем новый токен
-                            const newTokensStr = await AsyncStorage.getItem('tokens');
-                            const newTokens = newTokensStr ? JSON.parse(newTokensStr) : null;
-                            if (newTokens?.accessToken) {
-                                console.log('🔌 Creating new connection with fresh token...');
-                                // Полностью очищаем старое соединение
-                                if (socketRef.current) {
-                                    socketRef.current.removeAllListeners();
-                                    socketRef.current = null;
-                                }
-                                // Сбрасываем счетчик попыток
-                                reconnectAttempts.current = 0;
-                                // Переподключаемся с новым токеном через короткую задержку
-                                setTimeout(() => {
-                                    connect().catch(err => {
-                                        console.error('❌ Ошибка переподключения после обновления токена:', err);
-                                    });
-                                }, 500);
+                        // Проверяем refresh token
+                        const currentTokensStr = await AsyncStorage.getItem('tokens');
+                        const currentTokens = currentTokensStr ? JSON.parse(currentTokensStr) : null;
+                        
+                        if (!currentTokens?.refreshToken) {
+                            console.error('❌ Orders WebSocket: No refresh token available');
+                            return;
+                        }
+                        
+                        const { authService } = await import('@shared/api/api');
+                        const isRefreshTokenValid = authService.isTokenValid(currentTokens.refreshToken);
+                        
+                        if (!isRefreshTokenValid) {
+                            console.error('❌ Orders WebSocket: Refresh token expired');
+                            return;
+                        }
+                        
+                        const refreshed = await authService.refreshAccessToken();
+                        
+                        if (refreshed?.accessToken) {
+                            console.log('✅ Orders WebSocket: Token refreshed successfully');
+                            // Полностью очищаем старое соединение
+                            if (socketRef.current) {
+                                socketRef.current.removeAllListeners();
+                                socketRef.current = null;
                             }
+                            // Сбрасываем счетчик попыток
+                            reconnectAttempts.current = 0;
+                            // Переподключаемся с новым токеном через короткую задержку
+                            console.log('🔌 Orders WebSocket: Creating new connection with fresh token...');
+                            setTimeout(() => {
+                                connect().catch(err => {
+                                    console.error('❌ Orders WebSocket: Reconnection error:', err);
+                                });
+                            }, 1000);
                         } else {
-                            console.warn('⚠️ Could not refresh token for Orders WebSocket');
+                            console.warn('⚠️ Orders WebSocket: Could not refresh token');
                         }
                     } catch (refreshError) {
-                        console.error('❌ Error refreshing token for Orders WebSocket:', refreshError);
+                        console.error('❌ Orders WebSocket: Error refreshing token:', refreshError);
                     }
                 }
                 

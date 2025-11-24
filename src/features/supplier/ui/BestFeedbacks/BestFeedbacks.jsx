@@ -7,6 +7,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 /**
  * Оптимизированный компонент для отображения лучших отзывов поставщика
+ * - Показывает только отзывы с рейтингом 4 и 5 звезд
  * - Использует мемоизацию для предотвращения лишних рендеров
  * - Оптимизированы проверки наличия отзывов
  * - Добавлена защита от неожиданных типов данных
@@ -17,14 +18,15 @@ export const BestFeedbacks = React.memo(({
                                          }) => {
     const { colors } = useTheme();
 
-    // Мемоизируем валидные отзывы (фильтрация невалидных отзывов)
+    // Мемоизируем валидные отзывы (фильтрация невалидных отзывов и отзывов с низким рейтингом)
     const validFeedbacks = useMemo(() => {
         if (!Array.isArray(feedbacks)) return [];
 
         return feedbacks.filter(feedback =>
             feedback &&
             typeof feedback === 'object' &&
-            feedback.id !== undefined
+            feedback.id !== undefined &&
+            feedback.rating >= 4 // Показываем только отзывы с рейтингом 4 и 5
         );
     }, [feedbacks]);
 

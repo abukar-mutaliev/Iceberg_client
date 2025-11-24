@@ -24,11 +24,12 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
   const dispatch = useDispatch();
   const { isAuthenticated } = useAuth();
   
-  const [activeTab, setActiveTab] = useState('chats'); // 'chats' или 'search'
+  const [activeTab, setActiveTab] = useState('chats'); 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [sending, setSending] = useState(false);
+  const [usersLoaded, setUsersLoaded] = useState(false);
   
   const rooms = useSelector(selectRoomsList) || [];
   const currentUserId = currentUser?.id;
@@ -40,12 +41,85 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
     }
   }, [dispatch, isAuthenticated]);
 
+  // Загружаем список пользователей при открытии вкладки поиска
+  useEffect(() => {
+    if (isAuthenticated && activeTab === 'search' && !usersLoaded) {
+      loadInitialUsers();
+    }
+  }, [isAuthenticated, activeTab, usersLoaded, loadInitialUsers]);
+
+  // Функция обогащения пользователей информацией о чатах и сортировки
+  const enrichAndSortUsers = useCallback((users) => {
+    // Обогащаем результаты информацией о существующих чатах
+    const enrichedUsers = users.map(user => {
+      const existingRoom = rooms.find(room => {
+        const roomData = room.room || room;
+        const roomType = roomData.type;
+        const roomParticipants = roomData.participants || room.participants;
+        
+        if (roomType === 'DIRECT') {
+          const hasUser = roomParticipants?.some(p => 
+            p.userId === user.id || p.id === user.id
+          );
+          return hasUser;
+        }
+        return false;
+      });
+
+      // Правильная проверка: сравниваем supplierId товара с supplierId пользователя
+      const isProductSupplier = product?.supplierId && user.supplierId && product.supplierId === user.supplierId;
+
+      return {
+        ...user,
+        hasExistingChat: !!existingRoom,
+        existingRoomId: existingRoom?.room?.id || existingRoom?.id,
+        isProductSupplier: isProductSupplier
+      };
+    });
+
+    // Сортируем: поставщик товара первым, остальные по алфавиту
+    return enrichedUsers.sort((a, b) => {
+      if (a.isProductSupplier) return -1;
+      if (b.isProductSupplier) return 1;
+      return (a.displayName || '').localeCompare(b.displayName || '');
+    });
+  }, [rooms, product]);
+
+  // Загрузка начального списка пользователей
+  const loadInitialUsers = useCallback(async () => {
+    setSearching(true);
+    try {
+      const response = await ChatApi.searchUsers('');
+      const users = response?.data?.users || [];
+      console.log('📋 Product supplierId:', product?.supplierId);
+      console.log('📋 Users loaded:', users.length);
+      const sortedUsers = enrichAndSortUsers(users);
+      console.log('✅ Sorted users:', sortedUsers.length);
+      const supplier = sortedUsers.find(u => u.isProductSupplier);
+      if (supplier) {
+        console.log('👑 Supplier found:', supplier.displayName, 'supplierId:', supplier.supplierId);
+      } else {
+        console.log('⚠️ No supplier found for this product');
+      }
+      setSearchResults(sortedUsers);
+      setUsersLoaded(true);
+    } catch (error) {
+      console.error('Error loading initial users:', error);
+      setSearchResults([]);
+      setUsersLoaded(true); // Устанавливаем флаг даже при ошибке, чтобы не пытаться загружать снова
+    } finally {
+      setSearching(false);
+    }
+  }, [enrichAndSortUsers, product]);
+
   // Дебаунсированный поиск пользователей
   const searchUsersDebounced = useCallback(
     debounce(async (query) => {
-      if (!query || query.trim().length < 2) {
-        setSearchResults([]);
-        setSearching(false);
+      if (!query || query.trim().length === 0) {
+        // Загружаем всех пользователей при пустом запросе
+        if (!usersLoaded) {
+          loadInitialUsers();
+        }
         return;
       }
 
@@ -53,31 +127,8 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
       try {
         const response = await ChatApi.searchUsers(query);
         const users = response?.data?.users || [];
-        
-        // Обогащаем результаты информацией о существующих чатах
-        const enrichedUsers = users.map(user => {
-          const existingRoom = rooms.find(room => {
-            const roomData = room.room || room;
-            const roomType = roomData.type;
-            const roomParticipants = roomData.participants || room.participants;
-            
-            if (roomType === 'DIRECT') {
-              const hasUser = roomParticipants?.some(p => 
-                p.userId === user.id || p.id === user.id
-              );
-              return hasUser;
-            }
-            return false;
-          });
-
-          return {
-            ...user,
-            hasExistingChat: !!existingRoom,
-            existingRoomId: existingRoom?.room?.id || existingRoom?.id
-          };
-        });
-
-        setSearchResults(enrichedUsers);
+        const sortedUsers = enrichAndSortUsers(users);
+        setSearchResults(sortedUsers);
       } catch (error) {
         console.error('Search error:', error);
         setSearchResults([]);
@@ -85,7 +136,7 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
         setSearching(false);
       }
     }, 300), 
-    [rooms]
+    [enrichAndSortUsers, loadInitialUsers, usersLoaded]
   );
 
   // Обработчик изменения поискового запроса
@@ -230,11 +281,18 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
   // Рендер элемента списка пользователей
   const renderUserItem = ({ item }) => {
     const avatarUri = item.avatar;
-    const subtitle = item.role === 'SUPPLIER' ? 'Поставщик' : 'Пользователь';
+    
+    // Используем subtitle из API (там уже правильно определены должности)
+    let subtitle = item.subtitle || 'Пользователь';
+    
+    // Если это поставщик данного товара, добавляем звёздочку и пометку
+    if (item.isProductSupplier) {
+      subtitle = '👑 Поставщик этого товара';
+    }
 
     return (
       <TouchableOpacity
-        style={styles.userItem}
+        style={[styles.userItem, item.isProductSupplier && styles.supplierItem]}
         onPress={() => handleSendToUser(item)}
         disabled={sending}
       >
@@ -242,11 +300,11 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
           {avatarUri ? (
             <Image 
               source={{ uri: avatarUri }}
-              style={styles.avatar}
+              style={[styles.avatar, item.isProductSupplier && styles.supplierAvatarBorder]}
               resizeMode="cover"
             />
           ) : (
-            <View style={styles.avatarPlaceholder}>
+            <View style={[styles.avatarPlaceholder, item.isProductSupplier && styles.supplierAvatar]}>
               <Text style={styles.avatarPlaceholderText}>
                 {item.displayName ? item.displayName[0].toUpperCase() : '👤'}
               </Text>
@@ -255,15 +313,19 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
         </View>
         
         <View style={styles.userInfo}>
-          <Text style={styles.userName}>{item.displayName}</Text>
-          <Text style={styles.userSubtitle}>{subtitle}</Text>
+          <Text style={[styles.userName, item.isProductSupplier && styles.supplierName]}>
+            {item.displayName}
+          </Text>
+          <Text style={[styles.userSubtitle, item.isProductSupplier && styles.supplierSubtitle]}>
+            {subtitle}
+          </Text>
           {item.hasExistingChat && (
             <Text style={styles.existingChatText}>Чат существует</Text>
           )}
         </View>
 
         <TouchableOpacity
-          style={styles.sendButton}
+          style={[styles.sendButton, item.isProductSupplier && styles.supplierSendButton]}
           onPress={() => handleSendToUser(item)}
           disabled={sending}
         >
@@ -355,9 +417,9 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
                 !searching && (
                   <View style={styles.emptyContainer}>
                     <Text style={styles.emptyText}>
-                      {searchQuery.length < 2 
-                        ? 'Введите минимум 2 символа для поиска'
-                        : 'Пользователи не найдены'}
+                      {searchQuery.length > 0 
+                        ? 'Пользователи не найдены'
+                        : 'Нет доступных пользователей'}
                     </Text>
                   </View>
                 )
@@ -485,9 +547,23 @@ const styles = StyleSheet.create({
   userItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
+    position: 'relative',
+  },
+  supplierItem: {
+    backgroundColor: '#FFF3E0',
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF9800',
+    borderRadius: 8,
+    marginVertical: 4,
+    elevation: 3,
+    shadowColor: '#FF9800',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
   },
   avatarContainer: {
     width: 40,
@@ -501,12 +577,21 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
   },
+  supplierAvatarBorder: {
+    borderWidth: 3,
+    borderColor: '#FF9800',
+  },
   avatarPlaceholder: {
     width: 40,
     height: 40,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#075E54',
+  },
+  supplierAvatar: {
+    backgroundColor: '#FF9800',
+    borderWidth: 2,
+    borderColor: '#F57C00',
   },
   avatarPlaceholderText: {
     fontSize: 20,
@@ -522,10 +607,20 @@ const styles = StyleSheet.create({
     color: '#000000',
     marginBottom: 2,
   },
+  supplierName: {
+    color: '#E65100',
+    fontWeight: '700',
+    fontSize: 17,
+  },
   userSubtitle: {
     fontSize: 14,
     color: '#666666',
     marginBottom: 2,
+  },
+  supplierSubtitle: {
+    color: '#FF6F00',
+    fontWeight: '600',
+    fontSize: 13,
   },
   existingChatText: {
     fontSize: 12,
@@ -539,6 +634,14 @@ const styles = StyleSheet.create({
     height: 36,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  supplierSendButton: {
+    backgroundColor: '#FF9800',
+    elevation: 3,
+    shadowColor: '#FF9800',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
   },
   sendButtonText: {
     fontSize: 18,

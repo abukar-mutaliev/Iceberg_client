@@ -138,13 +138,13 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
     const displayName = useMemo(() => getDisplayName(user), [user]);
 
     const handleGoBack = () => {
-        if (fromScreen === 'ChatRoom') {
-            navigation.goBack();
-        } else if (fromScreen === 'GroupInfo' && roomId) {
-            navigation.navigate('GroupInfo', { roomId });
-        } else {
-            navigation.goBack();
-        }
+        console.log('===== UserPublicProfileScreen handleGoBack =====');
+        console.log('fromScreen:', fromScreen);
+        console.log('roomId:', roomId);
+        
+        // Всегда используем стандартный goBack() для возврата на предыдущий экран
+        console.log('Action: navigation.goBack() (fromScreen:', fromScreen, ')');
+        navigation.goBack();
     };
 
     const getRoleText = (role) => {
@@ -200,15 +200,18 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
 
         // Если чат уже существует, переходим в него
         if (existingChat) {
-            console.log('ChatRoom: Переходим в существующий чат:', existingChat.id);
-            navigation.navigate('ChatRoom', {
+            const chatParams = {
                 roomId: existingChat.id,
                 roomTitle: displayName,
                 roomData: existingChat,
                 fromScreen: fromScreen === 'GroupInfo' ? 'GroupInfo' : 'UserPublicProfile',
                 currentUserId: currentUser.id,
+                userId: user.id, // Добавляем userId для возврата на профиль
                 groupRoomId: fromScreen === 'GroupInfo' ? roomId : undefined
-            });
+            };
+            console.log('===== UserPublicProfileScreen: Navigate to ChatRoom =====');
+            console.log('ChatRoom params:', JSON.stringify(chatParams, null, 2));
+            navigation.navigate('ChatRoom', chatParams);
             return;
         }
 
@@ -227,7 +230,7 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
             
             if (room) {
                 // Переходим в созданный чат
-                navigation.navigate('ChatRoom', {
+                const chatParams = {
                     roomId: room.id,
                     roomTitle: displayName,
                     roomData: {
@@ -247,8 +250,12 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                     },
                     fromScreen: fromScreen === 'GroupInfo' ? 'GroupInfo' : 'UserPublicProfile',
                     currentUserId: currentUser.id,
+                    userId: user.id, // Добавляем userId для возврата на профиль
                     groupRoomId: fromScreen === 'GroupInfo' ? roomId : undefined
-                });
+                };
+                console.log('===== UserPublicProfileScreen: Navigate to NEW ChatRoom =====');
+                console.log('ChatRoom params:', JSON.stringify(chatParams, null, 2));
+                navigation.navigate('ChatRoom', chatParams);
             } else {
                 throw new Error('Не удалось создать чат');
             }

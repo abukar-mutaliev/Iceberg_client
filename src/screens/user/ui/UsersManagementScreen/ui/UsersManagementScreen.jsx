@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Alert, SafeAreaView, StyleSheet } from 'react-native';
+import { SafeAreaView, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Color } from '@app/styles/GlobalStyles';
 import IconUser from '@shared/ui/Icon/Profile/IconPersona';
@@ -14,12 +14,14 @@ import { UserList } from "@widgets/userList/ui/UserList";
 import { EmptyUserList } from "@widgets/userList/ui/EmptyUserList";
 import { ChangeRoleModal } from "@features/userManagement/userRole/ui/ChangeRoleModal";
 import { ProcessingRoleAssignment } from "@entities/admin/ui/ProcessingRoleAssignment/ProcessingRoleAssignment";
-import {UserStats} from "@widgets/userManagement/UserStats";
-import {AddUserButton} from "@widgets/userActions";
+import { UserStats } from "@widgets/userManagement/UserStats";
+import { AddUserButton } from "@widgets/userActions";
+import { useCustomAlert } from "@shared/ui/CustomAlert/CustomAlertProvider";
 
 export const UsersManagementScreen = () => {
     const navigation = useNavigation();
     const { currentUser, hasPermission } = useAuth();
+    const { showAlert } = useCustomAlert();
     const {
         users: { items, total, page, pages, limit, isLoading, error },
         loadAllUsers,
@@ -62,27 +64,50 @@ export const UsersManagementScreen = () => {
         const hasAccess = isAdmin || hasManageUsersPermission;
 
         if (!hasAccess) {
-            Alert.alert(
-                'Доступ запрещен',
-                'У вас нет прав для доступа к этому разделу',
-                [{ text: 'OK', onPress: () => navigation.goBack() }]
-            );
+            showAlert({
+                type: 'error',
+                title: 'Доступ запрещен',
+                message: 'У вас нет прав для доступа к этому разделу',
+                buttons: [
+                    {
+                        text: 'OK',
+                        style: 'primary',
+                        onPress: () => navigation.goBack()
+                    }
+                ]
+            });
         }
-    }, [currentUser, hasPermission, navigation]);
+    }, [currentUser, hasPermission, navigation, showAlert]);
 
     // Обработка сообщений об успехе или ошибке операции
     useEffect(() => {
         if (success) {
-            Alert.alert('Успешно', success);
+            showAlert({
+                type: 'success',
+                title: 'Успешно',
+                message: success,
+                autoClose: true,
+                autoCloseDuration: 2000
+            });
             loadUsers();
             clearOperation();
         }
 
         if (operationError) {
-            Alert.alert('Ошибка', operationError);
+            showAlert({
+                type: 'error',
+                title: 'Ошибка',
+                message: operationError,
+                buttons: [
+                    {
+                        text: 'OK',
+                        style: 'primary'
+                    }
+                ]
+            });
             clearOperation();
         }
-    }, [success, operationError]);
+    }, [success, operationError, showAlert]);
 
     // Функция для загрузки пользователей
     const loadUsers = () => {
@@ -154,18 +179,44 @@ export const UsersManagementScreen = () => {
         try {
             const result = await assignRole(employeeId, processingRole);
             if (result.success) {
-                Alert.alert('Успех', 'Должность успешно назначена');
+                showAlert({
+                    type: 'success',
+                    title: 'Готово',
+                    message: 'Должность успешно назначена',
+                    autoClose: true,
+                    autoCloseDuration: 2000
+                });
                 setProcessingRoleModalVisible(false);
                 setSelectedUser(null);
                 // Принудительно перезагружаем список пользователей для немедленного отображения изменений
                 clearUsers();
                 loadUsers();
             } else {
-                Alert.alert('Ошибка', result.error || 'Не удалось назначить должность');
+                showAlert({
+                    type: 'error',
+                    title: 'Ошибка',
+                    message: result.error || 'Не удалось назначить должность',
+                    buttons: [
+                        {
+                            text: 'OK',
+                            style: 'primary'
+                        }
+                    ]
+                });
             }
         } catch (error) {
             console.error('Ошибка назначения должности:', error);
-            Alert.alert('Ошибка', 'Произошла ошибка при назначении должности');
+            showAlert({
+                type: 'error',
+                title: 'Ошибка',
+                message: 'Произошла ошибка при назначении должности',
+                buttons: [
+                    {
+                        text: 'OK',
+                        style: 'primary'
+                    }
+                ]
+            });
         }
     };
 
@@ -177,11 +228,15 @@ export const UsersManagementScreen = () => {
 
     // Обработчик удаления пользователя
     const handleDeleteUser = (user) => {
-        Alert.alert(
-            'Подтверждение',
-            `Вы уверены, что хотите удалить пользователя "${user.email}"?`,
-            [
-                { text: 'Отмена', style: 'cancel' },
+        showAlert({
+            type: 'warning',
+            title: 'Подтверждение',
+            message: `Вы уверены, что хотите удалить пользователя "${user.email}"?`,
+            buttons: [
+                {
+                    text: 'Отмена',
+                    style: 'cancel'
+                },
                 {
                     text: 'Удалить',
                     style: 'destructive',
@@ -194,7 +249,7 @@ export const UsersManagementScreen = () => {
                     }
                 }
             ]
-        );
+        });
     };
 
     // Компонент пустого списка для передачи в UserList

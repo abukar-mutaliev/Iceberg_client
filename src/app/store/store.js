@@ -20,11 +20,14 @@ import { favoritesReducer } from '@entities/favorites';
 import { notificationReducer, notificationSettingsSlice, fetchNotificationSettings } from '@entities/notification';
 import { cartReducer } from '@entities/cart';
 import { cartReloadMiddleware } from '@entities/cart/model/middleware';
+import { deliveryReducer } from '@entities/delivery';
 import { warehouseReducer } from '@entities/warehouse';
 import { orderReducer } from '@entities/order';
 import { orderProcessingReducer} from '@entities/order';
 import { rewardReducer } from '@entities/reward';
 import { chatReducer } from '@entities/chat';
+import { productReturnReducer } from '@entities/product-return';
+import { stockAlertReducer } from '@entities/stockAlert';
 
 // Конфигурация для redux-persist
 const persistConfig = {
@@ -56,11 +59,14 @@ const appReducer = combineReducers({
     notification: notificationReducer,
     notificationSettings: notificationSettingsSlice.reducer,
     cart: cartReducer,
+    delivery: deliveryReducer,
     warehouse: warehouseReducer,
     order: orderReducer,
     rewards: rewardReducer,
     orderProcessing: orderProcessingReducer,
     chat: chatReducer,
+    productReturn: productReturnReducer,
+    stockAlert: stockAlertReducer,
 });
 
 const rootReducer = (state, action) => {

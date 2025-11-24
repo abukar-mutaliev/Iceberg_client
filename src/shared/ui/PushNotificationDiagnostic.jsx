@@ -124,6 +124,15 @@ export const PushNotificationDiagnostic = () => {
                 data.pushService = pushServiceStatus;
                 addLog(`📬 Push Service инициализирован: ${pushServiceStatus.isInitialized}`, pushServiceStatus.isInitialized ? 'success' : 'warning');
                 addLog(`🧭 Навигация готова: ${pushServiceStatus.navigationReady}`, pushServiceStatus.navigationReady ? 'success' : 'warning');
+
+                // Расширенная диагностика FCM и подписки
+                try {
+                    const extendedDiag = await PushNotificationService.diagnostics(user);
+                    data.extendedDiagnostics = extendedDiag;
+                    addLog(`🔍 Расширенная диагностика FCM завершена`, 'info');
+                } catch (diagError) {
+                    addLog(`⚠️ Ошибка расширенной диагностики: ${diagError.message}`, 'warning');
+                }
             } catch (error) {
                 data.pushService = { error: error.message };
                 addLog(`❌ Ошибка Push Service: ${error.message}`, 'error');

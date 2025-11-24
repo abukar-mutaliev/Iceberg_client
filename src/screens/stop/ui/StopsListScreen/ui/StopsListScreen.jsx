@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, RefreshControl, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, RefreshControl, TextInput, BackHandler } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
-import { useRoute } from '@react-navigation/native';
+import { useRoute, useFocusEffect } from '@react-navigation/native';
 import { Color, FontFamily, FontSize, CommonStyles } from '@app/styles/GlobalStyles';
 import { ErrorState } from '@shared/ui/states/ErrorState';
 import { EmptyState } from '@shared/ui/states/EmptyState';
@@ -18,12 +18,17 @@ import { BackButton } from "@shared/ui/Button/BackButton";
 import { InteractiveMap } from "@shared/ui/InteractiveMapIngushetia";
 import { SearchIcon } from "@shared/ui/Icon/SearchIcon";
 import CloseIcon from "@shared/ui/Icon/Profile/CloseIcon";
+import { navigationRef } from '@shared/utils/NavigationRef';
 
 export const StopsListScreen = ({ navigation }) => {
     const dispatch = useDispatch();
     const route = useRoute();
 
-    const { districtId: routeDistrictId, districtName: routeDistrictName, highlightStopId } = route.params || {};
+    const { districtId: routeDistrictId, districtName: routeDistrictName, highlightStopId, fromScreen } = route.params || {};
+
+    // Логирование параметров для отладки
+    console.log('StopsListScreen: Route params:', route.params);
+    console.log('StopsListScreen: fromScreen param:', fromScreen);
 
     const stops = useSelector(selectStops);
     const loading = useSelector(selectStopLoading);
@@ -263,12 +268,91 @@ export const StopsListScreen = ({ navigation }) => {
         );
     };
 
+    const handleGoBack = React.useCallback(() => {
+        console.log('StopsListScreen: handleGoBack called, fromScreen:', fromScreen);
+        
+        if (fromScreen === 'AdminPanel') {
+            console.log('StopsListScreen: Navigating back to AdminPanel');
+            // Возвращаемся в AdminPanel через корневой навигатор
+            try {
+                // Используем navigationRef для доступа к корневому навигатору
+                if (navigationRef.current) {
+                    console.log('StopsListScreen: Using navigationRef to navigate to Admin');
+                    navigationRef.current.navigate('Admin', {
+                        screen: 'AdminPanel'
+                    });
+                    return true; // Важно для BackHandler - говорит что мы обработали событие
+                } else {
+                    console.log('StopsListScreen: navigationRef not available, trying parent navigator');
+                    // Fallback - пробуем через родительский навигатор
+                    const parentNav = navigation.getParent()?.getParent();
+                    if (parentNav) {
+                        console.log('StopsListScreen: Using parent navigator');
+                        parentNav.navigate('Admin', {
+                            screen: 'AdminPanel'
+                        });
+                        return true;
+                    } else {
+                        console.log('StopsListScreen: No parent navigator, using goBack');
+                        navigation.goBack();
+                        return true;
+                    }
+                }
+            } catch (error) {
+                console.error('StopsListScreen: Error navigating back to AdminPanel:', error);
+                navigation.goBack();
+                return true;
+            }
+        } else {
+            console.log('StopsListScreen: Standard goBack navigation');
+            // Обычная навигация назад
+            navigation.goBack();
+            return true;
+        }
+    }, [fromScreen, navigation]);
+
+    // Перехватываем аппаратную кнопку "назад" на Android
+    useFocusEffect(
+        React.useCallback(() => {
+            const onBackPress = () => {
+                console.log('StopsListScreen: Hardware back button pressed');
+                handleGoBack();
+                return true; // Предотвращаем стандартное поведение
+            };
+
+            // Добавляем обработчик аппаратной кнопки назад
+            BackHandler.addEventListener('hardwareBackPress', onBackPress);
+
+            return () => {
+                // Удаляем обработчик при размонтировании
+                BackHandler.removeEventListener('hardwareBackPress', onBackPress);
+            };
+        }, [handleGoBack])
+    );
+
+    // Перехватываем жест назад и программную навигацию (для iOS)
+    useEffect(() => {
+        const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+            // Если мы пришли из AdminPanel и происходит попытка навигации назад
+            if (fromScreen === 'AdminPanel') {
+                console.log('StopsListScreen: beforeRemove event triggered');
+                // Предотвращаем стандартное действие
+                e.preventDefault();
+                
+                // Выполняем нашу кастомную навигацию
+                handleGoBack();
+            }
+        });
+
+        return unsubscribe;
+    }, [navigation, fromScreen, handleGoBack]);
+
     return (
         <View style={styles.container}>
             <View style={styles.header}>
                 <TouchableOpacity
                     style={styles.backButton}
-                    onPress={() => navigation.goBack()}
+                    onPress={handleGoBack}
                 >
                     <BackButton />
                 </TouchableOpacity>

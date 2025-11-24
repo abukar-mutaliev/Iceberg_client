@@ -39,6 +39,12 @@ export const rewardApi = {
     // Обработать вознаграждение (одобрить/отклонить) - только для админов
     processReward: (id, data) => {
         return createProtectedRequest('PATCH', `/api/rewards/${id}/process`, data);
+    },
+
+    // Массовая обработка вознаграждений сотрудника (только для админов)
+    // Позволяет пометить все вознаграждения сотрудника как выплаченные одной кнопкой
+    batchProcessRewards: (employeeId, data) => {
+        return createProtectedRequest('POST', `/api/rewards/employees/${employeeId}/batch-process`, data);
     }
 };
 

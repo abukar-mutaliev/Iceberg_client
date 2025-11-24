@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, ScrollView, RefreshControl, Animated, Alert, StatusBar, TouchableOpacity, Text } from 'react-native';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { View, ScrollView, RefreshControl, Animated, StatusBar, TouchableOpacity, Text } from 'react-native';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useDispatch } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -7,6 +7,7 @@ import { OrderApi } from '@entities/order';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { clearLocalOrderAction } from '@entities/order/model/slice';
 import { ToastSimple } from '@shared/ui/Toast/ui/ToastSimple';
+import { GlobalAlert } from '@shared/ui/CustomAlert';
 
 // Импорты общих компонентов и утилит
 import { useOrderDetails } from '@shared/hooks/useOrderDetails';
@@ -61,11 +62,39 @@ export const OrderDetailsClientScreen = () => {
     console.log('OrderDetailsClientScreen - loading:', loading);
     console.log('OrderDetailsClientScreen - error:', error);
 
+    // Ref для отслеживания предыдущего orderId
+    const previousOrderIdRef = useRef(null);
+
+    // Очистка состояния при смене orderId
+    useEffect(() => {
+        // Если orderId изменился, очищаем старое состояние заказа
+        if (previousOrderIdRef.current && previousOrderIdRef.current !== orderId) {
+            console.log('OrderDetailsClientScreen - orderId changed, clearing state');
+            setOrder(null);
+        }
+    }, [orderId, setOrder]);
+
     // Загрузка при фокусе экрана
+    
     useFocusEffect(
         useCallback(() => {
-            loadOrderDetails();
-        }, [loadOrderDetails])
+            // Загружаем если:
+            // 1. Заказ еще не загружен (!order)
+            // 2. Или это другой заказ (orderId !== previousOrderIdRef.current)
+            // 3. Или произошла ошибка (error)
+            const isDifferentOrder = orderId !== previousOrderIdRef.current;
+            const shouldLoad = !order || isDifferentOrder || error;
+            
+            if (shouldLoad) {
+                console.log('OrderDetailsClientScreen - loading order:', orderId, {
+                    isDifferentOrder,
+                    hasOrder: !!order,
+                    hasError: !!error
+                });
+                previousOrderIdRef.current = orderId;
+                loadOrderDetails();
+            }
+        }, [orderId, order, error, loadOrderDetails])
     );
 
     // Запуск анимации при загрузке заказа
@@ -89,43 +118,61 @@ export const OrderDetailsClientScreen = () => {
     // Обработка отмены заказа
     const handleCancelOrder = useCallback(async () => {
         if (!order || !canCancelOrder(order.status, user?.role || 'CLIENT')) {
-            Alert.alert('Ошибка', 'Этот заказ нельзя отменить');
+            GlobalAlert.showError('Ошибка', 'Этот заказ нельзя отменить');
             return;
         }
 
-        Alert.alert(
+        GlobalAlert.showConfirm(
             'Отмена заказа',
             `Вы уверены, что хотите отменить заказ ${order.orderNumber}?`,
-            [
-                { text: 'Нет', style: 'cancel' },
-                {
-                    text: 'Да, отменить',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            setCancelling(true);
-                            await OrderApi.cancelMyOrder(orderId, 'Отменен клиентом');
+            async () => {
+                try {
+                    setCancelling(true);
+                    
+                    // Отменяем заказ
+                    await OrderApi.cancelMyOrder(orderId, 'Отменен клиентом');
 
-                            setToastConfig({
-                                message: 'Заказ успешно отменен',
-                                type: 'success',
-                                duration: 3000
-                            });
+                    // Обновляем данные заказа для получения актуального статуса платежа
+                    await loadOrderDetails();
 
-                            // Обновляем данные заказа
-                            loadOrderDetails();
+                    // Получаем обновленный заказ
+                    const updatedOrderResponse = await OrderApi.getOrderById(orderId);
+                    const updatedOrder = updatedOrderResponse?.data;
 
-                            // Очищаем локальное состояние
-                            dispatch(clearLocalOrderAction({ orderId }));
+                    setToastConfig({
+                        message: 'Заказ успешно отменен',
+                        type: 'success',
+                        duration: 3000
+                    });
 
-                        } catch (err) {
-                            Alert.alert('Ошибка', err.message || 'Не удалось отменить заказ');
-                        } finally {
-                            setCancelling(false);
-                        }
+                    // Проверяем статус платежа
+                    if (updatedOrder?.payment?.status === 'REFUNDED') {
+                        // Деньги возвращены - показываем алерт
+                        setTimeout(() => {
+                            GlobalAlert.showSuccess(
+                                'Деньги возвращены',
+                                `Средства в размере ${order.totalAmount}₽ возвращены на ваш счет. Они поступят в течение 3-5 рабочих дней.`
+                            );
+                        }, 500);
+                    } else if (updatedOrder?.payment?.status === 'COMPLETED') {
+                        // Платеж был завершен, но возврат еще не произошел
+                        setTimeout(() => {
+                            GlobalAlert.showInfo(
+                                'Возврат средств',
+                                `Возврат средств в размере ${order.totalAmount}₽ обрабатывается. Деньги поступят в течение 3-5 рабочих дней.`
+                            );
+                        }, 500);
                     }
+
+                    // Очищаем локальное состояние
+                    dispatch(clearLocalOrderAction({ orderId }));
+
+                } catch (err) {
+                    GlobalAlert.showError('Ошибка', err.message || 'Не удалось отменить заказ');
+                } finally {
+                    setCancelling(false);
                 }
-            ]
+            }
         );
     }, [order, orderId, user?.role, loadOrderDetails, dispatch]);
 
@@ -137,6 +184,16 @@ export const OrderDetailsClientScreen = () => {
             originalOrderNumber: originalOrderNumber || getOriginalOrderNumber(order)
         });
     }, [navigation, originalOrderNumber, getOriginalOrderNumber, order]);
+
+    // Обработчик для нажатия на товар
+    const handleProductPress = useCallback((productId) => {
+        if (!productId) return;
+        
+        navigation.navigate('ProductDetail', {
+            productId,
+            fromScreen: 'OrderDetails'
+        });
+    }, [navigation]);
 
     // Рендер кнопки отмены заказа
     const renderCancelButton = () => {
@@ -242,7 +299,10 @@ export const OrderDetailsClientScreen = () => {
                                 userRole={user?.role}
                                 assignedTo={order.assignedTo}
                             />
-                            <OrderItems order={order} />
+                            <OrderItems 
+                                order={order}
+                                onProductPress={handleProductPress}
+                            />
                             {renderCancelButton()}
                         </>
                     )}

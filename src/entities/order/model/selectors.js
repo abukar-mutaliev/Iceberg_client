@@ -95,20 +95,47 @@ export const selectOrdersNotifications = (state) => {
 
 
 // ===== СЕЛЕКТОРЫ ДЛЯ ЗАКАЗОВ ПЕРСОНАЛА =====
+// НОВЫЕ СЕЛЕКТОРЫ: Раздельные для активных и исторических заказов
+export const selectActiveStaffOrders = createSelector(
+    [selectStaffOrdersState],
+    (staffOrders) => {
+        if (!staffOrders || !Array.isArray(staffOrders.activeOrders?.data)) {
+            return EMPTY_ARRAY;
+        }
+        return staffOrders.activeOrders.data;
+    }
+);
+
+export const selectHistoryStaffOrders = createSelector(
+    [selectStaffOrdersState],
+    (staffOrders) => {
+        if (!staffOrders || !Array.isArray(staffOrders.historyOrders?.data)) {
+            return EMPTY_ARRAY;
+        }
+        return staffOrders.historyOrders.data;
+    }
+);
+
+export const selectWaitingStockStaffOrders = createSelector(
+    [selectStaffOrdersState],
+    (staffOrders) => {
+        if (!staffOrders || !Array.isArray(staffOrders.waitingStockOrders?.data)) {
+            return EMPTY_ARRAY;
+        }
+        return staffOrders.waitingStockOrders.data;
+    }
+);
+
+// УСТАРЕВШИЙ: Оставлен для обратной совместимости
+// Теперь возвращает activeOrders по умолчанию
 export const selectStaffOrders = createSelector(
     [selectStaffOrdersState],
     (staffOrders) => {
-        // Логирование отключено для производительности
-        // Включить только для отладки
-        
-        // Дополнительная проверка на случай, если data не определена
-        if (!staffOrders || !Array.isArray(staffOrders.data)) {
-            // Логируем только ошибки
-            console.warn('Staff orders data is not an array, returning empty array');
+        // Для обратной совместимости возвращаем activeOrders
+        if (!staffOrders || !Array.isArray(staffOrders.activeOrders?.data)) {
             return EMPTY_ARRAY;
         }
-        
-        return staffOrders.data;
+        return staffOrders.activeOrders.data;
     }
 );
 

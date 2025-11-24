@@ -1,15 +1,25 @@
-import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import React, { useCallback } from 'react';
+import { View, Text, TouchableOpacity, Clipboard } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, ORDER_STATUS_ICONS } from '@shared/lib/orderConstants';
 import { formatAmount, formatOrderNumber, formatDate, getOrderProgress } from '@shared/lib/orderUtils';
 import { createOrderDetailsStyles } from '@shared/ui/OrderDetailsStyles';
+import { useCustomAlert } from '@shared/ui/CustomAlert';
 
 const styles = createOrderDetailsStyles();
 
 export const OrderHeader = ({ order }) => {
     const navigation = useNavigation();
+    const { showInfo } = useCustomAlert();
+
+    const handleCopyOrderNumber = useCallback(() => {
+        if (!order?.orderNumber) return;
+        
+        const formattedNumber = formatOrderNumber(order.orderNumber);
+        Clipboard.setString(formattedNumber);
+        showInfo('Скопировано', `Номер заказа ${formattedNumber} скопирован в буфер обмена`);
+    }, [order, showInfo]);
 
     if (!order) return null;
 
@@ -26,9 +36,19 @@ export const OrderHeader = ({ order }) => {
                     <View style={styles.headerTop}>
                 
                         <View style={styles.orderNumberContainer}>
-                            <Text style={styles.orderNumber}>
-                                {formatOrderNumber(order.orderNumber)}
-                            </Text>
+                            <View style={styles.orderNumberWithCopy}>
+                                <Text style={styles.orderNumber}>
+                                    {formatOrderNumber(order.orderNumber)}
+                                </Text>
+                                <TouchableOpacity
+                                    style={styles.copyButtonHeader}
+                                    onPress={handleCopyOrderNumber}
+                                    activeOpacity={0.7}
+                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                >
+                                    <Icon name="content-copy" size={16} color="rgba(255, 255, 255, 0.9)" />
+                                </TouchableOpacity>
+                            </View>
                             <Text style={styles.orderDate}>
                                 {formatDate(order.createdAt)}
                             </Text>

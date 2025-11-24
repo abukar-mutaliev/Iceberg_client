@@ -131,6 +131,7 @@ export const linkingConfig = {
             MapScreen: 'map',
             NotificationsScreen: 'notifications',
             AddProduct: 'add-product',
+            PaymentScreen: 'payment',
 
             // Админ панель
             Admin: 'admin',

@@ -1,7 +1,6 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useFocusEffect } from '@react-navigation/native';
-import { Alert } from 'react-native';
 
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { useOrders } from '@entities/order/hooks/useOrders';
@@ -9,13 +8,25 @@ import { useStaffOrders } from '@entities/order/hooks/useStaffOrders';
 import { useOrderPermissions } from '@entities/order/hooks/useOrderPermissions';
 import { useOrderFiltering } from '@entities/order/hooks/useOrderFiltering';
 import { useRealtimeOrders } from '@entities/order/hooks/useRealtimeOrders';
-import { selectLocalOrderActions, setLocalOrderAction, clearLocalOrderAction, updateOrderInList, selectWaitingStockCountCombined, fetchStaffOrders, clearStaffOrdersData } from '@entities/order';
-import { orderStateHelpers } from '@entities/order/lib/orderStateHelpers';
-import { getAvailableStatuses, CONSTANTS } from '@entities/order';
+import { 
+    selectLocalOrderActions, 
+    selectActiveStaffOrders,
+    selectHistoryStaffOrders,
+    selectWaitingStockStaffOrders,
+    setLocalOrderAction, 
+    clearLocalOrderAction, 
+    updateOrderInList, 
+    selectWaitingStockCountCombined, 
+    fetchStaffOrders, 
+    clearStaffOrdersData 
+} from '@entities/order';
+import { getAvailableStatuses } from '@entities/order';
+import { useCustomAlert } from '@shared/ui/CustomAlert';
 
 export const useStaffOrdersScreen = () => {
     const dispatch = useDispatch();
     const { currentUser } = useAuth();
+    const { showError, showSuccess, showInfo } = useCustomAlert();
 
     // Состояние компонента
     const [filters, setFilters] = useState({});
@@ -23,6 +34,11 @@ export const useStaffOrdersScreen = () => {
     const [showWaitingStock, setShowWaitingStock] = useState(false);
     const [downloadingInvoices, setDownloadingInvoices] = useState(new Set());
     const [toastConfig, setToastConfig] = useState(null);
+    const [localRefreshing, setLocalRefreshing] = useState(false);
+    
+    // Флаги для отслеживания что данные уже загружены
+    const [historyDataLoaded, setHistoryDataLoaded] = useState(false);
+    const [waitingStockDataLoaded, setWaitingStockDataLoaded] = useState(false);
 
     // Модальное окно статуса
     const [statusModalVisible, setStatusModalVisible] = useState(false);
@@ -55,12 +71,14 @@ export const useStaffOrdersScreen = () => {
         initializing: isInitializing,
         dataLoaded,
         loadInitialData,
-        handleRefresh: handleRefreshData,
-        loadMore,
         loadingMore,
-        autoLoadMore
     } = useStaffOrders();
 
+    // Получаем данные из Redux
+    const activeOrders = useSelector(selectActiveStaffOrders);
+    const historyOrders = useSelector(selectHistoryStaffOrders);
+    const waitingOrders = useSelector(selectWaitingStockStaffOrders);
+    
     const localOrderActions = useSelector(selectLocalOrderActions);
     const { downloadInvoice, updateStatus, completeOrderStage, takeOrder, releaseOrder, cancelOrderById } = useOrders();
     const { canViewAllOrders, actualProcessingRole, relevantStatuses, historyStatuses } = useOrderPermissions(currentUser);
@@ -68,29 +86,62 @@ export const useStaffOrdersScreen = () => {
     // WebSocket для реального времени
     const { isConnected: isWebSocketConnected, subscribeToOrders, unsubscribeFromOrders, forceReconnect } = useRealtimeOrders();
 
-    const filteredOrders = useOrderFiltering(staffOrders, filters, canViewAllOrders, actualProcessingRole, relevantStatuses, historyStatuses, showHistory, showWaitingStock);
+    // КРИТИЧНО: Правильный выбор источника данных (раздельные хранилища)
+    const staffOrdersSource = useMemo(() => {
+        console.log('📊 Выбор источника данных:', {
+            showHistory,
+            showWaitingStock,
+            activeOrdersCount: activeOrders?.length || 0,
+            waitingStockOrdersCount: waitingOrders?.length || 0,
+            historyOrdersCount: historyOrders?.length || 0
+        });
+        
+        if (showHistory) {
+            return historyOrders || [];
+        }
+
+        if (showWaitingStock) {
+            return waitingOrders || [];
+        }
+
+        return activeOrders || [];
+    }, [showHistory, showWaitingStock, activeOrders, waitingOrders, historyOrders]);
+
+    // Используем существующий хук фильтрации
+    const filteredOrders = useOrderFiltering(
+        staffOrdersSource, 
+        filters, 
+        canViewAllOrders, 
+        actualProcessingRole, 
+        relevantStatuses, 
+        historyStatuses, 
+        showHistory, 
+        showWaitingStock
+    );
     
-    // Отслеживаем количество отфильтрованных заказов для предотвращения бесконечной загрузки
+    console.log('✅ Результат фильтрации:', {
+        showHistory,
+        showWaitingStock,
+        sourceCount: staffOrdersSource?.length || 0,
+        filteredCount: filteredOrders?.length || 0
+    });
+    
+    // Отслеживаем количество отфильтрованных заказов
     const prevFilteredCountRef = useRef(0);
     const emptyPagesCountRef = useRef(0);
 
-    // Подсчет заказов, ожидающих поставки - используем комбинированный селектор
+    // Подсчет заказов, ожидающих поставки
     const waitingStockCount = useSelector(selectWaitingStockCountCombined);
 
-    // Подписка на WebSocket при загрузке данных
+    // Подписка на WebSocket
     useEffect(() => {
-        // Отключаем подробное логирование для производительности
-        // console.log('🔌 WebSocket subscription effect');
-        
         if (isWebSocketConnected && isMountedRef.current && currentUser?.employee?.id) {
-            // console.log('✅ Subscribing to WebSocket orders');
-            // Добавляем небольшую задержку для полного установления соединения
             const subscriptionTimeout = setTimeout(() => {
                 subscribeToOrders({
                     employeeId: currentUser.employee.id,
                     warehouseId: currentUser.employee.warehouseId
                 });
-            }, 500); // 500ms задержка
+            }, 500);
 
             return () => {
                 clearTimeout(subscriptionTimeout);
@@ -99,103 +150,139 @@ export const useStaffOrdersScreen = () => {
 
         return () => {
             if (isWebSocketConnected) {
-                // console.log('❌ Unsubscribing from WebSocket orders');
                 unsubscribeFromOrders();
             }
         };
     }, [isWebSocketConnected, currentUser?.employee?.id, currentUser?.employee?.warehouseId, subscribeToOrders, unsubscribeFromOrders]);
 
-    // Дополнительная подписка при изменении данных пользователя
     useEffect(() => {
         if (isWebSocketConnected && isMountedRef.current && dataLoaded) {
-            // Переподписываемся при изменении данных пользователя
             subscribeToOrders({
                 employeeId: currentUser?.employee?.id,
                 warehouseId: currentUser?.employee?.warehouseId
             });
         }
-    }, [dataLoaded, isWebSocketConnected, subscribeToOrders]);
-
-    // Умное обновление только при необходимости
-    useEffect(() => {
-        if (dataLoaded && isMountedRef.current) {
-            // Фильтрация происходит на клиенте через useOrderFiltering
-            // Дополнительных запросов к серверу не требуется
-        }
-    }, [showHistory, showWaitingStock, dataLoaded, isWebSocketConnected]);
+    }, [dataLoaded, isWebSocketConnected, subscribeToOrders, currentUser?.employee?.id, currentUser?.employee?.warehouseId]);
     
-    // Отслеживаем изменения в фильтрованных заказах для предотвращения бесконечной загрузки
+    // Отслеживаем изменения в фильтрованных заказах
     useEffect(() => {
-        const currentCount = filteredOrders.length;
+        const currentCount = filteredOrders?.length || 0;
         
-        // Если после загрузки новой страницы количество отфильтрованных заказов НЕ увеличилось
-        if (prevFilteredCountRef.current === currentCount && currentCount === 0 && staffOrders.length > 0) {
+        if (prevFilteredCountRef.current === currentCount && currentCount === 0 && (staffOrdersSource?.length || 0) > 0) {
             emptyPagesCountRef.current += 1;
-            // Отключаем логирование - слишком много шума
-            // console.log(`⚠️ Пустая страница после фильтрации (${emptyPagesCountRef.current} подряд)`);
         } else {
-            // Сбрасываем счетчик если данные появились
             emptyPagesCountRef.current = 0;
         }
         
         prevFilteredCountRef.current = currentCount;
-    }, [filteredOrders.length, staffOrders.length]);
+    }, [filteredOrders?.length, staffOrdersSource?.length]);
     
-    // Автозагрузка дополнительных страниц если данных мало после фильтрации
-    // ОТКЛЮЧЕНО - вызывает множественные рендеры и запросы
-    // Вместо этого используем ручную загрузку через onEndReached в FlatList
-    // useEffect(() => {
-    //     if (dataLoaded && !isLoading && !showHistory && !showWaitingStock) {
-    //         // Запускаем автозагрузку только для активных заказов
-    //         // (для истории и ожидающих не нужно)
-    //         const timer = setTimeout(() => {
-    //             autoLoadMore();
-    //         }, 500); // Задержка для избежания конфликтов
-    //         
-    //         return () => clearTimeout(timer);
-    //     }
-    // }, [dataLoaded, isLoading, showHistory, showWaitingStock, autoLoadMore]);
     
-    // Условный loadMore который предотвращает бесконечную загрузку при пустых результатах фильтрации
-    const conditionalLoadMore = useCallback(() => {
-        // Предотвращаем слишком частые вызовы (debounce 1 секунда)
-        const now = Date.now();
-        if (now - lastLoadMoreTimeRef.current < 1000) {
-            // Отключаем логирование частых вызовов - слишком много шума
+    // Обертка для loadMore с учетом текущего режима просмотра
+    const loadMoreWithMode = useCallback(async () => {
+        const state = dispatch((_, getState) => getState());
+        const orderState = state.order?.staffOrders;
+        
+        if (!orderState || loadingMore || isLoading) {
             return;
         }
         
-        // Если загрузили более 3 пустых страниц подряд - прекращаем загрузку
-        if (emptyPagesCountRef.current >= 3 && filteredOrders.length === 0) {
-            // Логируем только первый раз
+        const currentPage = orderState.page || 1;
+        const totalPages = orderState.pages || 1;
+        const hasMore = orderState.hasMore !== false && currentPage < totalPages;
+        
+        if (!hasMore) {
+            return;
+        }
+        
+        try {
+            const nextPage = currentPage + 1;
+            const params = { 
+                page: nextPage,
+                forceRefresh: false 
+            };
+            
+            if (showHistory) {
+                params.history = true;
+            }
+            // Не передаем status - WAITING_STOCK фильтруется на клиенте
+            
+            await dispatch(fetchStaffOrders(params)).unwrap();
+            
+        } catch (error) {
+            console.error('❌ Ошибка при загрузке следующей страницы:', error);
+        }
+    }, [dispatch, loadingMore, isLoading, showHistory]);
+    
+    // Условный loadMore
+    const conditionalLoadMore = useCallback(() => {
+        const now = Date.now();
+        if (now - lastLoadMoreTimeRef.current < 1000) {
+            return;
+        }
+        
+        if (emptyPagesCountRef.current >= 3 && (filteredOrders?.length || 0) === 0) {
             if (emptyPagesCountRef.current === 3) {
-                console.log('🛑 Прекращаем загрузку: 3+ пустых страниц подряд после фильтрации');
+                console.log('🛑 Прекращаем загрузку: 3+ пустых страниц подряд');
             }
             return;
         }
         
-        // Если уже идет загрузка или обновление - не загружаем
         if (isLoading || loadingMore || isRefreshing) {
             return;
         }
         
-        // Очищаем предыдущий таймаут
         if (loadMoreTimeoutRef.current) {
             clearTimeout(loadMoreTimeoutRef.current);
         }
         
-        // Устанавливаем таймаут для debounce
         loadMoreTimeoutRef.current = setTimeout(() => {
             lastLoadMoreTimeRef.current = Date.now();
-            loadMore();
+            loadMoreWithMode();
         }, 300);
-    }, [loadMore, filteredOrders.length, isLoading, loadingMore, isRefreshing]);
+    }, [loadMoreWithMode, filteredOrders?.length, isLoading, loadingMore, isRefreshing]);
     
     // Мемоизированные значения
     const stableLocalOrderActions = useMemo(() => localOrderActions || {}, [localOrderActions]);
     const stableDownloadingInvoices = useMemo(() => downloadingInvoices, [downloadingInvoices.size]);
-    const stableStaffOrders = useMemo(() => staffOrders || [], [staffOrders?.length]);
-    const stableFilteredOrders = useMemo(() => filteredOrders || [], [filteredOrders?.length]);
+    const stableStaffOrders = useMemo(() => staffOrdersSource || [], [staffOrdersSource]);
+    const stableFilteredOrders = useMemo(() => filteredOrders || [], [filteredOrders]);
+
+    // Обновление данных
+    const handleRefreshData = useCallback(async () => {
+        setLocalRefreshing(true);
+        try {
+            console.log('🔄 handleRefreshData:', { 
+                showHistory, 
+                showWaitingStock,
+                currentOrdersCount: staffOrdersSource?.length 
+            });
+            
+            if (showHistory) {
+                console.log('🔄 Обновляем историю заказов');
+                dispatch(clearStaffOrdersData({ target: 'history' }));
+                await dispatch(fetchStaffOrders({ history: true, forceRefresh: true })).unwrap();
+                setHistoryDataLoaded(true);
+            } else if (showWaitingStock) {
+                // Для WAITING_STOCK обновляем отдельное хранилище
+                console.log('🔄 Обновляем заказы WAITING_STOCK');
+                dispatch(clearStaffOrdersData({ target: 'waiting' }));
+                await dispatch(fetchStaffOrders({ status: 'WAITING_STOCK', forceRefresh: true })).unwrap();
+                setWaitingStockDataLoaded(true);
+            } else {
+                // Для активных обновляем activeOrders
+                console.log('🔄 Обновляем активные заказы');
+                dispatch(clearStaffOrdersData({ target: 'active' }));
+                await dispatch(fetchStaffOrders({ forceRefresh: true })).unwrap();
+            }
+            
+            console.log('✅ Обновление завершено');
+        } catch (error) {
+            console.error('❌ Ошибка при обновлении:', error);
+        } finally {
+            setLocalRefreshing(false);
+        }
+    }, [showHistory, showWaitingStock, dispatch, staffOrdersSource?.length]);
 
     // Обработчики действий с заказами
     const handleTakeOrder = useCallback(async (orderId) => {
@@ -209,7 +296,6 @@ export const useStaffOrdersScreen = () => {
             const res = await takeOrder(orderId, 'Взял заказ в работу');
             if (!res.success) throw new Error(res.error);
 
-            // Обновляем заказ в списке локально
             dispatch(updateOrderInList({
                 orderId: orderId,
                 updates: {
@@ -224,34 +310,30 @@ export const useStaffOrdersScreen = () => {
                 duration: 3000
             });
 
-            // Не перезагружаем данные сразу, чтобы локальные изменения сохранились
         } catch (e) {
             console.error('Ошибка при взятии заказа:', e);
             dispatch(clearLocalOrderAction({ orderId: orderId }));
-            Alert.alert('Ошибка', e.message || 'Не удалось взять заказ');
+            showError('Ошибка', e.message || 'Не удалось взять заказ');
         }
-    }, [takeOrder, dispatch, currentUser]);
+    }, [takeOrder, dispatch, currentUser, showError]);
 
     const handleReleaseOrder = useCallback(async (orderId) => {
         try {
             const result = await releaseOrder(orderId, 'Снят с работы сотрудником');
             if (!result.success) throw new Error(result.error);
 
-            // Устанавливаем флаг released для отображения кнопки "Взять в работу"
             dispatch(setLocalOrderAction({
                 orderId: orderId,
                 action: 'released',
                 value: true
             }));
 
-            // Очищаем флаг taken
             dispatch(setLocalOrderAction({
                 orderId: orderId,
                 action: 'taken',
                 value: false
             }));
 
-            // Обновляем заказ в списке локально - снимаем назначение
             dispatch(updateOrderInList({
                 orderId: orderId,
                 updates: {
@@ -266,25 +348,23 @@ export const useStaffOrdersScreen = () => {
                 duration: 3000
             });
 
-            // Не перезагружаем данные сразу, чтобы локальные изменения сохранились
-
         } catch (e) {
             console.error('Ошибка при снятии заказа:', e);
-            Alert.alert('Ошибка', e.message || 'Не удалось снять заказ с работы');
+            showError('Ошибка', e.message || 'Не удалось снять заказ с работы');
         }
-    }, [releaseOrder, dispatch]);
+    }, [releaseOrder, dispatch, showError]);
 
     const handleDownloadInvoice = useCallback(async (orderId) => {
         try {
             setDownloadingInvoices(prev => new Set([...prev, orderId]));
             const result = await downloadInvoice(orderId);
             if (result.success) {
-                Alert.alert('Успех', `Накладная "${result.filename}" успешно сохранена`);
+                showSuccess(`Накладная "${result.filename}" успешно сохранена`);
             } else {
-                Alert.alert('Ошибка', result.error || 'Не удалось скачать накладную');
+                showError('Ошибка', result.error || 'Не удалось скачать накладную');
             }
         } catch (error) {
-            Alert.alert('Ошибка', error.message || 'Не удалось скачать накладную');
+            showError('Ошибка', error.message || 'Не удалось скачать накладную');
         } finally {
             setDownloadingInvoices(prev => {
                 const newSet = new Set(prev);
@@ -292,14 +372,14 @@ export const useStaffOrdersScreen = () => {
                 return newSet;
             });
         }
-    }, [downloadInvoice]);
+    }, [downloadInvoice, showSuccess, showError]);
 
     // Обработчики модального окна статуса
     const handleStatusUpdate = useCallback((orderId) => {
         const order = stableFilteredOrders?.find(o => o.id === orderId) || stableStaffOrders?.find(o => o.id === orderId);
 
         if (!order) {
-            Alert.alert('Ошибка', 'Заказ не найден. Попробуйте обновить экран.');
+            showError('Ошибка', 'Заказ не найден. Попробуйте обновить экран.');
             return;
         }
 
@@ -310,7 +390,7 @@ export const useStaffOrdersScreen = () => {
             : availableStatuses;
 
         if (availableStatuses.length === 0) {
-            Alert.alert('Информация', 'Для этого заказа нет доступных статусов для изменения');
+            showInfo('Информация', 'Для этого заказа нет доступных статусов для изменения');
             return;
         }
 
@@ -319,16 +399,16 @@ export const useStaffOrdersScreen = () => {
         setSelectedStatus('');
         setStatusComment('');
         setStatusModalVisible(true);
-    }, [stableFilteredOrders, stableStaffOrders, canViewAllOrders, actualProcessingRole]);
+    }, [stableFilteredOrders, stableStaffOrders, canViewAllOrders, actualProcessingRole, showError, showInfo]);
 
     const handleConfirmStatusChange = useCallback(async () => {
         if (!selectedOrder) {
-            Alert.alert('Ошибка', 'Заказ не выбран');
+            showError('Ошибка', 'Заказ не выбран');
             return;
         }
 
         if (canViewAllOrders && !selectedStatus) {
-            Alert.alert('Ошибка', 'Выберите новый статус');
+            showError('Ошибка', 'Выберите новый статус');
             return;
         }
 
@@ -358,6 +438,23 @@ export const useStaffOrdersScreen = () => {
                         action: 'completed',
                         value: true
                     }));
+                    
+                    const newStatus = actualProcessingRole === 'PICKER' ? 'IN_DELIVERY' : 
+                                     actualProcessingRole === 'COURIER' ? 'DELIVERED' : 
+                                     selectedOrder.status;
+                    
+                    dispatch(updateOrderInList({
+                        orderId: selectedOrder.id,
+                        updates: {
+                            status: newStatus,
+                            assignedToId: null,
+                            assignedTo: null
+                        }
+                    }));
+                    
+                    setHistoryDataLoaded(false);
+                    
+                    console.log(`✅ Заказ обработан: ${selectedOrder.status} → ${newStatus}`);
                 }
 
                 setToastConfig({
@@ -370,90 +467,86 @@ export const useStaffOrdersScreen = () => {
                 setSelectedOrder(null);
                 setSelectedStatus('');
                 setStatusComment('');
-
-                setTimeout(() => {
-                    loadInitialData(true);
-                }, CONSTANTS.STATUS_UPDATE_DELAY);
             } else {
-                Alert.alert('Ошибка', result.error || 'Не удалось изменить статус заказа');
+                showError('Ошибка', result.error || 'Не удалось изменить статус заказа');
             }
         } catch (error) {
-            Alert.alert('Ошибка', error.message || 'Не удалось изменить статус заказа');
+            showError('Ошибка', error.message || 'Не удалось изменить статус заказа');
         } finally {
             setUpdatingStatus(false);
         }
-    }, [selectedOrder, selectedStatus, statusComment, updateStatus, completeOrderStage, cancelOrderById, canViewAllOrders, dispatch, loadInitialData]);
+    }, [selectedOrder, selectedStatus, statusComment, updateStatus, completeOrderStage, cancelOrderById, canViewAllOrders, dispatch, actualProcessingRole, showError]);
 
-    // Обработчики состояния
-    const handleToggleHistory = useCallback(() => {
-        if (showHistory) {
-            // Если уже показываем историю, выключаем её
-            setShowHistory(false);
-            // Очищаем старые данные перед загрузкой новых
-            dispatch(clearStaffOrdersData());
-            // Загружаем активные заказы (без завершенных статусов)
-            dispatch(fetchStaffOrders({ forceRefresh: true }));
-        } else {
-            // Включаем историю и выключаем ожидающие поставки
-            setShowHistory(true);
-            setShowWaitingStock(false);
-            // Очищаем старые данные перед загрузкой новых
-            dispatch(clearStaffOrdersData());
-            // Небольшая задержка чтобы Redux успел применить очистку
-            setTimeout(() => {
-                // Загружаем все завершенные заказы для истории
-                console.log('🔍 handleToggleHistory: загружаем историю с параметром history=true');
-                dispatch(fetchStaffOrders({ history: true, forceRefresh: true }));
-            }, 50);
-        }
-        // Сбрасываем счетчик пустых страниц при переключении вкладки
+    // Обработчики переключения вкладок
+    const handleToggleHistory = useCallback(async () => {
         emptyPagesCountRef.current = 0;
         prevFilteredCountRef.current = 0;
-    }, [showHistory, dispatch]);
-
-    const handleToggleWaitingStock = useCallback(() => {
-        if (showWaitingStock) {
-            // Если уже показываем ожидающие поставки, выключаем их
+        
+        const newShowHistory = !showHistory;
+        
+        console.log('🔍 handleToggleHistory:', { 
+            from: showHistory, 
+            to: newShowHistory 
+        });
+        
+        setShowHistory(newShowHistory);
+        
+        if (newShowHistory) {
+            // Переключаемся НА историю
             setShowWaitingStock(false);
-            // Очищаем старые данные перед загрузкой новых
-            dispatch(clearStaffOrdersData());
-            // Небольшая задержка чтобы Redux успел применить очистку
-            setTimeout(() => {
-                // Загружаем все активные заказы
-                dispatch(fetchStaffOrders({ forceRefresh: true }));
-            }, 50);
-        } else {
-            // Включаем ожидающие поставки и выключаем историю
-            setShowWaitingStock(true);
-            setShowHistory(false);
-            // Очищаем старые данные перед загрузкой новых
-            dispatch(clearStaffOrdersData());
-            // Небольшая задержка чтобы Redux успел применить очистку
-            setTimeout(() => {
-                // Загружаем только заказы WAITING_STOCK
-                dispatch(fetchStaffOrders({ status: 'WAITING_STOCK', forceRefresh: true }));
-            }, 50);
+            
+            if (!historyDataLoaded) {
+                try {
+                    console.log('📥 Загружаем историю первый раз');
+                    await dispatch(fetchStaffOrders({ history: true, forceRefresh: true })).unwrap();
+                    setHistoryDataLoaded(true);
+                } catch (error) {
+                    console.error('❌ Ошибка загрузки истории:', error);
+                }
+            }
         }
-        // Сбрасываем счетчик пустых страниц при переключении вкладки
+        // Если переключаемся С истории на активные - ничего не делаем, данные уже есть
+    }, [showHistory, historyDataLoaded, dispatch]);
+
+    const handleToggleWaitingStock = useCallback(async () => {
         emptyPagesCountRef.current = 0;
         prevFilteredCountRef.current = 0;
-    }, [showWaitingStock, dispatch]);
+        
+        const newShowWaitingStock = !showWaitingStock;
+        
+        console.log('🔍 handleToggleWaitingStock:', { 
+            from: showWaitingStock, 
+            to: newShowWaitingStock,
+            currentActiveOrders: activeOrders?.length || 0,
+            alreadyLoaded: waitingStockDataLoaded
+        });
+        
+        setShowWaitingStock(newShowWaitingStock);
+        setShowHistory(false);
+        
+        // Загружаем WAITING_STOCK только если еще не загружены
+        if (newShowWaitingStock && !waitingStockDataLoaded) {
+            try {
+                console.log('📥 Загружаем WAITING_STOCK заказы первый раз');
+                await dispatch(fetchStaffOrders({ status: 'WAITING_STOCK', forceRefresh: true })).unwrap();
+                setWaitingStockDataLoaded(true);
+            } catch (error) {
+                console.error('❌ Ошибка загрузки WAITING_STOCK:', error);
+            }
+        } else if (newShowWaitingStock) {
+            console.log('✅ WAITING_STOCK уже загружены, используем кэш');
+        }
+    }, [showWaitingStock, waitingStockDataLoaded, dispatch, activeOrders?.length]);
 
     const handleToggleMain = useCallback(() => {
-        // Сбрасываем обе вкладки при переключении на основную
-        setShowHistory(false);
-        setShowWaitingStock(false);
-        // Очищаем старые данные перед загрузкой новых
-        dispatch(clearStaffOrdersData());
-        // Сбрасываем счетчик пустых страниц при переключении вкладки
+        console.log('🔍 handleToggleMain: переключаем на активные');
+        
         emptyPagesCountRef.current = 0;
         prevFilteredCountRef.current = 0;
-        // Небольшая задержка чтобы Redux успел применить очистку
-        setTimeout(() => {
-            // Загружаем все активные заказы
-            dispatch(fetchStaffOrders({ forceRefresh: true }));
-        }, 50);
-    }, [dispatch]);
+        
+        setShowHistory(false);
+        setShowWaitingStock(false);
+    }, []);
 
     const handleCloseStatusModal = useCallback(() => {
         setStatusModalVisible(false);
@@ -470,30 +563,21 @@ export const useStaffOrdersScreen = () => {
         setStatusComment(text);
     }, []);
 
-    // Начальная загрузка ОТКЛЮЧЕНА - используется только useFocusEffect для избежания дублирования
-    // useEffect(() => {
-    //     if (currentUser?.id && !dataLoaded && isMountedRef.current) {
-    //         console.log('📊 Initial data load on component mount');
-    //         loadInitialData(false);
-    //     }
-    // }, [currentUser?.id, dataLoaded, loadInitialData]);
-
     // Фокус эффекты
     useFocusEffect(
         useCallback(() => {
-            // console.log('📱 StaffOrdersScreen focused');
-            
-            // Принудительно переподключаемся к WebSocket при фокусе на экране
             if (!isWebSocketConnected) {
-                // console.log('🔄 WebSocket reconnecting...');
                 forceReconnect();
             }
             
-            // Загружаем данные только если они еще не загружены
             if (!dataLoaded) {
-                loadInitialData(true);
+                if (showHistory) {
+                    dispatch(fetchStaffOrders({ history: true, forceRefresh: true }));
+                } else {
+                    loadInitialData(true);
+                }
             }
-        }, [loadInitialData, isWebSocketConnected, forceReconnect, dataLoaded])
+        }, [loadInitialData, isWebSocketConnected, forceReconnect, dataLoaded, showHistory, dispatch])
     );
 
     return {
@@ -519,7 +603,7 @@ export const useStaffOrdersScreen = () => {
         filteredOrders: stableFilteredOrders,
         waitingStockCount,
         isLoading,
-        isRefreshing,
+        isRefreshing: localRefreshing,
         isInitializing,
         dataLoaded,
         currentUser,
@@ -530,7 +614,7 @@ export const useStaffOrdersScreen = () => {
         localOrderActions: stableLocalOrderActions,
         isWebSocketConnected,
         handleRefreshData,
-        loadMore: conditionalLoadMore, // Используем условный loadMore для предотвращения бесконечной загрузки
+        loadMore: conditionalLoadMore,
         loadingMore,
         handleTakeOrder,
         handleReleaseOrder,

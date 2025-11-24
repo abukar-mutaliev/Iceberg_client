@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback, useState } from 'react';
-import { View, ScrollView, RefreshControl, BackHandler } from 'react-native';
+import { View, ScrollView, RefreshControl, BackHandler, TouchableOpacity, Text } from 'react-native';
 import { useRoute, useFocusEffect } from '@react-navigation/native';
 import { HeaderWithBackButton } from '@/shared/ui/HeaderWithBackButton';
 import { styles } from './styles/EmployeeRewardsScreen.styles';
@@ -34,8 +34,9 @@ export const EmployeeRewardsScreen = React.memo(({ navigation }) => {
 
 
     // Проверяем права доступа
+    // Роль EMPLOYEE включает всех сотрудников: обычных, PICKER, COURIER, PACKER и т.д.
     const isAdmin = user?.role === 'ADMIN';
-    const isEmployee = user?.role === 'EMPLOYEE';
+    const isEmployee = user?.role === 'EMPLOYEE'; // включает PICKER, COURIER и др.
     const hasAccess = isAdmin || isEmployee;
 
     // Кастомные хуки
@@ -206,6 +207,29 @@ export const EmployeeRewardsScreen = React.memo(({ navigation }) => {
                             isEmployee={isEmployee}
                             alwaysShow={false}
                         />
+                    )}
+
+                    {/* Кнопка массовой выплаты для админов */}
+                    {isAdmin && dataHook.isViewingSpecificEmployee && employeeId && dataHook.hasDataToShow && (
+                        <View style={styles.batchPaymentContainer}>
+                            <TouchableOpacity
+                                style={styles.batchPaymentButton}
+                                onPress={() => dataHook.handleBatchProcessRewards(employeeId)}
+                            >
+                                <Text style={styles.batchPaymentButtonText}>
+                                    💰 Выплатить всё одной суммой
+                                </Text>
+                                {employeeStatistics && (
+                                    <Text style={styles.batchPaymentAmount}>
+                                        {employeeStatistics.totalPending > 0 ? (
+                                            `К выплате: ${employeeStatistics.totalPending} руб.`
+                                        ) : (
+                                            'Нет необработанных вознаграждений'
+                                        )}
+                                    </Text>
+                                )}
+                            </TouchableOpacity>
+                        </View>
                     )}
 
                     {/* Пустое состояние для режима списка */}

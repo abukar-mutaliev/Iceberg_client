@@ -8,6 +8,7 @@ import { formatTimeRange } from "@shared/lib/dateFormatters";
 import { getBaseUrl } from '@shared/api/api';
 import { logData } from '@shared/lib/logger';
 import {BackButton} from "@shared/ui/Button/BackButton";
+import { StopProductsList } from '@entities/stop/ui/StopProductsList';
 
 const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
 
@@ -72,7 +73,7 @@ const parseMapLocation = (mapLocation) => {
                         }
                     }
                 } catch (jsonError) {
-                    console.log('JSON парсинг не удался, пробуем другие форматы');
+                    // Продолжаем с другими форматами
                 }
             }
 
@@ -100,7 +101,7 @@ const parseMapLocation = (mapLocation) => {
             }
         }
     } catch (error) {
-        console.error('Ошибка при парсинге координат:', error);
+        // Ошибка парсинга координат - используем координаты по умолчанию
     }
 
     return null;
@@ -151,7 +152,6 @@ export const StopDetailsContent = ({ stop, navigation }) => {
 
     useEffect(() => {
         if (!stop) {
-            console.error('Stop is null in useEffect');
             return;
         }
 
@@ -172,11 +172,8 @@ export const StopDetailsContent = ({ stop, navigation }) => {
         const parsedCoords = parseMapLocation(stop.mapLocation);
 
         if (parsedCoords) {
-            console.log('Успешно распарсены координаты:', parsedCoords);
             setMapCoordinates(parsedCoords);
         } else {
-            console.log('Не удалось распарсить координаты, используем координаты по умолчанию');
-            console.log('Исходные данные mapLocation:', stop.mapLocation);
             setMapCoordinates(defaultCoords);
         }
 
@@ -196,18 +193,6 @@ export const StopDetailsContent = ({ stop, navigation }) => {
             contentInsetAdjustmentBehavior="never"
             contentInset={{ top: 0, left: 0, bottom: 0, right: 0 }}
             keyboardDismissMode="on-drag"
-            onScrollBeginDrag={() => {
-                console.log('[ScrollView] Начало скролла');
-            }}
-            onScrollEndDrag={() => {
-                console.log('[ScrollView] Конец скролла');
-            }}
-            onMomentumScrollBegin={() => {
-                console.log('[ScrollView] Начало инерционного скролла');
-            }}
-            onMomentumScrollEnd={() => {
-                console.log('[ScrollView] Конец инерционного скролла');
-            }}
         >
             <View style={styles.header}>
                 <TouchableOpacity
@@ -246,9 +231,6 @@ export const StopDetailsContent = ({ stop, navigation }) => {
                         style={styles.photo}
                         resizeMode="cover"
                         defaultSource={placeholderImage}
-                        onError={(error) => {
-                            console.log('Ошибка загрузки изображения:', error);
-                        }}
                     />
                 )}
 
@@ -311,11 +293,9 @@ export const StopDetailsContent = ({ stop, navigation }) => {
                                 longitudeDelta: 0.01,
                             }}
                             onMapReady={() => {
-                                console.log('[StopDetailsContent] Google Maps готова');
                                 setMapLoaded(true);
                             }}
                             onError={(error) => {
-                                console.log('[StopDetailsContent] Ошибка Google Maps:', error);
                                 setMapLoaded(false);
                             }}
                             showsUserLocation={false}
@@ -349,6 +329,17 @@ export const StopDetailsContent = ({ stop, navigation }) => {
                         </View>
                     )}
                 </View>
+
+                {/* Отображение товаров остановки */}
+                <StopProductsList
+                    stopId={stop.id}
+                    isActive={
+                        stop.startTime &&
+                        stop.endTime &&
+                        new Date(stop.startTime) <= new Date() &&
+                        new Date() <= new Date(stop.endTime)
+                    }
+                />
 
                 {canEdit && (
                     <TouchableOpacity

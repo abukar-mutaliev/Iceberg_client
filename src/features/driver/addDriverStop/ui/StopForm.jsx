@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, memo, useMemo } from 'react';
 import {
     View,
     Text,
@@ -7,6 +7,7 @@ import {
     TouchableOpacity,
     TextInput,
     ActivityIndicator,
+    Keyboard,
     Alert
 } from 'react-native';
 import ImageResizer from 'react-native-image-resizer';
@@ -23,6 +24,11 @@ import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { DriverPicker } from "@features/driver/DriverPicker";
 import { createStop } from "@entities/stop";
 import { useToast } from '@shared/ui/Toast';
+import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
+import { StopProductsSelector } from './StopProductsSelector';
+import { FormSection, FormField, FormDivider } from './FormField';
+import { FormProgressBar } from './FormProgressIndicator';
+import { FormHint, QuickAction, QuickActionsGroup, InfoBanner } from './FormQuickActions';
 
 export const StopForm = memo(({
                                   districts,
@@ -38,9 +44,16 @@ export const StopForm = memo(({
     const dispatch = useDispatch();
     const navigation = useNavigation();
     const route = useRoute();
+    const scrollViewRef = useRef(null);
     const isLoading = useSelector(selectDriverLoading);
     const allDrivers = useSelector(state => state.driver?.allDrivers || []);
-    const { showSuccess, showError, showInfo } = useToast();
+    const { showError, showInfo } = useToast();
+    const { 
+        showSuccess: showAlertSuccess, 
+        showError: showAlertError, 
+        showWarning: showAlertWarning,
+        showInfo: showAlertInfo 
+    } = useCustomAlert();
 
     const isAdminOrEmployee = userRole === 'ADMIN' || userRole === 'EMPLOYEE';
 
@@ -50,15 +63,17 @@ export const StopForm = memo(({
     const [startDate, setStartDate] = useState(new Date());
     const [startTime, setStartTime] = useState(new Date());
     const [endDate, setEndDate] = useState(new Date());
-    const [endTime, setEndTime] = useState(new Date(new Date().getTime() + 2 * 60 * 60 * 1000)); // +2 часа по умолчанию
+    const [endTime, setEndTime] = useState(new Date(new Date().getTime() + 2 * 60 * 60 * 1000));
     const [selectedDistrict, setSelectedDistrict] = useState(null);
     const [showDistrictPicker, setShowDistrictPicker] = useState(false);
     const [truckModel, setTruckModel] = useState('');
     const [truckNumber, setTruckNumber] = useState('');
     const [selectedDriver, setSelectedDriver] = useState(null);
     const [showDriverPicker, setShowDriverPicker] = useState(false);
-
-    // Добавляем состояние для ошибок валидации
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [warehouseId, setWarehouseId] = useState(null);
+    const [selectedProducts, setSelectedProducts] = useState([]);
+    const [priceValidationErrors, setPriceValidationErrors] = useState({}); // Ошибки валидации цен по productId
     const [errors, setErrors] = useState({
         address: '',
         district: '',
@@ -71,18 +86,60 @@ export const StopForm = memo(({
         driver: '',
     });
 
-    // Флаг для отслеживания навигации
     const isNavigatingRef = useRef(false);
     const isFormInitialized = useRef(false);
+    const [showHint, setShowHint] = useState(true);
+
+    // Подсчет заполненных обязательных полей для индикатора прогресса
+    const { totalFields, filledFields } = useMemo(() => {
+        const requiredFields = [
+            address,
+            selectedDistrict,
+            warehouseId,
+            photo,
+            locationData.mapLocation,
+            truckModel,
+            truckNumber,
+            startDate,
+            startTime,
+            endDate,
+            endTime,
+            ...(isAdminOrEmployee ? [selectedDriver] : [])
+        ];
+        const filled = requiredFields.filter(field => {
+            if (field === null || field === undefined) return false;
+            if (typeof field === 'string') return field.trim() !== '';
+            if (field instanceof Date) return true;
+            return !!field;
+        }).length;
+        return { 
+            totalFields: requiredFields.length, 
+            filledFields: filled 
+        };
+    }, [
+        address, 
+        selectedDistrict, 
+        warehouseId, 
+        photo, 
+        locationData.mapLocation, 
+        truckModel, 
+        truckNumber, 
+        startDate, 
+        startTime, 
+        endDate, 
+        endTime,
+        isAdminOrEmployee,
+        selectedDriver
+    ]);
 
     const compressImage = async (imageUri) => {
         try {
             const resizedImage = await ImageResizer.createResizedImage(
                 imageUri,
-                800, // ширина
-                600, // высота
+                800,
+                600,
                 'JPEG',
-                80, // качество (0-100)
+                80,
                 0,
                 undefined,
                 false,
@@ -95,7 +152,6 @@ export const StopForm = memo(({
         }
     };
 
-    // Инициализация формы только один раз
     useEffect(() => {
         if (!isFormInitialized.current) {
             isFormInitialized.current = true;
@@ -103,21 +159,17 @@ export const StopForm = memo(({
         }
     }, [userRole]);
 
-    // Улучшенный эффект для обработки адреса из props (с картой или геолокацией)
     useEffect(() => {
         if (addressFromMap && addressFromMap.trim() !== '') {
             logData('StopForm: Получен адрес из карты', addressFromMap);
-            // Обновляем адрес и сбрасываем ошибку
             setAddress(addressFromMap);
             setErrors(prev => ({...prev, address: ''}));
-            // Дополнительная проверка обновления адреса
             setTimeout(() => {
                 logData('StopForm: Адрес после обновления', {
                     currentAddress: address,
                     setToAddress: addressFromMap,
                     addressMatch: address === addressFromMap
                 });
-                // Если адрес не обновился, повторим попытку
                 if (address !== addressFromMap) {
                     setAddress(addressFromMap);
                     logData('StopForm: Повторная попытка обновления адреса');
@@ -126,14 +178,12 @@ export const StopForm = memo(({
         }
     }, [addressFromMap, address]);
 
-    // Обработчики для выбора дат и времени - мемоизированы для избежания лишних ререндеров
     const onStartDateChange = useCallback((date) => {
         logData('Изменение даты начала', date);
         setStartDate(date);
         if (date > endDate) {
             setEndDate(date);
         }
-        // Очищаем ошибку при изменении значения
         setErrors(prev => ({...prev, startTime: ''}));
     }, [endDate]);
 
@@ -180,7 +230,6 @@ export const StopForm = memo(({
         setErrors(prev => ({...prev, endTime: ''}));
     }, [startDate, endDate, startTime]);
 
-    // Функции для работы с датами и временем
     const getFullStartDateTime = useCallback(() => {
         const dateTime = new Date(startDate);
         dateTime.setHours(
@@ -215,43 +264,38 @@ export const StopForm = memo(({
         return dateTime;
     }, [endDate, endTime]);
 
-    // Обработчик открытия карты
     const handleMapOpen = useCallback((currentLocation) => {
-        // Если уже выполняем навигацию, выходим
         if (isNavigatingRef.current || isLocationLoading) return;
+
+        Keyboard.dismiss();
 
         logData('Открытие карты из StopForm', {
             currentLocation,
             timestamp: new Date().toISOString()
         });
 
-        // Устанавливаем флаг, что начали навигацию
         isNavigatingRef.current = true;
-
-        // Используем временную метку для гарантии уникальности параметра
         const timestamp = new Date().getTime();
 
-        // Добавляем небольшую задержку для более плавного перехода
         setTimeout(() => {
             navigation.navigate('MapScreen', {
                 initialLocation: currentLocation,
-                returnScreen: route.name, // Указываем текущий экран для возврата
-                timestamp // Добавляем метку времени для отслеживания
+                returnScreen: route.name,
+                timestamp
             });
 
-            // Сбрасываем флаг через небольшую задержку после начала навигации
             setTimeout(() => {
                 isNavigatingRef.current = false;
             }, 500);
         }, 0);
     }, [navigation, route.name, isLocationLoading]);
 
-    // Функция валидации формы перед отправкой
     const validateForm = useCallback(() => {
         let isFormValid = true;
         let newErrors = {
             address: '',
             district: '',
+            warehouse: '',
             photo: '',
             location: '',
             truckModel: '',
@@ -261,7 +305,6 @@ export const StopForm = memo(({
             driver: '',
         };
 
-        // Если пользователь админ или сотрудник, проверяем выбор водителя
         if (isAdminOrEmployee && !selectedDriver) {
             newErrors.driver = 'Необходимо выбрать водителя';
             isFormValid = false;
@@ -274,6 +317,11 @@ export const StopForm = memo(({
 
         if (!selectedDistrict) {
             newErrors.district = 'Необходимо выбрать район';
+            isFormValid = false;
+        }
+
+        if (!warehouseId) {
+            newErrors.warehouse = 'Необходимо выбрать склад';
             isFormValid = false;
         }
 
@@ -306,12 +354,18 @@ export const StopForm = memo(({
         }
 
         setErrors(newErrors);
+        
+        if (!isFormValid) {
+            scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+        }
+        
         return isFormValid;
     }, [
         isAdminOrEmployee,
         selectedDriver,
         address,
         selectedDistrict,
+        warehouseId,
         photo,
         locationData.mapLocation,
         truckModel,
@@ -320,16 +374,19 @@ export const StopForm = memo(({
         getFullEndDateTime
     ]);
 
-    // Обработчик отправки формы
     const handleSubmit = useCallback(async () => {
+        Keyboard.dismiss();
+        
+        setIsSubmitting(true);
         setFormSubmitted(true);
 
         if (!validateForm()) {
             setFormSubmitted(false);
+            setIsSubmitting(false);
+            showError('Пожалуйста, заполните все обязательные поля');
             return;
         }
 
-        // Проверяем соединение с сетью перед отправкой
         try {
             const NetInfo = require('@react-native-community/netinfo');
             const networkState = await NetInfo.fetch();
@@ -337,43 +394,35 @@ export const StopForm = memo(({
             if (!networkState.isConnected) {
                 logData('Отсутствует подключение к сети', networkState);
                 setFormSubmitted(false);
+                setIsSubmitting(false);
                 showError('Отсутствует подключение к интернету. Пожалуйста, проверьте ваше соединение и попробуйте снова.');
                 return;
             }
         } catch (netInfoError) {
             logData('Ошибка при проверке сети', netInfoError);
-            // Продолжаем выполнение даже при ошибке проверки сети
         }
 
         try {
-            // Улучшаем формирование объекта для фото
             let photoForUpload = null;
             
             if (photo && photo.uri) {
                 try {
-                    // Определяем расширение файла
                     const fileExtension = photo.uri.split('.').pop() || 'jpg';
                     const mimeType = photo.mimeType || (fileExtension === 'png' ? 'image/png' : 'image/jpeg');
-                    
-                    // Максимальный размер файла для отправки (700KB - оптимальное значение)
-                    const MAX_FILE_SIZE = 700 * 1024; // 700KB
+                    const MAX_FILE_SIZE = 700 * 1024;
                     
                     if (photo.fileSize && photo.fileSize > MAX_FILE_SIZE) {
-                        // Если файл слишком большой, снижаем качество
                         logData('Фото слишком большое, снижаем качество', {
                             originalSize: photo.fileSize,
                             maxSize: MAX_FILE_SIZE
                         });
                         
-                        // Используем expo-image-manipulator для сжатия
                         try {
                             const ImageManipulator = require('expo-image-manipulator');
-                            
-                            // Сжимаем изображение с пониженным качеством
                             const resizedPhoto = await ImageManipulator.manipulateAsync(
                                 photo.uri,
-                                [{ resize: { width: 800 } }], // изменение размера до ширины 800px
-                                { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG } // сжатие 60%
+                                [{ resize: { width: 800 } }],
+                                { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG }
                             );
                             
                             logData('Фото успешно сжато', {
@@ -395,7 +444,6 @@ export const StopForm = memo(({
                             };
                         }
                     } else {
-                        // Если файл нормального размера, используем как есть
                         photoForUpload = {
                             uri: photo.uri,
                             type: mimeType,
@@ -413,7 +461,6 @@ export const StopForm = memo(({
                     logData('Ошибка при подготовке фото', error);
                     showInfo('Возникла проблема с обработкой фото, но форма будет отправлена');
                     
-                    // Создаем базовый объект фотографии для загрузки
                     photoForUpload = {
                         uri: photo.uri,
                         type: 'image/jpeg',
@@ -430,6 +477,7 @@ export const StopForm = memo(({
             const stopData = {
                 address,
                 districtId: selectedDistrict,
+                warehouseId: warehouseId,
                 startTime: startTimeIso,
                 endTime: endTimeIso,
                 mapLocation: locationData.mapLocation,
@@ -437,9 +485,9 @@ export const StopForm = memo(({
                 photo: photoForUpload,
                 truckModel,
                 truckNumber,
+                products: selectedProducts.length > 0 ? selectedProducts : undefined,
             };
 
-            // Если пользователь админ или сотрудник, добавляем ID водителя
             if (isAdminOrEmployee && selectedDriver) {
                 stopData.driverId = selectedDriver;
             }
@@ -449,33 +497,38 @@ export const StopForm = memo(({
                 photo: photoForUpload ? 'Photo included' : null
             });
 
-            // Добавляем функцию для повторной отправки запроса при ошибке сети
             const retryRequest = async (retryCount = 0, maxRetries = 3) => {
                 try {
                     const result = await dispatch(createStop(stopData)).unwrap();
                     logData('Остановка успешно создана', result);
                     
-                    // Логируем информацию о созданной остановке и URL фото
                     if (result && result.data) {
                         const photoUrl = result.data.photo;
-                        
                         logData('Информация о созданной остановке', {
                             stopId: result.data.id,
                             photoUrl: photoUrl
                         });
                     }
                     
-                    showSuccess('Остановка успешно добавлена', {
-                        action: true,
-                        actionText: 'Вернуться',
-                        onActionPress: () => navigation.goBack()
-                    });
+                    // Очищаем ошибки валидации цен при успешной отправке
+                    setPriceValidationErrors({});
+                    
+                    showAlertSuccess(
+                        'Успешно!',
+                        'Остановка успешно добавлена',
+                        [
+                            {
+                                text: 'OK',
+                                style: 'primary',
+                                onPress: () => navigation.goBack()
+                            }
+                        ]
+                    );
                     
                     return result;
                 } catch (error) {
                     logData('Ошибка при создании остановки', error);
                     
-                    // Проверяем состояние сети при ошибке
                     let isNetworkError = false;
                     try {
                         const NetInfo = require('@react-native-community/netinfo');
@@ -491,38 +544,116 @@ export const StopForm = memo(({
                         logData('Ошибка при проверке сети после ошибки запроса', netInfoError);
                     }
                     
-                    // Если это сетевая ошибка и у нас есть еще попытки
                     if ((isNetworkError || error?.code === 'ERR_NETWORK' || error?.message?.includes('network')) && retryCount < maxRetries) {
                         const nextRetry = retryCount + 1;
                         logData(`Повторная попытка ${nextRetry}/${maxRetries}`, { error: error.message });
-                        
-                        // Показываем сообщение о повторной попытке
                         showInfo(`Повторная попытка ${nextRetry} из ${maxRetries}...`);
                         
-                        // Увеличиваем время ожидания с каждой попыткой (экспоненциальная задержка)
-                        const waitTime = 1000 * Math.pow(2, retryCount); // 1s, 2s, 4s, ...
+                        const waitTime = 1000 * Math.pow(2, retryCount);
                         await new Promise(resolve => setTimeout(resolve, waitTime));
                         
-                        // Повторяем запрос
                         return retryRequest(nextRetry, maxRetries);
                     }
                     
-                    // Подробное логирование структуры ошибки для отладки
+                    // Извлекаем ошибки из разных возможных мест (Redux thunk использует payload)
+                    // createProtectedRequest выбрасывает error.response?.data, который попадает в payload
+                    let errorData = error?.payload || error?.response?.data || error?.data || error;
+                    
+                    // Если errorData это строка, пытаемся найти объект в других местах
+                    if (typeof errorData === 'string') {
+                        // Пытаемся найти объект в других местах
+                        const alternativeData = error?.response?.data || error?.data;
+                        if (alternativeData && typeof alternativeData === 'object') {
+                            errorData = alternativeData;
+                        } else {
+                            errorData = { message: errorData };
+                        }
+                    }
+                    
+                    // Извлекаем массив ошибок и сообщение
+                    const errorsArray = errorData?.errors || error?.errors;
+                    const errorMessage = errorData?.message || errorData?.error || error?.message || (typeof errorData === 'string' ? errorData : String(error));
+                    
                     logData('Подробная структура ошибки', {
-                        hasErrors: !!error?.errors,
-                        errorsIsArray: Array.isArray(error?.errors),
+                        hasErrors: !!errorsArray,
+                        errorsIsArray: Array.isArray(errorsArray),
                         errorKeys: error ? Object.keys(error) : null,
+                        errorPayload: error?.payload,
                         errorResponseData: error?.response?.data,
-                        errorMessage: error?.message
+                        errorData: errorData,
+                        errorMessage: errorMessage,
+                        errorsArray: errorsArray
                     });
                     
-                    // Улучшенная обработка ошибок валидации от сервера
-                    if (error && error.errors && Array.isArray(error.errors)) {
-                        // Создаем объект с ошибками из массива ошибок, полученных от сервера
+                    // Проверяем, есть ли ошибка валидации цены в сообщении
+                    const hasPriceError = errorMessage?.includes('валидации цены') || errorMessage?.includes('цена') || errorMessage?.includes('не должна быть меньше');
+                    
+                    // Обработка ошибок валидации товаров (недостаток товара, цены и т.д.)
+                    if (errorsArray && Array.isArray(errorsArray)) {
+                        const stockErrors = errorsArray.filter(err => err.type === 'INSUFFICIENT_STOCK');
+                        const priceErrors = errorsArray.filter(err => err.type === 'PRICE_VALIDATION' || err.message?.includes('цена'));
                         const fieldErrors = {};
                         
-                        error.errors.forEach(err => {
-                            // Определяем поле на основе сообщения об ошибке
+                        // Обработка ошибок недостатка товара
+                        if (stockErrors.length > 0) {
+                            const errorMessages = stockErrors.map(err => {
+                                const productName = err.productName || `Товар #${err.productId}`;
+                                const requested = err.requested || 0;
+                                const available = err.available || 0;
+                                const shortage = err.shortage || 0;
+                                return `${productName}: запрошено ${requested}, доступно ${available} (не хватает ${shortage})`;
+                            });
+                            
+                            const errorTitle = stockErrors.length === 1 
+                                ? 'Недостаточно товара на складе'
+                                : `Недостаточно товара на складе (${stockErrors.length} товаров)`;
+                            
+                            showError(errorTitle);
+                            showAlertError(
+                                errorTitle,
+                                errorMessages.join('\n\n') + '\n\nПожалуйста, уменьшите количество товаров или выберите другой склад.',
+                                [{ text: 'OK' }]
+                            );
+                            
+                            // Обновляем выбранные товары, уменьшая количество до доступного
+                            const updatedProducts = selectedProducts.map(product => {
+                                const stockError = stockErrors.find(err => err.productId === product.productId);
+                                if (stockError && stockError.available !== undefined) {
+                                    return {
+                                        ...product,
+                                        quantity: Math.min(product.quantity, stockError.available)
+                                    };
+                                }
+                                return product;
+                            });
+                            setSelectedProducts(updatedProducts);
+                            
+                            setFormSubmitted(false);
+                            setIsSubmitting(false);
+                            return;
+                        }
+                        
+                        // Обработка ошибок валидации цен
+                        if (priceErrors.length > 0) {
+                            // Сохраняем ошибки для отображения под полями
+                            const priceErrorsMap = {};
+                            priceErrors.forEach(err => {
+                                priceErrorsMap[err.productId] = err.message;
+                            });
+                            setPriceValidationErrors(priceErrorsMap);
+                            
+                            showError('Ошибка валидации цен. Проверьте поля ввода цен.');
+                            
+                            setFormSubmitted(false);
+                            setIsSubmitting(false);
+                            return;
+                        }
+                        
+                        // Очищаем ошибки валидации цен при успешной отправке
+                        setPriceValidationErrors({});
+                        
+                        // Обработка остальных ошибок полей формы
+                        errorsArray.forEach(err => {
                             if (err.message.includes('Адрес')) {
                                 fieldErrors.address = err.message;
                             } else if (err.message.includes('координат')) {
@@ -544,41 +675,63 @@ export const StopForm = memo(({
                             }
                         });
                         
-                        // Если есть ошибки полей, обновляем состояние ошибок
                         if (Object.keys(fieldErrors).length > 0) {
                             setErrors(prev => ({
                                 ...prev,
                                 ...fieldErrors
                             }));
                             
-                            // Прокручиваем к первой ошибке
-                            setTimeout(() => {
-                                scrollToFirstError(fieldErrors);
-                            }, 100);
-
-                            // Показываем сообщение об ошибке валидации
+                            scrollViewRef.current?.scrollTo({ y: 0, animated: true });
                             showError('Пожалуйста, исправьте ошибки в форме');
                             setFormSubmitted(false);
+                            setIsSubmitting(false);
                         } else {
-                            // Если не удалось определить поля ошибок, показываем общее сообщение
-                            showError('Произошла ошибка при создании остановки. Пожалуйста, попробуйте еще раз.');
+                            // Показываем конкретное сообщение об ошибке, если оно есть
+                            const finalErrorMessage = errorMessage && errorMessage !== String(error) 
+                                ? errorMessage 
+                                : 'Произошла ошибка при создании остановки. Пожалуйста, попробуйте еще раз.';
+                            showError(finalErrorMessage);
+                            setIsSubmitting(false);
                         }
-                    } else {
-                        // Обработка других типов ошибок
-                        showError('Произошла ошибка при создании остановки. Пожалуйста, попробуйте еще раз.');
+                    }
+                    
+                    // Обработка ошибки валидации цены из сообщения (когда ошибка не в формате массива)
+                    if (hasPriceError && errorMessage && (!errorsArray || !Array.isArray(errorsArray))) {
+                        showError('Ошибка валидации цены');
+                        showAlertError(
+                            'Ошибка валидации цены',
+                            errorMessage + '\n\nПожалуйста, исправьте цену товара или оставьте поле пустым для использования цены склада.',
+                            [{ text: 'OK' }]
+                        );
+                        
+                        setFormSubmitted(false);
+                        setIsSubmitting(false);
+                        return;
+                    }
+                    
+                    // Если ошибка не была обработана выше, показываем общее сообщение
+                    if (!hasPriceError || (errorsArray && Array.isArray(errorsArray))) {
+                        const finalErrorMessage = errorMessage && errorMessage !== String(error) 
+                            ? errorMessage 
+                            : 'Произошла ошибка при создании остановки. Пожалуйста, попробуйте еще раз.';
+                        showError(finalErrorMessage);
+                        setIsSubmitting(false);
                     }
                     
                     throw error;
                 }
             };
 
-            // Запускаем запрос с возможностью повторения
             await retryRequest();
+            
+            setIsSubmitting(false);
+            setFormSubmitted(false);
             
         } catch (error) {
             logData('Ошибка при обработке формы', error);
             showError('Ошибка при обработке данных. Пожалуйста, попробуйте еще раз.');
             setFormSubmitted(false);
+            setIsSubmitting(false);
         }
     }, [
         validateForm,
@@ -596,44 +749,49 @@ export const StopForm = memo(({
         dispatch,
         navigation,
         addressFromMap,
-        showSuccess,
+        showAlertSuccess,
+        showAlertError,
+        showAlertWarning,
         showError,
-        showInfo
+        showInfo,
+        warehouseId,
+        selectedProducts,
+        priceValidationErrors
     ]);
 
     return (
-        <ScrollView style={styles.scrollView}>
-            <View style={styles.formContainer}>
-                <View style={styles.formHeader}>
-                    {/* Блок для выбора фото */}
-                    <View style={styles.leftColumn}>
-                        <PhotoSection
-                            photo={photo}
-                            setPhoto={(newPhoto) => {
-                                setPhoto(newPhoto);
-                                setErrors(prev => ({...prev, photo: ''}));
-                            }}
-                            error={errors.photo}
-                        />
+        <View 
+            style={styles.formContainer}
+            onLayout={(event) => {
+                const { height } = event.nativeEvent.layout;
+                console.log('[StopForm] Form container height:', height);
+            }}
+        >
+                {/* Индикатор прогресса */}
+                <FormProgressBar 
+                    totalFields={totalFields} 
+                    filledFields={filledFields} 
+                />
 
-                        {/* Перемещенный блок времени стоянки */}
-                        <View style={styles.timeSection}>
-                            <Text style={[styles.label, { marginBottom: normalize(10) }]}>Время стоянки *</Text>
-                            <View style={styles.timeRow}>
-                                <View style={[styles.inputGroup, { flex: 1 }]}>
-                                    <Text style={styles.sublabel}>Дата</Text>
-                                    <CustomDatePicker date={startDate} onDateChange={onStartDateChange} />
-                                    <View style={[styles.inputUnderline, errors.startTime ? styles.underlineError : null]} />
-                                </View>
-                            </View>
-                            {errors.startTime ? <Text style={styles.errorText}>{errors.startTime}</Text> : null}
-                        </View>
-                    </View>
+                {/* Информационный баннер */}
+                {showHint && (
+                    <InfoBanner
+                        type="info"
+                        title="Совет"
+                        message="Заполните все поля со звездочкой (*) для успешного создания остановки"
+                        onClose={() => setShowHint(false)}
+                    />
+                )}
 
-                    {/* Блок для ввода адреса и информации о транспорте */}
-                    <View style={styles.rightColumn}>
-                        {/* Показываем выбор водителя только админам и сотрудникам */}
-                        {isAdminOrEmployee && (
+      
+
+                {isAdminOrEmployee && (
+                    <FormSection title="Водитель">
+                        <FormField
+                            label="Выберите водителя"
+                            required={isAdminOrEmployee}
+                            error={errors.driver}
+                        >
                             <DriverPicker
                                 drivers={allDrivers}
                                 selectedDriver={selectedDriver}
@@ -645,221 +803,347 @@ export const StopForm = memo(({
                                 setShowDriverPicker={setShowDriverPicker}
                                 error={errors.driver}
                             />
-                        )}
+                        </FormField>
+                    </FormSection>
+                )}
 
-                        <View style={styles.inputGroup}>
-                            {/* Блок для выбора района */}
-                            <DistrictPicker
-                                districts={districts}
-                                selectedDistrict={selectedDistrict}
-                                setSelectedDistrict={(districtId) => {
-                                    setSelectedDistrict(districtId);
-                                    setErrors(prev => ({...prev, district: ''}));
-                                }}
-                                showDistrictPicker={showDistrictPicker}
-                                setShowDistrictPicker={setShowDistrictPicker}
-                                error={errors.district}
-                            />
-                            <Text style={styles.label}> Адрес остановки *</Text>
-                            <TextInput
-                                style={[styles.input, errors.address ? styles.inputError : null]}
-                                value={address}
-                                onChangeText={(text) => {
-                                    setAddress(text);
-                                    setErrors(prev => ({...prev, address: ''}));
-                                    logData('Изменен адрес', text);
-                                }}
-                                placeholder="Введите адрес"
-                            />
-                            <View style={[styles.inputUnderline, errors.address ? styles.underlineError : null]}/>
-                            {errors.address ? <Text style={styles.errorText}>{errors.address}</Text> : null}
-                        </View>
+                <FormSection title="Фотография" subtitle="Прикрепите фотографию остановки">
+                    <FormField
+                        label="Фотография"
+                        required
+                        error={errors.photo}
+                    >
+                        <PhotoSection
+                            photo={photo}
+                            setPhoto={(newPhoto) => {
+                                setPhoto(newPhoto);
+                                setErrors(prev => ({...prev, photo: ''}));
+                            }}
+                            error={errors.photo}
+                        />
+                    </FormField>
+                </FormSection>
 
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>Модель транспорта *</Text>
-                            <TextInput
-                                style={[styles.input, errors.truckModel ? styles.inputError : null]}
-                                value={truckModel}
-                                onChangeText={(text) => {
-                                    setTruckModel(text);
-                                    // Очищаем ошибку при вводе
-                                    setErrors(prev => ({...prev, truckModel: ''}));
-                                    logData('Изменена модель транспорта', text);
-                                }}
-                                placeholder="Введите модель"
-                            />
-                            <View style={[styles.inputUnderline, errors.truckModel ? styles.underlineError : null]}/>
-                            {errors.truckModel ? <Text style={styles.errorText}>{errors.truckModel}</Text> : null}
-                        </View>
+                <FormSection 
+                    title="Местоположение" 
+                    subtitle="Укажите адрес и координаты остановки"
+                >
+                    <FormField
+                        label="Район"
+                        required
+                        error={errors.district}
+                    >
+                        <DistrictPicker
+                            districts={districts}
+                            selectedDistrict={selectedDistrict}
+                            setSelectedDistrict={(districtId) => {
+                            setSelectedDistrict(districtId);
+                            setErrors(prev => ({...prev, district: ''}));
+                            setWarehouseId(null);
+                            setSelectedProducts([]);
+                            setPriceValidationErrors({});
+                        }}
+                            showDistrictPicker={showDistrictPicker}
+                            setShowDistrictPicker={setShowDistrictPicker}
+                            error={errors.district}
+                        />
+                    </FormField>
 
-                        {/* Блок для ввода номера транспорта */}
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.label}>Номер транспорта *</Text>
-                            <TextInput
-                                style={[styles.input, errors.truckNumber ? styles.inputError : null]}
-                                value={truckNumber}
-                                onChangeText={(text) => {
-                                    setTruckNumber(text);
-                                    setErrors(prev => ({...prev, truckNumber: ''}));
-                                    logData('Изменен номер транспорта', text);
+                    {selectedDistrict && (
+                        <FormField
+                            label="Склад и товары"
+                            required
+                            error={errors.warehouse}
+                        >
+                            <StopProductsSelector
+                                warehouseId={warehouseId}
+                                districtId={selectedDistrict}
+                                selectedProducts={selectedProducts}
+                                onWarehouseChange={(newWarehouseId) => {
+                                    setWarehouseId(newWarehouseId);
+                                    // Очищаем ошибки валидации цен при смене склада
+                                    setPriceValidationErrors({});
                                 }}
-                                placeholder="А001АА 06"
+                                onProductsChange={setSelectedProducts}
+                                showAlertError={showAlertError}
+                                showAlertWarning={showAlertWarning}
+                                priceValidationErrors={priceValidationErrors}
+                                onPriceErrorClear={(productId) => {
+                                    setPriceValidationErrors(prev => {
+                                        const newErrors = { ...prev };
+                                        delete newErrors[productId];
+                                        return newErrors;
+                                    });
+                                }}
                             />
-                            <View style={[styles.inputUnderline, errors.truckNumber ? styles.underlineError : null]}/>
-                            {errors.truckNumber ? <Text style={styles.errorText}>{errors.truckNumber}</Text> : null}
-                        </View>
-                    </View>
-                </View>
+                        </FormField>
+                    )}
 
-                {/* Блок для выбора времени начала и окончания стоянки (напротив друг друга) */}
-                <View style={styles.timeContainer}>
-                    <View style={[styles.timeSection, styles.timeLeft]}>
-                        <View style={[styles.timeRow, { width: 320 }]}> {/* Исправлено с "90%" на числовое значение */}
-                            <View style={[styles.inputGroup, { flex: 1 }]}>
-                                <Text style={styles.sublabel}>Начало</Text>
+                    <FormHint
+                        title="Используйте карту"
+                        description="Нажмите на кнопку ниже, чтобы выбрать точное местоположение на карте"
+                        onPress={() => {
+                            if (locationData.mapLocation) {
+                                handleMapOpen(locationData.mapLocation);
+                            } else {
+                                handleMapOpen(null);
+                            }
+                        }}
+                    />
+                    
+                    <FormField
+                        label="Адрес остановки"
+                        required
+                        hint="Полный адрес остановки"
+                        error={errors.address}
+                    >
+                        <TextInput
+                            style={[styles.input, errors.address ? styles.inputError : null]}
+                            value={address}
+                            onChangeText={(text) => {
+                                setAddress(text);
+                                setErrors(prev => ({...prev, address: ''}));
+                                logData('Изменен адрес', text);
+                            }}
+                            placeholder="Введите адрес"
+                            placeholderTextColor="#999"
+                        />
+                        <View style={[styles.inputUnderline, errors.address ? styles.underlineError : null]}/>
+                    </FormField>
+
+                    <FormField
+                        label="Координаты"
+                        required
+                        error={errors.location}
+                    >
+                        <LocationInput
+                            mapLocation={locationData.mapLocation}
+                            setMapLocation={(text) => {
+                                setLocationData(prev => ({...prev, mapLocation: text}));
+                                setErrors(prev => ({...prev, location: ''}));
+                            }}
+                            isLocationLoading={isLocationLoading}
+                            setIsLocationLoading={setIsLocationLoading}
+                            onOpenMap={handleMapOpen}
+                            error={errors.location}
+                            setAddress={setAddress}
+                        />
+                    </FormField>
+                </FormSection>
+
+                <FormSection 
+                    title="Транспорт" 
+                    subtitle="Информация о транспортном средстве"
+                >
+                    <FormField
+                        label="Модель транспорта"
+                        required
+                        error={errors.truckModel}
+                    >
+                        <TextInput
+                            style={[styles.input, errors.truckModel ? styles.inputError : null]}
+                            value={truckModel}
+                            onChangeText={(text) => {
+                                setTruckModel(text);
+                                setErrors(prev => ({...prev, truckModel: ''}));
+                                logData('Изменена модель транспорта', text);
+                            }}
+                            placeholder="LADA Largus"
+                            placeholderTextColor="#999"
+                        />
+                        <View style={[styles.inputUnderline, errors.truckModel ? styles.underlineError : null]}/>
+                    </FormField>
+
+                    <FormField
+                        label="Номер транспорта"
+                        required
+                        error={errors.truckNumber}
+                    >
+                        <TextInput
+                            style={[styles.input, errors.truckNumber ? styles.inputError : null]}
+                            value={truckNumber}
+                            onChangeText={(text) => {
+                                setTruckNumber(text);
+                                setErrors(prev => ({...prev, truckNumber: ''}));
+                                logData('Изменен номер транспорта', text);
+                            }}
+                            placeholder="А001АА 06"
+                            placeholderTextColor="#999"
+                            autoCapitalize="characters"
+                        />
+                        <View style={[styles.inputUnderline, errors.truckNumber ? styles.underlineError : null]}/>
+                    </FormField>
+                </FormSection>
+
+                <FormSection 
+                    title="Время стоянки" 
+                    subtitle="Укажите дату и время начала и окончания работы остановки"
+                >
+                    <FormField
+                        label="Дата и время начала"
+                        required
+                        error={errors.startTime}
+                    >
+                        <View style={styles.dateTimeRow}>
+                            <View style={styles.dateTimeColumn}>
+                                <Text style={styles.sublabel}>Дата начала</Text>
+                                <CustomDatePicker date={startDate} onDateChange={onStartDateChange} />
+                                <View style={[styles.inputUnderline, errors.startTime ? styles.underlineError : null]} />
+                            </View>
+                            
+                            <View style={styles.dateTimeColumn}>
+                                <Text style={styles.sublabel}>Время начала</Text>
                                 <CustomTimePicker date={startTime} onTimeChange={onStartTimeChange} />
                                 <View style={[styles.inputUnderline, errors.startTime ? styles.underlineError : null]} />
                             </View>
                         </View>
-                        {errors.startTime ? <Text style={styles.errorText}>{errors.startTime}</Text> : null}
-                    </View>
+                    </FormField>
 
-                    <View style={[styles.timeSection, styles.timeRight]}>
-                        <View style={[styles.timeRow, { width: 320 }]}> {/* Исправлено с "90%" на числовое значение */}
-                            <View style={[styles.inputGroup, { flex: 1}]}>
-                                <Text style={styles.sublabel}>Окончание</Text>
+                    <FormField
+                        label="Дата и время окончания"
+                        required
+                        error={errors.endTime}
+                    >
+                        <View style={styles.dateTimeRow}>
+                            <View style={styles.dateTimeColumn}>
+                                <Text style={styles.sublabel}>Дата окончания</Text>
+                                <CustomDatePicker date={endDate} onDateChange={onEndDateChange} />
+                                <View style={[styles.inputUnderline, errors.endTime ? styles.underlineError : null]} />
+                            </View>
+                            
+                            <View style={styles.dateTimeColumn}>
+                                <Text style={styles.sublabel}>Время окончания</Text>
                                 <CustomTimePicker date={endTime} onTimeChange={onEndTimeChange} />
                                 <View style={[styles.inputUnderline, errors.endTime ? styles.underlineError : null]} />
                             </View>
                         </View>
-                        {errors.endTime ? <Text style={styles.errorText}>{errors.endTime}</Text> : null}
-                    </View>
-                </View>
+                    </FormField>
+                </FormSection>
 
-                {/* Блок для ввода описания */}
-                <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Дополнительный комментарий</Text>
-                    <TextInput
-                        style={[styles.input, styles.commentInput]}
-                        value={description}
-                        onChangeText={(text) => {
-                            setDescription(text);
-                            logData('Изменено описание', text);
-                        }}
-                        placeholder="Введите дополнительный комментарий"
-                        multiline={true}
-                        numberOfLines={3}
+                <FormSection title="Дополнительная информация">
+                    <FormField label="Комментарий">
+                        <TextInput
+                            style={[styles.input, styles.commentInput]}
+                            value={description}
+                            onChangeText={(text) => {
+                                setDescription(text);
+                                logData('Изменено описание', text);
+                            }}
+                            placeholder="Введите дополнительную информацию"
+                            placeholderTextColor="#999"
+                            multiline
+                            numberOfLines={4}
+                            textAlignVertical="top"
+                        />
+                        <View style={styles.inputUnderline}/>
+                    </FormField>
+                </FormSection>
+
+                {/* Подсказка перед отправкой */}
+                {filledFields === totalFields && (
+                    <InfoBanner
+                        type="success"
+                        title="Готово к отправке!"
+                        message="Все обязательные поля заполнены. Проверьте данные и нажмите кнопку отправки."
                     />
-                    <View style={styles.inputUnderline}/>
-                </View>
+                )}
 
-                {/* Блок координат */}
-                <LocationInput
-                    mapLocation={locationData.mapLocation}
-                    setMapLocation={(text) => {
-                        setLocationData(prev => ({...prev, mapLocation: text}));
-                        setErrors(prev => ({...prev, location: ''}));
-                    }}
-                    isLocationLoading={isLocationLoading}
-                    setIsLocationLoading={setIsLocationLoading}
-                    onOpenMap={handleMapOpen}
-                    error={errors.location}
-                    setAddress={setAddress}
-                />
-
-                {/* Кнопка добавления остановки */}
                 <TouchableOpacity
                     style={[
                         styles.submitButton,
-                        (isLoading && formSubmitted) && styles.disabledButton
+                        isSubmitting && styles.disabledButton
                     ]}
                     onPress={handleSubmit}
                     activeOpacity={0.7}
-                    disabled={isLoading && formSubmitted}
+                    disabled={isSubmitting}
                 >
-                    {isLoading && formSubmitted ? (
-                        <ActivityIndicator size="small" color="#fff"/>
+                    {isSubmitting ? (
+                        <View style={styles.loadingContainer}>
+                            <ActivityIndicator size="small" color="#fff"/>
+                            <Text style={styles.submitButtonText}>Добавление...</Text>
+                        </View>
                     ) : (
-                        <Text style={styles.submitButtonText}>Готово!</Text>
+                        <Text style={styles.submitButtonText}>Добавить остановку</Text>
                     )}
                 </TouchableOpacity>
-            </View>
-        </ScrollView>
+        </View>
     );
 }, (prevProps, nextProps) => {
-    // Оптимизация рендеринга - проверяем только те пропы, которые действительно важны
     return (
         prevProps.formSubmitted === nextProps.formSubmitted &&
         prevProps.isLocationLoading === nextProps.isLocationLoading &&
         prevProps.locationData.mapLocation === nextProps.locationData.mapLocation &&
         prevProps.userRole === nextProps.userRole &&
-        // Для districts достаточно проверить длину, т.к. они редко меняются
         prevProps.districts.length === nextProps.districts.length
     );
 });
 
 const styles = StyleSheet.create({
-    scrollView: {
-        flex: 1,
-    },
     formContainer: {
+        padding: normalize(20),
+        paddingBottom: normalize(30),
+        width: '100%',
+    },
+    section: {
+        marginBottom: normalize(28),
+        backgroundColor: '#fff',
+        borderRadius: 12,
         padding: normalize(16),
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 1,
+        },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+        elevation: 2,
     },
-    formHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-    },
-    leftColumn: {
-        width: '45%',
-    },
-    rightColumn: {
-        width: '50%',
+    sectionTitle: {
+        fontSize: normalizeFont(17),
+        fontWeight: '600',
+        color: Color.dark,
+        marginBottom: normalize(16),
+        fontFamily: FontFamily.sFProText,
     },
     inputGroup: {
-        marginBottom: normalize(20),
-        width: "100%",
+        marginBottom: normalize(16),
     },
     label: {
         fontSize: normalizeFont(15),
-        fontWeight: '600',
+        fontWeight: '500',
         color: Color.dark,
-        opacity: 0.4,
-        marginBottom: 0,
+        opacity: 0.6,
+        marginBottom: normalize(8),
         fontFamily: FontFamily.sFProText,
     },
     sublabel: {
-        fontSize: normalizeFont(15),
+        fontSize: normalizeFont(14),
         fontWeight: '500',
         color: Color.dark,
-        opacity: 0.4,
+        opacity: 0.6,
+        marginBottom: normalize(8),
         fontFamily: FontFamily.sFProText,
     },
-    timeLeft: {
-        width: '50%',
-    },
-    timeRight: {
-        width: '50%',
-    },
     input: {
-        height: normalize(30),
-        fontSize: normalizeFont(FontSize.size_xs),
+        height: normalize(44),
+        fontSize: normalizeFont(FontSize.size_sm),
         color: Color.dark,
-        paddingVertical: normalize(5),
-        paddingLeft: 0, // Убираем левый отступ здесь
+        paddingVertical: normalize(8),
+        paddingHorizontal: 0,
         fontFamily: FontFamily.sFProText,
     },
     inputError: {
         color: '#FF3B30',
     },
     commentInput: {
-        height: normalize(30),
+        height: normalize(100),
         textAlignVertical: 'top',
-        paddingLeft: 0, // Для уверенности добавляем и здесь
+        paddingTop: normalize(8),
     },
     inputUnderline: {
         height: 1,
-        backgroundColor: '#000',
-        marginTop: 0,
+        backgroundColor: '#E5E5EA',
+        marginTop: normalize(4),
     },
     underlineError: {
         backgroundColor: '#FF3B30',
@@ -867,59 +1151,47 @@ const styles = StyleSheet.create({
     },
     errorText: {
         color: '#FF3B30',
-        fontSize: normalizeFont(FontSize.size_xs),
-        marginTop: normalize(5),
+        fontSize: normalizeFont(13),
+        marginTop: normalize(6),
         fontFamily: FontFamily.sFProText,
     },
-    dateTimePicker: {
-        height: normalize(40),
-        justifyContent: 'center',
-        paddingLeft: 0,
-    },
-    dateTimeText: {
-        fontSize: normalizeFont(FontSize.size_sm),
-        color: Color.dark,
-        fontFamily: FontFamily.sFProText,
-    },
-    timeContainer: {
+    dateTimeRow: {
         flexDirection: 'row',
-        justifyContent: 'flex-start',
-        marginBottom: normalize(10),
+        gap: normalize(12),
     },
-    timeSection: {
-        marginBottom: normalize(10),
-    },
-    timeHalf: {
-        width: '48%',
-    },
-    sectionTitle: {
-        fontSize: normalizeFont(FontSize.size_sm),
-        fontWeight: '600',
-        color: Color.dark,
-        marginBottom: normalize(10),
-        fontFamily: FontFamily.sFProText,
-        opacity: 0.4,
-    },
-    timeRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
+    dateTimeColumn: {
+        flex: 1,
     },
     submitButton: {
         backgroundColor: '#3B43A2',
-        height: normalize(40),
-        borderRadius: Border.br_3xs,
+        height: normalize(52),
+        borderRadius: 12,
         justifyContent: 'center',
         alignItems: 'center',
-        marginTop: normalize(20),
-        marginBottom: normalize(30),
+        marginTop: normalize(8),
+        shadowColor: '#3B43A2',
+        shadowOffset: {
+            width: 0,
+            height: 4,
+        },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 5,
     },
     disabledButton: {
         backgroundColor: '#a0a0a0',
+        shadowOpacity: 0.1,
     },
     submitButtonText: {
         color: Color.colorLightMode,
-        fontSize: normalizeFont(FontSize.size_sm),
-        fontWeight: '500',
+        fontSize: normalizeFont(17),
+        fontWeight: '600',
         fontFamily: FontFamily.sFProText,
+    },
+    loadingContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: normalize(10),
     },
 });

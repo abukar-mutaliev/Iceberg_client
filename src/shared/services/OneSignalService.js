@@ -4,6 +4,7 @@
  */
 
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Ленивая загрузка OneSignal для избежания ошибок при выходе
@@ -145,7 +146,9 @@ class OneSignalService {
         try {
             if (!this.isInitialized) {
                 // Пытаемся инициализировать OneSignal с App ID
-                const appId = 'a1bde379-4211-4fb9-89e2-3e94530a7041';
+                const appId =
+                    process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ||
+                    (Constants?.expoConfig?.extra?.oneSignalAppId ?? null);
                 const initResult = await this.initialize(appId);
                 if (!initResult) {
                     return false;

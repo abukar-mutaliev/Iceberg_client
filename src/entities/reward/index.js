@@ -12,6 +12,7 @@ export {
     fetchAllEmployeesStats,
     fetchAllPendingRewards,
     processReward,
+    batchProcessRewards,
     clearEmployeeRewards,
     clearAllEmployeesStats,
     clearPendingRewards,

@@ -94,7 +94,7 @@ export const RewardCard = ({ reward, showDetails = false, showEmployee = false, 
             
             setModalVisible(false);
             Alert.alert(
-                'Успех',
+                'Готово',
                 `Вознаграждение ${selectedAction === 'APPROVED' ? 'одобрено' : selectedAction === 'PAID' ? 'помечено как выплаченное' : 'отклонено'}`
             );
         } catch (error) {

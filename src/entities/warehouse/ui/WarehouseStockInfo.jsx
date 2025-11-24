@@ -17,7 +17,11 @@ export const WarehouseStockInfo = ({
                                        stockStats = null,
                                        // Опциональные обработчики
                                        onWarehousePress = null,
-                                       onRefresh = null
+                                       onRefresh = null,
+                                       // Новые пропсы для быстрого добавления
+                                       highlightedWarehouseId = null,
+                                       showQuickAddButton = false,
+                                       onQuickAddPress = null
                                    }) => {
     const renderContent = () => {
         if (loading) {
@@ -118,6 +122,9 @@ export const WarehouseStockInfo = ({
                                 warehouse={warehouse}
                                 onPress={onWarehousePress}
                                 isNearest={nearestWarehouses?.some(nw => nw.id === warehouse.id)}
+                                isHighlighted={warehouse.id === highlightedWarehouseId}
+                                showQuickAddButton={showQuickAddButton}
+                                onQuickAddPress={onQuickAddPress}
                             />
                         ))}
                 </View>
@@ -159,9 +166,24 @@ export const WarehouseStockInfo = ({
 };
 
 // Компонент карточки склада
-const WarehouseCard = React.memo(({ warehouse, onPress, isNearest = false }) => {
+const WarehouseCard = React.memo(({
+    warehouse,
+    onPress,
+    isNearest = false,
+    isHighlighted = false,
+    showQuickAddButton = false,
+    onQuickAddPress = null
+}) => {
     const reservedQuantity = (warehouse.totalQuantity || 0) - (warehouse.availableQuantity || 0);
     const hasReserved = reservedQuantity > 0;
+    
+    // Получаем информацию о ценах из priceInfo или напрямую из warehouse
+    const priceInfo = warehouse.priceInfo || (warehouse.productStock?.priceInfo);
+    const warehousePrice = priceInfo?.warehousePrice ?? warehouse.warehousePrice;
+    const effectivePrice = priceInfo?.effectivePrice ?? warehousePrice;
+    const basePrice = priceInfo?.basePrice;
+    const discount = priceInfo?.discount;
+    const discountPercent = priceInfo?.discountPercent;
 
     const handlePress = () => {
         if (onPress) {
@@ -169,9 +191,19 @@ const WarehouseCard = React.memo(({ warehouse, onPress, isNearest = false }) => 
         }
     };
 
+    const handleQuickAddPress = () => {
+        if (onQuickAddPress) {
+            onQuickAddPress(warehouse);
+        }
+    };
+
     return (
         <TouchableOpacity
-            style={[styles.warehouseCard, isNearest && styles.nearestWarehouseCard]}
+            style={[
+                styles.warehouseCard,
+                isNearest && styles.nearestWarehouseCard,
+                isHighlighted && styles.highlightedWarehouseCard
+            ]}
             onPress={handlePress}
             disabled={!onPress}
             activeOpacity={onPress ? 0.7 : 1}
@@ -194,6 +226,41 @@ const WarehouseCard = React.memo(({ warehouse, onPress, isNearest = false }) => 
                 </View>
             </View>
 
+            {/* Информация о ценах */}
+            {(effectivePrice || basePrice) && (
+                <View style={styles.priceInfoContainer}>
+                    <View style={styles.priceRow}>
+                        <Text style={styles.priceLabel}>Цена за коробку:</Text>
+                        <Text style={styles.priceValue}>
+                            {effectivePrice ? parseFloat(effectivePrice).toFixed(0) : parseFloat(basePrice).toFixed(0)} ₽
+                        </Text>
+                    </View>
+                    {warehousePrice !== null && warehousePrice !== undefined && (
+                        <View style={styles.warehousePriceRow}>
+                            <Text style={styles.warehousePriceLabel}>Цена для склада:</Text>
+                            <Text style={styles.warehousePriceValue}>
+                                {parseFloat(warehousePrice).toFixed(0)} ₽
+                            </Text>
+                        </View>
+                    )}
+                    {warehousePrice !== null && warehousePrice !== undefined && basePrice && discount < 0 && (
+                        <View style={styles.discountRow}>
+                            <Text style={styles.discountText}>
+                                Скидка: {Math.abs(discount).toFixed(0)} ₽ ({Math.abs(discountPercent || 0).toFixed(1)}%)
+                            </Text>
+                            <Text style={styles.basePriceText}>
+                                Базовая: {parseFloat(basePrice).toFixed(0)} ₽
+                            </Text>
+                        </View>
+                    )}
+                    {warehousePrice === null && basePrice && (
+                        <Text style={styles.fallbackPriceText}>
+                            Используется базовая цена: {parseFloat(basePrice).toFixed(0)} ₽
+                        </Text>
+                    )}
+                </View>
+            )}
+
             {warehouse.district && (
                 <View style={styles.warehouseDistrict}>
                     <Text style={styles.districtIcon}>📍</Text>
@@ -209,6 +276,20 @@ const WarehouseCard = React.memo(({ warehouse, onPress, isNearest = false }) => 
                     <Text style={styles.reservedQuantity}>
                         Зарезервировано: {reservedQuantity} шт.
                     </Text>
+                </View>
+            )}
+
+            {/* Кнопка быстрого добавления */}
+            {showQuickAddButton && onQuickAddPress && (
+                <View style={styles.quickAddContainer}>
+                    <TouchableOpacity
+                        style={styles.quickAddButton}
+                        onPress={handleQuickAddPress}
+                        activeOpacity={0.7}
+                    >
+                        <Text style={styles.quickAddIcon}>➕</Text>
+                        <Text style={styles.quickAddText}>Добавить</Text>
+                    </TouchableOpacity>
                 </View>
             )}
         </TouchableOpacity>
@@ -416,6 +497,11 @@ const styles = StyleSheet.create({
         borderColor: Color.blue2,
         borderWidth: 1,
     },
+    highlightedWarehouseCard: {
+        borderColor: '#FFC107',
+        borderWidth: 2,
+        backgroundColor: '#FFF8E1',
+    },
     warehouseHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -527,5 +613,99 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: Color.dark,
         fontFamily: FontFamily.sFProDisplay,
+    },
+    quickAddContainer: {
+        marginTop: normalize(8),
+        paddingTop: normalize(8),
+        borderTopWidth: 0.5,
+        borderTopColor: Color.border,
+        alignItems: 'flex-end',
+    },
+    quickAddButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: Color.blue2,
+        paddingHorizontal: normalize(12),
+        paddingVertical: normalize(6),
+        borderRadius: normalize(16),
+    },
+    quickAddIcon: {
+        fontSize: normalizeFont(14),
+        color: Color.colorLightMode,
+        marginRight: normalize(4),
+    },
+    quickAddText: {
+        fontSize: normalizeFont(12),
+        fontWeight: '600',
+        color: Color.colorLightMode,
+        fontFamily: FontFamily.sFProText,
+    },
+    priceInfoContainer: {
+        marginTop: normalize(8),
+        paddingTop: normalize(8),
+        borderTopWidth: 0.5,
+        borderTopColor: Color.border,
+    },
+    priceRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: normalize(4),
+    },
+    priceLabel: {
+        fontSize: normalizeFont(12),
+        color: Color.textSecondary,
+        fontFamily: FontFamily.sFProText,
+    },
+    priceValue: {
+        fontSize: normalizeFont(16),
+        fontWeight: '700',
+        color: Color.blue2,
+        fontFamily: FontFamily.sFProDisplay,
+    },
+    warehousePriceRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginTop: normalize(4),
+        paddingTop: normalize(4),
+        borderTopWidth: 0.5,
+        borderTopColor: Color.border,
+    },
+    warehousePriceLabel: {
+        fontSize: normalizeFont(11),
+        color: Color.textSecondary,
+        fontFamily: FontFamily.sFProText,
+    },
+    warehousePriceValue: {
+        fontSize: normalizeFont(14),
+        fontWeight: '600',
+        color: '#3B43A2',
+        fontFamily: FontFamily.sFProDisplay,
+    },
+    discountRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginTop: normalize(4),
+    },
+    discountText: {
+        fontSize: normalizeFont(11),
+        color: '#4CAF50',
+        fontFamily: FontFamily.sFProText,
+        fontWeight: '500',
+    },
+    basePriceText: {
+        fontSize: normalizeFont(10),
+        color: Color.textSecondary,
+        fontFamily: FontFamily.sFProText,
+        textDecorationLine: 'line-through',
+    },
+    fallbackPriceText: {
+        fontSize: normalizeFont(10),
+        color: Color.textSecondary,
+        fontFamily: FontFamily.sFProText,
+        fontStyle: 'italic',
+        marginTop: normalize(4),
     },
 }); 

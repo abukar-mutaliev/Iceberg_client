@@ -94,7 +94,6 @@ export const suppliersApi = {
 
             try {
                 const productsResponse = await suppliersApi.getSupplierProducts(supplierId);
-                console.log('Ответ от API getSupplierProducts:', productsResponse);
 
                 // Форматируем данные продуктов
                 let products = [];

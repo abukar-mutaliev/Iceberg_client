@@ -183,11 +183,6 @@ export const ReusableModal = ({
         }
     };
 
-    // Обработчик нажатия внутри модального окна для скрытия клавиатуры
-    const handleModalPress = () => {
-        Keyboard.dismiss();
-    };
-
     // Компонент заголовка с возможностью свайпа
     const ModalHeader = () => (
         <View style={styles.header} {...panResponder.panHandlers}>
@@ -239,19 +234,15 @@ export const ReusableModal = ({
 
                     {/* Основное содержимое модального окна */}
                     <KeyboardAvoidingView
-                        behavior={Platform.OS === "ios" ? "padding" : undefined}
+                        behavior={Platform.OS === "ios" ? "padding" : "height"}
                         style={{ flex: 1 }}
-                        keyboardVerticalOffset={Platform.OS === "ios" ? 30 : 0}
+                        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+                        enabled={true}
                     >
                         {/* Используем обычный View вместо ScrollView для предотвращения конфликтов с FlatList */}
                         <View style={styles.contentContainer}>
                             {contentReady ? (
-                                // Оборачиваем содержимое в TouchableWithoutFeedback для скрытия клавиатуры
-                                <TouchableWithoutFeedback onPress={handleModalPress} accessible={false}>
-                                    <View style={{ flex: 1 }}>
-                                        {children}
-                                    </View>
-                                </TouchableWithoutFeedback>
+                                children
                             ) : (
                                 <View style={styles.loadingContainer}>
                                     {/* Заглушка во время загрузки содержимого */}

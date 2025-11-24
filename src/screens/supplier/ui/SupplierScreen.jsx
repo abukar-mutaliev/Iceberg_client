@@ -7,10 +7,7 @@ import {
     selectSupplierById
 } from '@entities/supplier';
 
-/**
- * Оптимизированный компонент экрана поставщика с исправлением порядка хуков
- * Решает проблему "React has detected a change in the order of Hooks"
- */
+
 const SupplierScreen = React.memo(({ route, navigation }) => {
     // Извлекаем ID поставщика из всех возможных источников
     const params = route?.params || {};

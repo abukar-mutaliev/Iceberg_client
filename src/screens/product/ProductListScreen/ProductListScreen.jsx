@@ -31,7 +31,7 @@ export const ProductListScreen = () => {
     const handleDeleteProduct = async (productId) => {
         try {
             await dispatch(deleteProduct(productId)).unwrap();
-            Alert.alert('Успех', 'Продукт удален');
+            Alert.alert('Готово', 'Продукт удален');
 
             // После удаления принудительно обновляем данные
             await forceReloadData();

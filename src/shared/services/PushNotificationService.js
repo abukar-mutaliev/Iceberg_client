@@ -1,8 +1,11 @@
 import OneSignalService from './OneSignalService';
+import Constants from 'expo-constants';
 
 class PushNotificationService {
     constructor() {
-        this.oneSignalAppId = 'a1bde379-4211-4fb9-89e2-3e94530a7041';
+        this.oneSignalAppId =
+            process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ||
+            (Constants?.expoConfig?.extra?.oneSignalAppId ?? null);
         
         this.isInitialized = false;
         this.navigationReady = false;
@@ -208,6 +211,169 @@ class PushNotificationService {
 
     async registerForPushNotificationsAsync() {
         return await this.initialize();
+    }
+
+    // =============================
+    // Diagnostics helpers
+    // =============================
+    getResolvedAppIdSources() {
+        return {
+            env: process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID || null,
+            extra: Constants?.expoConfig?.extra?.oneSignalAppId || null,
+            resolved: this.oneSignalAppId || null,
+        };
+    }
+
+    getBuildRuntimeInfo() {
+        return {
+            buildType: process.env.EXPO_PUBLIC_BUILD_TYPE || null,
+            nodeEnv: process.env.NODE_ENV || null,
+            environmentExtra: Constants?.expoConfig?.extra?.environment || null,
+            runtimeVersion: Constants?.expoConfig?.runtimeVersion || null,
+            appName: Constants?.expoConfig?.name || null,
+            appVersion: Constants?.expoConfig?.version || null,
+        };
+    }
+
+    async getOneSignalRuntimeInfo() {
+        try {
+            // Ленивая загрузка SDK напрямую для низкоуровневых проверок
+            const OneSignalModule = require('react-native-onesignal');
+            const oneSignal = OneSignalModule.default || OneSignalModule.OneSignal || OneSignalModule;
+
+            const info = {
+                sdkLoaded: !!oneSignal,
+                hasNotificationsAPI: !!oneSignal?.Notifications,
+                hasUserAPI: !!oneSignal?.User,
+                playerId: null,
+                optedIn: null,
+                hasPermission: null,
+                // Расширенная диагностика
+                subscriptionStatus: null,
+                pushToken: null,
+                deviceState: null,
+                notificationPermission: null,
+                fcmToken: null,
+                // Проверка FCM
+                fcmAvailable: false,
+                fcmTokenRetrieved: false,
+            };
+
+            try {
+                if (oneSignal?.User?.pushSubscription?.getIdAsync) {
+                    info.playerId = await oneSignal.User.pushSubscription.getIdAsync();
+                }
+            } catch (_) {}
+
+            try {
+                // В разных версиях SDK может быть флаг или метод
+                if (oneSignal?.User?.pushSubscription?.getOptedIn) {
+                    info.optedIn = await oneSignal.User.pushSubscription.getOptedIn();
+                } else if (typeof oneSignal?.User?.pushSubscription?.optedIn === 'boolean') {
+                    info.optedIn = oneSignal.User.pushSubscription.optedIn;
+                }
+            } catch (_) {}
+
+            try {
+                if (oneSignal?.Notifications?.hasPermission) {
+                    info.hasPermission = await oneSignal.Notifications.hasPermission();
+                }
+            } catch (_) {}
+
+            // Расширенная диагностика подписки
+            try {
+                if (oneSignal?.User?.pushSubscription) {
+                    const subscription = oneSignal.User.pushSubscription;
+
+                    // Проверяем статус подписки
+                    if (subscription.getOptedIn) {
+                        info.subscriptionStatus = await subscription.getOptedIn();
+                    }
+
+                    // Проверяем push token (FCM)
+                    if (subscription.getTokenAsync) {
+                        info.pushToken = await subscription.getTokenAsync();
+                        info.fcmToken = info.pushToken; // FCM токен
+                        info.fcmTokenRetrieved = !!info.pushToken;
+                    }
+
+                    // Проверяем device state
+                    if (subscription.getIdAsync) {
+                        info.deviceState = await subscription.getIdAsync();
+                    }
+                }
+            } catch (subError) {
+                info.subscriptionError = subError?.message || String(subError);
+            }
+
+            // Проверяем разрешения уведомлений
+            try {
+                if (oneSignal?.Notifications?.permission) {
+                    info.notificationPermission = oneSignal.Notifications.permission;
+                }
+            } catch (_) {}
+
+            // Проверяем доступность FCM
+            try {
+                const { Platform } = require('react-native');
+                if (Platform.OS === 'android') {
+                    // FCM доступен через OneSignal, но проверяем токен
+                    info.fcmAvailable = true; // OneSignal использует FCM под капотом
+                }
+            } catch (_) {}
+
+            return info;
+        } catch (e) {
+            return {
+                sdkLoaded: false,
+                error: e?.message || String(e),
+            };
+        }
+    }
+
+    async diagnostics(user) {
+        const appIdSources = this.getResolvedAppIdSources();
+        const buildInfo = this.getBuildRuntimeInfo();
+        const status = this.getServiceStatus();
+        const oneSignalRuntime = await this.getOneSignalRuntimeInfo();
+
+        try {
+            console.log('[DIAG] OneSignal AppId (env):', appIdSources.env || 'null');
+            console.log('[DIAG] OneSignal AppId (extra):', appIdSources.extra || 'null');
+            console.log('[DIAG] OneSignal AppId (resolved):', appIdSources.resolved || 'null');
+
+            console.log('[DIAG] Build/runtime:', JSON.stringify(buildInfo));
+            console.log('[DIAG] Push service status:', JSON.stringify(status));
+            console.log('[DIAG] OneSignal runtime:', JSON.stringify({
+                sdkLoaded: oneSignalRuntime.sdkLoaded,
+                hasNotificationsAPI: oneSignalRuntime.hasNotificationsAPI,
+                hasUserAPI: oneSignalRuntime.hasUserAPI,
+                playerId: oneSignalRuntime.playerId ? `${String(oneSignalRuntime.playerId).substring(0, 8)}...` : null,
+                optedIn: oneSignalRuntime.optedIn,
+                hasPermission: oneSignalRuntime.hasPermission,
+                // FCM диагностика
+                fcmAvailable: oneSignalRuntime.fcmAvailable,
+                fcmTokenRetrieved: oneSignalRuntime.fcmTokenRetrieved,
+                fcmToken: oneSignalRuntime.fcmToken ? `${String(oneSignalRuntime.fcmToken).substring(0, 20)}...` : null,
+                subscriptionStatus: oneSignalRuntime.subscriptionStatus,
+                pushToken: oneSignalRuntime.pushToken ? `${String(oneSignalRuntime.pushToken).substring(0, 20)}...` : null,
+                deviceState: oneSignalRuntime.deviceState ? `${String(oneSignalRuntime.deviceState).substring(0, 8)}...` : null,
+                notificationPermission: oneSignalRuntime.notificationPermission,
+                error: oneSignalRuntime.error || null,
+                subscriptionError: oneSignalRuntime.subscriptionError || null,
+            }));
+
+            if (user?.id) {
+                console.log('[DIAG] User:', JSON.stringify({ id: user.id, role: user.role }));
+            }
+        } catch (_) {}
+
+        return {
+            appIdSources,
+            buildInfo,
+            status,
+            oneSignalRuntime,
+        };
     }
 }
 

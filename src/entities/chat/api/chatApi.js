@@ -31,7 +31,7 @@ const ChatApi = {
 
   markAsRead: (roomId) => chatApiModule.post(`/rooms/${roomId}/read`),
 
-  searchUsers: (query) => chatApiModule.get('/users/search', { query }),
+  searchUsers: (query, limit = 2000) => chatApiModule.get('/users/search', { query, limit }),
 
   searchRooms: (query) => chatApiModule.get('/rooms/search', { query }),
 

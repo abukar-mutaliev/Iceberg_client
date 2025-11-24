@@ -57,6 +57,9 @@ export {
 export {
     selectMyOrders,
     selectStaffOrders,
+    selectActiveStaffOrders,
+    selectHistoryStaffOrders,
+    selectWaitingStockStaffOrders,
     selectOrderDetails,
     selectOrdersStats,
     selectMyOrdersLoading,

@@ -8,7 +8,6 @@ import {
   Image,
   SafeAreaView,
   ScrollView,
-  Alert,
   Modal,
   Platform,
   ActivityIndicator,
@@ -23,13 +22,15 @@ import { getBaseUrl } from '@shared/api/api';
 import { AddUserIcon } from '@shared/ui/Icon/AddUserIcon';
 import { IconEdit } from '@shared/ui/Icon/Profile/IconEdit';
 import { ImageViewerModal } from '@shared/ui/ImageViewerModal/ui/ImageViewerModal';
+import { useCustomAlert } from '@shared/ui/CustomAlert';
 
 export const GroupInfoScreen = ({ route, navigation }) => {
-  const { roomId } = route.params;
+  const { roomId, fromScreen } = route.params || {};
   const dispatch = useDispatch();
   const currentUser = useSelector(state => state?.auth?.user);
   const roomDataRaw = useSelector(state => state?.chat?.rooms?.byId?.[roomId]);
   const roomData = roomDataRaw?.room ? roomDataRaw.room : roomDataRaw;
+  const { showError, showAlert, showConfirm } = useCustomAlert();
   
   const [participants, setParticipants] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -53,6 +54,9 @@ export const GroupInfoScreen = ({ route, navigation }) => {
     });
     return unsubscribe;
   }, [dispatch, navigation, roomId]);
+
+  // beforeRemove больше не нужен - используем стандартную навигацию
+  // Все промежуточные экраны будут проходиться последовательно
 
   const toAbsoluteUri = useCallback((raw) => {
     if (!raw || typeof raw !== 'string') return null;
@@ -118,6 +122,19 @@ export const GroupInfoScreen = ({ route, navigation }) => {
     }
   };
 
+  // Функция для получения должности сотрудника
+  const getEmployeePosition = (participant) => {
+    const user = participant.user || participant;
+    if (!user) return null;
+    
+    // Проверяем, что это сотрудник и у него есть должность
+    if (user.role === 'EMPLOYEE' && user.employee?.position) {
+      return user.employee.position;
+    }
+    
+    return null;
+  };
+
   // Функция для обработки длинного описания
   const getDescriptionText = (description) => {
     if (!description) return null;
@@ -155,6 +172,12 @@ export const GroupInfoScreen = ({ route, navigation }) => {
   const canManageGroupAdmins = currentUserParticipant?.role === 'OWNER' || currentUser?.role === 'ADMIN';
 
   const handleBackPress = () => {
+    console.log('===== GroupInfoScreen handleBackPress (BUTTON) =====');
+    console.log('fromScreen:', fromScreen);
+    console.log('roomId:', roomId);
+    
+    // Стандартный возврат для всех случаев
+    console.log('Action: navigation.goBack() (fromScreen:', fromScreen, ')');
     navigation.goBack();
   };
 
@@ -172,7 +195,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
     if (Platform.OS !== 'web') {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Ошибка', 'Для загрузки изображений необходимо разрешение на доступ к галерее');
+        showError('Ошибка', 'Для загрузки изображений необходимо разрешение на доступ к галерее');
         return false;
       }
     }
@@ -251,7 +274,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
       }
     } catch (error) {
       console.error('Ошибка при выборе изображения:', error);
-      Alert.alert('Ошибка', 'Не удалось загрузить изображение');
+      showError('Ошибка', 'Не удалось загрузить изображение');
     }
   };
 
@@ -262,7 +285,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
 
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Ошибка', 'Для съемки фото необходимо разрешение на доступ к камере');
+        showError('Ошибка', 'Для съемки фото необходимо разрешение на доступ к камере');
         return;
       }
 
@@ -282,7 +305,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
       }
     } catch (error) {
       console.error('Ошибка при съемке фото:', error);
-      Alert.alert('Ошибка', 'Не удалось сделать фото');
+      showError('Ошибка', 'Не удалось сделать фото');
     }
   };
 
@@ -306,14 +329,6 @@ export const GroupInfoScreen = ({ route, navigation }) => {
         }
         
         formData.append('avatar', fileInfo);
-        
-        // Добавляем дополнительную информацию для отладки
-        console.log('Отправляем файл:', {
-          uri: fileInfo.uri,
-          type: fileInfo.type,
-          name: fileInfo.name,
-          size: avatarData.size || 'unknown'
-        });
       }
       
       const result = await dispatch(updateRoom({
@@ -350,7 +365,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
         errorMessage = error.message;
       }
       
-      Alert.alert('Ошибка', errorMessage);
+      showError('Ошибка', errorMessage);
     } finally {
       setLoading(false);
     }
@@ -377,7 +392,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
       setSelectedMember(null);
     } catch (error) {
       console.error('Ошибка назначения админа:', error);
-      Alert.alert('Ошибка', 'Не удалось назначить администратора');
+      showError('Ошибка', 'Не удалось назначить администратора');
     } finally {
       setLoading(false);
     }
@@ -392,7 +407,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
       setSelectedMember(null);
     } catch (error) {
       console.error('Ошибка отзыва админа:', error);
-      Alert.alert('Ошибка', 'Не удалось отозвать права администратора');
+      showError('Ошибка', 'Не удалось отозвать права администратора');
     } finally {
       setLoading(false);
     }
@@ -401,14 +416,19 @@ export const GroupInfoScreen = ({ route, navigation }) => {
   const confirmRemoveMember = async (member) => {
     const displayName = getUserDisplayName(member);
     
-    Alert.alert(
-      'Удалить участника',
-      `Вы уверены, что хотите удалить ${displayName} из группы?`,
-      [
-        { text: 'Отмена', style: 'cancel' },
+    showAlert({
+      type: 'warning',
+      title: 'Удалить участника',
+      message: `Вы уверены, что хотите удалить ${displayName} из группы?`,
+      buttons: [
+        { 
+          text: 'Отмена', 
+          style: 'cancel' 
+        },
         {
           text: 'Удалить',
           style: 'destructive',
+          icon: 'person-remove',
           onPress: async () => {
             try {
               setLoading(true);
@@ -420,14 +440,14 @@ export const GroupInfoScreen = ({ route, navigation }) => {
               setSelectedMember(null);
             } catch (error) {
               console.error('Ошибка удаления участника:', error);
-              Alert.alert('Ошибка', 'Не удалось удалить участника');
+              showError('Ошибка', 'Не удалось удалить участника');
             } finally {
               setLoading(false);
             }
           }
         }
       ]
-    );
+    });
   };
 
 
@@ -439,14 +459,19 @@ export const GroupInfoScreen = ({ route, navigation }) => {
       ? `Назначить ${displayName} администратором группы?`
       : `Отозвать у ${displayName} права администратора?`;
     
-    Alert.alert(
+    showAlert({
+      type: isAssign ? 'confirm' : 'warning',
       title,
       message,
-      [
-        { text: 'Отмена', style: 'cancel' },
+      buttons: [
+        { 
+          text: 'Отмена', 
+          style: 'cancel' 
+        },
         {
           text: isAssign ? 'Назначить' : 'Отозвать',
-          style: isAssign ? 'default' : 'destructive',
+          style: isAssign ? 'primary' : 'destructive',
+          icon: isAssign ? 'admin-panel-settings' : 'person-remove',
           onPress: () => {
             const userId = member.userId || member.user?.id;
             if (isAssign) {
@@ -457,7 +482,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
           }
         }
       ]
-    );
+    });
   };
 
 
@@ -469,34 +494,63 @@ export const GroupInfoScreen = ({ route, navigation }) => {
   const showAvatarOptions = () => {
     if (!canEditGroup) return;
 
-    const options = [
-      { text: 'Отмена', style: 'cancel' },
-      { text: 'Галерея', onPress: pickImageFromGallery },
-      { text: 'Камера', onPress: takePhoto },
+    const buttons = [
+      { 
+        text: 'Галерея', 
+        style: 'primary',
+        icon: 'photo-library',
+        onPress: pickImageFromGallery 
+      },
+      { 
+        text: 'Камера', 
+        style: 'primary',
+        icon: 'photo-camera',
+        onPress: takePhoto 
+      },
     ];
     
     if (roomData?.avatar) {
-      options.push({ text: 'Удалить фото', onPress: removeGroupAvatar, style: 'destructive' });
+      buttons.push({ 
+        text: 'Удалить фото', 
+        style: 'destructive',
+        icon: 'delete',
+        onPress: removeGroupAvatar 
+      });
     }
+
+    buttons.push({ 
+      text: 'Отмена', 
+      style: 'cancel' 
+    });
     
-    Alert.alert('Изменить фото группы', 'Выберите действие', options);
+    showAlert({
+      type: 'info',
+      title: 'Изменить фото группы',
+      message: 'Выберите действие',
+      buttons,
+      showCloseButton: false
+    });
   };
 
   const handleParticipantPress = (participant) => {
     const userId = participant.userId || participant.user?.id;
     if (!userId || userId === currentUser?.id) return;
 
-    navigation.navigate('UserPublicProfile', {
+    const navParams = {
       userId: userId,
       fromScreen: 'GroupInfo',
       roomId: roomId
-    });
+    };
+    console.log('===== GroupInfoScreen: Navigate to UserPublicProfile =====');
+    console.log('UserPublicProfile params:', JSON.stringify(navParams, null, 2));
+    navigation.navigate('UserPublicProfile', navParams);
   };
 
   const renderParticipant = ({ item }) => {
     const displayName = getUserDisplayName(item);
     const avatarUri = getUserAvatar(item);
     const roleLabel = getRoleLabel(item);
+    const employeePosition = getEmployeePosition(item);
     const isCurrentUser = (item.userId || item.user?.id) === currentUser?.id;
     const canManageThis = canEditGroup && !isCurrentUser && item.role !== 'OWNER';
 
@@ -527,6 +581,11 @@ export const GroupInfoScreen = ({ route, navigation }) => {
               item.role === 'ADMIN' && styles.adminRole
             ]}>
               {roleLabel}
+            </Text>
+          )}
+          {employeePosition && (
+            <Text style={styles.participantPosition}>
+              {employeePosition}
             </Text>
           )}
         </View>
@@ -570,20 +629,22 @@ export const GroupInfoScreen = ({ route, navigation }) => {
                      <Text style={styles.groupName}>{roomData?.title || 'Группа'}</Text>
            {roomData?.description && (
              <View style={styles.descriptionContainer}>
-               <Text style={styles.groupDescription}>
-                 {getDescriptionText(roomData.description)}
-               </Text>
-               {roomData.description.length > 100 && (
-                 <TouchableOpacity
-                   style={styles.showMoreButton}
-                   onPress={toggleDescription}
-                   activeOpacity={0.7}
-                 >
-                                       <Text style={styles.showMoreButtonText}>
-                      {showFullDescription ? 'Скрыть' : 'Далее'}
-                    </Text>
-                 </TouchableOpacity>
-               )}
+               <View style={styles.descriptionRow}>
+                 <Text style={styles.groupDescription}>
+                   {getDescriptionText(roomData.description)}
+                 </Text>
+                 {roomData.description.length > 100 && (
+                   <TouchableOpacity
+                     style={styles.showMoreButton}
+                     onPress={toggleDescription}
+                     activeOpacity={0.7}
+                   >
+                     <Text style={styles.showMoreButtonText}>
+                       {showFullDescription ? 'Скрыть' : 'Далее'}
+                     </Text>
+                   </TouchableOpacity>
+                 )}
+               </View>
              </View>
            )}
            <Text style={styles.groupSubtitle}>
@@ -843,13 +904,12 @@ const styles = StyleSheet.create({
     color: '#666666',
     textAlign: 'left',
     lineHeight: 22,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   showMoreButton: {
-    position: 'absolute',
-    bottom: 5,
-    right: 50,
+    alignSelf: 'flex-end',
     paddingVertical: 4,
+    paddingHorizontal: 8,
     backgroundColor: 'transparent',
     borderRadius: 12,
     marginTop: 0,
@@ -943,6 +1003,12 @@ const styles = StyleSheet.create({
   participantRole: {
     fontSize: 14,
     color: '#8696A0',
+  },
+  participantPosition: {
+    fontSize: 14,
+    color: '#666666',
+    marginTop: 2,
+    fontStyle: 'italic',
   },
   ownerRole: {
     color: '#FF8C00',

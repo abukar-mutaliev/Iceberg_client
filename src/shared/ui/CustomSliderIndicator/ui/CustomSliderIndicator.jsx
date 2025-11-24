@@ -5,29 +5,17 @@ import { Color } from "@app/styles/GlobalStyles";
 export const CustomSliderIndicator = ({ totalItems, activeIndex }) => {
     const renderIndicators = () => {
         const indicators = [];
-        const totalWidth = 80;
-        const inactiveWidth = 13;
-        const activeWidth = 22.86;
-        const gap = (totalWidth - (inactiveWidth * totalItems)) / (totalItems - -2);
 
         for (let i = 0; i < totalItems; i++) {
             const isActive = i === activeIndex;
-            const indicatorWidth = isActive ? activeWidth : inactiveWidth;
-            const leftPosition = i * (inactiveWidth + gap);
-
-            const indicatorStyle = [
-                styles.indicator,
-                isActive ? styles.activeIndicator : styles.inactiveIndicator,
-                {
-                    width: (indicatorWidth / 100) * 80, // Исправлено с процентов на абсолютные значения
-                    left: (leftPosition / 100) * 80, // Исправлено с процентов на абсолютные значения
-                },
-            ];
 
             indicators.push(
                 <View
                     key={`indicator-${i}`}
-                    style={indicatorStyle}
+                    style={[
+                        styles.dot,
+                        isActive ? styles.activeDot : styles.inactiveDot,
+                    ]}
                 />
             );
         }
@@ -44,26 +32,24 @@ export const CustomSliderIndicator = ({ totalItems, activeIndex }) => {
 
 const styles = StyleSheet.create({
     sliderContainer: {
-        width: 80,
-        height: 3,
-        position: 'relative',
         flexDirection: 'row',
         justifyContent: 'center',
         alignItems: 'center',
+        paddingVertical: 8,
     },
-    indicator: {
-        height: 3,
-        position: 'absolute',
-        borderRadius: 10,
+    dot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        marginHorizontal: 4,
     },
-    activeIndicator: {
+    activeDot: {
         backgroundColor: '#fff',
-        alignItems: 'center',
-        justifyContent: 'center',
-
+        width: 10,
+        height: 10,
+        borderRadius: 5,
     },
-    inactiveIndicator: {
-        backgroundColor: Color.gray,
-        marginLeft: 4,
+    inactiveDot: {
+        backgroundColor: 'rgba(255, 255, 255, 0.5)',
     },
 });

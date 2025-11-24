@@ -4,7 +4,7 @@ import {
     Text,
     StyleSheet,
     TouchableOpacity,
-    ActivityIndicator, Alert,
+    ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import {useDispatch, useSelector} from 'react-redux';
@@ -19,9 +19,9 @@ import { Color, FontFamily } from "@app/styles/GlobalStyles";
 import IconRight from "@shared/ui/Icon/Profile/IconRight";
 import JoinTeamIcon from "@shared/ui/Icon/Profile/JoinTeamIcon";
 import CustomButton from "@shared/ui/Button/CustomButton";
-import { AddProductModal } from "@widgets/product/AddProductModal";
 import { useAuth } from "@entities/auth/hooks/useAuth";
 import PushNotificationService from "@shared/services/PushNotificationService";
+import { GlobalAlert } from '@shared/ui/CustomAlert';
 
 export const ProfileInfo = ({ onProductPress }) => {
     const navigation = useNavigation();
@@ -36,7 +36,6 @@ export const ProfileInfo = ({ onProductPress }) => {
     // Получаем токены отдельно
     const tokens = useSelector(state => state.auth.tokens);
 
-    const [isAddProductModalVisible, setAddProductModalVisible] = useState(false);
     const [activeButtonId, setActiveButtonId] = useState(null);
 
     const {
@@ -96,7 +95,7 @@ export const ProfileInfo = ({ onProductPress }) => {
                     logout().then(() => {
                         console.log('✅ Выход выполнен, переходим на экран авторизации');
 
-                        // Сбрасываем стек навигации на экран авторизации
+                        // После выхода переходим на экран авторизации
                         navigation.reset({
                             index: 0,
                             routes: [{ name: 'Auth' }],
@@ -104,14 +103,14 @@ export const ProfileInfo = ({ onProductPress }) => {
                         console.log('🧭 Навигация сброшена на экран Auth');
                     }).catch(error => {
                         console.error('❌ Ошибка при выходе:', error);
-                        Alert.alert('Ошибка', 'Не удалось выйти из системы. Попробуйте еще раз.');
+                        GlobalAlert.showError('Ошибка', 'Не удалось выйти из системы. Попробуйте еще раз.');
                     });
                 }, 500); // Задержка 500ms для стабилизации
             });
 
         } catch (error) {
             console.error('❌ Необработанная ошибка при выходе:', error);
-            Alert.alert('Ошибка', 'Произошла неизвестная ошибка при выходе из системы.');
+            GlobalAlert.showError('Ошибка', 'Произошла неизвестная ошибка при выходе из системы.');
         }
     };
 
@@ -119,8 +118,11 @@ export const ProfileInfo = ({ onProductPress }) => {
 
     const handleProductSuccess = (product) => {
         console.log('Продукт добавлен:', product);
-        if (onProductPress) {
-            onProductPress(product);
+        if (onProductPress && product?.id) {
+            // Небольшая задержка чтобы продукт успел попасть в кэш и базу данных
+            setTimeout(() => {
+                onProductPress(product.id);
+            }, 500);
         }
     };
 
@@ -130,6 +132,11 @@ export const ProfileInfo = ({ onProductPress }) => {
             fromScreen: 'Profile',
             returnTo: 'Profile'
         });
+    };
+
+    const handleViewStagnantProducts = () => {
+        // Переход к экрану залежавшихся товаров
+        navigation.navigate('StagnantProducts');
     };
 
     const handlePushNotificationTest = () => {
@@ -210,7 +217,7 @@ export const ProfileInfo = ({ onProductPress }) => {
                             {item.badgeCount > 0 && (
                                 <View style={styles.menuBadge}>
                                     <Text style={styles.menuBadgeText}>
-                                        {item.badgeCount > 99 ? '99+' : item.badgeCount}
+                                        {item.badgeCount > 99 ? '99+' : String(item.badgeCount)}
                                     </Text>
                                 </View>
                             )}
@@ -237,7 +244,9 @@ export const ProfileInfo = ({ onProductPress }) => {
                 <View style={styles.buttonContainer}>
                     <CustomButton
                         title="Добавить продукт"
-                        onPress={() => setAddProductModalVisible(true)}
+                        onPress={() => navigation.navigate('AddProduct', {
+                            onSuccess: handleProductSuccess
+                        })}
                         outlined={true}
                         color={Color.blue2}
                         activeColor="#FFFFFF"
@@ -248,6 +257,14 @@ export const ProfileInfo = ({ onProductPress }) => {
                         onPress={handleManageProducts}
                         outlined={true}
                         color={Color.blue2}
+                        activeColor="#FFFFFF"
+                        style={styles.buttonMargin}
+                    />
+                    <CustomButton
+                        title="Просмотр залежавшихся товаров"
+                        onPress={handleViewStagnantProducts}
+                        outlined={true}
+                        color={Color.orange}
                         activeColor="#FFFFFF"
                     />
                 </View>
@@ -281,11 +298,6 @@ export const ProfileInfo = ({ onProductPress }) => {
                 />
             </View>
 
-            <AddProductModal
-                visible={isAddProductModalVisible}
-                onClose={() => setAddProductModalVisible(false)}
-                onSuccess={handleProductSuccess}
-            />
         </View>
     );
 };

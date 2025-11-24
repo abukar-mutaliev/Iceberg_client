@@ -15,6 +15,10 @@ export const EmployeeStatsCard = ({ employee, onPress, showRewardActions = false
         rewardsCount
     } = employee;
 
+    // Безопасные значения по умолчанию
+    const safeOrdersProcessed = typeof ordersProcessed === 'number' ? ordersProcessed : 0;
+    const safeRewardsCount = typeof rewardsCount === 'number' ? rewardsCount : 0;
+
     const warehouseName = warehouse?.name || 'Не назначен';
     const districtName = warehouse?.district?.name || '';
 
@@ -47,11 +51,11 @@ export const EmployeeStatsCard = ({ employee, onPress, showRewardActions = false
             {/* Статистика заказов */}
             <View style={styles.statsRow}>
                 <View style={styles.statItem}>
-                    <Text style={styles.statValue}>{ordersProcessed}</Text>
+                    <Text style={styles.statValue}>{safeOrdersProcessed}</Text>
                     <Text style={styles.statLabel}>Заказов обработано</Text>
                 </View>
                 <View style={styles.statItem}>
-                    <Text style={styles.statValue}>{rewardsCount}</Text>
+                    <Text style={styles.statValue}>{safeRewardsCount}</Text>
                     <Text style={styles.statLabel}>Вознаграждений</Text>
                 </View>
             </View>
@@ -96,7 +100,7 @@ export const EmployeeStatsCard = ({ employee, onPress, showRewardActions = false
             )}
 
             {/* Индикатор активности */}
-            {ordersProcessed > 0 && (
+            {safeOrdersProcessed > 0 && (
                 <View style={styles.activityIndicator}>
                     <Text style={styles.activityText}>🔥 Активный</Text>
                 </View>

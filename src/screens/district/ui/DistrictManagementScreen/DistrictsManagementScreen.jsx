@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, Alert, TextInput } from 'react-native';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, TextInput } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useRoute } from '@react-navigation/native';
+import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 import {
     fetchAllDistricts,
     fetchDistrictById,
@@ -11,7 +12,12 @@ import {
     clearDistrictError,
     selectDistrict as selectDistrictAction
 } from '@entities/district';
-import { fetchWarehouses } from '@entities/warehouse';
+import { 
+    fetchWarehouses, 
+    createWarehouse, 
+    updateWarehouse, 
+    deleteWarehouse as deleteWarehouseAction 
+} from '@entities/warehouse';
 import {
     selectDistricts,
     selectDistrictLoading,
@@ -36,6 +42,7 @@ export const DistrictsManagementScreen = () => {
     const navigation = useNavigation();
     const route = useRoute();
     const { openAddModal } = route.params || {};
+    const { showSuccess, showError, showConfirm } = useCustomAlert();
 
     const districts = useSelector(selectDistrictsWithStats) || [];
     const isLoading = useSelector(selectDistrictLoading);
@@ -72,15 +79,14 @@ export const DistrictsManagementScreen = () => {
             await dispatch(fetchAllDistricts()).unwrap();
         } catch (err) {
             console.error('Error loading districts:', err);
-            Alert.alert(
+            showError(
                 'Ошибка загрузки',
-                'Не удалось загрузить список районов. Попробуйте еще раз.',
-                [{ text: 'OK' }]
+                'Не удалось загрузить список районов. Попробуйте еще раз.'
             );
         } finally {
             setRefreshing(false);
         }
-    }, [dispatch]);
+    }, [dispatch, showError]);
 
     useEffect(() => {
         loadDistricts();
@@ -148,28 +154,21 @@ export const DistrictsManagementScreen = () => {
     };
 
     const handleDeleteDistrict = (districtId) => {
-        Alert.alert(
+        showConfirm(
             'Подтверждение',
             'Вы действительно хотите удалить этот район?',
-            [
-                { text: 'Отмена', style: 'cancel' },
-                {
-                    text: 'Удалить',
-                    style: 'destructive',
-                    onPress: async () => {
-                        setOperationInProgress(true);
-                        try {
-                            await dispatch(deleteDistrict(districtId)).unwrap();
-                            Alert.alert('Успех', 'Район успешно удален');
-                            await loadDistricts();
-                        } catch (err) {
-                            Alert.alert('Ошибка', typeof err === 'string' ? err : 'Не удалось удалить район');
-                        } finally {
-                            setOperationInProgress(false);
-                        }
-                    }
+            async () => {
+                setOperationInProgress(true);
+                try {
+                    await dispatch(deleteDistrict(districtId)).unwrap();
+                    showSuccess('Район успешно удален');
+                    await loadDistricts();
+                } catch (err) {
+                    showError('Ошибка', typeof err === 'string' ? err : 'Не удалось удалить район');
+                } finally {
+                    setOperationInProgress(false);
                 }
-            ]
+            }
         );
     };
 
@@ -186,10 +185,10 @@ export const DistrictsManagementScreen = () => {
                     id: selectedDistrict.id,
                     districtData: formData
                 })).unwrap();
-                Alert.alert('Успех', 'Район успешно обновлен');
+                showSuccess('Район успешно обновлен');
             } else {
                 await dispatch(createDistrict(formData)).unwrap();
-                Alert.alert('Успех', 'Район успешно создан');
+                showSuccess('Район успешно создан');
             }
 
             setAddModalVisible(false);
@@ -197,7 +196,7 @@ export const DistrictsManagementScreen = () => {
             return true;
         } catch (error) {
             const errorMessage = typeof error === 'string' ? error : 'Произошла ошибка при сохранении района';
-            Alert.alert('Ошибка', errorMessage);
+            showError('Ошибка', errorMessage);
             return false;
         } finally {
             setOperationInProgress(false);
@@ -217,11 +216,11 @@ export const DistrictsManagementScreen = () => {
             setFilteredWarehouses(warehouses);
         } catch (err) {
             console.error('Error loading warehouses:', err);
-            Alert.alert('Ошибка загрузки', 'Не удалось загрузить список складов');
+            showError('Ошибка загрузки', 'Не удалось загрузить список складов');
         } finally {
             setWarehousesLoading(false);
         }
-    }, [dispatch]);
+    }, [dispatch, showError]);
 
     const handleAddWarehouse = () => {
         setSelectedWarehouse(null);
@@ -234,51 +233,38 @@ export const DistrictsManagementScreen = () => {
     };
 
     const handleDeleteWarehouse = (warehouseId) => {
-        Alert.alert(
+        showConfirm(
             'Подтверждение',
             'Вы действительно хотите удалить этот склад?',
-            [
-                { text: 'Отмена', style: 'cancel' },
-                {
-                    text: 'Удалить',
-                    style: 'destructive',
-                    onPress: async () => {
-                        setOperationInProgress(true);
-                        try {
-                            // Здесь будет вызов API для удаления склада
-                            setWarehouses(prev => prev.filter(w => w.id !== warehouseId));
-                            setFilteredWarehouses(prev => prev.filter(w => w.id !== warehouseId));
-                            Alert.alert('Успех', 'Склад успешно удален');
-                        } catch (err) {
-                            Alert.alert('Ошибка', 'Не удалось удалить склад');
-                        } finally {
-                            setOperationInProgress(false);
-                        }
-                    }
+            async () => {
+                setOperationInProgress(true);
+                try {
+                    await dispatch(deleteWarehouseAction(warehouseId)).unwrap();
+                    showSuccess('Склад успешно удален');
+                    await loadWarehouses();
+                } catch (err) {
+                    showError('Ошибка', typeof err === 'string' ? err : 'Не удалось удалить склад');
+                } finally {
+                    setOperationInProgress(false);
                 }
-            ]
+            }
         );
     };
 
     const handleWarehouseFormSubmit = async (formData) => {
         setOperationInProgress(true);
         try {
-            // Здесь будет вызов API для создания/обновления склада
             if (selectedWarehouse) {
                 // Обновление склада
-                setWarehouses(prev => prev.map(w => 
-                    w.id === selectedWarehouse.id ? { ...w, ...formData } : w
-                ));
-                Alert.alert('Успех', 'Склад успешно обновлен');
+                await dispatch(updateWarehouse({
+                    id: selectedWarehouse.id,
+                    warehouseData: formData
+                })).unwrap();
+                showSuccess('Склад успешно обновлен');
             } else {
                 // Создание склада
-                const newWarehouse = {
-                    id: Date.now(), // Временный ID
-                    ...formData,
-                    _count: { employees: 0, orders: 0 }
-                };
-                setWarehouses(prev => [...prev, newWarehouse]);
-                Alert.alert('Успех', 'Склад успешно создан');
+                await dispatch(createWarehouse(formData)).unwrap();
+                showSuccess('Склад успешно создан');
             }
 
             setWarehouseModalVisible(false);
@@ -286,7 +272,7 @@ export const DistrictsManagementScreen = () => {
             return true;
         } catch (error) {
             const errorMessage = typeof error === 'string' ? error : 'Произошла ошибка при сохранении склада';
-            Alert.alert('Ошибка', errorMessage);
+            showError('Ошибка', errorMessage);
             return false;
         } finally {
             setOperationInProgress(false);
@@ -296,6 +282,13 @@ export const DistrictsManagementScreen = () => {
     const handleWarehouseModalClose = () => {
         setWarehouseModalVisible(false);
         setSelectedWarehouse(null);
+    };
+
+    const handleViewWarehouseStatistics = (warehouse) => {
+        navigation.navigate('WarehouseStatistics', {
+            warehouseId: warehouse.id,
+            warehouseName: warehouse.name
+        });
     };
 
     const renderDistrictItem = ({ item }) => (
@@ -311,6 +304,7 @@ export const DistrictsManagementScreen = () => {
             warehouse={item}
             onEdit={() => handleEditWarehouse(item)}
             onDelete={() => handleDeleteWarehouse(item.id)}
+            onViewStatistics={handleViewWarehouseStatistics}
         />
     );
 

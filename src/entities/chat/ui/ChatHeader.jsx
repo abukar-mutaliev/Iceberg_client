@@ -1,11 +1,12 @@
 import React, {useState} from 'react';
-import {View, Text, TouchableOpacity, Image, Modal, Alert, Dimensions, StyleSheet} from 'react-native';
+import {View, Text, TouchableOpacity, Image, Modal, Dimensions, StyleSheet} from 'react-native';
 import {useSelector, useDispatch} from 'react-redux';
 import {CommonActions} from '@react-navigation/native';
 import {getBaseUrl} from '@shared/api/api';
 import {formatLastSeen, isUserOnline} from '@shared/utils/dateUtils';
 import {MenuDotsIcon} from '@shared/ui/Icon/MenuDotsIcon';
 import {deleteRoom, leaveRoom} from '@entities/chat/model/slice';
+import {useCustomAlert} from '@shared/ui/CustomAlert';
 
 // Получаем ширину экрана
 const {width: screenWidth} = Dimensions.get('window');
@@ -15,6 +16,7 @@ export const ChatHeader = ({route, navigation}) => {
     const dispatch = useDispatch();
     const currentUserId = useSelector(state => state?.auth?.user?.id);
     const participantsById = useSelector(state => state?.chat?.participants?.byUserId || {});
+    const {showError, showAlert} = useCustomAlert();
 
     const params = route?.params || {};
     const roomId = params.roomId;
@@ -120,13 +122,7 @@ export const ChatHeader = ({route, navigation}) => {
         const fromScreen = params.fromScreen;
         const productId = params.productId || params.productInfo?.id;
 
-        if (fromScreen === 'ChatList') {
-            if (navigation.canGoBack()) {
-                navigation.goBack();
-            }
-            return;
-        }
-
+        // ProductDetail - особый случай, переходим напрямую
         if (productId && (fromScreen === 'ProductDetail' || !fromScreen)) {
             navigation.navigate('MainTab', {
                 screen: 'ProductDetail',
@@ -135,6 +131,7 @@ export const ChatHeader = ({route, navigation}) => {
             return;
         }
 
+        // Для всех остальных случаев - стандартная навигация назад
         if (navigation.canGoBack()) {
             navigation.goBack();
         }
@@ -239,10 +236,11 @@ export const ChatHeader = ({route, navigation}) => {
     const handleDeleteChat = () => {
         setMenuVisible(false);
 
-        Alert.alert(
-            'Удалить чат',
-            'Вы уверены, что хотите удалить этот чат? Все сообщения будут удалены безвозвратно.',
-            [
+        showAlert({
+            type: 'warning',
+            title: 'Удалить чат',
+            message: 'Вы уверены, что хотите удалить этот чат? Все сообщения будут удалены безвозвратно.',
+            buttons: [
                 {
                     text: 'Отмена',
                     style: 'cancel',
@@ -250,6 +248,7 @@ export const ChatHeader = ({route, navigation}) => {
                 {
                     text: 'Удалить',
                     style: 'destructive',
+                    icon: 'delete',
                     onPress: async () => {
                         try {
                             await dispatch(deleteRoom({roomId})).unwrap();
@@ -263,21 +262,22 @@ export const ChatHeader = ({route, navigation}) => {
                             }
                         } catch (error) {
                             console.error('Delete room error:', error);
-                            Alert.alert('Ошибка', error.message || 'Не удалось удалить чат');
+                            showError('Ошибка', error.message || 'Не удалось удалить чат');
                         }
                     },
                 },
             ]
-        );
+        });
     };
 
     const handleDeleteGroup = () => {
         setMenuVisible(false);
 
-        Alert.alert(
-            'Удалить группу',
-            'Вы уверены, что хотите удалить эту группу? Все сообщения и участники будут удалены безвозвратно.',
-            [
+        showAlert({
+            type: 'warning',
+            title: 'Удалить группу',
+            message: 'Вы уверены, что хотите удалить эту группу? Все сообщения и участники будут удалены безвозвратно.',
+            buttons: [
                 {
                     text: 'Отмена',
                     style: 'cancel',
@@ -285,6 +285,7 @@ export const ChatHeader = ({route, navigation}) => {
                 {
                     text: 'Удалить группу',
                     style: 'destructive',
+                    icon: 'delete-forever',
                     onPress: async () => {
                         try {
                             await dispatch(deleteRoom({roomId})).unwrap();
@@ -298,21 +299,22 @@ export const ChatHeader = ({route, navigation}) => {
                             }
                         } catch (error) {
                             console.error('Delete group error:', error);
-                            Alert.alert('Ошибка', error.message || 'Не удалось удалить группу');
+                            showError('Ошибка', error.message || 'Не удалось удалить группу');
                         }
                     },
                 },
             ]
-        );
+        });
     };
 
     const handleLeaveGroup = () => {
         setMenuVisible(false);
 
-        Alert.alert(
-            'Покинуть группу',
-            'Вы уверены, что хотите покинуть эту группу? Ваши сообщения останутся в группе.',
-            [
+        showAlert({
+            type: 'warning',
+            title: 'Покинуть группу',
+            message: 'Вы уверены, что хотите покинуть эту группу? Ваши сообщения останутся в группе.',
+            buttons: [
                 {
                     text: 'Отмена',
                     style: 'cancel',
@@ -320,6 +322,7 @@ export const ChatHeader = ({route, navigation}) => {
                 {
                     text: 'Покинуть',
                     style: 'destructive',
+                    icon: 'exit-to-app',
                     onPress: async () => {
                         try {
                             await dispatch(leaveRoom({roomId, deleteMessages: false})).unwrap();
@@ -336,28 +339,35 @@ export const ChatHeader = ({route, navigation}) => {
                             const errorMessage = error.message || 'Не удалось покинуть группу';
 
                             if (errorMessage.includes('владелец') || errorMessage.includes('Владелец')) {
-                                Alert.alert(
-                                    'Нельзя покинуть группу',
-                                    'Владелец группы не может покинуть группу, не назначив другого администратора. Сначала назначьте кого-то из участников администратором группы или удалите группу полностью.',
-                                    [{text: 'Понятно'}]
-                                );
+                                showAlert({
+                                    type: 'warning',
+                                    title: 'Нельзя покинуть группу',
+                                    message: 'Владелец группы не может покинуть группу, не назначив другого администратора. Сначала назначьте кого-то из участников администратором группы или удалите группу полностью.',
+                                    buttons: [
+                                        {
+                                            text: 'Понятно',
+                                            style: 'primary'
+                                        }
+                                    ]
+                                });
                             } else {
-                                Alert.alert('Ошибка', errorMessage);
+                                showError('Ошибка', errorMessage);
                             }
                         }
                     },
                 },
             ]
-        );
+        });
     };
 
     const handleLeaveGroupWithDeletion = () => {
         setMenuVisible(false);
 
-        Alert.alert(
-            'Покинуть группу с удалением',
-            'Вы уверены, что хотите покинуть группу и удалить все свои сообщения? Это действие нельзя отменить.',
-            [
+        showAlert({
+            type: 'error',
+            title: 'Покинуть группу с удалением',
+            message: 'Вы уверены, что хотите покинуть группу и удалить все свои сообщения? Это действие нельзя отменить.',
+            buttons: [
                 {
                     text: 'Отмена',
                     style: 'cancel',
@@ -365,6 +375,7 @@ export const ChatHeader = ({route, navigation}) => {
                 {
                     text: 'Покинуть и удалить',
                     style: 'destructive',
+                    icon: 'delete-sweep',
                     onPress: async () => {
                         try {
                             await dispatch(leaveRoom({roomId, deleteMessages: true})).unwrap();
@@ -383,19 +394,25 @@ export const ChatHeader = ({route, navigation}) => {
 
                             // Специальная обработка для владельца группы
                             if (errorMessage.includes('владелец') || errorMessage.includes('Владелец')) {
-                                Alert.alert(
-                                    'Нельзя покинуть группу',
-                                    'Владелец группы не может покинуть группу, не назначив другого администратора. Сначала назначьте кого-то из участников администратором группы или удалите группу полностью.',
-                                    [{text: 'Понятно'}]
-                                );
+                                showAlert({
+                                    type: 'warning',
+                                    title: 'Нельзя покинуть группу',
+                                    message: 'Владелец группы не может покинуть группу, не назначив другого администратора. Сначала назначьте кого-то из участников администратором группы или удалите группу полностью.',
+                                    buttons: [
+                                        {
+                                            text: 'Понятно',
+                                            style: 'primary'
+                                        }
+                                    ]
+                                });
                             } else {
-                                Alert.alert('Ошибка', errorMessage);
+                                showError('Ошибка', errorMessage);
                             }
                         }
                     },
                 },
             ]
-        );
+        });
     };
 
     return (

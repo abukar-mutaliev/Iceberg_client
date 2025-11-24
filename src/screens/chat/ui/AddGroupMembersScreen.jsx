@@ -8,18 +8,19 @@ import {
   Image,
   SafeAreaView,
   TextInput,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { addMembers, fetchRoom } from '@entities/chat/model/slice';
 import ChatApi from '@entities/chat/api/chatApi';
 import { getBaseUrl } from '@shared/api/api';
+import { useCustomAlert } from '@shared/ui/CustomAlert';
 
 export const AddGroupMembersScreen = ({ route, navigation }) => {
   const { roomId, currentMembers = [] } = route.params;
   const dispatch = useDispatch();
   const currentUser = useSelector(state => state?.auth?.user);
+  const { showError, showSuccess, showInfo } = useCustomAlert();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [allUsers, setAllUsers] = useState([]);
@@ -40,7 +41,7 @@ export const AddGroupMembersScreen = ({ route, navigation }) => {
       
       // Стратегия 1: Попробуем загрузить всех пользователей одним запросом
       try {
-        const response = await ChatApi.searchUsers('', 100); // Пустой запрос для получения всех
+        const response = await ChatApi.searchUsers('', 2000); // Пустой запрос для получения всех (максимум 2000)
         const userData = response?.data?.data?.users || response?.data?.users || [];
         if (userData.length > 0) {
           allUsersData = userData;
@@ -56,7 +57,7 @@ export const AddGroupMembersScreen = ({ route, navigation }) => {
         
         for (const query of commonQueries) {
           try {
-            const response = await ChatApi.searchUsers(query, 50);
+            const response = await ChatApi.searchUsers(query, 2000);
             const userData = response?.data?.data?.users || response?.data?.users || [];
             
             if (userData.length > 0) {
@@ -68,7 +69,7 @@ export const AddGroupMembersScreen = ({ route, navigation }) => {
               console.log(`Strategy 2: Added ${newUsers.length} users with query "${query}"`);
               
               // Ограничиваем общее количество для производительности
-              if (allUsersData.length >= 200) break;
+              if (allUsersData.length >= 2000) break;
             }
           } catch (error) {
             console.log(`Strategy 2 failed for query "${query}":`, error.message);
@@ -81,9 +82,9 @@ export const AddGroupMembersScreen = ({ route, navigation }) => {
       if (allUsersData.length === 0) {
         console.log('Trying strategy 3: loading users in batches');
         let page = 1;
-        const limit = 50;
+        const limit = 2000;
         
-        while (allUsersData.length < 200 && page <= 10) { // Ограничиваем до 10 страниц
+        while (allUsersData.length < 2000 && page <= 10) { // Ограничиваем до 10 страниц
           try {
             // Используем разные запросы для получения пользователей
             const queries = ['user', 'admin', 'client', 'supplier', 'employee'];
@@ -125,12 +126,12 @@ export const AddGroupMembersScreen = ({ route, navigation }) => {
       console.log('All users loaded and filtered:', filteredAllUsers.length);
       
       if (filteredAllUsers.length === 0) {
-        Alert.alert('Информация', 'Не удалось загрузить пользователей. Попробуйте обновить страницу.');
+        showInfo('Информация', 'Не удалось загрузить пользователей. Попробуйте обновить страницу.');
       }
       
     } catch (error) {
       console.error('Ошибка загрузки всех пользователей:', error);
-      Alert.alert('Ошибка', 'Не удалось загрузить список пользователей');
+      showError('Ошибка', 'Не удалось загрузить список пользователей');
     } finally {
       setLoading(false);
     }
@@ -213,7 +214,7 @@ export const AddGroupMembersScreen = ({ route, navigation }) => {
 
   const handleAddMembers = async () => {
     if (selectedUsers.length === 0) {
-      Alert.alert('Ошибка', 'Выберите участников для добавления');
+      showError('Ошибка', 'Выберите участников для добавления');
       return;
     }
 
@@ -230,12 +231,18 @@ export const AddGroupMembersScreen = ({ route, navigation }) => {
         // Обновляем данные группы для немедленного отображения новых участников
         await dispatch(fetchRoom(roomId));
         
-        Alert.alert(
-          'Успех',
-          `${selectedUsers.length} участник${selectedUsers.length === 1 ? '' : selectedUsers.length < 5 ? 'а' : 'ов'} добавлен${selectedUsers.length === 1 ? '' : 'о'} в группу`,
+        const participantsText = selectedUsers.length === 1 
+          ? `${selectedUsers[0]?.name || 'Участник'} добавлен в группу` 
+          : `${selectedUsers.length} участник${selectedUsers.length < 5 ? 'а' : 'ов'} добавлено в группу`;
+        
+        showSuccess(
+          'Участники добавлены',
+          participantsText,
           [
             {
-              text: 'OK',
+              text: 'Вернуться к чату',
+              style: 'primary',
+              icon: 'chat',
               onPress: () => navigation.goBack()
             }
           ]
@@ -245,7 +252,7 @@ export const AddGroupMembersScreen = ({ route, navigation }) => {
       }
     } catch (error) {
       console.error('Ошибка добавления участников:', error);
-      Alert.alert('Ошибка', error.message || 'Не удалось добавить участников');
+      showError('Ошибка', error.message || 'Не удалось добавить участников');
     } finally {
       setAdding(false);
     }

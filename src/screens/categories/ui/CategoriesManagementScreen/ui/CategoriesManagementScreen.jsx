@@ -117,7 +117,7 @@ export const CategoriesManagementScreen = () => {
                         setOperationInProgress(true);
                         try {
                             await dispatch(deleteCategory(categoryId)).unwrap();
-                            Alert.alert('Успех', 'Категория успешно удалена');
+                            Alert.alert('Готово', 'Категория успешно удалена');
                             await loadCategories();
                         } catch (err) {
                             Alert.alert('Ошибка', typeof err === 'string' ? err : 'Не удалось удалить категорию');
@@ -143,10 +143,10 @@ export const CategoriesManagementScreen = () => {
                     id: selectedCategory.id,
                     categoryData: formData
                 })).unwrap();
-                Alert.alert('Успех', 'Категория успешно обновлена');
+                Alert.alert('Готово', 'Категория успешно обновлена');
             } else {
                 await dispatch(createCategory(formData)).unwrap();
-                Alert.alert('Успех', 'Категория успешно создана');
+                Alert.alert('Готово', 'Категория успешно создана');
             }
 
             setAddModalVisible(false);

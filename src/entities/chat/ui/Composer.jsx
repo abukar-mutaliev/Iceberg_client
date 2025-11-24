@@ -1,12 +1,14 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { View, TextInput, TouchableOpacity, Text, StyleSheet, Platform } from 'react-native';
+import { View, TextInput, TouchableOpacity, Text, StyleSheet, Platform, Modal } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useDispatch, useSelector } from 'react-redux';
 import { Border, Padding, Color } from '@app/styles/GlobalStyles';
-import { sendText, sendImages, addOptimisticMessage } from '@entities/chat/model/slice';
+import { sendText, sendImages, sendVoice, addOptimisticMessage } from '@entities/chat/model/slice';
 import { AttachmentPreview } from './AttachmentPreview';
+import { VoiceRecorder } from './VoiceRecorder';
 import { AttachIcon } from '@shared/ui/Icon/AttachIcon';
 import { CameraIcon } from '@shared/ui/Icon/CameraIcon';
+import { Ionicons } from '@expo/vector-icons';
 
 export const Composer = ({ roomId, onTyping }) => {
   const dispatch = useDispatch();
@@ -15,9 +17,11 @@ export const Composer = ({ roomId, onTyping }) => {
   const [text, setText] = useState('');
   const [files, setFiles] = useState([]);
   const [captions, setCaptions] = useState({});
+  const [isRecording, setIsRecording] = useState(false);
   const isSendingRef = useRef(false);
 
   const canSend = useMemo(() => text.trim().length > 0 || files.length > 0, [text, files.length]);
+  const showVoiceButton = useMemo(() => text.trim().length === 0 && files.length === 0, [text, files.length]);
 
   const pickImages = async () => {
     try {
@@ -148,6 +152,81 @@ export const Composer = ({ roomId, onTyping }) => {
     }
   };
 
+  const handleStartRecording = () => {
+    setIsRecording(true);
+  };
+
+  const handleCancelRecording = () => {
+    setIsRecording(false);
+  };
+
+  const handleSendVoice = async (voiceData) => {
+    if (isSendingRef.current) return;
+    isSendingRef.current = true;
+
+    try {
+      setIsRecording(false);
+      
+      if (__DEV__) {
+        console.log('🎤 Composer: Sending voice message:', {
+          duration: voiceData.duration,
+          size: voiceData.size,
+          uri: voiceData.uri,
+          roomId
+        });
+      }
+
+      // Создаем временный ID
+      const temporaryId = `temp_voice_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Создаем оптимистичное голосовое сообщение
+      const optimisticMessage = {
+        id: temporaryId,
+        temporaryId,
+        roomId,
+        type: 'VOICE',
+        content: '',
+        senderId: currentUserId,
+        sender: {
+          id: currentUserId,
+          name: currentUser?.name || currentUser?.firstName || 'Вы',
+          avatar: currentUser?.avatar,
+          role: currentUser?.role,
+        },
+        attachments: [{
+          type: 'VOICE',
+          path: voiceData.uri,
+          mimeType: voiceData.type || 'audio/aac',
+          size: voiceData.size,
+          duration: voiceData.duration,
+          waveform: voiceData.waveform || [], // ✅ Добавляем waveform
+        }],
+        status: 'SENDING',
+        createdAt: new Date().toISOString(),
+        isOptimistic: true,
+      };
+
+      // Добавляем оптимистичное сообщение в стор
+      dispatch(addOptimisticMessage({ roomId, message: optimisticMessage }));
+
+      // Отправляем голосовое сообщение с temporaryId
+      await dispatch(sendVoice({ 
+        roomId, 
+        voice: voiceData,
+        temporaryId 
+      })).unwrap();
+      
+      if (__DEV__) {
+        console.log('✅ Голосовое сообщение успешно отправлено');
+      }
+      
+    } catch (error) {
+      console.error('❌ Ошибка отправки голосового сообщения:', error);
+    } finally {
+      isSendingRef.current = false;
+    }
+  };
+
   return (
     <View style={styles.container}>
       {files.length > 0 && (
@@ -177,11 +256,32 @@ export const Composer = ({ roomId, onTyping }) => {
           </View>
         </View>
         
-        {/* Кнопка отправки */}
-        <TouchableOpacity onPress={doSend} disabled={!canSend} style={[styles.sendBtn, !canSend && styles.sendBtnDisabled]}>
-          <Text style={styles.sendText}>➤</Text>
-        </TouchableOpacity>
+        {/* Кнопка отправки или записи голоса */}
+        {showVoiceButton ? (
+          <TouchableOpacity onPress={handleStartRecording} style={styles.voiceBtn}>
+            <Ionicons name="mic" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity onPress={doSend} disabled={!canSend} style={[styles.sendBtn, !canSend && styles.sendBtnDisabled]}>
+            <Text style={styles.sendText}>➤</Text>
+          </TouchableOpacity>
+        )}
       </View>
+
+      {/* Модальное окно записи голоса */}
+      <Modal
+        visible={isRecording}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={handleCancelRecording}
+      >
+        <View style={styles.recordingModalOverlay}>
+          <VoiceRecorder
+            onSend={handleSendVoice}
+            onCancel={handleCancelRecording}
+          />
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -267,10 +367,31 @@ const styles = StyleSheet.create({
   sendBtnDisabled: {
     backgroundColor: 'rgba(176, 190, 197, 0.8)', // Полупрозрачный серый для заблокированной кнопки
   },
+  voiceBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(37, 211, 102, 0.95)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+  },
   sendText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  recordingModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
   },
 });
 

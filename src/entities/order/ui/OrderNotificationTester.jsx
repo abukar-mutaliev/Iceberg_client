@@ -63,7 +63,7 @@ const OrderNotificationTester = () => {
         try {
             const result = await testEmployeeAssignment(employeeAssignmentData);
             if (result.success) {
-                Alert.alert('Успех', 'Уведомление о назначении заказа отправлено!');
+                Alert.alert('Готово', 'Уведомление о назначении заказа отправлено!');
             } else {
                 Alert.alert('Ошибка', result.error);
             }
@@ -79,7 +79,7 @@ const OrderNotificationTester = () => {
         try {
             const result = await testClientStatusChange(clientStatusData);
             if (result.success) {
-                Alert.alert('Успех', 'Уведомление об изменении статуса отправлено!');
+                Alert.alert('Готово', 'Уведомление об изменении статуса отправлено!');
             } else {
                 Alert.alert('Ошибка', result.error);
             }
@@ -95,7 +95,7 @@ const OrderNotificationTester = () => {
         try {
             const result = await testEmployeeTaken(employeeTakenData);
             if (result.success) {
-                Alert.alert('Успех', 'Уведомление о взятии заказа отправлено!');
+                Alert.alert('Готово', 'Уведомление о взятии заказа отправлено!');
             } else {
                 Alert.alert('Ошибка', result.error);
             }
@@ -111,7 +111,7 @@ const OrderNotificationTester = () => {
         try {
             const result = await testNewOrder(newOrderData);
             if (result.success) {
-                Alert.alert('Успех', 'Уведомление о новом заказе отправлено!');
+                Alert.alert('Готово', 'Уведомление о новом заказе отправлено!');
             } else {
                 Alert.alert('Ошибка', result.error);
             }
@@ -127,7 +127,7 @@ const OrderNotificationTester = () => {
         try {
             const result = await testOrderCancelled(cancelledData);
             if (result.success) {
-                Alert.alert('Успех', 'Уведомление об отмене заказа отправлено!');
+                Alert.alert('Готово', 'Уведомление об отмене заказа отправлено!');
             } else {
                 Alert.alert('Ошибка', result.error);
             }
@@ -144,7 +144,7 @@ const OrderNotificationTester = () => {
             const result = await getStats();
             if (result.success) {
                 setStats(result.data);
-                Alert.alert('Успех', 'Статистика загружена!');
+                Alert.alert('Готово', 'Статистика загружена!');
             } else {
                 Alert.alert('Ошибка', result.error);
             }

@@ -8,9 +8,6 @@ import { normalize, normalizeFont } from '@shared/lib/normalize';
 import {SupplierRatingFromRedux} from "@entities/supplier";
 import {Colors} from "react-native/Libraries/NewAppScreen";
 
-// Заменяем изображение на простой серый блок
-const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
-
 export const BrandCard = ({ supplier, onSupplierPress }) => {
 
     // Проверка на существование supplier и его полей
@@ -40,12 +37,8 @@ export const BrandCard = ({ supplier, onSupplierPress }) => {
     // Определяем, является ли изображение placeholder'ом
     const isPlaceholder = !logo;
 
-    // Выбираем стили в зависимости от типа изображения
-    const imageStyles = isPlaceholder
-        ? [styles.brandLogo, styles.placeholderLogo]
-        : styles.brandLogo;
-
-    const imageSource = logo ? { uri: logo } : placeholderImage;
+    // Получаем первую букву названия компании для placeholder
+    const firstLetter = companyName ? companyName.charAt(0).toUpperCase() : '?';
 
     return (
         <TouchableOpacity
@@ -81,17 +74,13 @@ export const BrandCard = ({ supplier, onSupplierPress }) => {
 
             {isPlaceholder ? (
                 <View style={styles.placeholderContainer}>
-                    <Image
-                        style={imageStyles}
-                        resizeMode="contain"
-                        source={imageSource}
-                    />
+                    <Text style={styles.placeholderText}>{firstLetter}</Text>
                 </View>
             ) : (
                 <Image
-                    style={imageStyles}
+                    style={styles.brandLogo}
                     resizeMode="cover"
-                    source={imageSource}
+                    source={{ uri: logo }}
                 />
             )}
 
@@ -147,36 +136,34 @@ const styles = StyleSheet.create({
         left: normalize(185),
     },
     brandLogo: {
-        marginTop: normalize(-41),
-        top: 59, // Исправлено с '50%' на числовое значение (50% от высоты 118px)
+        position: 'absolute',
+        top: '50%',
+        marginTop: normalize(-41), // Половина высоты (82/2 = 41)
         left: normalize(16),
         width: normalize(145),
         height: normalize(82),
-        position: 'absolute',
         borderRadius: normalize(10),
     },
     // Стили специально для placeholder'а
     placeholderContainer: {
         position: 'absolute',
-        marginTop: normalize(-41),
-        top: 59, // Исправлено с '50%' на числовое значение (50% от высоты 118px)
+        top: '50%',
+        marginTop: normalize(-41), // Половина высоты (82/2 = 41) для центрирования
         left: normalize(16),
         width: normalize(145),
         height: normalize(82),
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(240, 240, 240, 0.3)',
+        backgroundColor: '#E8F4FF',
         borderRadius: normalize(10),
+        borderWidth: 2,
+        borderColor: '#C1E7FF',
     },
-    placeholderLogo: {
-        width: normalize(70),
-        height: normalize(70),
-        position: 'relative',
-        top: 0,
-        left: 0,
-        marginTop: 0,
-        opacity: 0.6,
-        tintColor: '#999',
+    placeholderText: {
+        fontSize: normalizeFont(48),
+        fontWeight: '700',
+        color: '#5E9FD8',
+        fontFamily: FontFamily.SFProDisplayBold,
     },
 });
 

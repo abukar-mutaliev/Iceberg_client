@@ -48,11 +48,26 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     orderNumberContainer: {
         flex: 1,
     },
-    orderNumber: {
-        fontSize: 28,
-        fontWeight: '800',
-        color: '#fff',
+    orderNumberWithCopy: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
         marginBottom: 4,
+    },
+    orderNumber: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: '#fff',
+    },
+    copyButtonHeader: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.3)',
     },
     orderDate: {
         fontSize: 14,
@@ -178,6 +193,11 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     infoContent: {
         flex: 1,
     },
+    infoLabelRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
     infoLabel: {
         fontSize: 12,
         color: '#718096',
@@ -185,6 +205,17 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
         marginBottom: 4,
         textTransform: 'uppercase',
         letterSpacing: 0.5,
+    },
+    copyButtonInline: {
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(102, 126, 234, 0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(102, 126, 234, 0.15)',
+        marginLeft: 8,
     },
     infoValue: {
         fontSize: 16,

@@ -8,7 +8,6 @@ import {
     StatusBar,
     ScrollView,
     ActivityIndicator,
-    Alert,
     Modal,
     Image,
     Dimensions
@@ -27,6 +26,7 @@ import {
 } from '@entities/order';
 import { getBaseUrl } from '@shared/api/api';
 import { fetchCart } from '@entities/cart';
+import { useCustomAlert } from '@shared/ui/CustomAlert';
 
 const normalize = (size) => {
     const scale = 375 / 375;
@@ -66,6 +66,9 @@ export const OrderChoiceScreen = () => {
         loadChoiceDetails,
         clearError
     } = useOrderChoice(choiceId);
+    
+    // Custom Alert (используем глобальный через Provider)
+    const { showAlert, showError, showConfirm, hideAlert } = useCustomAlert();
 
     // Локальное состояние
     const [selectedAlternativeId, setSelectedAlternativeId] = useState(null);
@@ -77,6 +80,8 @@ export const OrderChoiceScreen = () => {
     const [selectedProductQuantity, setSelectedProductQuantity] = useState(1);
     const [selectedProducts, setSelectedProducts] = useState({}); // {productId: {product, quantity}}
     const [selectedProductsToRemove, setSelectedProductsToRemove] = useState(new Set()); // ID товаров для удаления
+    const [isChoiceProcessed, setIsChoiceProcessed] = useState(false); // Флаг обработанного предложения
+    const [isDeletionRequestSent, setIsDeletionRequestSent] = useState(false); // Флаг отправленного запроса на удаление
 
     // Проверяем срок действия предложения
     const isExpired = choiceDetails?.expiresAt && new Date(choiceDetails.expiresAt) < new Date();
@@ -118,6 +123,44 @@ export const OrderChoiceScreen = () => {
         }
 
         return null;
+    }, [choiceDetails]);
+
+    /**
+     * Подсчет общего количества товаров (штук) в заказе
+     */
+    const getTotalItemsCount = useCallback(() => {
+        if (!choiceDetails?.order) return 0;
+
+        // Пытаемся подсчитать из orderItems
+        if (choiceDetails.order.orderItems && choiceDetails.order.orderItems.length > 0) {
+            return choiceDetails.order.orderItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+        }
+
+        // Пытаемся подсчитать из items
+        if (choiceDetails.order.items && choiceDetails.order.items.length > 0) {
+            return choiceDetails.order.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+        }
+
+        return 0;
+    }, [choiceDetails]);
+
+    /**
+     * Подсчет количества коробов (уникальных позиций) в заказе
+     */
+    const getTotalBoxesCount = useCallback(() => {
+        if (!choiceDetails?.order) return 0;
+
+        // Пытаемся подсчитать из orderItems
+        if (choiceDetails.order.orderItems && choiceDetails.order.orderItems.length > 0) {
+            return choiceDetails.order.orderItems.length;
+        }
+
+        // Пытаемся подсчитать из items
+        if (choiceDetails.order.items && choiceDetails.order.items.length > 0) {
+            return choiceDetails.order.items.length;
+        }
+
+        return 0;
     }, [choiceDetails]);
 
     /**
@@ -186,6 +229,26 @@ export const OrderChoiceScreen = () => {
      * Быстрое удаление недоступных товаров и продолжение оформления
      */
     const handleQuickRemoveAndContinue = useCallback(async () => {
+        // Проверяем, не обработано ли уже предложение
+        if (isChoiceProcessed) {
+            console.log('⚠️ Предложение уже обработано, игнорируем повторный запрос');
+            showError('Ошибка', 'Это предложение уже было обработано');
+            return;
+        }
+
+        // Проверяем, не был ли уже отправлен запрос на удаление
+        if (isDeletionRequestSent) {
+            console.log('⚠️ Запрос на удаление уже был отправлен. Выберите товары на замену или вернитесь к корзине.');
+            showError('Товары уже удалены', 'Товары уже были удалены из заказа. Выберите похожие товары на замену или вернитесь к корзине.');
+            return;
+        }
+
+        // Проверяем, не выполняется ли уже запрос
+        if (responding) {
+            console.log('⚠️ Запрос уже выполняется, игнорируем повторное нажатие');
+            return;
+        }
+
         try {
             setResponding(true);
 
@@ -205,7 +268,7 @@ export const OrderChoiceScreen = () => {
             // Если не выбрано ни одного товара - удаляем все недоступные
             if (productsToRemove.length === 0) {
                 if (!choiceDetails?.unavailableItems || choiceDetails.unavailableItems.length === 0) {
-                    Alert.alert('Ошибка', 'Нет товаров для удаления');
+                    showError('Ошибка', 'Нет товаров для удаления');
                     setResponding(false);
                     return;
                 }
@@ -235,8 +298,8 @@ export const OrderChoiceScreen = () => {
                         description: alt.description
                     }))
                 });
-                Alert.alert(
-                    'Ошибка', 
+                showError(
+                    'Ошибка',
                     'Опция удаления товаров недоступна. Возможно, не применена миграция БД на сервере.\n\nДоступные альтернативы:\n' + 
                     (choiceDetails?.alternatives?.map(alt => `- ${alt.alternativeType}`).join('\n') || 'нет')
                 );
@@ -249,7 +312,173 @@ export const OrderChoiceScreen = () => {
                 alternativeId: removeAlternative.id
             });
 
-            // Отправляем запрос на удаление
+            // ПРОВЕРЯЕМ ЗАРАНЕЕ: приведет ли удаление к пустому заказу?
+            // Получаем все товары из заказа (проверяем и orderItems и items)
+            const allOrderItems = choiceDetails?.order?.orderItems || choiceDetails?.order?.items || [];
+            const currentItemsCount = allOrderItems.length;
+            const availableItemsCount = allOrderItems.filter(
+                item => !productsToRemove.includes(item.productId)
+            ).length || 0;
+            
+            const willBeEmpty = availableItemsCount === 0;
+            
+            console.log('🔍 Проверка перед удалением:', {
+                currentItemsCount,
+                productsToRemoveCount: productsToRemove.length,
+                availableItemsCount,
+                allOrderItemsCount: allOrderItems.length,
+                allOrderItemsIds: allOrderItems.map(i => i.productId),
+                productsToRemove,
+                willBeEmpty
+            });
+
+            // Если заказ станет пустым - сначала спросим что делать
+            if (willBeEmpty) {
+                console.log('⚠️ Удаление приведет к пустому заказу - спрашиваем что делать');
+                
+                // Проверяем, есть ли альтернативные товары для замены или ожидание
+                const hasSubstituteAlternatives = choiceDetails?.alternatives?.some(
+                    alt => alt.alternativeType === 'SUBSTITUTE'
+                );
+                const hasWaitStockAlternative = choiceDetails?.alternatives?.some(
+                    alt => alt.alternativeType === 'WAIT_STOCK'
+                );
+                
+                setResponding(false);
+                
+                if (hasSubstituteAlternatives || hasWaitStockAlternative) {
+                    // Есть альтернативы - предлагаем выбрать
+                    // Порядок кнопок: основные действия вверху, деструктивное внизу
+                    const buttons = [];
+                    
+                    if (hasSubstituteAlternatives) {
+                        buttons.push({
+                            text: 'Выбрать похожие товары',
+                            style: 'primary',
+                            icon: 'swap-horiz',
+                            onPress: () => {
+                                handleShowAlternativeProducts();
+                            }
+                        });
+                    }
+                    
+                    if (hasWaitStockAlternative) {
+                        buttons.push({
+                            text: 'Подождать поступления',
+                            style: 'primary',
+                            icon: 'schedule',
+                            onPress: () => {
+                                console.log('🕐 Пользователь выбрал "Подождать поступления" из Alert');
+                                // Автоматически выбираем альтернативу WAIT_STOCK
+                                const waitStockAlt = choiceDetails?.alternatives?.find(
+                                    alt => alt.alternativeType === 'WAIT_STOCK'
+                                );
+                                if (waitStockAlt) {
+                                    console.log('✅ Найдена альтернатива WAIT_STOCK:', {
+                                        id: waitStockAlt.id,
+                                        description: waitStockAlt.description
+                                    });
+                                    setSelectedAlternativeId(waitStockAlt.id);
+                                    // Небольшая задержка для корректного обновления состояния
+                                    setTimeout(() => {
+                                        setShowConfirmModal(true);
+                                    }, 100);
+                                } else {
+                                    console.error('❌ Альтернатива WAIT_STOCK не найдена!');
+                                    showError('Ошибка', 'Опция ожидания не найдена');
+                                }
+                            }
+                        });
+                    }
+                    
+                    // Деструктивное действие в конце
+                    buttons.push({
+                        text: 'Удалить и вернуться',
+                        style: 'destructive',
+                        icon: 'delete',
+                        onPress: async () => {
+                            // Теперь удаляем товары и возвращаемся к корзине
+                            setResponding(true);
+                            try {
+                                const deleteResult = await OrderAlternativesApi.respondToChoice(
+                                    choiceId,
+                                    'ACCEPTED',
+                                    removeAlternative.id,
+                                    {
+                                        selectedAlternativeId: removeAlternative.id,
+                                        unavailableProductIds: productsToRemove
+                                    }
+                                );
+                                
+                                if (deleteResult.success) {
+                                    setIsChoiceProcessed(true);
+                                    setIsDeletionRequestSent(true);
+                                    navigation.navigate('Main', { 
+                                        screen: 'Cart'
+                                    });
+                                }
+                            } catch (err) {
+                                console.error('❌ Ошибка удаления:', err);
+                                showError('Ошибка', err.message || 'Не удалось удалить товары');
+                            } finally {
+                                setResponding(false);
+                            }
+                        }
+                    });
+                    
+                    showAlert({
+                        type: 'warning',
+                        title: 'В заказе не останется товаров',
+                        message: `После удаления ${productsToRemove.length} недоступных товаров в заказе не останется товаров для оплаты.\n\nВыберите действие:`,
+                        buttons: buttons
+                    });
+                } else {
+                    // Нет альтернатив - только удаление и возврат к корзине
+                    showAlert({
+                        type: 'warning',
+                        title: 'В заказе не останется товаров',
+                        message: 'После удаления недоступных товаров в заказе не останется товаров для оплаты.',
+                        buttons: [
+                            {
+                                text: 'Удалить и вернуться к корзине',
+                                style: 'primary',
+                                icon: 'shopping-cart',
+                                onPress: async () => {
+                                    setResponding(true);
+                                    try {
+                                        const deleteResult = await OrderAlternativesApi.respondToChoice(
+                                            choiceId,
+                                            'ACCEPTED',
+                                            removeAlternative.id,
+                                            {
+                                                selectedAlternativeId: removeAlternative.id,
+                                                unavailableProductIds: productsToRemove
+                                            }
+                                        );
+                                        
+                                        if (deleteResult.success) {
+                                            setIsChoiceProcessed(true);
+                                            setIsDeletionRequestSent(true);
+                                            navigation.navigate('Main', { 
+                                                screen: 'Cart'
+                                            });
+                                        }
+                                    } catch (err) {
+                                        console.error('❌ Ошибка удаления:', err);
+                                        showError('Ошибка', err.message || 'Не удалось удалить товары');
+                                    } finally {
+                                        setResponding(false);
+                                    }
+                                }
+                            }
+                        ]
+                    });
+                }
+                
+                return; // НЕ отправляем запрос на удаление
+            }
+
+            // Если товары останутся - удаляем как обычно
             const result = await OrderAlternativesApi.respondToChoice(
                 choiceId,
                 'ACCEPTED',
@@ -261,28 +490,17 @@ export const OrderChoiceScreen = () => {
             );
 
             if (result.success) {
+                // Помечаем предложение как обработанное и запрос на удаление как отправленный
+                setIsChoiceProcessed(true);
+                setIsDeletionRequestSent(true);
+                
                 const orderIdToUse = choiceDetails?.order?.id || orderId;
                 const orderNumberToUse = choiceDetails?.order?.orderNumber || choiceDetails?.orderNumber;
                 const totalAmountToUse = result.data?.newTotalAmount || result.newTotalAmount || choiceDetails?.order?.totalAmount;
                 
-                console.log('✅ Товары успешно удалены, переход к оплате', {
-                    orderId: orderIdToUse,
-                    orderNumber: orderNumberToUse,
-                    totalAmount: totalAmountToUse,
-                    choiceDetails: {
-                        hasOrder: !!choiceDetails?.order,
-                        orderId: choiceDetails?.order?.id,
-                        orderNumber: choiceDetails?.order?.orderNumber
-                    },
-                    routeParams: {
-                        orderId,
-                        choiceId
-                    }
-                });
-                
                 if (!orderIdToUse) {
                     console.error('❌ Ошибка: orderId не найден ни в choiceDetails, ни в route.params');
-                    Alert.alert('Ошибка', 'Не удалось определить ID заказа для оплаты');
+                    showError('Ошибка', 'Не удалось определить ID заказа для оплаты');
                     setResponding(false);
                     return;
                 }
@@ -301,39 +519,73 @@ export const OrderChoiceScreen = () => {
         } catch (err) {
             console.error('❌ Ошибка быстрого удаления:', err);
             
-            // Специальная обработка для критичных операций (истек токен)
-            if (err.isCriticalOperation) {
-                Alert.alert(
-                    'Сессия истекла',
-                    'Ваша сессия истекла. Пожалуйста, войдите снова для продолжения оформления заказа.',
+            // Проверяем, не обработано ли уже предложение
+            if (err.message && err.message.includes('Предложение уже обработано')) {
+                console.log('⚠️ Получена ошибка "Предложение уже обработано", устанавливаем флаг');
+                setIsChoiceProcessed(true);
+                showError(
+                    'Предложение обработано',
+                    'Это предложение уже было обработано ранее. Пожалуйста, обновите список заказов.',
                     [
                         {
-                            text: 'Войти',
+                            text: 'Вернуться к заказам',
+                            style: 'primary',
+                            icon: 'arrow-back',
                             onPress: () => {
-                                navigation.navigate('Auth');
+                                navigation.navigate('MyOrders');
                             }
-                        },
-                        {
-                            text: 'Отмена',
-                            style: 'cancel'
                         }
                     ]
                 );
+            } else if (err.isCriticalOperation) {
+                // Специальная обработка для критичных операций (истек токен)
+                showAlert({
+                    type: 'error',
+                    title: 'Сессия истекла',
+                    message: 'Ваша сессия истекла. Пожалуйста, войдите снова для продолжения оформления заказа.',
+                    buttons: [
+                        {
+                            text: 'Отмена',
+                            style: 'cancel'
+                        },
+                        {
+                            text: 'Войти',
+                            style: 'primary',
+                            icon: 'login',
+                            onPress: () => {
+                                navigation.navigate('Auth');
+                            }
+                        }
+                    ]
+                });
             } else {
-                Alert.alert('Ошибка', err.message || 'Не удалось удалить товары');
+                showError('Ошибка', err.message || 'Не удалось удалить товары');
             }
         } finally {
             setResponding(false);
         }
-    }, [choiceId, orderId, choiceDetails, selectedProductsToRemove, navigation]);
+    }, [choiceId, orderId, choiceDetails, selectedProductsToRemove, navigation, showAlert, showError, handleShowAlternativeProducts, isChoiceProcessed, responding, isDeletionRequestSent]);
 
     /**
      * Подтверждение выбора
      */
     const handleConfirmChoice = useCallback(async () => {
+        // Проверяем, не обработано ли уже предложение
+        if (isChoiceProcessed) {
+            console.log('⚠️ Предложение уже обработано, игнорируем повторный запрос');
+            showError('Ошибка', 'Это предложение уже было обработано');
+            return;
+        }
+
+        // Проверяем, не выполняется ли уже запрос
+        if (responding) {
+            console.log('⚠️ Запрос уже выполняется, игнорируем повторное нажатие');
+            return;
+        }
+
         // Проверяем, что выбран хотя бы один вариант
         if (!selectedAlternativeId) {
-            Alert.alert('Ошибка', 'Выберите один из предложенных вариантов');
+            showError('Ошибка', 'Выберите один из предложенных вариантов');
             return;
         }
 
@@ -343,7 +595,7 @@ export const OrderChoiceScreen = () => {
         );
 
         if (selectedAlternative?.alternativeType === 'SUBSTITUTE' && Object.keys(selectedProducts).length === 0) {
-            Alert.alert('Ошибка', 'Выберите товары для замены');
+            showError('Ошибка', 'Выберите товары для замены');
             return;
         }
 
@@ -452,15 +704,180 @@ export const OrderChoiceScreen = () => {
             // Для REMOVE_UNAVAILABLE передаем выбранные товары на удаление
             if (selectedAlternative?.alternativeType === 'REMOVE_UNAVAILABLE') {
                 if (selectedProductsToRemove.size === 0) {
-                    Alert.alert('Ошибка', 'Выберите товары для удаления');
+                    showError('Ошибка', 'Выберите товары для удаления');
                     setResponding(false);
                     return;
                 }
                 
-                responseData.unavailableProductIds = Array.from(selectedProductsToRemove);
+                // ПРОВЕРЯЕМ ЗАРАНЕЕ: приведет ли удаление к пустому заказу?
+                const productsToRemove = Array.from(selectedProductsToRemove);
+                // Получаем все товары из заказа (проверяем и orderItems и items)
+                const allOrderItems = choiceDetails?.order?.orderItems || choiceDetails?.order?.items || [];
+                const currentItemsCount = allOrderItems.length;
+                const availableItemsCount = allOrderItems.filter(
+                    item => !productsToRemove.includes(item.productId)
+                ).length || 0;
+                
+                const willBeEmpty = availableItemsCount === 0;
+                
+                console.log('🔍 Проверка перед удалением (handleConfirmChoice):', {
+                    currentItemsCount,
+                    productsToRemoveCount: productsToRemove.length,
+                    availableItemsCount,
+                    allOrderItemsCount: allOrderItems.length,
+                    allOrderItemsIds: allOrderItems.map(i => i.productId),
+                    productsToRemove,
+                    willBeEmpty
+                });
+
+                // Если заказ станет пустым - НЕ отправляем запрос, спрашиваем что делать
+                if (willBeEmpty) {
+                    console.log('⚠️ Удаление приведет к пустому заказу - спрашиваем что делать (из handleConfirmChoice)');
+                    setResponding(false);
+                    setShowConfirmModal(false);
+                    
+                    // Проверяем, есть ли альтернативные товары для замены или ожидание
+                    const hasSubstituteAlternatives = choiceDetails?.alternatives?.some(
+                        alt => alt.alternativeType === 'SUBSTITUTE'
+                    );
+                    const hasWaitStockAlternative = choiceDetails?.alternatives?.some(
+                        alt => alt.alternativeType === 'WAIT_STOCK'
+                    );
+                    
+                    if (hasSubstituteAlternatives || hasWaitStockAlternative) {
+                        // Есть альтернативы - предлагаем выбрать
+                        const buttons = [];
+                        
+                        if (hasSubstituteAlternatives) {
+                            buttons.push({
+                                text: 'Выбрать похожие товары',
+                                style: 'primary',
+                                icon: 'swap-horiz',
+                                onPress: () => {
+                                    handleShowAlternativeProducts();
+                                }
+                            });
+                        }
+                        
+                        if (hasWaitStockAlternative) {
+                            buttons.push({
+                                text: 'Подождать поступления',
+                                style: 'primary',
+                                icon: 'schedule',
+                                onPress: () => {
+                                    console.log('🕐 Пользователь выбрал "Подождать поступления" из Alert (handleConfirmChoice)');
+                                    const waitStockAlt = choiceDetails?.alternatives?.find(
+                                        alt => alt.alternativeType === 'WAIT_STOCK'
+                                    );
+                                    if (waitStockAlt) {
+                                        console.log('✅ Найдена альтернатива WAIT_STOCK:', {
+                                            id: waitStockAlt.id,
+                                            description: waitStockAlt.description
+                                        });
+                                        setSelectedAlternativeId(waitStockAlt.id);
+                                        setTimeout(() => {
+                                            setShowConfirmModal(true);
+                                        }, 100);
+                                    } else {
+                                        console.error('❌ Альтернатива WAIT_STOCK не найдена!');
+                                        showError('Ошибка', 'Опция ожидания не найдена');
+                                    }
+                                }
+                            });
+                        }
+                        
+                        // Деструктивное действие в конце
+                        buttons.push({
+                            text: 'Удалить и вернуться',
+                            style: 'destructive',
+                            icon: 'delete',
+                            onPress: async () => {
+                                // Теперь удаляем товары и возвращаемся к корзине
+                                setResponding(true);
+                                try {
+                                    const deleteResult = await OrderAlternativesApi.respondToChoice(
+                                        choiceId,
+                                        'ACCEPTED',
+                                        selectedAlternative.id,
+                                        {
+                                            selectedAlternativeId: selectedAlternative.id,
+                                            unavailableProductIds: productsToRemove
+                                        }
+                                    );
+                                    
+                                    if (deleteResult.success) {
+                                        setIsChoiceProcessed(true);
+                                        setIsDeletionRequestSent(true);
+                                        navigation.navigate('Main', { 
+                                            screen: 'Cart'
+                                        });
+                                    }
+                                } catch (err) {
+                                    console.error('❌ Ошибка удаления:', err);
+                                    showError('Ошибка', err.message || 'Не удалось удалить товары');
+                                } finally {
+                                    setResponding(false);
+                                }
+                            }
+                        });
+                        
+                        showAlert({
+                            type: 'warning',
+                            title: 'В заказе не останется товаров',
+                            message: `После удаления ${productsToRemove.length} недоступных товаров в заказе не останется товаров для оплаты.\n\nВыберите действие:`,
+                            buttons: buttons
+                        });
+                    } else {
+                        // Нет альтернатив - только удаление и возврат к корзине
+                        showAlert({
+                            type: 'warning',
+                            title: 'В заказе не останется товаров',
+                            message: 'После удаления недоступных товаров в заказе не останется товаров для оплаты.',
+                            buttons: [
+                                {
+                                    text: 'Удалить и вернуться к корзине',
+                                    style: 'primary',
+                                    icon: 'shopping-cart',
+                                    onPress: async () => {
+                                        setResponding(true);
+                                        try {
+                                            const deleteResult = await OrderAlternativesApi.respondToChoice(
+                                                choiceId,
+                                                'ACCEPTED',
+                                                selectedAlternative.id,
+                                                {
+                                                    selectedAlternativeId: selectedAlternative.id,
+                                                    unavailableProductIds: productsToRemove
+                                                }
+                                            );
+                                            
+                                            if (deleteResult.success) {
+                                                setIsChoiceProcessed(true);
+                                                setIsDeletionRequestSent(true);
+                                                navigation.navigate('Main', { 
+                                                    screen: 'Cart'
+                                                });
+                                            }
+                                        } catch (err) {
+                                            console.error('❌ Ошибка удаления:', err);
+                                            showError('Ошибка', err.message || 'Не удалось удалить товары');
+                                        } finally {
+                                            setResponding(false);
+                                        }
+                                    }
+                                }
+                            ]
+                        });
+                    }
+                    
+                    return; // НЕ отправляем запрос на удаление
+                }
+                
+                // Если товары останутся - добавляем данные для удаления
+                responseData.unavailableProductIds = productsToRemove;
                 
                 console.log('🗑️ Отладка удаления товаров:', {
-                    selectedProductsToRemove: Array.from(selectedProductsToRemove),
+                    selectedProductsToRemove: productsToRemove,
                     unavailableItems: choiceDetails?.unavailableItems
                 });
             }
@@ -485,6 +902,8 @@ export const OrderChoiceScreen = () => {
                 
                 // Проверяем, был ли заказ разделен на 2 части (доступные и ожидающие товары)
                 if (result.data?.action === 'WAIT_STOCK_SPLIT' && result.data?.splitInfo) {
+                    // Помечаем предложение как обработанное
+                    setIsChoiceProcessed(true);
                     console.log('🔀 Заказ разделен, переход к оплате обоих заказов', {
                         immediateOrderId: result.data.splitInfo.immediateOrder?.id,
                         waitingOrderId: result.data.splitInfo.waitingOrder?.id
@@ -507,6 +926,9 @@ export const OrderChoiceScreen = () => {
                         returnScreen: 'MyOrders'
                     });
                 } else if (result.data?.action === 'SUBSTITUTE') {
+                    // Помечаем предложение как обработанное
+                    setIsChoiceProcessed(true);
+                    
                     // Клиент выбрал замену товаров - переходим к оплате (обычная оплата, БЕЗ предавторизации)
                     console.log('🔄 Товары заменены, переход к оплате (обычная оплата)', {
                         orderId: choiceDetails?.order?.id,
@@ -533,10 +955,23 @@ export const OrderChoiceScreen = () => {
                     // Небольшая задержка для стабилизации состояния
                     await new Promise(resolve => setTimeout(resolve, 500));
                     
+                    // Подсчитываем количество штук и коробов для передачи
+                    const itemsCount = result.data?.newItemsCount || result.newItemsCount || getTotalItemsCount();
+                    const boxesCount = getTotalBoxesCount();
+                    
+                    console.log('📊 Передаем данные в PaymentScreen:', {
+                        itemsCount,
+                        boxesCount,
+                        newItemsCountFromData: result.data?.newItemsCount,
+                        newItemsCountFromResult: result.newItemsCount
+                    });
+                    
                     navigation.navigate('PaymentScreen', {
                         orderId: choiceDetails?.order?.id,
                         orderNumber: choiceDetails?.order?.orderNumber,
                         totalAmount: result.data?.newTotalAmount || result.newTotalAmount || choiceDetails?.order?.totalAmount,
+                        itemsCount: itemsCount,
+                        boxesCount: boxesCount,
                         usePreauthorization: false, // Товары доступны - обычная оплата
                         returnScreen: 'MyOrders'
                     });
@@ -545,11 +980,13 @@ export const OrderChoiceScreen = () => {
                     const orderIdToUse = choiceDetails?.order?.id || orderId;
                     const orderNumberToUse = choiceDetails?.order?.orderNumber || choiceDetails?.orderNumber;
                     const totalAmountToUse = result.data?.newTotalAmount || result.newTotalAmount || choiceDetails?.order?.totalAmount;
+                    const itemsCountToUse = result.data?.newItemsCount || result.newItemsCount || 0;
                     
-                    console.log('🗑️ Недоступные товары удалены, переход к оплате', {
+                    console.log('🗑️ Недоступные товары удалены', {
                         orderId: orderIdToUse,
                         orderNumber: orderNumberToUse,
                         newTotalAmount: totalAmountToUse,
+                        itemsCount: itemsCountToUse,
                         choiceDetails: {
                             hasOrder: !!choiceDetails?.order,
                             orderId: choiceDetails?.order?.id,
@@ -561,26 +998,114 @@ export const OrderChoiceScreen = () => {
                         }
                     });
                     
-                    if (!orderIdToUse) {
-                        console.error('❌ Ошибка: orderId не найден ни в choiceDetails, ни в route.params');
-                        Alert.alert('Ошибка', 'Не удалось определить ID заказа для оплаты');
+                    // Проверяем, остались ли товары в заказе
+                    if (!totalAmountToUse || totalAmountToUse <= 0 || itemsCountToUse <= 0) {
+                        console.log('⚠️ В заказе не осталось товаров для оплаты');
+                        
+                        // Проверяем, есть ли альтернативные товары для замены
+                        const hasSubstituteAlternatives = choiceDetails?.alternatives?.some(
+                            alt => alt.alternativeType === 'SUBSTITUTE'
+                        );
+                        
+                        if (hasSubstituteAlternatives) {
+                            // НЕ помечаем как обработанное - даем клиенту выбрать альтернативы
+                            // НО помечаем что запрос на удаление уже отправлен
+                            setIsDeletionRequestSent(true);
+                            // Предлагаем выбрать товары на замену
+                            showAlert({
+                                type: 'warning',
+                                title: 'Заказ пуст',
+                                message: 'После удаления недоступных товаров в заказе не осталось товаров для оплаты. Хотите выбрать похожие товары на замену из ближайшего склада?',
+                                buttons: [
+                                    {
+                                        text: 'Выбрать похожие товары',
+                                        style: 'primary',
+                                        icon: 'swap-horiz',
+                                        onPress: () => {
+                                            handleShowAlternativeProducts();
+                                        }
+                                    },
+                                    {
+                                        text: 'Вернуться к корзине',
+                                        style: 'cancel',
+                                        icon: 'shopping-cart',
+                                        onPress: () => {
+                                            navigation.navigate('Main', { 
+                                                screen: 'Cart'
+                                            });
+                                        }
+                                    }
+                                ]
+                            });
+                        } else {
+                            // Альтернатив нет, помечаем как обработанное и возвращаемся к корзине
+                            setIsChoiceProcessed(true);
+                            showAlert({
+                                type: 'warning',
+                                title: 'Заказ пуст',
+                                message: 'После удаления недоступных товаров в заказе не осталось товаров для оплаты. Вернитесь к корзине для повторного оформления заказа.',
+                                buttons: [
+                                    {
+                                        text: 'Вернуться к корзине',
+                                        style: 'primary',
+                                        icon: 'shopping-cart',
+                                        onPress: () => {
+                                            navigation.navigate('Main', { 
+                                                screen: 'Cart'
+                                            });
+                                        }
+                                    }
+                                ]
+                            });
+                        }
                         return;
                     }
+                    
+                    // Помечаем предложение как обработанное только если есть товары для оплаты
+                    setIsChoiceProcessed(true);
+                    
+                    if (!orderIdToUse) {
+                        console.error('❌ Ошибка: orderId не найден ни в choiceDetails, ни в route.params');
+                        showError('Ошибка', 'Не удалось определить ID заказа для оплаты');
+                        return;
+                    }
+                    
+                    // Подсчитываем коробы для передачи
+                    const boxesCountToUse = getTotalBoxesCount();
                     
                     navigation.navigate('PaymentScreen', {
                         orderId: orderIdToUse,
                         orderNumber: orderNumberToUse,
                         totalAmount: totalAmountToUse,
+                        itemsCount: itemsCountToUse,
+                        boxesCount: boxesCountToUse,
                         usePreauthorization: false, // Товары доступны - обычная оплата
                         returnScreen: 'MyOrders'
                     });
                 } else {
+                    // Помечаем предложение как обработанное
+                    setIsChoiceProcessed(true);
+                    
+                    // Подсчитываем количество штук и коробов из заказа
+                    const fallbackItemsCount = getTotalItemsCount();
+                    const fallbackBoxesCount = getTotalBoxesCount();
+                    
+                    console.log('📊 Подсчет количества товаров для OrderSuccess:', {
+                        newItemsCountFromData: result.data?.newItemsCount,
+                        newItemsCountFromResult: result.newItemsCount,
+                        fallbackItemsCount,
+                        fallbackBoxesCount,
+                        orderItemsLength: choiceDetails?.order?.orderItems?.length || 0,
+                        itemsLength: choiceDetails?.order?.items?.length || 0
+                    });
+                    
                     // Обычный флоу (например, отмена заказа) - переходим к экрану успешного заказа
                     navigation.navigate('OrderSuccess', {
                         orderNumber: choiceDetails?.order?.orderNumber || 'N/A',
                         totalAmount: result.data?.newTotalAmount || result.newTotalAmount || choiceDetails?.order?.totalAmount || 0,
                         deliveryDate: choiceDetails?.order?.expectedDeliveryDate || new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
-                        itemsCount: result.data?.newItemsCount || result.newItemsCount || choiceDetails?.order?.items?.length || 0,
+                        itemsCount: result.data?.newItemsCount || result.newItemsCount || fallbackItemsCount,
+                        boxesCount: fallbackBoxesCount,
                         orderId: choiceDetails?.order?.id,
                         isChoiceResult: true,
                         choiceMessage: result.data?.message || result.message || 'Ваш выбор успешно обработан'
@@ -592,31 +1117,52 @@ export const OrderChoiceScreen = () => {
         } catch (err) {
             console.error('❌ Ошибка подтверждения выбора:', err);
             
-            // Специальная обработка для критичных операций (истек токен)
-            if (err.isCriticalOperation) {
-                Alert.alert(
-                    'Сессия истекла',
-                    'Ваша сессия истекла. Пожалуйста, войдите снова для продолжения оформления заказа.',
+            // Проверяем, не обработано ли уже предложение
+            if (err.message && err.message.includes('Предложение уже обработано')) {
+                console.log('⚠️ Получена ошибка "Предложение уже обработано", устанавливаем флаг');
+                setIsChoiceProcessed(true);
+                showError(
+                    'Предложение обработано',
+                    'Это предложение уже было обработано ранее. Пожалуйста, обновите список заказов.',
                     [
                         {
-                            text: 'Войти',
+                            text: 'Вернуться к заказам',
+                            style: 'primary',
+                            icon: 'arrow-back',
                             onPress: () => {
-                                navigation.navigate('Auth');
+                                navigation.navigate('MyOrders');
                             }
-                        },
-                        {
-                            text: 'Отмена',
-                            style: 'cancel'
                         }
                     ]
                 );
+            } else if (err.isCriticalOperation) {
+                // Специальная обработка для критичных операций (истек токен)
+                showAlert({
+                    type: 'error',
+                    title: 'Сессия истекла',
+                    message: 'Ваша сессия истекла. Пожалуйста, войдите снова для продолжения оформления заказа.',
+                    buttons: [
+                        {
+                            text: 'Отмена',
+                            style: 'cancel'
+                        },
+                        {
+                            text: 'Войти',
+                            style: 'primary',
+                            icon: 'login',
+                            onPress: () => {
+                                navigation.navigate('Auth');
+                            }
+                        }
+                    ]
+                });
             } else {
-                Alert.alert('Ошибка', err.message || 'Не удалось обработать ваш выбор');
+                showError('Ошибка', err.message || 'Не удалось обработать ваш выбор');
             }
         } finally {
             setResponding(false);
         }
-    }, [choiceId, orderId, choiceDetails, selectedProducts, dispatch, navigation]);
+    }, [choiceId, orderId, choiceDetails, selectedProducts, selectedProductsToRemove, dispatch, navigation, showAlert, showError, handleShowAlternativeProducts, isChoiceProcessed, responding, selectedAlternativeId]);
 
     /**
      * Открытие модального окна с альтернативными товарами
@@ -744,43 +1290,43 @@ export const OrderChoiceScreen = () => {
      * Отклонение предложения
      */
     const handleRejectChoice = useCallback(async () => {
-        Alert.alert(
+        showConfirm(
             'Отклонить предложение',
             'Вы уверены, что хотите отклонить все предложенные варианты? Заказ будет отменен.',
-            [
-                { text: 'Нет', style: 'cancel' },
-                {
-                    text: 'Да, отклонить',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            setResponding(true);
+            async () => {
+                try {
+                    setResponding(true);
 
-                            const result = await OrderAlternativesApi.respondToChoice(
-                                choiceId,
-                                'REJECTED'
-                            );
+                    const result = await OrderAlternativesApi.respondToChoice(
+                        choiceId,
+                        'REJECTED'
+                    );
 
-                            if (result.success) {
-                                Alert.alert(
-                                    'Заказ отменен',
-                                    'Заказ был отменен по вашему выбору',
-                                    [{ text: 'OK', onPress: () => navigation.navigate('MyOrders') }]
-                                );
-                            } else {
-                                throw new Error(result.error);
-                            }
-                        } catch (err) {
-                            console.error('❌ Ошибка отклонения предложения:', err);
-                            Alert.alert('Ошибка', err.message || 'Не удалось отклонить предложение');
-                        } finally {
-                            setResponding(false);
-                        }
+                    if (result.success) {
+                        showAlert({
+                            type: 'info',
+                            title: 'Заказ отменен',
+                            message: 'Заказ был отменен по вашему выбору',
+                            buttons: [
+                                { 
+                                    text: 'OK',
+                                    style: 'primary',
+                                    onPress: () => navigation.navigate('MyOrders') 
+                                }
+                            ]
+                        });
+                    } else {
+                        throw new Error(result.error);
                     }
+                } catch (err) {
+                    console.error('❌ Ошибка отклонения предложения:', err);
+                    showError('Ошибка', err.message || 'Не удалось отклонить предложение');
+                } finally {
+                    setResponding(false);
                 }
-            ]
+            }
         );
-    }, [choiceId]);
+    }, [choiceId, showConfirm, showAlert, showError, navigation]);
 
 
     /**
@@ -828,6 +1374,9 @@ export const OrderChoiceScreen = () => {
         const label = ALTERNATIVE_TYPE_LABELS[alternative.alternativeType] || alternative.alternativeType;
         const additionalCost = formatAdditionalCost(alternative.additionalCost);
         const estimatedDate = formatEstimatedDate(alternative.estimatedDate);
+        
+        // Проверяем, не была ли уже отправлена операция удаления для REMOVE_UNAVAILABLE
+        const isRemoveUnavailableDisabled = alternative.alternativeType === 'REMOVE_UNAVAILABLE' && isDeletionRequestSent;
 
         return (
             <TouchableOpacity
@@ -835,9 +1384,17 @@ export const OrderChoiceScreen = () => {
                 style={[
                     styles.alternativeCard,
                     isSelected && styles.alternativeCardSelected,
-                    isSelected && { borderColor: color }
+                    isSelected && { borderColor: color },
+                    isRemoveUnavailableDisabled && styles.alternativeCardDisabled
                 ]}
-                onPress={() => handleAlternativeSelect(alternative.id)}
+                onPress={() => {
+                    if (isRemoveUnavailableDisabled) {
+                        showError('Товары уже удалены', 'Недоступные товары уже были удалены из заказа. Выберите другую альтернативу.');
+                        return;
+                    }
+                    handleAlternativeSelect(alternative.id);
+                }}
+                disabled={isRemoveUnavailableDisabled}
                 activeOpacity={0.8}
             >
                 <View style={styles.alternativeHeader}>
@@ -871,9 +1428,22 @@ export const OrderChoiceScreen = () => {
                     </View>
                 </View>
                 
-                <Text style={styles.alternativeDescription}>
+                <Text style={[
+                    styles.alternativeDescription,
+                    isRemoveUnavailableDisabled && styles.alternativeDescriptionDisabled
+                ]}>
                     {alternative.description}
                 </Text>
+                
+                {/* Индикация, что товары уже удалены */}
+                {isRemoveUnavailableDisabled && (
+                    <View style={styles.alreadyProcessedBadge}>
+                        <Icon name="check-circle" size={16} color="#28a745" />
+                        <Text style={styles.alreadyProcessedText}>
+                            Товары уже удалены
+                        </Text>
+                    </View>
+                )}
 
                 {/* Дополнительная информация */}
                 {alternative.product && (
@@ -1088,11 +1658,24 @@ export const OrderChoiceScreen = () => {
                                         </Text>
                                     </View>
                                     
+                                    {/* Подсказка о товарах на замену */}
+                                    {choiceDetails?.alternatives?.some(alt => alt.alternativeType === 'SUBSTITUTE') && (
+                                        <View style={styles.substituteHintContainer}>
+                                            <Icon name="swap-horiz" size={16} color="#28a745" />
+                                            <Text style={styles.substituteHintText}>
+                                                ✨ Доступны похожие товары на замену из ближайшего склада "{getWarehouseNameForSubstitutes()}"
+                                            </Text>
+                                        </View>
+                                    )}
+                                    
                                     {/* Кнопка быстрого удаления и продолжения */}
                                     <TouchableOpacity
-                                        style={styles.quickRemoveButton}
+                                        style={[
+                                            styles.quickRemoveButton,
+                                            (responding || isChoiceProcessed || isDeletionRequestSent) && styles.quickRemoveButtonDisabled
+                                        ]}
                                         onPress={handleQuickRemoveAndContinue}
-                                        disabled={responding}
+                                        disabled={responding || isChoiceProcessed || isDeletionRequestSent}
                                         activeOpacity={0.8}
                                     >
                                         {responding ? (
@@ -1101,7 +1684,9 @@ export const OrderChoiceScreen = () => {
                                             <>
                                                 <Icon name="delete-outline" size={20} color="#fff" />
                                                 <Text style={styles.quickRemoveButtonText}>
-                                                    {selectedProductsToRemove.size > 0 
+                                                    {isChoiceProcessed ? 'Предложение обработано' :
+                                                     isDeletionRequestSent ? 'Товары удалены - выберите замену' :
+                                                     selectedProductsToRemove.size > 0 
                                                         ? `Удалить выбранные (${selectedProductsToRemove.size}) и продолжить`
                                                         : 'Удалить все недоступные и продолжить'
                                                     }
@@ -1173,17 +1758,19 @@ export const OrderChoiceScreen = () => {
                             <TouchableOpacity
                                 style={[
                                     styles.confirmButton,
-                                    (!selectedAlternativeId || responding) && styles.confirmButtonDisabled
+                                    (!selectedAlternativeId || responding || isChoiceProcessed) && styles.confirmButtonDisabled
                                 ]}
                                 onPress={() => setShowConfirmModal(true)}
-                                disabled={!selectedAlternativeId || responding}
+                                disabled={!selectedAlternativeId || responding || isChoiceProcessed}
                             >
                                 {responding ? (
                                     <ActivityIndicator color="#fff" size="small" />
                                 ) : (
                                     <>
                                         <Icon name="check" size={20} color="#fff" />
-                                        <Text style={styles.confirmButtonText}>Подтвердить выбор</Text>
+                                        <Text style={styles.confirmButtonText}>
+                                            {isChoiceProcessed ? 'Предложение обработано' : 'Подтвердить выбор'}
+                                        </Text>
                                     </>
                                 )}
                             </TouchableOpacity>
@@ -1909,6 +2496,31 @@ const styles = StyleSheet.create({
         color: '#666',
         lineHeight: normalize(20),
     },
+    alternativeCardDisabled: {
+        opacity: 0.6,
+        backgroundColor: '#f8f9fa',
+        borderColor: '#dee2e6',
+    },
+    alternativeDescriptionDisabled: {
+        color: '#999',
+        textDecorationLine: 'line-through',
+    },
+    alreadyProcessedBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#d4edda',
+        padding: normalize(8),
+        borderRadius: normalize(6),
+        marginTop: normalize(10),
+        borderWidth: 1,
+        borderColor: '#c3e6cb',
+    },
+    alreadyProcessedText: {
+        fontSize: normalize(13),
+        color: '#155724',
+        fontWeight: '600',
+        marginLeft: normalize(6),
+    },
     productInfo: {
         backgroundColor: '#e3f2fd',
         padding: normalize(12),
@@ -2405,6 +3017,24 @@ const styles = StyleSheet.create({
         marginLeft: normalize(8),
         lineHeight: normalize(18),
     },
+    substituteHintContainer: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        backgroundColor: '#d4edda',
+        padding: normalize(12),
+        borderRadius: normalize(8),
+        marginTop: normalize(8),
+        borderWidth: 1,
+        borderColor: '#c3e6cb',
+    },
+    substituteHintText: {
+        flex: 1,
+        fontSize: normalize(13),
+        color: '#155724',
+        marginLeft: normalize(8),
+        lineHeight: normalize(18),
+        fontWeight: '500',
+    },
     quickRemoveButton: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -2418,6 +3048,12 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.3,
         shadowRadius: 8,
         elevation: 6,
+    },
+    quickRemoveButtonDisabled: {
+        backgroundColor: '#ccc',
+        shadowColor: '#ccc',
+        shadowOpacity: 0.1,
+        elevation: 2,
     },
     quickRemoveButtonText: {
         fontSize: normalize(15),

@@ -38,45 +38,9 @@ export const ProductsList = ({
     const flatListRef = useRef(null);
     const scrollPositionRef = useRef({ x: 0, y: 0 });
 
-    const handleScroll = useCallback((event) => {
-        const { x, y } = event.nativeEvent.contentOffset;
-        scrollPositionRef.current = { x, y };
-    }, []);
-
-    // Восстанавливаем позицию скролла после обновления данных
-    useEffect(() => {
-        if (flatListRef.current && displayProducts && displayProducts.length > 0) {
-            // Небольшая задержка для обеспечения корректного рендеринга
-            const timeoutId = setTimeout(() => {
-                if (flatListRef.current && scrollPositionRef.current.y > 0) {
-                    flatListRef.current.scrollToOffset({
-                        offset: scrollPositionRef.current.y,
-                        animated: false
-                    });
-                }
-            }, 50);
-
-            return () => clearTimeout(timeoutId);
-        }
-    }, [displayProducts?.length]);
-
-    // Обработка ошибок и пустых состояний
-    if (error) {
-        return (
-            <View style={styles.errorContainer}>
-                <Text style={styles.errorText}>Ошибка загрузки продуктов: {error}</Text>
-            </View>
-        );
-    }
-
-    if (!Array.isArray(products) || !products || products.length === 0) {
-        return (
-            <View style={styles.noProductsContainer}>
-                <Text style={styles.noProductsText}>Товары не найдены</Text>
-            </View>
-        );
-    }
-
+    // ВСЕ ХУКИ ДОЛЖНЫ БЫТЬ ВЫЗВАНЫ ДО ЛЮБЫХ УСЛОВНЫХ ВОЗВРАТОВ!
+    
+    // Подготовка данных для отображения
     const displayProducts = useMemo(() => {
         if (!Array.isArray(products) || !products) {
             return [];
@@ -95,6 +59,11 @@ export const ProductsList = ({
                 originalData: product
             }));
     }, [products?.length, products]); // Добавляем products.length для лучшего контроля зависимостей
+
+    const handleScroll = useCallback((event) => {
+        const { x, y } = event.nativeEvent.contentOffset;
+        scrollPositionRef.current = { x, y };
+    }, []);
 
     const renderItem = useCallback(({ item }) => {
         if (!item) return null;
@@ -137,6 +106,40 @@ export const ProductsList = ({
             {ListFooterComponent && ListFooterComponent()}
         </>
     ), [safeIsLoadingMore, ListFooterComponent]);
+
+    // Восстанавливаем позицию скролла после обновления данных
+    useEffect(() => {
+        if (flatListRef.current && displayProducts && displayProducts.length > 0) {
+            // Небольшая задержка для обеспечения корректного рендеринга
+            const timeoutId = setTimeout(() => {
+                if (flatListRef.current && scrollPositionRef.current.y > 0) {
+                    flatListRef.current.scrollToOffset({
+                        offset: scrollPositionRef.current.y,
+                        animated: false
+                    });
+                }
+            }, 50);
+
+            return () => clearTimeout(timeoutId);
+        }
+    }, [displayProducts?.length]);
+
+    // Обработка ошибок и пустых состояний (ПОСЛЕ ВСЕХ ХУКОВ!)
+    if (error) {
+        return (
+            <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>Ошибка загрузки продуктов: {error}</Text>
+            </View>
+        );
+    }
+
+    if (!Array.isArray(products) || !products || products.length === 0) {
+        return (
+            <View style={styles.noProductsContainer}>
+                <Text style={styles.noProductsText}>Товары не найдены</Text>
+            </View>
+        );
+    }
 
     return (
         <View style={styles.container}>

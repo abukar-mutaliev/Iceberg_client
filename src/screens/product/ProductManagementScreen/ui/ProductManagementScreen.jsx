@@ -140,6 +140,37 @@ export const ProductManagementScreen = ({ route }) => {
         }
     }, [navigation, currentUser?.role]);
 
+    const handleViewStagnantProducts = useCallback(() => {
+        console.log('Переход к залежавшимся товарам');
+        navigation.navigate('StagnantProducts');
+    }, [navigation]);
+
+    const renderSupplierCards = useMemo(() => {
+        if (currentUser?.role !== 'SUPPLIER') return null;
+
+        return (
+            <View style={styles.supplierCardsContainer}>
+                <TouchableOpacity 
+                    style={styles.supplierCard}
+                    onPress={handleViewStagnantProducts}
+                    activeOpacity={0.7}
+                >
+                    <View style={styles.cardIconContainer}>
+                        <Text style={styles.cardIcon}>⚠️</Text>
+                    </View>
+                    <View style={styles.cardContent}>
+                        <Text style={styles.cardTitle}>Залежавшиеся товары</Text>
+                        <Text style={styles.cardDescription}>
+                            Товары без продаж более 3 недель.{'\n'}
+                            Возвраты создаются администрацией.
+                        </Text>
+                    </View>
+                    <Text style={styles.cardArrow}>›</Text>
+                </TouchableOpacity>
+            </View>
+        );
+    }, [currentUser?.role, handleViewStagnantProducts]);
+
     const renderEmptyList = useMemo(() => (
         <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>
@@ -233,6 +264,9 @@ export const ProductManagementScreen = ({ route }) => {
             />
 
             <View style={styles.content}>
+                {/* Карточки для поставщика */}
+                {renderSupplierCards}
+
                 {!filteredProducts || filteredProducts.length === 0 ? (
                     renderEmptyList
                 ) : (
@@ -340,6 +374,58 @@ const styles = StyleSheet.create({
         fontSize: FontSize.size_sm,
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
+    },
+    // Стили для карточек поставщика
+    supplierCardsContainer: {
+        marginBottom: 16,
+    },
+    supplierCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 12,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+        borderLeftWidth: 4,
+        borderLeftColor: Color.orange,
+    },
+    cardIconContainer: {
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        backgroundColor: 'rgba(255, 149, 0, 0.1)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    cardIcon: {
+        fontSize: 28,
+    },
+    cardContent: {
+        flex: 1,
+    },
+    cardTitle: {
+        fontSize: FontSize.size_md,
+        fontFamily: FontFamily.sFProText,
+        fontWeight: '600',
+        color: Color.textPrimary,
+        marginBottom: 4,
+    },
+    cardDescription: {
+        fontSize: FontSize.size_xs,
+        fontFamily: FontFamily.sFProText,
+        color: Color.textSecondary,
+        lineHeight: 18,
+    },
+    cardArrow: {
+        fontSize: 28,
+        color: Color.textSecondary,
+        marginLeft: 8,
     },
 });
 

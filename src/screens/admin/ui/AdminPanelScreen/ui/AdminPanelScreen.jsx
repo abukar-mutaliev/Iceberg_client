@@ -16,13 +16,15 @@ import CustomButton from '@shared/ui/Button/CustomButton';
 import { useAuth } from "@entities/auth/hooks/useAuth";
 import { AdminHeader } from "@widgets/admin/AdminHeader";
 import { AdminMenuItem } from "@widgets/admin/AdminMenuItem";
-import { AddProductModal } from "@widgets/product/AddProductModal";
 import IconCategory from "@shared/ui/Icon/CategoriesManagement/IconCategory";
 import IconProducts from "@shared/ui/Icon/Profile/IconProducts";
 import IconDelivery from "@shared/ui/Icon/Profile/IconDelivery";
 import IconUser from "@shared/ui/Icon/Profile/IconPersona";
 import IconDistrict from "@shared/ui/Icon/DistrictManagement/IconDistrict";
 import IconSettings from "@shared/ui/Icon/Profile/IconSettings";
+import IconWarehouse from "@shared/ui/Icon/Warehouse/IconWarehouse";
+import { IconAdd } from "@shared/ui/Icon/ProductManagement";
+import AddUserIcon from "@shared/ui/Icon/AddUserIcon";
 
 const AdminSection = ({ title, children }) => {
     return (
@@ -41,8 +43,6 @@ export const AdminPanelScreen = () => {
     const { currentUser, hasPermission } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
 
-    // Состояние для модальных окон
-    const [isAddProductModalVisible, setAddProductModalVisible] = useState(false);
 
     // Проверка прав доступа - разрешаем доступ администраторам и сотрудникам
     useEffect(() => {
@@ -79,10 +79,16 @@ export const AdminPanelScreen = () => {
     }, [navigation]);
 
     const handleStopsListPress = useCallback(() => {
-        // Переходим к StopsListScreen в MainStack
+        console.log('AdminPanel: Navigating to StopsListScreen with fromScreen=AdminPanel');
+        // Переходим к StopsListScreen в MainStack с параметром возврата
         navigation.navigate('Main', {
             screen: 'MainTab',
-            params: { screen: 'StopsListScreen' }
+            params: { 
+                screen: 'StopsListScreen',
+                params: {
+                    fromScreen: 'AdminPanel'
+                }
+            }
         });
     }, [navigation]);
 
@@ -120,12 +126,29 @@ export const AdminPanelScreen = () => {
         navigation.navigate('RewardSettings');
     }, [navigation]);
 
+    // Обработчики для возвратов товаров
+    const handleStagnantProductsPress = useCallback(() => {
+        navigation.navigate('StagnantProducts');
+    }, [navigation]);
+
+    const handleProductReturnsPress = useCallback(() => {
+        navigation.navigate('ProductReturns');
+    }, [navigation]);
+
 
     const handleProductSuccess = useCallback((product) => {
-        // После успешного добавления продукта остаемся в админ панели
+        // После успешного добавления продукта переходим к его просмотру
         console.log('Продукт добавлен:', product);
-        // Можно дополнительно показать уведомление или обновить данные
-    }, []);
+        if (product?.id) {
+            // Небольшая задержка чтобы продукт успел попасть в кэш и базу данных
+            setTimeout(() => {
+                navigation.navigate('AdminProductDetail', {
+                    productId: product.id,
+                    fromScreen: 'AdminPanel'
+                });
+            }, 500);
+        }
+    }, [navigation]);
 
     const handleGoBack = useCallback(() => {
         // Возвращаемся к профилю через корневой навигатор
@@ -159,6 +182,21 @@ export const AdminPanelScreen = () => {
 
             <ScrollView style={styles.scrollView}>
                 
+                {/* Управление складами - объединенная секция на первом месте */}
+                <AdminSection title="Управление складами">
+                    <AdminMenuItem
+                        icon={<IconDistrict color={Color.blue2} />}
+                        title="Список районов и складов"
+                        onPress={handleDistrictsManagementPress}
+                    />
+                    <AdminMenuItem
+                        icon={<IconWarehouse width={24} height={24} color={Color.blue2} />}
+                        title="Статистика складов"
+                        onPress={() => navigation.navigate('WarehouseList', {
+                            fromScreen: 'AdminPanel'
+                        })}
+                    />
+                </AdminSection>
 
                 {/* Раздел для управления вознаграждениями - только для администраторов */}
                 {isAdmin && (
@@ -179,14 +217,30 @@ export const AdminPanelScreen = () => {
                 {/*Управления продуктами */}
                 <AdminSection title="Управление продуктами">
                     <AdminMenuItem
-                        icon={<IconProducts color={Color.blue2} />}
+                        icon={<IconAdd width={24} height={24} color={Color.blue2} />}
                         title="Добавить продукт"
-                        onPress={() => setAddProductModalVisible(true)}
+                        onPress={() => navigation.navigate('AddProduct', {
+                            onSuccess: handleProductSuccess
+                        })}
                     />
                     <AdminMenuItem
                         icon={<IconProducts color={Color.blue2} />}
                         title="Список продуктов"
                         onPress={handleProductManagementPress}
+                    />
+                </AdminSection>
+
+                {/* Управление возвратами товаров - показываем всем (ADMIN, EMPLOYEE) */}
+                <AdminSection title="Возвраты товаров">
+                    <AdminMenuItem
+                        icon={<IconProducts color={Color.orange} />}
+                        title="Залежавшиеся товары"
+                        onPress={handleStagnantProductsPress}
+                    />
+                    <AdminMenuItem
+                        icon={<IconDelivery color={Color.blue2} />}
+                        title="Список возвратов"
+                        onPress={handleProductReturnsPress}
                     />
                 </AdminSection>
 
@@ -203,9 +257,6 @@ export const AdminPanelScreen = () => {
                     />
                 </AdminSection>
 
-
-       
-
                 {/* Секцию управления пользователями показываем только администраторам */}
                 {isAdmin && (
                     <AdminSection title="Управление пользователями">
@@ -215,9 +266,14 @@ export const AdminPanelScreen = () => {
                             onPress={handleUsersManagementPress}
                         />
                         <AdminMenuItem
-                            icon={<IconUser color={Color.blue2} />}
+                            icon={<AddUserIcon width={24} height={24} color={Color.blue2} />}
                             title="Добавить пользователя"
                             onPress={handleUserAddPress}
+                        />
+                        <AdminMenuItem
+                            icon={<IconDistrict color={Color.blue2} />}
+                            title="Районы и склады сотрудников"
+                            onPress={handleEmployeeManagementPress}
                         />
                         {/* Управление должностями - только для суперадминов */}
                         {currentUser?.profile?.isSuperAdmin && (
@@ -229,26 +285,6 @@ export const AdminPanelScreen = () => {
                         )}
                     </AdminSection>
                 )}
-                         {/* Управление сотрудниками - показываем только администраторам */}
-                         {isAdmin && (
-                    <AdminSection title="Управление районами и складами сотрудников">
-                        <AdminMenuItem
-                            icon={<IconUser color={Color.blue2} />}
-                            title="Районы и склады сотрудников"
-                            onPress={handleEmployeeManagementPress}
-                        />
-                    </AdminSection>
-                )}
-    
-                {/* Новый раздел для управления районами */}
-                <AdminSection title="Управление районами и складами">
-                    <AdminMenuItem
-                        icon={<IconDistrict color={Color.blue2} />}
-                        title="Список районов и складов"
-                        onPress={handleDistrictsManagementPress}
-                    />
-   
-                </AdminSection>
 
                 {/* Раздел для управления категориями */}
                 <AdminSection title="Управление категориями">
@@ -270,12 +306,6 @@ export const AdminPanelScreen = () => {
                 />
             </View>
 
-            {/* Модальное окно добавления продукта */}
-            <AddProductModal
-                visible={isAddProductModalVisible}
-                onClose={() => setAddProductModalVisible(false)}
-                onSuccess={handleProductSuccess}
-            />
         </SafeAreaView>
     );
 };

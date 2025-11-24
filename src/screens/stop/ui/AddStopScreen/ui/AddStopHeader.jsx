@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, PixelRatio } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import CloseIcon from "@shared/ui/Icon/Profile/CloseIcon";
@@ -10,13 +10,19 @@ export const AddStopHeader = () => {
 
     return (
         <View style={styles.header}>
-            <Text style={styles.headerTitle}>Добавить остановку</Text>
+            <View style={styles.headerContent}>
+                <Text style={styles.headerTitle}>Новая остановка</Text>
+                <Text style={styles.headerSubtitle}>Заполните информацию о стоянке</Text>
+            </View>
             <TouchableOpacity
                 style={styles.closeButton}
                 onPress={() => navigation.goBack()}
-                activeOpacity={0.7}
+                activeOpacity={0.6}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-                <CloseIcon size={normalize(24)} color="#000" />
+                <View style={styles.closeIconContainer}>
+                    <CloseIcon size={normalize(20)} color="#666" />
+                </View>
             </TouchableOpacity>
         </View>
     );
@@ -26,23 +32,41 @@ const styles = StyleSheet.create({
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        height: normalize(70),
-        paddingHorizontal: normalize(16),
+        justifyContent: 'space-between',
+        paddingHorizontal: normalize(20),
+        paddingTop: normalize(16),
+        paddingBottom: normalize(16),
+        backgroundColor: '#fff',
         borderBottomWidth: 0.5,
-        borderBottomColor: '#ebebf0',
+        borderBottomColor: '#E5E5EA',
     },
-    closeButton: {
-        position: 'absolute',
-        right: normalize(26),
-        zIndex: 1,
+    headerContent: {
+        flex: 1,
+        paddingRight: normalize(16),
     },
     headerTitle: {
-        fontSize: normalizeFont(FontSize.size_md),
-        fontWeight: '600',
+        fontSize: normalizeFont(24),
+        fontWeight: '700',
         color: Color.dark,
         fontFamily: FontFamily.sFProText,
-        textAlign: 'center',
-        flex: 1,
+        marginBottom: normalize(2),
+    },
+    headerSubtitle: {
+        fontSize: normalizeFont(14),
+        fontWeight: '400',
+        color: '#666',
+        fontFamily: FontFamily.sFProText,
+        opacity: 0.8,
+    },
+    closeButton: {
+        padding: normalize(4),
+    },
+    closeIconContainer: {
+        width: normalize(32),
+        height: normalize(32),
+        borderRadius: normalize(16),
+        backgroundColor: '#F2F2F7',
+        justifyContent: 'center',
+        alignItems: 'center',
     },
 });

@@ -6,7 +6,6 @@ import {
     ScrollView,
     TouchableOpacity,
     TextInput,
-    Alert,
     ActivityIndicator,
     Switch,
 } from 'react-native';
@@ -18,6 +17,7 @@ import { selectTokens } from '@entities/auth';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { getBaseUrl } from '@/shared/api/api';
 import { HeaderWithBackButton } from '@/shared/ui/HeaderWithBackButton';
+import { GlobalAlert } from '@shared/ui/CustomAlert';
 
 const RewardSettingsScreen = () => {
     const dispatch = useDispatch();
@@ -45,7 +45,7 @@ const RewardSettingsScreen = () => {
     const loadSettings = useCallback(async () => {
         setLoading(true);
         try {
-            const response = await fetch(`${getBaseUrl()}/api/rewards/current-settings`, {
+            const response = await fetch(`${getBaseUrl()}/api/rewards/settings/current`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
@@ -60,11 +60,11 @@ const RewardSettingsScreen = () => {
             } else {
                 const errorData = await response.json().catch(() => ({}));
                 console.error('Ошибка загрузки настроек:', response.status, response.statusText, errorData);
-                Alert.alert('Ошибка', errorData.message || 'Не удалось загрузить настройки');
+                GlobalAlert.showError('Ошибка', errorData.message || 'Не удалось загрузить настройки');
             }
         } catch (error) {
             console.error('Ошибка загрузки настроек:', error);
-            Alert.alert('Ошибка', 'Не удалось загрузить настройки');
+            GlobalAlert.showError('Ошибка', 'Не удалось загрузить настройки');
         } finally {
             setLoading(false);
         }
@@ -74,7 +74,7 @@ const RewardSettingsScreen = () => {
     const saveSettings = useCallback(async () => {
         setSaving(true);
         try {
-            const response = await fetch(`${getBaseUrl()}/api/rewards/current-settings`, {
+            const response = await fetch(`${getBaseUrl()}/api/rewards/settings/current`, {
                 method: 'PUT',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -86,16 +86,16 @@ const RewardSettingsScreen = () => {
             const data = await response.json();
             
             if (response.ok) {
-                Alert.alert('Успех', 'Настройки успешно сохранены', [
-                    { text: 'OK', onPress: () => navigation.goBack() }
+                GlobalAlert.showSuccess('', 'Настройки успешно сохранены', [
+                    { text: 'OK', style: 'primary', onPress: () => navigation.goBack() }
                 ]);
             } else {
                 console.error('Ошибка сохранения настроек:', response.status, response.statusText, data);
-                Alert.alert('Ошибка', data.message || 'Не удалось сохранить настройки');
+                GlobalAlert.showError('Ошибка', data.message || 'Не удалось сохранить настройки');
             }
         } catch (error) {
             console.error('Ошибка сохранения настроек:', error);
-            Alert.alert('Ошибка', 'Произошла ошибка при сохранении');
+            GlobalAlert.showError('Ошибка', 'Произошла ошибка при сохранении');
         } finally {
             setSaving(false);
         }
@@ -115,8 +115,8 @@ const RewardSettingsScreen = () => {
     useEffect(() => {
         // Проверяем права доступа - только супер-администраторы могут изменять настройки вознаграждений
         if (currentUser?.role !== 'ADMIN') {
-            Alert.alert('Ошибка', 'Недостаточно прав для доступа к настройкам вознаграждений', [
-                { text: 'OK', onPress: () => navigation.goBack() }
+            GlobalAlert.showError('Ошибка', 'Недостаточно прав для доступа к настройкам вознаграждений', [
+                { text: 'OK', style: 'primary', onPress: () => navigation.goBack() }
             ]);
             return;
         }

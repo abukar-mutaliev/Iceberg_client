@@ -68,6 +68,21 @@ export const DeepLinkHandler = () => {
 
 
         try {
+            // Обработка deep link для оплаты
+            if (url.includes('payment-result') || url.includes('icebergapp://payment-result')) {
+                console.log('💳 Payment result deep link detected:', url);
+                navigation.dispatch(
+                    CommonActions.navigate({
+                        name: 'PaymentScreen',
+                        params: {
+                            fromDeepLink: true,
+                            originalUrl: url
+                        }
+                    })
+                );
+                return;
+            }
+
             const stopId = extractStopIdFromUrl(url);
 
             if (!stopId) {

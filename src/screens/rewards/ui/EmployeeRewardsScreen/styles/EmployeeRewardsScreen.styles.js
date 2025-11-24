@@ -149,4 +149,29 @@ export const styles = StyleSheet.create({
         textAlign: 'center',
         opacity: 0.8,
     },
+    batchPaymentContainer: {
+        paddingHorizontal: normalize(20),
+        paddingVertical: normalize(16),
+    },
+    batchPaymentButton: {
+        backgroundColor: '#10B981',
+        borderRadius: Border.radius.medium,
+        padding: normalize(16),
+        alignItems: 'center',
+        ...Shadow.medium,
+    },
+    batchPaymentButtonText: {
+        fontSize: normalizeFont(FontSize.size_md),
+        fontFamily: FontFamily.sFProDisplay,
+        fontWeight: '700',
+        color: Color.colorLightMode,
+        marginBottom: normalize(4),
+    },
+    batchPaymentAmount: {
+        fontSize: normalizeFont(FontSize.size_sm),
+        fontFamily: FontFamily.sFProText,
+        fontWeight: '600',
+        color: Color.colorLightMode,
+        opacity: 0.9,
+    },
 }); 
