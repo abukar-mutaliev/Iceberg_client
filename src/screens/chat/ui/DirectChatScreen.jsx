@@ -481,8 +481,20 @@ export const DirectChatScreen = ({route, navigation}) => {
                             }
                             
                             const isAuthor = message.senderId === currentUserId;
-                            // В личных чатах: суперадмин, системный админ или автор удаляют для всех
-                            const forAll = isSuperAdmin || currentUser?.role === 'ADMIN' || isAuthor;
+                            
+                            // Проверяем временное окно для удаления (48 часов по умолчанию)
+                            const MESSAGE_DELETE_WINDOW_HOURS = 48;
+                            const messageAge = Date.now() - new Date(message.createdAt).getTime();
+                            const withinWindow = messageAge <= (MESSAGE_DELETE_WINDOW_HOURS * 3600 * 1000);
+                            
+                            // В личных чатах: суперадмин, системный админ всегда удаляют для всех
+                            // Автор удаляет для всех только если сообщение в пределах временного окна
+                            let forAll = false;
+                            if (isSuperAdmin || currentUser?.role === 'ADMIN') {
+                                forAll = true; // Админы могут удалять всегда
+                            } else if (isAuthor && withinWindow) {
+                                forAll = true; // Автор может удалить для всех только в пределах окна
+                            }
 
                             const result = await dispatch(deleteMessage({
                                 messageId,
@@ -543,8 +555,20 @@ export const DirectChatScreen = ({route, navigation}) => {
                 }
                 
                 const isAuthor = message.senderId === currentUserId;
-                // В личных чатах: суперадмин, системный админ или автор удаляют для всех
-                const forAll = isSuperAdmin || currentUser?.role === 'ADMIN' || isAuthor;
+                
+                // Проверяем временное окно для удаления (48 часов по умолчанию)
+                const MESSAGE_DELETE_WINDOW_HOURS = 48;
+                const messageAge = Date.now() - new Date(message.createdAt).getTime();
+                const withinWindow = messageAge <= (MESSAGE_DELETE_WINDOW_HOURS * 3600 * 1000);
+                
+                // В личных чатах: суперадмин, системный админ всегда удаляют для всех
+                // Автор удаляет для всех только если сообщение в пределах временного окна
+                let forAll = false;
+                if (isSuperAdmin || currentUser?.role === 'ADMIN') {
+                    forAll = true; // Админы могут удалять всегда
+                } else if (isAuthor && withinWindow) {
+                    forAll = true; // Автор может удалить для всех только в пределах окна
+                }
 
                 const result = await dispatch(deleteMessage({
                     messageId,

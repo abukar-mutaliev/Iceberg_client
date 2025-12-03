@@ -348,12 +348,19 @@ export const GroupChatScreen = ({route, navigation}) => {
                                 return;
                             }
                             
+                            const isAuthor = message.senderId === currentUserId;
+                            
+                            // Проверяем временное окно для удаления (48 часов по умолчанию)
+                            const MESSAGE_DELETE_WINDOW_HOURS = 48;
+                            const messageAge = Date.now() - new Date(message.createdAt).getTime();
+                            const withinWindow = messageAge <= (MESSAGE_DELETE_WINDOW_HOURS * 3600 * 1000);
+                            
                             // В группах админы, суперадмины и системные админы удаляют для всех любые сообщения
                             let forAll = false;
                             if (isSuperAdmin || currentUser?.role === 'ADMIN' || isAdmin) {
-                                forAll = true;
-                            } else if (message.senderId === currentUserId) {
-                                // Обычные пользователи удаляют свои сообщения для всех
+                                forAll = true; // Админы могут удалять всегда
+                            } else if (isAuthor && withinWindow) {
+                                // Обычные пользователи удаляют свои сообщения для всех только в пределах окна
                                 forAll = true;
                             }
 
