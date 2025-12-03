@@ -29,6 +29,8 @@ const ChatApi = {
 
   hideMessage: (messageId) => chatApiModule.post(`/messages/${messageId}/hide`),
 
+  forwardMessage: (messageId, roomIds) => chatApiModule.post(`/messages/${messageId}/forward`, { roomIds }),
+
   markAsRead: (roomId) => chatApiModule.post(`/rooms/${roomId}/read`),
 
   searchUsers: (query, limit = 2000) => chatApiModule.get('/users/search', { query, limit }),
@@ -41,6 +43,25 @@ const ChatApi = {
 
   // Предзагрузка аватара группы
   preloadAvatar: (formData) => chatApiModule.post('/upload/avatar', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+
+  // Открыть/закрыть группу
+  toggleRoomLock: (roomId, isLocked) => chatApiModule.post(`/rooms/${roomId}/lock`, { isLocked }),
+
+  // Опросы
+  votePoll: (pollId, optionIds) => {
+    const payload = { optionIds: Array.isArray(optionIds) ? optionIds : [optionIds] };
+    console.log('votePoll API call:', { pollId, payload, optionIds });
+    return chatApiModule.post(`/polls/${pollId}/vote`, payload, { 
+      headers: { 'Content-Type': 'application/json' } 
+    });
+  },
+  getPollResults: (pollId) => chatApiModule.get(`/polls/${pollId}/results`),
+
+  // Реакции
+  addReaction: (messageId, emoji) => chatApiModule.post(`/messages/${messageId}/reactions`, { emoji }),
+  removeReaction: (messageId, emoji) => chatApiModule.delete(`/messages/${messageId}/reactions`, { emoji }),
+  toggleReaction: (messageId, emoji) => chatApiModule.post(`/messages/${messageId}/reactions/toggle`, { emoji }),
+  getMessageReactions: (messageId) => chatApiModule.get(`/messages/${messageId}/reactions`),
 };
 
 export default ChatApi;

@@ -58,4 +58,23 @@ export const employeeApiMethods = {
         employeeApi.put(`/${employeeId}/warehouse`, { warehouseId }),
 };
 
-export { userApiMethods as userApi, employeeApiMethods as employeeApi };
+// API методы для работы с водителями
+const driverApi = createApiModule('/api/drivers');
+
+export const driverApiMethods = {
+    // Получение районов водителя
+    getDriverDistricts: (driverId) => driverApi.get('/districts', { driverId }),
+
+    // Обновление районов водителя
+    updateDriverDistricts: (driverId, districts) => 
+        driverApi.put('/districts', { driverId, districts }),
+
+    // Получение склада водителя
+    getDriverWarehouse: (driverId) => driverApi.get('/warehouse', { driverId }),
+
+    // Обновление склада водителя
+    updateDriverWarehouse: (driverId, warehouseId) => 
+        driverApi.put('/warehouse', { driverId, warehouseId }),
+};
+
+export { userApiMethods as userApi, employeeApiMethods as employeeApi, driverApiMethods as driverApi };

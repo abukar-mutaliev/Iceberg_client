@@ -1,9 +1,15 @@
-import React, {memo, useState} from 'react';
+import React, {memo, useState, useCallback, useRef} from 'react';
 import {View, Text, Image, TouchableOpacity, StyleSheet} from 'react-native';
+import {Ionicons} from '@expo/vector-icons';
 import {ProductCard} from '@entities/product/ui/ProductCard';
-import {VoiceMessageBubble} from './VoiceMessageBubble';
+import {StopCard} from '@entities/stop/ui/StopCard';
+import {CachedVoice} from './CachedVoice';
 import {MessageErrorActions} from './MessageErrorActions';
+import {ReplyPreview} from './ReplyPreview';
+import {MessageReactions} from './MessageReactions';
 import {getBaseUrl} from '@shared/api/api';
+import {CachedImage} from './CachedImage/CachedImage';
+import ChatApi from '@entities/chat/api/chatApi';
 
 const Avatar = ({uri, onPress}) => {
     const imageSource = uri ? {uri} : null;
@@ -94,6 +100,290 @@ const MeasureText = ({text, onLayout, style}) => {
     );
 };
 
+// Компонент для отображения опроса
+const PollMessage = memo(({
+    message,
+    isOwn,
+    time,
+    status,
+    avatarUri,
+    showAvatar,
+    isSelectionMode,
+    isSelected,
+    isContextMenuActive,
+    hasContextMenu,
+    canDelete,
+    onToggleSelection,
+    onLongPress,
+    onAvatarPress,
+    currentUserId,
+    replyTo,
+    onReplyPress,
+    onReply,
+    onAddReaction
+}) => {
+    const [poll, setPoll] = useState(message.poll || null);
+    const [isVoting, setIsVoting] = useState(false);
+
+    // Обновляем опрос если он изменился
+    React.useEffect(() => {
+        if (message.poll) {
+            // Всегда обновляем опрос из сообщения, если он есть
+            setPoll(message.poll);
+        }
+    }, [message.poll]);
+    
+    // Обновляем опрос при изменении message (например, через WebSocket)
+    React.useEffect(() => {
+        if (message.poll) {
+            // Если опрос обновился (например, через WebSocket), обновляем локальное состояние
+            // Особенно важно обновить, если у нас был временный ID
+            const currentPollId = poll?.id;
+            const messagePollId = message.poll.id;
+            
+            if (!poll || 
+                messagePollId === currentPollId || 
+                (currentPollId && typeof currentPollId === 'string' && currentPollId.startsWith('temp_')) ||
+                (messagePollId && typeof messagePollId === 'number' && currentPollId !== messagePollId)) {
+                setPoll(message.poll);
+            }
+        }
+    }, [message]);
+
+    const handleVote = useCallback(async (optionId) => {
+        if (!poll || isVoting) return;
+
+        // Проверяем, что у опроса есть реальный ID (не временный)
+        const pollId = poll.id;
+        if (!pollId || typeof pollId === 'string' && pollId.startsWith('temp_')) {
+            console.error('Cannot vote: poll has temporary ID', pollId);
+            return;
+        }
+
+        setIsVoting(true);
+        try {
+            // Определяем, какие варианты должны быть выбраны после голосования
+            const currentVotedOptionIds = poll.options
+                ?.filter(opt => opt.votes?.some(vote => vote.userId === currentUserId))
+                .map(opt => opt.id) || [];
+            
+            // Запрещаем изменение голоса - можно только добавить, но не убрать
+            let newOptionIds = [];
+            if (poll.allowMultiple) {
+                // Множественный выбор: можно только добавлять варианты
+                if (currentVotedOptionIds.includes(optionId)) {
+                    // Уже проголосовано за этот вариант - ничего не делаем
+                    setIsVoting(false);
+                    return;
+                } else {
+                    // Добавляем голос
+                    newOptionIds = [...currentVotedOptionIds, optionId];
+                }
+            } else {
+                // Одиночный выбор: можно выбрать только один раз
+                if (currentVotedOptionIds.length > 0) {
+                    // Уже проголосовано - нельзя изменить
+                    setIsVoting(false);
+                    return;
+                } else {
+                    // Выбираем вариант
+                    newOptionIds = [optionId];
+                }
+            }
+
+            console.log('Voting on poll:', { pollId, newOptionIds, allowMultiple: poll.allowMultiple });
+            const result = await ChatApi.votePoll(pollId, newOptionIds);
+            
+            console.log('votePoll response:', { 
+                result, 
+                data: result?.data, 
+                dataData: result?.data?.data,
+                poll: result?.data?.data?.poll 
+            });
+            
+            // Обновляем опрос из ответа
+            // Сервер возвращает: { status: 'success', data: { poll: ... } }
+            let updatedPoll = null;
+            
+            // Проверяем разные возможные форматы ответа
+            if (result?.data?.data?.poll) {
+                updatedPoll = result.data.data.poll;
+            } else if (result?.data?.poll) {
+                updatedPoll = result.data.poll;
+            } else if (result?.poll) {
+                updatedPoll = result.poll;
+            } else if (result?.data?.data && result.data.data.options) {
+                // Если это сам опрос без обертки
+                updatedPoll = result.data.data;
+            }
+            
+            if (updatedPoll && updatedPoll.options) {
+                console.log('Updating poll with:', updatedPoll);
+                setPoll(updatedPoll);
+            } else {
+                // Если не получили обновленный опрос, ждем обновления через WebSocket или message.poll
+                console.log('Poll not in response, will update from message.poll');
+                // Опрос обновится через useEffect когда придет обновленное сообщение
+                // Но также проверяем message.poll напрямую
+                if (message.poll && message.poll.id && typeof message.poll.id === 'number') {
+                    setPoll(message.poll);
+                }
+            }
+        } catch (error) {
+            console.error('Ошибка голосования:', error);
+        } finally {
+            setIsVoting(false);
+        }
+    }, [poll, isVoting, currentUserId]);
+
+    if (!poll) {
+        return (
+            <BubbleContainer
+                isOwn={isOwn}
+                time={time}
+                status={status}
+                avatarUri={avatarUri}
+                showAvatar={showAvatar}
+                text={message.content || 'Опрос'}
+                hasImage={false}
+                isSelectionMode={isSelectionMode}
+                isSelected={isSelected}
+                isContextMenuActive={isContextMenuActive}
+                canDelete={canDelete}
+                onToggleSelection={onToggleSelection}
+                onLongPress={onLongPress}
+                onAvatarPress={onAvatarPress}
+                replyTo={replyTo}
+                onReplyPress={onReplyPress}
+                onReply={onReply}
+            >
+                <Text style={styles.messageText}>Опрос недоступен</Text>
+            </BubbleContainer>
+        );
+    }
+
+    const totalVotes = poll.options?.reduce((sum, opt) => sum + (opt.votes?.length || 0), 0) || 0;
+    const userVotedOptions = poll.options?.filter(opt => 
+        opt.votes?.some(vote => vote.userId === currentUserId)
+    ) || [];
+    const hasVoted = userVotedOptions.length > 0;
+
+    return (
+        <>
+        <BubbleContainer
+            isOwn={isOwn}
+            time={time}
+            status={status}
+            avatarUri={avatarUri}
+            showAvatar={showAvatar}
+            text={poll.question}
+            hasImage={false}
+            isSelectionMode={isSelectionMode}
+            isSelected={isSelected}
+            isContextMenuActive={isContextMenuActive}
+            hasContextMenu={hasContextMenu}
+            canDelete={canDelete}
+            onToggleSelection={onToggleSelection}
+            onLongPress={onLongPress}
+            onAvatarPress={onAvatarPress}
+            replyTo={replyTo}
+            onReplyPress={onReplyPress}
+            onReply={onReply}
+        >
+            <View style={styles.pollContainer}>
+                <Text style={styles.pollQuestion}>{poll.question}</Text>
+                
+                {/* Заголовок с иконкой */}
+                <View style={styles.pollHeader}>
+                    <Ionicons name="chatbubbles" size={16} color="#666" style={styles.pollHeaderIcon} />
+                    <Text style={styles.pollHeaderText}>
+                        {poll.allowMultiple ? 'Выберите один или несколько вариантов' : 'Выберите один вариант'}
+                    </Text>
+                </View>
+
+                {poll.options?.map((option, index) => {
+                    const voteCount = option.votes?.length || 0;
+                    const percentage = totalVotes > 0 ? (voteCount / totalVotes) * 100 : 0;
+                    const isVoted = userVotedOptions.some(vo => vo.id === option.id);
+                    // Запрещаем изменение голоса: если уже проголосовано, нельзя изменить
+                    const hasVoted = userVotedOptions.length > 0;
+                    const canVote = !hasVoted || (poll.allowMultiple && !isVoted);
+
+                    return (
+                        <TouchableOpacity
+                            key={option.id || index}
+                            style={[
+                                styles.pollOption,
+                                isVoted && styles.pollOptionVoted,
+                                !canVote && styles.pollOptionDisabled
+                            ]}
+                            onPress={() => canVote && handleVote(option.id)}
+                            disabled={!canVote || isVoting}
+                            activeOpacity={canVote ? 0.7 : 1}
+                        >
+                            {/* Полоска слева для выбранного варианта */}
+                            {hasVoted && isVoted && (
+                                <View style={styles.pollOptionLeftBar} />
+                            )}
+                            
+                            <View style={styles.pollOptionRow}>
+                                {/* Радио кнопка или чекбокс */}
+                                <View style={[
+                                    styles.pollOptionRadio,
+                                    isVoted && styles.pollOptionRadioVoted
+                                ]}>
+                                    {isVoted && (
+                                        <Ionicons name="checkmark" size={14} color="#fff" />
+                                    )}
+                                </View>
+                                
+                                <View style={styles.pollOptionContent}>
+                                    <Text style={[
+                                        styles.pollOptionText,
+                                        isVoted && styles.pollOptionTextVoted
+                                    ]}>
+                                        {option.text}
+                                    </Text>
+                                    {hasVoted && (
+                                        <Text style={[
+                                            styles.pollOptionVoteCount,
+                                            isVoted && styles.pollOptionVoteCountVoted
+                                        ]}>
+                                            {percentage.toFixed(0)}%
+                                        </Text>
+                                    )}
+                                </View>
+                            </View>
+                        </TouchableOpacity>
+                    );
+                })}
+                
+                {/* Информация о голосах */}
+                {totalVotes > 0 && (
+                    <View style={styles.pollFooter}>
+                        <Ionicons name="person" size={12} color="#8696A0" />
+                        <Text style={styles.pollFooterText}>
+                            {totalVotes} {totalVotes === 1 ? 'голос' : totalVotes < 5 ? 'голоса' : 'голосов'}
+                        </Text>
+                    </View>
+                )}
+            </View>
+        </BubbleContainer>
+        {message?.reactions && message.reactions.length > 0 && (
+            <View style={[styles.reactionsWrapper, isOwn ? styles.reactionsWrapperOwn : styles.reactionsWrapperOther]}>
+                <MessageReactions
+                    reactions={message.reactions}
+                    currentUserId={currentUserId}
+                    messageId={message.id}
+                    onReactionPress={onAddReaction}
+                    onReactionLongPress={onAddReaction}
+                />
+            </View>
+        )}
+        </>
+    );
+});
+
 const BubbleContainer = ({
                              isOwn,
                              showAvatar,
@@ -106,12 +396,21 @@ const BubbleContainer = ({
                              // Пропсы для выбора
                              isSelectionMode = false,
                              isSelected = false,
+                             isHighlighted = false,
+                             isContextMenuActive = false,
+                             hasContextMenu = false,
                              canDelete = false,
                              onToggleSelection,
                              onLongPress,
                              // Пропс для открытия профиля при клике на аватар
-                             onAvatarPress
+                             onAvatarPress,
+                             // Пропсы для ответов
+                             replyTo,
+                             onReplyPress,
+                             onReply,
+                             currentUserId
                          }) => {
+    const containerRef = useRef(null);
     const [textWidth, setTextWidth] = useState(0);
     const [timeWidth, setTimeWidth] = useState(0);
     const [containerWidth, setContainerWidth] = useState(0);
@@ -136,17 +435,58 @@ const BubbleContainer = ({
     // Для сообщений с изображениями не используем inline время
     const shouldShowTimeInline = !hasImage && canFitInline && isShortMessage;
 
+    // Обработчик long press - измеряем позицию и передаем в onLongPress
+    const handleLongPress = useCallback(() => {
+        if (onLongPress && containerRef.current) {
+            containerRef.current.measureInWindow((x, y, width, height) => {
+                // Передаем координаты центра сообщения
+                onLongPress({ x: x + width / 2, y: y + height / 2 });
+            });
+        } else if (onLongPress) {
+            onLongPress();
+        }
+    }, [onLongPress]);
+
+    // Обработчик нажатия для выбора сообщений
+    const handlePress = useCallback(() => {
+        if (__DEV__) {
+            console.log('👆 BubbleContainer handlePress called', {
+                isSelectionMode,
+                hasContextMenu,
+                hasHandler: !!onToggleSelection
+            });
+        }
+        if (onToggleSelection) {
+            onToggleSelection();
+        }
+    }, [isSelectionMode, hasContextMenu, onToggleSelection]);
+
+    const canPress = isSelectionMode || hasContextMenu;
+    
+    if (__DEV__ && canPress) {
+        console.log('🎯 BubbleContainer render with press enabled', {
+            isSelectionMode,
+            hasContextMenu,
+            canPress,
+            hasOnToggleSelection: !!onToggleSelection
+        });
+    }
+
     return (
         <TouchableOpacity
+            ref={containerRef}
             style={[
                 styles.messageContainer,
                 isOwn ? styles.ownMessageContainer : styles.otherMessageContainer,
-                isSelectionMode && isSelected && styles.selectedMessageContainer
+                // Затемнение при выборе сообщения в режиме выбора
+                isSelectionMode && isSelected && styles.selectedMessageContainer,
+                // Затемнение родительского контейнера при активном контекстном меню (только вне режима выбора)
+                !isSelectionMode && isContextMenuActive && (isOwn ? styles.contextMenuActiveContainerOwn : styles.contextMenuActiveContainerOther)
             ]}
-            onLongPress={canDelete ? onLongPress : undefined}
-            onPress={isSelectionMode && canDelete ? onToggleSelection : undefined}
-            activeOpacity={isSelectionMode ? 0.7 : 1}
-            disabled={!canDelete}
+            onLongPress={handleLongPress}
+            onPress={canPress ? handlePress : undefined}
+            activeOpacity={canPress ? 0.7 : 1}
+            disabled={false}
         >
             {/* Измерительные компоненты (невидимые) */}
             {text && (
@@ -175,11 +515,25 @@ const BubbleContainer = ({
             {/* Контейнер пузыря */}
             <View style={[styles.bubbleWrapper, isOwn && styles.ownBubbleWrapper]}>
                 <View
-                    style={[styles.bubble, isOwn ? styles.ownBubble : styles.otherBubble]}
+                    style={[
+                        styles.bubble, 
+                        isOwn ? styles.ownBubble : styles.otherBubble,
+                        isHighlighted && styles.highlightedBubble
+                    ]}
                     onLayout={handleContainerLayout}
                 >
                     {/* Контент сообщения */}
                     <View style={styles.messageContent}>
+                        {/* Превью ответа */}
+                        {replyTo && (
+                            <ReplyPreview
+                                replyTo={replyTo}
+                                onPress={() => onReplyPress?.(replyTo)}
+                                isInMessage={true}
+                                currentUserId={currentUserId}
+                            />
+                        )}
+                        
                         {shouldShowTimeInline ? (
                             // Время в одной строке с текстом для коротких сообщений
                             <View style={styles.inlineContainer}>
@@ -233,29 +587,72 @@ const TextMessage = ({
                          showAvatar,
                          isSelectionMode,
                          isSelected,
+                         isHighlighted,
+                         isContextMenuActive,
+                         hasContextMenu,
                          canDelete,
                          onToggleSelection,
                          onLongPress,
-                         onAvatarPress
-                     }) => (
-    <BubbleContainer
-        isOwn={isOwn}
-        time={time}
-        status={status}
-        avatarUri={avatarUri}
-        showAvatar={showAvatar}
-        text={text}
-        hasImage={false}
-        isSelectionMode={isSelectionMode}
-        isSelected={isSelected}
-        canDelete={canDelete}
-        onToggleSelection={onToggleSelection}
-        onLongPress={onLongPress}
-        onAvatarPress={onAvatarPress}
-    >
-        <Text style={styles.messageText}>{text}</Text>
-    </BubbleContainer>
-);
+                         onAvatarPress,
+                         replyTo,
+                         onReplyPress,
+                         onReply,
+                         currentUserId,
+                         message,
+                         onAddReaction,
+                         onRemoveReaction,
+                         onShowReactionPicker
+                     }) => {
+    // Отладочный лог для проверки реакций в текстовых сообщениях
+    if (__DEV__ && message?.reactions) {
+        console.log('📝 TextMessage reactions check:', {
+            messageId: message.id,
+            hasReactions: !!message.reactions,
+            reactionsLength: message.reactions?.length || 0,
+            reactions: message.reactions
+        });
+    }
+    
+    return (
+        <>
+            <BubbleContainer
+                isOwn={isOwn}
+                time={time}
+                status={status}
+                avatarUri={avatarUri}
+                showAvatar={showAvatar}
+                text={text}
+                hasImage={false}
+                isSelectionMode={isSelectionMode}
+                isSelected={isSelected}
+                isHighlighted={isHighlighted}
+                isContextMenuActive={isContextMenuActive}
+                hasContextMenu={hasContextMenu}
+                canDelete={canDelete}
+                onToggleSelection={onToggleSelection}
+                onLongPress={onLongPress}
+                onAvatarPress={onAvatarPress}
+                replyTo={replyTo}
+                onReplyPress={onReplyPress}
+                onReply={onReply}
+                currentUserId={currentUserId}
+            >
+                <Text style={styles.messageText}>{text}</Text>
+            </BubbleContainer>
+            {message?.reactions && message.reactions.length > 0 && (
+                <View style={[styles.reactionsWrapper, isOwn ? styles.reactionsWrapperOwn : styles.reactionsWrapperOther]}>
+                    <MessageReactions
+                        reactions={message.reactions}
+                        currentUserId={currentUserId}
+                        messageId={message.id}
+                        onReactionPress={onAddReaction}
+                        onReactionLongPress={onAddReaction}
+                    />
+                </View>
+            )}
+        </>
+    );
+};
 
 const ImageMessage = ({
                           attachments = [],
@@ -268,12 +665,21 @@ const ImageMessage = ({
                           onImagePress,
                           isSelectionMode,
                           isSelected,
+                          isHighlighted,
+                          isContextMenuActive,
+                          hasContextMenu,
                           canDelete,
                           onToggleSelection,
                           onLongPress,
-                          onAvatarPress
-                      }) => {
-    return (
+                          onAvatarPress,
+                          replyTo,
+                          onReplyPress,
+                          onReply,
+                          currentUserId,
+                          message,
+                          onAddReaction
+                      }) => (
+    <>
         <BubbleContainer
             isOwn={isOwn}
             time={time}
@@ -284,10 +690,17 @@ const ImageMessage = ({
             hasImage={true}
             isSelectionMode={isSelectionMode}
             isSelected={isSelected}
+            isHighlighted={isHighlighted}
+            isContextMenuActive={isContextMenuActive}
+            hasContextMenu={hasContextMenu}
             canDelete={canDelete}
             onToggleSelection={onToggleSelection}
             onLongPress={onLongPress}
             onAvatarPress={onAvatarPress}
+            replyTo={replyTo}
+            onReplyPress={onReplyPress}
+            onReply={onReply}
+            currentUserId={currentUserId}
         >
             <View style={styles.imageContainer}>
                 {attachments.map((attachment, index) => (
@@ -296,7 +709,7 @@ const ImageMessage = ({
                             onPress={() => onImagePress?.(attachment.path)}
                             activeOpacity={0.8}
                         >
-                            <Image
+                            <CachedImage
                                 source={{uri: attachment.path}}
                                 style={styles.messageImage}
                                 resizeMode="cover"
@@ -312,9 +725,19 @@ const ImageMessage = ({
                 )}
             </View>
         </BubbleContainer>
-    );
-};
-
+        {message?.reactions && message.reactions.length > 0 && (
+            <View style={[styles.reactionsWrapper, isOwn ? styles.reactionsWrapperOwn : styles.reactionsWrapperOther]}>
+                <MessageReactions
+                    reactions={message.reactions}
+                    currentUserId={currentUserId}
+                    messageId={message.id}
+                    onReactionPress={onAddReaction}
+                    onReactionLongPress={onAddReaction}
+                />
+            </View>
+        )}
+    </>
+);
 
 const ProductMessage = ({
                             product,
@@ -327,10 +750,18 @@ const ProductMessage = ({
                             showAvatar,
                             isSelectionMode,
                             isSelected,
+                            isContextMenuActive,
+                            hasContextMenu,
                             canDelete,
                             onToggleSelection,
                             onLongPress,
-                            onAvatarPress
+                            onAvatarPress,
+                            replyTo,
+                            onReplyPress,
+                            onReply,
+                            currentUserId,
+                            message,
+                            onAddReaction
                         }) => {
 
     const transformedProduct = {
@@ -351,31 +782,151 @@ const ProductMessage = ({
     };
 
     return (
-        <BubbleContainer
-            isOwn={isOwn}
-            time={time}
-            status={status}
-            avatarUri={avatarUri}
-            showAvatar={showAvatar}
-            text={''}
-            hasImage={false}
-            isSelectionMode={isSelectionMode}
-            isSelected={isSelected}
-            canDelete={canDelete}
-            onToggleSelection={onToggleSelection}
-            onLongPress={onLongPress}
-            onAvatarPress={onAvatarPress}
-        >
-            <View style={styles.productCardContainer}>
-                <ProductCard
-                    product={transformedProduct}
-                    productId={productId}
-                    onPress={() => onOpenProduct?.(productId)}
-                    width={250}
-                    compact={true}
-                />
-            </View>
-        </BubbleContainer>
+        <>
+            <BubbleContainer
+                isOwn={isOwn}
+                time={time}
+                status={status}
+                avatarUri={avatarUri}
+                showAvatar={showAvatar}
+                text={''}
+                hasImage={false}
+                isSelectionMode={isSelectionMode}
+                isSelected={isSelected}
+                isContextMenuActive={isContextMenuActive}
+                canDelete={canDelete}
+                onToggleSelection={onToggleSelection}
+                onLongPress={onLongPress}
+                onAvatarPress={onAvatarPress}
+                replyTo={replyTo}
+                onReplyPress={onReplyPress}
+                onReply={onReply}
+                currentUserId={currentUserId}
+            >
+                <View style={styles.productCardContainer}>
+                    <ProductCard
+                        product={transformedProduct}
+                        productId={productId}
+                        onPress={() => onOpenProduct?.(productId)}
+                        width={250}
+                        compact={true}
+                    />
+                </View>
+            </BubbleContainer>
+            {message?.reactions && message.reactions.length > 0 && (
+                <View style={[styles.reactionsWrapper, isOwn ? styles.reactionsWrapperOwn : styles.reactionsWrapperOther]}>
+                    <MessageReactions
+                        reactions={message.reactions}
+                        currentUserId={currentUserId}
+                        messageId={message.id}
+                        onReactionPress={onAddReaction}
+                        onReactionLongPress={onAddReaction}
+                    />
+                </View>
+            )}
+        </>
+    );
+};
+
+const StopMessage = ({
+                          stop,
+                          stopId,
+                          isOwn,
+                          time,
+                          status,
+                          onOpenStop,
+                          avatarUri,
+                          showAvatar,
+                          isSelectionMode,
+                          isSelected,
+                          isContextMenuActive,
+                          hasContextMenu,
+                          canDelete,
+                          onToggleSelection,
+                          onLongPress,
+                          onAvatarPress,
+                          onContactDriver,
+                          replyTo,
+                          onReplyPress,
+                          onReply,
+                          currentUserId,
+                          message,
+                          onAddReaction
+                      }) => {
+
+    const transformedStop = {
+        stopId: stop.stopId || stopId,
+        address: stop.address,
+        startTime: stop.startTime,
+        endTime: stop.endTime,
+        photo: stop.photo,
+        mapLocation: stop.mapLocation,
+        description: stop.description,
+        truckModel: stop.truckModel,
+        truckNumber: stop.truckNumber,
+        district: stop.district,
+        // Добавляем данные о водителе
+        driver: stop.driver,
+        driverName: stop.driverName || stop.driver?.name,
+        driverPhone: stop.driverPhone || stop.driver?.phone,
+        driverUserId: stop.driverUserId || stop.driver?.userId
+    };
+
+    // Используем stopId из transformedStop для навигации
+    const finalStopId = transformedStop.stopId || stopId;
+
+    return (
+        <>
+            <BubbleContainer
+                isOwn={isOwn}
+                time={time}
+                status={status}
+                avatarUri={avatarUri}
+                showAvatar={showAvatar}
+                text={''}
+                hasImage={false}
+                isSelectionMode={isSelectionMode}
+                isSelected={isSelected}
+                isContextMenuActive={isContextMenuActive}
+                canDelete={canDelete}
+                onToggleSelection={onToggleSelection}
+                onLongPress={onLongPress}
+                onAvatarPress={onAvatarPress}
+                replyTo={replyTo}
+                onReplyPress={onReplyPress}
+                onReply={onReply}
+                currentUserId={currentUserId}
+            >
+                <View style={styles.stopCardContainer}>
+                    <StopCard
+                        stop={transformedStop}
+                        onPress={() => {
+                            if (finalStopId && onOpenStop) {
+                                console.log('StopMessage: Opening stop', finalStopId);
+                                onOpenStop(finalStopId);
+                            } else {
+                                console.warn('StopMessage: Cannot open stop - missing stopId or handler', { finalStopId, hasHandler: !!onOpenStop });
+                            }
+                        }}
+                        width={250}
+                        compact={true}
+                        showContactButton={!isOwn}
+                        onContactDriver={onContactDriver}
+                    />
+                </View>
+            </BubbleContainer>
+            {message?.reactions && message.reactions.length > 0 && (
+                <View style={[styles.reactionsWrapper, isOwn ? styles.reactionsWrapperOwn : styles.reactionsWrapperOther]}>
+                    <MessageReactions
+                        reactions={message.reactions}
+                        currentUserId={currentUserId}
+                        messageId={message.id}
+                        onReactionPress={onAddReaction}
+                        onReactionLongPress={onAddReaction}
+                    />
+                </View>
+            )}
+        </>
     );
 };
 
@@ -391,19 +942,37 @@ export const MessageBubble = memo(({
                                        message,
                                        currentUserId,
                                        onOpenProduct,
+                                       onOpenStop,
                                        onImagePress,
                                        showAvatar = true,
                                        incomingAvatarUri,
                                        isSelectionMode = false,
                                        isSelected = false,
+                                       isHighlighted = false,
+                                       isContextMenuActive = false,
+                                       hasContextMenu = false,
                                        canDelete = false,
                                        onToggleSelection,
                                        onLongPress,
                                        onRetryMessage,
                                        onCancelMessage,
                                        isRetrying = false,
-                                       onAvatarPress
+                                       onAvatarPress,
+                                       onContactDriver,
+                                       onReply,
+                                       onReplyPress,
+                                       onAddReaction,
+                                       onRemoveReaction,
+                                       onShowReactionPicker
                                    }) => {
+    if (__DEV__ && isContextMenuActive) {
+        // Логируем только активное сообщение контекстного меню
+        console.log('🔍 MessageBubble: context menu ACTIVE', {
+            messageId: message?.id,
+            isOwn,
+        });
+    }
+    
     const isOwn = message?.senderId === currentUserId;
     const createdAt = message?.createdAt ? new Date(message.createdAt) : null;
     const time = createdAt ? createdAt.toLocaleTimeString('ru-RU', {
@@ -446,22 +1015,43 @@ export const MessageBubble = memo(({
         }
 
         return (
-            <ImageMessage
-                attachments={message.attachments || []}
-                caption={caption}
-                isOwn={isOwn}
-                time={time}
-                status={status}
-                avatarUri={avatarUri}
-                showAvatar={showAvatar}
-                onImagePress={onImagePress}
-                isSelectionMode={isSelectionMode}
-                isSelected={isSelected}
-                canDelete={canDelete}
-                onToggleSelection={onToggleSelection}
-                onLongPress={onLongPress}
-                onAvatarPress={onAvatarPress}
-            />
+            <>
+                <ImageMessage
+                    attachments={message.attachments || []}
+                    caption={caption}
+                    isOwn={isOwn}
+                    time={time}
+                    status={status}
+                    avatarUri={avatarUri}
+                    showAvatar={showAvatar}
+                    onImagePress={onImagePress}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={isSelected}
+                    isHighlighted={isHighlighted}
+                    isContextMenuActive={isContextMenuActive}
+                    hasContextMenu={hasContextMenu}
+                    canDelete={canDelete}
+                    onToggleSelection={onToggleSelection}
+                    onLongPress={onLongPress}
+                    onAvatarPress={onAvatarPress}
+                    replyTo={message.replyTo}
+                    onReplyPress={onReplyPress}
+                    onReply={() => onReply?.(message)}
+                    currentUserId={currentUserId}
+                    message={message}
+                    onAddReaction={onAddReaction}
+                />
+                
+                {/* Показываем кнопки retry/cancel только для своих сообщений */}
+                {isOwn && message.status === 'FAILED' && message.isRetryable && (
+                    <MessageErrorActions
+                        message={message}
+                        onRetry={() => onRetryMessage?.(message)}
+                        onCancel={() => onCancelMessage?.(message)}
+                        isRetrying={isRetrying}
+                    />
+                )}
+            </>
         );
     }
 
@@ -480,33 +1070,47 @@ export const MessageBubble = memo(({
                     showAvatar={showAvatar}
                     isSelectionMode={isSelectionMode}
                     isSelected={isSelected}
+                    isHighlighted={isHighlighted}
+                    isContextMenuActive={isContextMenuActive}
+                    hasContextMenu={hasContextMenu}
                     canDelete={canDelete}
                     onToggleSelection={onToggleSelection}
                     onLongPress={onLongPress}
                     onAvatarPress={onAvatarPress}
+                    replyTo={message.replyTo}
+                    onReplyPress={onReplyPress}
+                    onReply={() => onReply?.(message)}
+                    currentUserId={currentUserId}
                 />
             );
         }
 
         // Для голосовых сообщений используем BubbleContainer, но время и статус передаем в компонент
         return (
-            <View>
+            <>
                 <BubbleContainer
                     isOwn={isOwn}
-                    time={''}  // Пустое время - VoiceMessageBubble сам его отобразит
-                    status={''}  // Пустой статус - VoiceMessageBubble сам отобразит галочки
+                    time={''}  // Пустое время - CachedVoice сам его отобразит
+                    status={''}  // Пустой статус - CachedVoice сам отобразит галочки
                     avatarUri={avatarUri}
                     showAvatar={showAvatar}
                     text={''}
                     hasImage={false}
                     isSelectionMode={isSelectionMode}
                     isSelected={isSelected}
+                    isHighlighted={isHighlighted}
+                    isContextMenuActive={isContextMenuActive}
+                    hasContextMenu={hasContextMenu}
                     canDelete={canDelete}
                     onToggleSelection={onToggleSelection}
                     onLongPress={onLongPress}
                     onAvatarPress={onAvatarPress}
+                    replyTo={message.replyTo}
+                    onReplyPress={onReplyPress}
+                    onReply={() => onReply?.(message)}
+                    currentUserId={currentUserId}
                 >
-                    <VoiceMessageBubble
+                    <CachedVoice
                         messageId={message.id}
                         attachment={voiceAttachment}
                         isOwnMessage={isOwn}
@@ -514,6 +1118,19 @@ export const MessageBubble = memo(({
                         status={status}
                     />
                 </BubbleContainer>
+                
+                {/* Реакции */}
+                {message?.reactions && message.reactions.length > 0 && (
+                    <View style={[styles.reactionsWrapper, isOwn ? styles.reactionsWrapperOwn : styles.reactionsWrapperOther]}>
+                        <MessageReactions
+                            reactions={message.reactions}
+                            currentUserId={currentUserId}
+                            messageId={message.id}
+                            onReactionPress={onAddReaction}
+                            onReactionLongPress={onAddReaction}
+                        />
+                    </View>
+                )}
                 
                 {/* Показываем кнопки retry/cancel только для своих сообщений */}
                 {isOwn && message.status === 'FAILED' && message.isRetryable && (
@@ -524,7 +1141,7 @@ export const MessageBubble = memo(({
                         isRetrying={isRetrying}
                     />
                 )}
-            </View>
+            </>
         );
     }
 
@@ -558,10 +1175,16 @@ export const MessageBubble = memo(({
                     hasImage={false}
                     isSelectionMode={isSelectionMode}
                     isSelected={isSelected}
+                    isHighlighted={isHighlighted}
+                    isContextMenuActive={isContextMenuActive}
                     canDelete={canDelete}
                     onToggleSelection={onToggleSelection}
                     onLongPress={onLongPress}
                     onAvatarPress={onAvatarPress}
+                    replyTo={message.replyTo}
+                    onReplyPress={onReplyPress}
+                    onReply={() => onReply?.(message)}
+                    currentUserId={currentUserId}
                 >
                     <Text style={styles.messageText}>Ошибка отображения товара</Text>
                 </BubbleContainer>
@@ -581,10 +1204,16 @@ export const MessageBubble = memo(({
                     hasImage={false}
                     isSelectionMode={isSelectionMode}
                     isSelected={isSelected}
+                    isHighlighted={isHighlighted}
+                    isContextMenuActive={isContextMenuActive}
                     canDelete={canDelete}
                     onToggleSelection={onToggleSelection}
                     onLongPress={onLongPress}
                     onAvatarPress={onAvatarPress}
+                    replyTo={message.replyTo}
+                    onReplyPress={onReplyPress}
+                    onReply={() => onReply?.(message)}
+                    currentUserId={currentUserId}
                 >
                     <Text style={styles.messageText}>Данные о товаре не найдены</Text>
                 </BubbleContainer>
@@ -603,10 +1232,150 @@ export const MessageBubble = memo(({
                 showAvatar={showAvatar}
                 isSelectionMode={isSelectionMode}
                 isSelected={isSelected}
+                isContextMenuActive={isContextMenuActive}
+                hasContextMenu={hasContextMenu}
                 canDelete={canDelete}
                 onToggleSelection={onToggleSelection}
                 onLongPress={onLongPress}
                 onAvatarPress={onAvatarPress}
+                replyTo={message.replyTo}
+                onReplyPress={onReplyPress}
+                onReply={() => onReply?.(message)}
+                currentUserId={currentUserId}
+                message={message}
+                onAddReaction={onAddReaction}
+                onShowReactionPicker={onShowReactionPicker}
+            />
+        );
+    }
+
+    if (message.type === 'POLL') {
+        return (
+            <PollMessage
+                message={message}
+                isOwn={isOwn}
+                time={time}
+                status={status}
+                avatarUri={avatarUri}
+                showAvatar={showAvatar}
+                isSelectionMode={isSelectionMode}
+                isSelected={isSelected}
+                isContextMenuActive={isContextMenuActive}
+                hasContextMenu={hasContextMenu}
+                canDelete={canDelete}
+                onToggleSelection={onToggleSelection}
+                onLongPress={onLongPress}
+                onAvatarPress={onAvatarPress}
+                currentUserId={currentUserId}
+                replyTo={message.replyTo}
+                onReplyPress={onReplyPress}
+                onReply={() => onReply?.(message)}
+                onAddReaction={onAddReaction}
+                onShowReactionPicker={onShowReactionPicker}
+            />
+        );
+    }
+
+    if (message.type === 'STOP') {
+        // Получаем данные об остановке из content (JSON строка)
+        let stopData = null;
+        let stopId = null;
+
+        try {
+            // Сначала пробуем получить из content
+            if (message?.content) {
+                stopData = JSON.parse(message.content);
+                stopId = stopData?.stopId || message?.stopId;
+            }
+            // Если не получилось, пробуем из stop
+            else if (message?.stop) {
+                stopData = message.stop;
+                stopId = stopData?.stopId || message?.stopId;
+            }
+        } catch (error) {
+            console.error('MessageBubble: Ошибка парсинга данных об остановке:', error);
+            return (
+                <BubbleContainer
+                    isOwn={isOwn}
+                    time={time}
+                    status={status}
+                    avatarUri={avatarUri}
+                    showAvatar={showAvatar}
+                    text={'Ошибка отображения остановки'}
+                    hasImage={false}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={isSelected}
+                    isHighlighted={isHighlighted}
+                    isContextMenuActive={isContextMenuActive}
+                    canDelete={canDelete}
+                    onToggleSelection={onToggleSelection}
+                    onLongPress={onLongPress}
+                    onAvatarPress={onAvatarPress}
+                    replyTo={message.replyTo}
+                    onReplyPress={onReplyPress}
+                    onReply={() => onReply?.(message)}
+                    currentUserId={currentUserId}
+                >
+                    <Text style={styles.messageText}>Ошибка отображения остановки</Text>
+                </BubbleContainer>
+            );
+        }
+
+        // Если данных об остановке нет, показываем сообщение об ошибке
+        if (!stopData) {
+            return (
+                <BubbleContainer
+                    isOwn={isOwn}
+                    time={time}
+                    status={status}
+                    avatarUri={avatarUri}
+                    showAvatar={showAvatar}
+                    text={'Данные об остановке не найдены'}
+                    hasImage={false}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={isSelected}
+                    isHighlighted={isHighlighted}
+                    isContextMenuActive={isContextMenuActive}
+                    canDelete={canDelete}
+                    onToggleSelection={onToggleSelection}
+                    onLongPress={onLongPress}
+                    onAvatarPress={onAvatarPress}
+                    replyTo={message.replyTo}
+                    onReplyPress={onReplyPress}
+                    onReply={() => onReply?.(message)}
+                    currentUserId={currentUserId}
+                >
+                    <Text style={styles.messageText}>Данные об остановке не найдены</Text>
+                </BubbleContainer>
+            );
+        }
+
+        return (
+            <StopMessage
+                stop={stopData}
+                stopId={stopId}
+                isOwn={isOwn}
+                time={time}
+                status={status}
+                onOpenStop={onOpenStop}
+                avatarUri={avatarUri}
+                showAvatar={showAvatar}
+                isSelectionMode={isSelectionMode}
+                isSelected={isSelected}
+                isContextMenuActive={isContextMenuActive}
+                hasContextMenu={hasContextMenu}
+                canDelete={canDelete}
+                onToggleSelection={onToggleSelection}
+                onLongPress={onLongPress}
+                onAvatarPress={onAvatarPress}
+                onContactDriver={onContactDriver}
+                replyTo={message.replyTo}
+                onReplyPress={onReplyPress}
+                onReply={() => onReply?.(message)}
+                currentUserId={currentUserId}
+                message={message}
+                onAddReaction={onAddReaction}
+                onShowReactionPicker={onShowReactionPicker}
             />
         );
     }
@@ -621,14 +1390,64 @@ export const MessageBubble = memo(({
             showAvatar={showAvatar}
             isSelectionMode={isSelectionMode}
             isSelected={isSelected}
+            isHighlighted={isHighlighted}
+            isContextMenuActive={isContextMenuActive}
+            hasContextMenu={hasContextMenu}
             canDelete={canDelete}
             onToggleSelection={onToggleSelection}
             onLongPress={onLongPress}
             onAvatarPress={onAvatarPress}
-        />
+            replyTo={message.replyTo}
+            onReplyPress={onReplyPress}
+            onReply={() => onReply?.(message)}
+            currentUserId={currentUserId}
+            message={message}
+            onAddReaction={onAddReaction}
+            onRemoveReaction={onRemoveReaction}
+            onShowReactionPicker={onShowReactionPicker}
+                />
     );
 }, (prevProps, nextProps) => {
-    return (
+    // Если isContextMenuActive изменился, всегда перерисовываем компонент
+    if (prevProps.isContextMenuActive !== nextProps.isContextMenuActive) {
+        return false; // Перерисовываем компонент
+    }
+    
+    // Проверяем изменения реакций
+    const prevReactions = prevProps.message?.reactions || [];
+    const nextReactions = nextProps.message?.reactions || [];
+    const prevReactionsTimestamp = prevProps.message?._reactionsUpdated;
+    const nextReactionsTimestamp = nextProps.message?._reactionsUpdated;
+    
+    // Сравниваем по timestamp если он есть
+    if (prevReactionsTimestamp !== nextReactionsTimestamp) {
+        if (__DEV__) {
+            console.log('🔄 MessageBubble: Reactions timestamp changed, re-rendering', {
+                messageId: nextProps.message?.id,
+                prevTimestamp: prevReactionsTimestamp,
+                nextTimestamp: nextReactionsTimestamp,
+                prevCount: prevReactions.length,
+                nextCount: nextReactions.length
+            });
+        }
+        return false; // Перерисовываем компонент
+    }
+    
+    const reactionsChanged = prevReactions.length !== nextReactions.length ||
+        JSON.stringify(prevReactions) !== JSON.stringify(nextReactions);
+    
+    if (reactionsChanged) {
+        if (__DEV__) {
+            console.log('🔄 MessageBubble: Reactions changed, re-rendering', {
+                messageId: nextProps.message?.id,
+                prevCount: prevReactions.length,
+                nextCount: nextReactions.length
+            });
+        }
+        return false; // Перерисовываем компонент
+    }
+    
+    const shouldSkipRender = (
         prevProps.message?.id === nextProps.message?.id &&
         prevProps.message?.status === nextProps.message?.status &&
         prevProps.currentUserId === nextProps.currentUserId &&
@@ -636,8 +1455,11 @@ export const MessageBubble = memo(({
         prevProps.incomingAvatarUri === nextProps.incomingAvatarUri &&
         prevProps.isSelectionMode === nextProps.isSelectionMode &&
         prevProps.isSelected === nextProps.isSelected &&
+        prevProps.isHighlighted === nextProps.isHighlighted &&
         prevProps.canDelete === nextProps.canDelete
     );
+    
+    return shouldSkipRender;
 });
 
 const styles = StyleSheet.create({
@@ -647,6 +1469,115 @@ const styles = StyleSheet.create({
         alignItems: 'flex-start',
         marginHorizontal: -8,
         paddingHorizontal: 16,
+    },
+    pollContainer: {
+        padding: 8,
+        paddingTop: 6,
+        minWidth: 260,
+        maxWidth: '100%',
+    },
+    pollQuestion: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#000',
+        marginBottom: 10,
+        lineHeight: 19,
+    },
+    pollHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12,
+        paddingBottom: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: '#E0E0E0',
+    },
+    pollHeaderIcon: {
+        marginTop: 2,
+    },
+    pollHeaderText: {
+        fontSize: 12,
+        color: '#666',
+        marginLeft: 6,
+        flex: 1,
+        lineHeight: 16,
+    },
+    pollOption: {
+        backgroundColor: 'transparent',
+        borderRadius: 6,
+        paddingVertical: 8,
+        paddingHorizontal: 10,
+        marginBottom: 6,
+        position: 'relative',
+        overflow: 'visible',
+    },
+    pollOptionVoted: {
+        backgroundColor: 'transparent',
+    },
+    pollOptionLeftBar: {
+        position: 'absolute',
+        left: 0,
+        top: 0,
+        bottom: 0,
+        width: 3,
+        backgroundColor: '#00C853',
+        borderRadius: 1.5,
+    },
+    pollOptionRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        zIndex: 1,
+    },
+    pollOptionRadio: {
+        width: 18,
+        height: 18,
+        borderRadius: 9,
+        borderWidth: 2,
+        borderColor: '#8696A0',
+        marginRight: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'transparent',
+    },
+    pollOptionRadioVoted: {
+        borderColor: '#00C853',
+        backgroundColor: '#00C853',
+    },
+    pollOptionContent: {
+        flex: 1,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    pollOptionText: {
+        flex: 1,
+        fontSize: 14.5,
+        color: '#000',
+        lineHeight: 18,
+    },
+    pollOptionTextVoted: {
+        fontWeight: '500',
+        color: '#000',
+    },
+    pollOptionVoteCount: {
+        fontSize: 13,
+        color: '#8696A0',
+        marginLeft: 8,
+        fontWeight: '400',
+    },
+    pollOptionVoteCountVoted: {
+        color: '#00C853',
+        fontWeight: '600',
+    },
+    pollFooter: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 8,
+        paddingTop: 6,
+    },
+    pollFooterText: {
+        fontSize: 12,
+        color: '#8696A0',
+        marginLeft: 4,
     },
     ownMessageContainer: {
         justifyContent: 'flex-end',
@@ -724,6 +1655,20 @@ const styles = StyleSheet.create({
     },
     otherBubble: {
         backgroundColor: '#FFFFFF',
+    },
+    highlightedBubble: {
+        backgroundColor: '#FFF9C4', // Светло-желтый цвет для выделения
+        shadowColor: '#FBC02D',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    contextMenuActiveContainerOwn: {
+        backgroundColor: 'rgba(34, 197, 94, 0.15)', // Зеленоватое выделение для своих сообщений
+    },
+    contextMenuActiveContainerOther: {
+        backgroundColor: 'rgba(34, 197, 94, 0.15)', // Зеленоватое выделение для чужих сообщений
     },
 
     // Контент
@@ -909,6 +1854,25 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         width: 250,
+    },
+    stopCardContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 250,
+    },
+    reactionsWrapper: {
+        marginTop: -6, // Поднимаем реакции чтобы они заходили на пузырек
+        marginBottom: 4,
+        paddingHorizontal: 16,
+        zIndex: 10,
+    },
+    reactionsWrapperOwn: {
+        alignItems: 'flex-end',
+        paddingRight: 8,
+    },
+    reactionsWrapperOther: {
+        alignItems: 'flex-start',
+        paddingLeft: 48,
     },
 });
 

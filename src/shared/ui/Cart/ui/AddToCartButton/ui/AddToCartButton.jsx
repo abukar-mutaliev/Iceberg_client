@@ -39,6 +39,12 @@ const AddButtonComponent = ({
 
     const productId = product?.id || product?.originalData?.id;
 
+    // ВРЕМЕННО СКРЫТО: Кнопка корзины скрыта для всех пользователей
+    // TODO: Вернуть когда функциональность заказа будет готова
+    if (!isCartAvailable) {
+        return null;
+    }
+
     const {
         isInCart,
         quantity,

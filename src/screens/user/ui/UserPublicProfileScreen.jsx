@@ -72,6 +72,12 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
             return true;
         }
         
+        // Клиенты могут видеть информацию о сотрудниках, водителях и поставщиках
+        if (currentUser.role === 'CLIENT' && 
+            (user?.role === 'EMPLOYEE' || user?.role === 'DRIVER' || user?.role === 'SUPPLIER')) {
+            return true;
+        }
+        
         // Пользователи не могут видеть конфиденциальную информацию друг друга
         return false;
     }, [currentUser, user]);

@@ -6,7 +6,7 @@ import { selectDriverLoading, selectDriverError } from '@entities/driver';
 import { StopDetailsContent } from './StopDetailsContent';
 import { LoadingState } from '@shared/ui/states/LoadingState';
 import { ErrorState } from '@shared/ui/states/ErrorState';
-import { selectStopById, selectStops, fetchAllStops } from "@entities/stop";
+import { selectStopById, selectStops, fetchAllStops, clearStopCache } from "@entities/stop";
 
 export const StopDetailsScreen = ({ navigation }) => {
     const route = useRoute();
@@ -34,6 +34,8 @@ export const StopDetailsScreen = ({ navigation }) => {
             setForceLoading(true);
 
             try {
+                // Принудительно очищаем кеш для получения свежих данных с userId водителя
+                dispatch(clearStopCache());
                 await dispatch(fetchAllStops()).unwrap();
                 setRetryCount(0);
 
@@ -90,6 +92,8 @@ export const StopDetailsScreen = ({ navigation }) => {
         setIsLoadingStops(true);
 
         try {
+            // Принудительно очищаем кеш
+            dispatch(clearStopCache());
             await dispatch(fetchAllStops()).unwrap();
             setRetryCount(0);
         } catch (error) {

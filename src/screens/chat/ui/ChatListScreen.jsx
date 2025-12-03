@@ -4,10 +4,11 @@ import {useFocusEffect} from '@react-navigation/native';
 import {useDispatch, useSelector} from 'react-redux';
 import {fetchRooms, setActiveRoom, loadRoomsCache, fetchRoom, fetchMessages} from '@entities/chat/model/slice';
 import {fetchProductById} from '@entities/product/model/slice';
-import {selectRoomsList} from '@entities/chat/model/selectors';
+import {selectRoomsList, selectIsRoomDeleted} from '@entities/chat/model/selectors';
 import {selectProductsById} from '@entities/product/model/selectors';
 
 import {getBaseUrl} from '@shared/api/api';
+import {IconDelivery} from '@shared/ui/Icon/Profile/IconDelivery';
 
 // Исправленный компонент для отображения галочек статуса сообщения
 const StatusTicks = React.memo(({status}) => {
@@ -57,6 +58,7 @@ export const ChatListScreen = ({navigation}) => {
     const page = useSelector((s) => s.chat?.rooms?.page);
     const hasMore = useSelector((s) => s.chat?.rooms?.hasMore);
     const connection = useSelector((s) => s.chat?.connection);
+    const deletedRoomIds = useSelector((s) => s.chat?.deletedRoomIds || []);
 
     const memoizedRooms = useMemo(() => rooms, [rooms]);
     const loadedProductsRef = useRef(new Set());
@@ -90,15 +92,22 @@ export const ChatListScreen = ({navigation}) => {
         const subset = memoizedRooms.slice(0, maxToPrefetch);
 
         subset.forEach((room) => {
+            if (!room?.id) return;
+            
+            // Проверяем, не удалена ли комната перед загрузкой
+            if (deletedRoomIds.includes(room.id)) {
+                return;
+            }
+            
             const hasParticipants = Array.isArray(room?.participants) && room.participants.length > 0;
-            if (!hasParticipants && room?.id) {
+            if (!hasParticipants) {
                 dispatch(fetchRoom(room.id));
             }
 
             // Убираем автоматическую загрузку сообщений - это вызывает бесконечный ререндер
             // Сообщения уже загружаются через селектор selectRoomsList
         });
-    }, [memoizedRooms, dispatch]);
+    }, [memoizedRooms, dispatch, deletedRoomIds]);
 
     useEffect(() => {
         if (!Array.isArray(memoizedRooms) || memoizedRooms.length === 0) return;
@@ -135,11 +144,8 @@ export const ChatListScreen = ({navigation}) => {
     );
 
     const getChatTitle = useCallback((room) => {
-        // ИГНОРИРУЕМ room.title, так как он содержит неправильное имя
-        // if (room?.title) return room.title;
-
-        // Для групповых чатов сразу возвращаем название группы
-        if (room?.type === 'GROUP' && room?.title) {
+        // Для групповых чатов и каналов BROADCAST сразу возвращаем название
+        if ((room?.type === 'GROUP' || room?.type === 'BROADCAST') && room?.title) {
             return room.title;
         }
 
@@ -148,8 +154,8 @@ export const ChatListScreen = ({navigation}) => {
             return `Товар: ${room.product.name}`;
         }
 
-        // Проверяем участников чата
-        if (room?.participants && Array.isArray(room.participants) && currentUserId) {
+        // Проверяем участников чата (только для DIRECT чатов)
+        if (room?.type === 'DIRECT' && room?.participants && Array.isArray(room.participants) && currentUserId) {
             // Ищем участника, который НЕ является текущим пользователем
             const partner = room.participants.find(p => {
                 const participantId = p?.userId ?? p?.user?.id;
@@ -174,6 +180,12 @@ export const ChatListScreen = ({navigation}) => {
                     if (contactPerson) return contactPerson;
                 }
 
+                // Для водителей проверяем driver.name в первую очередь
+                if (partnerUser?.role === 'DRIVER') {
+                    const driverName = partnerUser.driver?.name || partnerUser.name;
+                    if (driverName) return driverName;
+                }
+
                 // Обычное имя пользователя
                 const name = partnerUser.name || partnerUser.profile?.name || partnerUser.firstName || partnerUser.profile?.firstName;
                 if (name) return name;
@@ -189,9 +201,9 @@ export const ChatListScreen = ({navigation}) => {
             }
         }
 
-        // Fallback для групповых чатов или если не удалось определить участников
-        if (room?.type === 'GROUP') {
-            return room.title || 'Группа';
+        // Fallback для групповых чатов и каналов
+        if (room?.type === 'GROUP' || room?.type === 'BROADCAST') {
+            return room.title || (room?.type === 'BROADCAST' ? 'Канал' : 'Группа');
         }
 
         return room?.id ? `Комната ${room.id}` : 'Чат';
@@ -358,6 +370,7 @@ export const ChatListScreen = ({navigation}) => {
 
         // Упрощенная логика для последнего сообщения
         let preview = '';
+        let isStopMessage = false;
         let time = '';
 
         if (lastMessage) {
@@ -367,10 +380,15 @@ export const ChatListScreen = ({navigation}) => {
                 messageContent = 'Фото';
             } else if (lastMessage.type === 'PRODUCT') {
                 messageContent = 'Товар';
+            } else if (lastMessage.type === 'STOP') {
+                isStopMessage = true;
+                messageContent = 'Остановка';
+            } else if (lastMessage.type === 'VOICE') {
+                messageContent = '🎤 Голосовое сообщение';
             } else if (lastMessage.content && lastMessage.content.trim()) {
                 messageContent = lastMessage.content.trim();
             } else {
-                messageContent = 'Голосовое сообщение';
+                messageContent = 'Сообщение';
             }
 
             // Используем senderPrefix который мы определили ранее
@@ -404,7 +422,9 @@ export const ChatListScreen = ({navigation}) => {
                         <Image source={{uri: avatarUri}} style={styles.avatarImg} resizeMode="cover"/>
                     ) : (
                         <View style={styles.avatarPlaceholder}>
-                            {item.type === 'GROUP' ? (
+                            {item.type === 'BROADCAST' ? (
+                                <Text style={styles.groupPlaceholderText}>📢</Text>
+                            ) : item.type === 'GROUP' ? (
                                 <Text style={styles.groupPlaceholderText}>👥</Text>
                             ) : item?.product ? (
                                 <Text style={styles.productPlaceholderText}>📦</Text>
@@ -428,10 +448,20 @@ export const ChatListScreen = ({navigation}) => {
                                 <StatusTicks status={messageStatus}/>
                             </View>
                         )}
-                        <Text style={[
-                            styles.preview,
-                            lastMessage && isOwnMessage && styles.previewWithStatus
-                        ]} numberOfLines={1}>{preview}</Text>
+                        {isStopMessage ? (
+                            <View style={styles.stopPreviewContainer}>
+                                <IconDelivery width={14} height={14} color="#8696A0" style={styles.stopIcon} />
+                                <Text style={[
+                                    styles.preview,
+                                    lastMessage && isOwnMessage && styles.previewWithStatus
+                                ]} numberOfLines={1}>{preview}</Text>
+                            </View>
+                        ) : (
+                            <Text style={[
+                                styles.preview,
+                                lastMessage && isOwnMessage && styles.previewWithStatus
+                            ]} numberOfLines={1}>{preview}</Text>
+                        )}
                     </View>
                 </View>
                 {!!item.unread && (
@@ -630,6 +660,14 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginTop: 2,
         justifyContent: 'flex-start',
+    },
+    stopPreviewContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+    },
+    stopIcon: {
+        marginRight: 6,
     },
     statusContainerLeft: {
         marginRight: 6,

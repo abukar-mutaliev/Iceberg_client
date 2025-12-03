@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useState, useMemo} from 'react';
 import {View, Text, TouchableOpacity, Image, Modal, Dimensions, StyleSheet} from 'react-native';
 import {useSelector, useDispatch} from 'react-redux';
 import {CommonActions} from '@react-navigation/native';
@@ -14,7 +14,8 @@ const {width: screenWidth} = Dimensions.get('window');
 export const ChatHeader = ({route, navigation}) => {
     const [menuVisible, setMenuVisible] = useState(false);
     const dispatch = useDispatch();
-    const currentUserId = useSelector(state => state?.auth?.user?.id);
+    const currentUser = useSelector(state => state?.auth?.user);
+    const currentUserId = currentUser?.id;
     const participantsById = useSelector(state => state?.chat?.participants?.byUserId || {});
     const {showError, showAlert} = useCustomAlert();
 
@@ -37,6 +38,12 @@ export const ChatHeader = ({route, navigation}) => {
                 user.companyName ||
                 user.profile?.companyName;
             if (companyName) return companyName;
+        }
+
+        // Для водителей проверяем driver.name в первую очередь
+        if (user.role === 'DRIVER') {
+            const driverName = user.driver?.name || user.name;
+            if (driverName) return driverName;
         }
 
         const name = user.name || user.profile?.name || user.firstName || user.profile?.firstName || user.companyName || user.profile?.companyName;
@@ -73,18 +80,107 @@ export const ChatHeader = ({route, navigation}) => {
     );
     const userRoleInRoom = currentUserParticipant?.role;
     const isOwner = userRoleInRoom === 'OWNER';
+    
+    // Проверяем, является ли пользователь суперадмином
+    const isSuperAdmin = useMemo(() => {
+        return currentUser?.role === 'ADMIN' && 
+               (currentUser?.admin?.isSuperAdmin || currentUser?.profile?.isSuperAdmin || currentUser?.isSuperAdmin);
+    }, [currentUser]);
+    
+    // Проверяем право на удаление комнаты
+    // BROADCAST - только суперадмин, GROUP - только владелец или суперадмин
+    const canDeleteRoom = useMemo(() => {
+        if (roomData?.type === 'BROADCAST') {
+            return isSuperAdmin;
+        }
+        return isOwner || isSuperAdmin;
+    }, [roomData?.type, isOwner, isSuperAdmin]);
+    
+    // Проверяем право на выход из комнаты
+    // BROADCAST - только суперадмин может покинуть канал, GROUP - все участники могут покинуть
+    const canLeaveRoom = useMemo(() => {
+        if (roomData?.type === 'BROADCAST') {
+            return isSuperAdmin;
+        }
+        // В группах все участники могут покинуть группу
+        return true;
+    }, [roomData?.type, isSuperAdmin]);
 
     let chatPartner = null;
     let chatPartnerName = params.roomTitle || 'Чат';
     let chatPartnerAvatar = null;
     let chatPartnerStatus = 'онлайн';
 
-    if (roomData?.type === 'GROUP') {
-        chatPartnerName = roomData.title || 'Группа';
+    if (roomData?.type === 'GROUP' || roomData?.type === 'BROADCAST') {
+        chatPartnerName = roomData.title || (roomData?.type === 'BROADCAST' ? 'Канал' : 'Группа');
         chatPartnerAvatar = roomData.avatar;
 
-        const participantsCount = roomData.participants ? roomData.participants.length : 0;
-        chatPartnerStatus = `${participantsCount} участник${participantsCount === 1 ? '' : participantsCount < 5 ? 'а' : 'ов'}`;
+        // Для клиентов в BROADCAST каналах - показываем только менеджеров и водителей склада клиента
+        let participantsCount = roomData.participants ? roomData.participants.length : 0;
+        
+        if (roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT') {
+            const clientDistrictId = currentUser?.client?.districtId;
+            const filteredParticipants = (roomData.participants || []).filter(p => {
+                const user = p.user || p;
+                const userRole = user?.role;
+                
+                // Скрываем суперадминов от клиентов
+                if (userRole === 'ADMIN') {
+                    const isSuperAdmin = user?.admin?.isSuperAdmin;
+                    if (isSuperAdmin) return false;
+                    return true; // Обычные админы показываются
+                }
+                
+                // Сотрудники - только менеджеры из района клиента
+                if (userRole === 'EMPLOYEE') {
+                    const processingRole = user?.employee?.processingRole;
+                    // Скрываем сборщиков, упаковщиков, контроллеров качества, курьеров
+                    const hiddenRoles = ['PICKER', 'PACKER', 'QUALITY_CHECKER', 'COURIER'];
+                    if (processingRole && hiddenRoles.includes(processingRole)) {
+                        return false;
+                    }
+                    
+                    // Показываем только если есть должность (например "Менеджер по продажам")
+                    const position = user?.employee?.position;
+                    if (!position) {
+                        return false;
+                    }
+                    
+                    // Проверяем, что сотрудник работает на складе в районе клиента
+                    const employeeWarehouseDistrictId = user?.employee?.warehouse?.districtId;
+                    if (employeeWarehouseDistrictId && clientDistrictId && employeeWarehouseDistrictId !== clientDistrictId) {
+                        return false;
+                    }
+                    
+                    return true;
+                }
+                
+                // Поставщиков не показываем
+                if (userRole === 'SUPPLIER') {
+                    return false;
+                }
+                
+                // Водители - только если их склад в районе клиента
+                if (userRole === 'DRIVER') {
+                    if (!clientDistrictId) return false;
+                    const driverWarehouseDistrictId = user?.driver?.warehouse?.district?.id || 
+                                                      user?.driver?.warehouse?.districtId;
+                    if (driverWarehouseDistrictId === clientDistrictId) {
+                        return true;
+                    }
+                    const driverDistricts = user?.driver?.districts || [];
+                    return driverDistricts.some(d => d.id === clientDistrictId);
+                }
+                
+                return false;
+            });
+            participantsCount = filteredParticipants.length;
+            chatPartnerStatus = `📢 Канал • ${participantsCount} контакт${participantsCount === 1 ? '' : participantsCount < 5 ? 'а' : 'ов'}`;
+        } else if (roomData?.type === 'BROADCAST') {
+            chatPartnerStatus = `📢 Канал • ${participantsCount} подписчик${participantsCount === 1 ? '' : participantsCount < 5 ? 'а' : 'ов'}`;
+        } else {
+            chatPartnerStatus = `${participantsCount} участник${participantsCount === 1 ? '' : participantsCount < 5 ? 'а' : 'ов'}`;
+        }
     }
     else if (roomData?.participants && Array.isArray(roomData.participants) && currentUserId) {
         chatPartner = roomData.participants.find(p => ((p?.userId ?? p?.user?.id)) !== currentUserId);
@@ -93,13 +189,23 @@ export const ChatHeader = ({route, navigation}) => {
             const cachedUser = participantsById[partnerId];
 
             if (cachedUser) {
-                chatPartnerName = getDisplayName(cachedUser);
+                const displayName = getDisplayName(cachedUser);
+                // Используем roomTitle если он передан и не равен дефолтному значению
+                // Приоритет: roomTitle > getDisplayName
+                chatPartnerName = (params.roomTitle && params.roomTitle !== 'Чат' && params.roomTitle !== 'Водитель') 
+                    ? params.roomTitle 
+                    : displayName;
                 chatPartnerAvatar = cachedUser.avatar || cachedUser.image || null;
                 const userIsOnline = isUserOnline(cachedUser.lastSeenAt);
                 chatPartnerStatus = formatLastSeen(cachedUser.lastSeenAt, userIsOnline);
             } else {
                 const userData = chatPartner.user || chatPartner;
-                chatPartnerName = getDisplayName(userData);
+                const displayName = getDisplayName(userData);
+                // Используем roomTitle если он передан и не равен дефолтному значению
+                // Приоритет: roomTitle > getDisplayName
+                chatPartnerName = (params.roomTitle && params.roomTitle !== 'Чат' && params.roomTitle !== 'Водитель') 
+                    ? params.roomTitle 
+                    : displayName;
                 chatPartnerAvatar =
                     chatPartner.avatar ||
                     chatPartner.image ||
@@ -138,7 +244,7 @@ export const ChatHeader = ({route, navigation}) => {
     };
 
     const handleProfilePress = () => {
-        if (roomData?.type === 'GROUP') {
+        if (roomData?.type === 'GROUP' || roomData?.type === 'BROADCAST') {
             navigation.navigate('GroupInfo', {
                 roomId: roomId
             });
@@ -272,18 +378,23 @@ export const ChatHeader = ({route, navigation}) => {
 
     const handleDeleteGroup = () => {
         setMenuVisible(false);
+        const isBroadcast = roomData?.type === 'BROADCAST';
+        const entityName = isBroadcast ? 'канал' : 'группу';
+        const entityNameCaps = isBroadcast ? 'Канал' : 'Группу';
 
         showAlert({
             type: 'warning',
-            title: 'Удалить группу',
-            message: 'Вы уверены, что хотите удалить эту группу? Все сообщения и участники будут удалены безвозвратно.',
+            title: `Удалить ${entityName}`,
+            message: isBroadcast 
+                ? 'Вы уверены, что хотите удалить этот канал? Все сообщения и подписчики будут удалены безвозвратно.'
+                : 'Вы уверены, что хотите удалить эту группу? Все сообщения и участники будут удалены безвозвратно.',
             buttons: [
                 {
                     text: 'Отмена',
                     style: 'cancel',
                 },
                 {
-                    text: 'Удалить группу',
+                    text: `Удалить ${entityName}`,
                     style: 'destructive',
                     icon: 'delete-forever',
                     onPress: async () => {
@@ -299,7 +410,7 @@ export const ChatHeader = ({route, navigation}) => {
                             }
                         } catch (error) {
                             console.error('Delete group error:', error);
-                            showError('Ошибка', error.message || 'Не удалось удалить группу');
+                            showError('Ошибка', error.message || `Не удалось удалить ${entityName}`);
                         }
                     },
                 },
@@ -309,11 +420,15 @@ export const ChatHeader = ({route, navigation}) => {
 
     const handleLeaveGroup = () => {
         setMenuVisible(false);
+        const isBroadcast = roomData?.type === 'BROADCAST';
+        const entityName = isBroadcast ? 'канал' : 'группу';
 
         showAlert({
             type: 'warning',
-            title: 'Покинуть группу',
-            message: 'Вы уверены, что хотите покинуть эту группу? Ваши сообщения останутся в группе.',
+            title: `Покинуть ${entityName}`,
+            message: isBroadcast 
+                ? 'Вы уверены, что хотите покинуть этот канал? Ваши сообщения останутся в канале.'
+                : 'Вы уверены, что хотите покинуть эту группу? Ваши сообщения останутся в группе.',
             buttons: [
                 {
                     text: 'Отмена',
@@ -336,13 +451,15 @@ export const ChatHeader = ({route, navigation}) => {
                             }
                         } catch (error) {
                             console.error('Leave room error:', error);
-                            const errorMessage = error.message || 'Не удалось покинуть группу';
+                            const errorMessage = error.message || `Не удалось покинуть ${entityName}`;
 
                             if (errorMessage.includes('владелец') || errorMessage.includes('Владелец')) {
                                 showAlert({
                                     type: 'warning',
-                                    title: 'Нельзя покинуть группу',
-                                    message: 'Владелец группы не может покинуть группу, не назначив другого администратора. Сначала назначьте кого-то из участников администратором группы или удалите группу полностью.',
+                                    title: `Нельзя покинуть ${entityName}`,
+                                    message: isBroadcast
+                                        ? 'Владелец канала не может покинуть канал, не назначив другого администратора. Сначала назначьте кого-то из участников администратором канала или удалите канал полностью.'
+                                        : 'Владелец группы не может покинуть группу, не назначив другого администратора. Сначала назначьте кого-то из участников администратором группы или удалите группу полностью.',
                                     buttons: [
                                         {
                                             text: 'Понятно',
@@ -362,11 +479,15 @@ export const ChatHeader = ({route, navigation}) => {
 
     const handleLeaveGroupWithDeletion = () => {
         setMenuVisible(false);
+        const isBroadcast = roomData?.type === 'BROADCAST';
+        const entityName = isBroadcast ? 'канал' : 'группу';
 
         showAlert({
             type: 'error',
-            title: 'Покинуть группу с удалением',
-            message: 'Вы уверены, что хотите покинуть группу и удалить все свои сообщения? Это действие нельзя отменить.',
+            title: `Покинуть ${entityName} с удалением`,
+            message: isBroadcast
+                ? 'Вы уверены, что хотите покинуть канал и удалить все свои сообщения? Это действие нельзя отменить.'
+                : 'Вы уверены, что хотите покинуть группу и удалить все свои сообщения? Это действие нельзя отменить.',
             buttons: [
                 {
                     text: 'Отмена',
@@ -390,14 +511,16 @@ export const ChatHeader = ({route, navigation}) => {
                             }
                         } catch (error) {
                             console.error('Leave room with deletion error:', error);
-                            const errorMessage = error.message || 'Не удалось покинуть группу';
+                            const errorMessage = error.message || `Не удалось покинуть ${entityName}`;
 
-                            // Специальная обработка для владельца группы
+                            // Специальная обработка для владельца группы/канала
                             if (errorMessage.includes('владелец') || errorMessage.includes('Владелец')) {
                                 showAlert({
                                     type: 'warning',
-                                    title: 'Нельзя покинуть группу',
-                                    message: 'Владелец группы не может покинуть группу, не назначив другого администратора. Сначала назначьте кого-то из участников администратором группы или удалите группу полностью.',
+                                    title: `Нельзя покинуть ${entityName}`,
+                                    message: isBroadcast
+                                        ? 'Владелец канала не может покинуть канал, не назначив другого администратора. Сначала назначьте кого-то из участников администратором канала или удалите канал полностью.'
+                                        : 'Владелец группы не может покинуть группу, не назначив другого администратора. Сначала назначьте кого-то из участников администратором группы или удалите группу полностью.',
                                     buttons: [
                                         {
                                             text: 'Понятно',
@@ -430,41 +553,30 @@ export const ChatHeader = ({route, navigation}) => {
                     onPress={() => setMenuVisible(false)}
                 >
                     <View style={styles.modalContainer}>
-                        {roomData?.type === 'GROUP' ? (
+                        {(roomData?.type === 'GROUP' || roomData?.type === 'BROADCAST') ? (
                             <>
-                                {/* Удалить группу - только для владельца */}
-                                {isOwner && (
+                                {/* Удалить группу/канал - для BROADCAST только суперадмин, для GROUP только владелец или суперадмин */}
+                                {canDeleteRoom && (
                                     <TouchableOpacity
                                         style={styles.modalItem}
                                         onPress={handleDeleteGroup}
                                         activeOpacity={0.7}
                                     >
                                         <Text style={styles.modalItemTextDestructive}>
-                                            Удалить группу
+                                            {roomData?.type === 'BROADCAST' ? 'Удалить канал' : 'Удалить группу'}
                                         </Text>
                                     </TouchableOpacity>
                                 )}
 
-                                {/* Выход из группы - для всех, но с ограничениями для владельца */}
-                                <TouchableOpacity
-                                    style={styles.modalItem}
-                                    onPress={handleLeaveGroup}
-                                    activeOpacity={0.7}
-                                >
-                                    <Text style={styles.modalItemText}>
-                                        Покинуть группу
-                                    </Text>
-                                </TouchableOpacity>
-
-                                {/* Выход из группы с удалением сообщений - только для не-владельцев */}
-                                {!isOwner && (
+                                {/* Выход из группы/канала - для BROADCAST только суперадмин, для GROUP - все участники */}
+                                {canLeaveRoom && (
                                     <TouchableOpacity
                                         style={styles.modalItem}
-                                        onPress={handleLeaveGroupWithDeletion}
+                                        onPress={handleLeaveGroup}
                                         activeOpacity={0.7}
                                     >
-                                        <Text style={styles.modalItemTextDestructive}>
-                                            Покинуть с удалением
+                                        <Text style={styles.modalItemText}>
+                                            {roomData?.type === 'BROADCAST' ? 'Покинуть канал' : 'Покинуть группу'}
                                         </Text>
                                     </TouchableOpacity>
                                 )}
@@ -534,15 +646,26 @@ export const ChatHeader = ({route, navigation}) => {
                     </Text>
                 </TouchableOpacity>
 
-                {/* Кнопка меню */}
-                <TouchableOpacity
-                    onPress={() => setMenuVisible(true)}
-                    style={styles.menuButton}
-                    activeOpacity={0.6}
-                    hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
-                >
-                    <MenuDotsIcon size={20} color={textColor}/>
-                </TouchableOpacity>
+                {/* Кнопка меню - для BROADCAST каналов показываем только суперадмину */}
+                {(() => {
+                    const roomType = String(roomData?.type || '').toUpperCase().trim();
+                    if (roomType === 'BROADCAST') {
+                        // Для BROADCAST каналов показываем меню только суперадмину
+                        if (!isSuperAdmin) {
+                            return null;
+                        }
+                    }
+                    return (
+                        <TouchableOpacity
+                            onPress={() => setMenuVisible(true)}
+                            style={styles.menuButton}
+                            activeOpacity={0.6}
+                            hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
+                        >
+                            <MenuDotsIcon size={20} color={textColor}/>
+                        </TouchableOpacity>
+                    );
+                })()}
             </View>
         </>
     );

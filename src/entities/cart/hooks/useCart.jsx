@@ -1061,9 +1061,11 @@ export const useCartAvailability = () => {
     const userRole = useSelector(state => state.auth?.user?.role);
     const isAuthenticated = useSelector(state => !!state.auth?.user?.id);
     
-    // Корзина доступна для клиентов и неавторизованных пользователей (гостей)
-    // Для неавторизованных пользователей роль может быть undefined или null
-    const isCartAvailable = userRole === 'CLIENT' || !isAuthenticated;
+    // ВРЕМЕННО ОТКЛЮЧЕНО: Корзина скрыта для всех пользователей
+    // Для выпуска приложения без онлайн заказа
+    // TODO: Вернуть когда функциональность заказа будет готова:
+    // const isCartAvailable = userRole === 'CLIENT' || !isAuthenticated;
+    const isCartAvailable = false;
     
     return {
         isCartAvailable,

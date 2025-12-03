@@ -4,6 +4,10 @@ import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
 
+const WAVEFORM_BARS_COUNT = 20;
+const MIN_BAR_HEIGHT = 8;
+const MAX_BAR_HEIGHT = 50;
+
 export const VoiceRecorder = ({ onSend, onCancel }) => {
   const [recording, setRecording] = useState(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
@@ -12,8 +16,22 @@ export const VoiceRecorder = ({ onSend, onCancel }) => {
 
   const slideAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const indicatorOpacityAnim = useRef(new Animated.Value(0.3)).current; // Отдельная анимация для индикатора
+  const timerScaleAnim = useRef(new Animated.Value(1)).current;
+  const sendButtonScale = useRef(new Animated.Value(1)).current;
+  const sendButtonOpacity = useRef(new Animated.Value(0.6)).current; // Анимация прозрачности кнопки отправки (0.6 когда disabled)
+  const cancelButtonScale = useRef(new Animated.Value(1)).current;
+  const hintOpacity = useRef(new Animated.Value(1)).current; // Анимация для подсказки "Говорите..."
   const timerInterval = useRef(null);
   const waveformData = useRef([]); // Массив для хранения высот волн
+  const waveformAnims = useRef(
+    Array.from({ length: WAVEFORM_BARS_COUNT }, () => new Animated.Value(MIN_BAR_HEIGHT))
+  ).current; // Анимированные значения для каждого бара
+  const waveformOpacityAnim = useRef(new Animated.Value(0.3)).current; // Отдельная анимация для waveform (без нативного драйвера)
+  const waveformUpdateInterval = useRef(null);
+  const waveformCurrentHeights = useRef(Array(WAVEFORM_BARS_COUNT).fill(MIN_BAR_HEIGHT)); // Текущие высоты баров
+  const isStartingRef = useRef(false); // Флаг для предотвращения множественных попыток запуска
+  const recordingRef = useRef(null); // Ref для синхронного доступа к recording
 
   useEffect(() => {
     // Анимация появления
@@ -31,33 +49,242 @@ export const VoiceRecorder = ({ onSend, onCancel }) => {
       if (timerInterval.current) {
         clearInterval(timerInterval.current);
       }
-      if (recording) {
-        recording.stopAndUnloadAsync();
+      if (waveformUpdateInterval.current) {
+        clearInterval(waveformUpdateInterval.current);
+      }
+      const currentRecording = recordingRef.current;
+      if (currentRecording) {
+        currentRecording.stopAndUnloadAsync().catch(() => {});
       }
     };
   }, []);
 
   useEffect(() => {
     if (isRecording && !isPaused) {
-      // Анимация пульсации для кнопки записи
+      // Плавная анимация пульсации для индикатора записи
       Animated.loop(
         Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1.2,
-            duration: 800,
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 800,
-            useNativeDriver: true,
-          }),
+          Animated.parallel([
+            Animated.timing(pulseAnim, {
+              toValue: 1.3,
+              duration: 600,
+              useNativeDriver: true,
+            }),
+            Animated.timing(indicatorOpacityAnim, {
+              toValue: 1,
+              duration: 600,
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.parallel([
+            Animated.timing(pulseAnim, {
+              toValue: 1,
+              duration: 600,
+              useNativeDriver: true,
+            }),
+            Animated.timing(indicatorOpacityAnim, {
+              toValue: 0.6,
+              duration: 600,
+              useNativeDriver: true,
+            }),
+          ]),
         ])
       ).start();
+      
+      // Отдельная анимация для waveform opacity (без нативного драйвера, так как используется с height)
+      Animated.timing(waveformOpacityAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: false,
+      }).start();
+    } else {
+      pulseAnim.setValue(1);
+      indicatorOpacityAnim.setValue(0.3);
+      Animated.timing(waveformOpacityAnim, {
+        toValue: 0.3,
+        duration: 300,
+        useNativeDriver: false,
+      }).start();
     }
   }, [isRecording, isPaused]);
 
+  // Обновление waveform баров на основе данных
+  useEffect(() => {
+    if (isRecording && !isPaused) {
+      const updateWaveform = () => {
+        if (waveformData.current.length > 0) {
+          // Берем последние значения для более плавной анимации
+          const dataLength = waveformData.current.length;
+          const windowSize = Math.min(dataLength, WAVEFORM_BARS_COUNT * 2);
+          const recentData = waveformData.current.slice(-windowSize);
+          
+          // Обновляем каждый бар с плавной интерполяцией
+          waveformAnims.forEach((anim, index) => {
+            let value;
+            
+            if (recentData.length >= WAVEFORM_BARS_COUNT) {
+              // Используем сэмплирование для более плавного распределения
+              const sampleIndex = Math.floor((index / WAVEFORM_BARS_COUNT) * recentData.length);
+              const nextIndex = Math.min(sampleIndex + 1, recentData.length - 1);
+              
+              // Интерполяция между соседними значениями для плавности
+              const currentValue = recentData[sampleIndex] || 0.5;
+              const nextValue = recentData[nextIndex] || 0.5;
+              const t = (index / WAVEFORM_BARS_COUNT) * recentData.length - sampleIndex;
+              value = currentValue + (nextValue - currentValue) * t;
+            } else {
+              // Если данных мало, используем доступные данные с интерполяцией
+              const dataIndex = Math.floor((index / WAVEFORM_BARS_COUNT) * recentData.length);
+              value = recentData[dataIndex] || 0.4;
+            }
+            
+            // Добавляем небольшую вариацию для более естественного вида
+            const variation = (Math.random() - 0.5) * 0.1;
+            value = Math.max(0.2, Math.min(1.0, value + variation));
+            
+            // Преобразуем нормализованное значение (0.2-1.0) в высоту (MIN-MAX)
+            const height = MIN_BAR_HEIGHT + (value - 0.2) * (MAX_BAR_HEIGHT - MIN_BAR_HEIGHT) / 0.8;
+            
+            // Получаем текущее значение и обновляем только если изменение значительное
+            const currentHeight = waveformCurrentHeights.current[index] || MIN_BAR_HEIGHT;
+            if (Math.abs(currentHeight - height) > 1.5) {
+              waveformCurrentHeights.current[index] = height;
+              // Останавливаем предыдущую анимацию перед запуском новой
+              anim.stopAnimation(() => {
+                Animated.timing(anim, {
+                  toValue: height,
+                  duration: 150,
+                  useNativeDriver: false,
+                }).start();
+              });
+            }
+          });
+        } else {
+          // Если данных нет, создаем плавную волну с задержкой для каждого бара
+          const time = Date.now();
+          waveformAnims.forEach((anim, index) => {
+            const phase = (time / 250) + (index * 0.4);
+            const value = 0.35 + Math.sin(phase) * 0.25 + Math.cos(phase * 1.5) * 0.15;
+            const height = MIN_BAR_HEIGHT + (value - 0.2) * (MAX_BAR_HEIGHT - MIN_BAR_HEIGHT) / 0.8;
+            
+            const currentHeight = waveformCurrentHeights.current[index] || MIN_BAR_HEIGHT;
+            if (Math.abs(currentHeight - height) > 1.5) {
+              waveformCurrentHeights.current[index] = height;
+              anim.stopAnimation(() => {
+                Animated.timing(anim, {
+                  toValue: height,
+                  duration: 200,
+                  useNativeDriver: false,
+                }).start();
+              });
+            }
+          });
+        }
+      };
+      
+      waveformUpdateInterval.current = setInterval(updateWaveform, 100);
+    } else {
+      if (waveformUpdateInterval.current) {
+        clearInterval(waveformUpdateInterval.current);
+        waveformUpdateInterval.current = null;
+      }
+      // Плавно уменьшаем бары при остановке
+      waveformAnims.forEach((anim, index) => {
+        waveformCurrentHeights.current[index] = MIN_BAR_HEIGHT;
+        anim.stopAnimation(() => {
+          Animated.timing(anim, {
+            toValue: MIN_BAR_HEIGHT,
+            duration: 400,
+            useNativeDriver: false,
+          }).start();
+        });
+      });
+    }
+
+    return () => {
+      if (waveformUpdateInterval.current) {
+        clearInterval(waveformUpdateInterval.current);
+        waveformUpdateInterval.current = null;
+      }
+      // Останавливаем все анимации при размонтировании
+      waveformAnims.forEach((anim) => {
+        anim.stopAnimation();
+      });
+    };
+  }, [isRecording, isPaused]);
+
+  // Анимация таймера при обновлении
+  useEffect(() => {
+    if (recordingDuration > 0) {
+      Animated.sequence([
+        Animated.timing(timerScaleAnim, {
+          toValue: 1.1,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(timerScaleAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [recordingDuration]);
+
+  // Анимация кнопки отправки и подсказки при изменении длительности
+  useEffect(() => {
+    if (recordingDuration >= 1) {
+      // Плавно показываем кнопку отправки и скрываем подсказку
+      Animated.parallel([
+        Animated.timing(sendButtonOpacity, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(hintOpacity, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      // Плавно скрываем кнопку отправки и показываем подсказку
+      Animated.parallel([
+        Animated.timing(sendButtonOpacity, {
+          toValue: 0.6,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(hintOpacity, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [recordingDuration]);
+
   const startRecording = async () => {
+    // Защита от множественных попыток запуска
+    if (isStartingRef.current) {
+      return;
+    }
+    
+    // Проверяем, нет ли уже активной записи
+    if (recordingRef.current) {
+      try {
+        const status = await recordingRef.current.getStatusAsync();
+        if (status.isRecording) {
+          // Запись уже активна, не создаем новую
+          return;
+        }
+      } catch {
+        // Игнорируем ошибки проверки статуса
+      }
+    }
+    
+    isStartingRef.current = true;
+    
     try {
       // Запрашиваем разрешение
       const permission = await Audio.requestPermissionsAsync();
@@ -101,18 +328,22 @@ export const VoiceRecorder = ({ onSend, onCancel }) => {
         100 // Интервал обновления в мс
       );
 
+      recordingRef.current = newRecording;
       setRecording(newRecording);
       setIsRecording(true);
 
     } catch (error) {
       console.error('Ошибка при начале записи:', error);
       onCancel();
+    } finally {
+      isStartingRef.current = false;
     }
   };
 
   const stopRecording = async () => {
     try {
-      if (!recording) return null;
+      const currentRecording = recordingRef.current || recording;
+      if (!currentRecording) return null;
 
       if (timerInterval.current) {
         clearInterval(timerInterval.current);
@@ -121,12 +352,15 @@ export const VoiceRecorder = ({ onSend, onCancel }) => {
       setIsRecording(false);
       
       // ✅ Получаем финальный статус перед остановкой
-      const status = await recording.getStatusAsync();
+      const status = await currentRecording.getStatusAsync();
       const finalDuration = status.durationMillis ? Math.floor(status.durationMillis / 1000) : recordingDuration;
       
-      await recording.stopAndUnloadAsync();
+      await currentRecording.stopAndUnloadAsync();
       
-      const uri = recording.getURI();
+      const uri = currentRecording.getURI();
+      
+      // Очищаем ref
+      recordingRef.current = null;
       
       if (uri) {
         // Получаем информацию о файле
@@ -174,6 +408,20 @@ export const VoiceRecorder = ({ onSend, onCancel }) => {
   };
 
   const handleSend = async () => {
+    // Анимация нажатия
+    Animated.sequence([
+      Animated.timing(sendButtonScale, {
+        toValue: 0.9,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(sendButtonScale, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
     const audioData = await stopRecording();
     if (audioData && onSend) {
       onSend(audioData);
@@ -181,12 +429,32 @@ export const VoiceRecorder = ({ onSend, onCancel }) => {
   };
 
   const handleCancel = async () => {
-    if (recording) {
+    // Анимация нажатия
+    Animated.sequence([
+      Animated.timing(cancelButtonScale, {
+        toValue: 0.9,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(cancelButtonScale, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    const currentRecording = recordingRef.current || recording;
+    if (currentRecording) {
       if (timerInterval.current) {
         clearInterval(timerInterval.current);
       }
       setIsRecording(false);
-      await recording.stopAndUnloadAsync();
+      try {
+        await currentRecording.stopAndUnloadAsync();
+      } catch (error) {
+        // Игнорируем ошибки при остановке
+      }
+      recordingRef.current = null;
     }
     if (onCancel) {
       onCancel();
@@ -223,25 +491,44 @@ export const VoiceRecorder = ({ onSend, onCancel }) => {
             styles.pulsingDot,
             {
               transform: [{ scale: pulseAnim }],
+              opacity: indicatorOpacityAnim,
             },
           ]}
         />
-        <Text style={styles.recordingText}>Запись...</Text>
+        <Animated.Text 
+          style={[
+            styles.recordingText,
+            {
+              opacity: indicatorOpacityAnim,
+            },
+          ]}
+        >
+          Запись...
+        </Animated.Text>
       </View>
 
       {/* Таймер */}
-      <Text style={styles.timer}>{formatDuration(recordingDuration)}</Text>
+      <Animated.Text 
+        style={[
+          styles.timer,
+          {
+            transform: [{ scale: timerScaleAnim }],
+          },
+        ]}
+      >
+        {formatDuration(recordingDuration)}
+      </Animated.Text>
 
-      {/* Визуализация формы волны (упрощенная) */}
+      {/* Визуализация формы волны */}
       <View style={styles.waveformContainer}>
-        {[...Array(20)].map((_, i) => (
+        {waveformAnims.map((anim, i) => (
           <Animated.View
             key={i}
             style={[
               styles.waveformBar,
               {
-                height: Math.random() * 30 + 10,
-                opacity: isRecording ? 1 : 0.3,
+                height: anim,
+                opacity: waveformOpacityAnim,
               },
             ]}
           />
@@ -251,29 +538,53 @@ export const VoiceRecorder = ({ onSend, onCancel }) => {
       {/* Кнопки управления */}
       <View style={styles.controls}>
         {/* Кнопка отмены */}
-        <TouchableOpacity
-          style={[styles.controlButton, styles.cancelButton]}
-          onPress={handleCancel}
-          activeOpacity={0.7}
+        <Animated.View
+          style={{
+            transform: [{ scale: cancelButtonScale }],
+          }}
         >
-          <Ionicons name="close" size={28} color="#FF3B30" />
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.controlButton, styles.cancelButton]}
+            onPress={handleCancel}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="close" size={28} color="#FF3B30" />
+          </TouchableOpacity>
+        </Animated.View>
 
         {/* Кнопка отправки */}
-        <TouchableOpacity
-          style={[styles.controlButton, styles.sendButton]}
-          onPress={handleSend}
-          activeOpacity={0.7}
-          disabled={recordingDuration < 1}
+        <Animated.View
+          style={{
+            transform: [{ scale: sendButtonScale }],
+            opacity: sendButtonOpacity,
+          }}
         >
-          <Ionicons name="send" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.controlButton, 
+              styles.sendButton,
+              recordingDuration < 1 && styles.sendButtonDisabled
+            ]}
+            onPress={handleSend}
+            activeOpacity={recordingDuration < 1 ? 1 : 0.8}
+            disabled={recordingDuration < 1}
+            android_ripple={{ color: 'transparent', borderless: false }}
+          >
+            <Ionicons 
+              name="send" 
+              size={24} 
+              color="#FFFFFF" 
+            />
+          </TouchableOpacity>
+        </Animated.View>
       </View>
 
-      {/* Подсказка */}
-      {recordingDuration < 1 && (
-        <Text style={styles.hint}>Говорите...</Text>
-      )}
+      {/* Подсказка - всегда занимает место, но плавно появляется/исчезает */}
+      <View style={styles.hintContainer}>
+        {recordingDuration < 1 && (
+          <Text style={styles.hint}>Говорите...</Text>
+        )}
+      </View>
     </Animated.View>
   );
 };
@@ -327,15 +638,18 @@ const styles = StyleSheet.create({
   waveformContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     height: 60,
     marginBottom: 24,
     paddingHorizontal: 10,
+    gap: 3,
   },
   waveformBar: {
-    width: 3,
+    width: 4,
     backgroundColor: '#25D366',
     borderRadius: 2,
+    minHeight: MIN_BAR_HEIGHT,
+    alignSelf: 'flex-end',
   },
   controls: {
     flexDirection: 'row',
@@ -348,6 +662,7 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -356,7 +671,7 @@ const styles = StyleSheet.create({
         shadowRadius: 4,
       },
       android: {
-        elevation: 4,
+        // Тени отключены для предотвращения визуальных артефактов
       },
     }),
   },
@@ -366,11 +681,21 @@ const styles = StyleSheet.create({
   sendButton: {
     backgroundColor: '#25D366',
   },
+  sendButtonDisabled: {
+    backgroundColor: '#B0B0B0',
+  },
+  hintContainer: {
+    minHeight: 40, // Минимальная высота для предотвращения дергания
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 12,
+    backgroundColor: 'transparent',
+  },
   hint: {
     fontSize: 14,
     color: '#8E8E93',
     textAlign: 'center',
-    marginTop: 12,
+    backgroundColor: 'transparent',
   },
 });
 

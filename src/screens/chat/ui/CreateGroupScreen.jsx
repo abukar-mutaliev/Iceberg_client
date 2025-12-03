@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   FlatList,
   Image,
-  Alert,
   ActivityIndicator,
   ScrollView,
   SafeAreaView,
@@ -20,14 +19,26 @@ import { createRoom } from '@entities/chat/model/slice';
 import ChatApi from '@entities/chat/api/chatApi';
 import { getBaseUrl } from '@shared/api/api';
 import NetInfo from '@react-native-community/netinfo';
+import { useGlobalAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 
-export const CreateGroupScreen = ({ navigation }) => {
+export const CreateGroupScreen = ({ navigation, route }) => {
+  // Получаем тип из параметров навигации (по умолчанию GROUP)
+  const initialType = route?.params?.type || 'GROUP';
   const dispatch = useDispatch();
   const currentUser = useSelector(state => state?.auth?.user);
+  const { showError, showInfo, showWarning, showAlert } = useGlobalAlert();
+  // Проверяем isSuperAdmin в разных возможных местах структуры пользователя
+  const isSuperAdmin = currentUser?.role === 'ADMIN' && (
+    currentUser?.admin?.isSuperAdmin || 
+    currentUser?.profile?.isSuperAdmin || 
+    currentUser?.isSuperAdmin
+  );
   const [groupName, setGroupName] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
+  const [groupType, setGroupType] = useState(initialType); // 'GROUP' или 'BROADCAST'
   const [users, setUsers] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
+  const [selectedAdmins, setSelectedAdmins] = useState([]); // Для BROADCAST групп - выбранные админы
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [loadingUsers, setLoadingUsers] = useState(false);
@@ -53,7 +64,7 @@ export const CreateGroupScreen = ({ navigation }) => {
       setUsers(filteredUsers);
     } catch (error) {
       console.error('Ошибка поиска пользователей:', error);
-      Alert.alert('Ошибка', 'Не удалось найти пользователей');
+      showError('Ошибка', 'Не удалось найти пользователей');
     } finally {
       setLoadingUsers(false);
     }
@@ -107,7 +118,7 @@ export const CreateGroupScreen = ({ navigation }) => {
     if (Platform.OS !== 'web') {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Ошибка', 'Для загрузки изображений необходимо разрешение на доступ к галерее');
+        showError('Ошибка', 'Для загрузки изображений необходимо разрешение на доступ к галерее');
         return false;
       }
     }
@@ -220,10 +231,9 @@ export const CreateGroupScreen = ({ navigation }) => {
         // Показываем информацию о процессе обработки
         const originalSize = await getImageFileSize(result.assets[0].uri);
         if (originalSize > 2 * 1024 * 1024) {
-          Alert.alert(
+          showInfo(
             'Обработка изображения',
-            `Изображение большое (${Math.round(originalSize / (1024 * 1024) * 100) / 100}MB), выполняется оптимизация...`,
-            [{ text: 'OK' }]
+            `Изображение большое (${Math.round(originalSize / (1024 * 1024) * 100) / 100}MB), выполняется оптимизация...`
           );
         }
         
@@ -241,7 +251,7 @@ export const CreateGroupScreen = ({ navigation }) => {
       }
     } catch (error) {
       console.error('Ошибка при выборе изображения:', error);
-      Alert.alert('Ошибка', 'Не удалось загрузить изображение');
+      showError('Ошибка', 'Не удалось загрузить изображение');
     }
   };
 
@@ -252,7 +262,7 @@ export const CreateGroupScreen = ({ navigation }) => {
 
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Ошибка', 'Для съемки фото необходимо разрешение на доступ к камере');
+        showError('Ошибка', 'Для съемки фото необходимо разрешение на доступ к камере');
         return;
       }
 
@@ -266,10 +276,9 @@ export const CreateGroupScreen = ({ navigation }) => {
         // Показываем информацию о процессе обработки
         const originalSize = await getImageFileSize(result.assets[0].uri);
         if (originalSize > 2 * 1024 * 1024) {
-          Alert.alert(
+          showInfo(
             'Обработка фото',
-            `Фотография большая (${Math.round(originalSize / (1024 * 1024) * 100) / 100}MB), выполняется оптимизация...`,
-            [{ text: 'OK' }]
+            `Фотография большая (${Math.round(originalSize / (1024 * 1024) * 100) / 100}MB), выполняется оптимизация...`
           );
         }
         
@@ -287,20 +296,21 @@ export const CreateGroupScreen = ({ navigation }) => {
       }
     } catch (error) {
       console.error('Ошибка при съемке фото:', error);
-      Alert.alert('Ошибка', 'Не удалось сделать фото');
+      showError('Ошибка', 'Не удалось сделать фото');
     }
   };
 
   const showImagePicker = () => {
-    Alert.alert(
-      'Выбрать изображение',
-      'Выберите способ загрузки аватара группы',
-      [
+    showAlert({
+      type: 'info',
+      title: 'Выбрать изображение',
+      message: 'Выберите способ загрузки аватара группы',
+      buttons: [
         { text: 'Отмена', style: 'cancel' },
-        { text: 'Галерея', onPress: pickImageFromGallery },
-        { text: 'Камера', onPress: takePhoto },
-      ]
-    );
+        { text: 'Галерея', style: 'primary', onPress: pickImageFromGallery },
+        { text: 'Камера', style: 'primary', onPress: takePhoto },
+      ],
+    });
   };
 
   const removeAvatar = () => {
@@ -395,13 +405,16 @@ export const CreateGroupScreen = ({ navigation }) => {
 
   const createGroup = async () => {
     if (!groupName.trim()) {
-      Alert.alert('Ошибка', 'Введите название группы');
+      showError('Ошибка', 'Введите название группы');
       return;
     }
 
-    if (selectedUsers.length === 0) {
-      Alert.alert('Ошибка', 'Выберите хотя бы одного участника');
-      return;
+    // Для BROADCAST групп участники не обязательны (клиенты добавляются автоматически)
+    if (groupType !== 'BROADCAST') {
+      if (selectedUsers.length === 0) {
+        showError('Ошибка', 'Выберите хотя бы одного участника');
+        return;
+      }
     }
 
     // Проверяем сетевое соединение перед началом
@@ -422,7 +435,7 @@ export const CreateGroupScreen = ({ navigation }) => {
     } catch (netError) {
       setCreating(false);
       setCreatingStep('');
-      Alert.alert('Нет соединения', netError.message || 'Проверьте подключение к интернету');
+      showError('Нет соединения', netError.message || 'Проверьте подключение к интернету');
       return;
     }
 
@@ -433,7 +446,9 @@ export const CreateGroupScreen = ({ navigation }) => {
       
       console.log('🏗️ Создание группы началось:', {
         groupName: groupName.trim(),
+        groupType: groupType,
         membersCount: memberIds.length,
+        adminsCount: groupType === 'BROADCAST' ? selectedAdmins.length : 0,
         hasAvatar: !!groupAvatar
       });
       
@@ -441,13 +456,21 @@ export const CreateGroupScreen = ({ navigation }) => {
       
       // Создаем FormData для отправки на сервер
       const formData = new FormData();
-      formData.append('type', 'GROUP');
+      formData.append('type', groupType);
       formData.append('title', groupName.trim());
       if (groupDescription.trim()) {
         formData.append('description', groupDescription.trim());
       }
-      formData.append('members', JSON.stringify(memberIds));
-      formData.append('admins', JSON.stringify([])); // Создатель автоматически становится владельцем
+      
+      // Для BROADCAST групп members не обязательны, но можно указать админов
+      if (groupType === 'BROADCAST') {
+        const adminIds = selectedAdmins.map(user => user.id);
+        formData.append('admins', JSON.stringify(adminIds));
+        // members не отправляем для BROADCAST - клиенты добавляются автоматически
+      } else {
+        formData.append('members', JSON.stringify(memberIds));
+        formData.append('admins', JSON.stringify([])); // Создатель автоматически становится владельцем
+      }
       
       // Добавляем аватар, если он выбран
       if (groupAvatar && groupAvatar.uri) {
@@ -567,13 +590,14 @@ export const CreateGroupScreen = ({ navigation }) => {
       }
       
       const alertButtons = [
-        { text: 'Попробовать ещё раз', onPress: createGroup }
+        { text: 'Попробовать ещё раз', style: 'primary', onPress: createGroup }
       ];
       
       // Добавляем опцию создания без аватара если есть проблемы с загрузкой
       if (showRetryWithoutAvatar) {
         alertButtons.unshift({
           text: 'Создать без фото',
+          style: 'primary',
           onPress: async () => {
             const originalAvatar = groupAvatar;
             setGroupAvatar(null); // Временно убираем аватар
@@ -589,7 +613,7 @@ export const CreateGroupScreen = ({ navigation }) => {
       
       alertButtons.push({ text: 'Отмена', style: 'cancel' });
       
-      Alert.alert(errorTitle, errorMessage, alertButtons);
+      showError(errorTitle, errorMessage, alertButtons);
     } finally {
       setCreating(false);
       setCreatingStep(''); // Очищаем статус
@@ -617,15 +641,35 @@ export const CreateGroupScreen = ({ navigation }) => {
     </View>
   );
 
+  const toggleAdminSelection = useCallback((user) => {
+    setSelectedAdmins(prev => {
+      const isSelected = prev.some(u => u.id === user.id);
+      if (isSelected) {
+        return prev.filter(u => u.id !== user.id);
+      } else {
+        return [...prev, user];
+      }
+    });
+  }, []);
+
   const renderUser = ({ item }) => {
-    const isSelected = selectedUsers.some(u => u.id === item.id);
+    // Для BROADCAST групп выбираем админов, для обычных - участников
+    const isSelected = groupType === 'BROADCAST' 
+      ? selectedAdmins.some(u => u.id === item.id)
+      : selectedUsers.some(u => u.id === item.id);
     const displayName = getUserDisplayName(item);
     const avatarUri = getUserAvatar(item);
 
     return (
       <TouchableOpacity
         style={[styles.userItem, isSelected && styles.userItemSelected]}
-        onPress={() => toggleUserSelection(item)}
+        onPress={() => {
+          if (groupType === 'BROADCAST') {
+            toggleAdminSelection(item);
+          } else {
+            toggleUserSelection(item);
+          }
+        }}
       >
         <View style={styles.userInfo}>
           {avatarUri ? (
@@ -658,35 +702,81 @@ export const CreateGroupScreen = ({ navigation }) => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Text style={styles.backButtonText}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Новая группа</Text>
-        <TouchableOpacity
-          onPress={createGroup}
-          disabled={creating || !groupName.trim() || selectedUsers.length === 0}
-          style={[styles.createButton, (creating || !groupName.trim() || selectedUsers.length === 0) && styles.createButtonDisabled]}
-        >
-          {creating ? (
-            <View style={styles.creatingContainer}>
-              <ActivityIndicator size="small" color="#FFFFFF" />
-              {creatingStep && (
-                <Text style={styles.creatingStepText} numberOfLines={1}>
-                  {creatingStep}
-                </Text>
-              )}
-            </View>
-          ) : (
-            <Text style={styles.createButtonText}>Создать</Text>
-          )}
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>
+          {groupType === 'BROADCAST' ? 'Новый канал' : 'Новая группа'}
+        </Text>
+        <View style={styles.headerActions}>
+          {/* Кнопка создания */}
+          <TouchableOpacity
+            onPress={createGroup}
+            disabled={creating || !groupName.trim() || (groupType !== 'BROADCAST' && selectedUsers.length === 0)}
+            style={[styles.createButton, (creating || !groupName.trim() || (groupType !== 'BROADCAST' && selectedUsers.length === 0)) && styles.createButtonDisabled]}
+          >
+            {creating ? (
+              <View style={styles.creatingContainer}>
+                <ActivityIndicator size="small" color="#FFFFFF" />
+                {creatingStep && (
+                  <Text style={styles.creatingStepText} numberOfLines={1}>
+                    {creatingStep}
+                  </Text>
+                )}
+              </View>
+            ) : (
+              <Text style={styles.createButtonText}>Создать</Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
+
+      {/* Переключатель типа - только для суперадминов */}
+      {isSuperAdmin && (
+        <View style={styles.typeTabsContainer}>
+          <TouchableOpacity
+            style={[styles.typeTab, groupType === 'GROUP' && styles.typeTabActive]}
+            onPress={() => {
+              setGroupType('GROUP');
+              setSelectedAdmins([]);
+            }}
+          >
+            <Text style={[styles.typeTabText, groupType === 'GROUP' && styles.typeTabTextActive]}>
+              👥 Группа
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.typeTab, groupType === 'BROADCAST' && styles.typeTabActive]}
+            onPress={() => {
+              setGroupType('BROADCAST');
+              setSelectedUsers([]);
+            }}
+          >
+            <Text style={[styles.typeTabText, groupType === 'BROADCAST' && styles.typeTabTextActive]}>
+              📢 Канал
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Group Info Section */}
         <View style={styles.groupInfoSection}>
-          <Text style={styles.sectionTitle}>Информация о группе</Text>
+          <Text style={styles.sectionTitle}>
+            {groupType === 'BROADCAST' ? 'Информация о канале' : 'Информация о группе'}
+          </Text>
+          
+          {/* Информация о канале - только для BROADCAST */}
+          {groupType === 'BROADCAST' && (
+            <View style={styles.broadcastInfo}>
+              <Text style={styles.broadcastInfoText}>
+                ℹ️ Все клиенты будут автоматически добавлены в этот канал при регистрации. Канал закрыт - только администраторы могут отправлять сообщения.
+              </Text>
+            </View>
+          )}
           
           {/* Avatar Section */}
           <View style={styles.avatarSection}>
-            <Text style={styles.inputLabel}>Аватар группы (необязательно)</Text>
+            <Text style={styles.inputLabel}>
+              {groupType === 'BROADCAST' ? 'Аватар канала (необязательно)' : 'Аватар группы (необязательно)'}
+            </Text>
             <View style={styles.avatarContainer}>
               <TouchableOpacity
                 style={styles.avatarButton}
@@ -734,12 +824,14 @@ export const CreateGroupScreen = ({ navigation }) => {
           </View>
           
           <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>Название группы *</Text>
+            <Text style={styles.inputLabel}>
+              {groupType === 'BROADCAST' ? 'Название канала *' : 'Название группы *'}
+            </Text>
             <TextInput
               style={styles.textInput}
               value={groupName}
               onChangeText={setGroupName}
-              placeholder="Введите название группы"
+              placeholder={groupType === 'BROADCAST' ? 'Введите название канала' : 'Введите название группы'}
               maxLength={100}
             />
           </View>
@@ -750,19 +842,59 @@ export const CreateGroupScreen = ({ navigation }) => {
               style={[styles.textInput, styles.descriptionInput]}
               value={groupDescription}
               onChangeText={setGroupDescription}
-              placeholder="Введите описание группы"
+              placeholder={groupType === 'BROADCAST' ? 'Введите описание канала' : 'Введите описание группы'}
               multiline
               maxLength={500}
             />
           </View>
         </View>
 
-        {/* Selected Users Section */}
-        {selectedUsers.length > 0 && (
+        {/* Selected Admins Section - только для BROADCAST */}
+        {groupType === 'BROADCAST' && selectedAdmins.length > 0 && (
           <View style={styles.selectedUsersSection}>
-            <Text style={styles.sectionTitle}>
-              Участники ({selectedUsers.length})
-            </Text>
+            <View style={styles.selectedUsersHeader}>
+              <Text style={styles.sectionTitle}>
+                Администраторы ({selectedAdmins.length})
+              </Text>
+            </View>
+            <FlatList
+              horizontal
+              data={selectedAdmins}
+              renderItem={({ item }) => (
+                <View style={styles.selectedUserChip}>
+                  <View style={styles.selectedUserInfo}>
+                    {getUserAvatar(item) ? (
+                      <Image source={{ uri: getUserAvatar(item) }} style={styles.selectedUserAvatar} />
+                    ) : (
+                      <View style={styles.selectedUserAvatarPlaceholder} />
+                    )}
+                    <Text style={styles.selectedUserName} numberOfLines={1}>
+                      {getUserDisplayName(item)}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.removeUserButton}
+                    onPress={() => setSelectedAdmins(prev => prev.filter(u => u.id !== item.id))}
+                  >
+                    <Text style={styles.removeUserText}>×</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              keyExtractor={(item) => String(item.id)}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.selectedUsersList}
+            />
+          </View>
+        )}
+
+        {/* Selected Users Section - только для обычных групп */}
+        {groupType !== 'BROADCAST' && selectedUsers.length > 0 && (
+          <View style={styles.selectedUsersSection}>
+            <View style={styles.selectedUsersHeader}>
+              <Text style={styles.sectionTitle}>
+                Участники ({selectedUsers.length})
+              </Text>
+            </View>
             <FlatList
               horizontal
               data={selectedUsers}
@@ -776,7 +908,9 @@ export const CreateGroupScreen = ({ navigation }) => {
 
         {/* Users List Section */}
         <View style={styles.usersSection}>
-          <Text style={styles.sectionTitle}>Добавить участников</Text>
+          <Text style={styles.sectionTitle}>
+            {groupType === 'BROADCAST' ? 'Добавить администраторов' : 'Добавить участников'}
+          </Text>
           
           <TextInput
             style={styles.searchInput}
@@ -829,8 +963,45 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
+    borderBottomWidth: 0,
+    borderBottomColor: '#E5E5E5',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  typeTabsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5E5',
+    backgroundColor: '#F8F8F8',
+  },
+  typeTab: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
+  },
+  typeTabActive: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  typeTabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666666',
+  },
+  typeTabTextActive: {
+    color: '#FFFFFF',
   },
   backButton: {
     padding: 8,
@@ -1172,6 +1343,25 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     color: '#666666',
+  },
+  selectedUsersHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  broadcastInfo: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: '#E3F2FD',
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#2196F3',
+  },
+  broadcastInfoText: {
+    fontSize: 13,
+    color: '#1976D2',
+    lineHeight: 18,
   },
 });
 

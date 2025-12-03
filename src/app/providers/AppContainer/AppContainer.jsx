@@ -9,6 +9,7 @@ import { useCartAutoLoad, useCartAvailability, CartAuthHandler } from '@entities
 import { useOrderCountsBackground } from '@entities/order';
 import { AuthDialog } from "@entities/auth/ui/AuthDialog";
 import { usePushTokenAutoRegistration } from '@shared/hooks/usePushTokenAutoRegistration';
+import { useChatCacheInit, useChatBackgroundSync } from '@entities/chat';
 
 // Вынесен в отдельный компонент для переиспользования
 class ErrorBoundary extends React.Component {
@@ -177,6 +178,10 @@ export const AppContainer = ({ children, onNavigateToAuth }) => {
     // Регистрация push токенов и фоновая загрузка счетчиков
     usePushTokenAutoRegistration();
     useOrderCountsBackground();
+    
+    // Инициализация кэша чатов и фоновая синхронизация
+    useChatCacheInit();
+    useChatBackgroundSync();
 
     // Установка ref для AuthDialog
     useEffect(() => {

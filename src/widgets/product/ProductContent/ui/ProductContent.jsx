@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, StyleSheet, Dimensions, TouchableOpacity, Text } from 'react-native';
+import { View, StyleSheet, Dimensions } from 'react-native';
 import { ProductInfo } from '@entities/product/ui/ProductInfo';
 import { ProductRating } from '@entities/product/ui/ProductRating';
 import { ProductPrice } from '@entities/product/ui/ProductPrice';
@@ -10,12 +10,8 @@ import { FeedbacksList } from '@entities/feedback/ui/FeedbacksList';
 import { FeedbackAvatars } from '@entities/feedback/ui/FeedbackAvatars';
 import { Border } from '@app/styles/GlobalStyles';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
-import { useAuth } from '@entities/auth/hooks/useAuth';
 import { ScrollableBackgroundGradient } from "@shared/ui/BackgroundGradient";
 import {HighlightChange} from "@shared/ui/HighlightChange/HighlightChange";
-import { ReusableModal } from "@shared/ui/Modal/ui/ReusableModal";
-import { RepostIcon } from "@shared/ui/Icon/Repost/RepostIcon";
-import { RepostProductContent } from "./RepostProductContent";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -40,9 +36,7 @@ export const ProductContent = React.memo(({
                                               currentUser,
                                           }) => {
     const { colors } = useTheme();
-    const { isAuthenticated } = useAuth();
     const [feedbacksHeight, setFeedbacksHeight] = useState(500);
-    const [isRepostModalVisible, setIsRepostModalVisible] = useState(false);
 
     const safeFeedbacks = useMemo(() => {
         return Array.isArray(feedbacks) ? feedbacks : [];
@@ -95,23 +89,13 @@ export const ProductContent = React.memo(({
                         <HighlightChange value={safeProduct.name}>
                             <ProductInfo type={safeProduct.type} name={safeProduct.name} category={safeProduct.categories} />
                         </HighlightChange>
-                        
-                        {/* Иконка репоста товара - только для авторизованных пользователей */}
-                        {isAuthenticated && (
-                            <TouchableOpacity
-                                style={styles.repostButton}
-                                onPress={() => setIsRepostModalVisible(true)}
-                                activeOpacity={0.7}
-                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                            >
-                                <RepostIcon width={24} height={24} color="#FFFFFF"/>
-                            </TouchableOpacity>
-                        )}
                     </View>
 
                     <View style={styles.priceContainer}>
                         <ProductPrice price={safeProduct.price} product={safeProduct} weight={safeProduct.weight} />
 
+                        {/* ВРЕМЕННО СКРЫТО: Контроль количества для корзины
+                            TODO: Вернуть когда функциональность заказа будет готова
                         <QuantityControl
                             quantity={quantity}
                             onQuantityChange={onQuantityChange}
@@ -125,7 +109,7 @@ export const ProductContent = React.memo(({
                             onRemoveFromCart={onRemoveFromCart}
                             autoCartManagement={autoCartManagement}
                         />
-
+                        */}
                        
                     </View>
 
@@ -184,23 +168,6 @@ export const ProductContent = React.memo(({
                         style={styles.feedbacks}
                     />
                 </View>
-            )}
-
-            {/* Модальное окно репоста товара - только для авторизованных пользователей */}
-            {isAuthenticated && (
-                <ReusableModal
-                    visible={isRepostModalVisible}
-                    onClose={() => setIsRepostModalVisible(false)}
-                    title="Отправить товар"
-                    height={85}
-                    fullScreenOnKeyboard={true}
-                >
-                    <RepostProductContent 
-                        product={safeProduct}
-                        currentUser={currentUser}
-                        onClose={() => setIsRepostModalVisible(false)}
-                    />
-                </ReusableModal>
             )}
         </View>
     );
@@ -275,16 +242,5 @@ const styles = StyleSheet.create({
     },
     typeContainer: {
         position: 'relative',
-    },
-    repostButton: {
-        width: 40,
-        height: 40,
-        position: 'absolute',
-        top: 20, 
-        right: 5,
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 100,
-        elevation: 5,
     },
 });

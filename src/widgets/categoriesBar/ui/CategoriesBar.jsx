@@ -13,12 +13,31 @@ import { useNavigation } from '@react-navigation/native';
 import {normalize} from "@shared/lib/normalize";
 
 const CATEGORY_ICON_MAP = {
-    'Рожок': 'рожок',
     'Стаканчик': 'стаканчик',
     'Эскимо': 'эскимо',
-    'Набор': 'набор',
+    'Рожок': 'рожок',
+    'Рожки': 'рожок',
+    'Килограмовые': 'набор',
+    'Брикеты': 'брикеты',
+    'Брикет': 'брикеты',
+    'Фруктовый лед': 'фруктовый лед',
+    'Фруктовый лёд': 'фруктовый лед',
+    'Рыба': 'рыба',
     'Стандартный': 'стандартный'
 };
+
+// Порядок отображения категорий
+const CATEGORY_ORDER = [
+    'Стаканчик',
+    'Эскимо',
+    'Рожки',
+    'Рожок',
+    'Брикеты',
+    'Брикет',
+    'Килограмовые',
+    'Фруктовый лед',
+    'Рыба'
+];
 
 export const CategoriesBar = ({ hideLoader = true }) => {
     const categories = useSelector(selectCategories);
@@ -48,8 +67,22 @@ export const CategoriesBar = ({ hideLoader = true }) => {
         }
     };
 
+    // Фильтруем категорию "Набор" и сортируем категории в нужном порядке
+    const filteredCategories = categories.filter(category => category.name !== 'Набор');
+    const sortedCategories = [...filteredCategories].sort((a, b) => {
+        const indexA = CATEGORY_ORDER.indexOf(a.name);
+        const indexB = CATEGORY_ORDER.indexOf(b.name);
+        
+        // Если категория не найдена в порядке, помещаем её в конец
+        if (indexA === -1 && indexB === -1) return 0;
+        if (indexA === -1) return 1;
+        if (indexB === -1) return -1;
+        
+        return indexA - indexB;
+    });
+
     const categoriesWithLink = [
-        ...categories,
+        ...sortedCategories,
         { id: 'categories-link', name: 'Categories', isCategoriesLink: true }
     ];
 
@@ -62,34 +95,41 @@ export const CategoriesBar = ({ hideLoader = true }) => {
             {categoriesWithLink.map((category) => {
                 const iconType = category.isCategoriesLink
                     ? 'categories-menu'
-                    : (CATEGORY_ICON_MAP[category.name]);
+                    : (CATEGORY_ICON_MAP[category.name] || 'стандартный');
 
                 return (
                     <Pressable
                         key={category.id}
-                        style={getButtonStyle(iconType)}
+                        style={styles.categoryItem}
                         onPress={() => handleCategoryPress(category)}
                     >
-                        <AndroidShadow
-                            style={styles.iconContainer}
-                            shadowColor="rgba(51, 57, 176, 0.05)"
-                            shadowConfig={{
-                                offsetX: -9,
-                                offsetY: 0,
-                                elevation: 14,
-                                radius: 19,
-                                opacity: 0.4
-                            }}
-                        >
-                            <View style={styles.iconWrapper}>
-                                <CategoryIcon
-                                    type={iconType}
-                                    style={iconType === 'рожок' || iconType === 'эскимо'
-                                        ? styles.smallIcon
-                                        : styles.largeIcon}
-                                />
-                            </View>
-                        </AndroidShadow>
+                        <View style={getButtonStyle(iconType)}>
+                            <AndroidShadow
+                                style={styles.iconContainer}
+                                shadowColor="rgba(51, 57, 176, 0.05)"
+                                shadowConfig={{
+                                    offsetX: -9,
+                                    offsetY: 0,
+                                    elevation: 14,
+                                    radius: 19,
+                                    opacity: 0.4
+                                }}
+                            >
+                                <View style={styles.iconWrapper}>
+                                    <CategoryIcon
+                                        type={iconType}
+                                        style={iconType === 'рожок' || iconType === 'эскимо'
+                                            ? styles.smallIcon
+                                            : styles.largeIcon}
+                                    />
+                                </View>
+                            </AndroidShadow>
+                        </View>
+                        {!category.isCategoriesLink && (
+                            <Text style={styles.categoryName} numberOfLines={2}>
+                                {category.name}
+                            </Text>
+                        )}
                     </Pressable>
                 );
             })}
@@ -133,13 +173,17 @@ const styles = StyleSheet.create({
         fontSize: FontSize.size_xs,
         fontFamily: FontFamily.sFProText,
     },
+    categoryItem: {
+        alignItems: 'center',
+        marginRight: 5,
+        width: 85,
+    },
     buttonBase: {
         paddingVertical: Padding.p_9xs,
         justifyContent: 'center',
         alignItems: 'center',
         gap: Gap.gap_lg,
         flexDirection: 'row',
-        marginRight: 5,
     },
     buttonSmall: {
         paddingHorizontal: Padding.p_12xl,
@@ -168,5 +212,13 @@ const styles = StyleSheet.create({
     },
     largeIcon: {
         zIndex: 1,
+    },
+    categoryName: {
+        marginTop: normalize(6),
+        fontSize: FontSize.size_xs,
+        fontFamily: FontFamily.sFProText,
+        color: Color.colorDarkslategray,
+        textAlign: 'center',
+        maxWidth: 85,
     }
 });

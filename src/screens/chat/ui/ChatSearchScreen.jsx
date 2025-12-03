@@ -45,20 +45,6 @@ export const ChatSearchScreen = () => {
         // Поиск комнат на сервере
         const roomsResponse = await ChatApi.searchRooms(query);
         const rooms = roomsResponse?.data?.rooms || [];
-        
-        console.log('Search results:', {
-          query: query.trim(),
-          users: users.length,
-          rooms: rooms.length
-        });
-
-        // Обогащаем результаты пользователей информацией о существующих чатах
-        const enrichedUsers = users.map(user => ({
-          ...user,
-          type: 'user',
-          displayName: user.displayName || user.name,
-          subtitle: user.subtitle || user.role
-        }));
 
         // Обогащаем результаты комнат
         const enrichedRooms = rooms.map(room => ({
@@ -68,6 +54,33 @@ export const ChatSearchScreen = () => {
           subtitle: room.subtitle,
           roomType: room.roomType
         }));
+
+        // Создаем Set для отслеживания пользователей, у которых уже есть DIRECT комната
+        const usersWithDirectRooms = new Set();
+        enrichedRooms.forEach(room => {
+          if (room.roomType === 'DIRECT' && room.participants) {
+            room.participants.forEach(participant => {
+              const participantId = participant.userId || participant.user?.id || participant.id;
+              if (participantId && participantId !== currentUser?.id) {
+                usersWithDirectRooms.add(participantId);
+              }
+            });
+          }
+        });
+
+        // Обогащаем результаты пользователей, исключая тех, у кого уже есть DIRECT комната
+        const enrichedUsers = users
+          .filter(user => {
+            const userId = user.id;
+            // Исключаем пользователей, у которых уже есть DIRECT комната в результатах
+            return !usersWithDirectRooms.has(userId);
+          })
+          .map(user => ({
+            ...user,
+            type: 'user',
+            displayName: user.displayName || user.name,
+            subtitle: user.subtitle || user.role
+          }));
 
         // Объединяем результаты: сначала комнаты, потом пользователи
         const allResults = [...enrichedRooms, ...enrichedUsers];

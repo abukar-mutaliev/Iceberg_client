@@ -115,6 +115,10 @@ export const AdminPanelScreen = () => {
         navigation.navigate('EmployeeManagement');
     }, [navigation]);
 
+    const handleDriverManagementPress = useCallback(() => {
+        navigation.navigate('DriverManagement');
+    }, [navigation]);
+
     const handleRewardsStatisticsPress = useCallback(() => {
         navigation.navigate('EmployeeRewards', {
             fromScreen: 'AdminPanel',
@@ -274,6 +278,11 @@ export const AdminPanelScreen = () => {
                             icon={<IconDistrict color={Color.blue2} />}
                             title="Районы и склады сотрудников"
                             onPress={handleEmployeeManagementPress}
+                        />
+                        <AdminMenuItem
+                            icon={<IconDelivery color={Color.blue2} />}
+                            title="Районы и склады водителей"
+                            onPress={handleDriverManagementPress}
                         />
                         {/* Управление должностями - только для суперадминов */}
                         {currentUser?.profile?.isSuperAdmin && (

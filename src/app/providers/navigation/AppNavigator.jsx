@@ -48,6 +48,7 @@ import { UserPublicProfileScreen } from "@screens/user/ui/UserPublicProfileScree
 import { AdminPanelScreen } from "@screens/admin/ui/AdminPanelScreen";
 import { AdminProductDetailScreen } from "@screens/admin/ui/AdminProductDetailScreen/ui/AdminProductDetailScreen";
 import { EmployeeManagementScreen } from "@screens/admin/ui/EmployeeManagementScreen";
+import { DriverManagementScreen } from "@screens/admin/ui/DriverManagementScreen";
 import { UsersManagementScreen } from "@screens/user/ui/UsersManagementScreen";
 import { UserAddScreen } from "@screens/user/ui/UserAddScreen";
 import { DistrictsManagementScreen } from "@screens/district";
@@ -832,6 +833,11 @@ const AdminStackScreen = () => (
             options={createScreenOptions()}
         />
         <AdminStack.Screen
+            name="DriverManagement"
+            component={DriverManagementScreen}
+            options={createScreenOptions()}
+        />
+        <AdminStack.Screen
             name="StaffOrders"
             component={StaffOrdersScreen}
             options={createScreenOptions({ unmountOnBlur: false, freezeOnBlur: true })}
@@ -1121,12 +1127,12 @@ export const MainTabNavigator = () => (
         }}
         detachInactiveScreens={true}
         tabBar={props => <CustomTabBar {...props} />}
-        backBehavior="initialRoute"
+        backBehavior="none"
     >
         <Tab.Screen name="MainTab" component={MainStackScreen} options={{ lazy: false }} />
         <Tab.Screen name="Search" component={SearchStackScreen} />
         <Tab.Screen name="Cart" component={CartStackScreen} />
-        {featureFlags.chat && <Tab.Screen name="ChatList" component={ChatStackScreen} />}
+        {featureFlags.chat && <Tab.Screen name="ChatList" component={ChatStackScreen} options={{ unmountOnBlur: false }} />}
         <Tab.Screen name="ProfileTab" component={ProfileStackScreen} />
         <Tab.Screen name="Catalog" component={CatalogScreen} options={{ tabBarVisible: false }} />
     </Tab.Navigator>

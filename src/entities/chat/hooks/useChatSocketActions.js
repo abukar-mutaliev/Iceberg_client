@@ -80,11 +80,34 @@ export const useChatSocketActions = () => {
     };
   }).current;
 
+  // API для переключения реакции через WebSocket
+  const emitToggleReaction = useRef((messageId, emoji) => {
+    const socket = globalSocketRef;
+    if (!socket || !socket.connected) {
+      console.warn('⚠️ Cannot emit toggle reaction - socket not connected');
+      return Promise.reject(new Error('Socket not connected'));
+    }
+    
+    return new Promise((resolve, reject) => {
+      console.log(`👍 Emitting toggle reaction for message ${messageId}:`, emoji);
+      socket.emit('chat:reaction:toggle', { messageId, emoji }, (response) => {
+        if (response?.ok) {
+          console.log(`✅ Toggle reaction successful for message ${messageId}`);
+          resolve(response.data);
+        } else {
+          console.error(`❌ Toggle reaction failed for message ${messageId}:`, response?.error);
+          reject(new Error(response?.error || 'Failed to toggle reaction'));
+        }
+      });
+    });
+  }).current;
+
   return {
     emitTyping,
     emitMarkRead,
     emitActiveRoom,
     getConnectionStatus,
+    emitToggleReaction,
   };
 };
 

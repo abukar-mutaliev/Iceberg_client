@@ -91,7 +91,7 @@ export default {
         },
         owner: 'abuingush',
         runtimeVersion: '1.0.0',
-        newArchEnabled: true,
+        newArchEnabled: false,
         updates: {
             enabled: true,
             fallbackToCacheTimeout: 0,

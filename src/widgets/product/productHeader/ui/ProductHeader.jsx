@@ -1,9 +1,10 @@
 import React, {useEffect, useMemo, useRef} from 'react';
-import {View, Animated, Text, StyleSheet, Dimensions, ScrollView} from 'react-native';
+import {View, Animated, Text, StyleSheet, Dimensions, ScrollView, TouchableOpacity} from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import { BackButton } from '@shared/ui/Button/BackButton';
 import { ProductImage } from '@entities/product/ui/ProductImage';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
-import { FontFamily, FontSize } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize, Color } from '@app/styles/GlobalStyles';
 import { ProductFavoriteButton } from "@features/productFavorite";
 import {checkIsFavorite} from "@entities/favorites";
 import {useDispatch} from "react-redux";
@@ -11,7 +12,7 @@ import {Colors} from "react-native/Libraries/NewAppScreen";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-export const ProductHeader = React.memo(({ product, scrollY, onGoBack }) => {
+export const ProductHeader = React.memo(({ product, scrollY, onGoBack, onSharePress, isAuthenticated }) => {
     const { colors } = useTheme();
     const dispatch = useDispatch();
     const checkedFavoriteRef = useRef(false);
@@ -109,8 +110,19 @@ export const ProductHeader = React.memo(({ product, scrollY, onGoBack }) => {
                 style={styles.backButton}
             />
 
-            <View style={styles.favoriteButtonContainer}>
-                {/* Ключевое изменение: передаем productId */}
+            <View style={styles.rightButtonsContainer}>
+                {/* Иконка "Поделиться" - только для авторизованных пользователей */}
+                {isAuthenticated && onSharePress && (
+                    <TouchableOpacity
+                        style={styles.shareButton}
+                        onPress={onSharePress}
+                        activeOpacity={0.7}
+                    >
+                        <Icon name="share" size={24} color={Color.purpleSoft} />
+                    </TouchableOpacity>
+                )}
+                
+                {/* Кнопка избранного */}
                 <ProductFavoriteButton
                     productId={productId}
                 />
@@ -142,11 +154,22 @@ const styles = StyleSheet.create({
         zIndex: 10,
         padding: 10,
     },
-    favoriteButtonContainer: {
+    rightButtonsContainer: {
         position: 'absolute',
         top: 25,
         right: 16,
         zIndex: 10,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    shareButton: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: 'transparent',
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     productImage: {
         width: SCREEN_WIDTH,

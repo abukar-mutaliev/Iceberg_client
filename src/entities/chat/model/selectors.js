@@ -155,12 +155,14 @@ export const makeSelectRoomMessages = () => createSelector(
         (state, roomId) => state.chat?.rooms?.byId?.[roomId],
         (state) => state.chat?.participants?.byUserId,
         (state) => state.auth?.user?.id,
+        // Добавляем bucket.ids как отдельную зависимость для принудительной перевычисления
+        (state, roomId) => state.chat?.messages?.[roomId]?.ids,
     ],
-    (bucket, room, participantsById, currentUserId) => {
-        if (!bucket) return EMPTY_ARRAY;
+    (bucket, room, participantsById, currentUserId, bucketIds) => {
+        if (!bucket || !bucketIds) return EMPTY_ARRAY;
         const participants = room?.participants || EMPTY_ARRAY;
 
-        return bucket.ids
+        return bucketIds
             .map((id) => bucket.byId[id])
             .filter(Boolean)
             .filter((msg) => {
@@ -214,5 +216,12 @@ export const selectUnreadCountByRoomId = (state, roomId) => state.chat?.unreadBy
 export const selectTypingUserIds = (state, roomId) => state.chat?.typingByRoomId?.[roomId] || EMPTY_ARRAY;
 
 export const selectActiveRoomId = (state) => state.chat?.activeRoomId || null;
+
+export const selectDeletedRoomIds = (state) => state.chat?.deletedRoomIds || EMPTY_ARRAY;
+
+export const selectIsRoomDeleted = (state, roomId) => {
+  if (!roomId) return false;
+  return state.chat?.deletedRoomIds?.includes(roomId) || false;
+};
 
 

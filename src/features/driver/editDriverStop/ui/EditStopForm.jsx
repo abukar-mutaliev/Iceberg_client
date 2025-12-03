@@ -147,6 +147,11 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
   const [modalVisible, setModalVisible] = useState(true);
   const isNavigatingRef = useRef(false);
   const navigationEventListenerRef = useRef(null);
+  
+  // Состояние для retry при неудачной загрузке
+  const [uploadFailed, setUploadFailed] = useState(false);
+  const [lastFormData, setLastFormData] = useState(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   const route = useRoute();
 
@@ -422,7 +427,129 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
     return null;
   };
 
-  const handleSubmit = () => {
+  // Функция выполнения запроса с retry
+  const executeWithRetry = async (formData, currentRetry = 0, maxRetries = 5) => {
+    try {
+      setRetryCount(currentRetry);
+      const result = await onSave(formData);
+      logData('Остановка успешно обновлена', result);
+      
+      // Очищаем состояния retry при успехе
+      setUploadFailed(false);
+      setLastFormData(null);
+      setRetryCount(0);
+      
+      showAlertSuccess('Готово', 'Остановка успешно обновлена', [
+        {text: 'OK', onPress: () => onClose()}
+      ]);
+      return result;
+    } catch (error) {
+      logData('Ошибка при обновлении остановки', error);
+      
+      // Проверяем, является ли ошибка сетевой
+      const isNetworkError = 
+        error?.code === 'ERR_NETWORK' || 
+        error?.message?.includes('network') || 
+        error?.message?.includes('timeout') ||
+        error?.message?.includes('Network Error');
+      
+      // Автоматический retry при сетевой ошибке
+      if (isNetworkError && currentRetry < maxRetries) {
+        const nextRetry = currentRetry + 1;
+        logData(`Повторная попытка ${nextRetry}/${maxRetries}`, { error: error.message });
+        setRetryCount(nextRetry);
+        
+        // Экспоненциальная задержка
+        const waitTime = 1000 * Math.pow(2, currentRetry);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        
+        return executeWithRetry(formData, nextRetry, maxRetries);
+      }
+      
+      // Если исчерпаны все попытки при сетевой ошибке
+      if (isNetworkError && currentRetry >= maxRetries) {
+        logData('Исчерпаны все попытки загрузки', { retries: maxRetries });
+        setUploadFailed(true);
+        setLastFormData(formData);
+        setFormSubmitted(false);
+        setIsSubmitting(false);
+        return;
+      }
+      
+      // Обработка других ошибок (не сетевых)
+      if (error && error.errors && Array.isArray(error.errors)) {
+        const stockErrors = error.errors.filter(err => err.type === 'INSUFFICIENT_STOCK');
+        const priceErrors = error.errors.filter(err => err.type === 'PRICE_VALIDATION' || err.message?.includes('цена'));
+        
+        if (stockErrors.length > 0) {
+          const errorMessages = stockErrors.map(err => {
+            const productName = err.productName || `Товар #${err.productId}`;
+            const requested = err.requested || 0;
+            const available = err.available || 0;
+            const shortage = err.shortage || 0;
+            return `${productName}: запрошено ${requested}, доступно ${available} (не хватает ${shortage})`;
+          });
+          
+          showAlertError(
+            'Недостаточно товара на складе',
+            errorMessages.join('\n\n') + '\n\nПожалуйста, уменьшите количество товаров или выберите другой склад.',
+            [{ text: 'OK' }]
+          );
+        } else if (priceErrors.length > 0) {
+          const errorMessages = priceErrors.map(err => {
+            const productName = err.productName || `Товар #${err.productId}`;
+            return `${productName}: ${err.message}`;
+          });
+          
+          showAlertError(
+            'Ошибка валидации цен',
+            errorMessages.join('\n\n') + '\n\nПожалуйста, исправьте цены товаров.',
+            [{ text: 'OK' }]
+          );
+        } else {
+          showAlertError('Ошибка', error?.message || 'Не удалось обновить остановку', [{ text: 'OK' }]);
+        }
+      } else {
+        showAlertError('Ошибка', error?.message || error || 'Не удалось обновить остановку', [{ text: 'OK' }]);
+      }
+      
+      setFormSubmitted(false);
+      throw error;
+    }
+  };
+
+  // Функция повторной отправки после неудачи
+  const handleRetryUpload = async () => {
+    if (!lastFormData) {
+      showAlertError('Ошибка', 'Нет данных для повторной отправки', [{ text: 'OK' }]);
+      return;
+    }
+    
+    logData('Повторная отправка остановки пользователем', { retryCount });
+    setUploadFailed(false);
+    setIsSubmitting(true);
+    setFormSubmitted(true);
+    
+    try {
+      await executeWithRetry(lastFormData, 0, 5);
+    } catch (error) {
+      logData('Ошибка при повторной отправке', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Функция отмены неудачной отправки
+  const handleCancelUpload = () => {
+    logData('Пользователь отменил отправку остановки');
+    setUploadFailed(false);
+    setLastFormData(null);
+    setRetryCount(0);
+    setFormSubmitted(false);
+    setIsSubmitting(false);
+  };
+
+  const handleSubmit = async () => {
     setFormSubmitted(true);
 
     if (!validateForm() || isSubmitting) {
@@ -431,6 +558,8 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
     }
 
     setIsSubmitting(true);
+    setUploadFailed(false);
+    setRetryCount(0);
 
     const startDateTime = getFullStartDateTime();
     const endDateTime = getFullEndDateTime();
@@ -474,60 +603,12 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
       photoChanged: photoWasChanged
     });
 
+    // Сохраняем данные для возможного retry
+    setLastFormData(formData);
+
     try {
       if (onSave && typeof onSave === 'function') {
-        onSave(formData)
-            .then((result) => {
-              logData('Остановка успешно обновлена', result);
-              showAlertSuccess('Готово', 'Остановка успешно обновлена', [
-                {text: 'OK', onPress: () => onClose()}
-              ]);
-            })
-            .catch((error) => {
-              logData('Ошибка при обновлении остановки', error);
-              
-              // Обработка ошибок валидации товаров
-              if (error && error.errors && Array.isArray(error.errors)) {
-                const stockErrors = error.errors.filter(err => err.type === 'INSUFFICIENT_STOCK');
-                const priceErrors = error.errors.filter(err => err.type === 'PRICE_VALIDATION' || err.message?.includes('цена'));
-                
-                if (stockErrors.length > 0) {
-                  const errorMessages = stockErrors.map(err => {
-                    const productName = err.productName || `Товар #${err.productId}`;
-                    const requested = err.requested || 0;
-                    const available = err.available || 0;
-                    const shortage = err.shortage || 0;
-                    return `${productName}: запрошено ${requested}, доступно ${available} (не хватает ${shortage})`;
-                  });
-                  
-                  showAlertError(
-                    'Недостаточно товара на складе',
-                    errorMessages.join('\n\n') + '\n\nПожалуйста, уменьшите количество товаров или выберите другой склад.',
-                    [{ text: 'OK' }]
-                  );
-                } else if (priceErrors.length > 0) {
-                  const errorMessages = priceErrors.map(err => {
-                    const productName = err.productName || `Товар #${err.productId}`;
-                    return `${productName}: ${err.message}`;
-                  });
-                  
-                  showAlertError(
-                    'Ошибка валидации цен',
-                    errorMessages.join('\n\n') + '\n\nПожалуйста, исправьте цены товаров.',
-                    [{ text: 'OK' }]
-                  );
-                } else {
-                  showAlertError('Ошибка', error?.message || 'Не удалось обновить остановку', [{ text: 'OK' }]);
-                }
-              } else {
-                showAlertError('Ошибка', error?.message || error || 'Не удалось обновить остановку', [{ text: 'OK' }]);
-              }
-              
-              setFormSubmitted(false);
-            })
-            .finally(() => {
-              setIsSubmitting(false);
-            });
+        await executeWithRetry(formData, 0, 5);
       } else {
         setIsSubmitting(false);
         setFormSubmitted(false);
@@ -535,9 +616,8 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
       }
     } catch (error) {
       logData('Ошибка при обработке сохранения:', error);
-      showAlertError('Ошибка', 'Произошла ошибка при сохранении данных', [{ text: 'OK' }]);
+    } finally {
       setIsSubmitting(false);
-      setFormSubmitted(false);
     }
   };
 
@@ -745,22 +825,63 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
                     setAddress={setAddress}
                   />
 
-                  {/* Кнопка добавления остановки */}
-                  <TouchableOpacity
-                    style={[
-                      styles.submitButton,
-                      (isSubmitting && formSubmitted) && styles.disabledButton
-                    ]}
-                    onPress={handleSubmit}
-                    activeOpacity={0.7}
-                    disabled={isSubmitting && formSubmitted}
-                  >
-                    {isSubmitting && formSubmitted ? (
-                      <ActivityIndicator size="small" color="#fff"/>
-                    ) : (
-                      <Text style={styles.submitButtonText}>Готово!</Text>
-                    )}
-                  </TouchableOpacity>
+                  {/* Блок с кнопками Повторить/Отмена при неудачной загрузке */}
+                  {uploadFailed && (
+                    <View style={styles.retryContainer}>
+                      <View style={styles.retryIconContainer}>
+                        <Text style={styles.retryIcon}>⚠️</Text>
+                      </View>
+                      <Text style={styles.retryTitle}>Не удалось сохранить данные</Text>
+                      <Text style={styles.retryMessage}>
+                        Проверьте интернет-соединение и попробуйте снова
+                      </Text>
+                      <View style={styles.retryButtonsRow}>
+                        <TouchableOpacity
+                          style={[styles.retryButton, styles.cancelRetryButton]}
+                          onPress={handleCancelUpload}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.cancelButtonText}>Отмена</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.retryButton, styles.retryActionButton]}
+                          onPress={handleRetryUpload}
+                          activeOpacity={0.7}
+                          disabled={isSubmitting}
+                        >
+                          {isSubmitting ? (
+                            <ActivityIndicator size="small" color="#fff" />
+                          ) : (
+                            <Text style={styles.retryButtonText}>🔄 Повторить</Text>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Кнопка добавления остановки - скрыта при показе блока retry */}
+                  {!uploadFailed && (
+                    <TouchableOpacity
+                      style={[
+                        styles.submitButton,
+                        (isSubmitting && formSubmitted) && styles.disabledButton
+                      ]}
+                      onPress={handleSubmit}
+                      activeOpacity={0.7}
+                      disabled={isSubmitting && formSubmitted}
+                    >
+                      {isSubmitting && formSubmitted ? (
+                        <View style={styles.loadingContainer}>
+                          <ActivityIndicator size="small" color="#fff"/>
+                          <Text style={styles.submitButtonText}>
+                            {retryCount > 0 ? `Попытка ${retryCount}/5...` : 'Сохранение...'}
+                          </Text>
+                        </View>
+                      ) : (
+                        <Text style={styles.submitButtonText}>Готово!</Text>
+                      )}
+                    </TouchableOpacity>
+                  )}
                 </View>
               </TouchableOpacity>
             </ScrollView>
@@ -904,6 +1025,77 @@ const styles = StyleSheet.create({
     color: Color.colorLightMode,
     fontSize: normalizeFont(FontSize.size_sm),
     fontWeight: '500',
+    fontFamily: FontFamily.sFProText,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: normalize(10),
+  },
+  // Стили для блока повторной отправки
+  retryContainer: {
+    backgroundColor: '#FFF3CD',
+    borderRadius: 12,
+    padding: normalize(20),
+    marginTop: normalize(16),
+    marginBottom: normalize(16),
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FFC107',
+  },
+  retryIconContainer: {
+    marginBottom: normalize(12),
+  },
+  retryIcon: {
+    fontSize: normalizeFont(32),
+  },
+  retryTitle: {
+    fontSize: normalizeFont(17),
+    fontWeight: '600',
+    color: '#856404',
+    marginBottom: normalize(8),
+    textAlign: 'center',
+    fontFamily: FontFamily.sFProText,
+  },
+  retryMessage: {
+    fontSize: normalizeFont(14),
+    color: '#856404',
+    textAlign: 'center',
+    marginBottom: normalize(16),
+    fontFamily: FontFamily.sFProText,
+    opacity: 0.8,
+  },
+  retryButtonsRow: {
+    flexDirection: 'row',
+    gap: normalize(12),
+    width: '100%',
+  },
+  retryButton: {
+    flex: 1,
+    height: normalize(44),
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cancelRetryButton: {
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: '#856404',
+  },
+  cancelButtonText: {
+    fontSize: normalizeFont(15),
+    fontWeight: '600',
+    color: '#856404',
+    fontFamily: FontFamily.sFProText,
+  },
+  retryActionButton: {
+    backgroundColor: '#3B43A2',
+  },
+  retryButtonText: {
+    fontSize: normalizeFont(15),
+    fontWeight: '600',
+    color: '#fff',
     fontFamily: FontFamily.sFProText,
   },
 });

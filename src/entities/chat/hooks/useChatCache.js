@@ -1,0 +1,323 @@
+/**
+ * useChatCache - Хук для работы с кэшем чата
+ * 
+ * Обеспечивает:
+ * - Мгновенную загрузку из локального кэша
+ * - Фоновую синхронизацию с сервером
+ * - Управление состоянием загрузки
+ */
+
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { AppState } from 'react-native';
+import { chatCacheService } from '../lib/chatCacheService';
+import {
+  fetchRooms,
+  fetchMessages,
+  hydrateRooms,
+  hydrateRoomMessages,
+  receiveSocketMessage,
+} from '../model/slice';
+
+/**
+ * Хук для инициализации и управления кэшем чата
+ */
+export const useChatCacheInit = () => {
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [cacheSize, setCacheSize] = useState(null);
+
+  useEffect(() => {
+    const init = async () => {
+      await chatCacheService.initialize();
+      setIsInitialized(true);
+      
+      // Получаем размер кэша
+      const size = await chatCacheService.getCacheSize();
+      setCacheSize(size);
+    };
+
+    init();
+
+    // Периодическая очистка кэша
+    const cleanupInterval = setInterval(() => {
+      chatCacheService.cleanupStaleCache();
+    }, 24 * 60 * 60 * 1000); // Раз в день
+
+    return () => {
+      clearInterval(cleanupInterval);
+    };
+  }, []);
+
+  const clearCache = useCallback(async () => {
+    await chatCacheService.clearAllCache();
+    const size = await chatCacheService.getCacheSize();
+    setCacheSize(size);
+  }, []);
+
+  const refreshCacheSize = useCallback(async () => {
+    const size = await chatCacheService.getCacheSize();
+    setCacheSize(size);
+  }, []);
+
+  return {
+    isInitialized,
+    cacheSize,
+    clearCache,
+    refreshCacheSize,
+  };
+};
+
+/**
+ * Хук для загрузки комнат с поддержкой кэша
+ * Сначала показывает данные из кэша, потом синхронизирует с сервером
+ */
+export const useCachedRooms = () => {
+  const dispatch = useDispatch();
+  const [isLoadingFromCache, setIsLoadingFromCache] = useState(true);
+  const [isLoadingFromServer, setIsLoadingFromServer] = useState(false);
+  const hasLoadedFromCache = useRef(false);
+
+  // Загрузка из кэша при монтировании
+  useEffect(() => {
+    const loadFromCache = async () => {
+      if (hasLoadedFromCache.current) return;
+      hasLoadedFromCache.current = true;
+
+      try {
+        const cached = await chatCacheService.loadRooms();
+        
+        if (cached?.rooms && cached.rooms.length > 0) {
+          // Гидратируем Redux store данными из кэша
+          dispatch(hydrateRooms({ rooms: cached.rooms }));
+          console.log(`✅ Loaded ${cached.rooms.length} rooms from cache`);
+        }
+      } catch (error) {
+        console.warn('Failed to load rooms from cache:', error);
+      } finally {
+        setIsLoadingFromCache(false);
+      }
+    };
+
+    loadFromCache();
+  }, [dispatch]);
+
+  // Синхронизация с сервером
+  const syncWithServer = useCallback(async (forceRefresh = false) => {
+    setIsLoadingFromServer(true);
+
+    try {
+      const result = await dispatch(fetchRooms({ page: 1, limit: 20, forceRefresh }));
+      
+      if (!result.error && result.payload?.rooms) {
+        // Сохраняем в кэш
+        await chatCacheService.saveRooms(result.payload.rooms);
+      }
+    } catch (error) {
+      console.warn('Failed to sync rooms with server:', error);
+    } finally {
+      setIsLoadingFromServer(false);
+    }
+  }, [dispatch]);
+
+  // Автоматическая синхронизация после загрузки из кэша
+  useEffect(() => {
+    if (!isLoadingFromCache) {
+      syncWithServer();
+    }
+  }, [isLoadingFromCache, syncWithServer]);
+
+  return {
+    isLoadingFromCache,
+    isLoadingFromServer,
+    isLoading: isLoadingFromCache || isLoadingFromServer,
+    syncWithServer,
+  };
+};
+
+/**
+ * Хук для загрузки сообщений комнаты с поддержкой кэша
+ */
+export const useCachedMessages = (roomId) => {
+  const dispatch = useDispatch();
+  const deletedRoomIds = useSelector((s) => s.chat?.deletedRoomIds || []);
+  const isRoomDeleted = roomId ? deletedRoomIds.includes(roomId) : false;
+  const [messages, setMessages] = useState([]);
+  const [isLoadingFromCache, setIsLoadingFromCache] = useState(true);
+  const [isLoadingFromServer, setIsLoadingFromServer] = useState(false);
+  const [cacheInfo, setCacheInfo] = useState(null);
+  const hasLoadedFromCache = useRef(false);
+  const currentRoomId = useRef(roomId);
+
+  // Обновляем ref при изменении roomId
+  useEffect(() => {
+    currentRoomId.current = roomId;
+    hasLoadedFromCache.current = false;
+    setIsLoadingFromCache(true);
+    setCacheInfo(null);
+    setMessages([]);
+  }, [roomId]);
+
+  // Загрузка из кэша при монтировании или смене комнаты
+  useEffect(() => {
+    if (!roomId || hasLoadedFromCache.current || isRoomDeleted) return;
+
+    const loadFromCache = async () => {
+      hasLoadedFromCache.current = true;
+
+      try {
+        const cached = await chatCacheService.loadRoomMessages(roomId);
+        
+        if (cached?.messages && Array.isArray(cached.messages) && cached.messages.length > 0) {
+          // Устанавливаем сообщения из кэша
+          setMessages(cached.messages);
+          
+          // Также гидратируем Redux store данными из кэша
+          dispatch(hydrateRoomMessages({ 
+            roomId, 
+            messages: cached.messages 
+          }));
+          
+          setCacheInfo({
+            count: cached.messages.length,
+            cachedAt: cached.cachedAt,
+            isStale: cached.isStale,
+          });
+          
+          console.log(`✅ Loaded ${cached.messages.length} messages from cache for room ${roomId}`);
+        }
+      } catch (error) {
+        console.warn('Failed to load messages from cache:', error);
+      } finally {
+        if (currentRoomId.current === roomId) {
+          setIsLoadingFromCache(false);
+        }
+      }
+    };
+
+    loadFromCache();
+  }, [roomId, dispatch, isRoomDeleted]);
+
+  // Синхронизация с сервером (в фоне, не блокирует UI)
+  const syncWithServer = useCallback(async (options = {}) => {
+    if (!roomId || isRoomDeleted) return;
+    
+    const { limit = 100, cursorId = null, direction = 'backward', silent = false } = options;
+    
+    // Если silent=true, не показываем индикатор загрузки
+    if (!silent) {
+      setIsLoadingFromServer(true);
+    }
+
+    try {
+      const result = await dispatch(fetchMessages({ 
+        roomId, 
+        limit, 
+        cursorId,
+        direction 
+      }));
+      
+      if (!result.error && result.payload?.messages) {
+        // Обновляем время синхронизации
+        await chatCacheService.updateRoomSyncTime(roomId);
+      }
+    } catch (error) {
+      // Тихо игнорируем ошибки синхронизации
+    } finally {
+      if (currentRoomId.current === roomId && !silent) {
+        setIsLoadingFromServer(false);
+      }
+    }
+  }, [roomId, dispatch]);
+
+  // Фоновая синхронизация после загрузки из кэша (тихая, без блокировки)
+  useEffect(() => {
+    if (!isLoadingFromCache && roomId && messages.length > 0 && !isRoomDeleted) {
+      // Задержка перед синхронизацией чтобы не мешать рендерингу
+      const timer = setTimeout(() => {
+        syncWithServer({ silent: true });
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoadingFromCache, roomId, messages.length, syncWithServer, isRoomDeleted]);
+
+  // Добавление нового сообщения в кэш
+  const addMessageToCache = useCallback(async (message) => {
+    if (!roomId || !message) return;
+    await chatCacheService.addMessageToCache(roomId, message);
+  }, [roomId]);
+
+  // Обновление сообщения в кэше
+  const updateMessageInCache = useCallback(async (messageId, updates) => {
+    if (!roomId || !messageId) return;
+    await chatCacheService.updateMessageInCache(roomId, messageId, updates);
+  }, [roomId]);
+
+  // Удаление сообщения из кэша
+  const removeMessageFromCache = useCallback(async (messageId) => {
+    if (!roomId || !messageId) return;
+    await chatCacheService.removeMessageFromCache(roomId, messageId);
+  }, [roomId]);
+
+  return {
+    messages,
+    isLoadingFromCache,
+    isLoadingFromServer,
+    isLoading: isLoadingFromCache || isLoadingFromServer,
+    cacheInfo,
+    syncWithServer,
+    addMessageToCache,
+    updateMessageInCache,
+    removeMessageFromCache,
+  };
+};
+
+/**
+ * Хук для автоматической синхронизации при восстановлении приложения из фона
+ */
+export const useChatBackgroundSync = () => {
+  const dispatch = useDispatch();
+  const appState = useRef(AppState.currentState);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', async (nextAppState) => {
+      // Если приложение возвращается из фона
+      if (
+        appState.current.match(/inactive|background/) && 
+        nextAppState === 'active'
+      ) {
+        console.log('📱 App returned from background, syncing chat...');
+        
+        // Синхронизируем комнаты
+        dispatch(fetchRooms({ page: 1, limit: 20, forceRefresh: true }));
+      }
+      
+      appState.current = nextAppState;
+    });
+
+    return () => {
+      subscription?.remove();
+    };
+  }, [dispatch]);
+};
+
+/**
+ * Хук для предзагрузки медиа в видимых сообщениях
+ */
+export const useMediaPreload = (roomId, messages) => {
+  useEffect(() => {
+    if (!roomId || !messages || !Array.isArray(messages) || messages.length === 0) return;
+
+    // Предзагружаем медиа для первых N сообщений
+    const visibleMessages = messages.slice(0, 10);
+    chatCacheService.queueMediaCaching(visibleMessages);
+  }, [roomId, messages]);
+};
+
+export default {
+  useChatCacheInit,
+  useCachedRooms,
+  useCachedMessages,
+  useChatBackgroundSync,
+  useMediaPreload,
+};
+

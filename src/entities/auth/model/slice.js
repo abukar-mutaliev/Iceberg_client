@@ -64,6 +64,8 @@ const initialState = {
     phone: '',
     address: '',
     gender: '',
+    districtId: null,
+    customDistrict: '',
     isLoading: false,
     error: null,
     isAuthenticated: false,
@@ -99,14 +101,16 @@ export const initiateRegister = createAsyncThunk(
     'auth/initiateRegister',
     async (data, { rejectWithValue }) => {
         try {
-            const { email, password, name, phone, address, gender } = data;
+            const { email, password, name, phone, address, gender, districtId, customDistrict } = data;
             const payload = {
                 email,
                 password,
                 name,
                 phone,
                 address,
-                gender: gender || 'PREFER_NOT_TO_SAY' // Устанавливаем значение по умолчанию, если gender пустой
+                gender: gender || 'PREFER_NOT_TO_SAY', // Устанавливаем значение по умолчанию, если gender пустой
+                ...(districtId && { districtId: parseInt(districtId) }),
+                ...(customDistrict && { customDistrict })
             };
             console.log('Отправка запроса на инициацию регистрации:', payload); // Логирование для отладки
             const response = await authApi.initiateRegister(payload);
@@ -117,14 +121,25 @@ export const initiateRegister = createAsyncThunk(
             }
 
             if (response.status === 'error') {
-                return rejectWithValue(response.message || 'Ошибка при инициализации регистрации');
+                // Передаём полную структуру ошибки
+                return rejectWithValue({
+                    message: response.message || 'Ошибка при инициализации регистрации',
+                    errors: response.errors || [],
+                    code: response.code || 400
+                });
             }
 
             console.log('Ответ от сервера при инициации регистрации:', response);
             return response;
         } catch (error) {
             console.error('Registration initiation error:', error);
-            return rejectWithValue(error?.message || handleError(error));
+            // Передаём полную структуру ошибки для обработки на клиенте
+            const errorData = {
+                message: error?.message || handleError(error),
+                errors: error?.errors || error?.response?.data?.errors || [],
+                code: error?.code || error?.response?.status
+            };
+            return rejectWithValue(errorData);
         }
     }
 );
@@ -546,6 +561,20 @@ const authSlice = createSlice({
         setGender: (state, action) => {
             state.gender = action.payload;
         },
+        setDistrictId: (state, action) => {
+            state.districtId = action.payload;
+            // Если выбран район из списка, очищаем кастомный район
+            if (action.payload) {
+                state.customDistrict = '';
+            }
+        },
+        setCustomDistrict: (state, action) => {
+            state.customDistrict = action.payload;
+            // Если введён кастомный район, очищаем выбранный из списка
+            if (action.payload) {
+                state.districtId = null;
+            }
+        },
         setTwoFactorRequired: (state, action) => {
             state.requiresTwoFactor = true;
             state.tempToken = action.payload;
@@ -561,6 +590,8 @@ const authSlice = createSlice({
             state.phone = '';
             state.address = '';
             state.gender = '';
+            state.districtId = null;
+            state.customDistrict = '';
             state.tempToken = null;
             state.error = null;
         },
@@ -795,6 +826,8 @@ export const {
     setPhone,
     setAddress,
     setGender,
+    setDistrictId,
+    setCustomDistrict,
     setTwoFactorRequired,
     clearTwoFactorRequired,
     clearAuthForm,

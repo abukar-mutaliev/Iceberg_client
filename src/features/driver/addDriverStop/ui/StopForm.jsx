@@ -74,6 +74,9 @@ export const StopForm = memo(({
     const [warehouseId, setWarehouseId] = useState(null);
     const [selectedProducts, setSelectedProducts] = useState([]);
     const [priceValidationErrors, setPriceValidationErrors] = useState({}); // Ошибки валидации цен по productId
+    const [uploadFailed, setUploadFailed] = useState(false); // Флаг неудачной загрузки после всех попыток
+    const [lastSubmitData, setLastSubmitData] = useState(null); // Данные для повторной отправки
+    const [retryCount, setRetryCount] = useState(0); // Счетчик попыток для отображения
     const [errors, setErrors] = useState({
         address: '',
         district: '',
@@ -89,6 +92,59 @@ export const StopForm = memo(({
     const isNavigatingRef = useRef(false);
     const isFormInitialized = useRef(false);
     const [showHint, setShowHint] = useState(true);
+
+    // Функция повторной отправки после неудачи
+    const handleRetryUpload = useCallback(async () => {
+        if (!lastSubmitData) {
+            showError('Нет данных для повторной отправки');
+            return;
+        }
+        
+        logData('Повторная отправка остановки пользователем', { retryCount });
+        setUploadFailed(false);
+        setIsSubmitting(true);
+        setFormSubmitted(true);
+        
+        try {
+            const result = await dispatch(createStop(lastSubmitData)).unwrap();
+            logData('Остановка успешно создана при повторной отправке', result);
+            
+            setPriceValidationErrors({});
+            setUploadFailed(false);
+            setLastSubmitData(null);
+            setRetryCount(0);
+            
+            showAlertSuccess(
+                'Успешно!',
+                'Остановка успешно добавлена',
+                [
+                    {
+                        text: 'OK',
+                        style: 'primary',
+                        onPress: () => navigation.goBack()
+                    }
+                ]
+            );
+        } catch (error) {
+            logData('Ошибка при повторной отправке', error);
+            setUploadFailed(true);
+            showError('Не удалось отправить. Попробуйте еще раз.');
+        } finally {
+            setIsSubmitting(false);
+            setFormSubmitted(false);
+        }
+    }, [lastSubmitData, dispatch, navigation, showAlertSuccess, showError, retryCount]);
+
+    // Функция отмены неудачной отправки
+    const handleCancelUpload = useCallback(() => {
+        logData('Пользователь отменил отправку остановки');
+        setUploadFailed(false);
+        setLastSubmitData(null);
+        setRetryCount(0);
+        setFormSubmitted(false);
+        setIsSubmitting(false);
+        showInfo('Отправка отменена. Вы можете изменить данные и попробовать снова.');
+    }, [showInfo]);
 
     // Подсчет заполненных обязательных полей для индикатора прогресса
     const { totalFields, filledFields } = useMemo(() => {
@@ -497,8 +553,14 @@ export const StopForm = memo(({
                 photo: photoForUpload ? 'Photo included' : null
             });
 
-            const retryRequest = async (retryCount = 0, maxRetries = 3) => {
+            // Сохраняем данные для возможной повторной отправки
+            setLastSubmitData(stopData);
+            setUploadFailed(false);
+            setRetryCount(0);
+
+            const retryRequest = async (currentRetry = 0, maxRetries = 5) => {
                 try {
+                    setRetryCount(currentRetry);
                     const result = await dispatch(createStop(stopData)).unwrap();
                     logData('Остановка успешно создана', result);
                     
@@ -510,8 +572,11 @@ export const StopForm = memo(({
                         });
                     }
                     
-                    // Очищаем ошибки валидации цен при успешной отправке
+                    // Очищаем ошибки валидации цен и состояние retry при успешной отправке
                     setPriceValidationErrors({});
+                    setUploadFailed(false);
+                    setLastSubmitData(null);
+                    setRetryCount(0);
                     
                     showAlertSuccess(
                         'Успешно!',
@@ -544,15 +609,28 @@ export const StopForm = memo(({
                         logData('Ошибка при проверке сети после ошибки запроса', netInfoError);
                     }
                     
-                    if ((isNetworkError || error?.code === 'ERR_NETWORK' || error?.message?.includes('network')) && retryCount < maxRetries) {
-                        const nextRetry = retryCount + 1;
+                    // Автоматический retry при сетевой ошибке (до 5 попыток)
+                    if ((isNetworkError || error?.code === 'ERR_NETWORK' || error?.message?.includes('network') || error?.message?.includes('timeout')) && currentRetry < maxRetries) {
+                        const nextRetry = currentRetry + 1;
                         logData(`Повторная попытка ${nextRetry}/${maxRetries}`, { error: error.message });
-                        showInfo(`Повторная попытка ${nextRetry} из ${maxRetries}...`);
+                        showInfo(`📶 Повторная попытка ${nextRetry} из ${maxRetries}...`);
+                        setRetryCount(nextRetry);
                         
-                        const waitTime = 1000 * Math.pow(2, retryCount);
+                        // Экспоненциальная задержка: 1с, 2с, 4с, 8с, 16с
+                        const waitTime = 1000 * Math.pow(2, currentRetry);
                         await new Promise(resolve => setTimeout(resolve, waitTime));
                         
                         return retryRequest(nextRetry, maxRetries);
+                    }
+                    
+                    // Если исчерпаны все попытки при сетевой ошибке - показываем кнопки Повторить/Отмена
+                    if ((isNetworkError || error?.code === 'ERR_NETWORK' || error?.message?.includes('network') || error?.message?.includes('timeout')) && currentRetry >= maxRetries) {
+                        logData('Исчерпаны все попытки загрузки', { retries: maxRetries });
+                        setUploadFailed(true);
+                        setFormSubmitted(false);
+                        setIsSubmitting(false);
+                        showError('Не удалось отправить данные. Проверьте интернет-соединение.');
+                        return;
                     }
                     
                     // Извлекаем ошибки из разных возможных мест (Redux thunk использует payload)
@@ -1040,7 +1118,7 @@ export const StopForm = memo(({
                 </FormSection>
 
                 {/* Подсказка перед отправкой */}
-                {filledFields === totalFields && (
+                {filledFields === totalFields && !uploadFailed && (
                     <InfoBanner
                         type="success"
                         title="Готово к отправке!"
@@ -1048,24 +1126,63 @@ export const StopForm = memo(({
                     />
                 )}
 
-                <TouchableOpacity
-                    style={[
-                        styles.submitButton,
-                        isSubmitting && styles.disabledButton
-                    ]}
-                    onPress={handleSubmit}
-                    activeOpacity={0.7}
-                    disabled={isSubmitting}
-                >
-                    {isSubmitting ? (
-                        <View style={styles.loadingContainer}>
-                            <ActivityIndicator size="small" color="#fff"/>
-                            <Text style={styles.submitButtonText}>Добавление...</Text>
+                {/* Блок с кнопками Повторить/Отмена при неудачной загрузке */}
+                {uploadFailed && (
+                    <View style={styles.retryContainer}>
+                        <View style={styles.retryIconContainer}>
+                            <Text style={styles.retryIcon}>⚠️</Text>
                         </View>
-                    ) : (
-                        <Text style={styles.submitButtonText}>Добавить остановку</Text>
-                    )}
-                </TouchableOpacity>
+                        <Text style={styles.retryTitle}>Не удалось отправить данные</Text>
+                        <Text style={styles.retryMessage}>
+                            Проверьте интернет-соединение и попробуйте снова
+                        </Text>
+                        <View style={styles.retryButtonsRow}>
+                            <TouchableOpacity
+                                style={[styles.retryButton, styles.cancelButton]}
+                                onPress={handleCancelUpload}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={styles.cancelButtonText}>Отмена</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.retryButton, styles.retryActionButton]}
+                                onPress={handleRetryUpload}
+                                activeOpacity={0.7}
+                                disabled={isSubmitting}
+                            >
+                                {isSubmitting ? (
+                                    <ActivityIndicator size="small" color="#fff" />
+                                ) : (
+                                    <Text style={styles.retryButtonText}>🔄 Повторить</Text>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                )}
+
+                {/* Кнопка отправки - скрыта при показе блока retry */}
+                {!uploadFailed && (
+                    <TouchableOpacity
+                        style={[
+                            styles.submitButton,
+                            isSubmitting && styles.disabledButton
+                        ]}
+                        onPress={handleSubmit}
+                        activeOpacity={0.7}
+                        disabled={isSubmitting}
+                    >
+                        {isSubmitting ? (
+                            <View style={styles.loadingContainer}>
+                                <ActivityIndicator size="small" color="#fff"/>
+                                <Text style={styles.submitButtonText}>
+                                    {retryCount > 0 ? `Попытка ${retryCount}/5...` : 'Добавление...'}
+                                </Text>
+                            </View>
+                        ) : (
+                            <Text style={styles.submitButtonText}>Добавить остановку</Text>
+                        )}
+                    </TouchableOpacity>
+                )}
         </View>
     );
 }, (prevProps, nextProps) => {
@@ -1193,5 +1310,69 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         gap: normalize(10),
+    },
+    // Стили для блока повторной отправки
+    retryContainer: {
+        backgroundColor: '#FFF3CD',
+        borderRadius: 12,
+        padding: normalize(20),
+        marginBottom: normalize(16),
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#FFC107',
+    },
+    retryIconContainer: {
+        marginBottom: normalize(12),
+    },
+    retryIcon: {
+        fontSize: normalizeFont(32),
+    },
+    retryTitle: {
+        fontSize: normalizeFont(17),
+        fontWeight: '600',
+        color: '#856404',
+        marginBottom: normalize(8),
+        textAlign: 'center',
+        fontFamily: FontFamily.sFProText,
+    },
+    retryMessage: {
+        fontSize: normalizeFont(14),
+        color: '#856404',
+        textAlign: 'center',
+        marginBottom: normalize(16),
+        fontFamily: FontFamily.sFProText,
+        opacity: 0.8,
+    },
+    retryButtonsRow: {
+        flexDirection: 'row',
+        gap: normalize(12),
+        width: '100%',
+    },
+    retryButton: {
+        flex: 1,
+        height: normalize(44),
+        borderRadius: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    cancelButton: {
+        backgroundColor: '#fff',
+        borderWidth: 1.5,
+        borderColor: '#856404',
+    },
+    cancelButtonText: {
+        fontSize: normalizeFont(15),
+        fontWeight: '600',
+        color: '#856404',
+        fontFamily: FontFamily.sFProText,
+    },
+    retryActionButton: {
+        backgroundColor: '#3B43A2',
+    },
+    retryButtonText: {
+        fontSize: normalizeFont(15),
+        fontWeight: '600',
+        color: '#fff',
+        fontFamily: FontFamily.sFProText,
     },
 });

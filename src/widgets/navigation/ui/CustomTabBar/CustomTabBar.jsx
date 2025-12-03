@@ -21,6 +21,21 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
     const { isCartAvailable } = useCartAvailability();
     const { currentUser } = useAuth();
     
+    // Логируем изменения активного таба
+    const prevIndexRef = useRef(state.index);
+    useEffect(() => {
+        if (prevIndexRef.current !== state.index) {
+            const prevRoute = state.routes[prevIndexRef.current]?.name;
+            const currentRoute = state.routes[state.index]?.name;
+            console.log('🔀 Tab changed:', {
+                from: prevRoute,
+                to: currentRoute,
+                timestamp: new Date().toISOString()
+            });
+            prevIndexRef.current = state.index;
+        }
+    }, [state.index, state.routes]);
+    
     // Получаем ID поставщика, если пользователь является поставщиком
     const supplierId = currentUser?.supplier?.id;
     

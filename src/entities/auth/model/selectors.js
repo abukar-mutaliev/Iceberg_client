@@ -14,6 +14,8 @@ export const selectName = (state) => state?.auth?.name || '';
 export const selectPhone = (state) => state?.auth?.phone || '';
 export const selectAddress = (state) => state?.auth?.address || '';
 export const selectGender = (state) => state?.auth?.gender || '';
+export const selectDistrictId = (state) => state?.auth?.districtId || null;
+export const selectCustomDistrict = (state) => state?.auth?.customDistrict || '';
 export const selectTokens = (state) => state?.auth?.tokens || null;
 export const selectAuthError = (state) => state?.auth?.error || null;
 export const selectIsLoading = (state) => state?.auth?.isLoading || false;
@@ -31,6 +33,8 @@ export const authSelectors = {
     selectPhone,
     selectAddress,
     selectGender,
+    selectDistrictId,
+    selectCustomDistrict,
     selectTokens,
     selectAuthError,
     selectIsLoading,

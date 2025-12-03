@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useCallback } from 'react';
+import React, { useEffect, useMemo, useCallback, useState } from 'react';
 import {
     View,
     ScrollView,
@@ -18,6 +18,8 @@ import { Loader } from '@shared/ui/Loader';
 import Text from '@shared/ui/Text/Text';
 import { Color } from '@app/styles/GlobalStyles';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
+import { ReusableModal } from '@shared/ui/Modal/ui/ReusableModal';
+import { RepostProductContent } from '@widgets/product/ProductContent/ui/RepostProductContent';
 
 import {
     StaticBackgroundGradient,
@@ -49,6 +51,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     const { isAuthenticated, currentUser } = useAuth();
     const { showError, showWarning } = useToast();
     const { showError: showCustomError, showInfo } = useCustomAlert();
+    const [isRepostModalVisible, setIsRepostModalVisible] = useState(false);
 
     // Кастомные хуки для разделения логики
     const {
@@ -248,6 +251,15 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         }
     }, [enrichedProduct, productId, selectedQuantity, isInCart, addToCart, updateQuantity, showError, showWarning]);
 
+    // Обработчик репоста товара
+    const handleSharePress = useCallback(() => {
+        if (!isAuthenticated) {
+            showInfo('Требуется авторизация', 'Для отправки товара в чат необходимо войти в систему');
+            return;
+        }
+        setIsRepostModalVisible(true);
+    }, [isAuthenticated, showInfo]);
+
     // Обработчик вопроса о продукте
     const handleAskQuestion = useCallback(async () => {
         if (!isAuthenticated) {
@@ -342,9 +354,11 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 product={{ ...displayProduct, images: productImages }}
                 scrollY={scrollY}
                 onGoBack={handleGoBack}
+                onSharePress={handleSharePress}
+                isAuthenticated={isAuthenticated}
             />
         );
-    }, [displayProduct, productImages, scrollY, handleGoBack]);
+    }, [displayProduct, productImages, scrollY, handleGoBack, handleSharePress, isAuthenticated]);
 
     const productContentComponent = useMemo(() => {
         if (!displayProduct?.id) return null;
@@ -528,6 +542,23 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                     </View>
                 </ScrollView>
             </SafeAreaView>
+
+            {/* Модальное окно репоста товара */}
+            {isAuthenticated && displayProduct && (
+                <ReusableModal
+                    visible={isRepostModalVisible}
+                    onClose={() => setIsRepostModalVisible(false)}
+                    title="Отправить товар"
+                    height={85}
+                    fullScreenOnKeyboard={true}
+                >
+                    <RepostProductContent 
+                        product={displayProduct}
+                        currentUser={currentUser}
+                        onClose={() => setIsRepostModalVisible(false)}
+                    />
+                </ReusableModal>
+            )}
         </View>
     );
 };

@@ -1,9 +1,9 @@
 {
   "cli": {
-    "version": ">= 13.2.0"
+    "version": ">= 13.2.0",
+    "appVersionSource": "local"
   },
   "build": {
-    // Профиль для сборки standalone APK (production-like build для тестирования)
     "standalone": {
       "extends": "production",
       "distribution": "internal",
@@ -26,7 +26,6 @@
       },
       "channel": "standalone"
     },
-    // Development build для тестирования на устройстве с Expo Go
     "development": {
       "developmentClient": true,
       "distribution": "internal",
@@ -52,7 +51,6 @@
       },
       "channel": "debug"
     },
-    // Preview build - standalone APK для тестирования (исправленный)
     "preview": {
       "distribution": "internal",
       "android": {
@@ -73,14 +71,12 @@
         "EXPO_DEBUG": "false",
         "YANDEX_MAPS_API_KEY": "17ee620d-aee1-482c-acc9-c7144fd46087",
         "EXPO_PUBLIC_ONESIGNAL_APP_ID": "4ad5c8d5-4818-4e13-beac-fb1ec63285ad"
-
       },
       "channel": "preview",
       "cache": {
         "disabled": true
       }
     },
-    // Preview Debug build - standalone APK с отладкой
     "preview-debug": {
       "extends": "preview",
       "distribution": "internal",
@@ -108,7 +104,6 @@
         "disabled": true
       }
     },
-    // Production build - финальная сборка для публикации
     "production": {
       "android": {
         "buildType": "apk",

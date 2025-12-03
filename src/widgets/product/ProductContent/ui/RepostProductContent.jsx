@@ -10,6 +10,7 @@ import {
   Alert,
   Image,
 } from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '@entities/auth/hooks/useAuth';
@@ -249,7 +250,48 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
   // Рендер элемента списка чатов
   const renderChatItem = ({ item }) => {
     const title = item.title || `Чат ${item.id}`;
-    const lastMessage = item.lastMessage?.content || 'Нет сообщений';
+    
+    // Форматируем последнее сообщение как в ChatListScreen
+    let lastMessageText = 'Нет сообщений';
+    const lastMessage = item.lastMessage;
+    
+    if (lastMessage) {
+      // Определяем префикс отправителя для групповых чатов
+      let senderPrefix = '';
+      const isOwnMessage = lastMessage.senderId === currentUserId;
+      
+      if (item.type === 'GROUP' && lastMessage.sender) {
+        const senderName = lastMessage.sender.name ||
+          lastMessage.sender.client?.name ||
+          lastMessage.sender.admin?.name ||
+          lastMessage.sender.employee?.name ||
+          lastMessage.sender.supplier?.contactPerson ||
+          lastMessage.sender.email?.split('@')[0];
+
+        if (senderName) {
+          senderPrefix = isOwnMessage ? 'Вы: ' : `${senderName}: `;
+        }
+      }
+      
+      // Форматируем контент сообщения по типу
+      let messageContent = '';
+      if (lastMessage.type === 'IMAGE') {
+        messageContent = 'Фото';
+      } else if (lastMessage.type === 'PRODUCT') {
+        messageContent = 'Товар';
+      } else if (lastMessage.type === 'STOP') {
+        messageContent = 'Остановка';
+      } else if (lastMessage.type === 'VOICE') {
+        messageContent = 'Голосовое сообщение';
+      } else if (lastMessage.content && lastMessage.content.trim()) {
+        messageContent = lastMessage.content.trim();
+      } else {
+        messageContent = 'Сообщение';
+      }
+      
+      lastMessageText = senderPrefix + messageContent;
+    }
+    
     const time = item.lastMessage?.createdAt 
       ? new Date(item.lastMessage.createdAt).toLocaleTimeString().slice(0, 5) 
       : '';
@@ -262,7 +304,7 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
       >
         <View style={styles.chatInfo}>
           <Text style={styles.chatTitle}>{title}</Text>
-          <Text style={styles.chatPreview}>{lastMessage}</Text>
+          <Text style={styles.chatPreview}>{lastMessageText}</Text>
         </View>
         <View style={styles.chatMeta}>
           <Text style={styles.chatTime}>{time}</Text>
@@ -271,7 +313,9 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
             onPress={() => handleSendToExistingChat(item)}
             disabled={sending}
           >
-            <Text style={styles.sendButtonText}>📤</Text>
+            <View style={styles.iconContainer}>
+              <Icon name="send" size={20} color="#ffffff" />
+            </View>
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
@@ -329,7 +373,9 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
           onPress={() => handleSendToUser(item)}
           disabled={sending}
         >
-          <Text style={styles.sendButtonText}>📤</Text>
+          <View style={styles.iconContainer}>
+            <Icon name="send" size={20} color="#ffffff" />
+          </View>
         </TouchableOpacity>
       </TouchableOpacity>
     );
@@ -520,6 +566,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
+    paddingRight: 4,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
@@ -549,6 +596,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     paddingHorizontal: 8,
+    paddingRight: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
     position: 'relative',
@@ -627,11 +675,16 @@ const styles = StyleSheet.create({
     color: '#4CAF50',
   },
   sendButton: {
-    padding: 6,
     borderRadius: 18,
     backgroundColor: '#075E54',
     width: 36,
     height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconContainer: {
+    width: 20,
+    height: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -642,10 +695,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 3,
-  },
-  sendButtonText: {
-    fontSize: 18,
-    color: '#ffffff',
   },
   emptyContainer: {
     flex: 1,

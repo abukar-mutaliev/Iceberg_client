@@ -167,7 +167,6 @@ export const MainScreen = ({ navigation, route }) => {
     // Обработка фокуса экрана
     useFocusEffect(
         useCallback(() => {
-
             // Сброс параметров навигации
             if (route?.params?.resetProduct) {
                 navigation.setParams({ resetProduct: undefined });

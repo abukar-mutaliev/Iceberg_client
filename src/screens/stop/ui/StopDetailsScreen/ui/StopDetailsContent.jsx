@@ -1,14 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Platform, Alert, Linking, TouchableWithoutFeedback } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Platform, Alert, Linking, ActivityIndicator, Clipboard } from 'react-native';
 import { useSelector } from 'react-redux';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
-import UniversalMapView, { Marker } from '@shared/ui/Map/UniversalMapView';
+import MapView, { Marker } from 'react-native-maps';
+import Constants from 'expo-constants';
 import { selectUser } from '@entities/auth/model/selectors';
-import { formatTimeRange } from "@shared/lib/dateFormatters";
+import { formatTimeRange, formatTime, formatDate } from "@shared/lib/dateFormatters";
 import { getBaseUrl } from '@shared/api/api';
 import { logData } from '@shared/lib/logger';
 import {BackButton} from "@shared/ui/Button/BackButton";
 import { StopProductsList } from '@entities/stop/ui/StopProductsList';
+import { ShareStopModal } from './ShareStopModal';
+import ChatApi from '@entities/chat/api/chatApi';
+import { selectRoomsList } from '@entities/chat/model/selectors';
+import { useToast } from '@shared/ui/Toast';
 
 const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
 
@@ -25,11 +31,63 @@ const getPhotoUrl = (photoPath) => {
     }
 
     const baseUrl = getBaseUrl();
-    const fullUrl = `${baseUrl}${photoPath}`;
+    // Убираем ведущий слеш если есть и добавляем /uploads/
+    const cleanPath = photoPath.replace(/^\/+/, '');
+    const fullUrl = `${baseUrl}/uploads/${cleanPath}`;
     return fullUrl;
 };
 
-// Безопасная функция для парсинга координат
+// Функция для геокодирования адреса через Nominatim
+const geocodeAddress = async (address, districtName = '') => {
+    if (!address || !address.trim()) {
+        return null;
+    }
+
+    try {
+        // Формируем запрос с учетом района для лучшей точности
+        let query = address.trim();
+        if (districtName) {
+            query = `${query}, ${districtName}, Республика Ингушетия, Россия`;
+        } else {
+            query = `${query}, Республика Ингушетия, Россия`;
+        }
+
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1&accept-language=ru`;
+        
+        logData('Геокодирование адреса остановки', { address, query, url });
+
+        const response = await fetch(url, {
+            headers: {
+                'User-Agent': 'IcebergApp/1.0 (Delivery service)' // Nominatim требует User-Agent
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const results = await response.json();
+
+        if (results && results.length > 0) {
+            const result = {
+                latitude: parseFloat(results[0].lat),
+                longitude: parseFloat(results[0].lon),
+                displayName: results[0].display_name
+            };
+            
+            logData('Адрес успешно геокодирован', result);
+            return result;
+        }
+
+        logData('Адрес не найден при геокодировании', { address, query });
+        return null;
+    } catch (error) {
+        logData('Ошибка при геокодировании адреса', { address, error: error.message });
+        return null;
+    }
+};
+
+// Безопасная функция для парсинга координат (fallback)
 const parseMapLocation = (mapLocation) => {
     if (!mapLocation) {
         return null;
@@ -101,18 +159,76 @@ const parseMapLocation = (mapLocation) => {
             }
         }
     } catch (error) {
-        // Ошибка парсинга координат - используем координаты по умолчанию
+        // Ошибка парсинга координат
     }
 
     return null;
 };
 
+// Функция для понятного форматирования времени стоянки
+const formatStopTime = (startTime, endTime) => {
+    if (!startTime || !endTime) return null;
+
+    const startDate = new Date(startTime);
+    const endDate = new Date(endTime);
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return null;
+
+    const startTimeStr = formatTime(startTime);
+    const endTimeStr = formatTime(endTime);
+    const startDateStr = formatDate(startTime);
+    const endDateStr = formatDate(endTime);
+
+    // Проверяем, находится ли водитель на стоянке сейчас
+    const now = new Date();
+    const isActive = now >= startDate && now <= endDate;
+
+    return {
+        startTime: startTimeStr,
+        endTime: endTimeStr,
+        startDate: startDateStr,
+        endDate: endDateStr,
+        isSameDay: startDateStr === endDateStr,
+        isActive: isActive,
+        endDateTime: endDate
+    };
+};
+
 export const StopDetailsContent = ({ stop, navigation }) => {
     const user = useSelector(selectUser);
+    const rooms = useSelector(selectRoomsList);
+    const { showSuccess } = useToast();
     const defaultCoords = { latitude: 43.172837, longitude: 44.811913 };
     const [mapCoordinates, setMapCoordinates] = useState(defaultCoords);
     const [mapLoaded, setMapLoaded] = useState(false);
+    const [mapError, setMapError] = useState(false);
+    const [isGeocoding, setIsGeocoding] = useState(false);
+    const [geocodingError, setGeocodingError] = useState(null);
+    const [shareModalVisible, setShareModalVisible] = useState(false);
+    const [isCreatingChat, setIsCreatingChat] = useState(false);
     const canEdit = ['DRIVER', 'ADMIN', 'EMPLOYEE'].includes(user?.role);
+    const isAuthenticated = !!user;
+    
+    // Определяем, запущено ли приложение в Expo Go
+    const isExpoGo = Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
+    
+    // Данные о водителе
+    const driver = stop?.driver;
+    const hasDriverInfo = driver && (driver.name || driver.phone);
+    const canContactDriver = isAuthenticated && hasDriverInfo && user?.id !== driver?.userId;
+    
+    // Проверяем существование чата с водителем
+    const existingChatWithDriver = React.useMemo(() => {
+        if (!user?.id || !driver?.userId) return null;
+        
+        return rooms.find(room => {
+            if (room.type !== 'DIRECT') return false;
+            return room.participants?.some(participant => {
+                const participantId = participant?.userId ?? participant?.user?.id ?? participant?.id;
+                return participantId === driver.userId;
+            });
+        });
+    }, [rooms, user?.id, driver?.userId]);
 
 
     if (!stop) {
@@ -127,7 +243,121 @@ export const StopDetailsContent = ({ stop, navigation }) => {
         navigation.navigate('EditStop', { stopId: stop.id });
     };
 
+    const handleSharePress = () => {
+        if (!isAuthenticated) {
+            Alert.alert('Требуется авторизация', 'Для отправки остановки в чат необходимо войти в систему');
+            return;
+        }
+        setShareModalVisible(true);
+    };
+
+    const handleCloseShareModal = () => {
+        setShareModalVisible(false);
+    };
+
+    // Функция для копирования адреса
+    const handleCopyAddress = () => {
+        if (!stop?.address) {
+            Alert.alert('Ошибка', 'Адрес не указан');
+            return;
+        }
+        
+        Clipboard.setString(stop.address);
+        showSuccess('Адрес скопирован', {
+            duration: 2000,
+            position: 'top'
+        });
+    };
+
+    // Функция для звонка водителю
+    const handleCallDriver = () => {
+        if (!driver?.phone) {
+            Alert.alert('Ошибка', 'Номер телефона водителя не указан');
+            return;
+        }
+        
+        const phoneNumber = driver.phone.replace(/[^0-9+]/g, '');
+        const phoneUrl = Platform.select({
+            ios: `tel:${phoneNumber}`,
+            android: `tel:${phoneNumber}`
+        });
+        
+        Linking.canOpenURL(phoneUrl)
+            .then(supported => {
+                if (supported) {
+                    Linking.openURL(phoneUrl);
+                } else {
+                    Alert.alert('Ошибка', 'Не удалось совершить звонок');
+                }
+            })
+            .catch(err => {
+                logData('Ошибка при попытке звонка', err);
+                Alert.alert('Ошибка', 'Не удалось совершить звонок');
+            });
+    };
+
+    // Функция для открытия чата с водителем
+    const handleChatWithDriver = async () => {
+        if (!isAuthenticated) {
+            Alert.alert('Требуется авторизация', 'Для связи с водителем необходимо войти в систему');
+            return;
+        }
+        
+        if (!driver?.userId) {
+            Alert.alert('Ошибка', 'Информация о водителе недоступна');
+            return;
+        }
+        
+        const driverName = driver.name || 'Водитель';
+        
+        // Если чат уже существует, переходим в него
+        if (existingChatWithDriver) {
+            navigation.navigate('ChatRoom', {
+                roomId: existingChatWithDriver.id,
+                roomTitle: driverName,
+                roomData: existingChatWithDriver,
+                userId: driver.userId,
+                fromScreen: 'StopDetails'
+            });
+            return;
+        }
+        
+        // Создаем новый чат
+        setIsCreatingChat(true);
+        
+        try {
+            const formData = new FormData();
+            formData.append('type', 'DIRECT');
+            formData.append('title', driverName);
+            formData.append('members', JSON.stringify([driver.userId]));
+            
+            const response = await ChatApi.createRoom(formData);
+            const room = response?.data?.room || response?.data;
+            
+            if (room?.id) {
+                navigation.navigate('ChatRoom', {
+                    roomId: room.id,
+                    roomTitle: driverName,
+                    roomData: room,
+                    userId: driver.userId,
+                    fromScreen: 'StopDetails'
+                });
+            } else {
+                Alert.alert('Ошибка', 'Не удалось создать чат с водителем');
+            }
+        } catch (error) {
+            logData('Ошибка при создании чата с водителем', error);
+            Alert.alert('Ошибка', 'Не удалось открыть чат с водителем');
+        } finally {
+            setIsCreatingChat(false);
+        }
+    };
+
     const handleMarkerPress = () => {
+        openNativeMaps();
+    };
+
+    const openNativeMaps = () => {
         const { latitude, longitude } = mapCoordinates;
         const address = stop.address || 'Остановка';
 
@@ -144,6 +374,7 @@ export const StopDetailsContent = ({ stop, navigation }) => {
                 Linking.openURL(webUrl);
             }
         }).catch(err => {
+            logData('Ошибка при открытии карт', { error: err });
             Alert.alert('Ошибка', 'Не удалось открыть приложение карт');
         });
     };
@@ -157,32 +388,63 @@ export const StopDetailsContent = ({ stop, navigation }) => {
 
         // Сбрасываем состояние загрузки при изменении остановки
         setMapLoaded(false);
+        setGeocodingError(null);
 
-        // Логируем данные остановки для отладки
-        logData('Детали остановки', {
-            id: stop.id,
-            photo: stop.photo,
-            photoType: typeof stop.photo,
-            hasPhoto: !!stop.photo,
-            mapLocation: stop.mapLocation,
-            mapLocationType: typeof stop.mapLocation
-        }, 'StopDetailsContent');
+        const loadCoordinates = async () => {
+            // Сначала пробуем использовать mapLocation если есть
+            const parsedCoords = parseMapLocation(stop.mapLocation);
+            
+            if (parsedCoords) {
+                logData('Используем координаты из mapLocation', parsedCoords);
+                setMapCoordinates(parsedCoords);
+                setMapLoaded(true);
+                return;
+            }
 
-        // Парсим координаты
-        const parsedCoords = parseMapLocation(stop.mapLocation);
+            // Если mapLocation нет или невалидна, используем геокодирование адреса
+            if (stop.address && stop.address.trim()) {
+                setIsGeocoding(true);
+                
+                try {
+                    const districtName = stop.district?.name || '';
+                    const geocoded = await geocodeAddress(stop.address, districtName);
+                    
+                    if (geocoded) {
+                        setMapCoordinates({
+                            latitude: geocoded.latitude,
+                            longitude: geocoded.longitude
+                        });
+                        setMapLoaded(true);
+                        logData('Координаты получены через геокодирование', geocoded);
+                    } else {
+                        // Если геокодирование не удалось, используем координаты по умолчанию
+                        setMapCoordinates(defaultCoords);
+                        setMapLoaded(true);
+                        setGeocodingError('Не удалось определить координаты адреса');
+                        logData('Геокодирование не удалось, используем координаты по умолчанию');
+                    }
+                } catch (error) {
+                    logData('Ошибка при геокодировании', { error: error.message });
+                    setMapCoordinates(defaultCoords);
+                    setMapLoaded(true);
+                    setGeocodingError('Ошибка при определении координат');
+                } finally {
+                    setIsGeocoding(false);
+                }
+            } else {
+                // Если адреса нет, используем координаты по умолчанию
+                setMapCoordinates(defaultCoords);
+                setMapLoaded(true);
+            }
+        };
 
-        if (parsedCoords) {
-            setMapCoordinates(parsedCoords);
-        } else {
-            setMapCoordinates(defaultCoords);
-        }
-
-        // Добавляем таймаут на случай долгой загрузки карты
+        loadCoordinates();
     }, [stop]);
 
     return (
         <ScrollView
             style={styles.container}
+            contentContainerStyle={styles.scrollContent}
             nestedScrollEnabled={true}
             showsVerticalScrollIndicator={true}
             showsHorizontalScrollIndicator={false}
@@ -208,22 +470,106 @@ export const StopDetailsContent = ({ stop, navigation }) => {
                     </Text>
                 </View>
 
-                <View style={styles.backButton} />
+                {isAuthenticated ? (
+                    <TouchableOpacity
+                        style={styles.shareIconButton}
+                        onPress={handleSharePress}
+                    >
+                        <Icon name="share" size={24} color={Color.purpleSoft} />
+                    </TouchableOpacity>
+                ) : (
+                    <View style={styles.backButton} />
+                )}
             </View>
 
             <View style={styles.content}>
                 <View style={styles.addressContainer}>
-                    <Text style={styles.address}>{stop.address || 'Адрес не указан'}</Text>
+                    <View style={styles.addressWithButton}>
+                        <Text style={styles.address}>{stop.address || 'Адрес не указан'}</Text>
+                        {stop.address && (
+                            <TouchableOpacity
+                                style={styles.copyAddressButton}
+                                onPress={handleCopyAddress}
+                                activeOpacity={0.7}
+                            >
+                                <Icon name="content-copy" size={18} color={Color.blue2} />
+                            </TouchableOpacity>
+                        )}
+                    </View>
                 </View>
 
-                <View style={styles.dateTimeContainer}>
-                    <Text style={styles.dateTime}>
-                        {stop.startTime && stop.endTime
-                            ? formatTimeRange(stop.startTime, stop.endTime)
-                            : 'Время не указано'
-                        }
-                    </Text>
-                </View>
+                {stop.startTime && stop.endTime ? (
+                    <View style={styles.dateTimeContainer}>
+                        {(() => {
+                            const timeInfo = formatStopTime(stop.startTime, stop.endTime);
+                            if (!timeInfo) {
+                                return (
+                                    <Text style={styles.dateTime}>Время не указано</Text>
+                                );
+                            }
+                            return (
+                                <View style={styles.timeInfoContainer}>
+                                    {/* Блок о том, что водитель сейчас на стоянке */}
+                                    {timeInfo.isActive && (
+                                        <View style={styles.activeStopBanner}>
+                                            <View style={styles.activeStopContent}>
+                                                <View style={styles.activeStopIconContainer}>
+                                                    <Icon name="location-on" size={24} color="#fff" />
+                                                </View>
+                                                <View style={styles.activeStopTextContainer}>
+                                                    <Text style={styles.activeStopTitle}>
+                                                        Водитель сейчас на стоянке
+                                                    </Text>
+                                                    <Text style={styles.activeStopSubtitle}>
+                                                        Будет стоять до {timeInfo.endTime}
+                                                        {!timeInfo.isSameDay ? `, ${timeInfo.endDate}` : `, ${timeInfo.startDate}`}
+                                                    </Text>
+                                                </View>
+                                            </View>
+                                        </View>
+                                    )}
+                                    
+                                    {/* Показываем детальное время только если водитель НЕ на стоянке */}
+                                    {!timeInfo.isActive && (
+                                        <>
+                                            <View style={styles.timeRow}>
+                                                <View style={styles.timeIconContainer}>
+                                                    <Icon name="schedule" size={22} color={Color.blue2} />
+                                                </View>
+                                                <View style={styles.timeTextContainer}>
+                                                    <Text style={styles.timeLabel}>Начало работы:</Text>
+                                                    <Text style={styles.timeValue}>
+                                                        {timeInfo.startTime}
+                                                        {!timeInfo.isSameDay && `, ${timeInfo.startDate}`}
+                                                    </Text>
+                                                </View>
+                                            </View>
+                                            <View style={styles.timeRow}>
+                                                <View style={styles.timeIconContainer}>
+                                                    <Icon name="access-time" size={22} color={Color.blue2} />
+                                                </View>
+                                                <View style={styles.timeTextContainer}>
+                                                    <Text style={styles.timeLabel}>Окончание работы:</Text>
+                                                    <Text style={styles.timeValue}>
+                                                        {timeInfo.endTime}
+                                                        {!timeInfo.isSameDay ? `, ${timeInfo.endDate}` : `, ${timeInfo.startDate}`}
+                                                    </Text>
+                                                </View>
+                                            </View>
+                                            {timeInfo.isSameDay && (
+                                                <Text style={styles.timeDate}>{timeInfo.startDate}</Text>
+                                            )}
+                                        </>
+                                    )}
+                                </View>
+                            );
+                        })()}
+                    </View>
+                ) : (
+                    <View style={styles.dateTimeContainer}>
+                        <Text style={styles.dateTime}>Время не указано</Text>
+                    </View>
+                )}
 
                 {stop.photo && (
                     <Image
@@ -267,6 +613,24 @@ export const StopDetailsContent = ({ stop, navigation }) => {
                             <Text style={styles.infoValue}>{stop.district?.name || 'Не указано'}</Text>
                         </View>
                     </View>
+
+                    <View style={styles.infoRow}>
+                        <View style={styles.infoLabelContainer}>
+                            <Text style={styles.infoLabel}>Адрес:</Text>
+                        </View>
+                        <View style={[styles.infoValueContainer, styles.addressValueContainer]}>
+                            <Text style={styles.infoValue}>{stop.address || 'Не указано'}</Text>
+                            {stop.address && (
+                                <TouchableOpacity
+                                    style={styles.copyAddressButtonSmall}
+                                    onPress={handleCopyAddress}
+                                    activeOpacity={0.7}
+                                >
+                                    <Icon name="content-copy" size={14} color={Color.blue2} />
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    </View>
                 </View>
 
                 {stop.description && (
@@ -275,57 +639,149 @@ export const StopDetailsContent = ({ stop, navigation }) => {
                     </View>
                 )}
 
+                {/* Блок информации о водителе и связь с ним */}
+                {hasDriverInfo && (
+                    <View style={styles.driverSection}>
+                        <Text style={styles.driverSectionTitle}>Связь с водителем</Text>
+                        <View style={styles.driverHeader}>
+                            <View style={styles.driverIconContainer}>
+                                <Icon name="local-shipping" size={24} color={Color.blue2} />
+                            </View>
+                            <View style={styles.driverInfo}>
+                                <Text style={styles.driverName}>{driver.name || 'Водитель'}</Text>
+                                {driver.phone && (
+                                    <Text style={styles.driverPhone}>{driver.phone}</Text>
+                                )}
+                            </View>
+                        </View>
+                        
+                        {/* Кнопки связи с водителем */}
+                        {canContactDriver && (
+                            <View style={styles.driverActions}>
+                                {driver.phone && (
+                                    <TouchableOpacity
+                                        style={[styles.driverButton, styles.callButton]}
+                                        onPress={handleCallDriver}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Icon name="phone" size={20} color="#fff" />
+                                        <Text style={styles.callButtonText}>Позвонить</Text>
+                                    </TouchableOpacity>
+                                )}
+                                
+                                <TouchableOpacity
+                                    style={[styles.driverButton, styles.chatButton]}
+                                    onPress={handleChatWithDriver}
+                                    activeOpacity={0.7}
+                                    disabled={isCreatingChat}
+                                >
+                                    {isCreatingChat ? (
+                                        <ActivityIndicator size="small" color="#fff" />
+                                    ) : (
+                                        <>
+                                            <Icon name="chat" size={20} color="#fff" />
+                                            <Text style={styles.chatButtonText}>Написать</Text>
+                                        </>
+                                    )}
+                                </TouchableOpacity>
+                            </View>
+                        )}
+                        
+                        {/* Если пользователь не авторизован */}
+                        {!isAuthenticated && hasDriverInfo && (
+                            <View style={styles.authHintContainer}>
+                                <Text style={styles.authHintText}>
+                                    Войдите в аккаунт, чтобы связаться с водителем
+                                </Text>
+                            </View>
+                        )}
+                    </View>
+                )}
+
                 <View style={styles.mapContainer}>
                     <View style={styles.mapHeader}>
                         <Text style={styles.mapTitle}>Местоположение</Text>
+                        {geocodingError && (
+                            <Text style={styles.geocodingErrorText}>
+                                {geocodingError}
+                            </Text>
+                        )}
                     </View>
-                    <View
-                        style={styles.mapWrapper}
-                        pointerEvents="box-only"
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                        <UniversalMapView
-                            style={styles.map}
-                            initialRegion={{
-                                latitude: mapCoordinates.latitude,
-                                longitude: mapCoordinates.longitude,
-                                latitudeDelta: 0.01,
-                                longitudeDelta: 0.01,
-                            }}
-                            onMapReady={() => {
-                                setMapLoaded(true);
-                            }}
-                            onError={(error) => {
-                                setMapLoaded(false);
-                            }}
-                            showsUserLocation={false}
-                            showsMyLocationButton={false}
-                            toolbarEnabled={false}
-                            zoomEnabled={true}
-                            scrollEnabled={true}
-                            rotateEnabled={true}
-                            pitchEnabled={true}
-                            mapType="standard"
-                            minZoomLevel={10}
-                            maxZoomLevel={20}
-                        >
-                            <Marker
-                                coordinate={{
+                    {(isGeocoding || (!mapLoaded && !mapError && !isExpoGo)) ? (
+                        <View style={styles.mapLoadingContainer}>
+                            <ActivityIndicator size="small" color={Color.blue2} />
+                            <Text style={styles.mapLoadingText}>
+                                {isGeocoding ? 'Определяем местоположение...' : 'Загружаем карту...'}
+                            </Text>
+                        </View>
+                    ) : (isExpoGo || mapError) ? (
+                        <View style={styles.mapFallbackContainer}>
+                            <View style={styles.mapFallbackContent}>
+                                <Icon name="map" size={48} color={Color.blue2} />
+                                <Text style={styles.mapFallbackTitle}>
+                                    {isExpoGo ? 'Карта недоступна в Expo Go' : 'Карта не загрузилась'}
+                                </Text>
+                                <Text style={styles.mapFallbackText}>
+                                    {isExpoGo 
+                                        ? 'Откройте местоположение в нативном приложении карт'
+                                        : 'Нажмите кнопку ниже, чтобы открыть местоположение в нативном приложении карт'
+                                    }
+                                </Text>
+                                <TouchableOpacity
+                                    style={styles.mapFallbackButton}
+                                    onPress={openNativeMaps}
+                                    activeOpacity={0.7}
+                                >
+                                    <Icon name="navigation" size={20} color="#fff" />
+                                    <Text style={styles.mapFallbackButtonText}>
+                                        Открыть в картах
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    ) : (
+                        <View style={styles.mapWrapper}>
+                            <MapView
+                                style={styles.map}
+                                initialRegion={{
                                     latitude: mapCoordinates.latitude,
                                     longitude: mapCoordinates.longitude,
+                                    latitudeDelta: 0.01,
+                                    longitudeDelta: 0.01,
                                 }}
-                                title={stop.address || 'Остановка'}
-                                description="Нажмите для навигации"
-                                onPress={handleMarkerPress}
-                                pinColor="#3B43A2"
-                            />
-                        </UniversalMapView>
-                    </View>
-                    {!mapLoaded && (
-                        <View style={styles.mapLoadingContainer}>
-                            <Text style={styles.mapLoadingText}>
-                                Загружаем карту...
-                            </Text>
+                                onMapReady={() => {
+                                    setMapLoaded(true);
+                                    setMapError(false);
+                                    logData('Карта успешно загружена', { coordinates: mapCoordinates });
+                                }}
+                                onError={(error) => {
+                                    logData('Ошибка карты', { error, isExpoGo });
+                                    setMapLoaded(false);
+                                    setMapError(true);
+                                }}
+                                showsUserLocation={false}
+                                showsMyLocationButton={false}
+                                toolbarEnabled={false}
+                                zoomEnabled={true}
+                                scrollEnabled={true}
+                                rotateEnabled={true}
+                                pitchEnabled={true}
+                                mapType="standard"
+                                minZoomLevel={10}
+                                maxZoomLevel={20}
+                                provider={undefined}
+                            >
+                                <Marker
+                                    coordinate={{
+                                        latitude: mapCoordinates.latitude,
+                                        longitude: mapCoordinates.longitude,
+                                    }}
+                                    title={stop.address || 'Остановка'}
+                                    description="Нажмите для навигации"
+                                    onPress={handleMarkerPress}
+                                    pinColor="#3B43A2"
+                                />
+                            </MapView>
                         </View>
                     )}
                 </View>
@@ -350,6 +806,14 @@ export const StopDetailsContent = ({ stop, navigation }) => {
                     </TouchableOpacity>
                 )}
             </View>
+
+            {/* Модальное окно для выбора чата */}
+            <ShareStopModal
+                visible={shareModalVisible}
+                onClose={handleCloseShareModal}
+                stopId={stop.id}
+                stop={stop}
+            />
         </ScrollView>
     );
 };
@@ -358,6 +822,9 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: Color.colorLightMode,
+    },
+    scrollContent: {
+        paddingBottom: 20,
     },
     errorText: {
         fontSize: FontSize.size_md,
@@ -369,9 +836,10 @@ const styles = StyleSheet.create({
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
+        justifyContent: 'space-between',
         width: '100%',
         paddingTop: 24,
+        paddingHorizontal: 8,
     },
     backButton: {
         padding: 15,
@@ -398,20 +866,124 @@ const styles = StyleSheet.create({
     addressContainer: {
         marginBottom: 8,
     },
+    addressWithButton: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 10,
+    },
     address: {
+        flex: 1,
         fontSize: FontSize.size_lg,
         fontFamily: FontFamily.sFProText || "system",
         color: Color.dark,
         letterSpacing: 0.9,
+        minWidth: 0,
+    },
+    copyAddressButton: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: '#E8F0FE',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#D0E0F0',
+        flexShrink: 0,
+        marginTop: 2,
     },
     dateTimeContainer: {
         marginBottom: 16,
+        backgroundColor: '#F8F9FA',
+        borderRadius: 12,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: '#E8EAED',
     },
     dateTime: {
         fontSize: FontSize.size_lg,
         fontFamily: FontFamily.sFProText || "system",
         color: Color.dark,
         lineHeight: 30,
+    },
+    timeInfoContainer: {
+        gap: 12,
+    },
+    timeRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 12,
+    },
+    timeIconContainer: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: '#E8F0FE',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginTop: 2,
+    },
+    timeTextContainer: {
+        flex: 1,
+    },
+    timeLabel: {
+        fontSize: FontSize.size_sm,
+        fontFamily: FontFamily.sFProText || "system",
+        color: '#666',
+        marginBottom: 4,
+        fontWeight: '500',
+    },
+    timeValue: {
+        fontSize: FontSize.size_lg,
+        fontFamily: FontFamily.sFProText || "system",
+        color: Color.dark,
+        fontWeight: '600',
+        lineHeight: 24,
+    },
+    timeDate: {
+        fontSize: FontSize.size_md,
+        fontFamily: FontFamily.sFProText || "system",
+        color: Color.blue2,
+        marginTop: 8,
+        textAlign: 'center',
+        fontWeight: '500',
+    },
+    activeStopBanner: {
+        backgroundColor: '#34C759',
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 16,
+        borderWidth: 2,
+        borderColor: '#30B050',
+    },
+    activeStopContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    activeStopIconContainer: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    activeStopTextContainer: {
+        flex: 1,
+    },
+    activeStopTitle: {
+        fontSize: FontSize.size_lg,
+        fontFamily: FontFamily.sFProText || "system",
+        color: '#fff',
+        fontWeight: '700',
+        marginBottom: 4,
+    },
+    activeStopSubtitle: {
+        fontSize: FontSize.size_md,
+        fontFamily: FontFamily.sFProText || "system",
+        color: '#fff',
+        fontWeight: '500',
+        opacity: 0.95,
     },
     photo: {
         width: '100%',
@@ -455,11 +1027,30 @@ const styles = StyleSheet.create({
     infoValueContainer: {
         flex: 1,
     },
+    addressValueContainer: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 10,
+    },
     infoValue: {
+        flex: 1,
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
         color: Color.dark,
         letterSpacing: 0.8,
+        minWidth: 0,
+    },
+    copyAddressButtonSmall: {
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        backgroundColor: '#E8F0FE',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#D0E0F0',
+        flexShrink: 0,
+        marginTop: 2,
     },
     descriptionContainer: {
         marginTop: 16,
@@ -482,6 +1073,8 @@ const styles = StyleSheet.create({
     mapWrapper: {
         flex: 1,
         position: 'relative',
+        borderRadius: 8,
+        overflow: 'hidden',
     },
     mapHeader: {
         flexDirection: 'row',
@@ -508,6 +1101,13 @@ const styles = StyleSheet.create({
     map: {
         ...StyleSheet.absoluteFillObject,
     },
+    shareIconButton: {
+        padding: 10,
+        width: 50,
+        height: 50,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
     editButton: {
         backgroundColor: Color.blue2,
         height: 40,
@@ -524,21 +1124,158 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
     },
     mapLoadingContainer: {
-        position: 'absolute',
-        top: '50%',
-        left: 0,
-        right: 0,
+        height: 250,
+        justifyContent: 'center',
         alignItems: 'center',
-        zIndex: 1000,
+        backgroundColor: '#f0f0f0',
+        borderRadius: 8,
+        gap: 8,
     },
     mapLoadingText: {
         fontSize: FontSize.size_md,
         color: '#3B43A2',
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
-        backgroundColor: 'rgba(255, 255, 255, 0.9)',
-        paddingHorizontal: 16,
-        paddingVertical: 8,
+    },
+    geocodingErrorText: {
+        fontSize: FontSize.size_xs,
+        color: '#ff6b6b',
+        fontFamily: FontFamily.sFProText,
+        marginTop: 4,
+    },
+    mapFallbackContainer: {
+        height: 250,
+        backgroundColor: '#f0f0f0',
         borderRadius: 8,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    mapFallbackContent: {
+        alignItems: 'center',
+        padding: 20,
+        maxWidth: '90%',
+    },
+    mapFallbackTitle: {
+        fontSize: FontSize.size_md,
+        fontWeight: '600',
+        color: Color.dark,
+        fontFamily: FontFamily.sFProText,
+        marginTop: 12,
+        marginBottom: 8,
+        textAlign: 'center',
+    },
+    mapFallbackText: {
+        fontSize: FontSize.size_sm,
+        color: '#666',
+        fontFamily: FontFamily.sFProText,
+        textAlign: 'center',
+        marginBottom: 20,
+        lineHeight: 20,
+    },
+    mapFallbackButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: Color.blue2,
+        paddingHorizontal: 20,
+        paddingVertical: 12,
+        borderRadius: 8,
+        gap: 8,
+    },
+    mapFallbackButtonText: {
+        color: '#fff',
+        fontSize: FontSize.size_md,
+        fontWeight: '600',
+        fontFamily: FontFamily.sFProText,
+    },
+    // Стили для блока водителя
+    driverSection: {
+        backgroundColor: '#F8F9FA',
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: '#E8EAED',
+    },
+    driverSectionTitle: {
+        fontSize: FontSize.size_md,
+        fontWeight: '600',
+        color: Color.dark,
+        fontFamily: FontFamily.sFProText,
+        marginBottom: 12,
+    },
+    driverHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    driverIconContainer: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: '#E8F0FE',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    driverInfo: {
+        flex: 1,
+    },
+    driverName: {
+        fontSize: FontSize.size_md,
+        fontWeight: '600',
+        color: Color.dark,
+        fontFamily: FontFamily.sFProText,
+        marginBottom: 2,
+    },
+    driverPhone: {
+        fontSize: FontSize.size_sm,
+        color: '#666',
+        fontFamily: FontFamily.sFProText,
+    },
+    driverActions: {
+        flexDirection: 'row',
+        marginTop: 16,
+        gap: 12,
+    },
+    driverButton: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+        borderRadius: 10,
+        gap: 8,
+    },
+    callButton: {
+        backgroundColor: '#34C759',
+    },
+    callButtonText: {
+        color: '#fff',
+        fontSize: FontSize.size_sm,
+        fontWeight: '600',
+        fontFamily: FontFamily.sFProText,
+    },
+    chatButton: {
+        backgroundColor: Color.blue2,
+    },
+    chatButtonText: {
+        color: '#fff',
+        fontSize: FontSize.size_sm,
+        fontWeight: '600',
+        fontFamily: FontFamily.sFProText,
+    },
+    authHintContainer: {
+        marginTop: 12,
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        backgroundColor: '#FFF3CD',
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#FFECB5',
+    },
+    authHintText: {
+        fontSize: FontSize.size_xs,
+        color: '#856404',
+        fontFamily: FontFamily.sFProText,
+        textAlign: 'center',
     },
 });

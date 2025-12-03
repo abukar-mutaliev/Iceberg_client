@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Platform,
   ActivityIndicator,
   Pressable,
+  Animated,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -23,6 +24,63 @@ import { AddUserIcon } from '@shared/ui/Icon/AddUserIcon';
 import { IconEdit } from '@shared/ui/Icon/Profile/IconEdit';
 import { ImageViewerModal } from '@shared/ui/ImageViewerModal/ui/ImageViewerModal';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
+
+// Максимальное количество участников в группе
+const MAX_MEMBERS_PER_GROUP = 500;
+
+// Анимированный переключатель в стиле WhatsApp
+const AnimatedSwitch = ({ value, disabled }) => {
+  const animatedValue = useRef(new Animated.Value(value ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.spring(animatedValue, {
+      toValue: value ? 1 : 0,
+      useNativeDriver: false,
+      friction: 8,
+      tension: 60,
+    }).start();
+  }, [value, animatedValue]);
+
+  const translateX = animatedValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [2, 22],
+  });
+
+  const backgroundColor = animatedValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#E0E0E0', '#00A884'],
+  });
+
+  return (
+    <Animated.View style={[switchStyles.track, { backgroundColor }, disabled && switchStyles.trackDisabled]}>
+      <Animated.View style={[switchStyles.thumb, { transform: [{ translateX }] }]} />
+    </Animated.View>
+  );
+};
+
+const switchStyles = StyleSheet.create({
+  track: {
+    width: 52,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    padding: 2,
+  },
+  trackDisabled: {
+    opacity: 0.5,
+  },
+  thumb: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2.5,
+    elevation: 4,
+  },
+});
 
 export const GroupInfoScreen = ({ route, navigation }) => {
   const { roomId, fromScreen } = route.params || {};
@@ -43,9 +101,76 @@ export const GroupInfoScreen = ({ route, navigation }) => {
   // Загружаем участников группы
   useEffect(() => {
     if (roomData?.participants) {
-      setParticipants(roomData.participants);
+      // Для каналов BROADCAST и клиентов - показываем только менеджеров и водителей склада клиента
+      if (roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT') {
+        const clientDistrictId = currentUser?.client?.districtId;
+        
+        const filteredParticipants = roomData.participants.filter(p => {
+          const user = p.user || p;
+          const userRole = user?.role;
+          
+          // Скрываем суперадминов от клиентов
+          if (userRole === 'ADMIN') {
+            const isSuperAdmin = user?.admin?.isSuperAdmin;
+            if (isSuperAdmin) return false;
+            return true; // Обычные админы показываются
+          }
+          
+          // Сотрудники - только менеджеры из района клиента
+          if (userRole === 'EMPLOYEE') {
+            const processingRole = user?.employee?.processingRole;
+            // Скрываем сборщиков, упаковщиков, контроллеров качества, курьеров
+            const hiddenRoles = ['PICKER', 'PACKER', 'QUALITY_CHECKER', 'COURIER'];
+            if (processingRole && hiddenRoles.includes(processingRole)) {
+              return false;
+            }
+            
+            // Показываем только если есть должность (например "Менеджер по продажам")
+            const position = user?.employee?.position;
+            if (!position) {
+              return false; // Скрываем сотрудников без должности
+            }
+            
+            // Проверяем, что сотрудник работает на складе в районе клиента
+            const employeeWarehouseDistrictId = user?.employee?.warehouse?.districtId;
+            // Если у сотрудника есть склад, проверяем район
+            if (employeeWarehouseDistrictId && clientDistrictId && employeeWarehouseDistrictId !== clientDistrictId) {
+              return false; // Скрываем сотрудников других районов
+            }
+            
+            return true;
+          }
+          
+          // Поставщиков не показываем
+          if (userRole === 'SUPPLIER') {
+            return false;
+          }
+          
+          // Водители - только если их склад в районе клиента
+          if (userRole === 'DRIVER') {
+            // Если у клиента нет района - не показываем водителей
+            if (!clientDistrictId) return false;
+            
+            // Проверяем, что склад водителя находится в районе клиента
+            const driverWarehouseDistrictId = user?.driver?.warehouse?.district?.id || 
+                                              user?.driver?.warehouse?.districtId;
+            if (driverWarehouseDistrictId === clientDistrictId) {
+              return true;
+            }
+            
+            // Запасной вариант: проверяем районы обслуживания водителя
+            const driverDistricts = user?.driver?.districts || [];
+            return driverDistricts.some(d => d.id === clientDistrictId);
+          }
+          
+          return false;
+        });
+        setParticipants(filteredParticipants);
+      } else {
+        setParticipants(roomData.participants);
+      }
     }
-  }, [roomData]);
+  }, [roomData, currentUser?.role, currentUser?.client?.districtId]);
 
   // Обновляем данные группы при возврате на экран
   useEffect(() => {
@@ -122,14 +247,49 @@ export const GroupInfoScreen = ({ route, navigation }) => {
     }
   };
 
-  // Функция для получения должности сотрудника
+  // Функция для получения должности/роли и склада участника
   const getEmployeePosition = (participant) => {
     const user = participant.user || participant;
     if (!user) return null;
     
-    // Проверяем, что это сотрудник и у него есть должность
-    if (user.role === 'EMPLOYEE' && user.employee?.position) {
-      return user.employee.position;
+    // Для сотрудников - должность и склад
+    if (user.role === 'EMPLOYEE') {
+      const position = user.employee?.position || '';
+      const warehouse = user.employee?.warehouse?.name || '';
+      if (position && warehouse) {
+        return `${position} • ${warehouse}`;
+      }
+      return position || warehouse || null;
+    }
+    
+    // Для водителей - роль, склад и районы
+    if (user.role === 'DRIVER') {
+      const warehouse = user.driver?.warehouse?.name || '';
+      const districts = user.driver?.districts || [];
+      const districtNames = districts.map(d => d.name).join(', ');
+      
+      if (warehouse && districtNames) {
+        return `Водитель • ${warehouse} • ${districtNames}`;
+      } else if (warehouse) {
+        return `Водитель • ${warehouse}`;
+      } else if (districtNames) {
+        return `Водитель • ${districtNames}`;
+      }
+      return 'Водитель';
+    }
+    
+    // Для поставщиков - контактное лицо если есть
+    if (user.role === 'SUPPLIER') {
+      const contactPerson = user.supplier?.contactPerson || '';
+      if (contactPerson) {
+        return `Поставщик • ${contactPerson}`;
+      }
+      return 'Поставщик';
+    }
+    
+    // Для админов приложения
+    if (user.role === 'ADMIN') {
+      return 'Администратор';
     }
     
     return null;
@@ -156,6 +316,20 @@ export const GroupInfoScreen = ({ route, navigation }) => {
   };
 
   const handleAddMembers = () => {
+    const currentCount = participants.length;
+    
+    // Проверяем лимит перед переходом на экран добавления
+    if (currentCount >= MAX_MEMBERS_PER_GROUP) {
+      const isBroadcast = roomData?.type === 'BROADCAST';
+      showError(
+        'Лимит достигнут',
+        isBroadcast 
+          ? `Канал уже достиг максимального количества подписчиков (${MAX_MEMBERS_PER_GROUP}). Невозможно добавить новых подписчиков.`
+          : `Группа уже достигла максимального количества участников (${MAX_MEMBERS_PER_GROUP}). Невозможно добавить новых участников.`
+      );
+      return;
+    }
+    
     navigation.navigate('AddGroupMembers', { 
       roomId,
       currentMembers: participants.map(p => p.userId || p.user?.id).filter(Boolean)
@@ -188,6 +362,37 @@ export const GroupInfoScreen = ({ route, navigation }) => {
 
   const handleMenuPress = () => {
     setMenuVisible(true);
+  };
+
+  const handleToggleLock = async () => {
+    if (loading) return;
+    
+    const newLockStatus = !roomData?.isLocked;
+    const actionText = newLockStatus ? 'закрыть' : 'открыть';
+    
+    showConfirm(
+      newLockStatus ? 'Закрыть группу' : 'Открыть группу',
+      `Вы уверены, что хотите ${actionText} группу? ${newLockStatus ? 'Только администраторы смогут отправлять сообщения.' : 'Все участники смогут отправлять сообщения.'}`,
+      async () => {
+        setLoading(true);
+        try {
+          const result = await ChatApi.toggleRoomLock(roomId, newLockStatus);
+          const updatedRoom = result?.data?.data?.room || result?.data?.room || result?.data?.data || result?.data;
+          
+          if (updatedRoom) {
+            // Обновляем данные группы
+            await dispatch(fetchRoom(roomId));
+          } else {
+            throw new Error('Не удалось обновить статус группы');
+          }
+        } catch (error) {
+          console.error('Ошибка изменения статуса группы:', error);
+          showError('Ошибка', error.message || 'Не удалось изменить статус группы');
+        } finally {
+          setLoading(false);
+        }
+      }
+    );
   };
 
   // Функции для работы с аватаром группы
@@ -419,7 +624,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
     showAlert({
       type: 'warning',
       title: 'Удалить участника',
-      message: `Вы уверены, что хотите удалить ${displayName} из группы?`,
+      message: `Вы уверены, что хотите удалить ${displayName} из ${roomData?.type === 'BROADCAST' ? 'канала' : 'группы'}?`,
       buttons: [
         { 
           text: 'Отмена', 
@@ -456,7 +661,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
     const isAssign = action === 'assign';
     const title = isAssign ? 'Назначить администратором' : 'Отозвать права администратора';
     const message = isAssign 
-      ? `Назначить ${displayName} администратором группы?`
+      ? `Назначить ${displayName} администратором ${roomData?.type === 'BROADCAST' ? 'канала' : 'группы'}?`
       : `Отозвать у ${displayName} права администратора?`;
     
     showAlert({
@@ -525,7 +730,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
     
     showAlert({
       type: 'info',
-      title: 'Изменить фото группы',
+      title: roomData?.type === 'BROADCAST' ? 'Изменить фото канала' : 'Изменить фото группы',
       message: 'Выберите действие',
       buttons,
       showCloseButton: false
@@ -626,7 +831,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
               </View>
             )}
           </TouchableOpacity>
-                     <Text style={styles.groupName}>{roomData?.title || 'Группа'}</Text>
+                     <Text style={styles.groupName}>{roomData?.title || (roomData?.type === 'BROADCAST' ? 'Канал' : 'Группа')}</Text>
            {roomData?.description && (
              <View style={styles.descriptionContainer}>
                <View style={styles.descriptionRow}>
@@ -647,36 +852,100 @@ export const GroupInfoScreen = ({ route, navigation }) => {
                </View>
              </View>
            )}
-           <Text style={styles.groupSubtitle}>
-             Группа · {participantsCount} участник{participantsCount === 1 ? '' : participantsCount < 5 ? 'а' : 'ов'}
-           </Text>
+          <Text style={styles.groupSubtitle}>
+            {roomData?.type === 'BROADCAST' ? '📢 Канал' : 'Группа'} · {participantsCount} {
+              roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT' 
+                ? (participantsCount === 1 ? 'контакт' : participantsCount < 5 ? 'контакта' : 'контактов')
+                : roomData?.type === 'BROADCAST' 
+                  ? (participantsCount === 1 ? 'подписчик' : participantsCount < 5 ? 'подписчика' : 'подписчиков')
+                  : (participantsCount === 1 ? 'участник' : participantsCount < 5 ? 'участника' : 'участников')
+            }
+          </Text>
         </View>
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>
-              {participantsCount} участник{participantsCount === 1 ? '' : participantsCount < 5 ? 'а' : 'ов'}
-            </Text>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>
+                {roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT' 
+                  ? `Контакты (${participantsCount})`
+                  : `${participantsCount} ${roomData?.type === 'BROADCAST' ? 'подписчик' : 'участник'}${participantsCount === 1 ? '' : participantsCount < 5 ? 'а' : 'ов'}`
+                }
+              </Text>
+              {!(roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT') && (
+                <Text style={styles.membersLimitText}>
+                  {participantsCount}/{MAX_MEMBERS_PER_GROUP}
+                </Text>
+              )}
+            </View>
+            {participantsCount >= MAX_MEMBERS_PER_GROUP && !(roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT') && (
+              <Text style={styles.limitReachedText}>
+                Достигнут лимит {roomData?.type === 'BROADCAST' ? 'подписчиков' : 'участников'}
+              </Text>
+            )}
+            {roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT' && (
+              <Text style={styles.contactsHelpText}>
+                Нажмите на контакт, чтобы начать чат и задать вопрос
+              </Text>
+            )}
           </View>
 
-                     {/* Add Members Button - только для владельца и админов */}
-           {canEditGroup && (
-             <TouchableOpacity 
-               style={styles.addMembersButton} 
-               onPress={handleAddMembers}
-               activeOpacity={0.7}
-               disabled={loading}
-             >
-               <View style={styles.addMembersIcon}>
-                 {loading ? (
-                   <ActivityIndicator size="small" color="#FFFFFF" />
-                 ) : (
-                   <AddUserIcon width={18} height={18} color="#FFFFFF" />
-                 )}
-               </View>
-               <Text style={styles.addMembersText}>Добавить участников</Text>
-             </TouchableOpacity>
-           )}
+          {/* Add Members Button - только для владельца и админов, скрываем если достигнут лимит */}
+          {canEditGroup && participantsCount < MAX_MEMBERS_PER_GROUP && (
+            <TouchableOpacity 
+              style={styles.addMembersButton} 
+              onPress={handleAddMembers}
+              activeOpacity={0.7}
+              disabled={loading}
+            >
+              <View style={styles.addMembersIcon}>
+                {loading ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <AddUserIcon width={18} height={18} color="#FFFFFF" />
+                )}
+              </View>
+              <Text style={styles.addMembersText}>Добавить участников</Text>
+            </TouchableOpacity>
+          )}
+          
+          {canEditGroup && participantsCount >= MAX_MEMBERS_PER_GROUP && (
+            <View style={styles.limitInfoContainer}>
+              <Text style={styles.limitInfoText}>
+                {roomData?.type === 'BROADCAST' ? 'Канал достиг' : 'Группа достигла'} максимального количества {roomData?.type === 'BROADCAST' ? 'подписчиков' : 'участников'} ({MAX_MEMBERS_PER_GROUP})
+              </Text>
+            </View>
+          )}
+
+          {/* Переключатель закрытия группы - только для обычных групп, не для каналов */}
+          {canEditGroup && roomData?.type !== 'BROADCAST' && (
+            <TouchableOpacity 
+              style={styles.lockGroupContainer}
+              onPress={handleToggleLock}
+              activeOpacity={0.7}
+              disabled={loading}
+            >
+              <View style={styles.lockGroupIcon}>
+                <Text style={styles.lockGroupIconText}>
+                  {roomData?.isLocked ? '🔒' : '💬'}
+                </Text>
+              </View>
+              <View style={styles.lockGroupInfo}>
+                <Text style={styles.lockGroupTitle}>
+                  Отправлять сообщения
+                </Text>
+                <Text style={styles.lockGroupDescription}>
+                  {roomData?.isLocked 
+                    ? 'Только администраторы'
+                    : 'Все участники'}
+                </Text>
+              </View>
+              <AnimatedSwitch 
+                value={!roomData?.isLocked} 
+                disabled={loading}
+              />
+            </TouchableOpacity>
+          )}
 
            
 
@@ -710,7 +979,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
                 activeOpacity={0.7}
               >
                
-                 <Text style={styles.menuItemText}>Редактировать группу</Text>
+                 <Text style={styles.menuItemText}>{roomData?.type === 'BROADCAST' ? 'Редактировать канал' : 'Редактировать группу'}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -722,7 +991,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
         visible={avatarModalVisible}
         imageUri={groupAvatarUri}
         onClose={() => setAvatarModalVisible(false)}
-        title="Картинка группы"
+        title={roomData?.type === 'BROADCAST' ? 'Картинка канала' : 'Картинка группы'}
         headerRight={
           canEditGroup && groupAvatarUri ? (
             <TouchableOpacity
@@ -1154,6 +1423,96 @@ const styles = StyleSheet.create({
   },
   removeMemberText: {
     color: '#FF3B30',
+  },
+  lockGroupContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    backgroundColor: '#FFFFFF',
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  lockGroupIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: '#F0F2F5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  lockGroupIconText: {
+    fontSize: 20,
+  },
+  lockGroupInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  lockGroupTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#1A1A1A',
+    marginBottom: 2,
+  },
+  lockGroupDescription: {
+    fontSize: 14,
+    color: '#8696A0',
+    lineHeight: 18,
+  },
+  lockToggle: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#E5E5EA',
+    borderWidth: 1,
+    borderColor: '#007AFF',
+  },
+  lockToggleActive: {
+    backgroundColor: '#007AFF',
+  },
+  lockToggleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#007AFF',
+  },
+  lockToggleTextActive: {
+    color: '#FFFFFF',
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  membersLimitText: {
+    fontSize: 12,
+    color: '#8696A0',
+    fontWeight: '400',
+  },
+  limitReachedText: {
+    fontSize: 12,
+    color: '#FF3B30',
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  contactsHelpText: {
+    fontSize: 13,
+    color: '#8696A0',
+    marginTop: 8,
+    lineHeight: 18,
+  },
+  limitInfoContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFF3E0',
+    borderRadius: 8,
+    marginHorizontal: 16,
+    marginTop: 8,
+  },
+  limitInfoText: {
+    fontSize: 14,
+    color: '#E65100',
+    textAlign: 'center',
   },
 });
 

@@ -9,12 +9,16 @@ import { getBaseUrl } from '@shared/api/api';
 import { featureFlags } from '@shared/config/featureFlags';
 import {
   fetchRooms,
+  fetchRoom,
   receiveSocketMessage,
   receiveMessageDeleted,
   setTyping,
   updateMessageStatus,
   updateUserOnlineStatus,
   setConnectionStatus,
+  handleRoomDeleted,
+  updatePollInMessage,
+  updateRoomFromSocket,
 } from '@entities/chat/model/slice';
 import { setGlobalSocket } from './useChatSocketActions';
 
@@ -42,6 +46,7 @@ export const useChatSocket = () => {
   const socketRef = useRef(null);
   const joinedRoomsRef = useRef(new Set());
   const appStateRef = useRef(AppState.currentState);
+  const processedMessageIdsRef = useRef(new Set()); // Дедупликация сообщений
 
   // Отслеживаем состояние приложения для управления соединением
   useEffect(() => {
@@ -301,20 +306,161 @@ export const useChatSocket = () => {
         // incoming events
         socket.on('chat:message:new', (payload) => {
           // payload: { roomId, message }
-          console.log('📨 [WEBSOCKET] New message received:', {
-            roomId: payload?.roomId,
-            messageId: payload?.message?.id,
-            senderId: payload?.message?.senderId,
-            hasContent: !!payload?.message?.content,
-            timestamp: new Date().toISOString()
-          });
+          const messageId = payload?.message?.id;
+          
+          // Дедупликация: проверяем, не обрабатывали ли мы уже это сообщение
+          if (messageId && processedMessageIdsRef.current.has(messageId)) {
+            return; // Игнорируем дубликат
+          }
+          
+          // Добавляем ID в обработанные
+          if (messageId) {
+            processedMessageIdsRef.current.add(messageId);
+            
+            // Очищаем старые ID (оставляем только последние 1000)
+            if (processedMessageIdsRef.current.size > 1000) {
+              const idsArray = Array.from(processedMessageIdsRef.current);
+              idsArray.slice(0, 500).forEach(id => processedMessageIdsRef.current.delete(id));
+            }
+          }
+          
           // Передаем currentUserId для проверки оптимистичных сообщений
           dispatch(receiveSocketMessage({ ...payload, currentUserId }));
         });
 
         socket.on('chat:message:deleted', (payload) => {
-          // payload: { roomId, messageId }
+          // payload: { roomId, messageId, forAll }
+          if (__DEV__) {
+            console.log('🗑️ [WEBSOCKET] Message deleted event received:', {
+              payload,
+              roomId: payload?.roomId,
+              messageId: payload?.messageId,
+              messageIdType: typeof payload?.messageId,
+              forAll: payload?.forAll
+            });
+          }
+          
+          if (!payload?.roomId || !payload?.messageId) {
+            if (__DEV__) {
+              console.error('❌ [WEBSOCKET] Invalid payload for message:deleted', payload);
+            }
+            return;
+          }
+          
           dispatch(receiveMessageDeleted(payload));
+        });
+
+        socket.on('chat:poll:updated', (payload) => {
+          // payload: { messageId, roomId, poll, message }
+          if (__DEV__) {
+            console.log('📊 [WEBSOCKET] Poll updated event received:', {
+              payload,
+              messageId: payload?.messageId,
+              roomId: payload?.roomId,
+              hasPoll: !!payload?.poll
+            });
+          }
+          
+          if (!payload?.messageId || !payload?.roomId || !payload?.poll) {
+            if (__DEV__) {
+              console.error('❌ [WEBSOCKET] Invalid payload for poll:updated', payload);
+            }
+            return;
+          }
+          
+          // Обновляем опрос в сообщении
+          dispatch(updatePollInMessage({
+            messageId: payload.messageId,
+            roomId: payload.roomId,
+            poll: payload.poll
+          }));
+          
+          // Если пришло полное сообщение, обновляем его
+          if (payload.message) {
+            dispatch(receiveSocketMessage({ 
+              roomId: payload.roomId, 
+              message: payload.message,
+              currentUserId 
+            }));
+          }
+        });
+
+        socket.on('chat:reaction:added', (payload) => {
+          // payload: { roomId, messageId, reaction }
+          if (__DEV__) {
+            console.log('👍 [WEBSOCKET] Reaction added event received:', {
+              payload,
+              messageId: payload?.messageId,
+              roomId: payload?.roomId,
+              hasReaction: !!payload?.reaction
+            });
+          }
+          
+          if (!payload?.messageId || !payload?.roomId || !payload?.reaction) {
+            if (__DEV__) {
+              console.error('❌ [WEBSOCKET] Invalid payload for reaction:added', payload);
+            }
+            return;
+          }
+          
+          // Обновляем реакции в сообщении
+          dispatch(updateMessageReactions({
+            messageId: payload.messageId,
+            roomId: payload.roomId,
+            reactions: payload.reaction
+          }));
+        });
+
+        socket.on('chat:reaction:removed', (payload) => {
+          // payload: { roomId, messageId, reactionId }
+          if (__DEV__) {
+            console.log('👎 [WEBSOCKET] Reaction removed event received:', {
+              payload,
+              messageId: payload?.messageId,
+              roomId: payload?.roomId,
+              reactionId: payload?.reactionId
+            });
+          }
+          
+          if (!payload?.messageId || !payload?.roomId || !payload?.reactionId) {
+            if (__DEV__) {
+              console.error('❌ [WEBSOCKET] Invalid payload for reaction:removed', payload);
+            }
+            return;
+          }
+          
+          // Обновляем реакции в сообщении
+          dispatch(updateMessageReactions({
+            messageId: payload.messageId,
+            roomId: payload.roomId,
+            reactions: payload.reaction
+          }));
+        });
+
+        // Обработчик обновления реакций (от сервера через WebSocket)
+        socket.on('chat:reaction:updated', (payload) => {
+          // payload: { messageId, reactions }
+          if (__DEV__) {
+            console.log('🔄 [WEBSOCKET] Reactions updated FULL:', {
+              messageId: payload?.messageId,
+              reactionsCount: payload?.reactions?.length,
+              reactions: JSON.stringify(payload?.reactions),
+              payload: JSON.stringify(payload)
+            });
+          }
+          
+          if (!payload?.messageId) {
+            if (__DEV__) {
+              console.error('❌ [WEBSOCKET] Invalid payload for reaction:updated', payload);
+            }
+            return;
+          }
+          
+          // Обновляем реакции в сообщении
+          dispatch(updateMessageReactions({
+            messageId: payload.messageId,
+            reactions: payload.reactions || []
+          }));
         });
 
         socket.on('chat:typing', ({ roomId, userIds }) => {
@@ -339,8 +485,25 @@ export const useChatSocket = () => {
           dispatch(updateUserOnlineStatus(payload));
         });
 
-        socket.on('chat:room:updated', () => {
-          dispatch(fetchRooms({ page: 1 }));
+        socket.on('chat:room:updated', (payload) => {
+          const { room } = payload || {};
+          // Если данные комнаты пришли в payload, обновляем напрямую
+          if (room && room.id) {
+            dispatch(updateRoomFromSocket(room));
+            // Также перезагружаем полные данные комнаты для обновления участников
+            dispatch(fetchRoom(room.id));
+          } else {
+            // Если данных нет, просто перезагружаем список комнат
+            dispatch(fetchRooms({ page: 1 }));
+          }
+        });
+
+        socket.on('chat:room:deleted', (payload) => {
+          console.log('🗑️ [WEBSOCKET] Room deleted:', payload);
+          const { roomId } = payload || {};
+          if (roomId) {
+            dispatch(handleRoomDeleted({ roomId }));
+          }
         });
 
         socket.on('chat:join:success', (payload) => {

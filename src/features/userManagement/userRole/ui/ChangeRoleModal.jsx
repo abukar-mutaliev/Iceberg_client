@@ -19,6 +19,12 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
     const [selectedEmployeeDistricts, setSelectedEmployeeDistricts] = useState([]);
     const [showEmployeeDistrictPicker, setShowEmployeeDistrictPicker] = useState(false);
 
+    // Состояние для выбора склада и районов для водителя
+    const [selectedDriverWarehouse, setSelectedDriverWarehouse] = useState(null);
+    const [showDriverWarehousePicker, setShowDriverWarehousePicker] = useState(false);
+    const [selectedDriverDistricts, setSelectedDriverDistricts] = useState([]);
+    const [showDriverDistrictPicker, setShowDriverDistrictPicker] = useState(false);
+
     // Хуки для загрузки данных
     const { warehouses, loadWarehouses } = useAdmin();
     const { districts, loadDistricts } = useDistrict();
@@ -38,6 +44,8 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
             setUserData({});
             setSelectedWarehouse(null);
             setSelectedEmployeeDistricts([]);
+            setSelectedDriverWarehouse(null);
+            setSelectedDriverDistricts([]);
         }
     }, [visible, user]);
 
@@ -63,6 +71,16 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
     // Обработчик изменения выбранных районов для сотрудника
     const handleEmployeeDistrictsChange = (districts) => {
         setSelectedEmployeeDistricts(districts);
+    };
+
+    // Обработчик изменения выбранного склада для водителя
+    const handleDriverWarehouseChange = (warehouseId) => {
+        setSelectedDriverWarehouse(warehouseId);
+    };
+
+    // Обработчик изменения выбранных районов для водителя
+    const handleDriverDistrictsChange = (districts) => {
+        setSelectedDriverDistricts(districts);
     };
 
     // Отображаем дополнительные поля в зависимости от выбранной роли
@@ -164,6 +182,37 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                             onChangeText={(text) => handleUserDataChange('name', text)}
                             placeholder="Введите имя водителя"
                         />
+
+                        <Text style={styles.modalLabel}>Телефон:</Text>
+                        <TextInput
+                            style={styles.modalInput}
+                            value={userData.phone || ''}
+                            onChangeText={(text) => handleUserDataChange('phone', text)}
+                            placeholder="Введите телефон (необязательно)"
+                            keyboardType="phone-pad"
+                        />
+
+                        {/* Компонент выбора склада для водителя */}
+                        <WarehousePicker
+                            warehouses={warehouses.items || []}
+                            selectedWarehouse={selectedDriverWarehouse}
+                            setSelectedWarehouse={handleDriverWarehouseChange}
+                            showWarehousePicker={showDriverWarehousePicker}
+                            setShowWarehousePicker={setShowDriverWarehousePicker}
+                            error={null}
+                            disabled={warehouses.isLoading}
+                        />
+
+                        {/* Компонент выбора районов для водителя */}
+                        <MultiDistrictPicker
+                            districts={districts || []}
+                            selectedDistricts={selectedDriverDistricts}
+                            setSelectedDistricts={handleDriverDistrictsChange}
+                            showDistrictPicker={showDriverDistrictPicker}
+                            setShowDistrictPicker={setShowDriverDistrictPicker}
+                            error={null}
+                            disabled={false}
+                        />
                     </>
                 );
             default:
@@ -178,8 +227,9 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
         switch (selectedRole) {
             case 'ADMIN':
             case 'CLIENT':
-            case 'DRIVER':
                 return !!userData.name;
+            case 'DRIVER':
+                return !!userData.name && selectedDriverDistricts.length > 0;
             case 'EMPLOYEE':
                 return !!selectedWarehouse && selectedEmployeeDistricts.length > 0;
             case 'SUPPLIER':
@@ -196,6 +246,11 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
         if (selectedRole === 'EMPLOYEE') {
             data.warehouseId = selectedWarehouse;
             data.districts = selectedEmployeeDistricts;
+        }
+        
+        if (selectedRole === 'DRIVER') {
+            data.warehouseId = selectedDriverWarehouse;
+            data.districts = selectedDriverDistricts;
         }
         
         return data;

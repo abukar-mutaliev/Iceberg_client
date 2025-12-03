@@ -127,12 +127,7 @@ const getStoredTokens = async () => {
 
 const saveTokens = async (tokens) => {
     try {
-        // console.log('💾 [API] Saving tokens:', {
-        //     hasAccessToken: !!tokens.accessToken,
-        //     hasRefreshToken: !!tokens.refreshToken,
-        //     accessTokenLength: tokens.accessToken?.length || 0,
-        //     refreshTokenLength: tokens.refreshToken?.length || 0
-        // });
+
 
         await AsyncStorage.setItem(STORAGE_KEYS.TOKENS, JSON.stringify(tokens));
         api.defaults.headers.common['Authorization'] = `Bearer ${tokens.accessToken}`;

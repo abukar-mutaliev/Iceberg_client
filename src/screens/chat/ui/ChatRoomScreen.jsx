@@ -1,5 +1,4 @@
-import React, {useEffect} from 'react';
-import {View, ActivityIndicator, StyleSheet} from 'react-native';
+import React, {useMemo} from 'react';
 import {useSelector} from 'react-redux';
 import {DirectChatScreen} from './DirectChatScreen';
 import {GroupChatScreen} from './GroupChatScreen';
@@ -8,26 +7,26 @@ import {GroupChatScreen} from './GroupChatScreen';
  * Роутер для чатов - определяет тип комнаты и рендерит соответствующий компонент
  */
 export const ChatRoomScreen = ({route, navigation}) => {
-    const {roomId} = route.params;
+    const {roomId, roomType: routeRoomType} = route.params;
 
     // Получаем данные комнаты из Redux
     const roomDataRaw = useSelector((s) => s.chat?.rooms?.byId?.[roomId]);
     const roomData = roomDataRaw?.room ? roomDataRaw.room : roomDataRaw;
-    const loading = useSelector((s) => s.chat?.rooms?.loading);
 
-    // Показываем загрузку пока определяем тип комнаты
-    if (!roomData && loading) {
-        return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#7c3aed" />
-            </View>
-        );
-    }
+    // Мемоизируем определение типа комнаты для стабильности рендеринга
+    const normalizedRoomType = useMemo(() => {
+        const roomType = roomData?.type || routeRoomType || 'DIRECT';
+        return String(roomType).toUpperCase().trim();
+    }, [roomData?.type, routeRoomType]);
 
-    // Определяем какой компонент рендерить на основе типа комнаты
-    const roomType = roomData?.type || route.params?.roomType;
+    // Мемоизируем выбор компонента - избегаем переключения между компонентами
+    const isGroupChat = useMemo(() => {
+        return normalizedRoomType === 'GROUP' || normalizedRoomType === 'BROADCAST';
+    }, [normalizedRoomType]);
 
-    if (roomType === 'GROUP') {
+    // Всегда рендерим компонент сразу, без условной загрузки
+    // Это предотвращает дергание анимации при переключении между состояниями
+    if (isGroupChat) {
         return <GroupChatScreen route={route} navigation={navigation} />;
     }
 
@@ -35,11 +34,3 @@ export const ChatRoomScreen = ({route, navigation}) => {
     return <DirectChatScreen route={route} navigation={navigation} />;
 };
 
-const styles = StyleSheet.create({
-    loadingContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#ECE5DD',
-    },
-});
