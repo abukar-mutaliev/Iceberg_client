@@ -64,38 +64,12 @@ export const OrderApi = {
         const queryString = new URLSearchParams(filteredParams).toString();
         const url = `/api/orders${queryString ? `?${queryString}` : ''}`;
 
-        console.log('OrderApi: getOrders вызван', {
-            url,
-            params: filteredParams,
-            hasHistoryParam: filteredParams.history !== undefined,
-            historyValue: filteredParams.history,
-            timestamp: new Date().toISOString()
-        });
-
         return createProtectedRequest('GET', url, null, {
             headers: {
                 'Cache-Control': 'no-cache, no-store, must-revalidate',
                 'Pragma': 'no-cache',
                 'Expires': '0'
             }
-        }).then(response => {
-            console.log('OrderApi: getOrders ответ получен', {
-                url,
-                status: response.status,
-                dataLength: response.data?.data?.length || 0,
-                timestamp: new Date().toISOString()
-            });
-
-            // Логируем статусы заказов для отладки
-            if (response.data?.data) {
-                const statusStats = response.data.data.reduce((acc, order) => {
-                    acc[order.status] = (acc[order.status] || 0) + 1;
-                    return acc;
-                }, {});
-                console.log('OrderApi: статусы заказов в ответе', statusStats);
-            }
-
-            return response;
         });
     },
 
@@ -307,12 +281,6 @@ export const OrderApi = {
             throw new Error('Токен авторизации не найден');
         }
 
-        console.log('downloadInvoiceDirect: начинаем fetch запрос', {
-            url,
-            orderId,
-            hasToken: !!parsedTokens.accessToken
-        });
-
         const response = await fetch(url, {
             method: 'GET',
             headers: {
@@ -322,30 +290,17 @@ export const OrderApi = {
             }
         });
 
-        console.log('downloadInvoiceDirect: получен response', {
-            status: response.status,
-            contentType: response.headers.get('content-type'),
-            contentLength: response.headers.get('content-length')
-        });
-
         if (!response.ok) {
-            console.error('downloadInvoiceDirect: ошибка response', response.status);
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
         // Проверяем Content-Type
         const contentType = response.headers.get('content-type');
         if (contentType && !contentType.includes('application/pdf')) {
-            console.warn('downloadInvoiceDirect: неожиданный Content-Type:', contentType);
             throw new Error(`Сервер вернул ${contentType} вместо application/pdf`);
         }
 
         const blob = await response.blob();
-        console.log('downloadInvoiceDirect: создан blob', {
-            size: blob.size,
-            type: blob.type
-        });
-
         return blob;
     },
 

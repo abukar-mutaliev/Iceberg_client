@@ -19,8 +19,9 @@ export const useProductDetailState = (productId) => {
     const scrollViewRef = useRef(null);
     const scrollY = useRef(new Animated.Value(0)).current;
     const fadeAnim = useRef(new Animated.Value(1)).current;
-    const previousProductIdRef = useRef(productId);
+    const previousProductIdRef = useRef(null);
     const hasLoggedRef = useRef(false);
+    const visitedProductIdsRef = useRef(new Set());
 
     // Функции для безопасной работы с таймерами
     const createSafeTimeout = useCallback((callback, delay) => {
@@ -136,6 +137,7 @@ export const useProductDetailState = (productId) => {
         fadeAnim,
         previousProductIdRef,
         hasLoggedRef,
+        visitedProductIdsRef,
         
         // Функции
         createSafeTimeout,

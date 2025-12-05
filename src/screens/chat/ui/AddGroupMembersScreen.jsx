@@ -16,9 +16,6 @@ import ChatApi from '@entities/chat/api/chatApi';
 import { getBaseUrl } from '@shared/api/api';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
 
-// Максимальное количество участников в группе
-const MAX_MEMBERS_PER_GROUP = 500;
-
 export const AddGroupMembersScreen = ({ route, navigation }) => {
   const { roomId, currentMembers = [] } = route.params;
   const dispatch = useDispatch();
@@ -221,26 +218,6 @@ export const AddGroupMembersScreen = ({ route, navigation }) => {
       return;
     }
 
-    // Проверка лимита участников
-    const currentCount = currentMembers.length;
-    const totalAfterAdd = currentCount + selectedUsers.length;
-    
-    if (totalAfterAdd > MAX_MEMBERS_PER_GROUP) {
-      const canAdd = MAX_MEMBERS_PER_GROUP - currentCount;
-      if (canAdd <= 0) {
-        showError(
-          'Лимит достигнут',
-          `Группа уже достигла максимального количества участников (${MAX_MEMBERS_PER_GROUP}). Невозможно добавить новых участников.`
-        );
-        return;
-      }
-      showError(
-        'Превышен лимит участников',
-        `Максимальное количество участников в группе: ${MAX_MEMBERS_PER_GROUP}. В группе уже ${currentCount} участников. Вы можете добавить не более ${canAdd} участников.`
-      );
-      return;
-    }
-
     setAdding(true);
     try {
       const memberIds = selectedUsers.map(user => user.id);
@@ -280,8 +257,6 @@ export const AddGroupMembersScreen = ({ route, navigation }) => {
       let errorMessage = 'Не удалось добавить участников';
       if (error.message?.includes('максимального количества') || error.message?.includes('Максимальное количество')) {
         errorMessage = error.message;
-      } else if (error.message?.includes('500') || error.message?.includes('максимум')) {
-        errorMessage = `Максимальное количество участников в группе: ${MAX_MEMBERS_PER_GROUP}`;
       } else if (error.message) {
         errorMessage = error.message;
       }
@@ -350,7 +325,7 @@ export const AddGroupMembersScreen = ({ route, navigation }) => {
           )}
           {currentMembers.length > 0 && (
             <Text style={styles.membersCountText}>
-              В группе: {currentMembers.length}/{MAX_MEMBERS_PER_GROUP}
+              В группе: {currentMembers.length}
             </Text>
           )}
         </View>

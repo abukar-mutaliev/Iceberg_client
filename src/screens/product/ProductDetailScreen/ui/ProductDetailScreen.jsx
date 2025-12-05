@@ -63,6 +63,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         scrollViewRef,
         scrollY,
         previousProductIdRef,
+        visitedProductIdsRef,
         createSafeTimeout,
         scrollToTop,
         handleScroll,
@@ -105,14 +106,33 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     // Обработка изменения продукта
     useEffect(() => {
         if (productId && productId !== previousProductIdRef.current) {
-            if (previousProductIdRef.current) {
+            // Проверяем, возвращаемся ли мы назад с похожего товара
+            // Если текущий productId уже был посещен ранее, это возврат назад
+            const isReturningBack = visitedProductIdsRef.current.has(productId);
+            
+            // Добавляем текущий productId в историю посещений
+            visitedProductIdsRef.current.add(productId);
+            
+            // Ограничиваем размер истории (храним последние 10 посещений)
+            if (visitedProductIdsRef.current.size > 10) {
+                const firstId = Array.from(visitedProductIdsRef.current)[0];
+                visitedProductIdsRef.current.delete(firstId);
+            }
+            
+            // Сбрасываем только при переходе ВПЕРЕД на новый продукт
+            // При возврате назад не сбрасываем, чтобы сохранить возможность восстановления из кэша
+            const isMovingForward = previousProductIdRef.current && productId && !isReturningBack;
+            if (isMovingForward) {
                 dispatch(resetCurrentProduct());
                 setOptimisticProduct(null);
             }
 
-            createSafeTimeout(() => {
-                scrollToTop();
-            }, 100);
+            // Не скроллим вверх при возврате назад (когда товар уже был посещен)
+            if (!isReturningBack) {
+                createSafeTimeout(() => {
+                    scrollToTop();
+                }, 100);
+            }
 
             previousProductIdRef.current = productId;
         }
@@ -130,9 +150,19 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     }, [isInCart, cartQuantity, setSelectedQuantity, isMountedRef]);
 
     // Прокрутка к верху при фокусе
+    // НЕ скроллим при возврате назад (когда товар уже был посещен)
     useFocusEffect(
         useCallback(() => {
             if (!isMountedRef.current) return;
+            
+            // Проверяем, возвращаемся ли мы назад (товар уже был посещен ранее)
+            // При первом фокусе на экране не скроллим, если это возврат назад
+            const isReturningBack = productId && visitedProductIdsRef.current.has(productId);
+            
+            // Если это возврат назад, не скроллим
+            if (isReturningBack) {
+                return;
+            }
             
             let isFirstFocus = true;
             
@@ -149,7 +179,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                     clearTimeout(timer);
                 }
             };
-        }, [scrollToTop, createSafeTimeout, isMountedRef])
+        }, [scrollToTop, createSafeTimeout, isMountedRef, productId])
     );
 
     // Очистка при размонтировании
@@ -490,20 +520,33 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         );
     }
 
-    if (!displayProduct && !isLoading) {
+    // Показываем ошибку только если:
+    // 1. Нет продукта
+    // 2. Не загружается
+    // 3. Есть ошибка или продукт действительно не найден (не просто временная задержка)
+    // 4. productId существует (чтобы не показывать ошибку при инициализации)
+    if (!displayProduct && !isLoading && productId && (error || !product)) {
         return (
             <View style={styles.fullScreenContainer}>
                 <SafeAreaView style={styles.safeArea}>
                     <StaticBackgroundGradient />
                     <View style={styles.errorContainer}>
                         <Text style={[styles.errorText, { color: colors.primary }]}>
-                            Продукт не найден
+                            {error || 'Продукт не найден'}
                         </Text>
                         <TouchableOpacity 
                             style={styles.retryButton} 
-                            onPress={handleGoBack}
+                            onPress={() => {
+                                if (error) {
+                                    refreshData(true);
+                                } else {
+                                    handleGoBack();
+                                }
+                            }}
                         >
-                            <Text style={styles.retryButtonText}>Вернуться назад</Text>
+                            <Text style={styles.retryButtonText}>
+                                {error ? 'Попробовать снова' : 'Вернуться назад'}
+                            </Text>
                         </TouchableOpacity>
                     </View>
                 </SafeAreaView>

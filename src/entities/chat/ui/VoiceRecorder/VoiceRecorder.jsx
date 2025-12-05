@@ -3,12 +3,14 @@ import { View, Text, TouchableOpacity, StyleSheet, Animated, Platform } from 're
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
+import { useChatSocketActions } from '@entities/chat/hooks/useChatSocketActions';
 
 const WAVEFORM_BARS_COUNT = 20;
 const MIN_BAR_HEIGHT = 8;
 const MAX_BAR_HEIGHT = 50;
 
-export const VoiceRecorder = ({ onSend, onCancel }) => {
+export const VoiceRecorder = ({ onSend, onCancel, roomId }) => {
+  const { emitTyping } = useChatSocketActions();
   const [recording, setRecording] = useState(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
@@ -332,6 +334,11 @@ export const VoiceRecorder = ({ onSend, onCancel }) => {
       setRecording(newRecording);
       setIsRecording(true);
 
+      // Отправляем событие начала голосового сообщения
+      if (roomId) {
+        emitTyping(roomId, true, 'voice');
+      }
+
     } catch (error) {
       console.error('Ошибка при начале записи:', error);
       onCancel();
@@ -408,6 +415,11 @@ export const VoiceRecorder = ({ onSend, onCancel }) => {
   };
 
   const handleSend = async () => {
+    // Отправляем событие окончания голосового сообщения
+    if (roomId) {
+      emitTyping(roomId, false, 'voice');
+    }
+
     // Анимация нажатия
     Animated.sequence([
       Animated.timing(sendButtonScale, {
@@ -429,6 +441,11 @@ export const VoiceRecorder = ({ onSend, onCancel }) => {
   };
 
   const handleCancel = async () => {
+    // Отправляем событие окончания голосового сообщения
+    if (roomId) {
+      emitTyping(roomId, false, 'voice');
+    }
+
     // Анимация нажатия
     Animated.sequence([
       Animated.timing(cancelButtonScale, {

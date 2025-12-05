@@ -19,7 +19,8 @@ const initialState = {
   unreadByRoomId: {},
   // Время последней загрузки комнат - используется для предотвращения дублирования счетчиков
   lastRoomsFetchTime: null,
-  typingByRoomId: {},
+  typingByRoomId: {}, // { [roomId]: { [userId]: { type: 'text' | 'voice', timestamp: number } } }
+  lastActivityTypeByRoomId: {}, // { [roomId]: { [userId]: 'text' | 'voice' } } - последний известный тип активности
   activeRoomId: null,
   avatarFetchAttemptedByRoomId: {},
   participants: {
@@ -1048,7 +1049,86 @@ const chatSlice = createSlice({
     },
     setTyping(state, action) {
       const { roomId, userIds } = action.payload || {};
-      state.typingByRoomId[roomId] = Array.isArray(userIds) ? userIds : [];
+      if (!state.typingByRoomId[roomId]) {
+        state.typingByRoomId[roomId] = {};
+      }
+
+      // Очищаем старые записи
+      Object.keys(state.typingByRoomId[roomId]).forEach(userId => {
+        if (!userIds || !userIds.includes(userId)) {
+          delete state.typingByRoomId[roomId][userId];
+        }
+      });
+
+      // Добавляем новые записи (по умолчанию тип 'text')
+      if (Array.isArray(userIds)) {
+        userIds.forEach(userId => {
+          if (!state.typingByRoomId[roomId][userId]) {
+            state.typingByRoomId[roomId][userId] = {
+              type: 'text',
+              timestamp: Date.now()
+            };
+          }
+        });
+      }
+    },
+
+    setTypingActivity(state, action) {
+      const { roomId, userId, type } = action.payload || {};
+
+      // Приведем к строкам для консистентности
+      const roomKey = String(roomId);
+      const userKey = String(userId);
+
+      if (!roomKey || !userKey) return;
+
+      // Инициализируем объект комнаты если его нет
+      if (!state.typingByRoomId) {
+        state.typingByRoomId = {};
+      }
+
+      if (!state.typingByRoomId[roomKey]) {
+        state.typingByRoomId[roomKey] = {};
+      }
+
+      if (type) {
+        // Добавляем активность
+        state.typingByRoomId[roomKey][userKey] = {
+          type,
+          timestamp: Date.now()
+        };
+      } else {
+        // Удаляем активность
+        if (state.typingByRoomId[roomKey][userKey]) {
+          delete state.typingByRoomId[roomKey][userKey];
+        }
+      }
+    },
+    setLastActivityType(state, action) {
+      const { roomId, userId, type } = action.payload || {};
+      const roomKey = String(roomId);
+      const userKey = String(userId);
+
+      if (!roomKey || !userKey) return;
+
+      // Инициализируем объект комнаты если его нет
+      if (!state.lastActivityTypeByRoomId) {
+        state.lastActivityTypeByRoomId = {};
+      }
+
+      if (!state.lastActivityTypeByRoomId[roomKey]) {
+        state.lastActivityTypeByRoomId[roomKey] = {};
+      }
+
+      if (type) {
+        // Сохраняем последний тип активности
+        state.lastActivityTypeByRoomId[roomKey][userKey] = type;
+      } else {
+        // Удаляем последний тип активности
+        if (state.lastActivityTypeByRoomId[roomKey][userKey]) {
+          delete state.lastActivityTypeByRoomId[roomKey][userKey];
+        }
+      }
     },
     // Добавляем optimistic сообщение немедленно в UI
     addOptimisticMessage(state, action) {
@@ -2191,46 +2271,124 @@ const chatSlice = createSlice({
     updateMessageReactions(state, action) {
       const { messageId, reactions } = action.payload || {};
 
-      if (!messageId) return;
+      if (!messageId) {
+        if (__DEV__) {
+          console.error('❌ updateMessageReactions: No messageId provided', action.payload);
+        }
+        return;
+      }
 
       if (__DEV__) {
         console.log('📥 updateMessageReactions: STARTING', {
           messageId,
           reactionsReceived: reactions,
-          reactionsCount: reactions?.length || 0
+          reactionsCount: reactions?.length || 0,
+          availableRooms: Object.keys(state.messages || {}),
+          stateMessagesKeys: Object.keys(state.messages || {})
         });
       }
 
+      let foundInAnyRoom = false;
+
       // Обновляем реакции во всех комнатах где есть это сообщение
-      Object.keys(state.messages).forEach((roomId) => {
+      Object.keys(state.messages || {}).forEach((roomId) => {
         const roomMessages = state.messages[roomId];
+        if (!roomMessages) {
+          if (__DEV__) {
+            console.warn('⚠️ updateMessageReactions: No roomMessages for roomId', roomId);
+          }
+          return;
+        }
+
         if (roomMessages?.byId?.[messageId]) {
+          foundInAnyRoom = true;
           const oldMessage = roomMessages.byId[messageId];
           
+          if (__DEV__) {
+            console.log('🔍 updateMessageReactions: Found message in room', {
+              messageId,
+              roomId,
+              oldReactionsCount: oldMessage.reactions?.length || 0,
+              oldReactions: oldMessage.reactions
+            });
+          }
+          
           // Создаем новый объект сообщения чтобы триггернуть перерисовку
-          roomMessages.byId[messageId] = {
+          // ВАЖНО: Создаем полностью новый объект, чтобы React увидел изменение
+          // ВАЖНО: Сервер является источником правды - всегда используем реакции от сервера
+          const reactionsTimestamp = Date.now();
+          
+          // Нормализуем реакции: убеждаемся, что все поля присутствуют
+          const normalizedReactions = Array.isArray(reactions) 
+            ? reactions.map(r => ({
+                id: r.id,
+                emoji: r.emoji,
+                userId: r.userId,
+                createdAt: r.createdAt,
+                user: r.user || { id: r.userId }
+              }))
+            : [];
+          
+          const updatedMessage = {
             ...oldMessage,
-            reactions: reactions || [],
-            _reactionsUpdated: Date.now() // timestamp для гарантированного обновления
+            reactions: normalizedReactions, // Всегда используем реакции от сервера
+            _reactionsUpdated: reactionsTimestamp // timestamp для гарантированного обновления
+          };
+          
+          // Обновляем сообщение в byId - создаем новый объект для гарантированного обновления
+          const newById = {
+            ...roomMessages.byId,
+            [messageId]: updatedMessage
           };
           
           // Создаем новый массив ids чтобы селектор вернул новый массив сообщений
-          roomMessages.ids = [...roomMessages.ids];
+          const newIds = [...roomMessages.ids];
+          
+          // Обновляем bucket полностью новым объектом для гарантированного обновления селектора
+          state.messages[roomId] = {
+            ...roomMessages,
+            byId: newById,
+            ids: newIds
+          };
           
           if (__DEV__) {
+            const finalMessage = state.messages[roomId]?.byId?.[messageId];
             console.log('✅ updateMessageReactions: Message updated in Redux', {
               messageId,
               roomId,
               oldReactionsCount: oldMessage.reactions?.length || 0,
-              newReactionsCount: reactions?.length || 0,
-              newReactions: reactions,
-              timestamp: roomMessages.byId[messageId]._reactionsUpdated,
-              messageUpdated: oldMessage !== roomMessages.byId[messageId],
-              idsArrayUpdated: true
+              newReactionsCount: normalizedReactions?.length || 0,
+              newReactions: normalizedReactions,
+              oldReactions: oldMessage.reactions,
+              timestamp: finalMessage?._reactionsUpdated,
+              messageUpdated: oldMessage !== finalMessage,
+              idsArrayUpdated: true,
+              bucketUpdated: state.messages[roomId] !== roomMessages,
+              finalReactionsInState: finalMessage?.reactions
+            });
+          }
+        } else {
+          if (__DEV__) {
+            console.log('🔍 updateMessageReactions: Message not found in room', {
+              messageId,
+              roomId,
+              availableMessageIds: Object.keys(roomMessages?.byId || {}).slice(0, 10)
             });
           }
         }
       });
+
+      if (!foundInAnyRoom && __DEV__) {
+        console.error('❌ updateMessageReactions: Message not found in any room', {
+          messageId,
+          availableRooms: Object.keys(state.messages || {}),
+          roomsInfo: Object.keys(state.messages || {}).map(roomId => ({
+            roomId,
+            messageCount: state.messages[roomId]?.ids?.length || 0,
+            messageIds: state.messages[roomId]?.ids?.slice(0, 5) || []
+          }))
+        });
+      }
     },
     updateMessageStatus(state, action) {
       const { roomId, messageId, status, deliveredAt, readAt } = action.payload || {};
@@ -2964,18 +3122,20 @@ const chatSlice = createSlice({
   },
 });
 
-export const { 
-  setActiveRoom, 
-  setTyping, 
-  receiveSocketMessage, 
-  receiveMessage, 
-  receiveMessageDeleted, 
+export const {
+  setActiveRoom,
+  setTyping,
+  setTypingActivity,
+  setLastActivityType,
+  receiveSocketMessage,
+  receiveMessage,
+  receiveMessageDeleted,
   updateMessageStatus,
   updateMessageReactions,
-  updateUserOnlineStatus, 
-  setConnectionStatus, 
-  addOptimisticMessage, 
-  markOptimisticMessageFailed, 
+  updateUserOnlineStatus,
+  setConnectionStatus,
+  addOptimisticMessage,
+  markOptimisticMessageFailed,
   updateOptimisticMessage,
   updateMessageRetryCount,
   cancelFailedMessage,

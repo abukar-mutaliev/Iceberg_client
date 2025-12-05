@@ -68,10 +68,39 @@ export const PushNotificationDiagnostic = () => {
         }
     };
 
+    // Проверка версии сервисов
+    const checkServicesVersion = () => {
+        addLog('🔍 Проверка версии сервисов...', 'info');
+        
+        try {
+            const oneSignalVersion = OneSignalService.getVersion ? OneSignalService.getVersion() : 'unknown';
+            addLog(`📦 OneSignalService версия: ${oneSignalVersion}`, oneSignalVersion.includes('fix') ? 'success' : 'warning');
+            
+            if (!oneSignalVersion.includes('fix')) {
+                addLog('⚠️ ВНИМАНИЕ: Код не обновился! Нужен перезапуск приложения или пересборка', 'warning');
+                Alert.alert(
+                    'Код не обновлен',
+                    'OneSignalService имеет старую версию. Попробуйте:\n\n' +
+                    '1. Закрыть и открыть приложение заново\n' +
+                    '2. Удалить и переустановить приложение\n\n' +
+                    'Версия: ' + oneSignalVersion
+                );
+            } else {
+                addLog('✅ Код обновлен, используется версия с исправлениями!', 'success');
+            }
+        } catch (error) {
+            addLog(`❌ Ошибка проверки версии: ${error.message}`, 'error');
+        }
+    };
+
     // Основная диагностика OneSignal
     const runOneSignalDiagnostic = async () => {
         setLoading(true);
         addLog('🚀 Запуск OneSignal диагностики', 'info');
+        
+        // Проверяем версию
+        checkServicesVersion();
+        
         const data = {};
 
         try {
@@ -170,7 +199,7 @@ export const PushNotificationDiagnostic = () => {
         }
     };
 
-    // Инициализация OneSignal для пользователя
+    // Инициализация OneSignal для пользователя с детальными логами
     const initializeOneSignalForUser = async () => {
         if (!user) {
             addLog('❌ Нет авторизованного пользователя', 'error');
@@ -178,29 +207,191 @@ export const PushNotificationDiagnostic = () => {
             return;
         }
 
-        addLog(`👤 Инициализация OneSignal для пользователя ${user.id}`, 'info');
+        addLog(`👤 Начинаем инициализацию для пользователя ${user.id}`, 'info');
         
         try {
-            const result = await OneSignalService.initializeForUser(user);
-            
-            if (result) {
-                addLog('✅ OneSignal настроен для пользователя', 'success');
+            // Проверяем что SDK загружен
+            addLog('🔍 Проверка загрузки OneSignal SDK...', 'info');
+            try {
+                const OneSignalModule = require('react-native-onesignal');
+                const oneSignal = OneSignalModule.default || OneSignalModule.OneSignal || OneSignalModule;
                 
-                // Получаем Player ID
-                const playerId = OneSignalService.getCurrentSubscriptionId();
-                if (playerId) {
-                    addLog(`🎫 OneSignal Player ID: ${playerId}`, 'success');
+                if (oneSignal) {
+                    addLog('✅ OneSignal SDK загружен', 'success');
+                    addLog(`📋 API доступны: Notifications=${!!oneSignal.Notifications}, User=${!!oneSignal.User}`, 'info');
                 } else {
-                    addLog('⚠️ Player ID не получен', 'warning');
+                    addLog('❌ OneSignal SDK не загружен!', 'error');
+                    return;
                 }
+            } catch (sdkError) {
+                addLog(`❌ Ошибка загрузки SDK: ${sdkError.message}`, 'error');
+                return;
+            }
+
+            // Проверяем разрешения ПЕРЕД инициализацией
+            addLog('🔍 Проверка разрешений на уведомления...', 'info');
+            try {
+                const OneSignalModule = require('react-native-onesignal');
+                const oneSignal = OneSignalModule.default || OneSignalModule.OneSignal || OneSignalModule;
+                
+                if (oneSignal?.Notifications?.hasPermission) {
+                    const hasPermission = await oneSignal.Notifications.hasPermission();
+                    addLog(`🔔 Разрешения: ${hasPermission ? 'ЕСТЬ ✅' : 'НЕТ ❌'}`, hasPermission ? 'success' : 'warning');
+                    
+                    if (!hasPermission) {
+                        addLog('⚠️ Запрашиваем разрешения...', 'warning');
+                        const granted = await oneSignal.Notifications.requestPermission(true);
+                        addLog(`🔔 Разрешения ${granted ? 'предоставлены ✅' : 'отклонены ❌'}`, granted ? 'success' : 'error');
+                    }
+                }
+            } catch (permError) {
+                addLog(`⚠️ Не удалось проверить разрешения: ${permError.message}`, 'warning');
+            }
+
+            addLog('🚀 Вызываем OneSignalService.initializeForUser...', 'info');
+            
+            // Вместо вызова initializeForUser, делаем все шаги вручную с логированием
+            try {
+                // Шаг 1: Инициализация SDK
+                addLog('📝 Шаг 1: Базовая инициализация OneSignal...', 'info');
+                const appId = 'a1bde379-4211-4fb9-89e2-3e94530a7041';
+                const baseInitResult = await OneSignalService.initialize(appId);
+                
+                if (!baseInitResult) {
+                    addLog('❌ Базовая инициализация не удалась', 'error');
+                    return;
+                }
+                addLog('✅ Базовая инициализация выполнена', 'success');
+                
+                // Шаг 2: Устанавливаем External User ID
+                addLog(`📝 Шаг 2: Устанавливаем External User ID: ${user.id}`, 'info');
+                try {
+                    const OneSignalModule = require('react-native-onesignal');
+                    const oneSignal = OneSignalModule.default || OneSignalModule.OneSignal || OneSignalModule;
+                    
+                    if (oneSignal?.login) {
+                        await oneSignal.login(user.id.toString());
+                        addLog('✅ External User ID установлен', 'success');
+                    } else {
+                        addLog('❌ Метод login недоступен', 'error');
+                        return;
+                    }
+                } catch (loginError) {
+                    addLog(`❌ Ошибка login: ${loginError.message}`, 'error');
+                    return;
+                }
+                
+                // Шаг 3: Ожидание регистрации устройства
+                addLog('⏱️ Шаг 3: Ожидаем регистрацию устройства (5 секунд)...', 'info');
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                addLog('✅ Ожидание завершено', 'success');
+                
+                // Шаг 4: Попытки получить Player ID
+                addLog('📝 Шаг 4: Получаем Player ID (макс 5 попыток)...', 'info');
+                
+                const OneSignalModule = require('react-native-onesignal');
+                const oneSignal = OneSignalModule.default || OneSignalModule.OneSignal || OneSignalModule;
+                
+                let subscriptionId = null;
+                const maxRetries = 5;
+                const delayMs = 2000;
+                
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                    addLog(`🔄 Попытка ${attempt}/${maxRetries}...`, 'info');
+                    
+                    try {
+                        if (oneSignal?.User?.pushSubscription?.getIdAsync) {
+                            subscriptionId = await oneSignal.User.pushSubscription.getIdAsync();
+                            
+                            if (subscriptionId) {
+                                addLog(`✅ Player ID получен на попытке ${attempt}: ${subscriptionId.substring(0, 20)}...`, 'success');
+                                break;
+                            } else {
+                                addLog(`⚠️ Player ID null на попытке ${attempt}`, 'warning');
+                            }
+                        } else {
+                            addLog('❌ Метод getIdAsync недоступен', 'error');
+                            break;
+                        }
+                    } catch (getIdError) {
+                        addLog(`❌ Ошибка getIdAsync на попытке ${attempt}: ${getIdError.message}`, 'error');
+                    }
+                    
+                    if (attempt < maxRetries) {
+                        addLog(`⏱️ Ожидаем ${delayMs}ms перед следующей попыткой...`, 'info');
+                        await new Promise(resolve => setTimeout(resolve, delayMs));
+                    }
+                }
+                
+                if (!subscriptionId) {
+                    addLog('❌ Player ID не получен после всех попыток', 'error');
+                    
+                    // Дополнительная диагностика
+                    addLog('🔍 Дополнительная диагностика...', 'info');
+                    
+                    try {
+                        // Проверяем FCM токен
+                        if (oneSignal?.User?.pushSubscription?.getTokenAsync) {
+                            const fcmToken = await oneSignal.User.pushSubscription.getTokenAsync();
+                            addLog(`🔍 FCM Token: ${fcmToken ? fcmToken.substring(0, 30) + '...' : 'NULL ❌'}`, fcmToken ? 'success' : 'error');
+                        }
+                        
+                        // Проверяем opted in
+                        if (oneSignal?.User?.pushSubscription?.getOptedIn) {
+                            const optedIn = await oneSignal.User.pushSubscription.getOptedIn();
+                            addLog(`🔍 Opted In: ${optedIn ? 'TRUE ✅' : 'FALSE ❌'}`, optedIn ? 'success' : 'error');
+                            
+                            if (!optedIn) {
+                                addLog('💡 Устройство не подписано! Возможно проблема с OneSignal App ID или Firebase', 'warning');
+                            }
+                        }
+                        
+                        // Проверяем permission
+                        if (oneSignal?.Notifications?.hasPermission) {
+                            const hasPermission = await oneSignal.Notifications.hasPermission();
+                            addLog(`🔍 Has Permission: ${hasPermission ? 'TRUE ✅' : 'FALSE ❌'}`, hasPermission ? 'success' : 'error');
+                        }
+                    } catch (diagError) {
+                        addLog(`❌ Ошибка дополнительной диагностики: ${diagError.message}`, 'error');
+                    }
+                    
+                    return;
+                }
+                
+                // Шаг 5: Сохраняем токен на сервер
+                addLog('📝 Шаг 5: Сохраняем токен на сервер...', 'info');
+                try {
+                    const { createProtectedRequest } = require('@shared/api/api');
+                    const tokenData = {
+                        token: subscriptionId,
+                        deviceId: subscriptionId,
+                        platform: Platform.OS,
+                        tokenType: 'onesignal'
+                    };
+                    
+                    const response = await createProtectedRequest('post', '/api/push-tokens', tokenData);
+                    
+                    if (response) {
+                        addLog('✅ Токен успешно сохранен на сервер!', 'success');
+                    } else {
+                        addLog('⚠️ Пустой ответ от сервера', 'warning');
+                    }
+                } catch (saveError) {
+                    addLog(`❌ Ошибка сохранения токена: ${saveError.message}`, 'error');
+                }
+                
+                addLog('🎉 ВСЕ ШАГИ ВЫПОЛНЕНЫ УСПЕШНО!', 'success');
                 
                 // Обновляем диагностику
                 runOneSignalDiagnostic();
-            } else {
-                addLog('❌ Не удалось настроить OneSignal для пользователя', 'error');
+                
+            } catch (manualError) {
+                addLog(`❌ Ошибка ручной инициализации: ${manualError.message}`, 'error');
+                addLog(`📋 Stack: ${manualError.stack}`, 'error');
             }
         } catch (error) {
-            addLog(`❌ Ошибка настройки OneSignal для пользователя: ${error.message}`, 'error');
+            addLog(`❌ Критическая ошибка: ${error.message}`, 'error');
+            addLog(`📋 Stack: ${error.stack}`, 'error');
         }
     };
 
@@ -440,6 +631,10 @@ export const PushNotificationDiagnostic = () => {
             <Text style={styles.title}>🔔 OneSignal Diagnostic</Text>
             
             <View style={styles.buttonContainer}>
+                <TouchableOpacity style={[styles.button, { backgroundColor: '#FF6B35' }]} onPress={checkServicesVersion}>
+                    <Text style={styles.buttonText}>📦 Версия кода</Text>
+                </TouchableOpacity>
+
                 <TouchableOpacity style={styles.button} onPress={runOneSignalDiagnostic} disabled={loading}>
                     <Text style={styles.buttonText}>
                         {loading ? 'Проверка...' : '🔄 Диагностика'}

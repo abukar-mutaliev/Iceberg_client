@@ -20,10 +20,12 @@ export default {
             favicon: './assets/icon.png',
             bundler: 'metro',
         },
-        // Включаем developmentClient для preview и development сборок
-        developmentClient: {
-            silentLaunch: true,
-        },
+        // Включаем developmentClient только для preview и development сборок
+        ...(IS_DEV || IS_PREVIEW ? {
+            developmentClient: {
+                silentLaunch: true,
+            },
+        } : {}),
         plugins: [
             'expo-font',
             [
@@ -163,6 +165,7 @@ export default {
                 NSAppTransportSecurity: {
                     NSAllowsArbitraryLoads: true,
                 },
+                ITSAppUsesNonExemptEncryption: false,
             },
         },
     },

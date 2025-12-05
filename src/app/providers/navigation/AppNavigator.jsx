@@ -187,6 +187,13 @@ const useDeepLinking = () => {
                                 forceRefresh: true
                             });
                             break;
+                        case 'chat':
+                            window.navigateToChat?.({
+                                roomId: itemId,
+                                source: 'deep_link',
+                                fromNotification: true
+                            });
+                            break;
                         default:
                             console.warn('Unknown deep link type:', type);
                     }

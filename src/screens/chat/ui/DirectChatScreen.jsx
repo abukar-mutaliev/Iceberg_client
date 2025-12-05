@@ -17,7 +17,7 @@ import {
 } from '@entities/chat/model/slice';
 import {makeSelectRoomMessages, selectIsRoomDeleted} from '@entities/chat/model/selectors';
 import {fetchProductById} from '@entities/product/model/slice';
-import {SwipeableMessageBubble, ForwardMessageModal, ReactionPicker, FullEmojiPicker} from '@entities/chat';
+import {SwipeableMessageBubble, ForwardMessageModal, ReactionPicker, FullEmojiPicker, TypingIndicator} from '@entities/chat';
 import {Composer} from '@entities/chat/ui/Composer';
 import {ChatBackground} from '@entities/chat/ui/ChatBackground';
 import {useChatSocketActions} from '@entities/chat/hooks/useChatSocketActions';
@@ -60,6 +60,8 @@ export const DirectChatScreen = ({route, navigation}) => {
     const [reactionPickerMessageId, setReactionPickerMessageId] = useState(null); // ID сообщения для реакции
     const [reactionPickerPosition, setReactionPickerPosition] = useState(null); // Позиция picker'а
     const [fullEmojiPickerVisible, setFullEmojiPickerVisible] = useState(false); // Видимость полного списка эмодзи
+    const [deleteMessageModalVisible, setDeleteMessageModalVisible] = useState(false); // Видимость модала удаления сообщения
+    const [messagesToDelete, setMessagesToDelete] = useState([]); // Сообщения для удаления
     
     // Используем ref для синхронного флага удаления
     const isRoomDeletedRef = useRef(false);
@@ -110,14 +112,14 @@ export const DirectChatScreen = ({route, navigation}) => {
     const canDeleteMessage = useCallback((message) => {
         if (!message) return false;
         
-        const result = 
-            isSuperAdmin || 
-            currentUser?.role === 'ADMIN' || 
-            message.senderId === currentUserId;
+        // Суперадмины могут удалять любые сообщения
+        if (isSuperAdmin) {
+            return true;
+        }
         
-        
-        return result;
-    }, [isSuperAdmin, currentUser?.role, currentUserId]);
+        // Обычные пользователи могут удалять только свои сообщения
+        return message.senderId === currentUserId;
+    }, [isSuperAdmin, currentUserId]);
 
     const chatPartner = useMemo(() => {
         if (!roomData?.participants || !currentUserId) return null;
@@ -462,85 +464,15 @@ export const DirectChatScreen = ({route, navigation}) => {
         }
     }, [rooms, navigation, showError]);
 
-    const deleteSelectedMessages = useCallback(async () => {
+    const deleteSelectedMessages = useCallback(() => {
         if (selectedMessages.size === 0) return;
-
-        try {
-            showConfirm(
-                'Удалить сообщения',
-                `Вы уверены, что хотите удалить ${selectedMessages.size} сообщений?`,
-                async () => {
-                    try {
-                        const messageIds = Array.from(selectedMessages);
-
-                        const deletePromises = messageIds.map(async (messageId) => {
-                            const message = messages.find(m => m.id === messageId);
-                            if (!message) {
-                                console.warn('DirectChat: Message not found for deletion:', messageId);
-                                return;
-                            }
-                            
-                            const isAuthor = message.senderId === currentUserId;
-                            
-                            // Проверяем временное окно для удаления (48 часов по умолчанию)
-                            const MESSAGE_DELETE_WINDOW_HOURS = 48;
-                            const messageAge = Date.now() - new Date(message.createdAt).getTime();
-                            const withinWindow = messageAge <= (MESSAGE_DELETE_WINDOW_HOURS * 3600 * 1000);
-                            
-                            // В личных чатах: суперадмин, системный админ всегда удаляют для всех
-                            // Автор удаляет для всех только если сообщение в пределах временного окна
-                            let forAll = false;
-                            if (isSuperAdmin || currentUser?.role === 'ADMIN') {
-                                forAll = true; // Админы могут удалять всегда
-                            } else if (isAuthor && withinWindow) {
-                                forAll = true; // Автор может удалить для всех только в пределах окна
-                            }
-
-                            const result = await dispatch(deleteMessage({
-                                messageId,
-                                forAll,
-                                currentUserId
-                            }));
-                            
-                            if (result.type.endsWith('/rejected')) {
-                                console.error('DirectChat: Delete message failed:', result.payload);
-                            }
-                            
-                            return result;
-                        });
-
-                        const results = await Promise.allSettled(deletePromises);
-                        
-                        const successCount = results.filter(r => r.status === 'fulfilled' && r.value?.type?.endsWith('/fulfilled')).length;
-                        const failCount = results.filter(r => r.status === 'rejected' || r.value?.type?.endsWith('/rejected')).length;
-
-                        // Очищаем выбор и выходим из режима выбора
-                        clearSelection();
-
-                        // Обновляем список сообщений
-                        setTimeout(() => {
-                            dispatch(fetchMessages({roomId, limit: 100}));
-                        }, 100);
-                        
-                        if (failCount > 0) {
-                            showWarning(
-                                'Частичное удаление',
-                                `Удалено: ${successCount}, не удалось удалить: ${failCount}`
-                            );
-                        }
-
-                    } catch (error) {
-                        console.error('Ошибка при удалении сообщений:', error);
-                        clearSelection();
-                        showError('Ошибка', 'Не удалось удалить некоторые сообщения');
-                    }
-                }
-            );
-        } catch (error) {
-            console.error('Ошибка при удалении сообщений:', error);
-            showError('Ошибка', 'Не удалось удалить сообщения');
-        }
-    }, [selectedMessages, isSuperAdmin, currentUser?.role, currentUserId, clearSelection, dispatch, roomId, messages, showConfirm, showWarning, showError]);
+        
+        // Сохраняем выбранные сообщения для удаления
+        const messageIds = Array.from(selectedMessages);
+        const messagesToDeleteData = messageIds.map(id => messages.find(m => m.id === id)).filter(Boolean);
+        setMessagesToDelete(messagesToDeleteData);
+        setDeleteMessageModalVisible(true);
+    }, [selectedMessages, messages]);
 
     // Обработчик удаления сообщений по ID
     const handleDeleteMessages = useCallback(async (messageIds) => {
@@ -605,6 +537,57 @@ export const DirectChatScreen = ({route, navigation}) => {
         }
     }, [isSuperAdmin, currentUser?.role, currentUserId, dispatch, roomId, messages, showWarning, showError]);
 
+
+    // Обработчик удаления выбранных сообщений
+    const handleDeleteSelectedMessages = useCallback(async (forAll) => {
+        if (messagesToDelete.length === 0) return;
+
+        try {
+            setDeleteMessageModalVisible(false);
+            
+            const messageIds = messagesToDelete.map(m => m.id);
+            const deletePromises = messageIds.map(async (messageId) => {
+                const result = await dispatch(deleteMessage({
+                    messageId,
+                    forAll,
+                    currentUserId
+                }));
+                
+                if (result.type.endsWith('/rejected')) {
+                    console.error('DirectChat: Delete message failed:', result.payload);
+                }
+                
+                return result;
+            });
+
+            const results = await Promise.allSettled(deletePromises);
+            
+            const successCount = results.filter(r => r.status === 'fulfilled' && r.value?.type?.endsWith('/fulfilled')).length;
+            const failCount = results.filter(r => r.status === 'rejected' || r.value?.type?.endsWith('/rejected')).length;
+
+            // Очищаем выбор и выходим из режима выбора
+            clearSelection();
+            setMessagesToDelete([]);
+
+            // Обновляем список сообщений
+            setTimeout(() => {
+                dispatch(fetchMessages({roomId, limit: 100}));
+            }, 100);
+            
+            if (failCount > 0) {
+                showWarning(
+                    'Частичное удаление',
+                    `Удалено: ${successCount}, не удалось удалить: ${failCount}`
+                );
+            }
+        } catch (error) {
+            console.error('Ошибка при удалении сообщений:', error);
+            clearSelection();
+            setMessagesToDelete([]);
+            showError('Ошибка', 'Не удалось удалить сообщения');
+        }
+    }, [messagesToDelete, dispatch, currentUserId, roomId, clearSelection, showWarning, showError]);
+
     // Обработчик добавления/удаления реакции
     const handleAddReaction = useCallback(async (emoji) => {
         // Предполагается, что emoji - это строка эмодзи
@@ -616,49 +599,8 @@ export const DirectChatScreen = ({route, navigation}) => {
         try {
             console.log('🔄 Toggling reaction:', { messageId, emoji });
             
-            // Оптимистичное обновление - обновляем UI сразу
-            const message = reduxMessages?.find(m => m.id === messageId);
-            if (message) {
-                const reactions = message.reactions || [];
-                // Ищем любую реакцию этого пользователя (не только конкретную эмодзи)
-                const existingUserReactionIndex = reactions.findIndex(
-                    r => r.userId === currentUserId
-                );
-                
-                let newReactions;
-                if (existingUserReactionIndex >= 0) {
-                    const existingReaction = reactions[existingUserReactionIndex];
-                    // Если это та же самая реакция - удаляем её
-                    if (existingReaction.emoji === emoji) {
-                        newReactions = reactions.filter((_, index) => index !== existingUserReactionIndex);
-                    } else {
-                        // Если другая реакция - заменяем на новую (удаляем старую, добавляем новую)
-                        newReactions = reactions.filter((_, index) => index !== existingUserReactionIndex);
-                        newReactions.push({
-                            id: Date.now(), // временный ID
-                            emoji,
-                            userId: currentUserId,
-                            createdAt: new Date().toISOString(),
-                            user: { id: currentUserId }
-                        });
-                    }
-                } else {
-                    // Если реакции нет - добавляем новую
-                    newReactions = [...reactions, {
-                        id: Date.now(), // временный ID
-                        emoji,
-                        userId: currentUserId,
-                        createdAt: new Date().toISOString(),
-                        user: { id: currentUserId }
-                    }];
-                }
-                
-                // Обновляем Redux state оптимистично
-                dispatch(updateMessageReactions({
-                    messageId,
-                    reactions: newReactions
-                }));
-            }
+            // НЕ делаем оптимистичное обновление - сервер является источником правды
+            // Событие от сервера придет через WebSocket и обновит UI
             
             // Отправляем на сервер
             await emitToggleReaction(messageId, emoji);
@@ -666,7 +608,7 @@ export const DirectChatScreen = ({route, navigation}) => {
             console.error('❌ Error toggling reaction:', error);
             showError('Ошибка', 'Не удалось изменить реакцию');
         }
-    }, [emitToggleReaction, showError, currentUserId, reduxMessages, dispatch]);
+    }, [emitToggleReaction, showError]);
 
     // Показать picker реакций
     const handleShowReactionPicker = useCallback((messageId, position) => {
@@ -690,11 +632,15 @@ export const DirectChatScreen = ({route, navigation}) => {
             await handleToggleReaction(reactionPickerMessageId, emoji);
         }
         handleCloseReactionPicker(true); // Очищаем messageId после успешной реакции
-        // Сбрасываем выделение сообщения при выборе реакции
-        if (isSelectionMode) {
-            clearSelection();
+        // Убираем конкретное сообщение из выделенных после постановки реакции
+        if (reactionPickerMessageId) {
+            setSelectedMessages(prev => {
+                const updated = new Set(prev);
+                updated.delete(reactionPickerMessageId);
+                return updated;
+            });
         }
-    }, [reactionPickerMessageId, handleToggleReaction, handleCloseReactionPicker, isSelectionMode, clearSelection]);
+    }, [reactionPickerMessageId, handleToggleReaction, handleCloseReactionPicker]);
     
     // Обработчик открытия полного списка эмодзи
     const handleShowFullEmojiPicker = useCallback(() => {
@@ -724,14 +670,19 @@ export const DirectChatScreen = ({route, navigation}) => {
         // Закрываем оба окна
         setReactionPickerVisible(false);
         setFullEmojiPickerVisible(false);
+        // Убираем конкретное сообщение из выделенных после постановки реакции
+        const messageIdToRemove = reactionPickerMessageId;
+        if (messageIdToRemove) {
+            setSelectedMessages(prev => {
+                const updated = new Set(prev);
+                updated.delete(messageIdToRemove);
+                return updated;
+            });
+        }
         // Очищаем messageId
         setReactionPickerMessageId(null);
         setReactionPickerPosition(null);
-        // Сбрасываем выделение сообщения при выборе реакции
-        if (isSelectionMode) {
-            clearSelection();
-        }
-    }, [reactionPickerMessageId, handleToggleReaction, isSelectionMode, clearSelection]);
+    }, [reactionPickerMessageId, handleToggleReaction]);
 
     useEffect(() => {
         const sub = navigation.addListener('beforeRemove', (e) => {
@@ -1260,14 +1211,17 @@ export const DirectChatScreen = ({route, navigation}) => {
                             </TouchableOpacity>
                         </Modal>
                     </View>
-                    <Composer
+                    <View style={styles.composerContainer}>
+                      <Composer
                         roomId={roomId}
                         onTyping={onTyping}
                         shareProductId={shareProductId}
                         onMenuPress={handleMenuPress}
                         replyTo={replyTo}
                         onCancelReply={handleCancelReply}
-                    />
+                      />
+                      <TypingIndicator roomId={roomId} />
+                    </View>
                 </View>
             </ChatBackground>
 
@@ -1297,6 +1251,50 @@ export const DirectChatScreen = ({route, navigation}) => {
                 onClose={handleCloseFullEmojiPicker}
                 onEmojiSelect={handleFullEmojiSelect}
             />
+
+            {/* Модальное окно удаления сообщения */}
+            <Modal
+                visible={deleteMessageModalVisible}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => {
+                    setDeleteMessageModalVisible(false);
+                    setMessagesToDelete([]);
+                }}
+            >
+                <TouchableOpacity
+                    style={styles.menuModalOverlay}
+                    activeOpacity={1}
+                    onPress={() => {
+                        setDeleteMessageModalVisible(false);
+                        setMessagesToDelete([]);
+                    }}
+                >
+                    <View style={styles.menuModalContainer}>
+                        <View style={styles.menuModal}>
+                            <TouchableOpacity
+                                style={styles.menuItem}
+                                onPress={() => handleDeleteSelectedMessages(false)}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={styles.menuItemText}>
+                                    Удалить у меня
+                                </Text>
+                            </TouchableOpacity>
+                            <View style={styles.menuDivider} />
+                            <TouchableOpacity
+                                style={styles.menuItem}
+                                onPress={() => handleDeleteSelectedMessages(true)}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={[styles.menuItemText, styles.destructiveText]}>
+                                    Удалить у всех
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </TouchableOpacity>
+            </Modal>
         </View>
     );
 };
@@ -1348,6 +1346,10 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: '#333',
     },
+    menuDivider: {
+        height: 1,
+        backgroundColor: '#E5E5EA',
+    },
     destructiveText: {
         color: '#ff3b30',
     },
@@ -1372,6 +1374,9 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: '#007AFF',
         marginLeft: 12,
+    },
+    composerContainer: {
+        position: 'relative',
     },
 });
 

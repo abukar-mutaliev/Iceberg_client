@@ -121,9 +121,13 @@ export const useProductDetail = (productId) => {
         // Если shouldReload = true, всегда загружаем
         if (shouldReload) return true;
 
-        // Если продукт уже есть в кэше или в currentProduct, не загружаем
-        // НО только если это не принудительное обновление
-        if (product && product.id === validProductId && lastLoadedId === validProductId && !shouldReload) {
+        // Если продукт уже есть в кэше или в currentProduct и он соответствует запрашиваемому ID, не загружаем
+        // Это позволяет корректно восстанавливать продукты при возврате назад
+        if (product && product.id === validProductId) {
+            // Если продукт соответствует ID, но не был загружен для этого экрана, помечаем как загруженный
+            if (lastLoadedId !== validProductId) {
+                setLastLoadedId(validProductId);
+            }
             return false;
         }
 
@@ -215,14 +219,28 @@ export const useProductDetail = (productId) => {
     useEffect(() => {
         if (!validProductId) return;
 
-        // Если это новый продукт, сбрасываем состояние
+        // Если это новый продукт (переход вперед), сбрасываем состояние
+        // Но не сбрасываем ошибку при возврате назад, если продукт есть в кэше
         if (validProductId !== lastLoadedId) {
-            loadingStates.current = {
-                product: false,
-                supplier: false,
-                feedbacks: false
-            };
-            setError(null);
+            // Проверяем, есть ли продукт в кэше с нужным ID (это может быть возврат назад)
+            const isCachedProduct = cachedProduct && cachedProduct.id === validProductId;
+            
+            // Если продукт есть в кэше, это может быть возврат назад - не сбрасываем ошибку сразу
+            if (!isCachedProduct) {
+                loadingStates.current = {
+                    product: false,
+                    supplier: false,
+                    feedbacks: false
+                };
+                setError(null);
+            } else {
+                // Продукт есть в кэше, очищаем только состояние загрузки, но сохраняем ошибку для проверки
+                loadingStates.current = {
+                    product: false,
+                    supplier: false,
+                    feedbacks: false
+                };
+            }
         }
 
         // Загружаем основные данные
@@ -232,7 +250,7 @@ export const useProductDetail = (productId) => {
         return () => {
             // Дополнительная обработка при размонтировании
         };
-    }, [validProductId, loadProductData]);
+    }, [validProductId, loadProductData, cachedProduct]);
 
     // Эффект для загрузки дополнительных данных
     useEffect(() => {

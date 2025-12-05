@@ -156,7 +156,6 @@ const PollMessage = memo(({
         // Проверяем, что у опроса есть реальный ID (не временный)
         const pollId = poll.id;
         if (!pollId || typeof pollId === 'string' && pollId.startsWith('temp_')) {
-            console.error('Cannot vote: poll has temporary ID', pollId);
             return;
         }
 
@@ -191,15 +190,7 @@ const PollMessage = memo(({
                 }
             }
 
-            console.log('Voting on poll:', { pollId, newOptionIds, allowMultiple: poll.allowMultiple });
             const result = await ChatApi.votePoll(pollId, newOptionIds);
-            
-            console.log('votePoll response:', { 
-                result, 
-                data: result?.data, 
-                dataData: result?.data?.data,
-                poll: result?.data?.data?.poll 
-            });
             
             // Обновляем опрос из ответа
             // Сервер возвращает: { status: 'success', data: { poll: ... } }
@@ -218,11 +209,9 @@ const PollMessage = memo(({
             }
             
             if (updatedPoll && updatedPoll.options) {
-                console.log('Updating poll with:', updatedPoll);
                 setPoll(updatedPoll);
             } else {
                 // Если не получили обновленный опрос, ждем обновления через WebSocket или message.poll
-                console.log('Poll not in response, will update from message.poll');
                 // Опрос обновится через useEffect когда придет обновленное сообщение
                 // Но также проверяем message.poll напрямую
                 if (message.poll && message.poll.id && typeof message.poll.id === 'number') {
@@ -230,7 +219,7 @@ const PollMessage = memo(({
                 }
             }
         } catch (error) {
-            console.error('Ошибка голосования:', error);
+            // Ошибка обрабатывается через UI
         } finally {
             setIsVoting(false);
         }
@@ -449,28 +438,12 @@ const BubbleContainer = ({
 
     // Обработчик нажатия для выбора сообщений
     const handlePress = useCallback(() => {
-        if (__DEV__) {
-            console.log('👆 BubbleContainer handlePress called', {
-                isSelectionMode,
-                hasContextMenu,
-                hasHandler: !!onToggleSelection
-            });
-        }
         if (onToggleSelection) {
             onToggleSelection();
         }
-    }, [isSelectionMode, hasContextMenu, onToggleSelection]);
+    }, [onToggleSelection]);
 
     const canPress = isSelectionMode || hasContextMenu;
-    
-    if (__DEV__ && canPress) {
-        console.log('🎯 BubbleContainer render with press enabled', {
-            isSelectionMode,
-            hasContextMenu,
-            canPress,
-            hasOnToggleSelection: !!onToggleSelection
-        });
-    }
 
     return (
         <TouchableOpacity
@@ -603,16 +576,6 @@ const TextMessage = ({
                          onRemoveReaction,
                          onShowReactionPicker
                      }) => {
-    // Отладочный лог для проверки реакций в текстовых сообщениях
-    if (__DEV__ && message?.reactions) {
-        console.log('📝 TextMessage reactions check:', {
-            messageId: message.id,
-            hasReactions: !!message.reactions,
-            reactionsLength: message.reactions?.length || 0,
-            reactions: message.reactions
-        });
-    }
-    
     return (
         <>
             <BubbleContainer
@@ -855,11 +818,11 @@ const StopMessage = ({
                       }) => {
 
     const transformedStop = {
-        stopId: stop.stopId || stopId,
+        stopId: stop.stopId || stop.id || stopId,
         address: stop.address,
         startTime: stop.startTime,
         endTime: stop.endTime,
-        photo: stop.photo,
+        photo: stop.photo || null, // Убеждаемся, что photo передается
         mapLocation: stop.mapLocation,
         description: stop.description,
         truckModel: stop.truckModel,
@@ -871,6 +834,16 @@ const StopMessage = ({
         driverPhone: stop.driverPhone || stop.driver?.phone,
         driverUserId: stop.driverUserId || stop.driver?.userId
     };
+
+    // Логирование для отладки
+    if (__DEV__) {
+        console.log('StopMessage: transformedStop', {
+            stopId: transformedStop.stopId,
+            hasPhoto: !!transformedStop.photo,
+            photo: transformedStop.photo,
+            originalStop: stop
+        });
+    }
 
     // Используем stopId из transformedStop для навигации
     const finalStopId = transformedStop.stopId || stopId;
@@ -902,10 +875,7 @@ const StopMessage = ({
                         stop={transformedStop}
                         onPress={() => {
                             if (finalStopId && onOpenStop) {
-                                console.log('StopMessage: Opening stop', finalStopId);
                                 onOpenStop(finalStopId);
-                            } else {
-                                console.warn('StopMessage: Cannot open stop - missing stopId or handler', { finalStopId, hasHandler: !!onOpenStop });
                             }
                         }}
                         width={250}
@@ -965,14 +935,6 @@ export const MessageBubble = memo(({
                                        onRemoveReaction,
                                        onShowReactionPicker
                                    }) => {
-    if (__DEV__ && isContextMenuActive) {
-        // Логируем только активное сообщение контекстного меню
-        console.log('🔍 MessageBubble: context menu ACTIVE', {
-            messageId: message?.id,
-            isOwn,
-        });
-    }
-    
     const isOwn = message?.senderId === currentUserId;
     const createdAt = message?.createdAt ? new Date(message.createdAt) : null;
     const time = createdAt ? createdAt.toLocaleTimeString('ru-RU', {
@@ -1154,15 +1116,13 @@ export const MessageBubble = memo(({
             // Сначала пробуем получить из content (новый способ)
             if (message?.content) {
                 productData = JSON.parse(message.content);
-                console.log('MessageBubble: Получены данные о товаре из content:', productData);
             }
             // Если не получилось, пробуем из product (старый способ)
             else if (message?.product) {
                 productData = message.product;
-                console.log('MessageBubble: Получены данные о товаре из product:', productData);
             }
         } catch (error) {
-            console.error('MessageBubble: Ошибка парсинга данных о товаре:', error);
+            // Ошибка парсинга обрабатывается через fallback UI
             // Fallback: показываем сообщение об ошибке
             return (
                 <BubbleContainer
@@ -1282,18 +1242,39 @@ export const MessageBubble = memo(({
         let stopId = null;
 
         try {
-            // Сначала пробуем получить из content
-            if (message?.content) {
+            // Сначала пробуем получить из relation stop (приоритет)
+            if (message?.stop) {
+                stopData = message.stop;
+                stopId = stopData?.id || message?.stopId;
+                // Логирование для отладки
+                if (__DEV__) {
+                    console.log('StopMessage: Using message.stop relation', {
+                        stopId,
+                        hasPhoto: !!stopData?.photo,
+                        photo: stopData?.photo,
+                        stopData
+                    });
+                }
+            }
+            // Если не получилось, пробуем из content
+            else if (message?.content) {
                 stopData = JSON.parse(message.content);
                 stopId = stopData?.stopId || message?.stopId;
-            }
-            // Если не получилось, пробуем из stop
-            else if (message?.stop) {
-                stopData = message.stop;
-                stopId = stopData?.stopId || message?.stopId;
+                // Логирование для отладки
+                if (__DEV__) {
+                    console.log('StopMessage: Using message.content', {
+                        stopId,
+                        hasPhoto: !!stopData?.photo,
+                        photo: stopData?.photo,
+                        stopData
+                    });
+                }
             }
         } catch (error) {
-            console.error('MessageBubble: Ошибка парсинга данных об остановке:', error);
+            // Ошибка парсинга обрабатывается через fallback UI
+            if (__DEV__) {
+                console.error('StopMessage: Error parsing stop data', error);
+            }
             return (
                 <BubbleContainer
                     isOwn={isOwn}
@@ -1421,15 +1402,6 @@ export const MessageBubble = memo(({
     
     // Сравниваем по timestamp если он есть
     if (prevReactionsTimestamp !== nextReactionsTimestamp) {
-        if (__DEV__) {
-            console.log('🔄 MessageBubble: Reactions timestamp changed, re-rendering', {
-                messageId: nextProps.message?.id,
-                prevTimestamp: prevReactionsTimestamp,
-                nextTimestamp: nextReactionsTimestamp,
-                prevCount: prevReactions.length,
-                nextCount: nextReactions.length
-            });
-        }
         return false; // Перерисовываем компонент
     }
     
@@ -1437,13 +1409,6 @@ export const MessageBubble = memo(({
         JSON.stringify(prevReactions) !== JSON.stringify(nextReactions);
     
     if (reactionsChanged) {
-        if (__DEV__) {
-            console.log('🔄 MessageBubble: Reactions changed, re-rendering', {
-                messageId: nextProps.message?.id,
-                prevCount: prevReactions.length,
-                nextCount: nextReactions.length
-            });
-        }
         return false; // Перерисовываем компонент
     }
     

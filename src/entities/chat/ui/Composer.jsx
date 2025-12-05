@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { View, TextInput, TouchableOpacity, Text, StyleSheet, Platform, Modal } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useDispatch, useSelector } from 'react-redux';
@@ -12,11 +12,13 @@ import { AttachIcon } from '@shared/ui/Icon/AttachIcon';
 import { CameraIcon } from '@shared/ui/Icon/CameraIcon';
 import { Ionicons } from '@expo/vector-icons';
 import ChatApi from '@entities/chat/api/chatApi';
+import { useChatSocketActions } from '@entities/chat/hooks/useChatSocketActions';
 
 export const Composer = ({ roomId, onTyping, replyTo, onCancelReply, disabled = false }) => {
   const dispatch = useDispatch();
   const currentUserId = useSelector(state => state.auth?.user?.id);
   const currentUser = useSelector(state => state.auth?.user);
+  const { emitTyping } = useChatSocketActions();
   const [text, setText] = useState('');
   const [files, setFiles] = useState([]);
   const [captions, setCaptions] = useState({});
@@ -24,9 +26,19 @@ export const Composer = ({ roomId, onTyping, replyTo, onCancelReply, disabled = 
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   const [showPollModal, setShowPollModal] = useState(false);
   const isSendingRef = useRef(false);
+  const typingTimeoutRef = useRef(null);
 
   const canSend = useMemo(() => !disabled && (text.trim().length > 0 || files.length > 0), [disabled, text, files.length]);
   const showVoiceButton = useMemo(() => !disabled && text.trim().length === 0 && files.length === 0, [disabled, text, files.length]);
+
+  // Очищаем таймер при размонтировании
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const pickImages = async () => {
     if (disabled) return;
@@ -74,11 +86,54 @@ export const Composer = ({ roomId, onTyping, replyTo, onCancelReply, disabled = 
 
   const handleChangeText = (val) => {
     if (disabled) return;
+
+    const wasEmpty = text.trim().length === 0;
+    const isEmpty = val.trim().length === 0;
+
     setText(val);
-    onTyping?.(true);
+
+    // Управляем индикатором печати
+    if (!isEmpty && wasEmpty) {
+      // Начал печатать - отправляем событие
+      onTyping?.(true);
+      if (roomId) {
+        emitTyping(roomId, true, 'text');
+      }
+    } else if (isEmpty && !wasEmpty) {
+      // Закончил печатать - отправляем событие окончания
+      onTyping?.(false);
+      if (roomId) {
+        emitTyping(roomId, false, 'text');
+      }
+    } else if (!isEmpty) {
+      // Продолжает печатать - сбрасываем таймер
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+
+      // Устанавливаем таймер для отправки события окончания печати
+      typingTimeoutRef.current = setTimeout(() => {
+        onTyping?.(false);
+        if (roomId) {
+          emitTyping(roomId, false, 'text');
+        }
+      }, 2000); // 2 секунды бездействия
+    }
   };
 
-  const handleBlur = () => onTyping?.(false);
+  const handleBlur = () => {
+    // Очищаем таймер печати
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+
+    onTyping?.(false);
+    // Отправляем событие окончания печати через WebSocket
+    if (roomId && text.trim().length > 0) {
+      emitTyping(roomId, false, 'text');
+    }
+  };
 
   const onChangeCaption = (key, value) => setCaptions((prev) => ({ ...prev, [key]: value }));
   const onRemove = (key) => setFiles((prev) => prev.filter((f) => (f.uri || f.name) !== key));
@@ -103,8 +158,18 @@ export const Composer = ({ roomId, onTyping, replyTo, onCancelReply, disabled = 
       setFiles([]);
       setCaptions({});
     }
+    // Очищаем таймер печати
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+
     onTyping?.(false);
-    
+    // Отправляем событие окончания печати через WebSocket
+    if (roomId) {
+      emitTyping(roomId, false, 'text');
+    }
+
     try {
       if (currentFiles.length > 0) {
         // Создаем временный ID для оптимистичного сообщения
@@ -444,6 +509,7 @@ export const Composer = ({ roomId, onTyping, replyTo, onCancelReply, disabled = 
           <VoiceRecorder
             onSend={handleSendVoice}
             onCancel={handleCancelRecording}
+            roomId={roomId}
           />
         </View>
       </Modal>

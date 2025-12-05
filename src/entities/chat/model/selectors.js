@@ -157,8 +157,18 @@ export const makeSelectRoomMessages = () => createSelector(
         (state) => state.auth?.user?.id,
         // Добавляем bucket.ids как отдельную зависимость для принудительной перевычисления
         (state, roomId) => state.chat?.messages?.[roomId]?.ids,
+        // Добавляем зависимости от реакций для принудительного обновления
+        (state, roomId) => {
+            const bucket = state.chat?.messages?.[roomId];
+            if (!bucket) return '';
+            // Создаем hash из всех _reactionsUpdated timestamp для принудительного обновления
+            return Object.values(bucket.byId || {})
+                .map(msg => `${msg.id}:${msg._reactionsUpdated || 0}`)
+                .sort()
+                .join(',');
+        },
     ],
-    (bucket, room, participantsById, currentUserId, bucketIds) => {
+    (bucket, room, participantsById, currentUserId, bucketIds, reactionsHash) => {
         if (!bucket || !bucketIds) return EMPTY_ARRAY;
         const participants = room?.participants || EMPTY_ARRAY;
 
@@ -213,7 +223,21 @@ export const makeSelectRoomMessages = () => createSelector(
 
 export const selectUnreadCountByRoomId = (state, roomId) => state.chat?.unreadByRoomId?.[roomId] || 0;
 
-export const selectTypingUserIds = (state, roomId) => state.chat?.typingByRoomId?.[roomId] || EMPTY_ARRAY;
+export const selectTypingUserIds = (state, roomId) => {
+  const typingData = state.chat?.typingByRoomId?.[roomId] || {};
+  return Object.keys(typingData);
+};
+
+export const selectTypingActivities = (state, roomId) => {
+  const roomKey = String(roomId);
+  return state.chat?.typingByRoomId?.[roomKey] || {};
+};
+
+export const selectLastActivityType = (state, roomId, userId) => {
+  const roomKey = String(roomId);
+  const userKey = String(userId);
+  return state.chat?.lastActivityTypeByRoomId?.[roomKey]?.[userKey] || null;
+};
 
 export const selectActiveRoomId = (state) => state.chat?.activeRoomId || null;
 

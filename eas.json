@@ -105,12 +105,14 @@
       }
     },
     "production": {
+      "distribution": "store",
       "android": {
-        "buildType": "apk",
-        "gradleCommand": ":app:assembleRelease"
+        "buildType": "app-bundle",
+        "developmentClient": false
       },
       "ios": {
-        "buildConfiguration": "Release"
+        "buildConfiguration": "Release",
+        "developmentClient": false
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "http://212.67.11.134:5000",

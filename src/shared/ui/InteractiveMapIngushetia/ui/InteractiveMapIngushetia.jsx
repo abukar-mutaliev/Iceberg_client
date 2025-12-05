@@ -27,6 +27,7 @@ import { useSelector } from 'react-redux';
 import { selectDistrictsWithStats } from "@entities/district/model/selectors";
 import { Color } from "@app/styles/GlobalStyles";
 import { Loader } from "@shared/ui/Loader";
+import { ErrorState } from "@shared/ui/states/ErrorState";
 
 const { width: screenWidth, height: screenHeight} = Dimensions.get('window');
 
@@ -443,6 +444,16 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
                 color={Color.purpleSoft}
             />
             <Text style={styles.loadingText}>Загрузка данных районов...</Text>
+        </View>
+    );
+
+    const renderErrorState = () => (
+        <View style={styles.errorContainer}>
+            <ErrorState
+                message="Не удалось загрузить данные районов"
+                onRetry={retryLoad}
+                buttonText="Повторить"
+            />
         </View>
     );
 

@@ -21,16 +21,89 @@ export const setGlobalSocket = (socket) => {
   globalSocketRef = socket;
 };
 
+// Глобальное хранилище для типа активности: Map<`${roomId}:${userId}`, 'text' | 'voice'>
+// Используем global объект для гарантии единого экземпляра
+if (!global.__chatActivityTypeStorage) {
+  global.__chatActivityTypeStorage = new Map();
+}
+const globalActivityTypeStorage = global.__chatActivityTypeStorage;
+
+// Функция для установки глобального хранилища типа активности (теперь не используется, но оставляем для совместимости)
+export const setGlobalActivityTypeStorage = (storage) => {
+  // Не заменяем хранилище, а копируем данные из переданного хранилища
+  if (storage && storage instanceof Map) {
+    storage.forEach((value, key) => {
+      globalActivityTypeStorage.set(key, value);
+    });
+  }
+};
+
+// Функция для получения типа активности из кэша
+export const getActivityTypeCache = (roomId, userId) => {
+  const key = `${roomId}:${userId}`;
+  const cachedType = globalActivityTypeStorage.get(key) || null;
+  console.log('getActivityTypeCache: Looking for key:', key, 'found:', cachedType, 'storage size:', globalActivityTypeStorage.size, 'all entries:', Array.from(globalActivityTypeStorage.entries()));
+  return cachedType;
+};
+
+// Функция для сохранения типа активности в кэш
+export const setActivityTypeCache = (roomId, userId, type) => {
+  const key = `${roomId}:${userId}`;
+  if (type) {
+    // Не перезаписываем "voice" на "text" - если уже сохранен "voice", оставляем его
+    const currentType = globalActivityTypeStorage.get(key);
+    if (currentType === 'voice' && type === 'text') {
+      console.log('setActivityTypeCache: Preserving voice type, not overwriting with text');
+      return; // Не перезаписываем
+    }
+    globalActivityTypeStorage.set(key, type);
+    console.log('setActivityTypeCache: Saved', type, 'for key:', key, 'storage size:', globalActivityTypeStorage.size);
+  } else {
+    globalActivityTypeStorage.delete(key);
+    console.log('setActivityTypeCache: Deleted key:', key, 'storage size:', globalActivityTypeStorage.size);
+  }
+};
+
+
+
+import { useSelector, useDispatch } from 'react-redux';
+import { setLastActivityType } from '@entities/chat/model/slice';
+
 // Хук для получения действий WebSocket без инициализации соединения
 export const useChatSocketActions = () => {
+  const dispatch = useDispatch();
+  const currentUserId = useSelector((state) => state.auth?.user?.id);
   // API for emitting typing with throttle 500ms
-  const emitTyping = useRef(throttle((roomId, isTyping) => {
+  const emitTyping = useRef(throttle((roomId, isTyping, type = 'text') => {
     const socket = globalSocketRef;
     if (!socket || !socket.connected) {
       console.warn('⚠️ Cannot emit typing - socket not connected');
       return;
     }
-    socket.emit('chat:typing', { roomId, isTyping });
+
+    // Сохраняем тип активности в синхронный кэш и Redux при отправке события
+    console.log('useChatSocketActions: Emitting typing:', { roomId, isTyping, type, currentUserId });
+    if (isTyping) {
+      // Сохраняем тип только при начале активности - сначала в кэш (синхронно), потом в Redux
+      setActivityTypeCache(roomId, currentUserId, type);
+      dispatch(setLastActivityType({ roomId, userId: currentUserId, type }));
+      console.log('useChatSocketActions: Saved activity type in cache and Redux:', type, 'for user:', currentUserId, 'in room:', roomId);
+    }
+    // НЕ очищаем тип при отправке isTyping: false - очистим только при получении подтверждения от сервера
+
+    // Отправляем событие с userId для нового формата
+    const payload = {
+      roomId,
+      userId: currentUserId,
+      type,
+      isVoice: type === 'voice',
+      isTyping
+    };
+    console.log('useChatSocketActions: Sending payload:', JSON.stringify(payload));
+    socket.emit('chat:typing', payload);
+
+    // Также отправляем старый формат для совместимости
+    // socket.emit('chat:typing', { roomId, isTyping });
   }, 500)).current;
 
   // API for marking messages as read via socket

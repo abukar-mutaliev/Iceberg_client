@@ -171,7 +171,6 @@ export const fetchMyOrders = createAsyncThunk(
                 throw new Error(response.message || 'Ошибка при загрузке заказов');
             }
         } catch (error) {
-            console.error('Ошибка при загрузке моих заказов:', error);
             return rejectWithValue(error.message || 'Ошибка при загрузке заказов');
         }
     }
@@ -192,29 +191,10 @@ export const fetchOrderCounts = createAsyncThunk(
 
             // Для EMPLOYEE требуем только employeeId (warehouseId может быть null для SUPERVISOR)
             if (userRole === 'EMPLOYEE') {
-                // Детальное логирование структуры currentUser
-                console.log('🔍 fetchOrderCounts: проверяем структуру currentUser', {
-                    hasCurrentUser: !!currentUser,
-                    currentUserKeys: currentUser ? Object.keys(currentUser) : [],
-                    hasEmployee: !!currentUser?.employee,
-                    employeeValue: currentUser?.employee,
-                    employeeKeys: currentUser?.employee ? Object.keys(currentUser.employee) : []
-                });
-
                 if (!currentUser?.employee?.id) {
-                    console.warn('⚠️ fetchOrderCounts: employee данные ещё не загружены, пропускаем', {
-                        hasEmployee: !!currentUser?.employee,
-                        hasEmployeeId: !!currentUser?.employee?.id
-                    });
                     return rejectWithValue('Employee данные ещё не загружены');
                 }
             }
-
-            console.log('fetchOrderCounts: загрузка счетчиков заказов', {
-                role: userRole,
-                employeeId: currentUser?.employee?.id,
-                warehouseId: currentUser?.employee?.warehouseId
-            });
 
             // Получаем только счетчики - сервер уже фильтрует по складу сотрудника
             const response = await OrderApi.getOrders({
@@ -224,18 +204,6 @@ export const fetchOrderCounts = createAsyncThunk(
             });
 
             if (response.status === 'success') {
-                console.log('🔍 fetchOrderCounts: полный ответ от сервера', {
-                    status: response.status,
-                    hasData: !!response.data,
-                    dataIsArray: Array.isArray(response.data),
-                    dataLength: Array.isArray(response.data) ? response.data.length : 'not array',
-                    hasDataData: !!response.data?.data,
-                    dataDataType: Array.isArray(response.data?.data) ? 'array' : typeof response.data?.data,
-                    dataDataLength: response.data?.data?.length,
-                    hasWaitingStockCount: !!response.waitingStockCount,
-                    waitingStockCountValue: response.waitingStockCount
-                });
-
                 // Сервер может вернуть массив в response.data или response.data.data
                 const orders = Array.isArray(response.data) ? response.data : (response.data?.data || []);
 
@@ -243,15 +211,6 @@ export const fetchOrderCounts = createAsyncThunk(
                 // Сервер возвращает правильное количество из всей базы, а не только из загруженных 100
                 const waitingStockCount = response.waitingStockCount ??
                     orders.filter(order => order.status === 'WAITING_STOCK').length;
-
-                console.log('fetchOrderCounts: счетчики получены', {
-                    total: orders.length,
-                    waitingStockFromServer: response.waitingStockCount,
-                    waitingStockFromClient: orders.filter(order => order.status === 'WAITING_STOCK').length,
-                    waitingStockFinal: waitingStockCount,
-                    warehouseId: currentUser?.employee?.warehouseId,
-                    sampleOrders: orders.slice(0, 3).map(o => ({ id: o.id, status: o.status, warehouse: o.warehouse?.name }))
-                });
 
                 return {
                     waitingStockCount,
@@ -261,7 +220,6 @@ export const fetchOrderCounts = createAsyncThunk(
                 throw new Error(response.message || 'Ошибка при загрузке счетчиков');
             }
         } catch (error) {
-            console.error('Ошибка при загрузке счетчиков заказов:', error);
             return rejectWithValue(error.message || 'Ошибка при загрузке счетчиков');
         }
     }
@@ -288,26 +246,14 @@ export const fetchStaffOrders = createAsyncThunk(
                 ? state.order.staffOrders.historyOrders
                 : (isWaitingStock ? state.order.staffOrders.waitingStockOrders : state.order.staffOrders.activeOrders);
 
-            console.log('fetchStaffOrders: параметры запроса', {
-                forceRefresh,
-                requestParams,
-                isHistory,
-                isWaitingStock,
-                cacheValid: isCacheValid(targetStorage.lastFetchTime),
-                lastFetchTime: targetStorage.lastFetchTime
-            });
-
             // Кэш НЕ используется если запрашивается другая страница
             const requestedPage = requestParams.page || 1;
             const cachedPage = targetStorage.page || 1;
             const isPageChange = requestedPage !== cachedPage;
 
             if (!forceRefresh && !isPageChange && isCacheValid(targetStorage.lastFetchTime)) {
-                console.log('fetchStaffOrders: возвращаем данные из кэша');
                 return { data: targetStorage, fromCache: true, isHistory, isWaitingStock, filters: requestParams };
             }
-
-            console.log('fetchStaffOrders: делаем запрос к серверу');
 
             // Добавляем timestamp для обхода кэширования
             const requestParamsWithTimestamp = {
@@ -334,7 +280,6 @@ export const fetchStaffOrders = createAsyncThunk(
                 throw new Error(response.message || 'Ошибка при загрузке заказов');
             }
         } catch (error) {
-            console.error('Ошибка при загрузке заказов персонала:', error);
             return rejectWithValue(error.message || 'Ошибка при загрузке заказов');
         }
     }
@@ -368,7 +313,6 @@ export const fetchOrderDetails = createAsyncThunk(
                 throw new Error(response.message || 'Ошибка при загрузке заказа');
             }
         } catch (error) {
-            console.error('Ошибка при загрузке деталей заказа:', error);
             return rejectWithValue(error.message || 'Ошибка при загрузке заказа');
         }
     }
@@ -394,7 +338,6 @@ export const updateOrderStatus = createAsyncThunk(
                 throw new Error(response.message || 'Ошибка при обновлении статуса');
             }
         } catch (error) {
-            console.error('Ошибка при обновлении статуса заказа:', error);
             return rejectWithValue(error.message || 'Ошибка при обновлении статуса');
         }
     }
@@ -405,14 +348,7 @@ export const completeOrderStage = createAsyncThunk(
     'orders/completeOrderStage',
     async ({ orderId, comment }, { rejectWithValue, dispatch }) => {
         try {
-            console.log('completeOrderStage: начинаем завершение этапа', { orderId, comment });
             const response = await OrderApi.completeOrderStage(orderId, comment);
-
-            console.log('completeOrderStage: ответ сервера', {
-                orderId,
-                status: response.status,
-                data: response.data
-            });
 
             if (response.status === 'success') {
                 // Обновляем детали заказа, если они загружены
@@ -427,7 +363,6 @@ export const completeOrderStage = createAsyncThunk(
                 throw new Error(response.message || 'Ошибка при завершении этапа');
             }
         } catch (error) {
-            console.error('Ошибка при завершении этапа заказа:', error);
             return rejectWithValue(error.message || 'Ошибка при завершении этапа');
         }
     }
@@ -453,7 +388,6 @@ export const assignOrder = createAsyncThunk(
                 throw new Error(response.message || 'Ошибка при назначении заказа');
             }
         } catch (error) {
-            console.error('Ошибка при назначении заказа:', error);
             return rejectWithValue(error.message || 'Ошибка при назначении заказа');
         }
     }
@@ -479,7 +413,6 @@ export const takeOrder = createAsyncThunk(
                 throw new Error(response.message || 'Ошибка при взятии заказа в работу');
             }
         } catch (error) {
-            console.error('Ошибка при взятии заказа в работу:', error);
             return rejectWithValue(error.message || 'Ошибка при взятии заказа в работу');
         }
     }
@@ -511,7 +444,6 @@ export const cancelOrder = createAsyncThunk(
                 throw new Error(response.message || 'Ошибка при отмене заказа');
             }
         } catch (error) {
-            console.error('Ошибка при отмене заказа:', error);
             return rejectWithValue(error.message || 'Ошибка при отмене заказа');
         }
     }
@@ -533,7 +465,6 @@ export const createOrderForClient = createAsyncThunk(
                 throw new Error(response.message || 'Ошибка при создании заказа');
             }
         } catch (error) {
-            console.error('Ошибка при создании заказа:', error);
             return rejectWithValue(error.message || 'Ошибка при создании заказа');
         }
     }
@@ -555,7 +486,6 @@ export const bulkUpdateOrders = createAsyncThunk(
                 throw new Error(response.message || 'Ошибка при массовом обновлении');
             }
         } catch (error) {
-            console.error('Ошибка при массовом обновлении заказов:', error);
             return rejectWithValue(error.message || 'Ошибка при массовом обновлении');
         }
     }
@@ -587,7 +517,6 @@ export const fetchOrdersStats = createAsyncThunk(
                 throw new Error(response.message || 'Ошибка при загрузке статистики');
             }
         } catch (error) {
-            console.error('Ошибка при загрузке статистики заказов:', error);
             return rejectWithValue(error.message || 'Ошибка при загрузке статистики');
         }
     }
@@ -609,7 +538,6 @@ export const exportOrders = createAsyncThunk(
                 success: true
             };
         } catch (error) {
-            console.error('Ошибка при экспорте заказов:', error);
             return rejectWithValue(error.message || 'Ошибка при экспорте заказов');
         }
     }
@@ -635,7 +563,6 @@ export const pickupOrder = createAsyncThunk(
                 throw new Error(response.message || 'Ошибка при перехвате заказа');
             }
         } catch (error) {
-            console.error('Ошибка при перехвате заказа:', error);
             return rejectWithValue(error.message || 'Ошибка при перехвате заказа');
         }
     }
@@ -667,7 +594,6 @@ export const fetchAvailableOrdersForPickup = createAsyncThunk(
                 throw new Error(response.message || 'Ошибка при загрузке доступных заказов');
             }
         } catch (error) {
-            console.error('Ошибка при загрузке доступных заказов:', error);
             return rejectWithValue(error.message || 'Ошибка при загрузке доступных заказов');
         }
     }
@@ -946,18 +872,6 @@ const orderSlice = createSlice({
 
                     // КРИТИЧНО: Проверяем, загружается ли это первая страница или подгрузка
                     const isFirstPage = newPage === 1;
-                    const requestedStatus = filters?.status; // Проверяем запрошенный статус
-
-                    console.log('📦 Redux: обработка fetchStaffOrders', {
-                        isHistory,
-                        isFirstPage,
-                        newPage,
-                        requestedStatus,
-                        incomingOrders: ordersData.length,
-                        existingOrders: targetStorage.data.length,
-                        incomingStatuses: ordersData.slice(0, 3).map(o => o.status),
-                        existingStatuses: targetStorage.data.slice(0, 3).map(o => o.status)
-                    });
 
                     // Сохраняем локальные изменения assignedToId при обновлении данных
                     const updatedOrdersData = ordersData.map(newOrder => {
@@ -980,21 +894,12 @@ const orderSlice = createSlice({
                     if (isFirstPage) {
                         // Если это первая страница - ЗАМЕНЯЕМ данные (обновление или смена фильтра)
                         targetStorage.data = updatedOrdersData;
-                        console.log('✅ Redux: заменили данные (первая страница)', {
-                            newCount: updatedOrdersData.length,
-                            statuses: updatedOrdersData.slice(0, 3).map(o => o.status)
-                        });
                     } else {
                         // Если это не первая страница - ДОБАВЛЯЕМ к существующим (пагинация)
                         // Объединяем по ID, чтобы избежать дублей
                         const existingIds = new Set(targetStorage.data.map(o => o.id));
                         const newOrders = updatedOrdersData.filter(o => !existingIds.has(o.id));
                         targetStorage.data = [...targetStorage.data, ...newOrders];
-                        console.log('✅ Redux: добавили новые заказы (пагинация)', {
-                            existing: targetStorage.data.length - newOrders.length,
-                            added: newOrders.length,
-                            total: targetStorage.data.length
-                        });
                     }
 
                     targetStorage.total = data.pagination?.total || data.total || 0;

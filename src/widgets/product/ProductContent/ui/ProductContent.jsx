@@ -11,7 +11,7 @@ import { FeedbackAvatars } from '@entities/feedback/ui/FeedbackAvatars';
 import { Border } from '@app/styles/GlobalStyles';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { ScrollableBackgroundGradient } from "@shared/ui/BackgroundGradient";
-import {HighlightChange} from "@shared/ui/HighlightChange/HighlightChange";
+import { HighlightChange } from "@shared/ui/HighlightChange/HighlightChange";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 

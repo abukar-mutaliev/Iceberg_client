@@ -76,7 +76,7 @@ export const getBaseUrl = () => {
          }
          return 'http://localhost:5000';
      }
-    // return 'http://212.67.11.134:5000';
+    return 'http://212.67.11.134:5000';
 
 };
 

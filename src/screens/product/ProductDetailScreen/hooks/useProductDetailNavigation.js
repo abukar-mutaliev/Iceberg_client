@@ -90,7 +90,8 @@ export const useProductDetailNavigation = (navigation, fromScreen, params) => {
             fromScreen
         });
         
-        dispatch(resetCurrentProduct());
+        // НЕ сбрасываем currentProduct здесь - новый экран сам загрузит свой продукт
+        // Это позволяет при возврате назад корректно восстановить предыдущий продукт
         
         navigation.push('ProductDetail', {
             productId: similarProductId,
@@ -98,7 +99,7 @@ export const useProductDetailNavigation = (navigation, fromScreen, params) => {
             previousProductId: currentProductId,
             originalFromScreen: fromScreen || 'MainTab'
         });
-    }, [navigation, fromScreen, dispatch]);
+    }, [navigation, fromScreen]);
 
     return {
         handleGoBack,

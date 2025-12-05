@@ -20,10 +20,6 @@ export const useOrderCountsBackground = () => {
         
         // Проверяем наличие токенов перед загрузкой
         if (!tokens || !tokens.accessToken || !tokens.refreshToken) {
-            console.log('ℹ️ [useOrderCountsBackground] Skipping - no valid tokens', {
-                hasAccessToken: !!tokens?.accessToken,
-                hasRefreshToken: !!tokens?.refreshToken
-            });
             return;
         }
         
@@ -39,64 +35,18 @@ export const useOrderCountsBackground = () => {
         const shouldLoad = isAdmin || (isEmployee && hasEmployeeData);
         
         if (shouldLoad) {
-            console.log('📊 [useOrderCountsBackground] Starting background order counts loading', {
-                role: currentUser.role,
-                userId: currentUser.id,
-                employeeId: currentUser?.employee?.id,
-                warehouseId: currentUser?.employee?.warehouseId,
-                timestamp: new Date().toISOString()
-            });
-            
             // НЕМЕДЛЕННАЯ загрузка счетчиков (без задержки)
-            console.log('📊 [useOrderCountsBackground] Dispatching fetchOrderCounts IMMEDIATELY', {
-                hasEmployee: !!currentUser?.employee,
-                employeeId: currentUser?.employee?.id,
-                warehouseId: currentUser?.employee?.warehouseId
-            });
-            
-            dispatch(fetchOrderCounts())
-                .then(result => {
-                    console.log('✅ [useOrderCountsBackground] Initial order counts loaded', {
-                        payload: result.payload,
-                        timestamp: new Date().toISOString()
-                    });
-                })
-                .catch(error => {
-                    console.error('❌ [useOrderCountsBackground] Error loading order counts:', error);
-                });
+            dispatch(fetchOrderCounts());
             
             // Затем обновляем каждые 2 минуты
             intervalRef.current = setInterval(() => {
                 if (isMountedRef.current) {
-                    console.log('📊 [useOrderCountsBackground] Background refresh of order counts', {
-                        timestamp: new Date().toISOString()
-                    });
-                    dispatch(fetchOrderCounts())
-                        .then(result => {
-                            console.log('✅ [useOrderCountsBackground] Order counts refreshed', {
-                                payload: result.payload
-                            });
-                        })
-                        .catch(error => {
-                            console.error('❌ [useOrderCountsBackground] Error refreshing order counts:', error);
-                        });
+                    dispatch(fetchOrderCounts());
                 }
             }, 2 * 60 * 1000); // 2 минуты
-        } else {
-            console.log('ℹ️ [useOrderCountsBackground] Skipping - waiting for employee data or not eligible', {
-                role: currentUser?.role,
-                userId: currentUser?.id,
-                isEmployee,
-                isAdmin,
-                hasEmployeeData,
-                shouldLoad
-            });
         }
 
         return () => {
-            console.log('🔌 [useOrderCountsBackground] Cleanup', {
-                hadInterval: !!intervalRef.current
-            });
             isMountedRef.current = false;
             
             if (intervalRef.current) {

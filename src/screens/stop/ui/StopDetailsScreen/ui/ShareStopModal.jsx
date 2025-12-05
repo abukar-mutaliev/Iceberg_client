@@ -184,11 +184,119 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
         return null;
     }, []);
 
+    // Фильтрация комнат: исключаем каналы и закрытые группы (если пользователь не админ)
+    const filteredRooms = useMemo(() => {
+        if (!rooms || !Array.isArray(rooms)) {
+            return [];
+        }
+        
+        return rooms.filter(room => {
+            if (!room || !room.id) {
+                return false;
+            }
+            
+            // Для каналов (BROADCAST): показываем только админам, водителям и сотрудникам
+            if (room?.type === 'BROADCAST') {
+                const allowedRoles = ['ADMIN', 'DRIVER', 'EMPLOYEE'];
+                if (currentUserRole && allowedRoles.includes(currentUserRole)) {
+                    return true;
+                }
+                return false;
+            }
+            
+            // Проверяем, является ли группа закрытой (isLocked может быть true, 1, или строкой "true")
+            const isLocked = room?.isLocked === true || room?.isLocked === 1 || room?.isLocked === 'true' || String(room?.isLocked).toLowerCase() === 'true';
+            
+            if (isLocked) {
+                // Админы и системные админы могут видеть все закрытые группы
+                if (currentUserRole === 'ADMIN' || currentUserRole === 'SYSADMIN') {
+                    if (__DEV__) {
+                        console.log('ShareStopModal: Showing locked room for admin', {
+                            roomId: room.id,
+                            roomTitle: room.title,
+                            currentUserRole
+                        });
+                    }
+                    return true;
+                }
+                
+                // Проверяем, является ли пользователь администратором группы
+                if (room?.participants && Array.isArray(room.participants) && room.participants.length > 0) {
+                    const currentParticipant = room.participants.find(p => {
+                        const participantId = p?.userId ?? p?.user?.id;
+                        return participantId === currentUserId;
+                    });
+                    
+                    // Логирование для отладки
+                    if (__DEV__) {
+                        console.log('ShareStopModal: Checking locked room', {
+                            roomId: room.id,
+                            roomTitle: room.title,
+                            isLocked,
+                            currentUserId,
+                            currentUserRole,
+                            hasParticipant: !!currentParticipant,
+                            participantRole: currentParticipant?.role,
+                            participants: room.participants.map(p => ({
+                                id: p?.userId ?? p?.user?.id,
+                                role: p?.role
+                            }))
+                        });
+                    }
+                    
+                    // Показываем только если пользователь является админом или владельцем группы
+                    if (currentParticipant?.role === 'ADMIN' || currentParticipant?.role === 'OWNER') {
+                        if (__DEV__) {
+                            console.log('ShareStopModal: Showing locked room for admin/owner', {
+                                roomId: room.id,
+                                roomTitle: room.title,
+                                participantRole: currentParticipant?.role
+                            });
+                        }
+                        return true;
+                    }
+                }
+                
+                // В остальных случаях скрываем закрытую группу
+                if (__DEV__) {
+                    console.log('ShareStopModal: Hiding locked room', {
+                        roomId: room.id,
+                        roomTitle: room.title,
+                        hasParticipants: !!(room?.participants && Array.isArray(room.participants)),
+                        participantsCount: room?.participants?.length || 0
+                    });
+                }
+                return false;
+            }
+            
+            return true;
+        });
+    }, [rooms, currentUserId, currentUserRole]);
+
     // Проверка, может ли пользователь отправлять сообщения в комнату
     const canSendToRoom = useCallback((room) => {
         // Личные чаты всегда доступны
         if (room?.type === 'DIRECT') {
             return true;
+        }
+
+        // Для каналов (BROADCAST): разрешаем админам, водителям и сотрудникам отправлять остановки
+        if (room?.type === 'BROADCAST') {
+            const allowedRoles = ['ADMIN', 'DRIVER', 'EMPLOYEE'];
+            if (currentUserRole && allowedRoles.includes(currentUserRole)) {
+                return true;
+            }
+            // Также проверяем, является ли пользователь администратором комнаты
+            if (room?.participants && Array.isArray(room.participants)) {
+                const currentParticipant = room.participants.find(p => {
+                    const participantId = p?.userId ?? p?.user?.id;
+                    return participantId === currentUserId;
+                });
+                if (currentParticipant?.role === 'ADMIN' || currentParticipant?.role === 'OWNER') {
+                    return true;
+                }
+            }
+            return false;
         }
 
         // Если комната не заблокирована, доступна всем
@@ -202,11 +310,6 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
             return true;
         }
 
-        // Водители могут отправлять в каналы (BROADCAST), даже если закрыты
-        if (currentUserRole === 'DRIVER' && room?.type === 'BROADCAST') {
-            return true;
-        }
-
         // Проверяем, является ли пользователь администратором комнаты
         if (room?.participants && Array.isArray(room.participants)) {
             const currentParticipant = room.participants.find(p => {
@@ -214,7 +317,8 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
                 return participantId === currentUserId;
             });
             
-            if (currentParticipant?.isAdmin) {
+            // Проверяем роль участника (ADMIN или OWNER)
+            if (currentParticipant?.role === 'ADMIN' || currentParticipant?.role === 'OWNER') {
                 return true;
             }
         }
@@ -250,10 +354,16 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
                     [
                         {
                             text: 'OK',
-                            style: 'primary'
+                            style: 'primary',
+                            onPress: () => {
+                                onClose();
+                            }
                         }
                     ]
                 );
+            } else {
+                // Закрываем модальное окно даже если не показываем алерт
+                onClose();
             }
         } finally {
             setSending(false);
@@ -299,7 +409,10 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
                 [
                     {
                         text: 'OK',
-                        style: 'primary'
+                        style: 'primary',
+                        onPress: () => {
+                            onClose();
+                        }
                     }
                 ]
             );
@@ -483,7 +596,7 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
                         />
                     ) : (
                         <FlatList
-                            data={rooms}
+                            data={filteredRooms}
                             renderItem={renderRoom}
                             keyExtractor={(item) => String(item?.id ?? item?.roomId ?? 'unknown')}
                             contentContainerStyle={styles.roomsList}

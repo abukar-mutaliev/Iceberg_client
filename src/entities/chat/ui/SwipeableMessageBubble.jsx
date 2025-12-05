@@ -23,14 +23,7 @@ export const SwipeableMessageBubble = ({
   // Отключаем свайп если активен режим выбора или контекстное меню
   const isSwipeDisabled = isSelectionMode || hasContextMenu;
 
-  if (__DEV__ && isSwipeDisabled) {
-    console.log('🔄 SwipeableMessageBubble disabled:', {
-      messageId: message?.id,
-      isSelectionMode,
-      hasContextMenu,
-      isSwipeDisabled
-    });
-  }
+
 
   const onGestureEvent = Animated.event(
     [{ nativeEvent: { translationX: translateX } }],

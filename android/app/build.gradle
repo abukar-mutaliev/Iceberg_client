@@ -174,3 +174,6 @@ dependencies {
         implementation jscFlavor
     }
 }
+
+// Apply Google Services Plugin for FCM (OneSignal)
+apply plugin: 'com.google.gms.google-services'

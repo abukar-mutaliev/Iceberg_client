@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react';
 // eslint-disable-next-line import/no-unresolved
 import io from 'socket.io-client/dist/socket.io.js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useDispatch, useSelector } from 'react-redux';
+import { useDispatch, useSelector, useStore } from 'react-redux';
 import { AppState } from 'react-native';
 import { getBaseUrl } from '@shared/api/api';
 import { featureFlags } from '@shared/config/featureFlags';
@@ -13,14 +13,18 @@ import {
   receiveSocketMessage,
   receiveMessageDeleted,
   setTyping,
+  setTypingActivity,
+  setLastActivityType,
   updateMessageStatus,
   updateUserOnlineStatus,
   setConnectionStatus,
   handleRoomDeleted,
   updatePollInMessage,
   updateRoomFromSocket,
+  updateMessageReactions,
 } from '@entities/chat/model/slice';
-import { setGlobalSocket } from './useChatSocketActions';
+import { selectLastActivityType } from '@entities/chat/model/selectors';
+import { setGlobalSocket, getActivityTypeCache, setActivityTypeCache } from './useChatSocketActions';
 
 // Simple throttle helper
 const throttle = (fn, wait) => {
@@ -37,6 +41,7 @@ const throttle = (fn, wait) => {
 
 export const useChatSocket = () => {
   const dispatch = useDispatch();
+  const store = useStore();
   const roomsState = useSelector((s) => s.chat?.rooms);
   // Проверяем и наличие пользователя И наличие токенов
   const isAuthenticated = useSelector((s) => 
@@ -47,6 +52,7 @@ export const useChatSocket = () => {
   const joinedRoomsRef = useRef(new Set());
   const appStateRef = useRef(AppState.currentState);
   const processedMessageIdsRef = useRef(new Set()); // Дедупликация сообщений
+  const processedReactionUpdatesRef = useRef(new Map()); // Дедупликация обновлений реакций: messageId -> timestamp
 
   // Отслеживаем состояние приложения для управления соединением
   useEffect(() => {
@@ -385,6 +391,8 @@ export const useChatSocket = () => {
           }
         });
 
+        // Удаляем старые обработчики перед регистрацией новых, чтобы избежать дублирования
+        socket.off('chat:reaction:added');
         socket.on('chat:reaction:added', (payload) => {
           // payload: { roomId, messageId, reaction }
           if (__DEV__) {
@@ -411,6 +419,7 @@ export const useChatSocket = () => {
           }));
         });
 
+        socket.off('chat:reaction:removed');
         socket.on('chat:reaction:removed', (payload) => {
           // payload: { roomId, messageId, reactionId }
           if (__DEV__) {
@@ -438,33 +447,182 @@ export const useChatSocket = () => {
         });
 
         // Обработчик обновления реакций (от сервера через WebSocket)
+        // Удаляем старый обработчик перед регистрацией нового, чтобы избежать дублирования
+        socket.off('chat:reaction:updated');
         socket.on('chat:reaction:updated', (payload) => {
           // payload: { messageId, reactions }
           if (__DEV__) {
             console.log('🔄 [WEBSOCKET] Reactions updated FULL:', {
               messageId: payload?.messageId,
               reactionsCount: payload?.reactions?.length,
-              reactions: JSON.stringify(payload?.reactions),
-              payload: JSON.stringify(payload)
+              reactions: payload?.reactions,
+              payload: payload,
+              hasReactions: !!payload?.reactions,
+              isArray: Array.isArray(payload?.reactions)
             });
           }
           
           if (!payload?.messageId) {
             if (__DEV__) {
-              console.error('❌ [WEBSOCKET] Invalid payload for reaction:updated', payload);
+              console.error('❌ [WEBSOCKET] Invalid payload for reaction:updated - missing messageId', payload);
             }
             return;
           }
           
+          if (!Array.isArray(payload?.reactions)) {
+            if (__DEV__) {
+              console.error('❌ [WEBSOCKET] Invalid payload for reaction:updated - reactions is not an array', {
+                reactions: payload?.reactions,
+                type: typeof payload?.reactions
+              });
+            }
+            return;
+          }
+          
+          // Дедупликация: проверяем, не обрабатывали ли мы это обновление недавно
+          const messageId = payload.messageId;
+          const now = Date.now();
+          const lastProcessed = processedReactionUpdatesRef.current.get(messageId);
+          
+          // Создаем упрощенный hash для сравнения (только emoji+userId, без ID и timestamp)
+          const reactionsSummary = payload.reactions
+            ?.map(r => `${r.emoji}:${r.userId}`)
+            .sort()
+            .join(',') || '';
+          
+          // Создаем hash для проверки дубликатов (включая количество реакций)
+          const reactionsHash = JSON.stringify(payload.reactions?.map(r => ({ emoji: r.emoji, userId: r.userId })).sort((a, b) => {
+            if (a.emoji !== b.emoji) return a.emoji.localeCompare(b.emoji);
+            return a.userId - b.userId;
+          }));
+          
+          // Если это то же самое обновление (тот же messageId и те же реакции) в течение последних 1000мс - игнорируем
+          if (lastProcessed && (now - lastProcessed.timestamp) < 1000 && lastProcessed.hash === reactionsHash) {
+            if (__DEV__) {
+              console.log('⏭️ [WEBSOCKET] Skipping duplicate reaction update', {
+                messageId,
+                timeSinceLastUpdate: now - lastProcessed.timestamp,
+                summary: reactionsSummary,
+                hash: reactionsHash,
+                lastTimestamp: lastProcessed.timestamp,
+                currentTimestamp: now
+              });
+            }
+            return;
+          }
+          
+          // Сохраняем информацию об обработанном обновлении ПЕРЕД обработкой
+          processedReactionUpdatesRef.current.set(messageId, {
+            timestamp: now,
+            summary: reactionsSummary,
+            hash: reactionsHash
+          });
+          
+          // Очищаем старые записи (старше 5 секунд)
+          for (const [msgId, data] of processedReactionUpdatesRef.current.entries()) {
+            if (now - data.timestamp > 5000) {
+              processedReactionUpdatesRef.current.delete(msgId);
+            }
+          }
+          
           // Обновляем реакции в сообщении
+          // ВАЖНО: Сервер является источником правды - всегда используем данные от сервера
+          if (__DEV__) {
+            console.log('✅ [WEBSOCKET] Dispatching updateMessageReactions', {
+              messageId: payload.messageId,
+              reactionsCount: payload.reactions?.length || 0,
+              reactions: payload.reactions,
+              reactionsIds: payload.reactions?.map(r => r.id),
+              timestamp: now
+            });
+          }
+          
           dispatch(updateMessageReactions({
             messageId: payload.messageId,
             reactions: payload.reactions || []
           }));
         });
 
-        socket.on('chat:typing', ({ roomId, userIds }) => {
-          dispatch(setTyping({ roomId, userIds }));
+        socket.on('chat:typing', (payload) => {
+          console.log('WebSocket: Received typing event:', JSON.stringify(payload));
+          const { roomId, userId, type, isVoice, isTyping, userIds } = payload;
+
+          if (isTyping && userId) {
+            // Определяем тип активности: сначала проверяем payload, затем используем сохраненный тип
+            let activityType = null;
+            
+            console.log('WebSocket: Checking payload:', { isVoice, type, roomId, userId });
+            
+            if (isVoice === true || type === 'voice') {
+              activityType = 'voice';
+              console.log('WebSocket: Determined type from payload: voice');
+            } else if (isVoice === false || type === 'text') {
+              activityType = 'text';
+              console.log('WebSocket: Determined type from payload: text');
+            } else {
+              // Если тип не указан в payload, используем сохраненный тип из синхронного кэша или Redux
+              const cachedType = getActivityTypeCache(roomId, userId);
+              const savedType = selectLastActivityType(store.getState(), roomId, userId);
+              console.log('WebSocket: No type in payload, checking cached type:', cachedType, 'and Redux type:', savedType);
+              
+              // Приоритет: Redux "voice" > кэш "voice" > кэш другой тип > Redux другой тип > дефолт
+              if (savedType === 'voice') {
+                // Если в Redux "voice", всегда используем его, даже если в кэше "text"
+                activityType = 'voice';
+                // Синхронизируем кэш с Redux
+                setActivityTypeCache(roomId, userId, 'voice');
+                console.log('WebSocket: Using voice type from Redux (priority)');
+              } else if (cachedType === 'voice') {
+                // Если в кэше "voice", используем его
+                activityType = 'voice';
+                console.log('WebSocket: Using cached voice type');
+              } else if (cachedType) {
+                // Если в кэше есть другой тип, используем его
+                activityType = cachedType;
+                console.log('WebSocket: Using cached type:', activityType);
+              } else if (savedType) {
+                // Если в кэше нет типа, используем Redux
+                activityType = savedType;
+                // Синхронизируем кэш с Redux только если это не перезапись "voice" на "text"
+                setActivityTypeCache(roomId, userId, savedType);
+                console.log('WebSocket: Using saved type from Redux:', activityType);
+              } else {
+                // Если сохраненного типа нет, используем 'text' по умолчанию
+                activityType = 'text';
+                console.log('WebSocket: No saved type, using default: text');
+              }
+            }
+            
+            // Если тип не определен, используем дефолтный "text"
+            if (!activityType) {
+              activityType = 'text';
+            }
+            
+            // Сохраняем тип активности в Redux
+            // В кэш сохраняем ТОЛЬКО если тип был явно указан в payload
+            // Если тип был взят из кэша, не перезаписываем кэш (он уже содержит правильное значение)
+            const wasTypeFromPayload = (isVoice !== undefined || type !== undefined);
+            
+            if (wasTypeFromPayload) {
+              // Тип был из payload - сохраняем в кэш и Redux
+              setActivityTypeCache(roomId, userId, activityType);
+              dispatch(setLastActivityType({ roomId, userId, type: activityType }));
+              console.log('WebSocket: Saved activity type from payload in cache and Redux:', activityType);
+            } else {
+              // Тип был из кэша или Redux - обновляем только Redux, кэш не трогаем
+              dispatch(setLastActivityType({ roomId, userId, type: activityType }));
+              console.log('WebSocket: Using cached/Redux type, updating only Redux:', activityType);
+            }
+            console.log('WebSocket: Final activity type:', activityType, 'for user:', userId);
+            
+            dispatch(setTypingActivity({ roomId, userId, type: activityType }));
+          } else if (!isTyping && userId) {
+            dispatch(setTypingActivity({ roomId, userId, type: null }));
+            // НЕ очищаем последний тип активности при остановке - он может понадобиться для следующего события
+          } else if (userIds && Array.isArray(userIds)) {
+            // Fallback для старого формата (если сервер еще не обновлен)
+            dispatch(setTyping({ roomId, userIds }));
+          }
         });
 
         // Обновление статусов сообщений в real-time
@@ -529,6 +687,10 @@ export const useChatSocket = () => {
     return () => {
       isMounted = false;
       if (socketRef.current) {
+        // Удаляем все обработчики перед отключением
+        socketRef.current.off('chat:reaction:added');
+        socketRef.current.off('chat:reaction:removed');
+        socketRef.current.off('chat:reaction:updated');
         socketRef.current.disconnect();
         socketRef.current = null;
         setGlobalSocket(null); // Очищаем глобальную ссылку

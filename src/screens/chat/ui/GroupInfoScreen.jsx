@@ -25,9 +25,6 @@ import { IconEdit } from '@shared/ui/Icon/Profile/IconEdit';
 import { ImageViewerModal } from '@shared/ui/ImageViewerModal/ui/ImageViewerModal';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
 
-// Максимальное количество участников в группе
-const MAX_MEMBERS_PER_GROUP = 500;
-
 // Анимированный переключатель в стиле WhatsApp
 const AnimatedSwitch = ({ value, disabled }) => {
   const animatedValue = useRef(new Animated.Value(value ? 1 : 0)).current;
@@ -316,20 +313,6 @@ export const GroupInfoScreen = ({ route, navigation }) => {
   };
 
   const handleAddMembers = () => {
-    const currentCount = participants.length;
-    
-    // Проверяем лимит перед переходом на экран добавления
-    if (currentCount >= MAX_MEMBERS_PER_GROUP) {
-      const isBroadcast = roomData?.type === 'BROADCAST';
-      showError(
-        'Лимит достигнут',
-        isBroadcast 
-          ? `Канал уже достиг максимального количества подписчиков (${MAX_MEMBERS_PER_GROUP}). Невозможно добавить новых подписчиков.`
-          : `Группа уже достигла максимального количества участников (${MAX_MEMBERS_PER_GROUP}). Невозможно добавить новых участников.`
-      );
-      return;
-    }
-    
     navigation.navigate('AddGroupMembers', { 
       roomId,
       currentMembers: participants.map(p => p.userId || p.user?.id).filter(Boolean)
@@ -872,17 +855,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
                   : `${participantsCount} ${roomData?.type === 'BROADCAST' ? 'подписчик' : 'участник'}${participantsCount === 1 ? '' : participantsCount < 5 ? 'а' : 'ов'}`
                 }
               </Text>
-              {!(roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT') && (
-                <Text style={styles.membersLimitText}>
-                  {participantsCount}/{MAX_MEMBERS_PER_GROUP}
-                </Text>
-              )}
             </View>
-            {participantsCount >= MAX_MEMBERS_PER_GROUP && !(roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT') && (
-              <Text style={styles.limitReachedText}>
-                Достигнут лимит {roomData?.type === 'BROADCAST' ? 'подписчиков' : 'участников'}
-              </Text>
-            )}
             {roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT' && (
               <Text style={styles.contactsHelpText}>
                 Нажмите на контакт, чтобы начать чат и задать вопрос
@@ -890,8 +863,8 @@ export const GroupInfoScreen = ({ route, navigation }) => {
             )}
           </View>
 
-          {/* Add Members Button - только для владельца и админов, скрываем если достигнут лимит */}
-          {canEditGroup && participantsCount < MAX_MEMBERS_PER_GROUP && (
+          {/* Add Members Button - только для владельца и админов */}
+          {canEditGroup && (
             <TouchableOpacity 
               style={styles.addMembersButton} 
               onPress={handleAddMembers}
@@ -907,14 +880,6 @@ export const GroupInfoScreen = ({ route, navigation }) => {
               </View>
               <Text style={styles.addMembersText}>Добавить участников</Text>
             </TouchableOpacity>
-          )}
-          
-          {canEditGroup && participantsCount >= MAX_MEMBERS_PER_GROUP && (
-            <View style={styles.limitInfoContainer}>
-              <Text style={styles.limitInfoText}>
-                {roomData?.type === 'BROADCAST' ? 'Канал достиг' : 'Группа достигла'} максимального количества {roomData?.type === 'BROADCAST' ? 'подписчиков' : 'участников'} ({MAX_MEMBERS_PER_GROUP})
-              </Text>
-            </View>
           )}
 
           {/* Переключатель закрытия группы - только для обычных групп, не для каналов */}
@@ -1484,35 +1449,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  membersLimitText: {
-    fontSize: 12,
-    color: '#8696A0',
-    fontWeight: '400',
-  },
-  limitReachedText: {
-    fontSize: 12,
-    color: '#FF3B30',
-    fontWeight: '500',
-    marginTop: 4,
-  },
   contactsHelpText: {
     fontSize: 13,
     color: '#8696A0',
     marginTop: 8,
     lineHeight: 18,
-  },
-  limitInfoContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#FFF3E0',
-    borderRadius: 8,
-    marginHorizontal: 16,
-    marginTop: 8,
-  },
-  limitInfoText: {
-    fontSize: 14,
-    color: '#E65100',
-    textAlign: 'center',
   },
 });
 

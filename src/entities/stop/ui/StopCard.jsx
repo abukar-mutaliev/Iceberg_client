@@ -93,8 +93,10 @@ const formatFriendlyTime = (startTime, endTime) => {
 const getPhotoUrl = (photoPath) => {
     if (!photoPath) return null;
     if (typeof photoPath !== 'string') return photoPath.uri;
+    // Если URL уже полный, возвращаем его как есть
     if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) {
-        return photoPath.replace('https://', 'http://');
+        // Возвращаем URL как есть, без замены https на http
+        return photoPath;
     }
     const baseUrl = getBaseUrl();
     // Убираем ведущий слеш если есть и добавляем /uploads/
