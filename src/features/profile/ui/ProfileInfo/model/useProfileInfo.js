@@ -114,13 +114,6 @@ export const useProfileInfo = (isAuthenticated, tokens, currentUser, navigation)
             icon: <IconHelp />,
             onPress: () => navigation.navigate('HelpCenter'),
         },
-        // ТЕСТОВАЯ КНОПКА для push-уведомлений (только в development)
-        ...(__DEV__ ? [{
-            id: 'push-test',
-            title: 'Тест Push-уведомлений',
-            icon: <Icon name="notifications" size={24} color="#666666" />,
-            onPress: () => navigation.navigate('PushNotificationTest'),
-        }] : []),
     ];
 
     // Проверка доступа к панели администратора

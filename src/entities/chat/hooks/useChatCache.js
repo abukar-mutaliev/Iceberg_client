@@ -231,14 +231,14 @@ export const useCachedMessages = (roomId) => {
 
   // Фоновая синхронизация после загрузки из кэша (тихая, без блокировки)
   useEffect(() => {
-    if (!isLoadingFromCache && roomId && messages.length > 0 && !isRoomDeleted) {
-      // Задержка перед синхронизацией чтобы не мешать рендерингу
+    if (!isLoadingFromCache && roomId && messages.length > 0 && !isRoomDeleted && cacheInfo?.isStale) {
+      // Синхронизировать только если кэш устарел
       const timer = setTimeout(() => {
         syncWithServer({ silent: true });
-      }, 1000);
+      }, 3000);
       return () => clearTimeout(timer);
     }
-  }, [isLoadingFromCache, roomId, messages.length, syncWithServer, isRoomDeleted]);
+  }, [isLoadingFromCache, roomId, messages.length, syncWithServer, isRoomDeleted, cacheInfo?.isStale]);
 
   // Добавление нового сообщения в кэш
   const addMessageToCache = useCallback(async (message) => {

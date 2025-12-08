@@ -326,6 +326,7 @@ export const slideFromBottom = {
 };
 
 // Новая анимация для стека с улучшенным эффектом глубины
+// Быстрая версия для немедленной навигации
 export const cardStackTransition = {
     cardStyleInterpolator: ({ current, next, layouts }) => {
         const translateX = current.progress.interpolate({
@@ -397,26 +398,16 @@ export const cardStackTransition = {
     },
     transitionSpec: {
         open: {
-            animation: 'spring',
+            animation: 'timing',
             config: {
-                stiffness: 800,
-                damping: 400,
-                mass: 2,
-                overshootClamping: true,
-                restDisplacementThreshold: 0.01,
-                restSpeedThreshold: 0.01,
+                duration: 250,
                 useNativeDriver: true,
             },
         },
         close: {
-            animation: 'spring',
+            animation: 'timing',
             config: {
-                stiffness: 800,
-                damping: 400,
-                mass: 2,
-                overshootClamping: true,
-                restDisplacementThreshold: 0.01,
-                restSpeedThreshold: 0.01,
+                duration: 200,
                 useNativeDriver: true,
             },
         },
@@ -424,6 +415,8 @@ export const cardStackTransition = {
     gestureEnabled: true,
     gestureDirection: 'horizontal',
     cardOverlayEnabled: true,
+    // Разрешаем прерывание анимации при навигации назад
+    animationEnabled: true,
 };
 
 export const defaultScreenOptions = {

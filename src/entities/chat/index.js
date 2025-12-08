@@ -14,7 +14,7 @@ export { ReplyPreview } from './ui/ReplyPreview';
 export { MessageReactions } from './ui/MessageReactions';
 export { ReactionPicker } from './ui/ReactionPicker';
 export { FullEmojiPicker } from './ui/FullEmojiPicker';
-export { TypingIndicator } from './ui/TypingIndicator';
+export { TypingIndicator, useTypingIndicatorHeight } from './ui/TypingIndicator';
 export { useChatSocket } from './hooks/useChatSocket';
 export { useChatSocketActions } from './hooks/useChatSocketActions';
 

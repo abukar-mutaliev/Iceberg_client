@@ -1,5 +1,5 @@
 import React, {useEffect, useState, useRef} from 'react';
-import {View, ActivityIndicator, Text, Button, StyleSheet, Animated} from 'react-native';
+import {View, ActivityIndicator, Text, Button, StyleSheet, Animated, Platform} from 'react-native';
 import {AppNavigator} from '@app/providers/navigation/AppNavigator';
 import * as Font from 'expo-font';
 import {AppProviders} from './providers';
@@ -254,9 +254,11 @@ const AppInitializer = ({children}) => {
 };
 
 const AppContent = () => {
+    // Отключаем загрузку шрифтов в production/preview сборках для стабильности
     const [fontsLoaded, setFontsLoaded] = useState(__DEV__ ? false : true);
 
     useEffect(() => {
+        // Загружаем шрифты только в dev режиме (Expo Go)
         if (!__DEV__) {
             setFontsLoaded(true);
             return;
@@ -267,27 +269,53 @@ const AppContent = () => {
                 const fontMap = {};
 
                 try {
-                    fontMap['BezierSans'] = require('../assets/fonts/BezierSans_Regular.ttf');
-                } catch (e) {}
+                    const font = require('../assets/fonts/BezierSans_Regular.ttf');
+                    if (font !== undefined && font !== null) {
+                        fontMap['BezierSans'] = font;
+                    }
+                } catch (e) {
+                    console.log('BezierSans font not found:', e.message);
+                }
 
                 try {
-                    fontMap['SFProText'] = require('../assets/fonts/SFProText-Regular.ttf');
-                } catch (e) {}
+                    const font = require('../assets/fonts/SFProText-Regular.ttf');
+                    if (font !== undefined && font !== null) {
+                        fontMap['SFProText'] = font;
+                    }
+                } catch (e) {
+                    console.log('SFProText font not found:', e.message);
+                }
 
                 try {
-                    fontMap['SF Pro Display'] = require('../assets/fonts/SF-Pro-Display-Regular.otf');
-                } catch (e) {}
+                    const font = require('../assets/fonts/SF-Pro-Display-Regular.otf');
+                    if (font !== undefined && font !== null) {
+                        fontMap['SF Pro Display'] = font;
+                    }
+                } catch (e) {
+                    console.log('SF Pro Display font not found:', e.message);
+                }
 
                 try {
-                    fontMap['SFProDisplayMedium'] = require('../assets/fonts/SF-Pro-Display-Medium.otf');
-                } catch (e) {}
+                    const font = require('../assets/fonts/SF-Pro-Display-Medium.otf');
+                    if (font !== undefined && font !== null) {
+                        fontMap['SFProDisplayMedium'] = font;
+                    }
+                } catch (e) {
+                    console.log('SFProDisplayMedium font not found:', e.message);
+                }
 
                 if (Object.keys(fontMap).length > 0) {
+                    console.log('Loading fonts:', Object.keys(fontMap));
                     await Font.loadAsync(fontMap);
+                    console.log('Fonts loaded successfully');
+                } else {
+                    console.log('No fonts to load, using system fonts');
                 }
 
                 setFontsLoaded(true);
             } catch (e) {
+                console.error('Error loading fonts:', e.message);
+                // В случае ошибки все равно продолжаем с системными шрифтами
                 setFontsLoaded(true);
             }
         }
@@ -365,7 +393,7 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: '#3339B0',
         textAlign: 'center',
-        fontFamily: __DEV__ ? 'System' : 'System',
+        fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif',
     },
 
     errorContainer: {

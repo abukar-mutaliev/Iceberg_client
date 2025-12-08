@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { View, TextInput, TouchableOpacity, Text, StyleSheet, Platform, Modal } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useDispatch, useSelector } from 'react-redux';
@@ -8,11 +8,13 @@ import { AttachmentPreview } from './AttachmentPreview';
 import { VoiceRecorder } from './VoiceRecorder';
 import { PollCreationModal } from './PollCreationModal';
 import { ReplyPreview } from './ReplyPreview';
+import { FullEmojiPicker } from './FullEmojiPicker';
 import { AttachIcon } from '@shared/ui/Icon/AttachIcon';
 import { CameraIcon } from '@shared/ui/Icon/CameraIcon';
 import { Ionicons } from '@expo/vector-icons';
 import ChatApi from '@entities/chat/api/chatApi';
 import { useChatSocketActions } from '@entities/chat/hooks/useChatSocketActions';
+import { playSendSound } from '@entities/chat/lib/sendSound';
 
 export const Composer = ({ roomId, onTyping, replyTo, onCancelReply, disabled = false }) => {
   const dispatch = useDispatch();
@@ -25,8 +27,10 @@ export const Composer = ({ roomId, onTyping, replyTo, onCancelReply, disabled = 
   const [isRecording, setIsRecording] = useState(false);
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   const [showPollModal, setShowPollModal] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const isSendingRef = useRef(false);
   const typingTimeoutRef = useRef(null);
+  const textInputRef = useRef(null);
 
   const canSend = useMemo(() => !disabled && (text.trim().length > 0 || files.length > 0), [disabled, text, files.length]);
   const showVoiceButton = useMemo(() => !disabled && text.trim().length === 0 && files.length === 0, [disabled, text, files.length]);
@@ -224,6 +228,9 @@ export const Composer = ({ roomId, onTyping, replyTo, onCancelReply, disabled = 
           temporaryId,
           replyToId: replyToIdToSend
         })).unwrap();
+        
+        // Воспроизводим звук отправки
+        playSendSound();
       }
       
       if (currentText.length > 0) {
@@ -270,6 +277,9 @@ export const Composer = ({ roomId, onTyping, replyTo, onCancelReply, disabled = 
           console.log('📤 Composer: Sending message to server:', { temporaryId, roomId, replyToId: replyToIdToSend });
         }
         await dispatch(sendText({ roomId, content: currentText, temporaryId, replyToId: replyToIdToSend })).unwrap();
+        
+        // Воспроизводим звук отправки
+        playSendSound();
       }
     } catch (error) {
       console.error('Ошибка отправки сообщения:', error);
@@ -341,6 +351,7 @@ export const Composer = ({ roomId, onTyping, replyTo, onCancelReply, disabled = 
           duration: voiceData.duration,
           waveform: voiceData.waveform || [], // ✅ Добавляем waveform
         }],
+
         replyToId: replyToIdToSend,
         replyTo: replyToData,
         status: 'SENDING',
@@ -358,6 +369,9 @@ export const Composer = ({ roomId, onTyping, replyTo, onCancelReply, disabled = 
         temporaryId,
         replyToId: replyToIdToSend
       })).unwrap();
+      
+      // Воспроизводим звук отправки
+      playSendSound();
       
       if (__DEV__) {
         console.log('✅ Голосовое сообщение успешно отправлено');
@@ -423,12 +437,25 @@ export const Composer = ({ roomId, onTyping, replyTo, onCancelReply, disabled = 
         temporaryId,
         replyToId: replyToIdToSend
       })).unwrap();
+      
+      // Воспроизводим звук отправки
+      playSendSound();
     } catch (error) {
       console.error('❌ Ошибка отправки опроса:', error);
     } finally {
       isSendingRef.current = false;
     }
   };
+
+  // Обработчик выбора эмодзи для вставки в текст
+  const handleEmojiSelect = useCallback((emoji) => {
+    setText((prevText) => prevText + emoji);
+    setShowEmojiPicker(false);
+    // Фокусируемся обратно на поле ввода
+    setTimeout(() => {
+      textInputRef.current?.focus();
+    }, 100);
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -451,7 +478,23 @@ export const Composer = ({ roomId, onTyping, replyTo, onCancelReply, disabled = 
           )}
           
           <View style={styles.inputWrapper}>
+            {/* Кнопка эмодзи слева */}
+            {!disabled && (
+              <TouchableOpacity 
+                onPress={() => {
+                  if (!disabled) {
+                    setShowEmojiPicker(true);
+                  }
+                }} 
+                style={styles.emojiBtn}
+                disabled={disabled}
+              >
+                <Ionicons name="happy-outline" size={24} color={disabled ? "#CCCCCC" : "#8696A0"} />
+              </TouchableOpacity>
+            )}
+            
             <TextInput
+              ref={textInputRef}
               style={[styles.input, disabled && styles.inputDisabled]}
               placeholder="Сообщение"
               value={text}
@@ -575,6 +618,13 @@ export const Composer = ({ roomId, onTyping, replyTo, onCancelReply, disabled = 
         onClose={() => setShowPollModal(false)}
         onSubmit={handleCreatePoll}
       />
+
+      {/* Эмодзи-пикер для вставки в текст */}
+      <FullEmojiPicker
+        visible={showEmojiPicker}
+        onClose={() => setShowEmojiPicker(false)}
+        onEmojiSelect={handleEmojiSelect}
+      />
     </View>
   );
 };
@@ -623,6 +673,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 4,
+  },
+  emojiBtn: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
   },
   input: {
     flex: 1,

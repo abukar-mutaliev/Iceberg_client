@@ -1,7 +1,12 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { 
     selectSimilarProducts,
+    selectOtherProducts,
+    selectProducts,
+    selectProductsHasMore,
+    selectProductsLoadingMore,
+    fetchProducts,
     resetCurrentProduct 
 } from '@entities/product';
 import { 
@@ -51,6 +56,22 @@ export const useProductDetailData = (productId, isMountedRef, createSafeTimeout,
         }
     });
 
+    const otherProducts = useSelector(state => {
+        if (!productId) return [];
+        try {
+            return selectOtherProducts(state, productId) || [];
+        } catch (error) {
+            console.warn('Error in selectOtherProducts:', error);
+            return [];
+        }
+    });
+
+    const hasMoreProducts = useSelector(selectProductsHasMore);
+    const isLoadingMoreProducts = useSelector(selectProductsLoadingMore);
+    const allProducts = useSelector(selectProducts);
+
+    const [otherProductsPage, setOtherProductsPage] = useState(1);
+
     const feedbacks = useSelector(state => {
         if (!productId) return [];
         try {
@@ -67,6 +88,23 @@ export const useProductDetailData = (productId, isMountedRef, createSafeTimeout,
             dispatch(fetchCategories());
         }
     }, [dispatch, categories]);
+
+    // Загрузка остальных товаров при монтировании (только если товаров нет в store)
+    useEffect(() => {
+        if (productId && (!allProducts || allProducts.length < 10)) {
+            // Загружаем первую страницу товаров, если их мало
+            dispatch(fetchProducts({ page: 1, limit: 20, refresh: false }));
+        }
+    }, [productId, dispatch, allProducts?.length]);
+
+    // Функция загрузки следующей страницы товаров
+    const loadMoreProducts = useCallback(() => {
+        if (!isLoadingMoreProducts && hasMoreProducts && productId) {
+            const nextPage = otherProductsPage + 1;
+            setOtherProductsPage(nextPage);
+            dispatch(fetchProducts({ page: nextPage, limit: 20, refresh: false }));
+        }
+    }, [isLoadingMoreProducts, hasMoreProducts, otherProductsPage, dispatch, productId]);
 
     // Обработка ошибок продукта
     useEffect(() => {
@@ -203,10 +241,14 @@ export const useProductDetailData = (productId, isMountedRef, createSafeTimeout,
         // Дополнительные данные
         categories,
         similarProducts,
+        otherProducts,
+        hasMoreProducts,
+        isLoadingMoreProducts,
         feedbacks,
         
         // Функции
-        handleRefreshFeedbacks
+        handleRefreshFeedbacks,
+        loadMoreProducts
     };
 };
 

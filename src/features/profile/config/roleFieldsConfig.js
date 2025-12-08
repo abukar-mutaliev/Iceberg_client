@@ -18,9 +18,13 @@ export const roleFieldsConfig = {
             id: 'phone',
             type: 'phone',
             label: 'Номер телефона',
-            placeholder: 'Введите номер телефона',
-            validation: (value) => !value || /^\+?[0-9]{10,15}$/.test(value),
-            errorMessage: 'Введите корректный номер телефона',
+            placeholder: '+7 (___) ___-__-__',
+            validation: (value) => {
+                if (!value) return true; // Поле необязательное
+                const digits = value.replace(/\D/g, '');
+                return digits.length === 11; // Должно быть 11 цифр (7 + 10 цифр номера)
+            },
+            errorMessage: 'Введите полный номер телефона',
             required: false,
             order: 2,
         },
@@ -82,9 +86,13 @@ export const roleFieldsConfig = {
             id: 'phone',
             type: 'phone',
             label: 'Номер телефона',
-            placeholder: 'Введите номер телефона',
-            validation: (value) => !value || /^\+?[0-9]{10,15}$/.test(value),
-            errorMessage: 'Введите корректный номер телефона',
+            placeholder: '+7 (___) ___-__-__',
+            validation: (value) => {
+                if (!value) return true; // Поле необязательное
+                const digits = value.replace(/\D/g, '');
+                return digits.length === 11; // Должно быть 11 цифр (7 + 10 цифр номера)
+            },
+            errorMessage: 'Введите полный номер телефона',
             required: false,
             order: 3,
         },
@@ -182,9 +190,13 @@ export const roleFieldsConfig = {
             id: 'phone',
             type: 'phone',
             label: 'Номер телефона',
-            placeholder: 'Введите номер телефона',
-            validation: (value) => !value || /^\+?[0-9]{10,15}$/.test(value),
-            errorMessage: 'Введите корректный номер телефона',
+            placeholder: '+7 (___) ___-__-__',
+            validation: (value) => {
+                if (!value) return true; // Поле необязательное
+                const digits = value.replace(/\D/g, '');
+                return digits.length === 11; // Должно быть 11 цифр (7 + 10 цифр номера)
+            },
+            errorMessage: 'Введите полный номер телефона',
             required: false,
             order: 3,
         },
@@ -244,9 +256,13 @@ export const roleFieldsConfig = {
             id: 'phone',
             type: 'phone',
             label: 'Номер телефона',
-            placeholder: 'Введите номер телефона',
-            validation: (value) => !value || /^\+?[0-9]{10,15}$/.test(value),
-            errorMessage: 'Введите корректный номер телефона',
+            placeholder: '+7 (___) ___-__-__',
+            validation: (value) => {
+                if (!value) return true; // Поле необязательное
+                const digits = value.replace(/\D/g, '');
+                return digits.length === 11; // Должно быть 11 цифр (7 + 10 цифр номера)
+            },
+            errorMessage: 'Введите полный номер телефона',
             required: false,
             order: 2,
         },
@@ -298,9 +314,13 @@ export const roleFieldsConfig = {
             id: 'phone',
             type: 'phone',
             label: 'Номер телефона',
-            placeholder: 'Введите номер телефона',
-            validation: (value) => !value || /^\+?[0-9]{10,15}$/.test(value),
-            errorMessage: 'Введите корректный номер телефона',
+            placeholder: '+7 (___) ___-__-__',
+            validation: (value) => {
+                if (!value) return true; // Поле необязательное
+                const digits = value.replace(/\D/g, '');
+                return digits.length === 11; // Должно быть 11 цифр (7 + 10 цифр номера)
+            },
+            errorMessage: 'Введите полный номер телефона',
             required: false,
             order: 2,
         },

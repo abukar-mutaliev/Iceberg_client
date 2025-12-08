@@ -138,14 +138,70 @@ class ChatCacheService {
       // Ограничиваем количество сообщений
       const messagesToSave = messages.slice(0, CONFIG.MAX_MESSAGES_PER_ROOM);
       
+      // Нормализуем waveform для голосовых сообщений перед сохранением
+      const normalizedMessages = messagesToSave.map(message => {
+        if (message.type === 'VOICE' && message.attachments?.length > 0) {
+          const normalizedAttachments = message.attachments.map(attachment => {
+            if (attachment.type === 'VOICE' && attachment.waveform) {
+              // Убеждаемся, что waveform в правильном формате для сохранения
+              let normalizedWaveform = attachment.waveform;
+              
+              // Если waveform - это массив, оставляем как есть (JSON.stringify обработает)
+              if (Array.isArray(normalizedWaveform)) {
+                // Все в порядке
+              } 
+              // Если waveform - это строка, проверяем, не двойная ли это JSON строка
+              else if (typeof normalizedWaveform === 'string') {
+                try {
+                  // Пытаемся распарсить, если это JSON строка
+                  const parsed = JSON.parse(normalizedWaveform);
+                  if (Array.isArray(parsed)) {
+                    // Нормализуем обратно в массив для правильного сохранения
+                    normalizedWaveform = parsed;
+                  }
+                } catch {
+                  // Если не JSON, оставляем как есть
+                }
+              }
+              
+              return {
+                ...attachment,
+                waveform: normalizedWaveform
+              };
+            }
+            return attachment;
+          });
+          
+          return {
+            ...message,
+            attachments: normalizedAttachments
+          };
+        }
+        return message;
+      });
+      
       // Сохраняем с метаданными
       const cacheData = {
         roomId,
-        messages: messagesToSave,
+        messages: normalizedMessages,
         cachedAt: Date.now(),
         version: 1,
       };
-      
+
+      // Debug logging
+      if (__DEV__) {
+        console.log(`💾 Saving ${normalizedMessages.length} messages to cache for room ${roomId}`);
+        normalizedMessages.slice(0, 3).forEach((msg, msgIndex) => {
+          if (msg.attachments?.length > 0) {
+            msg.attachments.forEach((att, attIndex) => {
+              if (att.type === 'VOICE') {
+                console.log(`💾 Voice attachment msg${msgIndex} att${attIndex}: duration=${att.duration}, size=${att.size}, waveformType=${typeof att.waveform}, waveformLength=${Array.isArray(att.waveform) ? att.waveform.length : 'N/A'}`);
+              }
+            });
+          }
+        });
+      }
+
       await AsyncStorage.setItem(
         this.getMessagesKey(roomId),
         JSON.stringify(cacheData)
@@ -180,7 +236,21 @@ class ChatCacheService {
 
       // Заменяем URL на локальные пути для кэшированных медиа
       const messagesWithLocalMedia = this.replaceWithLocalMedia(cacheData.messages);
-      
+
+      // Debug logging
+      if (__DEV__) {
+        console.log(`📖 Loaded ${messagesWithLocalMedia.length} messages from cache for room ${roomId}`);
+        messagesWithLocalMedia.slice(0, 3).forEach(msg => {
+          if (msg.attachments?.length > 0) {
+            msg.attachments.forEach(att => {
+              if (att.type === 'VOICE') {
+                console.log(`📖 Voice attachment: duration=${att.duration}, hasWaveform=${!!att.waveform}`);
+              }
+            });
+          }
+        });
+      }
+
       return {
         messages: messagesWithLocalMedia,
         cachedAt: cacheData.cachedAt,

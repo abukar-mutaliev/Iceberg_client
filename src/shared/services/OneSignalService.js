@@ -106,6 +106,8 @@ class OneSignalService {
                 console.log('[OneSignal] Уведомление нажато:', event);
                 const data = event.notification.additionalData;
                 if (data) {
+                    // Обновляем статус сообщения на DELIVERED при получении push-уведомления
+                    this.handleChatMessagePushNotification(data);
                     this.handleNotificationNavigation(data);
                 }
             });
@@ -113,13 +115,51 @@ class OneSignalService {
             // Обработчик получения уведомлений в foreground
             oneSignal.Notifications.addEventListener('foregroundWillDisplay', (event) => {
                 console.log('[OneSignal] Уведомление получено в foreground:', event);
-                // Уведомления в foreground обрабатываются автоматически
+                const data = event.notification?.additionalData;
+                if (data) {
+                    // Обновляем статус сообщения на DELIVERED при получении push-уведомления
+                    this.handleChatMessagePushNotification(data);
+                }
             });
 
             console.log('[OneSignal] ✅ Обработчики настроены');
 
         } catch (error) {
             console.error('[OneSignal] Ошибка настройки обработчиков:', error);
+        }
+    }
+
+    // Обработка push-уведомления о сообщении - обновление статуса на DELIVERED
+    handleChatMessagePushNotification(data) {
+        try {
+            // Проверяем, что это уведомление о сообщении чата
+            if (data?.type === 'CHAT_MESSAGE' && data?.messageId && data?.roomId) {
+                const messageId = parseInt(data.messageId, 10);
+                const roomId = parseInt(data.roomId, 10);
+                
+                if (messageId && roomId) {
+                    console.log('[OneSignal] Обновляем статус сообщения на DELIVERED:', { messageId, roomId });
+                    
+                    // Ленивая загрузка store и action для избежания циклических зависимостей
+                    try {
+                        // Динамический импорт для избежания циклических зависимостей
+                        const { store } = require('@app/store/store');
+                        const { updateMessageStatus } = require('@entities/chat/model/slice');
+                        
+                        // Обновляем статус сообщения на DELIVERED
+                        store.dispatch(updateMessageStatus({
+                            roomId,
+                            messageId,
+                            status: 'DELIVERED',
+                            deliveredAt: new Date().toISOString()
+                        }));
+                    } catch (importError) {
+                        console.warn('[OneSignal] Не удалось обновить статус сообщения (store недоступен):', importError.message);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('[OneSignal] Ошибка при обновлении статуса сообщения:', error);
         }
     }
 

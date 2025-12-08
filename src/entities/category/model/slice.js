@@ -291,14 +291,47 @@ const categorySlice = createSlice({
                 .addCase(fetchProductsByCategory.pending, (state) => {
                     state.productsLoading = true;
                     state.productsError = null;
+                    // НЕ очищаем продукты при обновлении - сохраняем старые до получения новых
+                    // Это предотвращает исчезновение товаров во время обновления
                 })
                 .addCase(fetchProductsByCategory.fulfilled, (state, action) => {
                     state.productsLoading = false;
-                    state.productsByCategory[action.payload.categoryId] = action.payload.products;
+                    // Обновляем продукты только если они есть в ответе
+                    if (action.payload && action.payload.categoryId) {
+                        const categoryId = action.payload.categoryId;
+                        const newProducts = action.payload.products;
+                        
+                        // Логируем для отладки
+                        console.log('[categorySlice] fetchProductsByCategory.fulfilled:', {
+                            categoryId,
+                            productsCount: Array.isArray(newProducts) ? newProducts.length : 0,
+                            hasProducts: Array.isArray(newProducts) && newProducts.length > 0,
+                            currentProductsCount: Array.isArray(state.productsByCategory[categoryId]) 
+                                ? state.productsByCategory[categoryId].length 
+                                : 0
+                        });
+                        
+                        // Обновляем продукты только если они есть в ответе
+                        // Если массив пустой, это может быть нормально (нет товаров в категории)
+                        // Но мы не должны очищать существующие товары, если ответ пустой
+                        if (Array.isArray(newProducts)) {
+                            // Если новые продукты есть, обновляем
+                            // Если новых продуктов нет, но старые есть - сохраняем старые
+                            // Это предотвращает исчезновение товаров при обновлении
+                            if (newProducts.length > 0) {
+                                state.productsByCategory[categoryId] = newProducts;
+                            } else if (!state.productsByCategory[categoryId] || state.productsByCategory[categoryId].length === 0) {
+                                // Обновляем только если старых продуктов тоже нет
+                                state.productsByCategory[categoryId] = [];
+                            }
+                            // Если новых продуктов нет, но старые есть - ничего не делаем
+                        }
+                    }
                 })
                 .addCase(fetchProductsByCategory.rejected, (state, action) => {
                     state.productsLoading = false;
                     state.productsError = action.payload;
+                    // НЕ очищаем продукты при ошибке - сохраняем старые данные
                 })
 
                 .addCase(updateCategory.pending, setPending)

@@ -457,6 +457,7 @@ const BubbleContainer = ({
                 !isSelectionMode && isContextMenuActive && (isOwn ? styles.contextMenuActiveContainerOwn : styles.contextMenuActiveContainerOther)
             ]}
             onLongPress={handleLongPress}
+            delayLongPress={300}
             onPress={canPress ? handlePress : undefined}
             activeOpacity={canPress ? 0.7 : 1}
             disabled={false}
@@ -834,16 +835,6 @@ const StopMessage = ({
         driverPhone: stop.driverPhone || stop.driver?.phone,
         driverUserId: stop.driverUserId || stop.driver?.userId
     };
-
-    // Логирование для отладки
-    if (__DEV__) {
-        console.log('StopMessage: transformedStop', {
-            stopId: transformedStop.stopId,
-            hasPhoto: !!transformedStop.photo,
-            photo: transformedStop.photo,
-            originalStop: stop
-        });
-    }
 
     // Используем stopId из transformedStop для навигации
     const finalStopId = transformedStop.stopId || stopId;
@@ -1246,35 +1237,14 @@ export const MessageBubble = memo(({
             if (message?.stop) {
                 stopData = message.stop;
                 stopId = stopData?.id || message?.stopId;
-                // Логирование для отладки
-                if (__DEV__) {
-                    console.log('StopMessage: Using message.stop relation', {
-                        stopId,
-                        hasPhoto: !!stopData?.photo,
-                        photo: stopData?.photo,
-                        stopData
-                    });
-                }
             }
             // Если не получилось, пробуем из content
             else if (message?.content) {
                 stopData = JSON.parse(message.content);
                 stopId = stopData?.stopId || message?.stopId;
-                // Логирование для отладки
-                if (__DEV__) {
-                    console.log('StopMessage: Using message.content', {
-                        stopId,
-                        hasPhoto: !!stopData?.photo,
-                        photo: stopData?.photo,
-                        stopData
-                    });
-                }
             }
         } catch (error) {
             // Ошибка парсинга обрабатывается через fallback UI
-            if (__DEV__) {
-                console.error('StopMessage: Error parsing stop data', error);
-            }
             return (
                 <BubbleContainer
                     isOwn={isOwn}

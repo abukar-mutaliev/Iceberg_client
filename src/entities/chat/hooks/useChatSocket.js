@@ -25,6 +25,7 @@ import {
 } from '@entities/chat/model/slice';
 import { selectLastActivityType } from '@entities/chat/model/selectors';
 import { setGlobalSocket, getActivityTypeCache, setActivityTypeCache } from './useChatSocketActions';
+import { playReceiveSound } from '@entities/chat/lib/receiveSound';
 
 // Simple throttle helper
 const throttle = (fn, wait) => {
@@ -313,6 +314,8 @@ export const useChatSocket = () => {
         socket.on('chat:message:new', (payload) => {
           // payload: { roomId, message }
           const messageId = payload?.message?.id;
+          const roomId = payload?.roomId;
+          const message = payload?.message;
           
           // Дедупликация: проверяем, не обрабатывали ли мы уже это сообщение
           if (messageId && processedMessageIdsRef.current.has(messageId)) {
@@ -328,6 +331,20 @@ export const useChatSocket = () => {
               const idsArray = Array.from(processedMessageIdsRef.current);
               idsArray.slice(0, 500).forEach(id => processedMessageIdsRef.current.delete(id));
             }
+          }
+          
+          // Воспроизводим звук входящего сообщения, если:
+          // 1. Чат открыт (roomId совпадает с activeRoomId)
+          // 2. Сообщение не от текущего пользователя
+          const isIncomingMessage = message?.senderId && message.senderId !== currentUserId;
+          
+          // Получаем актуальное значение activeRoomId из store
+          const currentActiveRoomId = store.getState()?.chat?.activeRoomId;
+          const isActiveRoom = currentActiveRoomId && roomId && currentActiveRoomId === roomId;
+          
+          if (isIncomingMessage && isActiveRoom) {
+            // Воспроизводим звук входящего сообщения
+            playReceiveSound();
           }
           
           // Передаем currentUserId для проверки оптимистичных сообщений
@@ -544,26 +561,20 @@ export const useChatSocket = () => {
         });
 
         socket.on('chat:typing', (payload) => {
-          console.log('WebSocket: Received typing event:', JSON.stringify(payload));
           const { roomId, userId, type, isVoice, isTyping, userIds } = payload;
 
           if (isTyping && userId) {
             // Определяем тип активности: сначала проверяем payload, затем используем сохраненный тип
             let activityType = null;
             
-            console.log('WebSocket: Checking payload:', { isVoice, type, roomId, userId });
-            
             if (isVoice === true || type === 'voice') {
               activityType = 'voice';
-              console.log('WebSocket: Determined type from payload: voice');
             } else if (isVoice === false || type === 'text') {
               activityType = 'text';
-              console.log('WebSocket: Determined type from payload: text');
             } else {
               // Если тип не указан в payload, используем сохраненный тип из синхронного кэша или Redux
               const cachedType = getActivityTypeCache(roomId, userId);
               const savedType = selectLastActivityType(store.getState(), roomId, userId);
-              console.log('WebSocket: No type in payload, checking cached type:', cachedType, 'and Redux type:', savedType);
               
               // Приоритет: Redux "voice" > кэш "voice" > кэш другой тип > Redux другой тип > дефолт
               if (savedType === 'voice') {
@@ -571,25 +582,20 @@ export const useChatSocket = () => {
                 activityType = 'voice';
                 // Синхронизируем кэш с Redux
                 setActivityTypeCache(roomId, userId, 'voice');
-                console.log('WebSocket: Using voice type from Redux (priority)');
               } else if (cachedType === 'voice') {
                 // Если в кэше "voice", используем его
                 activityType = 'voice';
-                console.log('WebSocket: Using cached voice type');
               } else if (cachedType) {
                 // Если в кэше есть другой тип, используем его
                 activityType = cachedType;
-                console.log('WebSocket: Using cached type:', activityType);
               } else if (savedType) {
                 // Если в кэше нет типа, используем Redux
                 activityType = savedType;
                 // Синхронизируем кэш с Redux только если это не перезапись "voice" на "text"
                 setActivityTypeCache(roomId, userId, savedType);
-                console.log('WebSocket: Using saved type from Redux:', activityType);
               } else {
                 // Если сохраненного типа нет, используем 'text' по умолчанию
                 activityType = 'text';
-                console.log('WebSocket: No saved type, using default: text');
               }
             }
             
@@ -607,13 +613,10 @@ export const useChatSocket = () => {
               // Тип был из payload - сохраняем в кэш и Redux
               setActivityTypeCache(roomId, userId, activityType);
               dispatch(setLastActivityType({ roomId, userId, type: activityType }));
-              console.log('WebSocket: Saved activity type from payload in cache and Redux:', activityType);
             } else {
               // Тип был из кэша или Redux - обновляем только Redux, кэш не трогаем
               dispatch(setLastActivityType({ roomId, userId, type: activityType }));
-              console.log('WebSocket: Using cached/Redux type, updating only Redux:', activityType);
             }
-            console.log('WebSocket: Final activity type:', activityType, 'for user:', userId);
             
             dispatch(setTypingActivity({ roomId, userId, type: activityType }));
           } else if (!isTyping && userId) {

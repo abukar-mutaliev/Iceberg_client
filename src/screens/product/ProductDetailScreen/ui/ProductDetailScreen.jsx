@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useCallback, useState } from 'react';
+import React, { useEffect, useMemo, useCallback, useState, useRef } from 'react';
 import {
     View,
     ScrollView,
@@ -6,17 +6,19 @@ import {
     SafeAreaView,
     TouchableOpacity,
 } from 'react-native';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { useFocusEffect } from '@react-navigation/native';
 import { resetCurrentProduct } from '@entities/product';
 import ChatApi from '@entities/chat/api/chatApi';
+import { selectRoomsList } from '@entities/chat/model/selectors';
+import { sendProduct } from '@entities/chat/model/slice';
 
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { useToast } from '@shared/ui/Toast';
 import { Loader } from '@shared/ui/Loader';
 import Text from '@shared/ui/Text/Text';
-import { Color } from '@app/styles/GlobalStyles';
+import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
 import { ReusableModal } from '@shared/ui/Modal/ui/ReusableModal';
 import { RepostProductContent } from '@widgets/product/ProductContent/ui/RepostProductContent';
@@ -52,6 +54,8 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     const { showError, showWarning } = useToast();
     const { showError: showCustomError, showInfo } = useCustomAlert();
     const [isRepostModalVisible, setIsRepostModalVisible] = useState(false);
+    const rooms = useSelector(selectRoomsList) || [];
+    const loadMoreCalledRef = useRef(false);
 
     // Кастомные хуки для разделения логики
     const {
@@ -93,8 +97,12 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         isUpdating,
         categories,
         similarProducts,
+        otherProducts,
+        hasMoreProducts,
+        isLoadingMoreProducts,
         feedbacks,
-        handleRefreshFeedbacks
+        handleRefreshFeedbacks,
+        loadMoreProducts
     } = useProductDetailData(productId, isMountedRef, createSafeTimeout, navigation);
 
     const {
@@ -300,14 +308,44 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         try {
             if (!enrichedProduct?.id) return;
             
-            const res = await ChatApi.getOrCreateProductRoom(enrichedProduct.id);
-            const data = res?.data;
-            const roomObj = data?.room || data?.data?.room;
-            const roomId = roomObj?.id || data?.data?.id || data?.roomId || data?.id;
-
-            if (!roomId) {
-                console.warn('handleAskQuestion: roomId not found in response', res?.data);
+            const currentUserId = currentUser?.id;
+            if (!currentUserId) {
+                showCustomError('Ошибка', 'Не удалось определить пользователя');
                 return;
+            }
+
+            // Ищем существующий чат типа PRODUCT с этим productId
+            const existingRoom = rooms.find(room => {
+                const roomData = room.room || room;
+                return roomData.type === 'PRODUCT' && 
+                       roomData.productId === enrichedProduct.id &&
+                       roomData.participants?.some(p => {
+                           const participantId = p?.userId ?? p?.user?.id;
+                           return participantId === currentUserId;
+                       });
+            });
+
+            let roomId;
+            let roomObj;
+            let shouldSendProduct = false;
+
+            if (existingRoom) {
+                // Найден существующий чат - используем его
+                roomObj = existingRoom.room || existingRoom;
+                roomId = roomObj.id || existingRoom.id;
+                shouldSendProduct = true; // Отправляем товар повторно
+            } else {
+                // Чата нет - создаем новый через API
+                const res = await ChatApi.getOrCreateProductRoom(enrichedProduct.id);
+                const data = res?.data;
+                roomObj = data?.room || data?.data?.room;
+                roomId = roomObj?.id || data?.data?.id || data?.roomId || data?.id;
+
+                if (!roomId) {
+                    console.warn('handleAskQuestion: roomId not found in response', res?.data);
+                    return;
+                }
+                shouldSendProduct = true; // Отправляем товар при создании нового чата
             }
 
             const productInfo = {
@@ -329,8 +367,26 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 || 'Компания';
 
             const roomTitle = companyName;
-            const currentUserId = currentUser?.id;
+
+            // Отправляем товар в чат, если нужно
+            if (shouldSendProduct) {
+                try {
+                    const result = await dispatch(sendProduct({
+                        roomId,
+                        productId: enrichedProduct.id
+                    }));
+
+                    if (result.error) {
+                        console.warn('Failed to send product to chat:', result.error);
+                        // Продолжаем открывать чат даже если отправка не удалась
+                    }
+                } catch (sendError) {
+                    console.error('Error sending product to chat:', sendError);
+                    // Продолжаем открывать чат даже если отправка не удалась
+                }
+            }
             
+            // Открываем чат
             try {
                 navigation.navigate('ChatList', {
                     screen: 'ChatRoom',
@@ -341,8 +397,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                         productInfo,
                         roomData: roomObj,
                         currentUserId,
-                        fromScreen: 'ProductDetail', 
-                        autoSendProduct: true
+                        fromScreen: 'ProductDetail'
                     }
                 });
             } catch (err) {
@@ -353,15 +408,14 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                     productInfo,
                     roomData: roomObj,
                     currentUserId,
-                    fromScreen: 'ProductDetail',
-                    autoSendProduct: true
+                    fromScreen: 'ProductDetail'
                 });
             }
         } catch (e) {
             console.error('Open product chat error', e);
             showCustomError('Ошибка', 'Не удалось открыть чат');
         }
-    }, [enrichedProduct, supplier, navigation, currentUser, isAuthenticated, showInfo, showCustomError]);
+    }, [enrichedProduct, supplier, navigation, currentUser, isAuthenticated, showInfo, showCustomError, rooms, dispatch]);
 
     // Мемоизированные компоненты
     const displayProduct = useMemo(() => {
@@ -467,32 +521,78 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         ) : null
     ), [activeTab, feedbacks, displayProduct?.id, handleViewAllReviews]);
 
+    // Объединяем похожие и остальные товары в один массив
+    const allProductsForDisplay = useMemo(() => {
+        const similar = Array.isArray(similarProducts) ? similarProducts : [];
+        const other = Array.isArray(otherProducts) ? otherProducts : [];
+        
+        // Объединяем: сначала похожие, потом остальные
+        return [...similar, ...other];
+    }, [similarProducts, otherProducts]);
+
+    // Отслеживание скролла для загрузки следующей страницы
+    const handleScrollWithPagination = useCallback((event) => {
+        // Вызываем оригинальный handleScroll
+        handleScroll(event);
+        
+        // Проверяем, нужно ли загрузить следующую страницу
+        if (hasMoreProducts && !isLoadingMoreProducts && loadMoreProducts && !loadMoreCalledRef.current) {
+            const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
+            const scrollPosition = contentOffset.y;
+            const scrollViewHeight = layoutMeasurement.height;
+            const contentHeight = contentSize.height;
+            
+            // Загружаем следующую страницу, когда пользователь прокрутил на 80% контента
+            const threshold = contentHeight * 0.8;
+            if (scrollPosition + scrollViewHeight >= threshold) {
+                loadMoreCalledRef.current = true;
+                loadMoreProducts();
+                // Сбрасываем флаг через 2 секунды
+                setTimeout(() => {
+                    loadMoreCalledRef.current = false;
+                }, 2000);
+            }
+        }
+    }, [handleScroll, hasMoreProducts, isLoadingMoreProducts, loadMoreProducts]);
+
+    // Сбрасываем флаг при изменении состояния загрузки
+    useEffect(() => {
+        if (!isLoadingMoreProducts) {
+            loadMoreCalledRef.current = false;
+        }
+    }, [isLoadingMoreProducts]);
+
     const similarProductsComponent = useMemo(() => {
-        if (!similarProducts || !Array.isArray(similarProducts) || similarProducts.length === 0 || !productId) {
+        // Показываем компонент, если есть хотя бы похожие или остальные товары
+        if ((!similarProducts || !Array.isArray(similarProducts) || similarProducts.length === 0) &&
+            (!otherProducts || !Array.isArray(otherProducts) || otherProducts.length === 0)) {
             return null;
         }
+        
+        if (!productId) return null;
         
         return (
             <SimilarProducts
                 key={`similar-products-${productId}`}
-                products={similarProducts}
+                products={allProductsForDisplay}
                 color={colors}
                 onProductPress={(similarProductId) => handleSimilarProductPress(similarProductId, productId)}
                 currentProductId={productId}
+                onEndReached={loadMoreProducts}
+                isLoadingMore={isLoadingMoreProducts}
+                hasMore={hasMoreProducts}
             />
         );
-    }, [similarProducts, colors, handleSimilarProductPress, productId]);
+    }, [allProductsForDisplay, colors, handleSimilarProductPress, productId, loadMoreProducts, isLoadingMoreProducts, hasMoreProducts, similarProducts, otherProducts]);
 
     // Состояния загрузки и ошибок
     if (isLoading && !displayProduct) {
         return (
             <View style={styles.fullScreenContainer}>
                 <SafeAreaView style={styles.safeArea}>
+                    <StaticBackgroundGradient />
                     <View style={styles.errorContainer}>
-                        <Loader />
-                        <Text style={[styles.loadingText, { color: Color.dark }]}>
-                            Загрузка продукта...
-                        </Text>
+                        <Loader type="youtube" color={colors.primary || Color.blue2} text={null} />
                     </View>
                 </SafeAreaView>
             </View>
@@ -562,7 +662,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                     ref={scrollViewRef}
                     style={styles.contentScrollView}
                     showsVerticalScrollIndicator={false}
-                    onScroll={handleScroll}
+                    onScroll={handleScrollWithPagination}
                     scrollEventThrottle={16}
                     contentContainerStyle={styles.scrollContent}
                     onContentSizeChange={handleContentSizeChange}
@@ -641,11 +741,6 @@ const styles = StyleSheet.create({
     brandCardContainer: {
         paddingHorizontal: 16,
         marginVertical: 10,
-    },
-    loadingText: {
-        marginTop: 20,
-        fontSize: 16,
-        textAlign: 'center',
     },
     retryButton: {
         padding: 10,

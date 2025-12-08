@@ -18,7 +18,8 @@
     "build:ios:dev": "eas build --profile development --platform ios",
     "update:production": "eas update --branch production --message \"Production update\"",
     "update:preview": "eas update --branch preview --message \"Preview update\"",
-    "prebuild": "npx expo prebuild --clean"
+    "prebuild": "npx expo prebuild --clean",
+    "copy:notification-icons": "node scripts/copy-notification-icons.js"
   },
   "dependencies": {
     "@babel/runtime": "^7.27.1",

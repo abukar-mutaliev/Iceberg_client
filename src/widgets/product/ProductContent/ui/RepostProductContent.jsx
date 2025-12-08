@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -34,6 +34,7 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
   
   const rooms = useSelector(selectRoomsList) || [];
   const currentUserId = currentUser?.id;
+  const currentUserRole = useSelector((s) => s.auth?.user?.role);
 
   // Загружаем существующие чаты при открытии (только для авторизованных пользователей)
   useEffect(() => {
@@ -239,13 +240,56 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
     }
   };
 
-  // Фильтруем чаты (исключаем текущий товар)
-  const filteredRooms = rooms.filter(room => {
-    if (room.type === 'PRODUCT' && room.productId === product?.id) {
-      return false; // Исключаем чат с текущим товаром
+  // Фильтруем чаты: исключаем каналы и закрытые группы для обычных пользователей
+  const filteredRooms = useMemo(() => {
+    if (!rooms || !Array.isArray(rooms)) {
+      return [];
     }
-    return true;
-  });
+    
+    return rooms.filter(room => {
+      if (!room || !room.id) {
+        return false;
+      }
+      
+      // Исключаем чат с текущим товаром
+      if (room.type === 'PRODUCT' && room.productId === product?.id) {
+        return false;
+      }
+      
+      // Исключаем все каналы (BROADCAST) - только админы могут отправлять туда сообщения
+      if (room?.type === 'BROADCAST') {
+        return false;
+      }
+      
+      // Проверяем, является ли группа закрытой
+      const isLocked = room?.isLocked === true || room?.isLocked === 1 || room?.isLocked === 'true' || String(room?.isLocked).toLowerCase() === 'true';
+      
+      if (isLocked) {
+        // Админы и системные админы могут видеть все закрытые группы
+        if (currentUserRole === 'ADMIN' || currentUserRole === 'SYSADMIN') {
+          return true;
+        }
+        
+        // Проверяем, является ли пользователь администратором группы
+        if (room?.participants && Array.isArray(room.participants) && room.participants.length > 0) {
+          const currentParticipant = room.participants.find(p => {
+            const participantId = p?.userId ?? p?.user?.id;
+            return participantId === currentUserId;
+          });
+          
+          // Показываем только если пользователь является админом или владельцем группы
+          if (currentParticipant?.role === 'ADMIN' || currentParticipant?.role === 'OWNER') {
+            return true;
+          }
+        }
+        
+        // В остальных случаях скрываем закрытую группу
+        return false;
+      }
+      
+      return true;
+    });
+  }, [rooms, currentUserId, currentUserRole, product?.id]);
 
   // Рендер элемента списка чатов
   const renderChatItem = ({ item }) => {

@@ -44,14 +44,35 @@ export const selectSimilarProducts = createSelector(
                     return false;
                 }
 
+                // Проверка общей категории
                 if (currentProduct.categories && Array.isArray(currentProduct.categories) &&
                     product.categories && Array.isArray(product.categories)) {
-                    const hasCommonCategory = product.categories.some(cat =>
-                        currentProduct.categories.includes(cat)
-                    );
+                    // Получаем ID категорий текущего товара
+                    const currentCategoryIds = currentProduct.categories.map(cat => {
+                        if (typeof cat === 'object' && cat !== null && cat.id) {
+                            return cat.id;
+                        }
+                        if (typeof cat === 'string' || typeof cat === 'number') {
+                            return cat;
+                        }
+                        return null;
+                    }).filter(id => id !== null);
+
+                    // Проверяем, есть ли общая категория
+                    const hasCommonCategory = product.categories.some(cat => {
+                        let catId = null;
+                        if (typeof cat === 'object' && cat !== null && cat.id) {
+                            catId = cat.id;
+                        } else if (typeof cat === 'string' || typeof cat === 'number') {
+                            catId = cat;
+                        }
+                        return catId !== null && currentCategoryIds.includes(catId);
+                    });
+                    
                     if (hasCommonCategory) return true;
                 }
 
+                // Проверка того же поставщика
                 if (currentProduct.supplierId && product.supplierId) {
                     return product.supplierId === currentProduct.supplierId;
                 }
@@ -122,5 +143,35 @@ export const selectProductAverageRating = createSelector(
 
         const sum = feedbacks.reduce((total, feedback) => total + (feedback.rating || 0), 0);
         return sum / feedbacks.length;
+    }
+);
+
+/**
+ * Селектор для получения остальных товаров (исключая похожие и текущий)
+ */
+export const selectOtherProducts = createSelector(
+    [selectProducts, selectSimilarProducts, (state, productId) => productId],
+    (products, similarProducts, productId) => {
+        if (!Array.isArray(products) || products.length === 0) {
+            return EMPTY_ARRAY;
+        }
+
+        const numericProductId = parseInt(productId, 10);
+        if (isNaN(numericProductId)) {
+            return EMPTY_ARRAY;
+        }
+
+        // Получаем ID похожих товаров
+        const similarProductIds = new Set(
+            similarProducts.map(p => p?.id).filter(id => id !== null && id !== undefined)
+        );
+
+        // Фильтруем: исключаем текущий товар и похожие
+        return products.filter(product => {
+            if (!product || !product.id) return false;
+            if (product.id === numericProductId) return false;
+            if (similarProductIds.has(product.id)) return false;
+            return true;
+        });
     }
 );

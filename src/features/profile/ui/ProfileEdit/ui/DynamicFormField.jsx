@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     View,
     Text,
@@ -29,6 +29,48 @@ export const DynamicFormField = ({
     const [fieldValue, setFieldValue] = useState(value);
     const fieldContainerRef = useRef(null);
 
+    // Форматирование телефона: +7 (XXX) XXX-XX-XX
+    const formatPhoneNumber = useCallback((text) => {
+        // Убираем все нецифровые символы
+        let digits = text.replace(/\D/g, '');
+        
+        // Если начинается с 8, заменяем на 7
+        if (digits.startsWith('8')) {
+            digits = '7' + digits.slice(1);
+        }
+        
+        // Если не начинается с 7, добавляем 7
+        if (digits.length > 0 && !digits.startsWith('7')) {
+            digits = '7' + digits;
+        }
+        
+        // Ограничиваем до 11 цифр (7 + 10 цифр номера)
+        digits = digits.slice(0, 11);
+        
+        // Форматируем
+        let formatted = '';
+        if (digits.length > 0) {
+            formatted = '+7';
+        }
+        if (digits.length > 1) {
+            formatted += ' (' + digits.slice(1, 4);
+        }
+        if (digits.length >= 4) {
+            formatted += ')';
+        }
+        if (digits.length > 4) {
+            formatted += ' ' + digits.slice(4, 7);
+        }
+        if (digits.length > 7) {
+            formatted += '-' + digits.slice(7, 9);
+        }
+        if (digits.length > 9) {
+            formatted += '-' + digits.slice(9, 11);
+        }
+        
+        return formatted;
+    }, []);
+
     useEffect(() => {
         Animated.timing(rotateAnimation, {
             toValue: showDropdown ? 1 : 0,
@@ -38,9 +80,20 @@ export const DynamicFormField = ({
     }, [showDropdown]);
 
     useEffect(() => {
-    
-        setFieldValue(value);
-    }, [value, field.id, fieldValue]);
+        // Для полей телефона форматируем значение при загрузке
+        if (field.type === 'phone' && value) {
+            const digits = value.replace(/\D/g, '');
+            // Если значение уже отформатировано или содержит 11 цифр, форматируем его
+            if (digits.length === 11 || value.includes('(') || value.includes(')')) {
+                const formatted = formatPhoneNumber(value);
+                setFieldValue(formatted);
+            } else {
+                setFieldValue(value);
+            }
+        } else {
+            setFieldValue(value);
+        }
+    }, [value, field.id, field.type, formatPhoneNumber]);
 
     const rotateInterpolate = rotateAnimation.interpolate({
         inputRange: [0, 1],
@@ -85,8 +138,23 @@ export const DynamicFormField = ({
     };
 
     const handleChangeText = (text) => {
-        setFieldValue(text);
-        onChange(field.id, text);
+        if (field.type === 'phone') {
+            const formatted = formatPhoneNumber(text);
+            setFieldValue(formatted);
+            onChange(field.id, formatted);
+        } else {
+            setFieldValue(text);
+            onChange(field.id, text);
+        }
+    };
+
+    const handlePhoneFocus = () => {
+        // При фокусе на поле телефона, если оно пустое, устанавливаем +7 (
+        if (field.type === 'phone' && (!fieldValue || fieldValue.trim() === '')) {
+            const formatted = '+7 (';
+            setFieldValue(formatted);
+            onChange(field.id, formatted);
+        }
     };
 
     const handleEditToggle = () => {
@@ -147,10 +215,12 @@ export const DynamicFormField = ({
                             ]}
                             value={fieldValue}
                             onChangeText={handleChangeText}
-                            placeholder={field.placeholder}
+                            onFocus={field.type === 'phone' ? handlePhoneFocus : undefined}
+                            placeholder={field.type === 'phone' ? '+7 (___) ___-__-__' : field.placeholder}
                             placeholderTextColor="#A0A0A0"
                             editable={editable}
                             keyboardType={field.type === 'phone' ? 'phone-pad' : (field.keyboardType || 'default')}
+                            maxLength={field.type === 'phone' ? 18 : undefined}
                             onSubmitEditing={handleEditToggle}
                         />
                         <TouchableOpacity

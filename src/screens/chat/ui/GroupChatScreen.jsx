@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useState, useRef} from 'react';
-import {View, FlatList, StyleSheet, TouchableOpacity, Text, Modal, Platform, BackHandler} from 'react-native';
+import {View, FlatList, StyleSheet, TouchableOpacity, Text, Modal, Platform, BackHandler, Vibration, Animated} from 'react-native';
 import {useFocusEffect, CommonActions} from '@react-navigation/native';
 import {useDispatch, useSelector} from 'react-redux';
 import {
@@ -17,7 +17,7 @@ import {
 } from '@entities/chat/model/slice';
 import {makeSelectRoomMessages} from '@entities/chat/model/selectors';
 import {fetchProductById} from '@entities/product/model/slice';
-import {SwipeableMessageBubble, ForwardMessageModal, ReactionPicker, FullEmojiPicker, TypingIndicator} from '@entities/chat';
+import {SwipeableMessageBubble, ForwardMessageModal, ReactionPicker, FullEmojiPicker, TypingIndicator, useTypingIndicatorHeight} from '@entities/chat';
 import {Composer} from '@entities/chat/ui/Composer';
 import {ChatBackground} from '@entities/chat/ui/ChatBackground';
 import {useChatSocketActions} from '@entities/chat/hooks/useChatSocketActions';
@@ -90,18 +90,127 @@ export const GroupChatScreen = ({route, navigation}) => {
     // Получаем функции WebSocket
     const { emitActiveRoom, emitMarkRead, emitToggleReaction } = useChatSocketActions();
     
+    // Получаем высоту индикатора печати для поднятия сообщений
+    const typingIndicatorHeight = useTypingIndicatorHeight(roomId);
+    
+    // Анимированное значение для paddingTop
+    const paddingTopAnim = useRef(new Animated.Value(0)).current;
+    const [animatedPaddingTop, setAnimatedPaddingTop] = useState(0);
+    
+    // Анимируем padding при изменении высоты индикатора
+    useEffect(() => {
+        const targetValue = typingIndicatorHeight > 0 ? 30 : 0;
+        
+        // Добавляем listener для получения текущего значения
+        const listenerId = paddingTopAnim.addListener(({ value }) => {
+            setAnimatedPaddingTop(value);
+        });
+        
+        // Используем те же параметры анимации, что и для индикатора, для синхронизации
+        Animated.spring(paddingTopAnim, {
+            toValue: targetValue,
+            useNativeDriver: false, // padding не поддерживает native driver
+            tension: 65,
+            friction: 8,
+        }).start();
+        
+        return () => {
+            paddingTopAnim.removeListener(listenerId);
+        };
+    }, [typingIndicatorHeight, paddingTopAnim]);
+    
+    // Динамический стиль для контента списка с учетом индикатора
+    // Для инвертированного списка используем paddingTop (визуально это будет снизу)
+    const listContentStyle = useMemo(() => [
+        styles.listContent,
+        { paddingTop: animatedPaddingTop }
+    ], [animatedPaddingTop]);
+    
     // Используем кэш для мгновенной загрузки сообщений (только если комната не удалена)
     const { messages: cachedMessages, isLoading: isCacheLoading } = useCachedMessages(isRoomDeleted ? null : roomId);
     
     // Объединяем кэшированные и Redux сообщения (Redux имеет приоритет для свежих данных)
+    // Но если Redux сообщения не имеют waveform или duration, а кэшированные имеют - объединяем их
     const messages = useMemo(() => {
+        let finalMessages = [];
+        
         if (reduxMessages && Array.isArray(reduxMessages) && reduxMessages.length > 0) {
-            return reduxMessages;
+            finalMessages = reduxMessages;
+            
+            // Если есть кэшированные сообщения, проверяем и дополняем waveform и duration
+            if (cachedMessages && Array.isArray(cachedMessages) && cachedMessages.length > 0) {
+                // Создаем мапу кэшированных сообщений для быстрого поиска
+                const cachedMap = new Map();
+                cachedMessages.forEach(msg => {
+                    if (msg.id) {
+                        cachedMap.set(msg.id, msg);
+                    }
+                });
+                
+                // Объединяем waveform и duration из кэша в Redux сообщения
+                finalMessages = reduxMessages.map(reduxMsg => {
+                    // Обрабатываем только голосовые сообщения
+                    if (reduxMsg.type === 'VOICE' && reduxMsg.attachments?.length > 0) {
+                        const cachedMsg = cachedMap.get(reduxMsg.id);
+                        
+                        if (cachedMsg && cachedMsg.attachments?.length > 0) {
+                            const reduxVoiceAtt = reduxMsg.attachments.find(a => a.type === 'VOICE');
+                            const cachedVoiceAtt = cachedMsg.attachments.find(a => a.type === 'VOICE');
+                            
+                            // Если в Redux нет waveform или duration, но в кэше есть - используем из кэша
+                            if (reduxVoiceAtt && cachedVoiceAtt) {
+                                const needsWaveform = !reduxVoiceAtt.waveform || 
+                                                    reduxVoiceAtt.waveform === null || 
+                                                    reduxVoiceAtt.waveform === undefined;
+                                
+                                const needsDuration = !reduxVoiceAtt.duration || 
+                                                    reduxVoiceAtt.duration === null || 
+                                                    reduxVoiceAtt.duration === undefined ||
+                                                    reduxVoiceAtt.duration === 0;
+                                
+                                // Если нужно дополнить данные из кэша
+                                if ((needsWaveform && cachedVoiceAtt.waveform) || 
+                                    (needsDuration && cachedVoiceAtt.duration)) {
+                                    
+                                    if (__DEV__) {
+                                        console.log('📦 Восстанавливаем данные голосового сообщения из кэша:', {
+                                            messageId: reduxMsg.id,
+                                            addingWaveform: needsWaveform && cachedVoiceAtt.waveform,
+                                            addingDuration: needsDuration && cachedVoiceAtt.duration,
+                                            cachedDuration: cachedVoiceAtt.duration,
+                                            cachedWaveformLength: cachedVoiceAtt.waveform ? 
+                                                (typeof cachedVoiceAtt.waveform === 'string' ? 
+                                                    JSON.parse(cachedVoiceAtt.waveform).length : 
+                                                    cachedVoiceAtt.waveform.length) : 0
+                                        });
+                                    }
+                                    
+                                    return {
+                                        ...reduxMsg,
+                                        attachments: reduxMsg.attachments.map(att => 
+                                            att.type === 'VOICE' && att === reduxVoiceAtt
+                                                ? { 
+                                                    ...att, 
+                                                    waveform: needsWaveform && cachedVoiceAtt.waveform ? 
+                                                        cachedVoiceAtt.waveform : att.waveform,
+                                                    duration: needsDuration && cachedVoiceAtt.duration ? 
+                                                        cachedVoiceAtt.duration : att.duration
+                                                }
+                                                : att
+                                        )
+                                    };
+                                }
+                            }
+                        }
+                    }
+                    return reduxMsg;
+                });
+            }
+        } else if (cachedMessages && Array.isArray(cachedMessages) && cachedMessages.length > 0) {
+            finalMessages = cachedMessages;
         }
-        if (cachedMessages && Array.isArray(cachedMessages) && cachedMessages.length > 0) {
-            return cachedMessages;
-        }
-        return [];
+        
+        return finalMessages;
     }, [reduxMessages, cachedMessages]);
     
     // Фоновая предзагрузка медиа
@@ -247,6 +356,8 @@ export const GroupChatScreen = ({route, navigation}) => {
                 updated.delete(messageId);
             } else {
                 updated.add(messageId);
+                // Вибрация при выборе сообщения
+                Vibration.vibrate(50);
             }
             
             return updated;
@@ -713,17 +824,69 @@ export const GroupChatScreen = ({route, navigation}) => {
         return sub;
     }, [navigation, route.params, dispatch]);
 
+    // Флаг для отслеживания первой загрузки (предотвращает ложные срабатывания)
+    const isInitialLoadRef = useRef(true);
+    const navigationTimeoutRef = useRef(null);
+    const hasNavigatedBackRef = useRef(false); // Предотвращает множественные навигации
+    const lastCheckedRoomIdRef = useRef(null); // Отслеживаем последнюю проверенную комнату
+
+    // Сбрасываем флаги при смене комнаты
+    useEffect(() => {
+        if (lastCheckedRoomIdRef.current !== roomId) {
+            hasNavigatedBackRef.current = false;
+            isInitialLoadRef.current = true;
+            lastCheckedRoomIdRef.current = roomId;
+            
+            // Очищаем таймеры при смене комнаты
+            if (navigationTimeoutRef.current) {
+                clearTimeout(navigationTimeoutRef.current);
+                navigationTimeoutRef.current = null;
+            }
+        }
+    }, [roomId]);
+
     // Проверяем существование комнаты и автоматически выходим если она удалена
     useEffect(() => {
+        // Если уже навигировали назад, не делаем ничего
+        if (hasNavigatedBackRef.current) {
+            return;
+        }
+
+        // Не проверяем если комната изменилась (ждем сброса флагов)
+        if (lastCheckedRoomIdRef.current !== roomId) {
+            return;
+        }
+
+        // При первой загрузке даем время на загрузку данных
+        if (isInitialLoadRef.current) {
+            // Сбрасываем флаг после задержки, достаточной для загрузки данных
+            const timeoutId = setTimeout(() => {
+                if (lastCheckedRoomIdRef.current === roomId) {
+                    isInitialLoadRef.current = false;
+                }
+            }, 3000); // Увеличиваем до 3000ms для надежности
+            
+            return () => clearTimeout(timeoutId);
+        }
+
         // Не выполняем проверку если данные еще загружаются (предотвращает дергание при открытии)
         if (roomsLoading) {
             return;
         }
         
-        // Проверяем удаление только если комната явно удалена или данные не найдены после загрузки
-        const shouldNavigateBack = isRoomDeleted || (!roomData && roomId && !roomsLoading);
+        // Проверяем удаление только если комната явно удалена
+        // НЕ проверяем !roomData при первой загрузке, так как данные могут еще загружаться
+        const shouldNavigateBack = isRoomDeleted;
         
-        if (shouldNavigateBack) {
+        if (shouldNavigateBack && !hasNavigatedBackRef.current && lastCheckedRoomIdRef.current === roomId) {
+            // Устанавливаем флаг, чтобы предотвратить повторные навигации
+            hasNavigatedBackRef.current = true;
+            
+            // Очищаем предыдущий таймер навигации если есть
+            if (navigationTimeoutRef.current) {
+                clearTimeout(navigationTimeoutRef.current);
+            }
+            
             // Комната была удалена (через WebSocket или другим способом)
             // Устанавливаем флаг удаления СИНХРОННО через ref
             isRoomDeletedRef.current = true;
@@ -735,7 +898,13 @@ export const GroupChatScreen = ({route, navigation}) => {
             }
             
             // Небольшая задержка перед навигацией, чтобы анимация открытия не прерывалась
-            const timeoutId = setTimeout(() => {
+            navigationTimeoutRef.current = setTimeout(() => {
+                // Проверяем, что комната все еще та же (не сменилась)
+                if (lastCheckedRoomIdRef.current !== roomId) {
+                    navigationTimeoutRef.current = null;
+                    return;
+                }
+                
                 // Возвращаемся к списку чатов
                 try {
                     // Пробуем найти родительский навигатор и перейти к ChatMain
@@ -758,10 +927,16 @@ export const GroupChatScreen = ({route, navigation}) => {
                         // Игнорируем ошибки навигации
                     }
                 }
+                navigationTimeoutRef.current = null;
             }, 100);
-            
-            return () => clearTimeout(timeoutId);
         }
+        
+        return () => {
+            if (navigationTimeoutRef.current) {
+                clearTimeout(navigationTimeoutRef.current);
+                navigationTimeoutRef.current = null;
+            }
+        };
     }, [roomData, roomId, isRoomDeleted, roomsLoading, dispatch, navigation, emitActiveRoom]);
 
     useEffect(() => {
@@ -779,8 +954,8 @@ export const GroupChatScreen = ({route, navigation}) => {
         }
         
         // Загружаем данные комнаты (сообщения загружаются через useCachedMessages)
-        // Только если комната не удалена
-        if (!isRoomDeleted) {
+        // Только если комната не удалена и не загружена еще
+        if (!isRoomDeleted && !roomData) {
             dispatch(fetchRoom(roomId));
         }
 
@@ -1300,7 +1475,7 @@ export const GroupChatScreen = ({route, navigation}) => {
                             onScrollEndDrag={handleScrollEndDrag}
                             onMomentumScrollEnd={handleMomentumScrollEnd}
                             scrollEventThrottle={200}
-                            contentContainerStyle={styles.listContent}
+                            contentContainerStyle={listContentStyle}
                             initialNumToRender={10}
                             windowSize={5}
                             maxToRenderPerBatch={5}

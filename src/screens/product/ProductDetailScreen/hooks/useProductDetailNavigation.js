@@ -35,36 +35,46 @@ export const useProductDetailNavigation = (navigation, fromScreen, params) => {
     }, [navigation, fromScreen]);
 
     const handleGoBack = useCallback(() => {
-        if (isNavigatingRef.current) return;
+        // Разрешаем навигацию даже если предыдущая еще не завершена
+        // Это позволяет прервать анимацию открытия экрана
+        if (isNavigatingRef.current) {
+            // Если уже идет навигация, просто сбрасываем флаг и продолжаем
+            // Это позволяет прервать анимацию открытия
+            isNavigatingRef.current = false;
+        }
 
         isNavigatingRef.current = true;
 
         try {
             dispatch(resetCurrentProduct());
 
-            setTimeout(() => {
-                const origin = navigationParamsRef.current?.fromScreen || fromScreen;
-                if (origin === 'ChatRoom' || origin === 'ChatList') {
-                    navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'MainTab' }] }));
-                    setTimeout(() => { isNavigatingRef.current = false; }, 500);
-                    return;
+            const origin = navigationParamsRef.current?.fromScreen || fromScreen;
+            if (origin === 'ChatRoom' || origin === 'ChatList') {
+                navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'MainTab' }] }));
+                setTimeout(() => { isNavigatingRef.current = false; }, 300);
+                return;
+            }
+            
+            // Используем dispatch для более надежной навигации, которая может прервать анимацию
+            try {
+                if (navigation.canGoBack()) {
+                    navigation.dispatch(CommonActions.goBack());
+                } else {
+                    navigation.goBack();
                 }
-                
+            } catch (innerError) {
+                console.error('ProductDetailScreen: Navigation error:', innerError);
                 try {
                     navigation.goBack();
-                } catch (innerError) {
-                    console.error('ProductDetailScreen: Navigation error:', innerError);
-                    try {
-                        navigation.goBack();
-                    } catch (fallbackError) {
-                        console.error('ProductDetailScreen: Critical navigation error:', fallbackError);
-                    }
-                } finally {
-                    setTimeout(() => {
-                        isNavigatingRef.current = false;
-                    }, 1000);
+                } catch (fallbackError) {
+                    console.error('ProductDetailScreen: Critical navigation error:', fallbackError);
                 }
-            }, 50);
+            }
+            
+            // Сбрасываем блокировку быстрее, чтобы разрешить повторные нажатия
+            setTimeout(() => {
+                isNavigatingRef.current = false;
+            }, 200);
         } catch (error) {
             console.error('ProductDetailScreen: Critical error:', error);
             isNavigatingRef.current = false;

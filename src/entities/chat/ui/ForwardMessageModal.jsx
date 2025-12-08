@@ -14,6 +14,7 @@ import { useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import ChatApi from '@entities/chat/api/chatApi';
 import { getBaseUrl } from '@shared/api/api';
+import { selectRoomsList } from '@entities/chat/model/selectors';
 
 export const ForwardMessageModal = ({ visible, onClose, onForward, message }) => {
     const [searchQuery, setSearchQuery] = useState('');
@@ -22,10 +23,7 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
     const [searchedUsers, setSearchedUsers] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
 
-    const rooms = useSelector((state) => {
-        const ids = state.chat?.rooms?.ids || [];
-        return ids.map(id => state.chat?.rooms?.byId?.[id]).filter(Boolean);
-    });
+    const rooms = useSelector(selectRoomsList);
     const currentUserId = useSelector((state) => state.auth?.user?.id);
     const currentUserRole = useSelector((state) => state.auth?.user?.role);
     const currentUser = useSelector((state) => state.auth?.user);

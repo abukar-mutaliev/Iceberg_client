@@ -29,7 +29,26 @@ export const fetchProducts = createAsyncThunk(
         try {
             const state = getState();
 
-            if (page === 1 && !refresh && isCacheValid(state.products.lastFetchTime)) {
+            // Используем кэш только если:
+            // 1. Это первая страница
+            // 2. Не принудительное обновление
+            // 3. Кэш валиден
+            // 4. В state есть валидные данные пагинации
+            // 5. Данные выглядят полными (totalPages > 1 или hasMore === true, или totalItems > items.length)
+            const hasValidPagination = state.products.hasMore !== undefined && 
+                                       state.products.totalPages !== undefined &&
+                                       state.products.totalItems !== undefined;
+            
+            const looksComplete = hasValidPagination && (
+                state.products.totalPages > 1 || 
+                state.products.hasMore === true ||
+                (state.products.totalItems > 0 && state.products.totalItems > (state.products.items?.length || 0))
+            );
+            
+            if (page === 1 && !refresh && isCacheValid(state.products.lastFetchTime) && 
+                state.products.items?.length > 0 && 
+                hasValidPagination &&
+                looksComplete) {
                 return { 
                     data: state.products.items, 
                     pagination: {
@@ -41,7 +60,7 @@ export const fetchProducts = createAsyncThunk(
                     fromCache: true 
                 };
             }
-
+            
             const params = { page, limit };
             const response = await productsApi.getProducts(params);
 
@@ -56,14 +75,19 @@ export const fetchProducts = createAsyncThunk(
             let products = [];
             let pagination = { currentPage: 1, totalPages: 1, totalItems: 0, hasMore: false };
 
-            if (response.data?.status === 'success') {
-                products = response.data.data || [];
-                if (response.data.pagination) {
+            // API клиент уже возвращает response.data от axios, поэтому response это объект {status, data, pagination}
+            if (response?.status === 'success') {
+                products = Array.isArray(response.data) ? response.data : [];
+                if (response.pagination) {
+                    const serverHasMore = response.pagination.hasMore;
+                    const calculatedHasMore = page < (response.pagination.totalPages || 1);
+                    const finalHasMore = serverHasMore !== undefined ? serverHasMore : calculatedHasMore;
+                    
                     pagination = {
-                        currentPage: response.data.pagination.currentPage || page,
-                        totalPages: response.data.pagination.totalPages || 1,
-                        totalItems: response.data.pagination.totalItems || products.length,
-                        hasMore: response.data.pagination.hasMore || (page < (response.data.pagination.totalPages || 1))
+                        currentPage: response.pagination.currentPage || page,
+                        totalPages: response.pagination.totalPages || 1,
+                        totalItems: response.pagination.totalItems || products.length,
+                        hasMore: finalHasMore
                     };
                 } else {
                     pagination = {
@@ -73,12 +97,22 @@ export const fetchProducts = createAsyncThunk(
                         hasMore: false
                     };
                 }
-            } else if (Array.isArray(response.data)) {
-                products = response.data;
+            } else if (Array.isArray(response)) {
+                // Если ответ - массив напрямую (старый формат)
+                products = response;
                 pagination = {
                     currentPage: page,
                     totalPages: page,
                     totalItems: products.length,
+                    hasMore: false
+                };
+            } else {
+                // Если ответ пустой или неожиданный, используем значения по умолчанию
+                products = [];
+                pagination = {
+                    currentPage: page,
+                    totalPages: 1,
+                    totalItems: 0,
                     hasMore: false
                 };
             }

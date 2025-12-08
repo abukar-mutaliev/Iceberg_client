@@ -109,10 +109,26 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
             if (product.category && typeof product.category === 'string' && product.category.trim()) {
                 category = product.category.trim();
             } else if (Array.isArray(product.categories) && product.categories.length > 0) {
-                const firstCategory = product.categories.find(cat =>
-                    cat && typeof cat === 'string' && cat.trim()
-                );
-                category = firstCategory ? firstCategory.trim() : 'БАСКЕТ';
+                // Категории могут быть как строками, так и объектами с полем name
+                const firstCategory = product.categories.find(cat => {
+                    if (!cat) return false;
+                    // Если категория - строка
+                    if (typeof cat === 'string' && cat.trim()) return true;
+                    // Если категория - объект с полем name
+                    if (typeof cat === 'object' && cat.name && typeof cat.name === 'string' && cat.name.trim()) return true;
+                    return false;
+                });
+                
+                if (firstCategory) {
+                    // Если это строка
+                    if (typeof firstCategory === 'string') {
+                        category = firstCategory.trim();
+                    } 
+                    // Если это объект с полем name
+                    else if (typeof firstCategory === 'object' && firstCategory.name) {
+                        category = firstCategory.name.trim();
+                    }
+                }
             }
 
             // Получаем priceInfo из product или originalData
@@ -167,15 +183,16 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
         }
     }, [product]);
 
-    if (process.env.NODE_ENV === 'development') {
-        console.log('ProductTile - Маршрут:', {
-            name: routeParams.currentRoute,
-            productId: routeParams.currentProductId,
-            fromScreen: routeParams.fromScreen,
-            previousProductId: routeParams.previousProductId,
-            targetProductId: productData?.id
-        });
-    }
+    // Убираем избыточное логирование, которое может вызывать проблемы производительности
+    // if (process.env.NODE_ENV === 'development') {
+    //     console.log('ProductTile - Маршрут:', {
+    //         name: routeParams.currentRoute,
+    //         productId: routeParams.currentProductId,
+    //         fromScreen: routeParams.fromScreen,
+    //         previousProductId: routeParams.previousProductId,
+    //         targetProductId: productData?.id
+    //     });
+    // }
 
     const handleProductPress = useCallback(() => {
         try {

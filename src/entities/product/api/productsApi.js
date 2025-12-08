@@ -4,7 +4,12 @@ const productsApi = createApiModule('/api/products');
 
 const ProductsService = {
     getProducts: (params = {}) =>
-        productsApi.get('', params),
+        productsApi.get('', params, {
+            headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+            }
+        }),
 
     getProductById: (productId) =>
         productsApi.get(`/${productId}`),

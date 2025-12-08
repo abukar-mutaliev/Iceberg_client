@@ -11,17 +11,14 @@ const STORAGE_KEYS = {
 const saveTokensToStorage = async (tokens) => {
     try {
         if (!tokens) {
-            console.error('saveTokensToStorage: токены не предоставлены');
             throw new Error('Токены не предоставлены');
         }
 
         if (!tokens.accessToken || typeof tokens.accessToken !== 'string') {
-            console.error('saveTokensToStorage: отсутствует или некорректный accessToken', tokens);
             throw new Error('Отсутствует или некорректный accessToken');
         }
 
         if (!tokens.refreshToken || typeof tokens.refreshToken !== 'string') {
-            console.error('saveTokensToStorage: отсутствует или некорректный refreshToken', tokens);
             throw new Error('Отсутствует или некорректный refreshToken');
         }
 
@@ -33,16 +30,12 @@ const saveTokensToStorage = async (tokens) => {
         const tokensString = JSON.stringify(tokensToSave);
         await AsyncStorage.setItem(STORAGE_KEYS.TOKENS, tokensString);
 
-        console.log('Токены успешно сохранены, длина строки:', tokensString.length);
-
         if (api && api.defaults) {
             api.defaults.headers.common['Authorization'] = `Bearer ${tokens.accessToken}`;
-            console.log('Токен доступа установлен в заголовки API');
         }
 
         return true;
     } catch (error) {
-        console.error('Ошибка при сохранении токенов:', error);
         throw error;
     }
 };
@@ -51,7 +44,7 @@ export const removeTokensFromStorage = async () => {
     try {
         await AsyncStorage.removeItem(STORAGE_KEYS.TOKENS);
     } catch (error) {
-        console.error('Error removing tokens:', error);
+        // Ошибка при удалении токенов игнорируется
     }
 };
 
@@ -74,14 +67,6 @@ const initialState = {
 };
 
 const handleError = (error) => {
-
-    console.error('=== Error Debug ===');
-    console.error('Error message:', error.message);
-    console.error('Error code:', error.code);
-    console.error('Error response:', error.response);
-    console.error('Error config:', error.config);
-    console.error('==================');
-
     if (error.code === 'ECONNABORTED') {
         return 'Превышено время ожидания. Проверьте подключение к сети.';
     }
@@ -112,11 +97,9 @@ export const initiateRegister = createAsyncThunk(
                 ...(districtId && { districtId: parseInt(districtId) }),
                 ...(customDistrict && { customDistrict })
             };
-            console.log('Отправка запроса на инициацию регистрации:', payload); // Логирование для отладки
             const response = await authApi.initiateRegister(payload);
 
             if (!response || !response.status) {
-                console.error('Неожиданный формат ответа при инициации регистрации:', response);
                 return rejectWithValue('Неожиданный формат ответа');
             }
 
@@ -129,10 +112,8 @@ export const initiateRegister = createAsyncThunk(
                 });
             }
 
-            console.log('Ответ от сервера при инициации регистрации:', response);
             return response;
         } catch (error) {
-            console.error('Registration initiation error:', error);
             // Передаём полную структуру ошибки для обработки на клиенте
             const errorData = {
                 message: error?.message || handleError(error),
@@ -148,11 +129,9 @@ export const completeRegister = createAsyncThunk(
     'auth/completeRegister',
     async (data, { rejectWithValue }) => {
         try {
-            console.log('Отправка запроса на завершение регистрации:', data);
             const response = await authApi.completeRegister(data);
 
             if (!response || typeof response !== 'object') {
-                console.error('Получен некорректный ответ:', response);
                 return rejectWithValue('Сервер вернул некорректный ответ');
             }
 
@@ -162,14 +141,12 @@ export const completeRegister = createAsyncThunk(
 
             const responseData = response.data;
             if (!responseData) {
-                console.error('Данные отсутствуют в ответе:', response);
                 return rejectWithValue('Сервер вернул некорректный ответ');
             }
 
             const { accessToken, refreshToken, user } = responseData;
 
             if (!accessToken || !refreshToken) {
-                console.error('Токены отсутствуют в ответе:', responseData);
                 return rejectWithValue('Токены авторизации не получены от сервера');
             }
 
@@ -178,16 +155,14 @@ export const completeRegister = createAsyncThunk(
             try {
                 await saveTokensToStorage(tokens);
             } catch (storageError) {
-                console.error('Ошибка при сохранении токенов:', storageError);
+                // Ошибка сохранения токенов игнорируется
             }
 
-            console.log('Ответ от сервера при завершении регистрации:', response);
             return {
                 user,
                 tokens
             };
         } catch (error) {
-            console.error('Complete registration error:', error);
             if (error.response?.data) {
                 const serverError = error.response.data;
                 return rejectWithValue(serverError.message || 'Произошла ошибка при подтверждении кода');
@@ -212,7 +187,6 @@ export const verify2FALogin = createAsyncThunk(
             }
 
             if (!response || !response.status || response.status !== 'success') {
-                console.error('Неожиданная структура ответа при 2FA:', response);
                 return rejectWithValue('Неожиданный формат ответа');
             }
 
@@ -245,26 +219,16 @@ export const login = createAsyncThunk(
     'auth/login',
     async (credentials, { rejectWithValue }) => {
         try {
-            console.log('Attempting login with credentials:', {
-                email: credentials.email,
-                passwordProvided: !!credentials.password
-            });
-
             const response = await authApi.login(credentials);
-
-            console.log('Login raw response:', response);
 
             if (response && response.status === 'success' && response.data) {
                 const { accessToken, refreshToken, user } = response.data;
 
                 if (!accessToken || !refreshToken) {
-                    console.error('Missing tokens in response:', response.data);
                     return rejectWithValue('Токены не найдены в ответе сервера');
                 }
 
                 await authService.saveTokens({ accessToken, refreshToken });
-
-                console.log('Login successful with user:', { userId: user?.id });
 
                 return {
                     requiresTwoFactor: false,
@@ -274,7 +238,6 @@ export const login = createAsyncThunk(
             }
 
             if (response && response.status === 'pending' && response.requiresTwoFactor) {
-                console.log('Two-factor authentication required');
                 return {
                     requiresTwoFactor: true,
                     tempToken: response.tempToken,
@@ -292,7 +255,6 @@ export const login = createAsyncThunk(
 
                     await authService.saveTokens({ accessToken, refreshToken });
 
-
                     return {
                         requiresTwoFactor: false,
                         tokens: { accessToken, refreshToken },
@@ -301,14 +263,8 @@ export const login = createAsyncThunk(
                 }
             }
 
-            console.error('Unexpected response format:', response);
             return rejectWithValue('Неожиданный формат ответа от сервера');
         } catch (error) {
-            console.error('Login error details:', {
-                message: error.message,
-                name: error.name,
-                stack: error.stack
-            });
 
             if (error.response?.data) {
                 return rejectWithValue(error.response.data.message || 'Произошла ошибка при входе');
@@ -323,25 +279,19 @@ export const logout = createAsyncThunk(
     'auth/logout',
     async (_, { rejectWithValue, getState, dispatch }) => {
         try {
-            console.log('🚪 Logout: начало процесса выхода');
-
             // Деактивируем OneSignal токен перед выходом
             try {
-                console.log('🔄 Logout: деактивация OneSignal токена...');
                 const OneSignalService = require('@shared/services/OneSignalService').default;
                 await OneSignalService.clearUserContext();
-                console.log('✅ Logout: OneSignal токен деактивирован');
             } catch (oneSignalError) {
-                console.warn('⚠️ Logout: ошибка деактивации OneSignal токена:', oneSignalError);
+                // Ошибка деактивации OneSignal игнорируется
             }
 
             // Очищаем кэш чатов
             try {
-                console.log('🔄 Logout: очистка кэша чатов...');
                 await AsyncStorage.removeItem('chat.rooms');
-                console.log('✅ Logout: кэш чатов очищен');
             } catch (cacheError) {
-                console.warn('⚠️ Logout: ошибка очистки кэша чатов:', cacheError);
+                // Ошибка очистки кэша игнорируется
             }
 
             dispatch({ type: 'RESET_APP_STATE' });
@@ -350,26 +300,20 @@ export const logout = createAsyncThunk(
             const refreshToken = auth?.tokens?.refreshToken;
 
             if (!refreshToken) {
-                console.log('Logout: refreshToken отсутствует, локальный выход');
                 await removeTokensFromStorage();
                 return null;
             }
 
             try {
-                console.log('Logout: отправка запроса на сервер');
                 await authApi.logout(refreshToken);
-                console.log('Logout: успешный запрос на выход');
             } catch (error) {
-                console.warn('Logout: ошибка серверного выхода, продолжаем локальный выход', error);
+                // Ошибка серверного выхода игнорируется, продолжаем локальный выход
             }
 
-            console.log('Logout: удаление токенов из хранилища');
             await removeTokensFromStorage();
 
-            console.log('Logout: выход завершен успешно');
             return null;
         } catch (error) {
-            console.error('Logout: ошибка при выходе', error);
             await removeTokensFromStorage();
 
             dispatch({ type: 'RESET_APP_STATE' });
@@ -387,10 +331,7 @@ export const refreshToken = createAsyncThunk(
             const { auth } = getState();
             const tokens = auth.tokens;
 
-            console.log('refreshToken thunk: Проверка наличия refresh token');
-
             if (!tokens || !tokens.refreshToken) {
-                console.error('refreshToken thunk: токены или refresh token отсутствуют');
                 await removeTokensFromStorage();
                 dispatch({ type: 'auth/resetState' });
                 throw new Error('Необходима повторная авторизация');
@@ -401,34 +342,20 @@ export const refreshToken = createAsyncThunk(
                 const decoded = authService.decodeToken(tokens.refreshToken);
                 const currentTime = Math.floor(Date.now() / 1000);
 
-                console.log('refreshToken thunk: Проверка валидности токена', {
-                    hasExp: !!decoded?.exp,
-                    tokenExp: decoded?.exp,
-                    currentTime,
-                    isExpired: decoded?.exp < currentTime,
-                    timeUntilExpiry: decoded?.exp ? decoded.exp - currentTime : null
-                });
-
                 if (!decoded || !decoded.exp || decoded.exp <= currentTime) {
-                    console.warn('⚠️ refreshToken thunk: refresh token истек - требуется повторный вход');
                     await removeTokensFromStorage();
                     // НЕ сбрасываем RESET_APP_STATE - только auth
                     dispatch({ type: 'auth/resetState' });
                     throw new Error('Ваша сессия истекла. Пожалуйста, войдите снова для продолжения работы.');
                 }
             } catch (decodeError) {
-                console.error('refreshToken thunk: Ошибка декодирования refresh token:', decodeError);
                 await removeTokensFromStorage();
                 // НЕ сбрасываем RESET_APP_STATE - только auth
                 dispatch({ type: 'auth/resetState' });
                 throw new Error('Проблема с токеном авторизации. Пожалуйста, войдите снова.');
             }
 
-            console.log('refreshToken thunk: Отправка запроса на обновление токена');
-
             const response = await authApi.refreshToken(tokens.refreshToken);
-
-            console.log('refreshToken thunk: Ответ от сервера:', response);
 
             // Проверяем структуру ответа
             let accessToken, refreshToken;
@@ -439,18 +366,14 @@ export const refreshToken = createAsyncThunk(
             }
 
             if (!accessToken || !refreshToken) {
-                console.error('refreshToken thunk: Неожиданная структура ответа:', response);
                 throw new Error('Некорректный ответ от сервера при обновлении токена');
             }
 
             const newTokens = { accessToken, refreshToken };
             await saveTokensToStorage(newTokens);
 
-            console.log('refreshToken thunk: Токены успешно обновлены');
-
             return newTokens;
         } catch (error) {
-            console.error('refreshToken thunk: Ошибка обновления токена:', error);
 
             if (error.response?.status === 401 || error.code === 'ERR_NETWORK') {
                 await removeTokensFromStorage();
@@ -468,8 +391,6 @@ export const loadUserProfile = createAsyncThunk(
     'auth/loadUserProfile',
     async (_, { rejectWithValue, dispatch, getState }) => {
         try {
-            console.log('🔄 Загрузка полного профиля пользователя...');
-
             const state = getState();
             const currentUser = state.auth?.user;
 
@@ -486,21 +407,12 @@ export const loadUserProfile = createAsyncThunk(
 
             const profileData = response.data;
 
-            console.log('📥 Профиль загружен:', {
-                userId: profileData.id,
-                hasClient: !!profileData.client,
-                clientId: profileData.client?.id,
-                districtId: profileData.client?.districtId,
-                districtName: profileData.client?.district?.name
-            });
-
             // Обновляем пользователя полными данными
             dispatch(updateUserWithProfile(profileData));
 
             return profileData;
 
         } catch (error) {
-            console.error('❌ Ошибка загрузки профиля:', error);
             return rejectWithValue(error.message || 'Ошибка загрузки профиля');
         }
     }
@@ -532,7 +444,7 @@ const authSlice = createSlice({
                     };
                 }
             } catch (error) {
-                console.error('Error in setTokens:', error);
+                // Ошибка декодирования токена игнорируется
             }
         },
         setUser: (state, action) => {
@@ -623,13 +535,6 @@ const authSlice = createSlice({
                     supplier: profileData.supplier || null,
                     driver: profileData.driver || null
                 };
-
-                console.log('✅ Пользователь обновлен полными данными профиля:', {
-                    userId: state.user.id,
-                    clientId: state.user.client?.id,
-                    districtId: state.user.client?.districtId,
-                    districtName: state.user.client?.district?.name
-                });
             }
         },
         updateUserClient: (state, action) => {
@@ -645,11 +550,6 @@ const authSlice = createSlice({
                     district: clientData.district,
                     orders: clientData.orders || []
                 };
-
-                console.log('✅ Данные клиента обновлены:', {
-                    clientId: state.user.client.id,
-                    districtId: state.user.client.districtId
-                });
             }
         },
     },
@@ -671,7 +571,6 @@ const authSlice = createSlice({
 
             state.error = errorMessage;
             state.isAuthenticated = false;
-            console.log('Set rejected error:', errorMessage);
         };
 
         const setTokens = (state, action) => {
@@ -684,7 +583,7 @@ const authSlice = createSlice({
                     role: decoded.role,
                 };
             } catch (error) {
-                console.error('Error decoding token:', error);
+                // Ошибка декодирования токена игнорируется
             }
             authService.saveTokens(action.payload);
         };
@@ -707,19 +606,11 @@ const authSlice = createSlice({
                         try {
                             if (api && api.defaults) {
                                 api.defaults.headers.common['Authorization'] = `Bearer ${action.payload.tokens.accessToken}`;
-                                console.log('✅ Заголовок Authorization установлен после входа');
                             }
                         } catch (error) {
-                            console.warn('⚠️ Не удалось установить заголовок Authorization:', error.message);
+                            // Ошибка установки заголовка игнорируется
                         }
                     }
-
-                    console.log('🔄 Требуется загрузка полного профиля для пользователя:', state.user?.id);
-                    console.log('🔐 Токены сохранены в состоянии:', {
-                        hasAccessToken: !!state.tokens?.accessToken,
-                        hasRefreshToken: !!state.tokens?.refreshToken,
-                        isAuthenticated: state.isAuthenticated
-                    });
                 }
             })
             .addCase(login.rejected, (state, action) => {
@@ -730,7 +621,6 @@ const authSlice = createSlice({
                     : action.payload?.message || 'Произошла ошибка при входе';
 
                 state.isAuthenticated = false;
-                console.log('Set rejected error:', state.error);
             })
             .addCase(verify2FALogin.pending, setPending)
             .addCase(verify2FALogin.fulfilled, (state, action) => {
@@ -795,7 +685,7 @@ const authSlice = createSlice({
                         };
                     }
                 } catch (error) {
-                    console.error('Ошибка при декодировании токена:', error);
+                    // Ошибка декодирования токена игнорируется
                 }
             })
             .addCase(refreshToken.pending, setPending)
@@ -807,10 +697,8 @@ const authSlice = createSlice({
             .addCase(refreshToken.rejected, setRejected)
             .addCase(loadUserProfile.fulfilled, (state, action) => {
                 // Профиль уже обновлен через updateUserWithProfile dispatch
-                console.log('✅ Профиль успешно загружен и обновлен');
             })
             .addCase(loadUserProfile.rejected, (state, action) => {
-                console.error('❌ Ошибка загрузки профиля:', action.payload);
                 state.error = action.payload;
             })
     },

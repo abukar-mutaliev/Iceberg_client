@@ -11,35 +11,41 @@ export const BackButton = ({ onPress, style, disabled = false }) => {
     const isNavigatingRef = useRef(false);
 
     const handlePress = () => {
-        if (disabled || isNavigatingRef.current) {
-            if (process.env.NODE_ENV === 'development') {
-                console.log('BackButton - button is disabled or already navigating');
-            }
+        if (disabled) {
             return;
+        }
+
+        // Разрешаем навигацию даже если предыдущая еще не завершена
+        // Это позволяет прервать анимацию открытия экрана
+        if (isNavigatingRef.current) {
+            // Если уже идет навигация, сбрасываем флаг и продолжаем
+            // Это позволяет прервать анимацию
+            isNavigatingRef.current = false;
         }
 
         // Блокируем повторные нажатия
         isNavigatingRef.current = true;
 
         if (typeof onPress === 'function') {
+            // Вызываем onPress синхронно, блокировка будет сброшена внутри handleGoBack
             onPress();
-            // Сбрасываем блокировку сразу после выполнения onPress
+            // Сбрасываем блокировку быстрее, чтобы разрешить прерывание анимации
             setTimeout(() => {
                 isNavigatingRef.current = false;
-            }, 100);
+            }, 200);
         } else if (navigation.canGoBack()) {
             navigation.goBack();
             // Сбрасываем блокировку сразу после навигации
             setTimeout(() => {
                 isNavigatingRef.current = false;
-            }, 100);
+            }, 200);
         } else {
             // Если не можем вернуться назад, переходим на главный экран
             navigation.navigate('Main');
             // Сбрасываем блокировку сразу после навигации
             setTimeout(() => {
                 isNavigatingRef.current = false;
-            }, 100);
+            }, 200);
         }
     };
 

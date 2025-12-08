@@ -107,7 +107,8 @@ export const ChatHeader = ({route, navigation}) => {
     }, [roomData?.type, isSuperAdmin]);
 
     let chatPartner = null;
-    let chatPartnerName = params.roomTitle || 'Чат';
+    // Используем roomTitle только как fallback, основное имя будет из данных участника
+    let chatPartnerName = 'Чат';
     let chatPartnerAvatar = null;
     let chatPartnerStatus = 'онлайн';
 
@@ -183,37 +184,73 @@ export const ChatHeader = ({route, navigation}) => {
         }
     }
     else if (roomData?.participants && Array.isArray(roomData.participants) && currentUserId) {
-        chatPartner = roomData.participants.find(p => ((p?.userId ?? p?.user?.id)) !== currentUserId);
+        // Ищем собеседника - участника, который не является текущим пользователем
+        // Проверяем разные варианты структуры данных
+        chatPartner = roomData.participants.find(p => {
+            const participantId = p?.userId ?? p?.user?.id ?? p?.id;
+            // Сравниваем как числа, так и строки
+            return participantId && String(participantId) !== String(currentUserId);
+        });
+        
         if (chatPartner) {
             const partnerId = chatPartner?.userId ?? chatPartner?.user?.id ?? chatPartner?.id;
-            const cachedUser = participantsById[partnerId];
+            
+            // Дополнительная проверка: убеждаемся, что partnerId не равен currentUserId
+            if (!partnerId || String(partnerId) === String(currentUserId)) {
+                // Если по какой-то причине нашли себя или ID не определен, ищем другого участника
+                chatPartner = roomData.participants.find(p => {
+                    const pId = p?.userId ?? p?.user?.id ?? p?.id;
+                    return pId && String(pId) !== String(currentUserId);
+                });
+            }
+            
+            if (chatPartner) {
+                const finalPartnerId = chatPartner?.userId ?? chatPartner?.user?.id ?? chatPartner?.id;
+                const cachedUser = participantsById[finalPartnerId];
 
-            if (cachedUser) {
-                const displayName = getDisplayName(cachedUser);
-                // Используем roomTitle если он передан и не равен дефолтному значению
-                // Приоритет: roomTitle > getDisplayName
-                chatPartnerName = (params.roomTitle && params.roomTitle !== 'Чат' && params.roomTitle !== 'Водитель') 
-                    ? params.roomTitle 
-                    : displayName;
-                chatPartnerAvatar = cachedUser.avatar || cachedUser.image || null;
-                const userIsOnline = isUserOnline(cachedUser.lastSeenAt);
-                chatPartnerStatus = formatLastSeen(cachedUser.lastSeenAt, userIsOnline);
-            } else {
-                const userData = chatPartner.user || chatPartner;
-                const displayName = getDisplayName(userData);
-                // Используем roomTitle если он передан и не равен дефолтному значению
-                // Приоритет: roomTitle > getDisplayName
-                chatPartnerName = (params.roomTitle && params.roomTitle !== 'Чат' && params.roomTitle !== 'Водитель') 
-                    ? params.roomTitle 
-                    : displayName;
-                chatPartnerAvatar =
-                    chatPartner.avatar ||
-                    chatPartner.image ||
-                    chatPartner.user?.avatar ||
-                    chatPartner.user?.image ||
-                    null;
-                const userIsOnline = isUserOnline(userData.lastSeenAt);
-                chatPartnerStatus = formatLastSeen(userData.lastSeenAt, userIsOnline);
+                if (cachedUser) {
+                    // Приоритет: данные из кэша участников (самые актуальные)
+                    const displayName = getDisplayName(cachedUser);
+                    // Проверяем, что это не имя текущего пользователя
+                    const currentUserName = getDisplayName(currentUser);
+                    if (displayName && displayName !== currentUserName) {
+                        chatPartnerName = displayName;
+                    } else if (__DEV__) {
+                        console.warn('ChatHeader: displayName совпадает с текущим пользователем, используем fallback');
+                    }
+                    chatPartnerAvatar = cachedUser.avatar || cachedUser.image || null;
+                    const userIsOnline = isUserOnline(cachedUser.lastSeenAt);
+                    chatPartnerStatus = formatLastSeen(cachedUser.lastSeenAt, userIsOnline);
+                } else {
+                    // Если нет в кэше, используем данные из участника
+                    const userData = chatPartner.user || chatPartner;
+                    const displayName = getDisplayName(userData);
+                    // Проверяем, что это не имя текущего пользователя
+                    const currentUserName = getDisplayName(currentUser);
+                    if (displayName && displayName !== currentUserName) {
+                        chatPartnerName = displayName;
+                    } else if (__DEV__) {
+                        console.warn('ChatHeader: displayName из участника совпадает с текущим пользователем');
+                    }
+                    
+                    chatPartnerAvatar =
+                        chatPartner.avatar ||
+                        chatPartner.image ||
+                        chatPartner.user?.avatar ||
+                        chatPartner.user?.image ||
+                        null;
+                    const userIsOnline = isUserOnline(userData.lastSeenAt);
+                    chatPartnerStatus = formatLastSeen(userData.lastSeenAt, userIsOnline);
+                }
+            }
+        }
+        
+        // Если после всех проверок имя осталось дефолтным, пробуем использовать roomTitle
+        // Но только если roomTitle не совпадает с именем текущего пользователя
+        if (chatPartnerName === 'Чат' && params.roomTitle) {
+            const currentUserName = getDisplayName(currentUser);
+            if (params.roomTitle !== 'Чат' && params.roomTitle !== 'Водитель' && params.roomTitle !== currentUserName) {
+                chatPartnerName = params.roomTitle;
             }
         }
 

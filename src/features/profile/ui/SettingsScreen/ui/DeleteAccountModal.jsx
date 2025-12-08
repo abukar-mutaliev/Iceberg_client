@@ -7,13 +7,13 @@ import {
     TextInput,
     TouchableOpacity,
     ActivityIndicator,
-    Alert
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 import { deleteProfile, selectIsProfileDeleting, selectProfileError } from '@entities/profile';
 import { logout, resetState, removeTokensFromStorage,  } from '@entities/auth';
 import { FontFamily, Color, Border } from '@app/styles/GlobalStyles';
+import { useCustomAlert } from '@shared/ui/CustomAlert';
 
 const DeleteAccountModal = ({ visible, onClose }) => {
     const [password, setPassword] = useState('');
@@ -21,6 +21,7 @@ const DeleteAccountModal = ({ visible, onClose }) => {
 
     const dispatch = useDispatch();
     const navigation = useNavigation();
+    const { showSuccess } = useCustomAlert();
 
     const isDeleting = useSelector(selectIsProfileDeleting);
     const reduxError = useSelector(selectProfileError);
@@ -72,19 +73,30 @@ const DeleteAccountModal = ({ visible, onClose }) => {
             return;
         }
 
+        // Валидация длины пароля на клиенте
+        if (password.length < 6) {
+            setLocalError('Пароль должен содержать минимум 6 символов');
+            return;
+        }
+
         setLocalError(null);
 
         try {
             await dispatch(deleteProfile({ password })).unwrap();
 
-            Alert.alert(
+            showSuccess(
                 'Аккаунт удален',
                 'Ваш аккаунт был успешно удален',
-                [{ text: 'ОК', onPress: handleSuccessfulDeletion }],
-                { onDismiss: handleSuccessfulDeletion }
+                [
+                    {
+                        text: 'ОК',
+                        style: 'primary',
+                        onPress: handleSuccessfulDeletion
+                    }
+                ]
             );
         } catch (err) {
-
+            // Обработка случая, когда пользователь уже удален (404)
             if (err &&
                 (typeof err === 'object' && (err.code === 404 || err.status === 404)) ||
                 (typeof err === 'string' && (err.includes('не найден') || err.includes('Not Found')))) {
@@ -92,9 +104,43 @@ const DeleteAccountModal = ({ visible, onClose }) => {
                 return;
             }
 
-            setLocalError(typeof err === 'string' ? err : (
-                err?.message || err?.data?.message || 'Произошла ошибка при удалении аккаунта'
-            ));
+            // Определяем сообщение об ошибке
+            // handleError в slice.js возвращает строку, поэтому err обычно строка
+            let errorMessage = '';
+            if (typeof err === 'string') {
+                errorMessage = err;
+            } else if (err?.message) {
+                errorMessage = err.message;
+            } else if (err?.data?.message) {
+                errorMessage = err.data.message;
+            } else if (err?.response?.data?.message) {
+                errorMessage = err.response.data.message;
+            } else {
+                errorMessage = 'Произошла ошибка при удалении аккаунта';
+            }
+
+            // Проверяем, является ли ошибка ошибкой неправильного пароля
+            // Важно: проверяем ТОЛЬКО на точное совпадение "Неверный пароль"
+            // Ошибки валидации (например, "Пароль должен содержать минимум 6 символов") 
+            // НЕ являются ошибками неправильного пароля
+            const errorMessageLower = errorMessage.toLowerCase().trim();
+            
+            // Точная проверка на "Неверный пароль" (без учета ошибок валидации)
+            const isPasswordError = 
+                errorMessageLower === 'неверный пароль' ||
+                errorMessageLower === 'invalid password' ||
+                errorMessageLower === 'wrong password' ||
+                (errorMessageLower.includes('неверный пароль') && !errorMessageLower.includes('должен')) ||
+                (errorMessageLower.includes('invalid password') && !errorMessageLower.includes('must')) ||
+                (errorMessageLower.includes('wrong password') && !errorMessageLower.includes('must'));
+
+            // Показываем понятное сообщение об ошибке пароля
+            if (isPasswordError) {
+                setLocalError('Неверный пароль. Проверьте правильность введенного пароля.');
+            } else {
+                // Для всех остальных ошибок (включая валидацию) показываем оригинальное сообщение
+                setLocalError(errorMessage);
+            }
         }
     };
 
@@ -118,7 +164,10 @@ const DeleteAccountModal = ({ visible, onClose }) => {
                     </Text>
 
                     <TextInput
-                        style={styles.passwordInput}
+                        style={[
+                            styles.passwordInput,
+                            error && styles.passwordInputError
+                        ]}
                         secureTextEntry
                         value={password}
                         onChangeText={(text) => {
@@ -215,6 +264,10 @@ const styles = StyleSheet.create({
         marginBottom: 16,
         fontFamily: FontFamily.sFProText,
         fontSize: 14,
+    },
+    passwordInputError: {
+        borderColor: Color.red,
+        borderWidth: 1.5,
     },
     errorText: {
         color: Color.red,

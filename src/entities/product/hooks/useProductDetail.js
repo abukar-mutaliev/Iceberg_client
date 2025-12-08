@@ -25,11 +25,13 @@ export const useProductDetail = (productId) => {
     const dispatch = useDispatch();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
-    const [lastLoadedId, setLastLoadedId] = useState(null);
     const [shouldReload, setShouldReload] = useState(false);
 
     // Ref для отслеживания состояния компонента
     const isMountedRef = useRef(true);
+
+    // Используем ref для lastLoadedId, чтобы избежать ререндеров
+    const lastLoadedIdRef = useRef(null);
 
     // Refs для отслеживания состояния загрузки
     const loadingStates = useRef({
@@ -79,7 +81,7 @@ export const useProductDetail = (productId) => {
             const result = await dispatch(fetchProductById({ productId: validProductId, force: true })).unwrap();
 
             if (isMountedRef.current) {
-                setLastLoadedId(validProductId);
+                lastLoadedIdRef.current = validProductId;
                 setShouldReload(false);
                 setIsLoading(false);
                 console.log('Продукт принудительно загружен:', result.data?.name || result.data?.id);
@@ -102,7 +104,7 @@ export const useProductDetail = (productId) => {
             
             if (force) {
                 // При принудительном обновлении сбрасываем состояние и немедленно загружаем данные
-                setLastLoadedId(null);
+                lastLoadedIdRef.current = null;
                 setShouldReload(true);
                 
                 // Немедленно загружаем данные принудительно
@@ -113,7 +115,19 @@ export const useProductDetail = (productId) => {
         }
     }, [forceLoadProductData]);
 
+    // Используем ref для хранения актуального продукта, чтобы избежать замыканий
+    const productRef = useRef(product);
+    const currentProductRef = useRef(currentProduct);
+    
+    // Обновляем refs при изменении продуктов
+    useEffect(() => {
+        productRef.current = product;
+        currentProductRef.current = currentProduct;
+    }, [product, currentProduct]);
+
     // Проверяем, нужно ли загружать продукт
+    // УБИРАЕМ setState из этой функции - она должна быть чистой
+    // Используем refs для доступа к актуальным данным без создания зависимостей
     const shouldFetchProduct = useCallback(() => {
         if (!validProductId) return false;
         if (loadingStates.current.product) return false;
@@ -121,37 +135,44 @@ export const useProductDetail = (productId) => {
         // Если shouldReload = true, всегда загружаем
         if (shouldReload) return true;
 
+        // Используем актуальные данные из refs
+        const productState = productRef.current;
+
         // Если продукт уже есть в кэше или в currentProduct и он соответствует запрашиваемому ID, не загружаем
         // Это позволяет корректно восстанавливать продукты при возврате назад
-        if (product && product.id === validProductId) {
-            // Если продукт соответствует ID, но не был загружен для этого экрана, помечаем как загруженный
-            if (lastLoadedId !== validProductId) {
-                setLastLoadedId(validProductId);
+        if (productState && productState.id === validProductId) {
+            // Обновляем ref без вызова ререндера
+            if (lastLoadedIdRef.current !== validProductId) {
+                lastLoadedIdRef.current = validProductId;
             }
             return false;
         }
 
         return true;
-    }, [validProductId, shouldReload, product, lastLoadedId]);
+    }, [validProductId, shouldReload]);
 
     // Загружаем данные о товаре
     const loadProductData = useCallback(async () => {
+        // Используем актуальные данные из refs
+        const currentProductState = currentProductRef.current;
+        const productState = productRef.current;
+        
         const shouldFetch = shouldFetchProduct();
         
         console.log('[useProductDetail] loadProductData:', {
             validProductId,
             shouldFetch,
             shouldReload,
-            hasProduct: !!product,
-            productId: product?.id,
-            lastLoadedId
+            hasProduct: !!productState,
+            productId: productState?.id,
+            lastLoadedId: lastLoadedIdRef.current
         });
         
         if (!shouldFetch) {
             // Если продукт уже есть, просто устанавливаем его как текущий
-            if (product && !currentProduct) {
-                // Устанавливаем кэшированный продукт как текущий
-                setLastLoadedId(validProductId);
+            if (productState && !currentProductState) {
+                // Устанавливаем кэшированный продукт как текущий (используем ref)
+                lastLoadedIdRef.current = validProductId;
             }
             setIsLoading(false);
             return;
@@ -169,7 +190,7 @@ export const useProductDetail = (productId) => {
 
             // Обновляем состояние только если компонент все еще смонтирован
             if (isMountedRef.current) {
-                setLastLoadedId(validProductId);
+                lastLoadedIdRef.current = validProductId;
                 setShouldReload(false);
                 setIsLoading(false);
                 console.log('Продукт успешно загружен:', result.data?.name || result.data?.id);
@@ -183,7 +204,7 @@ export const useProductDetail = (productId) => {
         } finally {
             loadingStates.current.product = false;
         }
-    }, [dispatch, validProductId, shouldFetchProduct, product, currentProduct, shouldReload]);
+    }, [dispatch, validProductId, shouldFetchProduct, shouldReload]);
 
     // Загружаем данные о поставщике
     const loadSupplierData = useCallback(async () => {
@@ -216,12 +237,13 @@ export const useProductDetail = (productId) => {
     }, [dispatch, validProductId, isFeedbacksLoaded]);
 
     // Основной эффект для загрузки данных
+    // УПРОЩАЕМ ЗАВИСИМОСТИ: убираем loadProductData из зависимостей, чтобы избежать циклов
     useEffect(() => {
         if (!validProductId) return;
 
         // Если это новый продукт (переход вперед), сбрасываем состояние
         // Но не сбрасываем ошибку при возврате назад, если продукт есть в кэше
-        if (validProductId !== lastLoadedId) {
+        if (validProductId !== lastLoadedIdRef.current) {
             // Проверяем, есть ли продукт в кэше с нужным ID (это может быть возврат назад)
             const isCachedProduct = cachedProduct && cachedProduct.id === validProductId;
             
@@ -250,7 +272,8 @@ export const useProductDetail = (productId) => {
         return () => {
             // Дополнительная обработка при размонтировании
         };
-    }, [validProductId, loadProductData, cachedProduct]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [validProductId, cachedProduct?.id]);
 
     // Эффект для загрузки дополнительных данных
     useEffect(() => {

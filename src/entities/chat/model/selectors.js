@@ -1,6 +1,7 @@
 import { createSelector } from '@reduxjs/toolkit';
 
 const EMPTY_ARRAY = [];
+const EMPTY_OBJECT = {};
 
 export const selectChat = (state) => state.chat;
 
@@ -12,8 +13,9 @@ export const selectRoomsList = createSelector(
     (state) => state.chat?.participants?.byUserId,
     (state) => state.chat?.messages, // Добавляем сообщения для отслеживания статуса
     (state) => state.auth?.user?.id,
+    (state) => state.products?.byId || {}, // Добавляем товары для PRODUCT чатов
   ],
-  (roomIds, roomsById, unreadByRoomId, participantsById, messages, currentUserId) => {
+  (roomIds, roomsById, unreadByRoomId, participantsById, messages, currentUserId, productsById) => {
     if (!roomIds || !roomsById) return EMPTY_ARRAY;
 
     return roomIds.map((id) => {
@@ -101,14 +103,16 @@ export const selectRoomsList = createSelector(
                            senderUser.companyName ||
                            `Пользователь ${senderId}`;
 
-          lastMessage.senderName = senderName;
-          if (!lastMessage.sender) {
-            lastMessage.sender = {
+          // Создаем новый объект вместо мутации
+          lastMessage = {
+            ...lastMessage,
+            senderName,
+            sender: lastMessage.sender || {
               id: senderId,
               name: senderName,
               avatar: senderUser.avatar || senderUser.image
-            };
-          }
+            }
+          };
         }
       }
 
@@ -119,6 +123,14 @@ export const selectRoomsList = createSelector(
         lastMessage, // Добавляем обновленное последнее сообщение
         // Убираем создание массива messages - он не нужен для списка чатов
       };
+
+      // Для PRODUCT чатов добавляем товар из productsById, если он не загружен в объект комнаты
+      if (room.type === 'PRODUCT' && room.productId && !room.product) {
+        const product = productsById[room.productId];
+        if (product) {
+          processedRoom.product = product;
+        }
+      }
 
       // Если есть участники, обогащаем их данными
       if (room.participants && Array.isArray(room.participants)) {
@@ -228,9 +240,12 @@ export const selectTypingUserIds = (state, roomId) => {
   return Object.keys(typingData);
 };
 
+// Селектор для typing activities по roomId
+// Используем EMPTY_OBJECT константу вместо создания нового объекта
 export const selectTypingActivities = (state, roomId) => {
+  if (!roomId) return EMPTY_OBJECT;
   const roomKey = String(roomId);
-  return state.chat?.typingByRoomId?.[roomKey] || {};
+  return state.chat?.typingByRoomId?.[roomKey] || EMPTY_OBJECT;
 };
 
 export const selectLastActivityType = (state, roomId, userId) => {

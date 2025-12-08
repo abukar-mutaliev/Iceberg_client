@@ -1,6 +1,6 @@
 import React, { useMemo, useCallback } from 'react';
 import { FontFamily, FontSize, Color, Border } from '@app/styles/GlobalStyles';
-import { View, Text, StyleSheet, FlatList, Dimensions, PixelRatio } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Dimensions, PixelRatio, ActivityIndicator } from 'react-native';
 
 // Прямой импорт компонента
 import { ProductTile } from '@entities/product/ui/ProductTile';
@@ -14,22 +14,23 @@ const normalize = (size) => {
 };
 
 /**
- * Оптимизированный компонент для отображения похожих продуктов
+ * Оптимизированный компонент для отображения похожих продуктов и остальных товаров
  * Убрана зависимость от useRoute, теперь currentProductId передается как проп
  */
 export const SimilarProducts = React.memo(({
                                                products,
                                                onProductPress,
                                                currentProductId,
-                                               color
+                                               color,
+                                               onEndReached,
+                                               isLoadingMore = false,
+                                               hasMore = false
                                            }) => {
-    // Фильтруем и валидируем продукты
+    // Фильтруем и валидируем продукты (без ограничения количества)
     const validProducts = useMemo(() => {
         if (!Array.isArray(products)) return [];
 
-        return products
-            .filter(p => p && p.id && p.id !== currentProductId)
-            .slice(0, 6); // Ограничиваем до 6 продуктов для лучшей производительности
+        return products.filter(p => p && p.id && p.id !== currentProductId);
     }, [products, currentProductId]);
 
     // Обработчик нажатия на похожий продукт
@@ -96,15 +97,15 @@ export const SimilarProducts = React.memo(({
         };
     }, []);
 
-    // Дополнительное логирование только в режиме разработки
-    if (process.env.NODE_ENV === 'development') {
-        console.log('SimilarProducts render:', {
-            productsCount: validProducts.length,
-            currentProductId,
-            hasCustomHandler: !!onProductPress,
-            isValidComponent: isValidReactComponent
-        });
-    }
+    // Убираем избыточное логирование, которое может вызывать проблемы производительности
+    // if (process.env.NODE_ENV === 'development') {
+    //     console.log('SimilarProducts render:', {
+    //         productsCount: validProducts.length,
+    //         currentProductId,
+    //         hasCustomHandler: !!onProductPress,
+    //         isValidComponent: isValidReactComponent
+    //     });
+    // }
 
     // Для пустого списка сразу возвращаем сообщение без перерисовки
     if (!validProducts || validProducts.length === 0) {
@@ -124,6 +125,24 @@ export const SimilarProducts = React.memo(({
         );
     }
 
+    // Функция для загрузки следующей страницы
+    const handleEndReached = useCallback(() => {
+        if (hasMore && !isLoadingMore && onEndReached) {
+            onEndReached();
+        }
+    }, [hasMore, isLoadingMore, onEndReached]);
+
+    // Компонент футера для индикатора загрузки
+    const renderFooter = useCallback(() => {
+        if (!isLoadingMore) return null;
+        return (
+            <View style={styles.loaderContainer}>
+                <ActivityIndicator size="small" color={Color.purpleSoft} />
+                <Text style={styles.loadingText}>Загружаем ещё товары...</Text>
+            </View>
+        );
+    }, [isLoadingMore]);
+
     return (
         <View style={styles.container}>
             <Text style={styles.title}>
@@ -139,11 +158,14 @@ export const SimilarProducts = React.memo(({
                 showsVerticalScrollIndicator={false}
                 scrollEnabled={false}
                 contentContainerStyle={styles.listContentContainer}
-                initialNumToRender={4}
-                maxToRenderPerBatch={4}
-                windowSize={2}
+                initialNumToRender={6}
+                maxToRenderPerBatch={6}
+                windowSize={3}
                 removeClippedSubviews={true}
                 updateCellsBatchingPeriod={50}
+                onEndReached={handleEndReached}
+                onEndReachedThreshold={0.5}
+                ListFooterComponent={renderFooter}
                 // Добавляем дополнительные оптимизации
                 disableVirtualization={false}
                 legacyImplementation={false}
@@ -166,12 +188,19 @@ export const SimilarProducts = React.memo(({
     if (prevProps.products.length !== nextProps.products.length) return false;
 
     // Проверяем только ID продуктов, что гораздо быстрее глубокого сравнения
-    for (let i = 0; i < Math.min(prevProps.products.length, 6); i++) {
+    // Проверяем первые 20 для оптимизации (если список очень большой)
+    const checkCount = Math.min(prevProps.products.length, 20);
+    for (let i = 0; i < checkCount; i++) {
         if (prevProps.products[i]?.id !== nextProps.products[i]?.id) return false;
     }
 
     // Проверяем функцию onProductPress (по ссылке)
     if (prevProps.onProductPress !== nextProps.onProductPress) return false;
+
+    // Проверяем функции пагинации
+    if (prevProps.onEndReached !== nextProps.onEndReached) return false;
+    if (prevProps.isLoadingMore !== nextProps.isLoadingMore) return false;
+    if (prevProps.hasMore !== nextProps.hasMore) return false;
 
     return true;
 });
@@ -216,6 +245,17 @@ const styles = StyleSheet.create({
     },
     listContentContainer: {
         paddingBottom: 0,
+    },
+    loaderContainer: {
+        paddingVertical: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    loadingText: {
+        fontSize: FontSize.size_xs,
+        fontFamily: FontFamily.sFProText,
+        color: Color.colorSilver_100,
+        textAlign: 'center',
     },
     errorContainer: {
         justifyContent: 'center',

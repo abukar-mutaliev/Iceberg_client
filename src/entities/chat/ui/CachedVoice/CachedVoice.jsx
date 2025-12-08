@@ -10,6 +10,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing, TouchableWithoutFeedback } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import { getBaseUrl } from '@shared/api/api';
@@ -38,9 +39,16 @@ const formatTime = (seconds) => {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
-// Генерация waveform на основе messageId (детерминированная)
-const generateWaveform = (messageId, length = 40) => {
-  const seed = typeof messageId === 'number' ? messageId : 12345;
+// Генерация waveform на основе duration и размера файла (детерминированная)
+const generateWaveform = (attachment, length = 40) => {
+  if (!attachment) {
+    // Fallback для случаев, когда attachment не определен
+    return Array.from({ length }, () => 0.5);
+  }
+
+  const duration = attachment.duration || 0;
+  const size = attachment.size || 0;
+  const seed = (duration * 1000) + size + 12345; // Комбинируем duration и size для уникальности
   return Array.from({ length }, (_, i) => {
     const x = (seed * (i + 1)) % 100;
     return 0.3 + (x / 100) * 0.7;
@@ -121,19 +129,27 @@ const useWaveform = (attachment, messageId) => {
   return useMemo(() => {
     if (attachment?.waveform) {
       try {
-        const parsed = typeof attachment.waveform === 'string' 
-          ? JSON.parse(attachment.waveform) 
+        const parsed = typeof attachment.waveform === 'string'
+          ? JSON.parse(attachment.waveform)
           : attachment.waveform;
-        
+
         if (Array.isArray(parsed) && parsed.length > 0) {
+          if (__DEV__) {
+            console.log(`🎵 Using saved waveform for message ${messageId}, length: ${parsed.length}`);
+          }
           return parsed;
         }
       } catch (e) {
         // Игнорируем ошибки парсинга
       }
     }
-    return generateWaveform(messageId);
-  }, [attachment?.waveform, messageId]);
+
+    const generated = generateWaveform(attachment);
+    if (__DEV__) {
+      console.log(`🎵 Generated waveform for message ${messageId}, duration: ${attachment?.duration}, size: ${attachment?.size}, length: ${generated.length}`);
+    }
+    return generated;
+  }, [attachment?.waveform, attachment?.duration, attachment?.size, messageId]);
 };
 
 // Хук для управления анимацией прогресса
@@ -243,6 +259,9 @@ const useAudioPlayer = (audioUri, cachedPath, messageId, onPlaybackStatusUpdate)
       throw new Error('Sound not loaded');
     }
 
+    // Устанавливаем duration из загруженного звука, если она не была установлена из attachment
+    // Note: attachment is not available in this hook scope, duration is handled in component level
+
     return newSound;
   }, [audioUri, cachedPath, onPlaybackStatusUpdate, downloadInBackground]);
 
@@ -263,17 +282,76 @@ const useAudioPlayer = (audioUri, cachedPath, messageId, onPlaybackStatusUpdate)
 // ============================================================================
 
 const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, status }) => {
+  // Защита от undefined/null attachment
+  if (!attachment || typeof attachment !== 'object') {
+    if (__DEV__) {
+      console.warn(`CachedVoice: Invalid attachment for message ${messageId}:`, attachment);
+    }
+    return null;
+  }
+
+  if (__DEV__) {
+    console.log(`CachedVoice: Rendering message ${messageId}, attachment:`, {
+      hasPath: !!attachment.path,
+      duration: attachment.duration,
+      hasWaveform: !!attachment.waveform,
+      size: attachment.size
+    });
+  }
+
   const [sound, setSound] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackPosition, setPlaybackPosition] = useState(0);
   const [playbackDuration, setPlaybackDuration] = useState(attachment?.duration || 0);
   const [error, setError] = useState(null);
+  const [playbackRate, setPlaybackRate] = useState(1.0); // Скорость воспроизведения: 1x, 1.5x, 2x
+
 
   const messageIdRef = useRef(messageId);
   const waveformWidthRef = useRef(0);
 
   const { audioUri, cachedPath } = useAudioUri(attachment);
   const waveformData = useWaveform(attachment, messageId);
+
+  // Обновляем duration при изменении attachment или загрузке звука
+  useEffect(() => {
+    if (attachment?.duration && attachment.duration !== playbackDuration) {
+      setPlaybackDuration(attachment.duration);
+    }
+  }, [attachment?.duration, playbackDuration]);
+
+  // Пытаемся получить duration из аудио файла, если ее нет в attachment
+  useEffect(() => {
+    const getDurationFromAudio = async () => {
+      if (attachment?.duration && attachment.duration > 0) return; // Уже есть duration
+
+      if (!audioUri) return;
+
+      try {
+        // Создаем временный Sound для получения duration
+        const { sound: tempSound } = await Audio.Sound.createAsync(
+          { uri: audioUri },
+          { shouldPlay: false }
+        );
+
+        const status = await tempSound.getStatusAsync();
+        if (status.isLoaded && status.durationMillis) {
+          const durationFromAudio = status.durationMillis / 1000;
+          if (durationFromAudio > 0 && durationFromAudio !== playbackDuration) {
+            setPlaybackDuration(durationFromAudio);
+          }
+        }
+
+        await tempSound.unloadAsync();
+      } catch (error) {
+        // Игнорируем ошибки
+      }
+    };
+
+    if (!attachment?.duration || attachment.duration === 0) {
+      getDurationFromAudio();
+    }
+  }, [attachment?.duration, audioUri, playbackDuration]);
 
   const onPlaybackStatusUpdate = useCallback(async (playbackStatus) => {
     if (playbackStatus.isLoaded) {
@@ -283,12 +361,15 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
       if (playbackStatus.didJustFinish) {
         setIsPlaying(false);
         setPlaybackPosition(0);
+        // Сбрасываем скорость воспроизведения после окончания
+        setPlaybackRate(1.0);
         if (soundRef.current) {
           try {
             const currentStatus = await soundRef.current.getStatusAsync();
             if (currentStatus.isLoaded) {
               await soundRef.current.stopAsync();
               await soundRef.current.setPositionAsync(0);
+              await soundRef.current.setRateAsync(1.0, true);
             }
           } catch (err) {
             // Игнорируем
@@ -314,6 +395,7 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
       if (event === 'stopped' && soundId === messageIdRef.current) {
         setIsPlaying(false);
         setPlaybackPosition(0);
+        setPlaybackRate(1.0); // Сбрасываем скорость при остановке
         progressAnim.setValue(0);
       }
     };
@@ -321,6 +403,50 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
     audioManager.addListener(handleAudioEvent);
     return () => audioManager.removeListener(handleAudioEvent);
   }, [progressAnim]);
+
+  // Применяем скорость воспроизведения при изменении playbackRate во время воспроизведения
+  useEffect(() => {
+    const applyPlaybackRate = async () => {
+      if (soundRef.current && isPlaying) {
+        try {
+          const soundStatus = await soundRef.current.getStatusAsync();
+          if (soundStatus.isLoaded) {
+            await soundRef.current.setRateAsync(playbackRate, true);
+          }
+        } catch (err) {
+          console.error('Error applying playback rate:', err);
+        }
+      }
+    };
+
+    applyPlaybackRate();
+  }, [playbackRate, isPlaying]);
+
+  // Функция для переключения скорости воспроизведения
+  const togglePlaybackRate = useCallback(async () => {
+    const rates = [1.0, 1.5, 2.0];
+    const currentIndex = rates.indexOf(playbackRate);
+    const nextIndex = (currentIndex + 1) % rates.length;
+    const nextRate = rates[nextIndex];
+    
+    if (__DEV__) {
+      console.log('Toggle playback rate:', playbackRate, '->', nextRate);
+    }
+    
+    setPlaybackRate(nextRate);
+    
+    // Если аудио сейчас воспроизводится, применяем новую скорость
+    if (soundRef.current && isPlaying) {
+      try {
+        const soundStatus = await soundRef.current.getStatusAsync();
+        if (soundStatus.isLoaded) {
+          await soundRef.current.setRateAsync(nextRate, true);
+        }
+      } catch (err) {
+        console.error('Error setting playback rate:', err);
+      }
+    }
+  }, [playbackRate, isPlaying]);
 
   const togglePlayPause = useCallback(async () => {
     try {
@@ -339,6 +465,8 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
           } else {
             setIsPlaying(true);
             await audioManager.registerSound(messageIdRef.current, soundRef.current);
+            // Применяем текущую скорость воспроизведения
+            await soundRef.current.setRateAsync(playbackRate, true);
             await soundRef.current.playAsync();
           }
           return;
@@ -354,6 +482,8 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
       setSound(newSound);
       
       await audioManager.registerSound(messageIdRef.current, newSound);
+      // Применяем текущую скорость воспроизведения перед запуском
+      await newSound.setRateAsync(playbackRate, true);
       await newSound.playAsync();
       
       setIsPlaying(true);
@@ -363,7 +493,7 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
       setError('Не удалось воспроизвести');
       setIsPlaying(false);
     }
-  }, [isPlaying, loadAndPlayAudio]);
+  }, [isPlaying, loadAndPlayAudio, playbackRate]);
 
   const handleWaveformLayout = useCallback((event) => {
     waveformWidthRef.current = event.nativeEvent.layout.width;
@@ -408,6 +538,10 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
         await soundRef.current.setPositionAsync(newPosition * 1000);
         setPlaybackPosition(newPosition);
         progressAnim.setValue(progress);
+        // Сохраняем текущую скорость при перемотке
+        if (playbackRate !== 1.0) {
+          await soundRef.current.setRateAsync(playbackRate, true);
+        }
       } catch (err) {
         // Игнорируем ошибки перемотки
       }
@@ -487,12 +621,35 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
         </TouchableWithoutFeedback>
 
         <View style={styles.timeRow}>
-          <Text style={[
-            styles.duration,
-            isOwnMessage ? styles.durationOwn : styles.durationOther
-          ]}>
-            {isPlaying ? formatTime(playbackPosition) : formatTime(playbackDuration)}
-          </Text>
+          <View style={styles.durationContainer}>
+            <Text style={[
+              styles.duration,
+              isOwnMessage ? styles.durationOwn : styles.durationOther
+            ]}>
+              {isPlaying ? formatTime(playbackPosition) : formatTime(playbackDuration)}
+            </Text>
+            {/* Кнопка переключения скорости */}
+            <TouchableOpacity
+              onPress={togglePlaybackRate}
+              activeOpacity={0.6}
+              style={[
+                styles.speedButton,
+                isOwnMessage ? styles.speedButtonOwn : styles.speedButtonOther
+              ]}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              {playbackRate === 1.0 ? (
+                <Ionicons name="speedometer-outline" size={12} color={isOwnMessage ? '#095E54' : '#25D366'} />
+              ) : (
+                <Text style={[
+                  styles.playbackRate,
+                  isOwnMessage ? styles.playbackRateOwn : styles.playbackRateOther
+                ]}>
+                  {playbackRate}x
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
           
           {time && (
             <View style={styles.timeAndStatus}>
@@ -604,6 +761,26 @@ const styles = StyleSheet.create({
     marginTop: 0,
     width: '100%',
   },
+  durationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  speedButton: {
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 4,
+    minWidth: 20,
+    minHeight: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  speedButtonOwn: {
+    backgroundColor: 'rgba(9, 94, 84, 0.1)',
+  },
+  speedButtonOther: {
+    backgroundColor: 'rgba(37, 211, 102, 0.1)',
+  },
   duration: {
     fontSize: 11,
     fontWeight: '400',
@@ -616,6 +793,27 @@ const styles = StyleSheet.create({
   },
   durationOther: {
     color: '#3C3C43',
+  },
+  playbackRate: {
+    fontSize: 10,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: 0.3,
+    lineHeight: 12,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
+    overflow: 'visible',
+    minWidth: 24,
+    textAlign: 'center',
+  },
+  playbackRateOwn: {
+    color: '#095E54',
+    backgroundColor: 'rgba(9, 94, 84, 0.15)',
+  },
+  playbackRateOther: {
+    color: '#25D366',
+    backgroundColor: 'rgba(37, 211, 102, 0.15)',
   },
   timeAndStatus: {
     flexDirection: 'row',

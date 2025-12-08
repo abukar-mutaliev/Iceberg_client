@@ -23,16 +23,19 @@ export const ProductsList = ({
                                  hasMore = true,
                                  ListHeaderComponent,
                                  ListFooterComponent,
-                                 hideLoader = false
+                                 hideLoader = false,
+                                 products: productsProp = null
                              }) => {
     // Безопасные значения по умолчанию
     const safeOnEndReachedThreshold = onEndReachedThreshold || 8;
     const safeIsLoadingMore = Boolean(isLoadingMore);
     const safeHasMore = Boolean(hasMore);
     const safeHideLoader = Boolean(hideLoader);
-    const products = useSelector(selectProducts);
+    const productsFromStore = useSelector(selectProducts);
     const isLoading = useSelector(selectProductsLoading);
     const error = useSelector(selectProductsError);
+    // Используем переданные продукты через пропсы, если они есть, иначе из store
+    const products = productsProp !== null ? productsProp : productsFromStore;
 
     // Сохраняем позицию скролла
     const flatListRef = useRef(null);
@@ -62,8 +65,24 @@ export const ProductsList = ({
 
     const handleScroll = useCallback((event) => {
         const { x, y } = event.nativeEvent.contentOffset;
+        const { height } = event.nativeEvent.layoutMeasurement;
+        const { contentSize } = event.nativeEvent;
+        
         scrollPositionRef.current = { x, y };
-    }, []);
+        
+        // Альтернативная проверка для коротких списков
+        // Если пользователь проскроллил близко к концу (в пределах 200px)
+        if (contentSize.height > 0 && y + height >= contentSize.height - 200) {
+            // Проверяем, нужно ли загрузить больше
+            if (safeHasMore && !safeIsLoadingMore && onEndReached && !endReachedCalledRef.current) {
+                endReachedCalledRef.current = true;
+                onEndReached();
+                setTimeout(() => {
+                    endReachedCalledRef.current = false;
+                }, 1000);
+            }
+        }
+    }, [safeHasMore, safeIsLoadingMore, onEndReached]);
 
     const renderItem = useCallback(({ item }) => {
         if (!item) return null;
@@ -82,18 +101,38 @@ export const ProductsList = ({
         return `product-${item.id}-${item.originalData?.updatedAt || 0}`;
     }, []);
 
+    // Защита от множественных вызовов
+    const endReachedCalledRef = useRef(false);
+
     // Обработчик для бесконечной прокрутки
     const handleEndReached = useCallback(() => {
-        if (safeHasMore && !safeIsLoadingMore && onEndReached) {
+        if (safeHasMore && !safeIsLoadingMore && onEndReached && !endReachedCalledRef.current) {
+            endReachedCalledRef.current = true;
             onEndReached();
+            // Сбрасываем флаг через небольшую задержку, чтобы избежать повторных вызовов
+            setTimeout(() => {
+                endReachedCalledRef.current = false;
+            }, 1000);
         }
     }, [safeHasMore, safeIsLoadingMore, onEndReached]);
 
-    // Вычисляем threshold в зависимости от количества элементов
+    // Сбрасываем флаг при изменении состояния загрузки
+    useEffect(() => {
+        if (!safeIsLoadingMore) {
+            endReachedCalledRef.current = false;
+        }
+    }, [safeIsLoadingMore]);
+
+    // onEndReachedThreshold - это расстояние от конца списка в единицах видимого контента (0-1)
+    // Используем фиксированное значение для надежного срабатывания
     const threshold = useMemo(() => {
+        // Если продуктов мало, используем большее значение для гарантии срабатывания
         if (!displayProducts || displayProducts.length === 0) return 0.5;
-        return Math.min(safeOnEndReachedThreshold / displayProducts.length, 0.5);
-    }, [displayProducts?.length, safeOnEndReachedThreshold]);
+        // Для коротких списков (до 15 элементов) используем 0.3, чтобы гарантировать срабатывание
+        if (displayProducts.length <= 15) return 0.3;
+        // Для больших списков используем фиксированное значение 0.2
+        return 0.2;
+    }, [displayProducts?.length]);
 
     const renderListFooter = useCallback(() => (
         <>
@@ -160,9 +199,6 @@ export const ProductsList = ({
                 scrollEnabled={true}
                 ListHeaderComponent={ListHeaderComponent}
                 ListFooterComponent={renderListFooter}
-                maintainVisibleContentPosition={{
-                    minIndexForVisible: 0
-                }}
                 scrollEventThrottle={16}
             />
         </View>

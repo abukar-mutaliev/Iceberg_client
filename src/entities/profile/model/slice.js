@@ -11,13 +11,98 @@ const initialState = {
 };
 
 const handleError = (error) => {
+    // Обработка таймаута
     if (error.code === 'ECONNABORTED') {
         return 'Превышено время ожидания. Проверьте подключение к сети.';
     }
-    if (!error.response) {
-        return 'Ошибка сети. Проверьте подключение.';
+    
+    // Логируем структуру ошибки для отладки
+    if (__DEV__) {
+        console.log('handleError - error structure:', {
+            hasResponse: !!error.response,
+            responseStatus: error.response?.status,
+            responseData: error.response?.data,
+            errorMessage: error.message,
+            errorCode: error.code,
+            errorKeys: Object.keys(error || {}),
+            directMessage: error.message,
+            directCode: error.code,
+            directStatus: error.status
+        });
     }
-    return error.response?.data?.message || 'Произошла ошибка';
+    
+    // СЛУЧАЙ 1: Если это axios error с response (стандартный случай)
+    if (error.response) {
+        const responseData = error.response.data;
+        
+        // Если есть массив errors с детальными сообщениями валидации
+        if (responseData?.errors && Array.isArray(responseData.errors) && responseData.errors.length > 0) {
+            const firstError = responseData.errors[0];
+            if (firstError?.msg) {
+                return firstError.msg;
+            }
+            if (firstError?.message) {
+                return firstError.message;
+            }
+        }
+        
+        // Извлекаем сообщение об ошибке
+        const errorMessage = 
+            responseData?.message || 
+            responseData?.error?.message ||
+            error.message ||
+            'Произошла ошибка';
+        
+        return errorMessage;
+    }
+    
+    // СЛУЧАЙ 2: Если это объект данных ошибки напрямую (из createProtectedRequest)
+    // createProtectedRequest выбрасывает error.response?.data || error
+    // Поэтому error может быть объектом {code: 400, message: "Неверный пароль", errors: [], status: "error"}
+    if (error && typeof error === 'object' && !error.response) {
+        // Если есть массив errors с детальными сообщениями валидации
+        if (error.errors && Array.isArray(error.errors) && error.errors.length > 0) {
+            const firstError = error.errors[0];
+            if (firstError?.msg) {
+                return firstError.msg;
+            }
+            if (firstError?.message) {
+                return firstError.message;
+            }
+        }
+        
+        // Извлекаем сообщение об ошибке
+        const errorMessage = 
+            error.message || 
+            error.error?.message ||
+            'Произошла ошибка';
+        
+        if (errorMessage && errorMessage !== 'Произошла ошибка') {
+            return errorMessage;
+        }
+    }
+    
+    // СЛУЧАЙ 3: Если есть data вложенный объект
+    if (error.data) {
+        const errorMessage = 
+            error.data?.message ||
+            error.data?.error?.message;
+        if (errorMessage) {
+            return errorMessage;
+        }
+    }
+    
+    // СЛУЧАЙ 4: Если это строка или есть message напрямую
+    if (typeof error === 'string') {
+        return error;
+    }
+    
+    if (error.message && !error.message.includes('Network Error') && !error.message.includes('timeout')) {
+        return error.message;
+    }
+    
+    // СЛУЧАЙ 5: Сетевая ошибка
+    return 'Ошибка сети. Проверьте подключение.';
 };
 
 export const fetchProfile = createAsyncThunk(

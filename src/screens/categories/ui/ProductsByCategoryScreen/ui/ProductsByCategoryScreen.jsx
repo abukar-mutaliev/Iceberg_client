@@ -334,29 +334,67 @@ const ErrorComponent = ({ error, onRetry }) => {
 };
 
 // Анимированная карточка продукта с использованием ProductCard или ProductTile
-const AnimatedProductCard = ({ item, onPress, index }) => {
-    const fadeAnim = new Animated.Value(0);
-    const slideAnim = new Animated.Value(30);
+// Мемоизируем компонент для предотвращения ненужных ререндеров
+const AnimatedProductCard = React.memo(({ item, onPress, index }) => {
+    // Используем useRef для сохранения анимаций между ререндерами
+    const fadeAnimRef = React.useRef(null);
+    const slideAnimRef = React.useRef(null);
+    const hasAnimatedRef = React.useRef(false);
+    const itemIdRef = React.useRef(null);
+
+    // Инициализируем анимации только один раз
+    if (fadeAnimRef.current === null) {
+        fadeAnimRef.current = new Animated.Value(1); // Начинаем с видимости 1
+        slideAnimRef.current = new Animated.Value(0); // Начинаем с позиции 0
+    }
+
+    const fadeAnim = fadeAnimRef.current;
+    const slideAnim = slideAnimRef.current;
 
     useEffect(() => {
-        const delay = index * 80;
+        // Если это новый товар (ID изменился), сбрасываем флаг анимации
+        if (itemIdRef.current !== item?.id) {
+            itemIdRef.current = item?.id;
+            hasAnimatedRef.current = false;
+        }
 
-        setTimeout(() => {
-            Animated.parallel([
-                Animated.timing(fadeAnim, {
-                    toValue: 1,
-                    duration: 400,
-                    useNativeDriver: true,
-                }),
-                Animated.spring(slideAnim, {
-                    toValue: 0,
-                    tension: 100,
-                    friction: 8,
-                    useNativeDriver: true,
-                }),
-            ]).start();
-        }, delay);
-    }, [index]);
+        // Анимируем только при первом появлении нового товара
+        if (!hasAnimatedRef.current && item?.id) {
+            hasAnimatedRef.current = true;
+            const delay = Math.min(index * 80, 400); // Ограничиваем задержку
+
+            // Сбрасываем значения для анимации
+            fadeAnim.setValue(0);
+            slideAnim.setValue(30);
+
+            const timeoutId = setTimeout(() => {
+                Animated.parallel([
+                    Animated.timing(fadeAnim, {
+                        toValue: 1,
+                        duration: 400,
+                        useNativeDriver: true,
+                    }),
+                    Animated.spring(slideAnim, {
+                        toValue: 0,
+                        tension: 100,
+                        friction: 8,
+                        useNativeDriver: true,
+                    }),
+                ]).start();
+            }, delay);
+
+            return () => clearTimeout(timeoutId);
+        } else if (item?.id) {
+            // При обновлении существующего товара просто убеждаемся, что элемент видим
+            // НЕ сбрасываем анимацию, чтобы товары не исчезали
+            if (fadeAnim._value !== 1) {
+                fadeAnim.setValue(1);
+            }
+            if (slideAnim._value !== 0) {
+                slideAnim.setValue(0);
+            }
+        }
+    }, [item?.id, index, fadeAnim, slideAnim]);
 
     // Обработчик нажатия на карточку продукта
     const handleProductPress = useCallback((productId) => {
@@ -396,7 +434,11 @@ const AnimatedProductCard = ({ item, onPress, index }) => {
             )}
         </Animated.View>
     );
-};
+}, (prevProps, nextProps) => {
+    // Мемоизация: обновляем только если изменился ID товара
+    return prevProps.item?.id === nextProps.item?.id && 
+           prevProps.index === nextProps.index;
+});
 
 export const ProductsByCategoryScreen = ({ route, navigation }) => {
     const { categoryId, categoryDescription } = route.params || {};
@@ -406,6 +448,17 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
     const products = useSelector((state) => selectProductsByCategory(state, categoryId));
     const isLoading = useSelector(selectProductsByCategoryLoading);
     const error = useSelector(selectProductsByCategoryError);
+
+    // Логирование для отладки
+    useEffect(() => {
+        console.log('ProductsByCategory: Состояние:', {
+            categoryId,
+            productsCount: Array.isArray(products) ? products.length : 0,
+            isLoading,
+            refreshing,
+            error: error ? String(error).substring(0, 50) : null
+        });
+    }, [categoryId, products, isLoading, refreshing, error]);
 
     useEffect(() => {
         if (categoryId && dispatch && fetchProductsByCategory) {
@@ -440,10 +493,26 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
     }, [dispatch, categoryId]);
 
     const onRefresh = useCallback(async () => {
+        if (!categoryId || !dispatch || !fetchProductsByCategory) {
+            return;
+        }
+        
+        console.log('ProductsByCategory: Начало обновления, текущее количество товаров:', Array.isArray(products) ? products.length : 0);
+        
         setRefreshing(true);
-        handleRetry();
-        setTimeout(() => setRefreshing(false), 1000);
-    }, [handleRetry]);
+        try {
+            // Ждем завершения загрузки перед сбросом refreshing
+            const result = await dispatch(fetchProductsByCategory({ categoryId, params: {}, refresh: true })).unwrap();
+            console.log('ProductsByCategory: Обновление завершено, получено товаров:', result?.products?.length || 0);
+        } catch (error) {
+            console.error('ProductsByCategory: Ошибка при обновлении:', error);
+            // Даже при ошибке сбрасываем refreshing, чтобы пользователь мог попробовать снова
+        } finally {
+            // Сбрасываем refreshing только после завершения загрузки
+            setRefreshing(false);
+            console.log('ProductsByCategory: Обновление завершено, refreshing = false');
+        }
+    }, [dispatch, categoryId, products]);
 
     const renderProductItem = useCallback(({ item, index }) => (
         <AnimatedProductCard
@@ -454,29 +523,33 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
     ), [handleProductPress]);
 
     const content = useMemo(() => {
-        if (isLoading && !refreshing) {
+        const hasProducts = Array.isArray(products) && products.length > 0;
+        
+        console.log('ProductsByCategory: Рендер контента:', {
+            hasProducts,
+            productsCount: Array.isArray(products) ? products.length : 0,
+            isLoading,
+            refreshing,
+            error: !!error
+        });
+
+        // Показываем загрузку только при первой загрузке (не при обновлении)
+        if (isLoading && !refreshing && !hasProducts) {
             return <LoadingComponent />;
         }
 
-        if (error) {
-            return <ErrorComponent error={error} onRetry={handleRetry} />;
-        }
-
-        if (!Array.isArray(products) || products.length === 0) {
-            return (
-                <EmptyStateComponent
-                    categoryDescription={categoryDescription}
-                    onRetry={handleRetry}
-                    navigation={navigation}
-                />
-            );
-        }
-
+        // ВСЕГДА показываем список, если есть продукты, даже во время обновления
+        // Это гарантирует, что товары не пропадут
+        if (hasProducts) {
         return (
             <FlatList
                 data={products}
                 renderItem={renderProductItem}
-                keyExtractor={(item) => item.id?.toString() || Math.random().toString()}
+                keyExtractor={(item) => {
+                    // Используем стабильный ключ на основе ID продукта
+                    const key = item?.id?.toString() || `product-${Math.random()}`;
+                    return key;
+                }}
                 numColumns={1}
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.productsList}
@@ -489,14 +562,52 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
                         progressBackgroundColor="#fff"
                     />
                 }
-                removeClippedSubviews={true}
+                removeClippedSubviews={false} // Отключаем для предотвращения проблем с обновлением
                 maxToRenderPerBatch={10}
                 updateCellsBatchingPeriod={50}
-                initialNumToRender={8}
+                initialNumToRender={products.length} // Рендерим все элементы сразу
+                windowSize={5} // Увеличиваем размер окна для лучшей стабильности
                 ItemSeparatorComponent={() => <View style={styles.productSeparator} />}
+                // Добавляем extraData для принудительного обновления при изменении refreshing
+                extraData={`${refreshing}-${products.length}`}
             />
         );
-    }, [isLoading, error, products, renderProductItem, refreshing, onRefresh]);
+        }
+
+        // Показываем ошибку только если нет продуктов и не идет обновление
+        if (error && !refreshing) {
+            return <ErrorComponent error={error} onRetry={handleRetry} />;
+        }
+
+        // Показываем пустое состояние только если нет продуктов и не идет загрузка/обновление
+        if (!refreshing && !isLoading) {
+            return (
+                <EmptyStateComponent
+                    categoryDescription={categoryDescription}
+                    onRetry={handleRetry}
+                    navigation={navigation}
+                />
+            );
+        }
+
+        // Во время обновления или загрузки показываем пустой список с RefreshControl
+        return (
+            <FlatList
+                data={[]}
+                renderItem={() => null}
+                keyExtractor={() => 'empty'}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing || isLoading}
+                        onRefresh={onRefresh}
+                        colors={['#b5c9fb', '#b7c4fd']}
+                        tintColor="#b5c9fb"
+                        progressBackgroundColor="#fff"
+                    />
+                }
+            />
+        );
+    }, [isLoading, error, products, renderProductItem, refreshing, onRefresh, handleRetry, categoryDescription, navigation]);
 
     return (
         <SafeAreaView style={styles.container}>

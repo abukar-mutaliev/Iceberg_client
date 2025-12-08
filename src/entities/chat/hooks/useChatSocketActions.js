@@ -41,9 +41,7 @@ export const setGlobalActivityTypeStorage = (storage) => {
 // Функция для получения типа активности из кэша
 export const getActivityTypeCache = (roomId, userId) => {
   const key = `${roomId}:${userId}`;
-  const cachedType = globalActivityTypeStorage.get(key) || null;
-  console.log('getActivityTypeCache: Looking for key:', key, 'found:', cachedType, 'storage size:', globalActivityTypeStorage.size, 'all entries:', Array.from(globalActivityTypeStorage.entries()));
-  return cachedType;
+  return globalActivityTypeStorage.get(key) || null;
 };
 
 // Функция для сохранения типа активности в кэш
@@ -53,14 +51,11 @@ export const setActivityTypeCache = (roomId, userId, type) => {
     // Не перезаписываем "voice" на "text" - если уже сохранен "voice", оставляем его
     const currentType = globalActivityTypeStorage.get(key);
     if (currentType === 'voice' && type === 'text') {
-      console.log('setActivityTypeCache: Preserving voice type, not overwriting with text');
       return; // Не перезаписываем
     }
     globalActivityTypeStorage.set(key, type);
-    console.log('setActivityTypeCache: Saved', type, 'for key:', key, 'storage size:', globalActivityTypeStorage.size);
   } else {
     globalActivityTypeStorage.delete(key);
-    console.log('setActivityTypeCache: Deleted key:', key, 'storage size:', globalActivityTypeStorage.size);
   }
 };
 
@@ -82,12 +77,10 @@ export const useChatSocketActions = () => {
     }
 
     // Сохраняем тип активности в синхронный кэш и Redux при отправке события
-    console.log('useChatSocketActions: Emitting typing:', { roomId, isTyping, type, currentUserId });
     if (isTyping) {
       // Сохраняем тип только при начале активности - сначала в кэш (синхронно), потом в Redux
       setActivityTypeCache(roomId, currentUserId, type);
       dispatch(setLastActivityType({ roomId, userId: currentUserId, type }));
-      console.log('useChatSocketActions: Saved activity type in cache and Redux:', type, 'for user:', currentUserId, 'in room:', roomId);
     }
     // НЕ очищаем тип при отправке isTyping: false - очистим только при получении подтверждения от сервера
 
@@ -99,7 +92,6 @@ export const useChatSocketActions = () => {
       isVoice: type === 'voice',
       isTyping
     };
-    console.log('useChatSocketActions: Sending payload:', JSON.stringify(payload));
     socket.emit('chat:typing', payload);
 
     // Также отправляем старый формат для совместимости

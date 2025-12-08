@@ -139,10 +139,6 @@ export const ProfileInfo = ({ onProductPress }) => {
         navigation.navigate('StagnantProducts');
     };
 
-    const handlePushNotificationTest = () => {
-        navigation.navigate('PushNotificationTest');
-    };
-
     // Проверка на авторизацию и наличие токена
     if (!isAuthenticated || !tokens?.accessToken) {
         return (
@@ -243,7 +239,7 @@ export const ProfileInfo = ({ onProductPress }) => {
             {roleChecks.isSupplier && (
                 <View style={styles.buttonContainer}>
                     <CustomButton
-                        title="Добавить продукт"
+                        title="Добавить товар"
                         onPress={() => navigation.navigate('AddProduct', {
                             onSuccess: handleProductSuccess
                         })}
@@ -253,7 +249,7 @@ export const ProfileInfo = ({ onProductPress }) => {
                         style={styles.buttonMargin}
                     />
                     <CustomButton
-                        title="Управление продуктами"
+                        title="Управление товарами"
                         onPress={handleManageProducts}
                         outlined={true}
                         color={Color.blue2}

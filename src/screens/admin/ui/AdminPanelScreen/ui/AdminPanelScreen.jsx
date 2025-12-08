@@ -218,18 +218,18 @@ export const AdminPanelScreen = () => {
                     </AdminSection>
                 )}
 
-                {/*Управления продуктами */}
-                <AdminSection title="Управление продуктами">
+                {/*Управления товарами */}
+                <AdminSection title="Управление товарами">
                     <AdminMenuItem
                         icon={<IconAdd width={24} height={24} color={Color.blue2} />}
-                        title="Добавить продукт"
+                        title="Добавить товар"
                         onPress={() => navigation.navigate('AddProduct', {
                             onSuccess: handleProductSuccess
                         })}
                     />
                     <AdminMenuItem
                         icon={<IconProducts color={Color.blue2} />}
-                        title="Список продуктов"
+                        title="Список товаров"
                         onPress={handleProductManagementPress}
                     />
                 </AdminSection>

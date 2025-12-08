@@ -83,7 +83,6 @@ import { PaymentScreen } from "@screens/payment";
 import { JoinTeamScreen } from "@screens/profile/ui/JoinTeamScreen";
 import { EmployeeRewardsScreen } from "@screens/rewards/ui/EmployeeRewardsScreen/EmployeeRewardsScreen";
 import RewardSettingsScreen from "@screens/admin/ui/RewardSettingsScreen";
-import { PushNotificationTestScreen } from '@screens/test/ui/PushNotificationTestScreen';
 import {
     StagnantProductsScreen,
     ProductReturnsScreen,
@@ -1232,11 +1231,6 @@ export const AppNavigator = () => {
                     {/* Экраны доступные после авторизации */}
                     {isAuthenticated && (
                         <>
-                            <Stack.Screen 
-                                name="PushNotificationTest" 
-                                component={PushNotificationTestScreen} 
-                                options={createScreenOptions()} 
-                            />
                             <Stack.Screen 
                                 name="AddProduct" 
                                 component={AddProductScreen} 

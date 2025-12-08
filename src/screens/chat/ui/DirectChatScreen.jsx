@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useState, useRef} from 'react';
-import {View, FlatList, StyleSheet, TouchableOpacity, Text, Modal, Platform, BackHandler} from 'react-native';
+import {View, FlatList, StyleSheet, TouchableOpacity, Text, Modal, Platform, BackHandler, Vibration, Animated} from 'react-native';
 import {useFocusEffect, CommonActions} from '@react-navigation/native';
 import {useDispatch, useSelector} from 'react-redux';
 import {
@@ -17,7 +17,7 @@ import {
 } from '@entities/chat/model/slice';
 import {makeSelectRoomMessages, selectIsRoomDeleted} from '@entities/chat/model/selectors';
 import {fetchProductById} from '@entities/product/model/slice';
-import {SwipeableMessageBubble, ForwardMessageModal, ReactionPicker, FullEmojiPicker, TypingIndicator} from '@entities/chat';
+import {SwipeableMessageBubble, ForwardMessageModal, ReactionPicker, FullEmojiPicker, TypingIndicator, useTypingIndicatorHeight} from '@entities/chat';
 import {Composer} from '@entities/chat/ui/Composer';
 import {ChatBackground} from '@entities/chat/ui/ChatBackground';
 import {useChatSocketActions} from '@entities/chat/hooks/useChatSocketActions';
@@ -102,6 +102,42 @@ export const DirectChatScreen = ({route, navigation}) => {
     
     // Получаем функции WebSocket
     const { emitActiveRoom, emitMarkRead, emitToggleReaction } = useChatSocketActions();
+    
+    // Получаем высоту индикатора печати для поднятия сообщений
+    const typingIndicatorHeight = useTypingIndicatorHeight(roomId);
+    
+    // Анимированное значение для paddingTop
+    const paddingTopAnim = useRef(new Animated.Value(0)).current;
+    const [animatedPaddingTop, setAnimatedPaddingTop] = useState(0);
+    
+    // Анимируем padding при изменении высоты индикатора
+    useEffect(() => {
+        const targetValue = typingIndicatorHeight > 0 ? 35 : 0;
+        
+        // Добавляем listener для получения текущего значения
+        const listenerId = paddingTopAnim.addListener(({ value }) => {
+            setAnimatedPaddingTop(value);
+        });
+        
+        // Используем те же параметры анимации, что и для индикатора, для синхронизации
+        Animated.spring(paddingTopAnim, {
+            toValue: targetValue,
+            useNativeDriver: false, // padding не поддерживает native driver
+            tension: 65,
+            friction: 8,
+        }).start();
+        
+        return () => {
+            paddingTopAnim.removeListener(listenerId);
+        };
+    }, [typingIndicatorHeight, paddingTopAnim]);
+    
+    // Динамический стиль для контента списка с учетом индикатора
+    // Для инвертированного списка используем paddingTop (визуально это будет снизу)
+    const listContentStyle = useMemo(() => [
+        styles.listContent,
+        { paddingTop: animatedPaddingTop }
+    ], [animatedPaddingTop]);
 
     // Проверяем, является ли пользователь суперадмином
     const isSuperAdmin = useMemo(() => {
@@ -166,6 +202,8 @@ export const DirectChatScreen = ({route, navigation}) => {
                 updated.delete(messageId);
             } else {
                 updated.add(messageId);
+                // Вибрация при выборе сообщения
+                Vibration.vibrate(50);
             }
             
             return updated;
@@ -1165,7 +1203,7 @@ export const DirectChatScreen = ({route, navigation}) => {
                             onScrollEndDrag={handleScrollEndDrag}
                             onMomentumScrollEnd={handleMomentumScrollEnd}
                             scrollEventThrottle={200}
-                            contentContainerStyle={styles.listContent}
+                            contentContainerStyle={listContentStyle}
                             initialNumToRender={10}
                             windowSize={5}
                             maxToRenderPerBatch={5}

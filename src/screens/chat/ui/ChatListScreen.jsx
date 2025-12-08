@@ -9,6 +9,14 @@ import {selectProductsById} from '@entities/product/model/selectors';
 
 import {getBaseUrl} from '@shared/api/api';
 import {IconDelivery} from '@shared/ui/Icon/Profile/IconDelivery';
+import {Ionicons} from '@expo/vector-icons';
+
+// Компонент для отображения иконки голосового сообщения
+const VoiceMessageIcon = React.memo(() => (
+    <View style={styles.voiceIconContainer}>
+        <Ionicons name="mic" size={16} color="#8696A0" />
+    </View>
+));
 
 // Исправленный компонент для отображения галочек статуса сообщения
 const StatusTicks = React.memo(({status}) => {
@@ -64,18 +72,12 @@ export const ChatListScreen = ({navigation}) => {
     const loadedProductsRef = useRef(new Set());
 
     useEffect(() => {
-  
         dispatch(loadRoomsCache());
         dispatch(fetchRooms({page: 1}));
     }, [dispatch]);
 
-    // Дополнительное обновление при фокусе экрана для получения новых сообщений
-    useEffect(() => {
-        const unsubscribe = navigation.addListener('focus', () => {
-            dispatch(fetchRooms({page: 1, forceRefresh: true}));
-        });
-        return unsubscribe;
-    }, [dispatch, navigation]);
+    // Убрано автоматическое обновление при фокусе - WebSocket обновляет данные в реальном времени
+    // Пользователь может использовать pull-to-refresh для ручного обновления
 
     // Убираем HTTP polling fallback - WebSocket должен работать в real-time
     // Если WebSocket не подключен, пользователь увидит индикатор в dev режиме
@@ -150,8 +152,24 @@ export const ChatListScreen = ({navigation}) => {
         }
 
         // Для чатов с товарами показываем название товара
-        if (room?.product?.name) {
-            return `Товар: ${room.product.name}`;
+        if (room?.type === 'PRODUCT') {
+            // Сначала проверяем товар в объекте комнаты
+            if (room?.product?.name) {
+                return `Товар: ${room.product.name}`;
+            }
+            
+            // Если товар не в объекте комнаты, проверяем productsById
+            if (room?.productId && productsById[room.productId]?.name) {
+                return `Товар: ${productsById[room.productId].name}`;
+            }
+            
+            // Если товар еще не загружен, используем title комнаты (который должен содержать название товара)
+            if (room?.title) {
+                return `Товар: ${room.title}`;
+            }
+            
+            // Fallback - показываем что это товар
+            return `Товар #${room.productId || room.id}`;
         }
 
         // Проверяем участников чата (только для DIRECT чатов)
@@ -207,7 +225,7 @@ export const ChatListScreen = ({navigation}) => {
         }
 
         return room?.id ? `Комната ${room.id}` : 'Чат';
-    }, [currentUserId]);
+    }, [currentUserId, productsById]);
 
     const toAbsoluteUri = useCallback((raw) => {
         if (!raw || typeof raw !== 'string') return null;
@@ -330,7 +348,8 @@ export const ChatListScreen = ({navigation}) => {
             isOwnMessage = senderId === currentUserId;
 
             // Для групповых чатов показываем имя отправителя в превью
-            if (item.type === 'GROUP' && lastMessage.sender) {
+            // НО не для системных сообщений, так как имя уже содержится в тексте
+            if (item.type === 'GROUP' && lastMessage.sender && lastMessage.type !== 'SYSTEM') {
                 const senderName = lastMessage.sender.name ||
                     lastMessage.sender.client?.name ||
                     lastMessage.sender.admin?.name ||
@@ -371,6 +390,7 @@ export const ChatListScreen = ({navigation}) => {
         // Упрощенная логика для последнего сообщения
         let preview = '';
         let isStopMessage = false;
+        let isVoiceMessage = false;
         let time = '';
 
         if (lastMessage) {
@@ -384,7 +404,8 @@ export const ChatListScreen = ({navigation}) => {
                 isStopMessage = true;
                 messageContent = 'Остановка';
             } else if (lastMessage.type === 'VOICE') {
-                messageContent = '🎤 Голосовое сообщение';
+                isVoiceMessage = true;
+                messageContent = 'Голосовое сообщение';
             } else if (lastMessage.content && lastMessage.content.trim()) {
                 messageContent = lastMessage.content.trim();
             } else {
@@ -442,8 +463,8 @@ export const ChatListScreen = ({navigation}) => {
                         </View>
                     </View>
                     <View style={styles.previewContainer}>
-                        {/* Показываем галочки слева от сообщения для своих сообщений */}
-                        {lastMessage && isOwnMessage && (
+                        {/* Показываем галочки слева от сообщения для своих сообщений (но не для системных) */}
+                        {lastMessage && isOwnMessage && lastMessage.type !== 'SYSTEM' && (
                             <View style={styles.statusContainerLeft}>
                                 <StatusTicks status={messageStatus}/>
                             </View>
@@ -451,6 +472,14 @@ export const ChatListScreen = ({navigation}) => {
                         {isStopMessage ? (
                             <View style={styles.stopPreviewContainer}>
                                 <IconDelivery width={14} height={14} color="#8696A0" style={styles.stopIcon} />
+                                <Text style={[
+                                    styles.preview,
+                                    lastMessage && isOwnMessage && styles.previewWithStatus
+                                ]} numberOfLines={1}>{preview}</Text>
+                            </View>
+                        ) : isVoiceMessage ? (
+                            <View style={styles.voiceMessageContainer}>
+                                <VoiceMessageIcon />
                                 <Text style={[
                                     styles.preview,
                                     lastMessage && isOwnMessage && styles.previewWithStatus
@@ -724,6 +753,18 @@ const styles = StyleSheet.create({
         color: '#856404',
         marginTop: 4,
         opacity: 0.8,
+    },
+    voiceMessageContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+    },
+    voiceIconContainer: {
+        marginRight: 6,
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 16,
+        height: 16,
     },
 });
 

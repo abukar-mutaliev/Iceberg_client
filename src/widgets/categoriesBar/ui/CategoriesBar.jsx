@@ -125,7 +125,11 @@ export const CategoriesBar = ({ hideLoader = true }) => {
                                 </View>
                             </AndroidShadow>
                         </View>
-                        {!category.isCategoriesLink && (
+                        {category.isCategoriesLink ? (
+                            <Text style={styles.categoryName} numberOfLines={2}>
+                                Все
+                            </Text>
+                        ) : (
                             <Text style={styles.categoryName} numberOfLines={2}>
                                 {category.name}
                             </Text>

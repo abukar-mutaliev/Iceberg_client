@@ -15,17 +15,15 @@ export default {
             backgroundColor: '#ffffff',
         },
         platforms: ['ios', 'android'],
-        assetBundlePatterns: ['**/*', 'src/assets/**/*', 'src/assets/images/**/*'],
+        assetBundlePatterns: ['**/*', 'assets/**/*', 'src/assets/**/*'],
         web: {
             favicon: './assets/icon.png',
             bundler: 'metro',
         },
-        // Включаем developmentClient только для preview и development сборок
-        ...(IS_DEV || IS_PREVIEW ? {
-            developmentClient: {
-                silentLaunch: true,
-            },
-        } : {}),
+        // Включаем developmentClient для preview и development сборок
+        developmentClient: {
+            silentLaunch: true,
+        },
         plugins: [
             'expo-font',
             [
@@ -165,7 +163,6 @@ export default {
                 NSAppTransportSecurity: {
                     NSAllowsArbitraryLoads: true,
                 },
-                ITSAppUsesNonExemptEncryption: false,
             },
         },
     },
