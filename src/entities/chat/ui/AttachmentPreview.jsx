@@ -15,7 +15,8 @@ export const AttachmentPreview = memo(({ files = [], captions = {}, onChangeCapt
               placeholder="Подпись"
               value={captions[key] || ''}
               onChangeText={(text) => onChangeCaption?.(key, text)}
-              maxLength={140}
+              multiline
+              textAlignVertical="top"
             />
             <TouchableOpacity onPress={() => onRemove?.(key)} style={styles.removeBtn}>
               <Text style={styles.removeText}>×</Text>
@@ -34,7 +35,7 @@ const styles = StyleSheet.create({
   },
   item: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     padding: Padding.small,
     backgroundColor: Color.colorLightMode,
     borderRadius: Border.radius.medium,
@@ -56,9 +57,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     backgroundColor: '#f7f7f7',
     borderRadius: Border.radius.small,
+    minHeight: 40,
+    maxHeight: 120,
   },
   removeBtn: {
     marginLeft: 8,
+    marginTop: 2,
     width: 24,
     height: 24,
     borderRadius: 12,

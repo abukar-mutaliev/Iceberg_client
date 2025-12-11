@@ -165,69 +165,24 @@ const updateMessageCache = async (roomId, bucket) => {
   if (cacheUpdateTimers[roomId]) {
     clearTimeout(cacheUpdateTimers[roomId]);
   }
-
+  
   // Debounce - обновляем кэш через 500ms после последнего изменения
   cacheUpdateTimers[roomId] = setTimeout(async () => {
     try {
-      // Debug logging - проверяем данные перед обработкой
-      if (__DEV__) {
-        const voiceMessages = bucket.ids.filter(id => bucket.byId[id]?.type === 'VOICE');
-        if (voiceMessages.length > 0) {
-          console.log(`🔄 updateMessageCache: Starting cache update for room ${roomId}, voice messages: ${voiceMessages.length}`);
-          voiceMessages.slice(0, 2).forEach(id => {
-            const msg = bucket.byId[id];
-            if (msg?.attachments?.[0]) {
-              const att = msg.attachments[0];
-              console.log(`🔄 updateMessageCache: Voice msg ${id} before processing - duration=${att.duration}, waveformLength=${att.waveform?.length || 'N/A'}, size=${att.size}`);
-            }
-          });
-        }
-      }
       // Сохраняем ВСЕ сообщения (не ограничиваем 100)
       const messagesToCache = bucket.ids.map(id => {
         const msg = bucket.byId[id];
         if (!msg) return null;
-
-        // Debug logging for voice messages
-        if (__DEV__ && msg.type === 'VOICE' && msg.attachments?.length > 0) {
-          msg.attachments.forEach((att, idx) => {
-            if (att.type === 'VOICE') {
-              console.log(`🔄 updateMessageCache: Voice msg ${id} att ${idx} - duration=${att.duration}, waveform=${!!att.waveform}, size=${att.size}`);
-            }
-          });
+        // Делаем копию через JSON для полного отделения от Proxy
+        try {
+          return JSON.parse(JSON.stringify(msg));
+        } catch {
+          return null;
         }
-
-        // Для voice сообщений убеждаемся, что waveform и duration сохранены
-        let processedMsg = { ...msg };
-        if (msg.type === 'VOICE' && msg.attachments?.length > 0) {
-          processedMsg = {
-            ...msg,
-            attachments: msg.attachments.map(att => {
-              if (att.type === 'VOICE') {
-                // Создаем чистую копию attachment с гарантированными полями
-                const cleanAtt = {
-                  ...att,
-                  duration: att.duration || 0,
-                  size: att.size || 0,
-                  waveform: Array.isArray(att.waveform) ? [...att.waveform] : []
-                };
-
-                if (__DEV__) {
-                  console.log(`🔄 updateMessageCache: Processing voice msg ${id} - original duration=${att.duration}, original waveformLength=${att.waveform?.length || 'N/A'}, final duration=${cleanAtt.duration}, final waveformLength=${cleanAtt.waveform.length}, size=${cleanAtt.size}`);
-                }
-
-                return cleanAtt;
-              }
-              return att;
-            })
-          };
-        }
-
-        return processedMsg;
       }).filter(Boolean);
-
+      
       if (messagesToCache.length === 0) return;
-
+      
       await chatCacheService.saveMessages(roomId, messagesToCache);
       
       // Фоновое кэширование медиа-файлов (только первые 20)
@@ -1554,49 +1509,19 @@ const chatSlice = createSlice({
       }
       
       const oldMessage = bucket.byId[foundMessageKey];
-
-      // Для голосовых сообщений всегда сохраняем duration из старого сообщения
-      let finalAttachments = newMessage.attachments || oldMessage.attachments;
-
-      if (newMessage.type === 'VOICE' && oldMessage.attachments && Array.isArray(finalAttachments)) {
-        finalAttachments = finalAttachments.map((newAtt, index) => {
-          const oldAtt = oldMessage.attachments[index];
-          if (newAtt && oldAtt && newAtt.type === 'VOICE') {
-            // Всегда сохраняем duration из старого сообщения, если она есть
-            const result = {
-              ...newAtt,
-              duration: newAtt.duration || oldAtt.duration,
-              waveform: newAtt.waveform || oldAtt.waveform,
-              size: newAtt.size || oldAtt.size // Также сохраняем size
-            };
-
-            if (__DEV__) {
-              console.log('🎵 updateOptimisticMessage: Voice attachment update', {
-                messageId: newMessage.id,
-                oldDuration: oldAtt.duration,
-                newDuration: newAtt.duration,
-                finalDuration: result.duration,
-                oldWaveform: !!oldAtt.waveform,
-                newWaveform: !!newAtt.waveform,
-                finalWaveform: !!result.waveform,
-                oldSize: oldAtt.size,
-                newSize: newAtt.size,
-                finalSize: result.size
-              });
-            }
-
-            return result;
-          }
-          return newAtt;
-        });
-      }
-
+      
+      // Для голосовых сообщений сохраняем attachments из временного сообщения,
+      // если серверное сообщение не содержит attachments
+      const shouldPreserveAttachments = newMessage.type === 'VOICE' && 
+        (!newMessage.attachments || newMessage.attachments.length === 0) &&
+        oldMessage.attachments && oldMessage.attachments.length > 0;
+      
       const updatedMessage = {
         ...oldMessage,
         ...newMessage,
         id: newMessage.id,
         // Сохраняем attachments из временного сообщения, если серверное не содержит их
-        attachments: finalAttachments,
+        attachments: shouldPreserveAttachments ? oldMessage.attachments : (newMessage.attachments || oldMessage.attachments),
         // Сохраняем temporaryId для стабильности keyExtractor в FlatList
         // Это позволит FlatList правильно обновить элемент при изменении ключа
         temporaryId: oldMessage.temporaryId,
@@ -1604,6 +1529,13 @@ const chatSlice = createSlice({
         status: newMessage.status || 'SENT'
       };
       
+      if (__DEV__ && shouldPreserveAttachments) {
+        console.log('✅ updateOptimisticMessage: Preserved attachments from temporary message', {
+          temporaryId,
+          newId: newMessage.id,
+          attachmentsCount: oldMessage.attachments?.length || 0
+        });
+      }
       
       // ✅ Обновляем сообщение in-place для более плавного перехода
       // Если ключ изменился (temporaryId -> serverId), переносим данные
@@ -1851,23 +1783,9 @@ const chatSlice = createSlice({
         }
         
         if (bucket) {
-          // Debug logging for voice messages
-          if (__DEV__ && message.type === 'VOICE') {
-            console.log('🎵 receiveSocketMessage: Received voice message', {
-              messageId: message.id,
-              hasAttachments: !!message.attachments,
-              attachmentsCount: message.attachments?.length || 0,
-              attachmentDuration: message.attachments?.[0]?.duration,
-              attachmentWaveform: !!message.attachments?.[0]?.waveform,
-              attachmentWaveformLength: message.attachments?.[0]?.waveform?.length || 'N/A',
-              attachmentSize: message.attachments?.[0]?.size,
-              fullAttachments: message.attachments
-            });
-          }
-
           let optimisticMessage = null;
           let optimisticMessageId = null;
-
+          
           // Для текстовых сообщений ищем по content
           if (message.type === 'TEXT' && message.content) {
             optimisticMessage = bucket.ids
@@ -1976,38 +1894,22 @@ const chatSlice = createSlice({
             // Для голосовых сообщений сохраняем attachments из оптимистичного сообщения
             const isVoiceMessage = message.type === 'VOICE' || optimisticMessage.type === 'VOICE';
             const hasOptimisticAttachments = optimisticMessage.attachments && optimisticMessage.attachments.length > 0;
-
-            // Для голосовых сообщений всегда сохраняем duration, size и waveform из оптимистичного сообщения
-            let finalAttachments = message.attachments || optimisticMessage.attachments;
-
-            if (isVoiceMessage && optimisticMessage.attachments && Array.isArray(finalAttachments)) {
-              finalAttachments = finalAttachments.map((newAtt, index) => {
-                const oldAtt = optimisticMessage.attachments[index];
-                if (newAtt && oldAtt && newAtt.type === 'VOICE') {
-                  // Всегда сохраняем duration, size и waveform из оптимистичного сообщения
-                  return {
-                    ...newAtt,
-                    duration: newAtt.duration || oldAtt.duration || 0,
-                    size: newAtt.size || oldAtt.size || 0,
-                    waveform: newAtt.waveform || oldAtt.waveform
-                  };
-                }
-                return newAtt;
-              });
-            }
-
+            const shouldPreserveAttachments = isVoiceMessage && hasOptimisticAttachments &&
+              (!message.attachments || message.attachments.length === 0);
+            
             // Удаляем временное сообщение
             delete bucket.byId[optimisticMessageId];
             const tempIndex = bucket.ids.indexOf(optimisticMessageId);
             if (tempIndex >= 0) {
               bucket.ids.splice(tempIndex, 1);
             }
-
+            
             // Добавляем серверное сообщение
             bucket.byId[message.id] = {
               ...optimisticMessage,
               ...message,
-              attachments: finalAttachments,
+              // Сохраняем attachments из оптимистичного сообщения для голосовых
+              attachments: shouldPreserveAttachments ? optimisticMessage.attachments : (message.attachments || optimisticMessage.attachments),
               // Сохраняем temporaryId для стабильности keyExtractor
               temporaryId: optimisticMessage.temporaryId,
               isOptimistic: false,
@@ -2044,6 +1946,14 @@ const chatSlice = createSlice({
             }
             
             updateMessageCache(roomId, bucket);
+            
+            if (__DEV__ && shouldPreserveAttachments) {
+              console.log('✅ receiveSocketMessage: Preserved attachments from optimistic message', {
+                messageId: message.id,
+                roomId,
+                attachmentsCount: optimisticMessage.attachments?.length || 0
+              });
+            }
             
             return;
           }
@@ -2660,18 +2570,6 @@ const chatSlice = createSlice({
             // Только инициализируем новые комнаты
           }
 
-          // Убираем комнаты из списка удаленных, если они загружены
-          if (rooms && Array.isArray(rooms)) {
-            rooms.forEach(room => {
-              if (room.id) {
-                const deletedIndex = state.deletedRoomIds.indexOf(room.id);
-                if (deletedIndex >= 0) {
-                  state.deletedRoomIds.splice(deletedIndex, 1);
-                }
-              }
-            });
-          }
-
           // Инициализируем счетчики непрочитанных из данных сервера ТОЛЬКО для новых комнат
           // Это предотвращает потерю счетчиков при обновлении экрана
           if (rooms && Array.isArray(rooms)) {
@@ -2703,12 +2601,6 @@ const chatSlice = createSlice({
         .addCase(fetchRoom.fulfilled, (state, action) => {
           const { room } = action.payload;
           if (room && room.id) {
-            // Убираем комнату из списка удаленных, если она была там
-            const deletedIndex = state.deletedRoomIds.indexOf(room.id);
-            if (deletedIndex >= 0) {
-              state.deletedRoomIds.splice(deletedIndex, 1);
-            }
-
             if (Array.isArray(room?.participants)) {
               for (const p of room.participants) {
                 upsertParticipant(state, p);
@@ -2729,17 +2621,9 @@ const chatSlice = createSlice({
           state.rooms.error = errorMessage;
           
           // Если комната не найдена (404), помечаем её как удаленную
-          // Но только если это не первый запрос (чтобы избежать ложных срабатываний)
           if (payload?.isNotFound && payload?.roomId) {
             const roomId = payload.roomId;
-            // Проверяем, была ли комната уже в store - если да, то помечаем как удаленную
-            // Если нет, возможно это первый запрос и сеть недоступна
-            const roomExists = state.rooms.byId[roomId] || state.rooms.ids.includes(roomId);
-            if (!roomExists) {
-              // Комната не была в store, возможно первый запрос с сетевой ошибкой
-              // Не помечаем как удаленную сразу
-              console.warn(`Room ${roomId} not found on first load, possibly network issue`);
-            } else if (!state.deletedRoomIds.includes(roomId)) {
+            if (!state.deletedRoomIds.includes(roomId)) {
               state.deletedRoomIds.push(roomId);
             }
             // Очищаем данные комнаты
@@ -2762,55 +2646,24 @@ const chatSlice = createSlice({
         })
         .addCase(fetchMessages.fulfilled, (state, action) => {
           const { roomId, messages, hasMore } = action.payload;
-          const { cursorId } = action.meta.arg;
           ensureRoomBucket(state, roomId);
-
+          
+          // Обновляем сообщения с новыми статусами
           if (messages && Array.isArray(messages)) {
-            // При подгрузке старых сообщений (с cursorId) добавляем все
-            if (cursorId) {
-              upsertMessagesDesc(state.messages[roomId], messages);
-            } else {
-              // При синхронизации (без cursorId) обновляем статусы и добавляем новые сообщения
-              const bucket = state.messages[roomId];
-              const newMessages = [];
-
-              messages.forEach(newMessage => {
-                const existingMessage = bucket.byId[newMessage.id];
-                if (existingMessage) {
-                  // Обновляем статус и другие поля существующего сообщения
-                  if (newMessage.status && newMessage.status !== existingMessage.status) {
-                    existingMessage.status = newMessage.status;
-                    existingMessage.deliveredAt = newMessage.deliveredAt;
-                    existingMessage.readAt = newMessage.readAt;
-                  }
-                  // Для голосовых сообщений обновляем attachments только если они содержат duration/waveform
-                  if (newMessage.attachments && newMessage.type === 'VOICE' && existingMessage.attachments) {
-                    existingMessage.attachments = existingMessage.attachments.map((existingAtt, index) => {
-                      const newAtt = newMessage.attachments[index];
-                      if (newAtt && existingAtt.type === 'VOICE') {
-                        return {
-                          ...existingAtt,
-                          // Сохраняем duration и waveform из существующего, обновляем только если есть новые
-                          duration: newAtt.duration || existingAtt.duration,
-                          waveform: newAtt.waveform || existingAtt.waveform,
-                        };
-                      }
-                      return existingAtt;
-                    });
-                  }
-                } else {
-                  // Новое сообщение - добавляем
-                  newMessages.push(newMessage);
+            messages.forEach(newMessage => {
+              const existingMessage = state.messages[roomId].byId[newMessage.id];
+              if (existingMessage) {
+                // Обновляем статус если он изменился
+                if (newMessage.status && newMessage.status !== existingMessage.status) {
+                  existingMessage.status = newMessage.status;
+                  existingMessage.deliveredAt = newMessage.deliveredAt;
+                  existingMessage.readAt = newMessage.readAt;
                 }
-              });
-
-              // Добавляем новые сообщения
-              if (newMessages.length > 0) {
-                upsertMessagesDesc(bucket, newMessages);
               }
-            }
+            });
           }
-
+          
+          upsertMessagesDesc(state.messages[roomId], messages || []);
           state.messages[roomId].hasMore = !!hasMore;
           const ids = state.messages[roomId].ids;
           state.messages[roomId].cursorId = ids.length ? ids[ids.length - 1] : null;

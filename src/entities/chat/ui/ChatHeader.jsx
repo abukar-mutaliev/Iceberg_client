@@ -116,66 +116,79 @@ export const ChatHeader = ({route, navigation}) => {
         chatPartnerName = roomData.title || (roomData?.type === 'BROADCAST' ? 'Канал' : 'Группа');
         chatPartnerAvatar = roomData.avatar;
 
-        // Для клиентов в BROADCAST каналах - показываем только менеджеров и водителей склада клиента
+        // Для клиентов в BROADCAST каналах - показываем сотрудников и водителей своего района
         let participantsCount = roomData.participants ? roomData.participants.length : 0;
         
         if (roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT') {
             const clientDistrictId = currentUser?.client?.districtId;
-            const filteredParticipants = (roomData.participants || []).filter(p => {
-                const user = p.user || p;
-                const userRole = user?.role;
-                
-                // Скрываем суперадминов от клиентов
-                if (userRole === 'ADMIN') {
-                    const isSuperAdmin = user?.admin?.isSuperAdmin;
-                    if (isSuperAdmin) return false;
-                    return true; // Обычные админы показываются
-                }
-                
-                // Сотрудники - только менеджеры из района клиента
-                if (userRole === 'EMPLOYEE') {
-                    const processingRole = user?.employee?.processingRole;
-                    // Скрываем сборщиков, упаковщиков, контроллеров качества, курьеров
-                    const hiddenRoles = ['PICKER', 'PACKER', 'QUALITY_CHECKER', 'COURIER'];
-                    if (processingRole && hiddenRoles.includes(processingRole)) {
-                        return false;
-                    }
+            
+            // Если у клиента нет района - не показываем никого
+            if (!clientDistrictId) {
+                participantsCount = 0;
+            } else {
+                const filteredParticipants = (roomData.participants || []).filter(p => {
+                    const user = p.user || p;
+                    const userRole = user?.role;
                     
-                    // Показываем только если есть должность (например "Менеджер по продажам")
-                    const position = user?.employee?.position;
-                    if (!position) {
-                        return false;
-                    }
-                    
-                    // Проверяем, что сотрудник работает на складе в районе клиента
-                    const employeeWarehouseDistrictId = user?.employee?.warehouse?.districtId;
-                    if (employeeWarehouseDistrictId && clientDistrictId && employeeWarehouseDistrictId !== clientDistrictId) {
-                        return false;
-                    }
-                    
-                    return true;
-                }
-                
-                // Поставщиков не показываем
-                if (userRole === 'SUPPLIER') {
-                    return false;
-                }
-                
-                // Водители - только если их склад в районе клиента
-                if (userRole === 'DRIVER') {
-                    if (!clientDistrictId) return false;
-                    const driverWarehouseDistrictId = user?.driver?.warehouse?.district?.id || 
-                                                      user?.driver?.warehouse?.districtId;
-                    if (driverWarehouseDistrictId === clientDistrictId) {
+                    // Скрываем суперадминов от клиентов
+                    if (userRole === 'ADMIN') {
+                        const isSuperAdmin = user?.admin?.isSuperAdmin;
+                        if (isSuperAdmin) return false;
+                        // Обычные админы показываются
                         return true;
                     }
-                    const driverDistricts = user?.driver?.districts || [];
-                    return driverDistricts.some(d => d.id === clientDistrictId);
-                }
-                
-                return false;
-            });
-            participantsCount = filteredParticipants.length;
+                    
+                    // Сотрудники - все кроме сборщиков и курьеров, только из района клиента
+                    if (userRole === 'EMPLOYEE') {
+                        const processingRole = user?.employee?.processingRole;
+                        // Скрываем только сборщиков и курьеров
+                        if (processingRole === 'PICKER' || processingRole === 'COURIER') {
+                            return false;
+                        }
+                        
+                        // Проверяем, что сотрудник работает в районе клиента
+                        // Вариант 1: через склад сотрудника
+                        const employeeWarehouseDistrictId = user?.employee?.warehouse?.districtId;
+                        if (employeeWarehouseDistrictId === clientDistrictId) {
+                            return true;
+                        }
+                        
+                        // Вариант 2: через районы, закрепленные за сотрудником
+                        const employeeDistricts = user?.employee?.districts || [];
+                        if (employeeDistricts.some(d => d.id === clientDistrictId)) {
+                            return true;
+                        }
+                        
+                        // Если у сотрудника нет склада и нет закрепленных районов - не показываем
+                        return false;
+                    }
+                    
+                    // Поставщиков не показываем
+                    if (userRole === 'SUPPLIER') {
+                        return false;
+                    }
+                    
+                    // Водители - только из района клиента
+                    if (userRole === 'DRIVER') {
+                        // Проверяем, что склад водителя находится в районе клиента
+                        const driverWarehouseDistrictId = user?.driver?.warehouse?.districtId;
+                        if (driverWarehouseDistrictId === clientDistrictId) {
+                            return true;
+                        }
+                        
+                        // Проверяем районы обслуживания водителя
+                        const driverDistricts = user?.driver?.districts || [];
+                        if (driverDistricts.some(d => d.id === clientDistrictId)) {
+                            return true;
+                        }
+                        
+                        return false;
+                    }
+                    
+                    return false;
+                });
+                participantsCount = filteredParticipants.length;
+            }
             chatPartnerStatus = `📢 Канал • ${participantsCount} контакт${participantsCount === 1 ? '' : participantsCount < 5 ? 'а' : 'ов'}`;
         } else if (roomData?.type === 'BROADCAST') {
             chatPartnerStatus = `📢 Канал • ${participantsCount} подписчик${participantsCount === 1 ? '' : participantsCount < 5 ? 'а' : 'ов'}`;

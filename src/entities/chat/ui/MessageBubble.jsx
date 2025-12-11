@@ -1,4 +1,4 @@
-import React, {memo, useState, useCallback, useRef} from 'react';
+import React, {memo, useState, useCallback, useRef, useEffect} from 'react';
 import {View, Text, Image, TouchableOpacity, StyleSheet} from 'react-native';
 import {Ionicons} from '@expo/vector-icons';
 import {ProductCard} from '@entities/product/ui/ProductCard';
@@ -10,6 +10,8 @@ import {MessageReactions} from './MessageReactions';
 import {getBaseUrl} from '@shared/api/api';
 import {CachedImage} from './CachedImage/CachedImage';
 import ChatApi from '@entities/chat/api/chatApi';
+
+// ============= ВСПОМОГАТЕЛЬНЫЕ КОМПОНЕНТЫ =============
 
 const Avatar = ({uri, onPress}) => {
     const imageSource = uri ? {uri} : null;
@@ -32,8 +34,7 @@ const Avatar = ({uri, onPress}) => {
     );
 };
 
-const StatusTicks = React.memo(({status}) => {
-    // Отправляется (оптимистичное сообщение) - как в WhatsApp
+const StatusTicks = memo(({status}) => {
     if (status === 'SENDING') {
         return (
             <View style={styles.ticksContainer}>
@@ -42,7 +43,6 @@ const StatusTicks = React.memo(({status}) => {
         );
     }
     
-    // Ошибка отправки
     if (status === 'FAILED') {
         return (
             <View style={styles.ticksContainer}>
@@ -51,7 +51,6 @@ const StatusTicks = React.memo(({status}) => {
         );
     }
     
-    // Прочитано
     if (status === 'read' || status === 'READ') {
         return (
             <View style={styles.ticksContainer}>
@@ -61,7 +60,6 @@ const StatusTicks = React.memo(({status}) => {
         );
     }
     
-    // Доставлено
     if (status === 'DELIVERED') {
         return (
             <View style={styles.ticksContainer}>
@@ -71,7 +69,6 @@ const StatusTicks = React.memo(({status}) => {
         );
     }
     
-    // Отправлено
     if (status === 'SENT') {
         return (
             <View style={styles.ticksContainer}>
@@ -80,7 +77,6 @@ const StatusTicks = React.memo(({status}) => {
         );
     }
 
-    // По умолчанию - одна галочка
     return (
         <View style={styles.ticksContainer}>
             <Text style={[styles.tick]}>✓</Text>
@@ -88,7 +84,6 @@ const StatusTicks = React.memo(({status}) => {
     );
 });
 
-// Компонент для измерения ширины текста
 const MeasureText = ({text, onLayout, style}) => {
     return (
         <Text
@@ -100,7 +95,8 @@ const MeasureText = ({text, onLayout, style}) => {
     );
 };
 
-// Компонент для отображения опроса
+// ============= КОМПОНЕНТ ОПРОСА =============
+
 const PollMessage = memo(({
     message,
     isOwn,
@@ -120,24 +116,24 @@ const PollMessage = memo(({
     replyTo,
     onReplyPress,
     onReply,
-    onAddReaction
+    onAddReaction,
+    showSenderName = false,
+    senderName = null,
+    senderId = null,
+    senderNameColor = '#667781',
+    onSenderNamePress = null
 }) => {
     const [poll, setPoll] = useState(message.poll || null);
     const [isVoting, setIsVoting] = useState(false);
 
-    // Обновляем опрос если он изменился
-    React.useEffect(() => {
+    useEffect(() => {
         if (message.poll) {
-            // Всегда обновляем опрос из сообщения, если он есть
             setPoll(message.poll);
         }
     }, [message.poll]);
     
-    // Обновляем опрос при изменении message (например, через WebSocket)
-    React.useEffect(() => {
+    useEffect(() => {
         if (message.poll) {
-            // Если опрос обновился (например, через WebSocket), обновляем локальное состояние
-            // Особенно важно обновить, если у нас был временный ID
             const currentPollId = poll?.id;
             const messagePollId = message.poll.id;
             
@@ -153,7 +149,6 @@ const PollMessage = memo(({
     const handleVote = useCallback(async (optionId) => {
         if (!poll || isVoting) return;
 
-        // Проверяем, что у опроса есть реальный ID (не временный)
         const pollId = poll.id;
         if (!pollId || typeof pollId === 'string' && pollId.startsWith('temp_')) {
             return;
@@ -161,42 +156,31 @@ const PollMessage = memo(({
 
         setIsVoting(true);
         try {
-            // Определяем, какие варианты должны быть выбраны после голосования
             const currentVotedOptionIds = poll.options
                 ?.filter(opt => opt.votes?.some(vote => vote.userId === currentUserId))
                 .map(opt => opt.id) || [];
             
-            // Запрещаем изменение голоса - можно только добавить, но не убрать
             let newOptionIds = [];
             if (poll.allowMultiple) {
-                // Множественный выбор: можно только добавлять варианты
                 if (currentVotedOptionIds.includes(optionId)) {
-                    // Уже проголосовано за этот вариант - ничего не делаем
                     setIsVoting(false);
                     return;
                 } else {
-                    // Добавляем голос
                     newOptionIds = [...currentVotedOptionIds, optionId];
                 }
             } else {
-                // Одиночный выбор: можно выбрать только один раз
                 if (currentVotedOptionIds.length > 0) {
-                    // Уже проголосовано - нельзя изменить
                     setIsVoting(false);
                     return;
                 } else {
-                    // Выбираем вариант
                     newOptionIds = [optionId];
                 }
             }
 
             const result = await ChatApi.votePoll(pollId, newOptionIds);
             
-            // Обновляем опрос из ответа
-            // Сервер возвращает: { status: 'success', data: { poll: ... } }
             let updatedPoll = null;
             
-            // Проверяем разные возможные форматы ответа
             if (result?.data?.data?.poll) {
                 updatedPoll = result.data.data.poll;
             } else if (result?.data?.poll) {
@@ -204,26 +188,22 @@ const PollMessage = memo(({
             } else if (result?.poll) {
                 updatedPoll = result.poll;
             } else if (result?.data?.data && result.data.data.options) {
-                // Если это сам опрос без обертки
                 updatedPoll = result.data.data;
             }
             
             if (updatedPoll && updatedPoll.options) {
                 setPoll(updatedPoll);
             } else {
-                // Если не получили обновленный опрос, ждем обновления через WebSocket или message.poll
-                // Опрос обновится через useEffect когда придет обновленное сообщение
-                // Но также проверяем message.poll напрямую
                 if (message.poll && message.poll.id && typeof message.poll.id === 'number') {
                     setPoll(message.poll);
                 }
             }
         } catch (error) {
-            // Ошибка обрабатывается через UI
+            console.error('Ошибка голосования:', error);
         } finally {
             setIsVoting(false);
         }
-    }, [poll, isVoting, currentUserId]);
+    }, [poll, isVoting, currentUserId, message.poll]);
 
     if (!poll) {
         return (
@@ -259,150 +239,152 @@ const PollMessage = memo(({
 
     return (
         <>
-        <BubbleContainer
-            isOwn={isOwn}
-            time={time}
-            status={status}
-            avatarUri={avatarUri}
-            showAvatar={showAvatar}
-            text={poll.question}
-            hasImage={false}
-            isSelectionMode={isSelectionMode}
-            isSelected={isSelected}
-            isContextMenuActive={isContextMenuActive}
-            hasContextMenu={hasContextMenu}
-            canDelete={canDelete}
-            onToggleSelection={onToggleSelection}
-            onLongPress={onLongPress}
-            onAvatarPress={onAvatarPress}
-            replyTo={replyTo}
-            onReplyPress={onReplyPress}
-            onReply={onReply}
-        >
-            <View style={styles.pollContainer}>
-                <Text style={styles.pollQuestion}>{poll.question}</Text>
-                
-                {/* Заголовок с иконкой */}
-                <View style={styles.pollHeader}>
-                    <Ionicons name="chatbubbles" size={16} color="#666" style={styles.pollHeaderIcon} />
-                    <Text style={styles.pollHeaderText}>
-                        {poll.allowMultiple ? 'Выберите один или несколько вариантов' : 'Выберите один вариант'}
-                    </Text>
-                </View>
-
-                {poll.options?.map((option, index) => {
-                    const voteCount = option.votes?.length || 0;
-                    const percentage = totalVotes > 0 ? (voteCount / totalVotes) * 100 : 0;
-                    const isVoted = userVotedOptions.some(vo => vo.id === option.id);
-                    // Запрещаем изменение голоса: если уже проголосовано, нельзя изменить
-                    const hasVoted = userVotedOptions.length > 0;
-                    const canVote = !hasVoted || (poll.allowMultiple && !isVoted);
-
-                    return (
-                        <TouchableOpacity
-                            key={option.id || index}
-                            style={[
-                                styles.pollOption,
-                                isVoted && styles.pollOptionVoted,
-                                !canVote && styles.pollOptionDisabled
-                            ]}
-                            onPress={() => canVote && handleVote(option.id)}
-                            disabled={!canVote || isVoting}
-                            activeOpacity={canVote ? 0.7 : 1}
-                        >
-                            {/* Полоска слева для выбранного варианта */}
-                            {hasVoted && isVoted && (
-                                <View style={styles.pollOptionLeftBar} />
-                            )}
-                            
-                            <View style={styles.pollOptionRow}>
-                                {/* Радио кнопка или чекбокс */}
-                                <View style={[
-                                    styles.pollOptionRadio,
-                                    isVoted && styles.pollOptionRadioVoted
-                                ]}>
-                                    {isVoted && (
-                                        <Ionicons name="checkmark" size={14} color="#fff" />
-                                    )}
-                                </View>
-                                
-                                <View style={styles.pollOptionContent}>
-                                    <Text style={[
-                                        styles.pollOptionText,
-                                        isVoted && styles.pollOptionTextVoted
-                                    ]}>
-                                        {option.text}
-                                    </Text>
-                                    {hasVoted && (
-                                        <Text style={[
-                                            styles.pollOptionVoteCount,
-                                            isVoted && styles.pollOptionVoteCountVoted
-                                        ]}>
-                                            {percentage.toFixed(0)}%
-                                        </Text>
-                                    )}
-                                </View>
-                            </View>
-                        </TouchableOpacity>
-                    );
-                })}
-                
-                {/* Информация о голосах */}
-                {totalVotes > 0 && (
-                    <View style={styles.pollFooter}>
-                        <Ionicons name="person" size={12} color="#8696A0" />
-                        <Text style={styles.pollFooterText}>
-                            {totalVotes} {totalVotes === 1 ? 'голос' : totalVotes < 5 ? 'голоса' : 'голосов'}
+            <BubbleContainer
+                isOwn={isOwn}
+                time={time}
+                status={status}
+                avatarUri={avatarUri}
+                showAvatar={showAvatar}
+                text={poll.question}
+                hasImage={false}
+                isSelectionMode={isSelectionMode}
+                isSelected={isSelected}
+                isContextMenuActive={isContextMenuActive}
+                hasContextMenu={hasContextMenu}
+                canDelete={canDelete}
+                onToggleSelection={onToggleSelection}
+                onLongPress={onLongPress}
+                onAvatarPress={onAvatarPress}
+                replyTo={replyTo}
+                onReplyPress={onReplyPress}
+                onReply={onReply}
+                showSenderName={showSenderName}
+                senderName={senderName}
+                senderId={senderId}
+                senderNameColor={senderNameColor}
+                onSenderNamePress={onSenderNamePress}
+            >
+                <View style={styles.pollContainer}>
+                    <Text style={styles.pollQuestion}>{poll.question}</Text>
+                    
+                    <View style={styles.pollHeader}>
+                        <Ionicons name="chatbubbles" size={16} color="#666" style={styles.pollHeaderIcon} />
+                        <Text style={styles.pollHeaderText}>
+                            {poll.allowMultiple ? 'Выберите один или несколько вариантов' : 'Выберите один вариант'}
                         </Text>
                     </View>
-                )}
-            </View>
-        </BubbleContainer>
-        {message?.reactions && message.reactions.length > 0 && (
-            <View style={[styles.reactionsWrapper, isOwn ? styles.reactionsWrapperOwn : styles.reactionsWrapperOther]}>
-                <MessageReactions
-                    reactions={message.reactions}
-                    currentUserId={currentUserId}
-                    messageId={message.id}
-                    onReactionPress={onAddReaction}
-                    onReactionLongPress={onAddReaction}
-                />
-            </View>
-        )}
+
+                    {poll.options?.map((option, index) => {
+                        const voteCount = option.votes?.length || 0;
+                        const percentage = totalVotes > 0 ? (voteCount / totalVotes) * 100 : 0;
+                        const isVoted = userVotedOptions.some(vo => vo.id === option.id);
+                        const canVote = !hasVoted || (poll.allowMultiple && !isVoted);
+
+                        return (
+                            <TouchableOpacity
+                                key={option.id || index}
+                                style={[
+                                    styles.pollOption,
+                                    isVoted && styles.pollOptionVoted,
+                                    !canVote && styles.pollOptionDisabled
+                                ]}
+                                onPress={() => canVote && handleVote(option.id)}
+                                disabled={!canVote || isVoting}
+                                activeOpacity={canVote ? 0.7 : 1}
+                            >
+                                {hasVoted && isVoted && (
+                                    <View style={styles.pollOptionLeftBar} />
+                                )}
+                                
+                                <View style={styles.pollOptionRow}>
+                                    <View style={[
+                                        styles.pollOptionRadio,
+                                        isVoted && styles.pollOptionRadioVoted
+                                    ]}>
+                                        {isVoted && (
+                                            <Ionicons name="checkmark" size={14} color="#fff" />
+                                        )}
+                                    </View>
+                                    
+                                    <View style={styles.pollOptionContent}>
+                                        <Text style={[
+                                            styles.pollOptionText,
+                                            isVoted && styles.pollOptionTextVoted
+                                        ]}>
+                                            {option.text}
+                                        </Text>
+                                        {hasVoted && (
+                                            <Text style={[
+                                                styles.pollOptionVoteCount,
+                                                isVoted && styles.pollOptionVoteCountVoted
+                                            ]}>
+                                                {percentage.toFixed(0)}%
+                                            </Text>
+                                        )}
+                                    </View>
+                                </View>
+                            </TouchableOpacity>
+                        );
+                    })}
+                    
+                    {totalVotes > 0 && (
+                        <View style={styles.pollFooter}>
+                            <Ionicons name="person" size={12} color="#8696A0" />
+                            <Text style={styles.pollFooterText}>
+                                {totalVotes} {totalVotes === 1 ? 'голос' : totalVotes < 5 ? 'голоса' : 'голосов'}
+                            </Text>
+                        </View>
+                    )}
+                </View>
+            </BubbleContainer>
+            {message?.reactions && message.reactions.length > 0 && (
+                <View style={[styles.reactionsWrapper, isOwn ? styles.reactionsWrapperOwn : styles.reactionsWrapperOther]}>
+                    <MessageReactions
+                        reactions={message.reactions}
+                        currentUserId={currentUserId}
+                        messageId={message.id}
+                        onReactionPress={onAddReaction}
+                        onReactionLongPress={onAddReaction}
+                    />
+                </View>
+            )}
         </>
     );
 });
 
+// ============= КОМПОНЕНТ КОНТЕЙНЕРА ПУЗЫРЯ =============
+
 const BubbleContainer = ({
-                             isOwn,
-                             showAvatar,
-                             avatarUri,
-                             children,
-                             status,
-                             time,
-                             text,
-                             hasImage,
-                             // Пропсы для выбора
-                             isSelectionMode = false,
-                             isSelected = false,
-                             isHighlighted = false,
-                             isContextMenuActive = false,
-                             hasContextMenu = false,
-                             canDelete = false,
-                             onToggleSelection,
-                             onLongPress,
-                             // Пропс для открытия профиля при клике на аватар
-                             onAvatarPress,
-                             // Пропсы для ответов
-                             replyTo,
-                             onReplyPress,
-                             onReply,
-                             currentUserId
-                         }) => {
+    isOwn,
+    showAvatar,
+    avatarUri,
+    children,
+    status,
+    time,
+    text,
+    hasImage,
+    isSelectionMode = false,
+    isSelected = false,
+    isHighlighted = false,
+    isContextMenuActive = false,
+    hasContextMenu = false,
+    canDelete = false,
+    onToggleSelection,
+    onLongPress,
+    onAvatarPress,
+    replyTo,
+    onReplyPress,
+    onReply,
+    currentUserId,
+    showSenderName = false,
+    senderName = null,
+    senderId = null,
+    senderNameColor = '#667781',
+    onSenderNamePress = null
+}) => {
     const containerRef = useRef(null);
     const [textWidth, setTextWidth] = useState(0);
     const [timeWidth, setTimeWidth] = useState(0);
-    const [containerWidth, setContainerWidth] = useState(0);
 
     const handleTextLayout = (event) => {
         setTextWidth(event.nativeEvent.layout.width);
@@ -412,23 +394,14 @@ const BubbleContainer = ({
         setTimeWidth(event.nativeEvent.layout.width);
     };
 
-    const handleContainerLayout = (event) => {
-        setContainerWidth(event.nativeEvent.layout.width);
-    };
-
-    // Определяем, помещается ли время рядом с текстом
-    const timeSpace = isOwn ? timeWidth + 20 : timeWidth; // +20 для галочек у исходящих (уменьшено с 30)
-    const canFitInline = textWidth + timeSpace < 280; // максимальная ширина пузыря
-    const isShortMessage = text && text.length < 30; // короткое сообщение
-
-    // Для сообщений с изображениями не используем inline время
+    const timeSpace = isOwn ? timeWidth + 20 : timeWidth;
+    const canFitInline = textWidth + timeSpace < 280;
+    const isShortMessage = text && text.length < 30;
     const shouldShowTimeInline = !hasImage && canFitInline && isShortMessage;
 
-    // Обработчик long press - измеряем позицию и передаем в onLongPress
     const handleLongPress = useCallback(() => {
         if (onLongPress && containerRef.current) {
             containerRef.current.measureInWindow((x, y, width, height) => {
-                // Передаем координаты центра сообщения
                 onLongPress({ x: x + width / 2, y: y + height / 2 });
             });
         } else if (onLongPress) {
@@ -436,7 +409,6 @@ const BubbleContainer = ({
         }
     }, [onLongPress]);
 
-    // Обработчик нажатия для выбора сообщений
     const handlePress = useCallback(() => {
         if (onToggleSelection) {
             onToggleSelection();
@@ -451,9 +423,7 @@ const BubbleContainer = ({
             style={[
                 styles.messageContainer,
                 isOwn ? styles.ownMessageContainer : styles.otherMessageContainer,
-                // Затемнение при выборе сообщения в режиме выбора
                 isSelectionMode && isSelected && styles.selectedMessageContainer,
-                // Затемнение родительского контейнера при активном контекстном меню (только вне режима выбора)
                 !isSelectionMode && isContextMenuActive && (isOwn ? styles.contextMenuActiveContainerOwn : styles.contextMenuActiveContainerOther)
             ]}
             onLongPress={handleLongPress}
@@ -462,7 +432,6 @@ const BubbleContainer = ({
             activeOpacity={canPress ? 0.7 : 1}
             disabled={false}
         >
-            {/* Измерительные компоненты (невидимые) */}
             {text && (
                 <MeasureText
                     text={text}
@@ -476,17 +445,14 @@ const BubbleContainer = ({
                 onLayout={handleTimeLayout}
             />
 
-            {/* Аватар вверху для входящих сообщений */}
             {!isOwn && showAvatar && (
                 <View style={styles.avatarContainer}>
                     <Avatar uri={avatarUri} onPress={onAvatarPress}/>
                 </View>
             )}
 
-            {/* Пустое место для входящих без аватара */}
             {!isOwn && !showAvatar && <View style={styles.avatarSpacer}/>}
 
-            {/* Контейнер пузыря */}
             <View style={[styles.bubbleWrapper, isOwn && styles.ownBubbleWrapper]}>
                 <View
                     style={[
@@ -494,11 +460,24 @@ const BubbleContainer = ({
                         isOwn ? styles.ownBubble : styles.otherBubble,
                         isHighlighted && styles.highlightedBubble
                     ]}
-                    onLayout={handleContainerLayout}
                 >
-                    {/* Контент сообщения */}
                     <View style={styles.messageContent}>
-                        {/* Превью ответа */}
+                        {showSenderName && senderName && !isOwn && senderId && onSenderNamePress && (
+                            <TouchableOpacity
+                                onPress={() => onSenderNamePress(senderId)}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={[styles.senderName, { color: senderNameColor }]} numberOfLines={1}>
+                                    {senderName}
+                                </Text>
+                            </TouchableOpacity>
+                        )}
+                        {showSenderName && senderName && !isOwn && (!senderId || !onSenderNamePress) && (
+                            <Text style={[styles.senderName, { color: senderNameColor }]} numberOfLines={1}>
+                                {senderName}
+                            </Text>
+                        )}
+                        
                         {replyTo && (
                             <ReplyPreview
                                 replyTo={replyTo}
@@ -509,7 +488,6 @@ const BubbleContainer = ({
                         )}
                         
                         {shouldShowTimeInline ? (
-                            // Время в одной строке с текстом для коротких сообщений
                             <View style={styles.inlineContainer}>
                                 <View style={styles.textContainer}>
                                     {children}
@@ -520,12 +498,10 @@ const BubbleContainer = ({
                                 </View>
                             </View>
                         ) : (
-                            // Обычная компоновка для длинных сообщений и сообщений с изображениями
                             <>
                                 <View style={styles.textContainer}>
                                     {children}
                                 </View>
-                                {/* Футер с временем показываем только если time не пустое */}
                                 {time && (
                                     <View style={styles.messageFooter}>
                                         <Text style={styles.timestamp}>{time}</Text>
@@ -536,7 +512,6 @@ const BubbleContainer = ({
                         )}
                     </View>
 
-                    {/* Хвостик WhatsApp внизу - ИСПРАВЛЕНО */}
                     {isOwn ? (
                         <View style={styles.ownTailContainer}>
                             <View style={styles.ownTailTriangle}/>
@@ -552,31 +527,90 @@ const BubbleContainer = ({
     );
 };
 
+// ============= КОМПОНЕНТ ТЕКСТОВОГО СООБЩЕНИЯ =============
+
 const TextMessage = ({
-                         text,
-                         isOwn,
-                         time,
-                         status,
-                         avatarUri,
-                         showAvatar,
-                         isSelectionMode,
-                         isSelected,
-                         isHighlighted,
-                         isContextMenuActive,
-                         hasContextMenu,
-                         canDelete,
-                         onToggleSelection,
-                         onLongPress,
-                         onAvatarPress,
-                         replyTo,
-                         onReplyPress,
-                         onReply,
-                         currentUserId,
-                         message,
-                         onAddReaction,
-                         onRemoveReaction,
-                         onShowReactionPicker
-                     }) => {
+    text,
+    isOwn,
+    time,
+    status,
+    avatarUri,
+    showAvatar,
+    isSelectionMode,
+    isSelected,
+    isHighlighted,
+    isContextMenuActive,
+    hasContextMenu,
+    canDelete,
+    onToggleSelection,
+    onLongPress,
+    onAvatarPress,
+    replyTo,
+    onReplyPress,
+    onReply,
+    currentUserId,
+    message,
+    onAddReaction,
+    onRemoveReaction,
+    onShowReactionPicker,
+    showSenderName = false,
+    senderName = null,
+    senderId = null,
+    senderNameColor = '#667781',
+    onSenderNamePress = null
+}) => {
+    const MAX_TEXT_LENGTH = 1000;
+    
+    // ИСПРАВЛЕНИЕ: используем только id сообщения для ключа
+    const messageId = message?.id || 'unknown';
+    
+    // Локальное состояние для раскрытия текста
+    const [isExpanded, setIsExpanded] = useState(false);
+    
+    // ИСПРАВЛЕНИЕ: проверяем нужна ли кнопка на основе длины текста
+    const needsExpandButton = text && text.length > MAX_TEXT_LENGTH;
+    
+    // ИСПРАВЛЕНИЕ: сбрасываем состояние только при смене сообщения
+    useEffect(() => {
+        setIsExpanded(false);
+    }, [messageId]);
+
+    const handleExpandPress = useCallback((e) => {
+        if (e && e.stopPropagation) {
+            e.stopPropagation();
+        }
+        setIsExpanded(true);
+    }, []);
+
+    const renderTextContent = () => {
+        // Если текст короткий или уже раскрыт - показываем полностью
+        if (!needsExpandButton || isExpanded) {
+            return <Text style={styles.messageText}>{text}</Text>;
+        }
+
+        // Обрезаем текст и показываем кнопку
+        const truncatedText = text.substring(0, MAX_TEXT_LENGTH);
+        
+        return (
+            <View>
+                <Text style={styles.messageText}>
+                    {truncatedText}
+                    {!isExpanded && '...'}
+                </Text>
+                {!isExpanded && (
+                    <TouchableOpacity
+                        onPress={handleExpandPress}
+                        activeOpacity={0.7}
+                        style={styles.expandButton}
+                        hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
+                    >
+                        <Text style={styles.expandButtonText}>Далее</Text>
+                    </TouchableOpacity>
+                )}
+            </View>
+        );
+    };
+
     return (
         <>
             <BubbleContainer
@@ -600,8 +634,13 @@ const TextMessage = ({
                 onReplyPress={onReplyPress}
                 onReply={onReply}
                 currentUserId={currentUserId}
+                showSenderName={showSenderName}
+                senderName={senderName}
+                senderId={senderId}
+                senderNameColor={senderNameColor}
+                onSenderNamePress={onSenderNamePress}
             >
-                <Text style={styles.messageText}>{text}</Text>
+                {renderTextContent()}
             </BubbleContainer>
             {message?.reactions && message.reactions.length > 0 && (
                 <View style={[styles.reactionsWrapper, isOwn ? styles.reactionsWrapperOwn : styles.reactionsWrapperOther]}>
@@ -618,31 +657,38 @@ const TextMessage = ({
     );
 };
 
+// ============= ОСТАЛЬНЫЕ КОМПОНЕНТЫ СООБЩЕНИЙ =============
+
 const ImageMessage = ({
-                          attachments = [],
-                          caption,
-                          isOwn,
-                          time,
-                          status,
-                          avatarUri,
-                          showAvatar,
-                          onImagePress,
-                          isSelectionMode,
-                          isSelected,
-                          isHighlighted,
-                          isContextMenuActive,
-                          hasContextMenu,
-                          canDelete,
-                          onToggleSelection,
-                          onLongPress,
-                          onAvatarPress,
-                          replyTo,
-                          onReplyPress,
-                          onReply,
-                          currentUserId,
-                          message,
-                          onAddReaction
-                      }) => (
+    attachments = [],
+    caption,
+    isOwn,
+    time,
+    status,
+    avatarUri,
+    showAvatar,
+    onImagePress,
+    isSelectionMode,
+    isSelected,
+    isHighlighted,
+    isContextMenuActive,
+    hasContextMenu,
+    canDelete,
+    onToggleSelection,
+    onLongPress,
+    onAvatarPress,
+    replyTo,
+    onReplyPress,
+    onReply,
+    currentUserId,
+    message,
+    onAddReaction,
+    showSenderName = false,
+    senderName = null,
+    senderId = null,
+    senderNameColor = '#667781',
+    onSenderNamePress = null
+}) => (
     <>
         <BubbleContainer
             isOwn={isOwn}
@@ -681,7 +727,6 @@ const ImageMessage = ({
                         </TouchableOpacity>
                     </View>
                 ))}
-                {/* Подпись отображается под изображением в том же пузырьке */}
                 {caption && (
                     <View style={styles.imageCaptionContainer}>
                         <Text style={styles.messageText}>{caption}</Text>
@@ -704,30 +749,34 @@ const ImageMessage = ({
 );
 
 const ProductMessage = ({
-                            product,
-                            productId,
-                            isOwn,
-                            time,
-                            status,
-                            onOpenProduct,
-                            avatarUri,
-                            showAvatar,
-                            isSelectionMode,
-                            isSelected,
-                            isContextMenuActive,
-                            hasContextMenu,
-                            canDelete,
-                            onToggleSelection,
-                            onLongPress,
-                            onAvatarPress,
-                            replyTo,
-                            onReplyPress,
-                            onReply,
-                            currentUserId,
-                            message,
-                            onAddReaction
-                        }) => {
-
+    product,
+    productId,
+    isOwn,
+    time,
+    status,
+    onOpenProduct,
+    avatarUri,
+    showAvatar,
+    isSelectionMode,
+    isSelected,
+    isContextMenuActive,
+    hasContextMenu,
+    canDelete,
+    onToggleSelection,
+    onLongPress,
+    onAvatarPress,
+    replyTo,
+    onReplyPress,
+    onReply,
+    currentUserId,
+    message,
+    onAddReaction,
+    showSenderName = false,
+    senderName = null,
+    senderId = null,
+    senderNameColor = '#667781',
+    onSenderNamePress = null
+}) => {
     const transformedProduct = {
         id: product.productId || productId,
         name: product.name,
@@ -766,6 +815,11 @@ const ProductMessage = ({
                 onReplyPress={onReplyPress}
                 onReply={onReply}
                 currentUserId={currentUserId}
+                showSenderName={showSenderName}
+                senderName={senderName}
+                senderId={senderId}
+                senderNameColor={senderNameColor}
+                onSenderNamePress={onSenderNamePress}
             >
                 <View style={styles.productCardContainer}>
                     <ProductCard
@@ -793,31 +847,35 @@ const ProductMessage = ({
 };
 
 const StopMessage = ({
-                          stop,
-                          stopId,
-                          isOwn,
-                          time,
-                          status,
-                          onOpenStop,
-                          avatarUri,
-                          showAvatar,
-                          isSelectionMode,
-                          isSelected,
-                          isContextMenuActive,
-                          hasContextMenu,
-                          canDelete,
-                          onToggleSelection,
-                          onLongPress,
-                          onAvatarPress,
-                          onContactDriver,
-                          replyTo,
-                          onReplyPress,
-                          onReply,
-                          currentUserId,
-                          message,
-                          onAddReaction
-                      }) => {
-
+    stop,
+    stopId,
+    isOwn,
+    time,
+    status,
+    onOpenStop,
+    avatarUri,
+    showAvatar,
+    isSelectionMode,
+    isSelected,
+    isContextMenuActive,
+    hasContextMenu,
+    canDelete,
+    onToggleSelection,
+    onLongPress,
+    onAvatarPress,
+    onContactDriver,
+    replyTo,
+    onReplyPress,
+    onReply,
+    currentUserId,
+    message,
+    onAddReaction,
+    showSenderName = false,
+    senderName = null,
+    senderId = null,
+    senderNameColor = '#667781',
+    onSenderNamePress = null
+}) => {
     const transformedStop = {
         stopId: stop.stopId || stop.id || stopId,
         address: stop.address,
@@ -860,6 +918,11 @@ const StopMessage = ({
                 onReplyPress={onReplyPress}
                 onReply={onReply}
                 currentUserId={currentUserId}
+                showSenderName={showSenderName}
+                senderName={senderName}
+                senderId={senderId}
+                senderNameColor={senderNameColor}
+                onSenderNamePress={onSenderNamePress}
             >
                 <View style={styles.stopCardContainer}>
                     <StopCard
@@ -924,7 +987,10 @@ export const MessageBubble = memo(({
                                        onReplyPress,
                                        onAddReaction,
                                        onRemoveReaction,
-                                       onShowReactionPicker
+                                       onShowReactionPicker,
+                                       roomType = null,
+                                       participants = [],
+                                       onSenderNamePress = null
                                    }) => {
     const isOwn = message?.senderId === currentUserId;
     const createdAt = message?.createdAt ? new Date(message.createdAt) : null;
@@ -943,6 +1009,92 @@ export const MessageBubble = memo(({
         || message?.user?.avatar
         || message?.user?.image;
     const avatarUri = avatarUriBase || (!isOwn ? incomingAvatarUri : null);
+
+    // Функция для генерации цвета на основе ID пользователя (детерминированная)
+    const getColorForUserId = (userId) => {
+        if (!userId) return '#667781'; // Серый по умолчанию
+        
+        // Список цветов для имен участников (темнее для лучшей читаемости на белом фоне)
+        const colors = [
+            '#E63946', // Красный (темнее)
+            '#2A9D8F', // Бирюзовый (темнее)
+            '#219EBC', // Голубой (темнее)
+            '#06A77D', // Зеленый (темнее)
+            '#E9C46A', // Желтый (темнее, лучше видно на белом)
+            '#C77DFF', // Сливовый (темнее)
+            '#2A9D8F', // Мятный (темнее)
+            '#F4A261', // Золотой (темнее)
+            '#9D4EDD', // Фиолетовый (темнее)
+            '#1E88E5', // Светло-голубой (темнее)
+            '#FB8500', // Оранжевый (темнее)
+            '#2E7D32', // Изумрудный (темнее)
+        ];
+        
+        // Генерируем индекс на основе ID пользователя
+        const hash = String(userId).split('').reduce((acc, char) => {
+            return ((acc << 5) - acc) + char.charCodeAt(0);
+        }, 0);
+        
+        const index = Math.abs(hash) % colors.length;
+        return colors[index];
+    };
+
+    // Функция для получения имени отправителя (для групп и каналов)
+    const getSenderName = () => {
+        // Показываем имя только для входящих сообщений в группах и каналах
+        if (isOwn) return null;
+        
+        const roomTypeUpper = roomType ? String(roomType).toUpperCase().trim() : '';
+        if (roomTypeUpper !== 'GROUP' && roomTypeUpper !== 'BROADCAST') {
+            return null;
+        }
+
+        // Проверяем данные из message.sender
+        if (message?.sender) {
+            const sender = message.sender;
+            const name = sender.client?.name ||
+                         sender.admin?.name ||
+                         sender.employee?.name ||
+                         sender.supplier?.contactPerson ||
+                         sender.driver?.name ||
+                         sender.email?.split('@')[0] ||
+                         sender.name;
+
+            if (name) return name;
+        }
+
+        // Ищем дополнительные данные в массиве participants
+        if (participants && Array.isArray(participants) && message?.senderId) {
+            const participant = participants.find(p =>
+                (p?.userId ?? p?.user?.id ?? p?.id) === message.senderId
+            );
+
+            if (participant) {
+                const user = participant.user || participant;
+                const name = user.client?.name ||
+                             user.admin?.name ||
+                             user.employee?.name ||
+                             user.supplier?.contactPerson ||
+                             user.driver?.name ||
+                             user.email?.split('@')[0] ||
+                             user.name;
+
+                if (name) return name;
+            }
+        }
+
+        // Fallback
+        if (message?.sender?.email) {
+            return message.sender.email.split('@')[0];
+        }
+
+        return null;
+    };
+
+    const senderName = getSenderName();
+    const showSenderName = Boolean(senderName);
+    const senderId = message?.senderId || message?.sender?.id;
+    const senderNameColor = getColorForUserId(senderId);
 
     if (message.type === 'SYSTEM') {
         return (
@@ -993,6 +1145,11 @@ export const MessageBubble = memo(({
                     currentUserId={currentUserId}
                     message={message}
                     onAddReaction={onAddReaction}
+                    showSenderName={showSenderName}
+                    senderName={senderName}
+                    senderId={senderId}
+                    senderNameColor={senderNameColor}
+                    onSenderNamePress={onSenderNamePress}
                 />
                 
                 {/* Показываем кнопки retry/cancel только для своих сообщений */}
@@ -1034,6 +1191,11 @@ export const MessageBubble = memo(({
                     onReplyPress={onReplyPress}
                     onReply={() => onReply?.(message)}
                     currentUserId={currentUserId}
+                    showSenderName={showSenderName}
+                    senderName={senderName}
+                    senderId={senderId}
+                    senderNameColor={senderNameColor}
+                    onSenderNamePress={onSenderNamePress}
                 />
             );
         }
@@ -1062,6 +1224,11 @@ export const MessageBubble = memo(({
                     onReplyPress={onReplyPress}
                     onReply={() => onReply?.(message)}
                     currentUserId={currentUserId}
+                    showSenderName={showSenderName}
+                    senderName={senderName}
+                    senderId={senderId}
+                    senderNameColor={senderNameColor}
+                    onSenderNamePress={onSenderNamePress}
                 >
                     <CachedVoice
                         messageId={message.id}
@@ -1196,6 +1363,11 @@ export const MessageBubble = memo(({
                 message={message}
                 onAddReaction={onAddReaction}
                 onShowReactionPicker={onShowReactionPicker}
+                showSenderName={showSenderName}
+                senderName={senderName}
+                senderId={senderId}
+                senderNameColor={senderNameColor}
+                onSenderNamePress={onSenderNamePress}
             />
         );
     }
@@ -1223,6 +1395,11 @@ export const MessageBubble = memo(({
                 onReply={() => onReply?.(message)}
                 onAddReaction={onAddReaction}
                 onShowReactionPicker={onShowReactionPicker}
+                showSenderName={showSenderName}
+                senderName={senderName}
+                senderId={senderId}
+                senderNameColor={senderNameColor}
+                onSenderNamePress={onSenderNamePress}
             />
         );
     }
@@ -1327,6 +1504,11 @@ export const MessageBubble = memo(({
                 message={message}
                 onAddReaction={onAddReaction}
                 onShowReactionPicker={onShowReactionPicker}
+                showSenderName={showSenderName}
+                senderName={senderName}
+                senderId={senderId}
+                senderNameColor={senderNameColor}
+                onSenderNamePress={onSenderNamePress}
             />
         );
     }
@@ -1356,6 +1538,11 @@ export const MessageBubble = memo(({
             onAddReaction={onAddReaction}
             onRemoveReaction={onRemoveReaction}
             onShowReactionPicker={onShowReactionPicker}
+            showSenderName={showSenderName}
+            senderName={senderName}
+            senderId={senderId}
+            senderNameColor={senderNameColor}
+            onSenderNamePress={onSenderNamePress}
                 />
     );
 }, (prevProps, nextProps) => {
@@ -1382,6 +1569,10 @@ export const MessageBubble = memo(({
         return false; // Перерисовываем компонент
     }
     
+    // Проверяем изменения senderId для перерисовки при изменении отправителя
+    const prevSenderId = prevProps.message?.senderId || prevProps.message?.sender?.id;
+    const nextSenderId = nextProps.message?.senderId || nextProps.message?.sender?.id;
+    
     const shouldSkipRender = (
         prevProps.message?.id === nextProps.message?.id &&
         prevProps.message?.status === nextProps.message?.status &&
@@ -1391,7 +1582,10 @@ export const MessageBubble = memo(({
         prevProps.isSelectionMode === nextProps.isSelectionMode &&
         prevProps.isSelected === nextProps.isSelected &&
         prevProps.isHighlighted === nextProps.isHighlighted &&
-        prevProps.canDelete === nextProps.canDelete
+        prevProps.canDelete === nextProps.canDelete &&
+        prevSenderId === nextSenderId &&
+        prevProps.roomType === nextProps.roomType &&
+        prevProps.participants === nextProps.participants
     );
     
     return shouldSkipRender;
@@ -1613,10 +1807,38 @@ const styles = StyleSheet.create({
     textContainer: {
         flexShrink: 1,
     },
+    textMessageContainer: {
+        position: 'relative',
+    },
+    textWithButtonContainer: {
+        // Контейнер для текста и кнопки
+    },
+    buttonRow: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        marginTop: 4,
+        marginBottom: 2,
+        zIndex: 10,
+    },
+    messageTextWrapper: {
+        flex: 1,
+        minWidth: 0,
+    },
     messageText: {
         fontSize: 16,
         lineHeight: 19,
         color: '#000000',
+    },
+    expandButtonInline: {
+        backgroundColor: 'transparent',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+    },
+    expandButtonText: {
+        fontSize: 16,
+        color: '#8966A0',
+        fontWeight: '500',
+        lineHeight: 19,
     },
 
     // Время в строке (для коротких сообщений)
@@ -1808,6 +2030,12 @@ const styles = StyleSheet.create({
     reactionsWrapperOther: {
         alignItems: 'flex-start',
         paddingLeft: 48,
+    },
+    senderName: {
+        fontSize: 13,
+        fontWeight: '600',
+        marginBottom: 2,
+        marginTop: 0,
     },
 });
 

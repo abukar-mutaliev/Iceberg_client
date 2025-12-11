@@ -98,9 +98,15 @@ export const GroupInfoScreen = ({ route, navigation }) => {
   // Загружаем участников группы
   useEffect(() => {
     if (roomData?.participants) {
-      // Для каналов BROADCAST и клиентов - показываем только менеджеров и водителей склада клиента
+      // Для каналов BROADCAST и клиентов - показываем сотрудников и водителей своего района
       if (roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT') {
         const clientDistrictId = currentUser?.client?.districtId;
+        
+        // Если у клиента нет района - не показываем никого
+        if (!clientDistrictId) {
+          setParticipants([]);
+          return;
+        }
         
         const filteredParticipants = roomData.participants.filter(p => {
           const user = p.user || p;
@@ -110,32 +116,33 @@ export const GroupInfoScreen = ({ route, navigation }) => {
           if (userRole === 'ADMIN') {
             const isSuperAdmin = user?.admin?.isSuperAdmin;
             if (isSuperAdmin) return false;
-            return true; // Обычные админы показываются
+            // Обычные админы показываются (можно добавить фильтрацию по району если нужно)
+            return true;
           }
           
-          // Сотрудники - только менеджеры из района клиента
+          // Сотрудники - все кроме сборщиков и курьеров, только из района клиента
           if (userRole === 'EMPLOYEE') {
             const processingRole = user?.employee?.processingRole;
-            // Скрываем сборщиков, упаковщиков, контроллеров качества, курьеров
-            const hiddenRoles = ['PICKER', 'PACKER', 'QUALITY_CHECKER', 'COURIER'];
-            if (processingRole && hiddenRoles.includes(processingRole)) {
+            // Скрываем только сборщиков и курьеров
+            if (processingRole === 'PICKER' || processingRole === 'COURIER') {
               return false;
             }
             
-            // Показываем только если есть должность (например "Менеджер по продажам")
-            const position = user?.employee?.position;
-            if (!position) {
-              return false; // Скрываем сотрудников без должности
-            }
-            
-            // Проверяем, что сотрудник работает на складе в районе клиента
+            // Проверяем, что сотрудник работает в районе клиента
+            // Вариант 1: через склад сотрудника
             const employeeWarehouseDistrictId = user?.employee?.warehouse?.districtId;
-            // Если у сотрудника есть склад, проверяем район
-            if (employeeWarehouseDistrictId && clientDistrictId && employeeWarehouseDistrictId !== clientDistrictId) {
-              return false; // Скрываем сотрудников других районов
+            if (employeeWarehouseDistrictId === clientDistrictId) {
+              return true;
             }
             
-            return true;
+            // Вариант 2: через районы, закрепленные за сотрудником
+            const employeeDistricts = user?.employee?.districts || [];
+            if (employeeDistricts.some(d => d.id === clientDistrictId)) {
+              return true;
+            }
+            
+            // Если у сотрудника нет склада и нет закрепленных районов - не показываем
+            return false;
           }
           
           // Поставщиков не показываем
@@ -143,21 +150,21 @@ export const GroupInfoScreen = ({ route, navigation }) => {
             return false;
           }
           
-          // Водители - только если их склад в районе клиента
+          // Водители - только из района клиента
           if (userRole === 'DRIVER') {
-            // Если у клиента нет района - не показываем водителей
-            if (!clientDistrictId) return false;
-            
             // Проверяем, что склад водителя находится в районе клиента
-            const driverWarehouseDistrictId = user?.driver?.warehouse?.district?.id || 
-                                              user?.driver?.warehouse?.districtId;
+            const driverWarehouseDistrictId = user?.driver?.warehouse?.districtId;
             if (driverWarehouseDistrictId === clientDistrictId) {
               return true;
             }
             
-            // Запасной вариант: проверяем районы обслуживания водителя
+            // Проверяем районы обслуживания водителя
             const driverDistricts = user?.driver?.districts || [];
-            return driverDistricts.some(d => d.id === clientDistrictId);
+            if (driverDistricts.some(d => d.id === clientDistrictId)) {
+              return true;
+            }
+            
+            return false;
           }
           
           return false;
@@ -249,30 +256,37 @@ export const GroupInfoScreen = ({ route, navigation }) => {
     const user = participant.user || participant;
     if (!user) return null;
     
-    // Для сотрудников - должность и склад
+    // Для сотрудников - должность, склад и район
     if (user.role === 'EMPLOYEE') {
       const position = user.employee?.position || '';
       const warehouse = user.employee?.warehouse?.name || '';
-      if (position && warehouse) {
-        return `${position} • ${warehouse}`;
-      }
-      return position || warehouse || null;
+      const warehouseDistrict = user.employee?.warehouse?.district?.name || '';
+      const employeeDistricts = user.employee?.districts || [];
+      const districtNames = employeeDistricts.map(d => d.name).join(', ');
+      
+      // Формируем строку с информацией
+      const parts = [];
+      if (position) parts.push(position);
+      if (warehouse) parts.push(warehouse);
+      if (warehouseDistrict) parts.push(warehouseDistrict);
+      else if (districtNames) parts.push(districtNames);
+      
+      return parts.length > 0 ? parts.join(' • ') : null;
     }
     
     // Для водителей - роль, склад и районы
     if (user.role === 'DRIVER') {
       const warehouse = user.driver?.warehouse?.name || '';
+      const warehouseDistrict = user.driver?.warehouse?.district?.name || '';
       const districts = user.driver?.districts || [];
       const districtNames = districts.map(d => d.name).join(', ');
       
-      if (warehouse && districtNames) {
-        return `Водитель • ${warehouse} • ${districtNames}`;
-      } else if (warehouse) {
-        return `Водитель • ${warehouse}`;
-      } else if (districtNames) {
-        return `Водитель • ${districtNames}`;
-      }
-      return 'Водитель';
+      const parts = ['Водитель'];
+      if (warehouse) parts.push(warehouse);
+      if (warehouseDistrict) parts.push(warehouseDistrict);
+      else if (districtNames) parts.push(districtNames);
+      
+      return parts.join(' • ');
     }
     
     // Для поставщиков - контактное лицо если есть

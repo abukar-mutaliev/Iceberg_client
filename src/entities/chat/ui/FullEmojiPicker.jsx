@@ -4,544 +4,509 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Modal,
+  FlatList,
   ScrollView,
-  Pressable,
-  Animated,
-  PanResponder,
   Dimensions,
-  Platform,
-  UIManager,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// ============================================================================
-// КОНСТАНТЫ
-// ============================================================================
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const EMOJI_PICKER_HEIGHT = 300;
+const EMOJIS_PER_ROW = 8;
+const EMOJI_SIZE = (SCREEN_WIDTH - 32) / EMOJIS_PER_ROW;
 
-// Включаем LayoutAnimation для Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const COLLAPSED_HEIGHT = SCREEN_HEIGHT * 0.5; // 50% экрана
-const EXPANDED_HEIGHT = SCREEN_HEIGHT * 0.9; // 90% экрана
-const DRAG_THRESHOLD = 50; // Порог для закрытия/расширения
-const ANIMATION_DURATION = 300; // Длительность анимации (ms)
-const DRAG_AREA_HEIGHT_COLLAPSED = 100; // Область для drag в свернутом состоянии
-const DRAG_AREA_HEIGHT_EXPANDED = 150; // Область для drag в развернутом состоянии
-
-// Категории эмодзи
+// Оптимизированный список эмодзи по категориям (только популярные для производительности)
 const EMOJI_CATEGORIES = {
-  'Популярные': ['👍', '❤️', '😂', '😮', '😢', '🙏', '👏', '🔥', '💯', '✨', '🎉', '💪'],
-  'Лица': [
-    '😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😊', '😇', '🙂', '🙃', '😉',
-    '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪',
-    '🤨', '🧐', '🤓', '😎', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁',
-    '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬',
-    '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓',
+  'Недавние': [],
+  'Смайлики и люди': [
+    '😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊',
+    '😇', '🥰', '😍', '🤩', '😘', '😗', '☺️', '😚', '😙', '🥲', '😋', '😛',
+    '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑',
+    '😶', '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷',
+    '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶', '😵', '🤯', '🤠', '🥳', '😎',
+    '🤓', '🧐', '😕', '😟', '🙁', '☹️', '😮', '😯', '😲', '😳', '🥺', '😦',
+    '😧', '😨', '😰', '😥', '😢', '😭', '😱', '😖', '😣', '😞', '😓', '😩',
+    '😫', '🥱', '😤', '😡', '😠', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡',
+    '👹', '👺', '👻', '👽', '👾', '🤖', '😺', '😸', '😹', '😻', '😼', '😽',
+    '🙀', '😿', '😾',
   ],
-  'Жесты': [
-    '👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙',
-    '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜',
-    '👏', '🙌', '👐', '🤲', '🤝', '🙏',
+  'Животные и природа': [
+    '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮',
+    '🐷', '🐽', '🐸', '🐵', '🙈', '🙉', '🙊', '🐒', '🐔', '🐧', '🐦', '🐤',
+    '🐣', '🐥', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🐛',
+    '🦋', '🐌', '🐞', '🐜', '🦟', '🦗', '🕷️', '🦂', '🐢', '🐍', '🦎', '🦖',
+    '🦕', '🐙', '🦑', '🦐', '🦞', '🦀', '🐡', '🐠', '🐟', '🐬', '🐳', '🐋',
+    '🦈', '🐊', '🐅', '🐆', '🦓', '🦍', '🦧', '🐘', '🦛', '🦏', '🐪', '🐫',
+    '🦒', '🦘', '🦡', '🐾', '🌲', '🌳', '🌴', '🌵', '🌶️', '🌾', '🌿', '☘️',
+    '🍀', '🍁', '🍂', '🍃', '🌺', '🌻', '🌹', '🌷', '🌼', '🌸', '🌾', '🌱',
+    '🌿', '🍃', '🍂', '🍁', '🍄', '🌰', '🦀', '🦞', '🦐', '🦑', '🌊',
   ],
-  'Сердца': [
-    '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕',
-    '💞', '💓', '💗', '💖', '💘', '💝',
+  'Еда и напитки': [
+    '🍏', '🍎', '🍐', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🍈', '🍒', '🍑',
+    '🥭', '🍍', '🥥', '🥝', '🍅', '🍆', '🥑', '🥦', '🥬', '🥒', '🌶️', '🌽',
+    '🥕', '🥔', '🍠', '🥐', '🥯', '🍞', '🥖', '🥨', '🧀', '🥚', '🍳', '🥞',
+    '🥓', '🥩', '🍗', '🍖', '🦴', '🌭', '🍔', '🍟', '🍕', '🥪', '🥙', '🌮',
+    '🌯', '🥗', '🥘', '🥫', '🍝', '🍜', '🍲', '🍛', '🍣', '🍱', '🥟', '🦪',
+    '🍤', '🍙', '🍚', '🍘', '🍥', '🥠', '🥮', '🍢', '🍡', '🍧', '🍨', '🍦',
+    '🥧', '🍰', '🎂', '🍮', '🍭', '🍬', '🍫', '🍿', '🍩', '🍪', '🌰', '🥜',
+    '🍯', '🥛', '🍼', '☕️', '🍵', '🥤', '🍶', '🍺', '🍻', '🥂', '🍷', '🥃',
+    '🍸', '🍹', '🧃', '🧉', '🧊',
+  ],
+  'Путешествия и места': [
+    '🚗', '🚕', '🚙', '🚌', '🚎', '🏎️', '🚓', '🚑', '🚒', '🚐', '🛻', '🚚',
+    '🚛', '🚜', '🏍️', '🛵', '🚲', '🛴', '🛹', '🛼', '🚁', '🛸', '✈️', '🛩️',
+    '🛫', '🛬', '🪂', '💺', '🚀', '🚤', '🛥️', '🛳️', '⛴️', '🚢', '⚓️', '⛽',
+    '🚧', '🚦', '🚥', '🗺️', '🗿', '🗽', '🗼', '🏰', '🏯', '🏟️', '🎡', '🎢',
+    '🎠', '⛲', '⛱️', '🏖️', '🏝️', '🏜️', '🌋', '⛰️', '🏔️', '🗻', '🏕️', '⛺',
+    '🏠', '🏡', '🏘️', '🏚️', '🏗️', '🏭', '🏢', '🏬', '🏣', '🏤', '🏥', '🏦',
+    '🏨', '🏪', '🏫', '🏩', '💒', '🏛️', '⛪', '🕌', '🕍', '🛕', '🕋', '⛩️',
+    '🛤️', '🛣️', '🗾', '🎑', '🏞️', '🌅', '🌄', '🌠', '🎇', '🎆', '🌇', '🌆',
+    '🏙️', '🌃', '🌌', '🌉', '🌁',
+  ],
+  'Активности': [
+    '⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱', '🏓', '🏸',
+    '🏒', '🏑', '🥍', '🏏', '🥅', '⛳', '🏹', '🎣', '🥊', '🥋', '🎽', '🛹',
+    '🛷', '⛸️', '🥌', '🎿', '⛷️', '🏂', '🪂', '🏋️', '🤼', '🤸', '🤺', '⛹️',
+    '🤾', '🤹', '🧘', '🏄', '🏊', '🤽', '🚣', '🧗', '🚵', '🚴', '🏇', '🕴️',
+    '🎭', '🩰', '🎨', '🎬', '🎤', '🎧', '🎼', '🎹', '🥁', '🎷', '🎺', '🎸',
+    '🪕', '🎻', '🎲', '♟️', '🎯', '🎳', '🎮', '🎰', '🧩',
+  ],
+  'Объекты': [
+    '⌚', '📱', '📲', '💻', '⌨️', '🖥️', '🖨️', '🖱️', '🖲️', '🕹️', '🗜️', '💾',
+    '💿', '📀', '📼', '📷', '📸', '📹', '🎥', '📽️', '🎞️', '📞', '☎️', '📟',
+    '📠', '📺', '📻', '🎙️', '🎚️', '🎛️', '🧭', '⏱️', '⏲️', '⏰', '🕰️', '⌛',
+    '⏳', '📡', '🔋', '🔌', '💡', '🔦', '🕯️', '🧯', '🛢️', '💸', '💵', '💴',
+    '💶', '💷', '💰', '💳', '💎', '⚖️', '🪜', '🧰', '🪛', '🔧', '🔨', '⚒️',
+    '🛠️', '⛏️', '🪚', '🔩', '⚙️', '🪤', '🧱', '⛓️', '🧲', '🔫', '💣', '🧨',
+    '🪓', '🔪', '🗡️', '⚔️', '🛡️', '🚬', '⚰️', '🪦', '⚱️', '🏺', '🔮', '📿',
+    '🧿', '💈', '⚗️', '🔭', '🔬', '🕳️', '🩹', '🩺', '💊', '💉', '🩸', '🧬',
+    '🦠', '🧫', '🧪', '🌡️', '🧹', '🪠', '🧺', '🧻', '🚽', '🚰', '🚿', '🛁',
+    '🛀', '🧼', '🪥', '🪒', '🧴', '🧷', '🧹', '🪣', '🧯', '🛒', '🚬', '⚰️',
+    '🪦', '⚱️', '🗿', '🏧', '🚮', '🚰', '♿', '🚹', '🚺', '🚻', '🚼', '🚾',
+    '🛂', '🛃', '🛄', '🛅', '⚠️', '🚸', '⛔', '🚫', '🚳', '🚭', '🚯', '🚱',
+    '🚷', '📵', '🔞', '☢️', '☣️',
   ],
   'Символы': [
-    '🔥', '✨', '💫', '⭐', '🌟', '💯', '✅', '❌', '⚠️', '❗', '❓', '💤',
-    '💢', '💬', '💭',
+    '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕',
+    '💞', '💓', '💗', '💖', '💘', '💝', '💟', '☮️', '✝️', '☪️', '🕉️', '☸️',
+    '✡️', '🔯', '🕎', '☯️', '☦️', '🛐', '⛎', '♈', '♉', '♊', '♋', '♌', '♍',
+    '♎', '♏', '♐', '♑', '♒', '♓', '🆔', '⚛️', '🉑', '☢️', '☣️', '📴', '📳',
+    '🈶', '🈚', '🈸', '🈺', '🈷️', '✴️', '🆚', '💮', '🉐', '㊙️', '㊗️', '🈴',
+    '🈵', '🈹', '🈲', '🅰️', '🅱️', '🆎', '🆑', '🅾️', '🆘', '❌', '⭕', '🛑',
+    '⛔', '📛', '🚫', '💯', '💢', '♨️', '🚷', '🚯', '🚳', '🚱', '🔞', '📵',
+    '🚭', '❗', '❓', '❕', '❔', '‼️', '⁉️', '🔅', '🔆', '〽️', '⚠️', '🚸',
+    '🔱', '⚜️', '🔰', '♻️', '✅', '🈯', '💹', '❇️', '✳️', '❎', '🌐', '💠',
+    'Ⓜ️', '🌀', '💤', '🏧', '🚾', '♿', '🅿️', '🈳', '🈂️', '🛂', '🛃', '🛄',
+    '🛅', '🔄', '🔃', '🔙', '🔚', '🔛', '🔜', '🔝', '🔀', '🔁', '🔂', '⏩',
+    '⏪', '⏫', '⏬', '◀️', '▶️', '🔼', '🔽', '➡️', '⬅️', '⬆️', '⬇️', '↗️',
+    '↘️', '↙️', '↖️', '↕️', '↔️', '↩️', '↪️', '⤴️', '⤵️',
+  ],
+  'Флаги': [
+    '🏳️', '🏴', '🏁', '🚩', '🏳️‍🌈', '🏳️‍⚧️', '🇺🇳', '🇦🇫', '🇦🇽', '🇦🇱', '🇩🇿', '🇦🇸',
+    '🇦🇩', '🇦🇴', '🇦🇮', '🇦🇶', '🇦🇬', '🇦🇷', '🇦🇲', '🇦🇼', '🇦🇺', '🇦🇹', '🇦🇿', '🇧🇸',
+    '🇧🇭', '🇧🇩', '🇧🇧', '🇧🇾', '🇧🇪', '🇧🇿', '🇧🇯', '🇧🇲', '🇧🇹', '🇧🇴', '🇧🇦', '🇧🇼',
+    '🇧🇷', '🇮🇴', '🇻🇬', '🇧🇳', '🇧🇬', '🇧🇫', '🇧🇮', '🇰🇭', '🇨🇲', '🇨🇦', '🇮🇨', '🇨🇻',
+    '🇧🇶', '🇰🇾', '🇨🇫', '🇹🇩', '🇨🇱', '🇨🇳', '🇨🇽', '🇨🇨', '🇨🇴', '🇰🇲', '🇨🇬', '🇨🇩',
+    '🇨🇰', '🇨🇷', '🇨🇮', '🇭🇷', '🇨🇺', '🇨🇼', '🇨🇾', '🇨🇿', '🇩🇰', '🇩🇯', '🇩🇲', '🇩🇴',
+    '🇪🇨', '🇪🇬', '🇸🇻', '🇬🇶', '🇪🇷', '🇪🇪', '🇪🇹', '🇪🇺', '🇫🇰', '🇫🇴', '🇫🇯', '🇫🇮',
+    '🇫🇷', '🇬🇫', '🇵🇫', '🇹🇫', '🇬🇦', '🇬🇲', '🇬🇪', '🇩🇪', '🇬🇭', '🇬🇮', '🇬🇷', '🇬🇱',
+    '🇬🇩', '🇬🇵', '🇬🇺', '🇬🇹', '🇬🇬', '🇬🇳', '🇬🇼', '🇬🇾', '🇭🇹', '🇭🇳', '🇭🇰', '🇭🇺',
+    '🇮🇸', '🇮🇳', '🇮🇩', '🇮🇷', '🇮🇶', '🇮🇪', '🇮🇲', '🇮🇱', '🇮🇹', '🇯🇲', '🇯🇵', '🎌',
+    '🇯🇪', '🇯🇴', '🇰🇿', '🇰🇪', '🇰🇮', '🇽🇰', '🇰🇼', '🇰🇬', '🇱🇦', '🇱🇻', '🇱🇧', '🇱🇸',
+    '🇱🇷', '🇱🇾', '🇱🇮', '🇱🇹', '🇱🇺', '🇲🇴', '🇲🇰', '🇲🇬', '🇲🇼', '🇲🇾', '🇲🇻', '🇲🇱',
+    '🇲🇹', '🇲🇭', '🇲🇶', '🇲🇷', '🇲🇺', '🇾🇹', '🇲🇽', '🇫🇲', '🇲🇩', '🇲🇨', '🇲🇳', '🇲🇪',
+    '🇲🇸', '🇲🇦', '🇲🇿', '🇲🇲', '🇳🇦', '🇳🇷', '🇳🇵', '🇳🇱', '🇳🇨', '🇳🇿', '🇳🇮', '🇳🇪',
+    '🇳🇬', '🇳🇺', '🇳🇫', '🇰🇵', '🇲🇵', '🇳🇴', '🇴🇲', '🇵🇰', '🇵🇼', '🇵🇸', '🇵🇦', '🇵🇬',
+    '🇵🇾', '🇵🇪', '🇵🇭', '🇵🇳', '🇵🇱', '🇵🇹', '🇵🇷', '🇶🇦', '🇷🇪', '🇷🇴', '🇷🇺', '🇷🇼',
+    '🇼🇸', '🇸🇲', '🇸🇦', '🇸🇳', '🇷🇸', '🇸🇨', '🇸🇱', '🇸🇬', '🇸🇽', '🇸🇰', '🇸🇮', '🇬🇸',
+    '🇸🇧', '🇸🇴', '🇿🇦', '🇰🇷', '🇸🇸', '🇪🇸', '🇱🇰', '🇧🇱', '🇸🇭', '🇰🇳', '🇱🇨', '🇵🇲',
+    '🇻🇨', '🇸🇩', '🇸🇷', '🇸🇿', '🇸🇪', '🇨🇭', '🇸🇾', '🇹🇼', '🇹🇯', '🇹🇿', '🇹🇭', '🇹🇱',
+    '🇹🇬', '🇹🇰', '🇹🇴', '🇹🇹', '🇹🇳', '🇹🇷', '🇹🇲', '🇹🇨', '🇹🇻', '🇺🇬', '🇺🇦', '🇦🇪',
+    '🇬🇧', '🇺🇸', '🇻🇮', '🇺🇾', '🇺🇿', '🇻🇺', '🇻🇦', '🇻🇪', '🇻🇳', '🇼🇫', '🇪🇭', '🇾🇪',
+    '🇿🇲', '🇿🇼', '🏴‍☠️',
   ],
 };
 
-// ============================================================================
-// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-// ============================================================================
-
-/**
- * Easing функция для плавной анимации (ease-out cubic)
- */
-const easeOutCubic = (progress) => {
-  return 1 - Math.pow(1 - progress, 3);
+// Иконки категорий для нижней панели
+const CATEGORY_ICONS = {
+  'Недавние': 'time-outline',
+  'Смайлики и люди': 'happy-outline',
+  'Животные и природа': 'leaf-outline',
+  'Еда и напитки': 'restaurant-outline',
+  'Путешествия и места': 'car-outline',
+  'Активности': 'football-outline',
+  'Объекты': 'bulb-outline',
+  'Символы': 'musical-notes-outline',
+  'Флаги': 'flag-outline',
 };
 
-/**
- * Определяет, должно ли окно расшириться на основе жеста
- */
-const shouldExpand = (gestureState, currentHeight) => {
-  const { dy, vy } = gestureState;
-  const midPoint = (EXPANDED_HEIGHT + COLLAPSED_HEIGHT) / 2;
+// Порядок категорий
+const CATEGORY_ORDER = [
+  'Недавние',
+  'Смайлики и люди',
+  'Животные и природа',
+  'Еда и напитки',
+  'Путешествия и места',
+  'Активности',
+  'Объекты',
+  'Символы',
+  'Флаги',
+];
 
-  // Быстрый свайп вверх
-  if (dy < -20 && vy < -0.5) return true;
-
-  // Потянули вверх за порог
-  if (dy < -DRAG_THRESHOLD) return true;
-
-  // Текущая высота больше середины
-  if (currentHeight >= midPoint) return true;
-
-  return false;
-};
+const RECENT_STORAGE_KEY = '@emoji_picker_recent';
 
 /**
- * Определяет, должно ли окно закрыться на основе жеста
+ * Встраиваемый компонент выбора эмодзи (вместо клавиатуры)
+ * Оптимизирован для производительности с использованием FlatList и мемоизации
  */
-const shouldClose = (gestureState) => {
-  const { dy, vy } = gestureState;
+export const FullEmojiPicker = React.memo(({
+  visible,
+  onClose,
+  onEmojiSelect,
+}) => {
+  const [selectedCategory, setSelectedCategory] = useState('Смайлики и люди');
+  const [recentEmojis, setRecentEmojis] = useState([]);
+  const flatListRef = useRef(null);
+  const categoryPositions = useRef({});
+  const categoryScrollViewRef = useRef(null);
 
-  // Быстрый свайп вниз
-  if (dy > 20 && vy > 0.5) return true;
-
-  // Потянули вниз за порог
-  if (dy > DRAG_THRESHOLD) return true;
-
-  return false;
-};
-
-/**
- * Вычисляет новую высоту на основе жеста
- */
-const calculateNewHeight = (currentHeight, gestureState) => {
-  const heightDelta = -gestureState.dy;
-  const newHeight = currentHeight + heightDelta;
-
-  // Ограничиваем высоту между минимальной и максимальной
-  return Math.max(COLLAPSED_HEIGHT, Math.min(EXPANDED_HEIGHT, newHeight));
-};
-
-// ============================================================================
-// КАСТОМНЫЕ ХУКИ
-// ============================================================================
-
-/**
- * Хук для управления анимацией высоты
- */
-const useHeightAnimation = () => {
-  const [height, setHeight] = useState(COLLAPSED_HEIGHT);
-  const animationRef = useRef(null);
-
-  const animateHeight = useCallback((startHeight, endHeight, duration = ANIMATION_DURATION) => {
-    // Отменяем предыдущую анимацию
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
-    }
-
-    const startTime = Date.now();
-
-    const animate = () => {
-      const elapsed = Date.now() - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const eased = easeOutCubic(progress);
-      const currentHeight = startHeight + (endHeight - startHeight) * eased;
-
-      setHeight(currentHeight);
-
-      if (progress < 1) {
-        animationRef.current = requestAnimationFrame(animate);
-      } else {
-        setHeight(endHeight);
-        animationRef.current = null;
+  // Загружаем недавние эмодзи из AsyncStorage
+  useEffect(() => {
+    const loadRecent = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(RECENT_STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          setRecentEmojis(parsed);
+          if (parsed.length > 0) {
+            EMOJI_CATEGORIES['Недавние'] = parsed;
+          }
+        }
+      } catch (error) {
+        console.error('Error loading recent emojis:', error);
       }
     };
-
-    animationRef.current = requestAnimationFrame(animate);
+    loadRecent();
   }, []);
 
-  const cancelAnimation = useCallback(() => {
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
-      animationRef.current = null;
+  // Сохраняем выбранный эмодзи в недавние
+  const addToRecent = useCallback(async (emoji) => {
+    const updated = [emoji, ...recentEmojis.filter(e => e !== emoji)].slice(0, 30);
+    setRecentEmojis(updated);
+    EMOJI_CATEGORIES['Недавние'] = updated;
+    try {
+      await AsyncStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(updated));
+    } catch (error) {
+      console.error('Error saving recent emojis:', error);
     }
-  }, []);
+  }, [recentEmojis]);
 
-  const resetHeight = useCallback(() => {
-    cancelAnimation();
-    setHeight(COLLAPSED_HEIGHT);
-  }, [cancelAnimation]);
+  // Подготавливаем данные для FlatList (оптимизированная структура)
+  const listData = useMemo(() => {
+    const data = [];
+    CATEGORY_ORDER.forEach((category) => {
+      if (category === 'Недавние' && recentEmojis.length === 0) return;
+      const categoryEmojis = EMOJI_CATEGORIES[category] || [];
+      if (categoryEmojis.length === 0) return;
 
-  return { height, setHeight, animateHeight, cancelAnimation, resetHeight };
-};
+      // Добавляем заголовок категории
+      data.push({ type: 'header', category, id: `header-${category}` });
+      
+      // Добавляем эмодзи группами по строке (для оптимизации рендеринга)
+      const rows = [];
+      for (let i = 0; i < categoryEmojis.length; i += EMOJIS_PER_ROW) {
+        rows.push(categoryEmojis.slice(i, i + EMOJIS_PER_ROW));
+      }
+      rows.forEach((row, rowIndex) => {
+        data.push({
+          type: 'row',
+          category,
+          emojis: row,
+          id: `${category}-row-${rowIndex}`,
+        });
+      });
+    });
+    return data;
+  }, [recentEmojis]);
 
-/**
- * Хук для управления состоянием модального окна
- */
-const useModalState = () => {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-
-  const reset = useCallback(() => {
-    setIsExpanded(false);
-    setIsDragging(false);
-  }, []);
-
-  return { isExpanded, setIsExpanded, isDragging, setIsDragging, reset };
-};
-
-// ============================================================================
-// ОСНОВНОЙ КОМПОНЕНТ
-// ============================================================================
-
-/**
- * Компонент для выбора эмодзи из расширенного списка
- */
-export const FullEmojiPicker = ({ visible, onClose, onEmojiSelect, title = 'Выберите эмодзи' }) => {
-  const { height: containerHeight, setHeight, animateHeight, cancelAnimation, resetHeight } = useHeightAnimation();
-  const { isExpanded, setIsExpanded, isDragging, setIsDragging, reset: resetModalState } = useModalState();
-
-  const translateY = useRef(new Animated.Value(COLLAPSED_HEIGHT)).current;
-  const overlayOpacity = useRef(new Animated.Value(0)).current;
-
-  // ============================================================================
-  // ЭФФЕКТЫ
-  // ============================================================================
-
-  /**
-   * Управление видимостью модального окна
-   */
-  useEffect(() => {
-    if (visible) {
-      // Останавливаем все анимации и сбрасываем состояние
-      translateY.stopAnimation();
-      overlayOpacity.stopAnimation();
-      cancelAnimation();
-      resetModalState();
-      resetHeight();
-
-      // Анимация появления overlay
-      overlayOpacity.setValue(0);
-      Animated.timing(overlayOpacity, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-
-      // Анимация появления контента снизу
-      translateY.setValue(COLLAPSED_HEIGHT);
-      Animated.spring(translateY, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 65,
-        friction: 8,
-      }).start();
-    } else {
-      // Сброс при закрытии
-      translateY.stopAnimation();
-      overlayOpacity.stopAnimation();
-      cancelAnimation();
-      translateY.setValue(COLLAPSED_HEIGHT);
-      overlayOpacity.setValue(0);
-      resetModalState();
-      resetHeight();
-    }
-  }, [visible, cancelAnimation, resetModalState, resetHeight, translateY, overlayOpacity]);
-
-  // ============================================================================
-  // ОБРАБОТЧИКИ
-  // ============================================================================
-
-  /**
-   * Расширение контейнера до максимальной высоты
-   */
-  const expandContainer = useCallback(() => {
-    setIsExpanded(true);
-    setIsDragging(false);
-    animateHeight(containerHeight, EXPANDED_HEIGHT);
-    
-    // Убеждаемся, что контейнер видим
-    Animated.spring(translateY, {
-      toValue: 0,
-      useNativeDriver: true,
-      tension: 65,
-      friction: 8,
-    }).start();
-  }, [containerHeight, animateHeight, translateY]);
-
-  /**
-   * Сворачивание контейнера до минимальной высоты
-   */
-  const collapseContainer = useCallback(() => {
-    setIsExpanded(false);
-    setIsDragging(false);
-    animateHeight(containerHeight, COLLAPSED_HEIGHT);
-    
-    // Убеждаемся, что контейнер видим
-    Animated.spring(translateY, {
-      toValue: 0,
-      useNativeDriver: true,
-      tension: 65,
-      friction: 8,
-    }).start();
-  }, [containerHeight, animateHeight, translateY]);
-
-  /**
-   * Закрытие модального окна
-   */
-  const handleClose = useCallback(() => {
-    translateY.stopAnimation();
-    overlayOpacity.stopAnimation();
-    cancelAnimation();
-
-    setIsDragging(false);
-    setIsExpanded(false);
-    resetHeight();
-
-    // Анимация закрытия
-    Animated.parallel([
-      Animated.timing(overlayOpacity, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.spring(translateY, {
-        toValue: COLLAPSED_HEIGHT,
-        useNativeDriver: true,
-        tension: 65,
-        friction: 8,
-      }),
-    ]).start();
-
-    // Вызываем onClose сразу
-    onClose();
-  }, [translateY, overlayOpacity, cancelAnimation, resetHeight, onClose]);
-
-  /**
-   * Обработчик выбора эмодзи
-   */
   const handleEmojiSelect = useCallback(
     (emoji) => {
+      addToRecent(emoji);
       if (onEmojiSelect) {
         onEmojiSelect(emoji);
       }
-      handleClose();
     },
-    [onEmojiSelect, handleClose]
+    [onEmojiSelect, addToRecent]
   );
 
-  // ============================================================================
-  // PAN RESPONDER
-  // ============================================================================
+  // Прокрутка к категории
+  const scrollToCategory = useCallback((category) => {
+    const headerIndex = listData.findIndex(item => item.type === 'header' && item.category === category);
+    if (headerIndex !== -1 && flatListRef.current) {
+      flatListRef.current.scrollToIndex({
+        index: headerIndex,
+        animated: true,
+        viewOffset: 0,
+      });
+    }
+  }, [listData]);
 
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: (evt) => {
-          // Проверяем, началось ли касание в области drag
-          const startY = evt.nativeEvent.pageY;
-          const containerTop = SCREEN_HEIGHT - containerHeight;
-          const dragAreaHeight = isExpanded ? DRAG_AREA_HEIGHT_EXPANDED : DRAG_AREA_HEIGHT_COLLAPSED;
-          return startY >= containerTop && startY <= containerTop + dragAreaHeight;
-        },
-        onMoveShouldSetPanResponder: (evt, gestureState) => {
-          // Активируем только при вертикальном движении
-          return Math.abs(gestureState.dy) > 5;
-        },
-        onPanResponderGrant: () => {
-          // Останавливаем все анимации
-          translateY.stopAnimation();
-          cancelAnimation();
-          setIsDragging(true);
-        },
-        onPanResponderMove: (evt, gestureState) => {
-          const newHeight = calculateNewHeight(containerHeight, gestureState);
-          setHeight(newHeight);
+  // Рендер элемента списка
+  const renderItem = useCallback(({ item }) => {
+    if (item.type === 'header') {
+      return (
+        <View style={styles.categoryHeader}>
+          <Text style={styles.categoryTitle}>{item.category}</Text>
+        </View>
+      );
+    }
+    
+    if (item.type === 'row') {
+      return (
+        <View style={styles.emojiRow}>
+          {item.emojis.map((emoji, index) => (
+            <EmojiButton
+              key={`${item.id}-${index}`}
+              emoji={emoji}
+              onPress={handleEmojiSelect}
+            />
+          ))}
+        </View>
+      );
+    }
+    
+    return null;
+  }, [handleEmojiSelect]);
 
-          // Если тянем за пределы минимальной высоты - начинаем скрывать
-          if (newHeight <= COLLAPSED_HEIGHT && gestureState.dy > 0) {
-            const excess = Math.max(0, gestureState.dy - (containerHeight - COLLAPSED_HEIGHT));
-            translateY.setValue(excess);
-          } else {
-            translateY.setValue(0);
-          }
-        },
-        onPanResponderRelease: (evt, gestureState) => {
-          setIsDragging(false);
+  const keyExtractor = useCallback((item) => item.id, []);
 
-          // Определяем действие на основе жеста
-          if (shouldClose(gestureState)) {
-            handleClose();
-          } else if (shouldExpand(gestureState, containerHeight)) {
-            expandContainer();
-          } else {
-            collapseContainer();
-          }
-        },
-      }),
-    [
-      containerHeight,
-      isExpanded,
-      translateY,
-      cancelAnimation,
-      setHeight,
-      handleClose,
-      expandContainer,
-      collapseContainer,
-    ]
-  );
+  const getItemLayout = useCallback((data, index) => {
+    const item = data?.[index];
+    if (item?.type === 'header') {
+      return { length: 40, offset: index * 40, index };
+    }
+    return { length: EMOJI_SIZE, offset: index * EMOJI_SIZE, index };
+  }, []);
 
-  // ============================================================================
-  // РЕНДЕР
-  // ============================================================================
-
-  if (!visible) return null;
+  if (!visible) {
+    return <View style={[styles.container, styles.hidden]} />;
+  }
 
   return (
-    <Modal visible={visible} transparent={true} animationType="none" onRequestClose={handleClose}>
-      <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
-
-        <Animated.View
-          style={[
-            styles.container,
-            {
-              height: containerHeight,
-              transform: [{ translateY }],
-            },
-          ]}
-          {...panResponder.panHandlers}
+    <View style={styles.container}>
+      {/* Верхняя панель с категориями */}
+      <View style={styles.topBar}>
+        <ScrollView
+          ref={categoryScrollViewRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categoryTabsContent}
+          style={styles.categoryTabs}
+          nestedScrollEnabled={true}
+          scrollEnabled={true}
+          bounces={false}
+          alwaysBounceHorizontal={false}
+          removeClippedSubviews={false}
+          keyboardShouldPersistTaps="handled"
+          directionalLockEnabled={true}
         >
-          {/* Индикатор для drag */}
-          <View style={styles.dragHandle} />
-
-          {/* Заголовок */}
-          <View style={styles.header}>
-            <Text style={styles.title}>{title}</Text>
-            <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-              <Text style={styles.closeButtonText}>✕</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Список эмодзи по категориям */}
-          <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-            {Object.entries(EMOJI_CATEGORIES).map(([category, emojis]) => (
-              <EmojiCategory
+          {CATEGORY_ORDER.filter(cat => cat !== 'Недавние' || recentEmojis.length > 0).map((category) => {
+            const isSelected = selectedCategory === category;
+            return (
+              <TouchableOpacity
                 key={category}
-                category={category}
-                emojis={emojis}
-                onEmojiSelect={handleEmojiSelect}
+                style={[styles.categoryTab, isSelected && styles.categoryTabSelected]}
+                onPress={() => {
+                  setSelectedCategory(category);
+                  scrollToCategory(category);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text 
+                  style={[styles.categoryTabText, isSelected && styles.categoryTabTextSelected]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {category}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* Список эмодзи с виртуализацией */}
+      <FlatList
+        ref={flatListRef}
+        data={listData}
+        renderItem={renderItem}
+        keyExtractor={keyExtractor}
+        getItemLayout={getItemLayout}
+        initialNumToRender={10}
+        maxToRenderPerBatch={5}
+        windowSize={5}
+        removeClippedSubviews={true}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollViewContent}
+        onScrollToIndexFailed={(info) => {
+          // Fallback для прокрутки
+          setTimeout(() => {
+            flatListRef.current?.scrollToIndex({
+              index: Math.min(info.index, listData.length - 1),
+              animated: true,
+            });
+          }, 100);
+        }}
+      />
+
+      {/* Нижняя панель с иконками категорий */}
+      <View style={styles.bottomBar}>
+        {CATEGORY_ORDER.map((category) => {
+          if (category === 'Недавние' && recentEmojis.length === 0) return null;
+          const isSelected = selectedCategory === category;
+          const iconName = CATEGORY_ICONS[category] || 'ellipse-outline';
+
+          return (
+            <TouchableOpacity
+              key={category}
+              style={[styles.bottomBarItem, isSelected && styles.bottomBarItemSelected]}
+              onPress={() => {
+                setSelectedCategory(category);
+                scrollToCategory(category);
+              }}
+            >
+              <Ionicons
+                name={iconName}
+                size={24}
+                color={isSelected ? '#00A884' : '#8696A0'}
               />
-            ))}
-          </ScrollView>
-        </Animated.View>
-      </Animated.View>
-    </Modal>
-  );
-};
-
-// ============================================================================
-// ВСПОМОГАТЕЛЬНЫЕ КОМПОНЕНТЫ
-// ============================================================================
-
-/**
- * Компонент категории эмодзи
- */
-const EmojiCategory = React.memo(({ category, emojis, onEmojiSelect }) => {
-  return (
-    <View style={styles.categoryContainer}>
-      <Text style={styles.categoryTitle}>{category}</Text>
-      <View style={styles.emojiGrid}>
-        {emojis.map((emoji, index) => (
-          <EmojiButton key={`${emoji}-${index}`} emoji={emoji} onPress={onEmojiSelect} />
-        ))}
+            </TouchableOpacity>
+          );
+        })}
       </View>
     </View>
   );
 });
 
-/**
- * Компонент кнопки эмодзи
- */
+// Мемоизированный компонент кнопки эмодзи
 const EmojiButton = React.memo(({ emoji, onPress }) => {
   const handlePress = useCallback(() => {
     onPress(emoji);
   }, [emoji, onPress]);
 
   return (
-    <TouchableOpacity style={styles.emojiButton} onPress={handlePress} activeOpacity={0.7}>
+    <TouchableOpacity
+      style={styles.emojiButton}
+      onPress={handlePress}
+      activeOpacity={0.7}
+    >
       <Text style={styles.emoji}>{emoji}</Text>
     </TouchableOpacity>
   );
 });
 
-// ============================================================================
-// СТИЛИ
-// ============================================================================
-
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
   container: {
-    backgroundColor: 'white',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    height: EMOJI_PICKER_HEIGHT,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E4E6EB',
     overflow: 'hidden',
   },
-  dragHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: '#ccc',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginTop: 8,
-    marginBottom: 8,
+  hidden: {
+    height: 0,
+    overflow: 'hidden',
+    opacity: 0,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
+  topBar: {
+    backgroundColor: '#F0F2F5',
+    paddingTop: 8,
+    paddingBottom: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-  },
-  closeButton: {
-    width: 32,
-    height: 32,
+    borderBottomColor: '#E4E6EB',
+    height: 48,
     justifyContent: 'center',
+    width: '100%',
+  },
+  categoryTabs: {
+    width: '100%',
+    height: '100%',
+  },
+  categoryTabsContent: {
+    paddingHorizontal: 8,
     alignItems: 'center',
+    flexDirection: 'row',
+    minHeight: 32,
+  },
+  categoryTab: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 16,
-    backgroundColor: '#f0f0f0',
+    marginRight: 4,
+    backgroundColor: 'transparent',
+    flexShrink: 0,
+    minWidth: 60,
   },
-  closeButtonText: {
-    fontSize: 20,
-    color: '#666',
+  categoryTabSelected: {
+    backgroundColor: '#FFFFFF',
   },
-  scrollView: {
-    flex: 1,
-    padding: 16,
+  categoryTabText: {
+    fontSize: 13,
+    color: '#8696A0',
+    fontWeight: '500',
+    flexShrink: 0,
   },
-  categoryContainer: {
-    marginBottom: 24,
+  categoryTabTextSelected: {
+    color: '#00A884',
+    fontWeight: '600',
+  },
+  scrollViewContent: {
+    padding: 8,
+  },
+  categoryHeader: {
+    paddingVertical: 8,
+    paddingHorizontal: 4,
   },
   categoryTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#666',
-    marginBottom: 12,
+    color: '#8696A0',
+    textTransform: 'uppercase',
   },
-  emojiGrid: {
+  emojiRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    marginBottom: 4,
   },
   emojiButton: {
-    width: 48,
-    height: 48,
+    width: EMOJI_SIZE,
+    height: EMOJI_SIZE,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 8,
-    backgroundColor: '#f9f9f9',
   },
   emoji: {
     fontSize: 28,
+  },
+  bottomBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    backgroundColor: '#F0F2F5',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#E4E6EB',
+    minHeight: 48,
+  },
+  bottomBarItem: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  bottomBarItemSelected: {
+    backgroundColor: '#FFFFFF',
   },
 });

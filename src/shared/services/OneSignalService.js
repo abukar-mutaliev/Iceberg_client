@@ -3,7 +3,7 @@
  * Работает во всех типах сборок: development, preview, production
  */
 
-import { Platform } from 'react-native';
+import { Platform, AppState } from 'react-native';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -77,6 +77,37 @@ class OneSignalService {
                 console.warn('[OneSignal] Разрешения не предоставлены, но продолжаем');
             }
 
+            // Настройка канала уведомлений для Android (heads-up уведомления)
+            if (Platform.OS === 'android') {
+                try {
+                    console.log('[OneSignal] Настройка канала уведомлений для Android...');
+                    
+                    // OneSignal SDK автоматически создаст канал с высоким приоритетом
+                    // когда мы отправляем уведомления с priority = 10 на сервере
+                    // Канал будет создан автоматически при первом уведомлении
+                    
+                    // Для heads-up уведомлений OneSignal использует канал с IMPORTANCE_HIGH
+                    // если в payload указан priority = 10
+                    // Также можно использовать канал, созданный нативно в MainApplication.kt
+                    // но нужно указать его ID в payload на сервере
+                    
+                    // Проверяем, доступен ли метод для настройки канала через OneSignal SDK
+                    if (oneSignal.Notifications && typeof oneSignal.Notifications.setNotificationChannel === 'function') {
+                        try {
+                            // OneSignal SDK может иметь метод для настройки канала
+                            // Но в React Native OneSignal SDK это обычно не требуется
+                            console.log('[OneSignal] OneSignal SDK будет использовать канал автоматически');
+                        } catch (e) {
+                            console.log('[OneSignal] Используется автоматическое создание канала');
+                        }
+                    }
+                    
+                    console.log('[OneSignal] Канал будет создан автоматически при первом уведомлении с priority=10');
+                } catch (channelError) {
+                    console.warn('[OneSignal] Ошибка настройки канала (не критично):', channelError.message);
+                }
+            }
+
             // Настройка обработчиков
             this.setupNotificationHandlers(oneSignal);
 
@@ -116,7 +147,39 @@ class OneSignalService {
             oneSignal.Notifications.addEventListener('foregroundWillDisplay', (event) => {
                 console.log('[OneSignal] Уведомление получено в foreground:', event);
                 const data = event.notification?.additionalData;
+                
                 if (data) {
+                    // Для уведомлений о сообщениях чата проверяем, нужно ли показывать уведомление
+                    if (data.type === 'CHAT_MESSAGE' && data.roomId) {
+                        // Проверяем состояние приложения и активную комнату
+                        const appState = AppState.currentState;
+                        const isAppInForeground = appState === 'active';
+                        
+                        // Ленивая загрузка store для избежания циклических зависимостей
+                        try {
+                            const { store } = require('@app/store/store');
+                            const activeRoomId = store.getState()?.chat?.activeRoomId;
+                            const notificationRoomId = parseInt(data.roomId, 10);
+                            
+                            // Если приложение в foreground и комната активна - не показываем уведомление
+                            if (isAppInForeground && activeRoomId === notificationRoomId) {
+                                console.log('[OneSignal] Пропускаем уведомление - комната активна в foreground:', {
+                                    roomId: notificationRoomId,
+                                    activeRoomId,
+                                    appState
+                                });
+                                // Отменяем показ уведомления
+                                event.preventDefault();
+                                // Но все равно обновляем статус сообщения
+                                this.handleChatMessagePushNotification(data);
+                                return;
+                            }
+                        } catch (storeError) {
+                            // Если store недоступен, показываем уведомление
+                            console.warn('[OneSignal] Не удалось проверить активную комнату:', storeError.message);
+                        }
+                    }
+                    
                     // Обновляем статус сообщения на DELIVERED при получении push-уведомления
                     this.handleChatMessagePushNotification(data);
                 }

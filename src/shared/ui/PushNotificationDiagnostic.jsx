@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Clipboard } from 'react-native';
 import * as Constants from 'expo-constants';
 import * as Device from 'expo-device';
+import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PushNotificationService } from '@shared/services/PushNotificationService';
 import OneSignalService from '@shared/services/OneSignalService';
@@ -612,6 +613,94 @@ export const PushNotificationDiagnostic = () => {
         }
     };
 
+    // Тест локального push-уведомления
+    const testLocalPushNotification = async () => {
+        addLog('📱 Тест локального push-уведомления', 'info');
+        
+        try {
+            // Настраиваем обработчик для показа уведомлений в foreground (важно для Expo Go)
+            addLog('⚙️ Настройка обработчика уведомлений для foreground...', 'info');
+            Notifications.setNotificationHandler({
+                handleNotification: async () => ({
+                    shouldShowAlert: true,  // Показывать уведомление даже когда приложение активно
+                    shouldPlaySound: true,  // Воспроизводить звук
+                    shouldSetBadge: true,   // Устанавливать badge
+                }),
+            });
+            addLog('✅ Обработчик уведомлений настроен для foreground', 'success');
+            
+            // Проверяем разрешения
+            addLog('🔍 Проверка разрешений...', 'info');
+            const { status: existingStatus } = await Notifications.getPermissionsAsync();
+            let finalStatus = existingStatus;
+            
+            if (existingStatus !== 'granted') {
+                addLog('⚠️ Разрешения не предоставлены, запрашиваем...', 'warning');
+                const { status } = await Notifications.requestPermissionsAsync({
+                    ios: {
+                        allowAlert: true,
+                        allowBadge: true,
+                        allowSound: true,
+                        allowAnnouncements: false,
+                    },
+                });
+                finalStatus = status;
+            }
+            
+            if (finalStatus !== 'granted') {
+                addLog('❌ Разрешения на уведомления не предоставлены', 'error');
+                Alert.alert('Ошибка', 'Необходимо предоставить разрешения на уведомления в настройках устройства');
+                return;
+            }
+            
+            addLog('✅ Разрешения получены', 'success');
+            
+            // Для Android настраиваем канал уведомлений (если нужно)
+            if (Platform.OS === 'android') {
+                addLog('📱 Настройка канала уведомлений для Android...', 'info');
+                try {
+                    await Notifications.setNotificationChannelAsync('test-channel', {
+                        name: 'Test Notifications',
+                        importance: Notifications.AndroidImportance.MAX,
+                        vibrationPattern: [0, 250, 250, 250],
+                        lightColor: '#FF231F7C',
+                        sound: 'default',
+                        enableVibrate: true,
+                        showBadge: true,
+                    });
+                    addLog('✅ Канал уведомлений настроен', 'success');
+                } catch (channelError) {
+                    addLog(`⚠️ Ошибка настройки канала (не критично): ${channelError.message}`, 'warning');
+                }
+            }
+            
+            // Показываем локальное уведомление
+            addLog('📤 Отправка локального уведомления...', 'info');
+            const notificationId = await Notifications.scheduleNotificationAsync({
+                content: {
+                    title: '🧪 Тест локального уведомления',
+                    body: `Тестовое уведомление от ${new Date().toLocaleTimeString()}`,
+                    data: {
+                        type: 'LOCAL_TEST',
+                        timestamp: Date.now(),
+                        source: 'diagnostic_screen'
+                    },
+                    sound: true,
+                    ...(Platform.OS === 'android' && { channelId: 'test-channel' }),
+                },
+                trigger: null, // Показать немедленно
+            });
+            
+            addLog(`✅ Локальное уведомление отправлено (ID: ${notificationId})`, 'success');
+            addLog('💡 Уведомление должно появиться даже если приложение активно (Expo Go)', 'info');
+            Alert.alert('Успех', 'Локальное уведомление отправлено! Проверьте получение на устройстве.\n\nУведомление должно появиться даже когда приложение активно.');
+        } catch (error) {
+            addLog(`❌ Ошибка отправки локального уведомления: ${error.message}`, 'error');
+            addLog(`📋 Stack: ${error.stack}`, 'error');
+            Alert.alert('Ошибка', `Не удалось отправить локальное уведомление: ${error.message}`);
+        }
+    };
+
     const renderValue = (value, label) => (
         <View style={styles.item}>
             <Text style={styles.label}>{label}:</Text>
@@ -659,6 +748,10 @@ export const PushNotificationDiagnostic = () => {
 
                 <TouchableOpacity style={[styles.button, { backgroundColor: '#E74C3C' }]} onPress={sendTestPushNotification}>
                     <Text style={styles.buttonText}>📨 Тест Push</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={[styles.button, { backgroundColor: '#16A085' }]} onPress={testLocalPushNotification}>
+                    <Text style={styles.buttonText}>📱 Локальный Push</Text>
                 </TouchableOpacity>
             </View>
 

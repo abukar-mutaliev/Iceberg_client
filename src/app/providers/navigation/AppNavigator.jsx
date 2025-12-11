@@ -23,6 +23,7 @@ import { fetchProducts } from "@entities/product";
 import { SplashScreen } from "@/features/splash";
 import { WelcomeScreen } from "@/screens/welcome";
 import { AuthScreen } from "@/screens/auth/ui/AuthScreen";
+import { PrivacyPolicyScreen } from "@/screens/auth/ui/PrivacyPolicyScreen";
 import { MainScreen } from "@screens/main/ui/MainScreen";
 import { ProfileScreen } from "@/screens/profile";
 import { ProfileEdit } from "@features/profile/ui/ProfileEdit";
@@ -1212,6 +1213,13 @@ export const AppNavigator = () => {
                         name="Auth"
                         component={AuthScreen}
                         options={createScreenOptions()}
+                    />
+                    <Stack.Screen
+                        name="PrivacyPolicy"
+                        component={PrivacyPolicyScreen}
+                        options={createScreenOptions({
+                            headerShown: false,
+                        })}
                     />
                     <Stack.Screen
                         name="Main"

@@ -1,0 +1,2 @@
+export { PrivacyPolicyScreen } from './PrivacyPolicyScreen';
+

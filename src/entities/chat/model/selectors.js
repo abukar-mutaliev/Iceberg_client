@@ -181,10 +181,22 @@ export const makeSelectRoomMessages = () => createSelector(
         },
     ],
     (bucket, room, participantsById, currentUserId, bucketIds, reactionsHash) => {
+        if (__DEV__) {
+            console.log('🔍 makeSelectRoomMessages re-evaluating:', {
+                roomId: room?.id,
+                bucketExists: !!bucket,
+                bucketIdsCount: bucketIds?.length || 0,
+                reactionsHash: reactionsHash,
+                firstMessageId: bucketIds?.[0],
+                firstMessageReactions: bucket?.byId?.[bucketIds?.[0]]?.reactions,
+                firstMessageReactionsUpdated: bucket?.byId?.[bucketIds?.[0]]?._reactionsUpdated,
+                messagesWithReactions: bucket ? Object.values(bucket.byId || {}).filter(m => m?.reactions && m.reactions.length > 0).length : 0
+            });
+        }
         if (!bucket || !bucketIds) return EMPTY_ARRAY;
         const participants = room?.participants || EMPTY_ARRAY;
 
-        return bucketIds
+        const result = bucketIds
             .map((id) => bucket.byId[id])
             .filter(Boolean)
             .filter((msg) => {
@@ -230,6 +242,24 @@ export const makeSelectRoomMessages = () => createSelector(
                 };
                 return enriched;
             });
+        
+        if (__DEV__ && result.length > 0) {
+            const messagesWithReactions = result.filter(m => m?.reactions && m.reactions.length > 0);
+            if (messagesWithReactions.length > 0) {
+                console.log('✅ makeSelectRoomMessages returning messages with reactions:', {
+                    totalMessages: result.length,
+                    messagesWithReactions: messagesWithReactions.length,
+                    sampleMessage: messagesWithReactions[0] ? {
+                        id: messagesWithReactions[0].id,
+                        reactionsCount: messagesWithReactions[0].reactions.length,
+                        reactions: messagesWithReactions[0].reactions,
+                        _reactionsUpdated: messagesWithReactions[0]._reactionsUpdated
+                    } : null
+                });
+            }
+        }
+        
+        return result;
     }
 );
 

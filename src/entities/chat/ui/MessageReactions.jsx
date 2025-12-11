@@ -1,5 +1,5 @@
 import React, {useState, useMemo, useRef, useEffect} from 'react';
-import {View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView, Pressable, Animated} from 'react-native';
+import {View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView, Pressable, Animated, Dimensions, KeyboardAvoidingView, Platform} from 'react-native';
 import {PanGestureHandler, State} from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
@@ -12,7 +12,8 @@ export const MessageReactions = ({
     onReactionPress,
     onReactionLongPress,
     messageId,
-    style
+    style,
+    inline = false
 }) => {
     const [detailsVisible, setDetailsVisible] = useState(false);
     const [selectedEmoji, setSelectedEmoji] = useState(null);
@@ -160,10 +161,13 @@ export const MessageReactions = ({
         }
     };
     
-    // Интерполяция для анимации
+    // Получаем размеры экрана для правильного позиционирования модального окна
+    const screenHeight = Dimensions.get('window').height;
+    
+    // Интерполяция для анимации - используем высоту экрана для гарантии видимости
     const modalTranslateY = slideAnim.interpolate({
         inputRange: [0, 1],
-        outputRange: [600, 0],
+        outputRange: [screenHeight, 0], // Используем высоту экрана вместо фиксированного значения
     });
     
     const modalOpacity = slideAnim.interpolate({
@@ -199,6 +203,7 @@ export const MessageReactions = ({
             <View style={[styles.container, style]}>
                 <View style={[
                     styles.reactionsBubble,
+                    inline && styles.reactionsBubbleInline,
                     isSingleEmoji && styles.reactionsBubbleSingle,
                     isSingleReaction && !isSingleEmoji && styles.reactionsBubbleSingleWithCount
                 ]}>
@@ -233,24 +238,30 @@ export const MessageReactions = ({
                 transparent={true}
                 animationType="none"
                 onRequestClose={closeDetails}
+                statusBarTranslucent={true}
+                presentationStyle="overFullScreen"
             >
-                <Animated.View 
-                    style={[
-                        styles.modalOverlay,
-                        { opacity: overlayOpacity }
-                    ]}
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    style={styles.keyboardAvoidingView}
                 >
-                    <Pressable 
-                        style={StyleSheet.absoluteFill}
-                        onPress={closeDetails}
-                    />
-                    
-                    <PanGestureHandler
-                        onGestureEvent={onGestureEvent}
-                        onHandlerStateChange={onHandlerStateChange}
-                        activeOffsetY={10}
-                        failOffsetX={[-50, 50]}
+                    <Animated.View 
+                        style={[
+                            styles.modalOverlay,
+                            { opacity: overlayOpacity }
+                        ]}
                     >
+                        <Pressable 
+                            style={StyleSheet.absoluteFill}
+                            onPress={closeDetails}
+                        />
+                        
+                        <PanGestureHandler
+                            onGestureEvent={onGestureEvent}
+                            onHandlerStateChange={onHandlerStateChange}
+                            activeOffsetY={10}
+                            failOffsetX={[-50, 50]}
+                        >
                         <Animated.View
                             style={[
                                 styles.modalContent,
@@ -351,9 +362,10 @@ export const MessageReactions = ({
                                 );
                             })}
                         </ScrollView>
-                        </Animated.View>
-                    </PanGestureHandler>
-                </Animated.View>
+                            </Animated.View>
+                        </PanGestureHandler>
+                    </Animated.View>
+                </KeyboardAvoidingView>
             </Modal>
         </>
     );
@@ -384,6 +396,13 @@ const styles = StyleSheet.create({
         elevation: 2,
         borderWidth: 0.5,
         borderColor: 'rgba(0, 0, 0, 0.08)',
+    },
+    reactionsBubbleInline: {
+        // Для отображения внутри пузырька - убираем тень и границу
+        shadowOpacity: 0,
+        elevation: 0,
+        borderWidth: 0,
+        backgroundColor: 'transparent',
     },
     reactionsBubbleSingle: {
         // Для одной реакции с одним эмодзи - идеальный круг
@@ -435,10 +454,14 @@ const styles = StyleSheet.create({
         minWidth: 14,
         textAlign: 'center',
     },
+    keyboardAvoidingView: {
+        flex: 1,
+    },
     modalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(0, 0, 0, 0.4)',
         justifyContent: 'flex-end',
+        zIndex: 9999, // Высокий zIndex чтобы модальное окно было поверх всего
     },
     modalContent: {
         backgroundColor: '#FFFFFF',
@@ -448,6 +471,7 @@ const styles = StyleSheet.create({
         maxHeight: '70%',
         paddingTop: 4,
         paddingBottom: 20,
+        zIndex: 10000, // Еще выше для контента модального окна
     },
     modalHandleContainer: {
         alignItems: 'center',

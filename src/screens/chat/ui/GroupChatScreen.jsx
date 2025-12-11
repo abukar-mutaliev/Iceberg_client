@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useState, useRef} from 'react';
-import {View, FlatList, StyleSheet, TouchableOpacity, Text, Modal, Platform, BackHandler, Vibration, Animated} from 'react-native';
+import {View, FlatList, StyleSheet, TouchableOpacity, Text, Modal, Platform, BackHandler, Vibration, Animated, Clipboard} from 'react-native';
 import {useFocusEffect, CommonActions} from '@react-navigation/native';
 import {useDispatch, useSelector} from 'react-redux';
 import {
@@ -30,6 +30,7 @@ import {IconDelete} from '@shared/ui/Icon/ProductManagement/IconDelete';
 import ArrowBackIcon from '@shared/ui/Icon/Common/ArrowBackIcon';
 import {useCustomAlert} from '@shared/ui/CustomAlert/CustomAlertProvider';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import {Ionicons} from '@expo/vector-icons';
 import ChatApi from '@entities/chat/api/chatApi';
 import {selectRoomsList} from '@entities/chat/model/selectors';
 
@@ -403,6 +404,90 @@ export const GroupChatScreen = ({route, navigation}) => {
         }
     }, [selectedMessages, messages, handleReply, clearSelection]);
 
+    // Обработчик копирования выбранных сообщений
+    const handleCopySelectedMessages = useCallback(() => {
+        if (selectedMessages.size === 0) return;
+
+        const messageIds = Array.from(selectedMessages);
+        const selectedMessagesData = messageIds
+            .map(id => messages.find(m => m.id === id))
+            .filter(Boolean)
+            .sort((a, b) => {
+                // Сортируем по времени создания (старые первыми)
+                const timeA = new Date(a.createdAt).getTime();
+                const timeB = new Date(b.createdAt).getTime();
+                return timeA - timeB;
+            });
+
+        const textParts = selectedMessagesData.map(message => {
+            switch (message.type) {
+                case 'TEXT':
+                    return message.content || '';
+                case 'IMAGE':
+                    // Копируем подпись если есть
+                    const caption = message.content || message.text || message.caption;
+                    if (caption) {
+                        return caption;
+                    }
+                    // Если есть подпись в attachments
+                    const imageCaption = message.attachments?.find(att => att.caption || att.description || att.text);
+                    if (imageCaption) {
+                        return imageCaption.caption || imageCaption.description || imageCaption.text;
+                    }
+                    return '[Изображение]';
+                case 'VOICE':
+                    return '[Голосовое сообщение]';
+                case 'PRODUCT':
+                    // Пытаемся получить название товара
+                    try {
+                        const productData = message.product || (message.content ? JSON.parse(message.content) : null);
+                        if (productData?.name) {
+                            return productData.name;
+                        }
+                    } catch (e) {
+                        // Игнорируем ошибки парсинга
+                    }
+                    return '[Товар]';
+                case 'STOP':
+                    // Пытаемся получить адрес остановки
+                    try {
+                        const stopData = message.stop || (message.content ? JSON.parse(message.content) : null);
+                        if (stopData?.address) {
+                            return stopData.address;
+                        }
+                    } catch (e) {
+                        // Игнорируем ошибки парсинга
+                    }
+                    return '[Остановка]';
+                case 'POLL':
+                    // Копируем вопрос опроса
+                    if (message.poll?.question) {
+                        return message.poll.question;
+                    }
+                    return '[Опрос]';
+                case 'SYSTEM':
+                    return message.content || '';
+                default:
+                    return message.content || '[Сообщение]';
+            }
+        }).filter(Boolean); // Убираем пустые строки
+
+        if (textParts.length === 0) {
+            showWarning('Копирование', 'Нечего копировать');
+            return;
+        }
+
+        const textToCopy = textParts.join('\n');
+        Clipboard.setString(textToCopy);
+        
+        // Показываем уведомление об успешном копировании
+        // Можно использовать showAlert или просто вибрацию
+        Vibration.vibrate(50);
+        
+        // Снимаем выделение после копирования
+        clearSelection();
+    }, [selectedMessages, messages, showWarning, clearSelection]);
+
     const handleForwardMessage = useCallback(async (roomIds) => {
         if (!messageToForward && selectedMessages.size === 0) return;
 
@@ -623,6 +708,17 @@ export const GroupChatScreen = ({route, navigation}) => {
         if (!message) return;
         
         const senderId = message.senderId || message.sender?.id;
+        if (!senderId || senderId === currentUserId) return;
+
+        navigation.navigate('UserPublicProfile', {
+            userId: senderId,
+            fromScreen: 'GroupChat',
+            roomId: roomId
+        });
+    }, [currentUserId, navigation, roomId]);
+
+    // Обработчик нажатия на имя отправителя сообщения
+    const handleSenderNamePress = useCallback((senderId) => {
         if (!senderId || senderId === currentUserId) return;
 
         navigation.navigate('UserPublicProfile', {
@@ -1062,6 +1158,7 @@ export const GroupChatScreen = ({route, navigation}) => {
                 replyTo={replyTo}
                 onCancelReply={handleCancelReply}
                 disabled={false}
+                participants={roomData?.participants}
             />
         );
     }, [canShowComposer, roomId, shareProductId, handleMenuPress, replyTo, handleCancelReply, onTyping]);
@@ -1266,15 +1363,22 @@ export const GroupChatScreen = ({route, navigation}) => {
                                 onPress={handleReplyToSelected}
                                 disabled={selectedMessages.size !== 1}
                             >
-                                <Icon name="reply" size={24} color={selectedMessages.size === 1 ? "#007AFF" : "#999"}/>
+                                <Icon name="reply" size={22} color="#333"/>
                             </TouchableOpacity>
                         )}
+                        <TouchableOpacity
+                            style={styles.headerButton}
+                            onPress={handleCopySelectedMessages}
+                            disabled={selectedMessages.size === 0}
+                        >
+                            <Ionicons name="copy-outline" size={22} color="#333"/>
+                        </TouchableOpacity>
                         <TouchableOpacity
                             style={styles.headerButton}
                             onPress={handleForwardSelectedMessages}
                             disabled={selectedMessages.size === 0}
                         >
-                            <Icon name="share" size={24} color={selectedMessages.size > 0 ? "#007AFF" : "#999"}/>
+                            <Icon name="share" size={22} color="#333"/>
                         </TouchableOpacity>
                         {canDeleteAll && (
                             <TouchableOpacity
@@ -1282,7 +1386,7 @@ export const GroupChatScreen = ({route, navigation}) => {
                                 onPress={deleteSelectedMessages}
                                 disabled={selectedMessages.size === 0}
                             >
-                                <IconDelete width={24} height={24} color={selectedMessages.size > 0 ? "black" : "#999"}/>
+                                <IconDelete width={22} height={22} color="#333"/>
                             </TouchableOpacity>
                         )}
                     </View>
@@ -1332,7 +1436,7 @@ export const GroupChatScreen = ({route, navigation}) => {
                 gestureEnabled: true,
             });
         }
-    }, [navigation, route, isSelectionMode, selectedMessages.size, deleteSelectedMessages, clearSelection, handleReplyToSelected, handleForwardSelectedMessages, canSendMessages, canDeleteMessage, messages]);
+    }, [navigation, route, isSelectionMode, selectedMessages.size, deleteSelectedMessages, clearSelection, handleReplyToSelected, handleCopySelectedMessages, handleForwardSelectedMessages, canSendMessages, canDeleteMessage, messages]);
 
     const loadMoreMessages = useCallback(() => {
         // Загружаем старые сообщения при скролле вверх (inverted list)
@@ -1427,8 +1531,11 @@ export const GroupChatScreen = ({route, navigation}) => {
             onReplyPress={handleReplyPress}
             onAddReaction={(emoji) => handleToggleReaction(item.id, emoji)}
             onShowReactionPicker={(position) => handleShowReactionPicker(item.id, position)}
+            roomType={roomData?.type}
+            participants={roomData?.participants || []}
+            onSenderNamePress={handleSenderNamePress}
         />
-    ), [currentUserId, isSelectionMode, selectedMessages, canDeleteMessage, canSendMessages, toggleMessageSelection, handleRetryMessage, handleCancelMessage, retryingMessages, handleImagePress, handleAvatarPress, handleContactDriver, handleReply, handleReplyPress, navigation, highlightedMessageId, handleToggleReaction, handleShowReactionPicker]);
+    ), [currentUserId, isSelectionMode, selectedMessages, canDeleteMessage, canSendMessages, toggleMessageSelection, handleRetryMessage, handleCancelMessage, retryingMessages, handleImagePress, handleAvatarPress, handleContactDriver, handleReply, handleReplyPress, navigation, highlightedMessageId, handleToggleReaction, handleShowReactionPicker, roomData, handleSenderNamePress]);
 
 
     const keyExtractor = useCallback((item) => {
@@ -1688,10 +1795,10 @@ const styles = StyleSheet.create({
     headerButtons: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginRight: 16,
+        marginRight: 10,
     },
     headerButton: {
-        padding: 8,
+        padding: 6,
     },
     headerLeft: {
         flexDirection: 'row',

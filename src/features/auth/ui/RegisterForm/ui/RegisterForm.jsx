@@ -14,6 +14,7 @@ import {
     ScrollView
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
+import { useNavigation } from '@react-navigation/native';
 import { 
     selectEmail, 
     selectPassword, 
@@ -38,6 +39,7 @@ import { api } from '@shared/api/api';
 
 export const RegisterForm = ({ onVerification }) => {
     const dispatch = useDispatch();
+    const navigation = useNavigation();
 
     const reduxEmail = useSelector(selectEmail) || '';
     const reduxPassword = useSelector(selectPassword) || '';
@@ -48,6 +50,8 @@ export const RegisterForm = ({ onVerification }) => {
     const reduxDistrictId = useSelector(selectDistrictId);
     const reduxCustomDistrict = useSelector(selectCustomDistrict) || '';
     const isLoading = useSelector((state) => state.auth?.isLoading ?? false);
+
+    const [privacyAgreed, setPrivacyAgreed] = useState(false);
 
     const [email, setLocalEmail] = useState(reduxEmail);
     const [password, setLocalPassword] = useState(reduxPassword);
@@ -450,6 +454,14 @@ export const RegisterForm = ({ onVerification }) => {
             return;
         }
 
+        if (!privacyAgreed) {
+            Alert.alert(
+                'Согласие на обработку персональных данных',
+                'Для продолжения регистрации необходимо дать согласие на обработку персональных данных. Пожалуйста, ознакомьтесь с соглашением и отметьте соответствующий чекбокс.'
+            );
+            return;
+        }
+
         try {
             const result = await dispatch(initiateRegister({ 
                 email, 
@@ -641,10 +653,41 @@ export const RegisterForm = ({ onVerification }) => {
                 </View>
             </View>
 
+            {/* Согласие на обработку персональных данных */}
+            <View style={styles.privacyContainer}>
+                <View style={styles.checkboxContainer}>
+                    <TouchableOpacity
+                        style={styles.checkboxWrapper}
+                        onPress={() => setPrivacyAgreed(!privacyAgreed)}
+                        activeOpacity={0.7}
+                    >
+                        <View style={[styles.checkbox, privacyAgreed && styles.checkboxChecked]}>
+                            {privacyAgreed && (
+                                <Text style={styles.checkmark}>✓</Text>
+                            )}
+                        </View>
+                    </TouchableOpacity>
+                    <View style={styles.privacyTextContainer}>
+                        <Text style={styles.privacyText}>
+                            Я согласен(а) на{' '}
+                            <Text
+                                style={styles.privacyLink}
+                                onPress={() => navigation.navigate('PrivacyPolicy')}
+                            >
+                                обработку персональных данных
+                            </Text>
+                        </Text>
+                    </View>
+                </View>
+            </View>
+
             <TouchableOpacity
-                style={[styles.button, isLoading && styles.buttonDisabled]}
+                style={[
+                    styles.button,
+                    (isLoading || !privacyAgreed) && styles.buttonDisabled
+                ]}
                 onPress={handleRegister}
-                disabled={isLoading}
+                disabled={isLoading || !privacyAgreed}
             >
                 {isLoading ? (
                     <ActivityIndicator color="#fff" />
@@ -957,5 +1000,52 @@ const styles = StyleSheet.create({
     },
     otherDistrictText: {
         fontStyle: 'italic',
+    },
+    privacyContainer: {
+        marginTop: normalize(10),
+        marginBottom: normalize(15),
+        paddingHorizontal: normalize(5),
+    },
+    checkboxContainer: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+    },
+    checkboxWrapper: {
+        marginRight: normalize(10),
+        marginTop: normalize(2),
+    },
+    checkbox: {
+        width: normalize(24),
+        height: normalize(24),
+        borderWidth: 2,
+        borderColor: '#000',
+        borderRadius: 4,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+    },
+    checkboxChecked: {
+        backgroundColor: '#000cff',
+        borderColor: '#000cff',
+    },
+    checkmark: {
+        color: '#FFFFFF',
+        fontSize: normalizeFont(16),
+        fontWeight: '700',
+    },
+    privacyTextContainer: {
+        flex: 1,
+    },
+    privacyText: {
+        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+        fontSize: normalizeFont(13),
+        fontWeight: '400',
+        color: '#333333',
+        lineHeight: normalize(18),
+    },
+    privacyLink: {
+        color: '#000cff',
+        textDecorationLine: 'underline',
+        fontWeight: '500',
     },
 });

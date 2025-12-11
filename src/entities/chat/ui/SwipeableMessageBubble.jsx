@@ -13,25 +13,16 @@ export const SwipeableMessageBubble = ({
   isHighlighted = false,
   onAddReaction,
   onRemoveReaction,
-  isSelectionMode = false,
-  hasContextMenu = false,
   ...props 
 }) => {
   const translateX = useRef(new Animated.Value(0)).current;
   const lastOffset = useRef(0);
-
-  // Отключаем свайп если активен режим выбора или контекстное меню
-  const isSwipeDisabled = isSelectionMode || hasContextMenu;
-
-
 
   const onGestureEvent = Animated.event(
     [{ nativeEvent: { translationX: translateX } }],
     { 
       useNativeDriver: true,
       listener: (event) => {
-        if (isSwipeDisabled) return;
-        
         const { translationX } = event.nativeEvent;
         // Ограничиваем перемещение: только вправо и не более MAX_TRANSLATE
         if (translationX < 0) {
@@ -44,8 +35,6 @@ export const SwipeableMessageBubble = ({
   );
 
   const onHandlerStateChange = ({ nativeEvent }) => {
-    if (isSwipeDisabled) return;
-    
     if (nativeEvent.state === State.END) {
       const { translationX } = nativeEvent;
 
@@ -98,7 +87,6 @@ export const SwipeableMessageBubble = ({
         onHandlerStateChange={onHandlerStateChange}
         activeOffsetX={10}
         failOffsetY={[-10, 10]}
-        enabled={!isSwipeDisabled}
       >
         <Animated.View 
           style={[
@@ -114,8 +102,6 @@ export const SwipeableMessageBubble = ({
             isHighlighted={isHighlighted}
             onAddReaction={onAddReaction}
             onRemoveReaction={onRemoveReaction}
-            isSelectionMode={isSelectionMode}
-            hasContextMenu={hasContextMenu}
             {...props} 
           />
         </Animated.View>

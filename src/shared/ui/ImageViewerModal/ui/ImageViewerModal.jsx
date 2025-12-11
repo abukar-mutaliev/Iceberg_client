@@ -11,7 +11,6 @@ import {
     StatusBar,
     Platform,
     Text,
-    Alert,
     ActivityIndicator
 } from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
@@ -19,6 +18,8 @@ import {X, MoreVertical, Download} from 'lucide-react-native';
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import {getBaseUrl} from '@shared/api/api';
+import {useCustomAlert} from '@shared/ui/CustomAlert';
 
 const {width: SCREEN_WIDTH, height: SCREEN_HEIGHT} = Dimensions.get('window');
 
@@ -38,6 +39,7 @@ export const ImageViewerModal = ({
                                      headerRight
                                  }) => {
     const insets = useSafeAreaInsets();
+    const {showAlert, showError, showSuccess, showWarning} = useCustomAlert();
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const scaleAnim = useRef(new Animated.Value(0.3)).current;
     const backgroundOpacity = useRef(new Animated.Value(0)).current;
@@ -111,58 +113,108 @@ export const ImageViewerModal = ({
             setIsSaving(true);
             setMenuVisible(false);
 
-            // Скачиваем файл во временную папку
-            const fileName = `iceberg_image_${Date.now()}.jpg`;
-            const fileUri = FileSystem.documentDirectory + fileName;
+            if (!imageUri) {
+                throw new Error('URI изображения не указан');
+            }
 
-            console.log('Скачиваем изображение с:', imageUri);
-            console.log('Сохраняем во временный файл:', fileUri);
+            let finalFileUri = imageUri;
+            let needsDownload = false;
 
-            const downloadResult = await FileSystem.downloadAsync(imageUri, fileUri);
-            console.log('Результат скачивания:', downloadResult);
-
-            if (downloadResult.status === 200) {
-                // Сначала пробуем поделиться изображением (это работает всегда)
-                const canShare = await Sharing.isAvailableAsync();
-
-                if (canShare) {
-                    Alert.alert(
-                        'Сохранить изображение',
-                        'Выберите действие:',
-                        [
-                            {
-                                text: 'Поделиться',
-                                onPress: async () => {
-                                    try {
-                                        await Sharing.shareAsync(downloadResult.uri, {
-                                            mimeType: 'image/jpeg',
-                                            dialogTitle: 'Сохранить изображение'
-                                        });
-                                    } catch (shareError) {
-                                        console.error('Ошибка шаринга:', shareError);
-                                        Alert.alert('Ошибка', 'Не удалось поделиться изображением');
-                                    }
-                                }
-                            },
-                            {
-                                text: 'Сохранить',
-                                onPress: async () => {
-                                    await saveToGallery(downloadResult.uri);
-                                }
-                            },
-                            {text: 'Отмена', style: 'cancel'}
-                        ]
-                    );
-                } else {
-                    // Если шаринг недоступен, просто сохраняем
-                    await saveToGallery(downloadResult.uri);
-                }
+            // Проверяем тип URI
+            if (imageUri.startsWith('file://') || imageUri.startsWith('content://')) {
+                // Локальный файл - используем напрямую
+                finalFileUri = imageUri;
+                needsDownload = false;
+                console.log('Используем локальный файл:', finalFileUri);
+            } else if (imageUri.startsWith('http://') || imageUri.startsWith('https://')) {
+                // HTTP/HTTPS URL - скачиваем
+                needsDownload = true;
+                const fileName = `iceberg_image_${Date.now()}.jpg`;
+                finalFileUri = FileSystem.documentDirectory + fileName;
+                console.log('Скачиваем изображение с:', imageUri);
+                console.log('Сохраняем во временный файл:', finalFileUri);
             } else {
-                throw new Error('Ошибка загрузки изображения');
+                // Относительный путь - преобразуем в абсолютный URL
+                needsDownload = true;
+                let path = imageUri.replace(/\\/g, '/');
+                if (!path.startsWith('/')) {
+                    path = '/' + path;
+                }
+                const absoluteUrl = `${getBaseUrl()}${path}`;
+                const fileName = `iceberg_image_${Date.now()}.jpg`;
+                finalFileUri = FileSystem.documentDirectory + fileName;
+                console.log('Преобразуем относительный путь в URL:', absoluteUrl);
+                console.log('Сохраняем во временный файл:', finalFileUri);
+                
+                // Обновляем imageUri для скачивания
+                imageUri = absoluteUrl;
+            }
+
+            // Скачиваем только если нужно
+            if (needsDownload) {
+                const downloadResult = await FileSystem.downloadAsync(imageUri, finalFileUri);
+                console.log('Результат скачивания:', downloadResult);
+
+                if (downloadResult.status !== 200) {
+                    throw new Error('Ошибка загрузки изображения');
+                }
+                
+                // Используем URI из результата скачивания
+                finalFileUri = downloadResult.uri;
+            } else {
+                // Для локальных файлов используем напрямую
+                // Если файл отображается в ImageViewerModal, значит он существует
+                // Проверка существования будет выполнена при сохранении в галерею
+                console.log('Используем локальный файл без дополнительной проверки:', finalFileUri);
+            }
+
+            // Сначала пробуем поделиться изображением (это работает всегда)
+            const canShare = await Sharing.isAvailableAsync();
+
+            if (canShare) {
+                showAlert({
+                    type: 'info',
+                    title: 'Сохранить изображение',
+                    message: 'Выберите действие:',
+                    buttons: [
+                        {
+                            text: 'Поделиться',
+                            style: 'primary',
+                            icon: 'share',
+                            onPress: async () => {
+                                try {
+                                    await Sharing.shareAsync(finalFileUri, {
+                                        mimeType: 'image/jpeg',
+                                        dialogTitle: 'Сохранить изображение'
+                                    });
+                                } catch (shareError) {
+                                    console.error('Ошибка шаринга:', shareError);
+                                    showError('Ошибка', 'Не удалось поделиться изображением');
+                                }
+                            }
+                        },
+                        {
+                            text: 'Сохранить',
+                            style: 'primary',
+                            icon: 'save',
+                            onPress: async () => {
+                                await saveToGallery(finalFileUri);
+                            }
+                        },
+                        {
+                            text: 'Отмена',
+                            style: 'cancel',
+                            onPress: () => {}
+                        }
+                    ]
+                });
+            } else {
+                // Если шаринг недоступен, просто сохраняем
+                await saveToGallery(finalFileUri);
             }
         } catch (error) {
             console.error('Ошибка обработки изображения:', error);
-            Alert.alert('Ошибка', `Не удалось обработать изображение: ${error.message}`);
+            showError('Ошибка', `Не удалось обработать изображение: ${error.message}`);
         } finally {
             setIsSaving(false);
         }
@@ -175,7 +227,7 @@ export const ImageViewerModal = ({
             const {status} = await MediaLibrary.requestPermissionsAsync();
 
             if (status !== 'granted') {
-                Alert.alert(
+                showWarning(
                     'Разрешение не предоставлено',
                     'Для сохранения изображения необходимо разрешение на доступ к галерее'
                 );
@@ -187,24 +239,56 @@ export const ImageViewerModal = ({
             // Небольшая задержка для стабилизации файла
             await new Promise(resolve => setTimeout(resolve, 100));
 
-            // Проверяем, что файл существует
-            const fileInfo = await FileSystem.getInfoAsync(fileUri);
-            if (!fileInfo.exists) {
-                throw new Error('Временный файл не найден');
+            // Проверяем, что файл существует (мягкая проверка)
+            let fileInfo;
+            let actualFileUri = fileUri;
+            try {
+                fileInfo = await FileSystem.getInfoAsync(fileUri);
+                if (fileInfo.exists) {
+                    console.log('Информация о файле:', fileInfo);
+                } else {
+                    // Если файл не найден, но это локальный файл - попробуем скопировать во временную директорию
+                    if (fileUri.startsWith('file://') || fileUri.startsWith('content://')) {
+                        console.warn('Локальный файл не найден, пробуем скопировать во временную директорию');
+                        const tempFileName = `iceberg_image_${Date.now()}.jpg`;
+                        const tempFileUri = FileSystem.cacheDirectory + tempFileName;
+                        
+                        try {
+                            // Пробуем прочитать файл как base64 и записать во временную директорию
+                            const base64 = await FileSystem.readAsStringAsync(fileUri, {
+                                encoding: FileSystem.EncodingType.Base64,
+                            });
+                            await FileSystem.writeAsStringAsync(tempFileUri, base64, {
+                                encoding: FileSystem.EncodingType.Base64,
+                            });
+                            actualFileUri = tempFileUri;
+                            console.log('Файл скопирован во временную директорию:', actualFileUri);
+                        } catch (copyError) {
+                            console.warn('Не удалось скопировать файл, пробуем сохранить напрямую:', copyError.message);
+                        }
+                    } else {
+                        throw new Error('Временный файл не найден');
+                    }
+                }
+            } catch (infoError) {
+                // Если проверка не удалась, но это локальный файл - продолжаем
+                // MediaLibrary может работать с файлами, которые не проходят проверку через FileSystem
+                console.warn('Не удалось проверить файл через getInfoAsync:', infoError.message);
+                if (!fileUri.startsWith('file://') && !fileUri.startsWith('content://')) {
+                    throw new Error('Файл недоступен для сохранения');
+                }
             }
-
-            console.log('Информация о файле:', fileInfo);
 
             // Пробуем разные методы сохранения
             let asset;
             try {
                 // Метод 1: createAssetAsync (новый API)
-                asset = await MediaLibrary.createAssetAsync(fileUri);
+                asset = await MediaLibrary.createAssetAsync(actualFileUri);
             } catch (error1) {
                 console.log('Метод 1 не сработал:', error1.message);
                 try {
                     // Метод 2: createAssetAsync с параметрами (старый API)
-                    asset = await MediaLibrary.createAssetAsync(fileUri, {
+                    asset = await MediaLibrary.createAssetAsync(actualFileUri, {
                         mediaType: 'photo',
                         album: 'Iceberg App'
                     });
@@ -212,7 +296,7 @@ export const ImageViewerModal = ({
                     console.log('Метод 2 не сработал:', error2.message);
                     try {
                         // Метод 3: saveToLibraryAsync (альтернативный API)
-                        asset = await MediaLibrary.saveToLibraryAsync(fileUri);
+                        asset = await MediaLibrary.saveToLibraryAsync(actualFileUri);
                     } catch (error3) {
                         console.log('Метод 3 не сработал:', error3.message);
                         throw new Error('Все методы сохранения недоступны');
@@ -223,18 +307,16 @@ export const ImageViewerModal = ({
             console.log('Изображение успешно сохранено:', asset);
 
             // Показываем уведомление об успехе
-            Alert.alert(
-                'Успешно',
-                'Изображение сохранено в галерею',
-                [{text: 'OK'}]
-            );
+            showSuccess('Успешно', 'Изображение сохранено в галерею');
 
-            // Очищаем временный файл
-            try {
-                await FileSystem.deleteAsync(fileUri);
-                console.log('Временный файл удален');
-            } catch (cleanupError) {
-                console.log('Ошибка очистки временного файла:', cleanupError);
+            // Очищаем временный файл (только если это был скопированный файл)
+            if (actualFileUri !== fileUri && actualFileUri.startsWith(FileSystem.cacheDirectory)) {
+                try {
+                    await FileSystem.deleteAsync(actualFileUri);
+                    console.log('Временный файл удален');
+                } catch (cleanupError) {
+                    console.log('Ошибка очистки временного файла:', cleanupError);
+                }
             }
 
         } catch (error) {
@@ -255,13 +337,15 @@ export const ImageViewerModal = ({
                 errorMessage = error.message;
             }
 
-            Alert.alert('Ошибка', errorMessage);
+            showError('Ошибка', errorMessage);
 
-            // Очищаем временный файл даже при ошибке
-            try {
-                await FileSystem.deleteAsync(fileUri);
-            } catch (cleanupError) {
-                console.log('Ошибка очистки временного файла:', cleanupError);
+            // Очищаем временный файл даже при ошибке (только если это был скопированный файл)
+            if (actualFileUri !== fileUri && actualFileUri.startsWith(FileSystem.cacheDirectory)) {
+                try {
+                    await FileSystem.deleteAsync(actualFileUri);
+                } catch (cleanupError) {
+                    console.log('Ошибка очистки временного файла:', cleanupError);
+                }
             }
         }
     };

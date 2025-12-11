@@ -65,3 +65,4 @@ async function generateIcons() {
 // Запускаем скрипт
 generateIcons().catch(console.error);
 
+

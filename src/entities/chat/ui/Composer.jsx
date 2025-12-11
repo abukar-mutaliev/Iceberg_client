@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
-import { View, TextInput, TouchableOpacity, Text, StyleSheet, Platform, Modal } from 'react-native';
+import { View, TextInput, TouchableOpacity, Text, StyleSheet, Platform, Modal, Keyboard } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useDispatch, useSelector } from 'react-redux';
 import { Border, Padding, Color } from '@app/styles/GlobalStyles';
@@ -16,7 +16,15 @@ import ChatApi from '@entities/chat/api/chatApi';
 import { useChatSocketActions } from '@entities/chat/hooks/useChatSocketActions';
 import { playSendSound } from '@entities/chat/lib/sendSound';
 
-export const Composer = ({ roomId, onTyping, replyTo, onCancelReply, disabled = false }) => {
+export const Composer = ({
+  roomId,
+  onTyping,
+  replyTo,
+  onCancelReply,
+  disabled = false,
+  participantsById,
+  participants
+}) => {
   const dispatch = useDispatch();
   const currentUserId = useSelector(state => state.auth?.user?.id);
   const currentUser = useSelector(state => state.auth?.user);
@@ -27,10 +35,13 @@ export const Composer = ({ roomId, onTyping, replyTo, onCancelReply, disabled = 
   const [isRecording, setIsRecording] = useState(false);
   const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
   const [showPollModal, setShowPollModal] = useState(false);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false); // По умолчанию скрываем эмодзи-пикер
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const isSendingRef = useRef(false);
   const typingTimeoutRef = useRef(null);
   const textInputRef = useRef(null);
+  const isSwitchingToKeyboardRef = useRef(false);
+  const isSwitchingToEmojiRef = useRef(false);
 
   const canSend = useMemo(() => !disabled && (text.trim().length > 0 || files.length > 0), [disabled, text, files.length]);
   const showVoiceButton = useMemo(() => !disabled && text.trim().length === 0 && files.length === 0, [disabled, text, files.length]);
@@ -41,6 +52,38 @@ export const Composer = ({ roomId, onTyping, replyTo, onCancelReply, disabled = 
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
+    };
+  }, []);
+
+  // Отслеживание состояния клавиатуры
+  useEffect(() => {
+    const keyboardWillShow = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => {
+        setIsKeyboardVisible(true);
+        // Если переключаемся на клавиатуру намеренно - не скрываем эмодзи-пикер сразу
+        if (!isSwitchingToKeyboardRef.current) {
+          setShowEmojiPicker(false);
+        }
+      }
+    );
+
+    const keyboardWillHide = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setIsKeyboardVisible(false);
+        // Показываем эмодзи-пикер только если это намеренное переключение на эмодзи
+        if (isSwitchingToEmojiRef.current) {
+          setShowEmojiPicker(true);
+          isSwitchingToEmojiRef.current = false;
+        }
+        // Если клавиатура закрылась по другой причине - НЕ показываем эмодзи-пикер автоматически
+      }
+    );
+
+    return () => {
+      keyboardWillShow.remove();
+      keyboardWillHide.remove();
     };
   }, []);
 
@@ -450,11 +493,7 @@ export const Composer = ({ roomId, onTyping, replyTo, onCancelReply, disabled = 
   // Обработчик выбора эмодзи для вставки в текст
   const handleEmojiSelect = useCallback((emoji) => {
     setText((prevText) => prevText + emoji);
-    setShowEmojiPicker(false);
-    // Фокусируемся обратно на поле ввода
-    setTimeout(() => {
-      textInputRef.current?.focus();
-    }, 100);
+    // Не закрываем окно после выбора эмодзи - пользователь может выбрать несколько
   }, []);
 
   return (
@@ -473,23 +512,65 @@ export const Composer = ({ roomId, onTyping, replyTo, onCancelReply, disabled = 
                 onCancel={onCancelReply}
                 isInMessage={false}
                 currentUserId={currentUserId}
+                participantsById={participantsById}
+                participants={participants}
               />
             </View>
           )}
           
           <View style={styles.inputWrapper}>
-            {/* Кнопка эмодзи слева */}
-            {!disabled && (
-              <TouchableOpacity 
+            {/* Кнопка эмодзи слева (когда эмодзи-пикер закрыт) */}
+            {!disabled && !showEmojiPicker && (
+              <TouchableOpacity
                 onPress={() => {
                   if (!disabled) {
-                    setShowEmojiPicker(true);
+                    if (isKeyboardVisible) {
+                      // Если клавиатура открыта - переключаемся на эмодзи
+                      isSwitchingToEmojiRef.current = true;
+                      textInputRef.current?.blur();
+                      Keyboard.dismiss();
+                    } else {
+                      // Если клавиатура закрыта - просто показываем эмодзи-пикер
+                      setShowEmojiPicker(true);
+                    }
                   }
-                }} 
+                }}
                 style={styles.emojiBtn}
                 disabled={disabled}
               >
-                <Ionicons name="happy-outline" size={24} color={disabled ? "#CCCCCC" : "#8696A0"} />
+                <Ionicons
+                  name="happy-outline"
+                  size={24}
+                  color={disabled ? "#CCCCCC" : "#8696A0"}
+                />
+              </TouchableOpacity>
+            )}
+            
+            {/* Кнопка клавиатуры слева (когда открыт эмодзи-пикер) */}
+            {!disabled && showEmojiPicker && !isKeyboardVisible && (
+              <TouchableOpacity
+                onPress={() => {
+                  if (!disabled) {
+                    // Устанавливаем флаг намеренного переключения на клавиатуру
+                    isSwitchingToKeyboardRef.current = true;
+                    // Скрываем эмодзи-пикер
+                    setShowEmojiPicker(false);
+                    // Фокусируемся на поле ввода - клавиатура откроется автоматически
+                    textInputRef.current?.focus();
+                    // Сбрасываем флаг после небольшой задержки
+                    setTimeout(() => {
+                      isSwitchingToKeyboardRef.current = false;
+                    }, 300);
+                  }
+                }}
+                style={styles.emojiBtn}
+                disabled={disabled}
+              >
+                <Ionicons
+                  name="create-outline"
+                  size={24}
+                  color={disabled ? "#CCCCCC" : "#00A884"}
+                />
               </TouchableOpacity>
             )}
             
@@ -500,6 +581,13 @@ export const Composer = ({ roomId, onTyping, replyTo, onCancelReply, disabled = 
               value={text}
               onChangeText={handleChangeText}
               onBlur={handleBlur}
+              onFocus={() => {
+                // При фокусе на поле ввода закрываем эмодзи-пикер
+                // Но только если это не было намеренное переключение через кнопку клавиатуры
+                if (showEmojiPicker && !isSwitchingToKeyboardRef.current) {
+                  setShowEmojiPicker(false);
+                }
+              }}
               multiline
               placeholderTextColor="#999999"
               editable={!disabled}
@@ -619,10 +707,13 @@ export const Composer = ({ roomId, onTyping, replyTo, onCancelReply, disabled = 
         onSubmit={handleCreatePoll}
       />
 
-      {/* Эмодзи-пикер для вставки в текст */}
+      {/* Эмодзи-пикер встроенный ниже поля ввода (всегда в DOM, видимость управляется через visible) */}
       <FullEmojiPicker
         visible={showEmojiPicker}
-        onClose={() => setShowEmojiPicker(false)}
+        onClose={() => {
+          // onClose больше не нужен, так как управление идет через события клавиатуры
+          // Но оставляем для совместимости
+        }}
         onEmojiSelect={handleEmojiSelect}
       />
     </View>

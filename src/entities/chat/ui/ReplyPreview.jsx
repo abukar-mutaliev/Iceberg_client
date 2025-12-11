@@ -9,8 +9,18 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
  * @param {Function} onPress - Функция для прокрутки к оригинальному сообщению
  * @param {boolean} isInMessage - Флаг отображения внутри сообщения (не в Composer)
  * @param {number} currentUserId - ID текущего пользователя для определения своих сообщений
+ * @param {Object} participantsById - Дополнительные данные о участниках чата (для DirectChat)
+ * @param {Array} participants - Массив участников комнаты (для GroupChat)
  */
-export const ReplyPreview = ({replyTo, onCancel, onPress, isInMessage = false, currentUserId}) => {
+export const ReplyPreview = ({
+  replyTo,
+  onCancel,
+  onPress,
+  isInMessage = false,
+  currentUserId,
+  participantsById,
+  participants
+}) => {
   if (!replyTo) return null;
 
   const getSenderName = () => {
@@ -18,16 +28,60 @@ export const ReplyPreview = ({replyTo, onCancel, onPress, isInMessage = false, c
     if (currentUserId && replyTo.senderId === currentUserId) {
       return 'Вы';
     }
-    
-    if (!replyTo.sender) return 'Пользователь';
-    
-    const sender = replyTo.sender;
-    return sender.client?.name ||
-           sender.admin?.name ||
-           sender.employee?.name ||
-           sender.supplier?.contactPerson ||
-           sender.email?.split('@')[0] ||
-           'Пользователь';
+
+    // Проверяем данные из replyTo.sender
+    if (replyTo.sender) {
+      const sender = replyTo.sender;
+      const name = sender.client?.name ||
+                   sender.admin?.name ||
+                   sender.employee?.name ||
+                   sender.supplier?.contactPerson ||
+                   sender.email?.split('@')[0];
+
+      if (name) return name;
+    }
+
+    // Ищем дополнительные данные в participantsById (для DirectChat)
+    if (participantsById && replyTo.senderId) {
+      const participantData = participantsById[replyTo.senderId];
+      if (participantData) {
+        const participant = participantData.user || participantData;
+        const name = participant.client?.name ||
+                     participant.admin?.name ||
+                     participant.employee?.name ||
+                     participant.supplier?.contactPerson ||
+                     participant.email?.split('@')[0] ||
+                     participant.name;
+
+        if (name) return name;
+      }
+    }
+
+    // Ищем дополнительные данные в массиве participants (для GroupChat)
+    if (participants && Array.isArray(participants) && replyTo.senderId) {
+      const participant = participants.find(p =>
+        (p?.userId ?? p?.user?.id ?? p?.id) === replyTo.senderId
+      );
+
+      if (participant) {
+        const user = participant.user || participant;
+        const name = user.client?.name ||
+                     user.admin?.name ||
+                     user.employee?.name ||
+                     user.supplier?.contactPerson ||
+                     user.email?.split('@')[0] ||
+                     user.name;
+
+        if (name) return name;
+      }
+    }
+
+    // Fallback: пытаемся извлечь из senderId или показываем "Пользователь"
+    if (replyTo.sender?.email) {
+      return replyTo.sender.email.split('@')[0];
+    }
+
+    return 'Пользователь';
   };
 
   const getMessagePreview = () => {
