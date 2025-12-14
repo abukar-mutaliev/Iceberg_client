@@ -91,7 +91,7 @@ export const DistrictPicker = ({
                 </Text>
             </TouchableOpacity>
             <View style={[styles.inputUnderline, error ? styles.underlineError : null]} />
-            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            {error && typeof error === 'string' && error.trim() ? <Text style={styles.errorText}>{String(error)}</Text> : null}
 
             <Modal
                 visible={modalVisible}

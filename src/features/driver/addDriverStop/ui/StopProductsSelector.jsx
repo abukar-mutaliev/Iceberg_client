@@ -465,9 +465,9 @@ export const StopProductsSelector = ({
                                                                     placeholder="Автоматически"
                                                                     maxLength={10}
                                                                 />
-                                                                {priceValidationErrors[product.id] ? (
+                                                                {priceValidationErrors[product.id] && typeof priceValidationErrors[product.id] === 'string' ? (
                                                                     <Text style={styles.priceError}>
-                                                                        {priceValidationErrors[product.id]}
+                                                                        {String(priceValidationErrors[product.id])}
                                                                     </Text>
                                                                 ) : (
                                                                     <Text style={styles.priceHint}>

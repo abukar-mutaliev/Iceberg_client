@@ -90,7 +90,7 @@ export const PhotoUpload = ({ photo, setPhoto, error }) => {
           </View>
         )}
       </TouchableOpacity>
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      {error && typeof error === 'string' && error.trim() ? <Text style={styles.errorText}>{String(error)}</Text> : null}
     </View>
   );
 };

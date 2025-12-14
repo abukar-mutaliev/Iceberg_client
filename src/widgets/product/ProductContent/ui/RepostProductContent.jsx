@@ -256,8 +256,12 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
         return false;
       }
       
-      // Исключаем все каналы (BROADCAST) - только админы могут отправлять туда сообщения
+      // Для каналов (BROADCAST): показываем только админам, водителям и сотрудникам
       if (room?.type === 'BROADCAST') {
+        const allowedRoles = ['ADMIN', 'SYSADMIN', 'DRIVER', 'EMPLOYEE'];
+        if (currentUserRole && allowedRoles.includes(currentUserRole)) {
+          return true;
+        }
         return false;
       }
       
@@ -291,9 +295,91 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
     });
   }, [rooms, currentUserId, currentUserRole, product?.id]);
 
+  // Получение заголовка чата
+  const getChatTitle = useCallback((room) => {
+    if ((room?.type === 'GROUP' || room?.type === 'BROADCAST') && room?.title) {
+      return room.title;
+    }
+
+    if (room?.type === 'DIRECT' && room?.participants && Array.isArray(room.participants) && currentUserId) {
+      const partner = room.participants.find(p => {
+        const participantId = p?.userId ?? p?.user?.id;
+        return participantId !== currentUserId;
+      });
+
+      if (partner) {
+        const partnerUser = partner.user || partner;
+
+        if (partnerUser?.role === 'SUPPLIER') {
+          const companyName =
+            partnerUser.supplier?.companyName ||
+            partnerUser.companyName ||
+            partnerUser.profile?.companyName;
+          if (companyName) return companyName;
+        }
+
+        const name = partnerUser.name || partnerUser.profile?.name || partnerUser.firstName;
+        if (name) return name;
+
+        if (partnerUser.email) {
+          const emailName = partnerUser.email.split('@')[0];
+          return emailName.charAt(0).toUpperCase() + emailName.slice(1);
+        }
+
+        return `Пользователь #${partnerUser.id || partner.id}`;
+      }
+    }
+
+    if (room?.type === 'GROUP' || room?.type === 'BROADCAST') {
+      return room.title || (room?.type === 'BROADCAST' ? 'Канал' : 'Группа');
+    }
+
+    return room?.id ? `Комната ${room.id}` : 'Чат';
+  }, [currentUserId]);
+
+  // Получение аватара чата
+  const getChatAvatar = useCallback((room) => {
+    // Для групп и каналов
+    if (room?.type === 'GROUP' || room?.type === 'BROADCAST') {
+      if (room?.avatar) {
+        const avatar = room.avatar;
+        if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
+          return avatar;
+        }
+        return `${getBaseUrl()}${avatar}`;
+      }
+      return null;
+    }
+
+    // Для личных чатов - аватар собеседника
+    if (room?.type === 'DIRECT' && room?.participants && Array.isArray(room.participants) && currentUserId) {
+      const partner = room.participants.find(p => {
+        const participantId = p?.userId ?? p?.user?.id;
+        return participantId !== currentUserId;
+      });
+
+      if (partner) {
+        const partnerUser = partner.user || partner;
+        const avatar = partnerUser?.avatar || 
+                      partnerUser?.profile?.avatar || 
+                      partnerUser?.image;
+        
+        if (avatar) {
+          if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
+            return avatar;
+          }
+          return `${getBaseUrl()}${avatar}`;
+        }
+      }
+    }
+
+    return null;
+  }, [currentUserId]);
+
   // Рендер элемента списка чатов
   const renderChatItem = ({ item }) => {
-    const title = item.title || `Чат ${item.id}`;
+    const title = getChatTitle(item);
+    const avatar = getChatAvatar(item);
     
     // Форматируем последнее сообщение как в ChatListScreen
     let lastMessageText = 'Нет сообщений';
@@ -346,9 +432,28 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
         onPress={() => handleSendToExistingChat(item)}
         disabled={sending}
       >
+        <View style={styles.avatarContainer}>
+          {avatar ? (
+            <Image 
+              source={{ uri: avatar }} 
+              style={styles.avatar}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={[styles.avatar, styles.placeholderAvatar]}>
+              {item.type === 'BROADCAST' ? (
+                <Icon name="campaign" size={20} color="#8696A0" />
+              ) : item.type === 'GROUP' ? (
+                <Icon name="group" size={20} color="#8696A0" />
+              ) : (
+                <Icon name="person" size={20} color="#8696A0" />
+              )}
+            </View>
+          )}
+        </View>
         <View style={styles.chatInfo}>
-          <Text style={styles.chatTitle}>{title}</Text>
-          <Text style={styles.chatPreview}>{lastMessageText}</Text>
+          <Text style={styles.chatTitle} numberOfLines={1}>{title}</Text>
+          <Text style={styles.chatPreview} numberOfLines={1}>{lastMessageText}</Text>
         </View>
         <View style={styles.chatMeta}>
           <Text style={styles.chatTime}>{time}</Text>
@@ -668,6 +773,11 @@ const styles = StyleSheet.create({
   avatar: {
     width: 40,
     height: 40,
+  },
+  placeholderAvatar: {
+    backgroundColor: '#E8E8E8',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   supplierAvatarBorder: {
     borderWidth: 3,

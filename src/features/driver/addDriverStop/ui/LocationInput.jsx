@@ -200,7 +200,7 @@ export const LocationInput = memo(({
             />
             <TextInput
                 style={[styles.locationInput, error ? styles.inputError : null]}
-                value={mapLocation}
+                value={mapLocation ? String(mapLocation) : ''}
                 onChangeText={(text) => {
                   const normalizedText = normalizeCoordinates(text) || text;
                   setMapLocation(normalizedText);

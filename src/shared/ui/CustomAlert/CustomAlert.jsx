@@ -149,7 +149,6 @@ export const CustomAlert = ({
             animationType="none"
             onRequestClose={handleClose}
             statusBarTranslucent
-            presentationStyle="overFullScreen"
         >
             <View style={styles.overlay}>
                 <TouchableOpacity
@@ -266,8 +265,6 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         padding: 20,
-        zIndex: 9999,
-        elevation: 9999,
     },
     alertContainer: {
         backgroundColor: '#fff',
@@ -275,8 +272,6 @@ const styles = StyleSheet.create({
         padding: 24,
         width: SCREEN_WIDTH - 48,
         maxWidth: 400,
-        zIndex: 10000,
-        elevation: 10000,
         ...Shadow.heavy,
         ...Platform.select({
             ios: {
@@ -286,7 +281,7 @@ const styles = StyleSheet.create({
                 shadowRadius: 20,
             },
             android: {
-                elevation: 10000,
+                elevation: 10,
             },
         }),
     },

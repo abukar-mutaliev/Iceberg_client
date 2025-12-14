@@ -1,24 +1,14 @@
 import { createProtectedRequest } from '@shared/api/api';
 
 const formatFeedback = (feedback, userData) => {
-    // Если в отзыве уже есть клиент с именем, возвращаем его как есть с проверкой на photoUrls
-    if (feedback.client && feedback.client.name) {
-        // Убедимся, что у отзыва есть поле photoUrls, даже если photos пустой
-        return {
-            ...feedback,
-            photoUrls: feedback.photoUrls || (feedback.photos ? feedback.photos.map(photo =>
-                `${process.env.REACT_APP_API_URL || ''}/uploads/${photo}`
-            ) : [])
-        };
-    }
-
     // Проверяем, принадлежит ли отзыв текущему пользователю по id профиля
     if (userData && userData.profile && feedback.clientId === userData.profile.id) {
         return {
             ...feedback,
             client: {
                 id: feedback.clientId,
-                name: 'Вы'
+                name: 'Вы',
+                ...(feedback.client?.user ? { user: feedback.client.user } : {})
             },
             photoUrls: feedback.photoUrls || (feedback.photos ? feedback.photos.map(photo =>
                 `${process.env.REACT_APP_API_URL || ''}/uploads/${photo}`
@@ -26,14 +16,42 @@ const formatFeedback = (feedback, userData) => {
         };
     }
 
-    // ВАЖНО: Если у отзыва уже есть client, но нет имени, и это не текущий пользователь,
-    // используем имя из client или другую доступную информацию
+    // Если в отзыве уже есть клиент
     if (feedback.client) {
+        // Определяем имя клиента из различных источников
+        let clientName = null;
+        
+        // 1. Основной вариант: client.name
+        if (feedback.client.name && typeof feedback.client.name === 'string' && feedback.client.name.trim()) {
+            clientName = feedback.client.name.trim();
+        }
+        // 2. Альтернативный вариант: client.user.name (если имя хранится там)
+        else if (feedback.client.user && feedback.client.user.name && typeof feedback.client.user.name === 'string' && feedback.client.user.name.trim()) {
+            clientName = feedback.client.user.name.trim();
+        }
+        // 3. Fallback: используем email как имя
+        else if (feedback.client.user && feedback.client.user.email && typeof feedback.client.user.email === 'string') {
+            const email = feedback.client.user.email.trim();
+            const emailName = email.split('@')[0];
+            clientName = emailName || null;
+        }
+        // 4. Последний fallback: используем clientId
+        if (!clientName && feedback.clientId) {
+            clientName = `Клиент #${feedback.clientId}`;
+        }
+        // 5. Если ничего не найдено
+        if (!clientName) {
+            clientName = 'Анонимный клиент';
+        }
+
         return {
             ...feedback,
             client: {
                 ...feedback.client,
-                name: feedback.client.name || `Пользователь ${feedback.clientId}`
+                id: feedback.client.id || feedback.clientId,
+                name: clientName,
+                // Сохраняем user данные если они есть
+                ...(feedback.client.user ? { user: feedback.client.user } : {})
             },
             photoUrls: feedback.photoUrls || (feedback.photos ? feedback.photos.map(photo =>
                 `${process.env.REACT_APP_API_URL || ''}/uploads/${photo}`
@@ -41,11 +59,9 @@ const formatFeedback = (feedback, userData) => {
         };
     }
 
-    // Для отзывов, которые не принадлежат текущему пользователю
-    // ПРИМЕЧАНИЕ: В идеале здесь нужно получить реальное имя пользователя из API,
-    // но как временное решение используем clientId
+    // Если client отсутствует, но есть clientId
     if (feedback.clientId) {
-        // Если у нас есть данные о клиенте из сервера
+        // Если у нас есть данные о клиенте из сервера (например, clientName)
         if (feedback.clientName) {
             return {
                 ...feedback,
@@ -63,8 +79,7 @@ const formatFeedback = (feedback, userData) => {
             ...feedback,
             client: {
                 id: feedback.clientId,
-                // Используем просто "Клиент" вместо "Пользователь ID"
-                name: `Клиент`
+                name: `Клиент #${feedback.clientId}`
             },
             photoUrls: feedback.photoUrls || (feedback.photos ? feedback.photos.map(photo =>
                 `${process.env.REACT_APP_API_URL || ''}/uploads/${photo}`
@@ -75,6 +90,9 @@ const formatFeedback = (feedback, userData) => {
     // Убедимся, что у отзыва есть поле photoUrls, даже если photos пустой
     return {
         ...feedback,
+        client: feedback.client || {
+            name: 'Анонимный клиент'
+        },
         photoUrls: feedback.photoUrls || (feedback.photos ? feedback.photos.map(photo =>
             `${process.env.REACT_APP_API_URL || ''}/uploads/${photo}`
         ) : [])

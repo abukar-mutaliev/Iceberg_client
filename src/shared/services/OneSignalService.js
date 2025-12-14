@@ -185,6 +185,25 @@ class OneSignalService {
                 }
             });
 
+            // Обработчик получения уведомлений в background
+            // ВАЖНО: Этот обработчик вызывается когда приложение в background или закрыто
+            // OneSignal автоматически покажет heads-up уведомления, если параметры правильные
+            oneSignal.Notifications.addEventListener('received', (event) => {
+                console.log('[OneSignal] Уведомление получено в background:', event);
+                const data = event.notification?.additionalData;
+                
+                if (data && data.type === 'CHAT_MESSAGE') {
+                    console.log('[OneSignal] Background уведомление чата получено:', {
+                        roomId: data.roomId,
+                        messageId: data.messageId,
+                        appState: AppState.currentState
+                    });
+                    
+                    // Обновляем статус сообщения на DELIVERED
+                    this.handleChatMessagePushNotification(data);
+                }
+            });
+
             console.log('[OneSignal] ✅ Обработчики настроены');
 
         } catch (error) {

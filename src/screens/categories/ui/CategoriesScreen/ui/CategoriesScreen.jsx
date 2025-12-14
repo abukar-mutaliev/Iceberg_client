@@ -63,11 +63,11 @@ const SimpleCategoryCard = ({ category, onPress }) => {
 
     // Безопасное получение отображаемого имени
     const getDisplayName = () => {
-        if (category.description && typeof category.description === 'string') {
-            return category.description;
-        }
         if (category.name && typeof category.name === 'string') {
             return category.name;
+        }
+        if (category.description && typeof category.description === 'string') {
+            return category.description;
         }
         return 'Категория';
     };

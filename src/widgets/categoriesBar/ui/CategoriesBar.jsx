@@ -17,7 +17,7 @@ const CATEGORY_ICON_MAP = {
     'Эскимо': 'эскимо',
     'Рожок': 'рожок',
     'Рожки': 'рожок',
-    'Килограмовые': 'набор',
+    'Килограммовые': 'килограммовое',
     'Брикеты': 'брикеты',
     'Брикет': 'брикеты',
     'Фруктовый лед': 'фруктовый лед',
@@ -33,10 +33,12 @@ const CATEGORY_ORDER = [
     'Рожки',
     'Рожок',
     'Брикеты',
+    'Килограммовые',
     'Брикет',
-    'Килограмовые',
     'Фруктовый лед',
-    'Рыба'
+    'Фруктовый лёд',
+    'Рыба',
+    'Стандартный'
 ];
 
 export const CategoriesBar = ({ hideLoader = true }) => {
@@ -45,7 +47,6 @@ export const CategoriesBar = ({ hideLoader = true }) => {
     const error = useSelector(selectCategoriesError);
     const navigation = useNavigation();
 
-    // Не показываем спиннер — просто вернём пустое место, если нет категорий
 
     if (error) {
         return (
@@ -67,9 +68,8 @@ export const CategoriesBar = ({ hideLoader = true }) => {
         }
     };
 
-    // Фильтруем категорию "Набор" и сортируем категории в нужном порядке
-    const filteredCategories = categories.filter(category => category.name !== 'Набор');
-    const sortedCategories = [...filteredCategories].sort((a, b) => {
+    // Сортируем категории в нужном порядке
+    const sortedCategories = [...categories].sort((a, b) => {
         const indexA = CATEGORY_ORDER.indexOf(a.name);
         const indexB = CATEGORY_ORDER.indexOf(b.name);
         
@@ -219,7 +219,7 @@ const styles = StyleSheet.create({
     },
     categoryName: {
         marginTop: normalize(6),
-        fontSize: FontSize.size_xs,
+        fontSize: 10,
         fontFamily: FontFamily.sFProText,
         color: Color.colorDarkslategray,
         textAlign: 'center',

@@ -26,14 +26,21 @@ import { LocationInput } from '@features/driver/addDriverStop/ui/LocationInput';
 import { CustomDatePicker, CustomTimePicker } from '@shared/ui/Pickers/CustomDatePicker';
 import { DistrictPicker } from "@shared/ui/Pickers/DistrictPicker";
 import { StopProductsSelector } from '@features/driver/addDriverStop/ui/StopProductsSelector';
-import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 
-export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
-  const { 
-    showError: showAlertError, 
-    showWarning: showAlertWarning,
-    showSuccess: showAlertSuccess 
-  } = useCustomAlert();
+export const EditStopForm = ({ 
+  stopData, 
+  onClose, 
+  onSave, 
+  districts = [], 
+  renderAsScreen = false, 
+  locationChanged,
+  locationData: externalLocationData,
+  setLocationData: externalSetLocationData,
+  onMapOpen: externalOnMapOpen,
+  isLocationLoading: externalIsLocationLoading,
+  setIsLocationLoading: externalSetIsLocationLoading,
+  addressFromMap: externalAddressFromMap
+}) => {
   
   // Вспомогательные функции объявляем до использования
   const processInitialPhoto = (photoData) => {
@@ -60,7 +67,7 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
           // Проверяем, что это действительно числа, разделенные запятой
           const parts = locationData.split(',');
           if (parts.length === 2 && !isNaN(parseFloat(parts[0])) && !isNaN(parseFloat(parts[1]))) {
-            return locationData;
+            return String(locationData);
           }
         }
       }
@@ -75,10 +82,10 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
         }
       }
 
-      return locationData || null;
+      return locationData ? String(locationData) : '';
     } catch (error) {
       logData('Ошибка при нормализации координат', error);
-      return locationData || null;
+      return locationData ? String(locationData) : '';
     }
   };
 
@@ -101,14 +108,23 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
 
   // Добавляем логирование при инициализации значения mapLocation
   const initialMapLocation = normalizeMapLocation(stopData?.mapLocation) || '';
+  const normalizedInitialMapLocation = typeof initialMapLocation === 'string' ? initialMapLocation : String(initialMapLocation || '');
   logData('EditStopForm: Инициализация начальных координат', {
     original: stopData?.mapLocation,
-    normalized: initialMapLocation
+    normalized: normalizedInitialMapLocation
   });
 
-  const [locationData, setLocationData] = useState({
-    mapLocation: initialMapLocation
+  const [internalLocationData, setInternalLocationData] = useState({
+    mapLocation: normalizedInitialMapLocation
   });
+  
+  // Используем внешние пропсы если они переданы, иначе внутренние состояния
+  const locationData = externalLocationData || internalLocationData;
+  const setLocationData = externalSetLocationData || setInternalLocationData;
+  const [internalIsLocationLoading, setInternalIsLocationLoading] = useState(false);
+  const isLocationLoading = externalIsLocationLoading !== undefined ? externalIsLocationLoading : internalIsLocationLoading;
+  const setIsLocationLoading = externalSetIsLocationLoading || setInternalIsLocationLoading;
+  
   const navigation = useNavigation();
 
   const [startDate, setStartDate] = useState(
@@ -126,7 +142,6 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
           : new Date(new Date().getTime() + 2 * 60 * 60 * 1000)
   );
 
-  const [isLocationLoading, setIsLocationLoading] = useState(false);
   const [photoWasChanged, setPhotoWasChanged] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formSubmitted, setFormSubmitted] = useState(false);
@@ -144,7 +159,7 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
   });
 
   // Состояние видимости модального окна
-  const [modalVisible, setModalVisible] = useState(true);
+  const [modalVisible, setModalVisible] = useState(!renderAsScreen);
   const isNavigatingRef = useRef(false);
   const navigationEventListenerRef = useRef(null);
   
@@ -207,24 +222,33 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
 
       navigation.setParams({ selectedLocation: undefined, timestamp: undefined });
     }
-  }, [route.params?.selectedLocation, route.params?.timestamp]);
+  }, [route.params?.selectedLocation, route.params?.timestamp, setLocationData, navigation]);
+
+  // Обновление адреса из внешнего источника
+  useEffect(() => {
+    if (externalAddressFromMap && externalAddressFromMap !== address) {
+      setAddress(externalAddressFromMap);
+    }
+  }, [externalAddressFromMap]);
 
   useEffect(() => {
-    navigationEventListenerRef.current = navigation.addListener('focus', () => {
-      if (isNavigatingRef.current) {
-        setTimeout(() => {
-          setModalVisible(true);
-          isNavigatingRef.current = false;
-        }, 50);
-      }
-    });
+    if (!renderAsScreen) {
+      navigationEventListenerRef.current = navigation.addListener('focus', () => {
+        if (isNavigatingRef.current) {
+          setTimeout(() => {
+            setModalVisible(true);
+            isNavigatingRef.current = false;
+          }, 50);
+        }
+      });
 
-    return () => {
-      if (navigationEventListenerRef.current) {
-        navigation.removeListener('focus', navigationEventListenerRef.current);
-      }
-    };
-  }, [navigation]);
+      return () => {
+        if (navigationEventListenerRef.current) {
+          navigation.removeListener('focus', navigationEventListenerRef.current);
+        }
+      };
+    }
+  }, [navigation, renderAsScreen]);
 
   const handleModalOverlayPress = (event) => {
     if (event.target === event.currentTarget) {
@@ -308,6 +332,13 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
       timestamp: new Date().toISOString()
     });
 
+    // Если передан внешний обработчик (для режима экрана), используем его
+    if (externalOnMapOpen && renderAsScreen) {
+      externalOnMapOpen(currentLocation);
+      return;
+    }
+
+    // Иначе используем навигацию (для модального режима)
     isNavigatingRef.current = true;
     setModalVisible(false);
 
@@ -320,7 +351,7 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
         timestamp // Добавляем метку времени для отслеживания
       });
     }, 50);
-  }, [navigation, route.name]);
+  }, [navigation, route.name, externalOnMapOpen, renderAsScreen]);
 
   const getFullStartDateTime = () => {
     const dateTime = new Date(startDate);
@@ -439,9 +470,19 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
       setLastFormData(null);
       setRetryCount(0);
       
-      showAlertSuccess('Готово', 'Остановка успешно обновлена', [
-        {text: 'OK', onPress: () => onClose()}
-      ]);
+      // Перенаправляем на экран остановки
+      const stopId = stopData?.id;
+      if (stopId) {
+        onClose();
+        setTimeout(() => {
+          navigation.navigate('StopDetails', {
+            stopId: parseInt(stopId),
+          });
+        }, 100);
+      } else {
+        onClose();
+      }
+      
       return result;
     } catch (error) {
       logData('Ошибка при обновлении остановки', error);
@@ -482,35 +523,12 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
         const priceErrors = error.errors.filter(err => err.type === 'PRICE_VALIDATION' || err.message?.includes('цена'));
         
         if (stockErrors.length > 0) {
-          const errorMessages = stockErrors.map(err => {
-            const productName = err.productName || `Товар #${err.productId}`;
-            const requested = err.requested || 0;
-            const available = err.available || 0;
-            const shortage = err.shortage || 0;
-            return `${productName}: запрошено ${requested}, доступно ${available} (не хватает ${shortage})`;
-          });
-          
-          showAlertError(
-            'Недостаточно товара на складе',
-            errorMessages.join('\n\n') + '\n\nПожалуйста, уменьшите количество товаров или выберите другой склад.',
-            [{ text: 'OK' }]
-          );
+          // Ошибки валидации товаров - просто логируем
+          logData('Ошибки валидации товаров', stockErrors);
         } else if (priceErrors.length > 0) {
-          const errorMessages = priceErrors.map(err => {
-            const productName = err.productName || `Товар #${err.productId}`;
-            return `${productName}: ${err.message}`;
-          });
-          
-          showAlertError(
-            'Ошибка валидации цен',
-            errorMessages.join('\n\n') + '\n\nПожалуйста, исправьте цены товаров.',
-            [{ text: 'OK' }]
-          );
-        } else {
-          showAlertError('Ошибка', error?.message || 'Не удалось обновить остановку', [{ text: 'OK' }]);
+          // Ошибки валидации цен - просто логируем
+          logData('Ошибки валидации цен', priceErrors);
         }
-      } else {
-        showAlertError('Ошибка', error?.message || error || 'Не удалось обновить остановку', [{ text: 'OK' }]);
       }
       
       setFormSubmitted(false);
@@ -521,7 +539,7 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
   // Функция повторной отправки после неудачи
   const handleRetryUpload = async () => {
     if (!lastFormData) {
-      showAlertError('Ошибка', 'Нет данных для повторной отправки', [{ text: 'OK' }]);
+      logData('Ошибка: Нет данных для повторной отправки');
       return;
     }
     
@@ -612,7 +630,7 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
       } else {
         setIsSubmitting(false);
         setFormSubmitted(false);
-        showAlertError('Ошибка', 'Функция сохранения не определена', [{ text: 'OK' }]);
+        logData('Ошибка: Функция сохранения не определена');
       }
     } catch (error) {
       logData('Ошибка при обработке сохранения:', error);
@@ -621,55 +639,15 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
     }
   };
 
-  return (
-    <Modal
-      animationType="slide"
-      transparent={true}
-      visible={modalVisible}
-      onRequestClose={handleClose}
-      supportedOrientations={['portrait']}
-    >
-      <TouchableOpacity
-        style={styles.modalOverlay}
-        activeOpacity={1}
-        onPress={handleModalOverlayPress}
-      >
-        <View 
-          style={[
-            styles.modalContent, 
-            { 
-              height: keyboardVisible ? (Platform.OS === 'ios' ? '95%' : '92%') : '90%',
-              paddingBottom: keyboardVisible ? (Platform.OS === 'ios' ? 30 : 0) : 0
-            }
-          ]}
-        >
-          <EditStopHeader onClose={handleClose} />
-
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={{ flex: 1 }}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
-          >
-            <ScrollView 
-              style={styles.scrollView}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={{ paddingBottom: keyboardVisible ? 120 : 20 }}
-              onScrollBeginDrag={dismissKeyboard}
-              ref={scrollViewRef}
-            >
-              <TouchableOpacity 
-                activeOpacity={1} 
-                style={{ flex: 1 }}
-                onPress={dismissKeyboard}
-              >
-                <View style={styles.formContainer}>
+  const formContent = (
+    <View style={styles.formContainer}>
                   <View style={styles.formHeader}>
                     {/* Блок для выбора фото */}
                     <View style={styles.leftColumn}>
                       <PhotoUpload
                         photo={photo}
                         setPhoto={handlePhotoChange}
-                        error={errors.photo}
+                        error={errors.photo && typeof errors.photo === 'string' ? errors.photo : ''}
                       />
 
                       {/* Перемещенный блок времени стоянки */}
@@ -682,7 +660,7 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
                             <View style={[styles.inputUnderline, errors.startTime ? styles.underlineError : null]} />
                           </View>
                         </View>
-                        {errors.startTime ? <Text style={styles.errorText}>{errors.startTime}</Text> : null}
+                        {errors.startTime && typeof errors.startTime === 'string' && errors.startTime.trim() ? <Text style={styles.errorText}>{String(errors.startTime)}</Text> : null}
                       </View>
                     </View>
 
@@ -702,19 +680,17 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
                           }}
                           showDistrictPicker={showDistrictPicker}
                           setShowDistrictPicker={setShowDistrictPicker}
-                          error={errors.district}
+                          error={errors.district && typeof errors.district === 'string' ? errors.district : ''}
                         />
                         
                         {/* Блок для выбора склада и товаров */}
-                        {selectedDistrict && (
+                        {selectedDistrict != null && selectedDistrict !== '' && (
                           <StopProductsSelector
                             warehouseId={warehouseId}
                             districtId={selectedDistrict}
                             selectedProducts={selectedProducts}
                             onWarehouseChange={setWarehouseId}
                             onProductsChange={setSelectedProducts}
-                            showAlertError={showAlertError}
-                            showAlertWarning={showAlertWarning}
                           />
                         )}
                         
@@ -730,7 +706,7 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
                           placeholder="Введите адрес"
                         />
                         <View style={[styles.inputUnderline, errors.address ? styles.underlineError : null]}/>
-                        {errors.address ? <Text style={styles.errorText}>{errors.address}</Text> : null}
+                        {errors.address && typeof errors.address === 'string' && errors.address.trim() ? <Text style={styles.errorText}>{String(errors.address)}</Text> : null}
                       </View>
 
                       <View style={styles.inputGroup}>
@@ -747,7 +723,7 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
                           placeholder="Введите модель"
                         />
                         <View style={[styles.inputUnderline, errors.truckModel ? styles.underlineError : null]}/>
-                        {errors.truckModel ? <Text style={styles.errorText}>{errors.truckModel}</Text> : null}
+                        {errors.truckModel && typeof errors.truckModel === 'string' && errors.truckModel.trim() ? <Text style={styles.errorText}>{String(errors.truckModel)}</Text> : null}
                       </View>
 
                       {/* Блок для ввода номера транспорта */}
@@ -764,7 +740,7 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
                           placeholder="А001АА 06"
                         />
                         <View style={[styles.inputUnderline, errors.truckNumber ? styles.underlineError : null]}/>
-                        {errors.truckNumber ? <Text style={styles.errorText}>{errors.truckNumber}</Text> : null}
+                        {errors.truckNumber && typeof errors.truckNumber === 'string' && errors.truckNumber.trim() ? <Text style={styles.errorText}>{String(errors.truckNumber)}</Text> : null}
                       </View>
                     </View>
                   </View>
@@ -779,7 +755,7 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
                           <View style={[styles.inputUnderline, errors.startTime ? styles.underlineError : null]} />
                         </View>
                       </View>
-                      {errors.startTime ? <Text style={styles.errorText}>{errors.startTime}</Text> : null}
+                      {errors.startTime && typeof errors.startTime === 'string' && errors.startTime.trim() ? <Text style={styles.errorText}>{String(errors.startTime)}</Text> : null}
                     </View>
 
                     <View style={[styles.timeSection, styles.timeRight]}>
@@ -790,7 +766,7 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
                           <View style={[styles.inputUnderline, errors.endTime ? styles.underlineError : null]} />
                         </View>
                       </View>
-                      {errors.endTime ? <Text style={styles.errorText}>{errors.endTime}</Text> : null}
+                      {errors.endTime && typeof errors.endTime === 'string' && errors.endTime.trim() ? <Text style={styles.errorText}>{String(errors.endTime)}</Text> : null}
                     </View>
                   </View>
 
@@ -813,15 +789,15 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
 
                   {/* Блок координат */}
                   <LocationInput
-                    mapLocation={locationData.mapLocation}
+                    mapLocation={locationData.mapLocation ? String(locationData.mapLocation) : ''}
                     setMapLocation={(text) => {
-                      setLocationData(prev => ({...prev, mapLocation: text}));
+                      setLocationData(prev => ({...prev, mapLocation: text ? String(text) : ''}));
                       setErrors(prev => ({...prev, location: ''}));
                     }}
                     isLocationLoading={isLocationLoading}
                     setIsLocationLoading={setIsLocationLoading}
                     onOpenMap={handleMapOpen}
-                    error={errors.location}
+                    error={errors.location && typeof errors.location === 'string' ? errors.location : ''}
                     setAddress={setAddress}
                   />
 
@@ -882,7 +858,77 @@ export const EditStopForm = ({ stopData, onClose, onSave, districts = [] }) => {
                       )}
                     </TouchableOpacity>
                   )}
-                </View>
+    </View>
+  );
+
+  if (renderAsScreen) {
+    return (
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
+        <ScrollView 
+          style={styles.scrollView}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ paddingBottom: keyboardVisible ? 120 : 20 }}
+          onScrollBeginDrag={dismissKeyboard}
+          ref={scrollViewRef}
+        >
+          <TouchableOpacity 
+            activeOpacity={1} 
+            style={{ flex: 1 }}
+            onPress={dismissKeyboard}
+          >
+            {formContent}
+          </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  return (
+    <Modal
+      animationType="slide"
+      transparent={true}
+      visible={modalVisible}
+      onRequestClose={handleClose}
+      supportedOrientations={['portrait']}
+    >
+      <TouchableOpacity
+        style={styles.modalOverlay}
+        activeOpacity={1}
+        onPress={handleModalOverlayPress}
+      >
+        <View 
+          style={[
+            styles.modalContent, 
+            { 
+              height: keyboardVisible ? (Platform.OS === 'ios' ? '95%' : '92%') : '90%',
+              paddingBottom: keyboardVisible ? (Platform.OS === 'ios' ? 30 : 0) : 0
+            }
+          ]}
+        >
+          <EditStopHeader onClose={handleClose} />
+
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ flex: 1 }}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+          >
+            <ScrollView 
+              style={styles.scrollView}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingBottom: keyboardVisible ? 120 : 20 }}
+              onScrollBeginDrag={dismissKeyboard}
+              ref={scrollViewRef}
+            >
+              <TouchableOpacity 
+                activeOpacity={1} 
+                style={{ flex: 1 }}
+                onPress={dismissKeyboard}
+              >
+                {formContent}
               </TouchableOpacity>
             </ScrollView>
           </KeyboardAvoidingView>

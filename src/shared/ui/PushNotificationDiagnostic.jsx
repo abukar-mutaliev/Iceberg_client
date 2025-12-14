@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Clipboard } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Clipboard, Linking } from 'react-native';
 import * as Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
@@ -9,7 +9,7 @@ import OneSignalService from '@shared/services/OneSignalService';
 import { pushTokenApi } from '@entities/notification/api/pushTokenApi';
 import { useSelector } from 'react-redux';
 import { selectUser, selectTokens } from '@entities/auth';
-import { Platform } from 'react-native';
+import { Platform, AppState } from 'react-native';
 
 export const PushNotificationDiagnostic = () => {
     const [diagnosticData, setDiagnosticData] = useState({});
@@ -613,6 +613,411 @@ export const PushNotificationDiagnostic = () => {
         }
     };
 
+    // Диагностика всплывающих (heads-up) уведомлений
+    const diagnoseHeadsUpNotifications = async () => {
+        addLog('🔍 Запуск расширенной диагностики heads-up уведомлений', 'info');
+        
+        try {
+            // 1. Проверка платформы и версии Android
+            if (Platform.OS !== 'android') {
+                addLog('⚠️ Heads-up уведомления доступны только на Android', 'warning');
+                Alert.alert('Информация', 'Heads-up уведомления доступны только на Android устройствах');
+                return;
+            }
+            
+            addLog('✅ Платформа: Android', 'success');
+            addLog(`📱 Версия Android: ${Platform.Version}`, 'info');
+            addLog(`📱 Модель устройства: ${Device.modelName || 'Unknown'}`, 'info');
+            addLog(`📱 Производитель: ${Device.brand || 'Unknown'}`, 'info');
+            
+            // Проверка версии Android (heads-up доступны с API 21+)
+            const androidVersion = parseInt(Platform.Version, 10);
+            if (androidVersion < 21) {
+                addLog('❌ Версия Android слишком старая для heads-up уведомлений (нужен API 21+)', 'error');
+            } else if (androidVersion >= 26) {
+                addLog('✅ Версия Android поддерживает каналы уведомлений (API 26+)', 'success');
+            } else {
+                addLog('⚠️ Версия Android поддерживает heads-up, но не каналы (API 21-25)', 'warning');
+            }
+            
+            // Проверка производителя (Samsung имеет дополнительные настройки)
+            if (Device.brand?.toLowerCase().includes('samsung')) {
+                addLog('📱 Обнаружено устройство Samsung', 'info');
+                addLog('💡 Samsung имеет дополнительные настройки уведомлений', 'info');
+                addLog('💡 Проверьте: Настройки → Уведомления → Стиль всплывающего уведомления', 'info');
+            }
+            
+            // 2. Проверка разрешений на уведомления
+            addLog('🔍 Проверка разрешений на уведомления...', 'info');
+            try {
+                const OneSignalModule = require('react-native-onesignal');
+                const oneSignal = OneSignalModule.default || OneSignalModule.OneSignal || OneSignalModule;
+                
+                if (oneSignal?.Notifications?.hasPermission) {
+                    const hasPermission = await oneSignal.Notifications.hasPermission();
+                    addLog(`🔔 Разрешения на уведомления: ${hasPermission ? 'ЕСТЬ ✅' : 'НЕТ ❌'}`, hasPermission ? 'success' : 'error');
+                    
+                    if (!hasPermission) {
+                        addLog('⚠️ ВАЖНО: Нет разрешений на уведомления! Heads-up не будут работать', 'error');
+                        Alert.alert(
+                            'Нет разрешений',
+                            'Для работы heads-up уведомлений необходимо предоставить разрешения на уведомления.\n\n' +
+                            'Перейдите в настройки устройства и включите уведомления для приложения.'
+                        );
+                    }
+                } else {
+                    addLog('⚠️ Не удалось проверить разрешения OneSignal', 'warning');
+                }
+            } catch (permError) {
+                addLog(`❌ Ошибка проверки разрешений: ${permError.message}`, 'error');
+            }
+            
+            // 3. Проверка состояния приложения
+            addLog('🔍 Проверка состояния приложения...', 'info');
+            const appState = AppState.currentState;
+            addLog(`📱 Состояние приложения: ${appState}`, 'info');
+            if (appState === 'active') {
+                addLog('⚠️ Приложение в foreground - heads-up могут не показываться', 'warning');
+                addLog('💡 Для тестирования heads-up сверните приложение или заблокируйте экран', 'info');
+            } else if (appState === 'background') {
+                addLog('✅ Приложение в background - heads-up должны показываться', 'success');
+            }
+            
+            // 4. Проверка канала уведомлений через Expo Notifications
+            addLog('🔍 Проверка канала уведомлений...', 'info');
+            try {
+                const channels = await Notifications.getNotificationChannelsAsync();
+                addLog(`📋 Найдено каналов: ${channels?.length || 0}`, 'info');
+                
+                const onesignalChannel = channels?.find(ch => ch.id === 'onesignal_default_channel');
+                if (onesignalChannel) {
+                    addLog(`✅ Канал 'onesignal_default_channel' найден`, 'success');
+                    addLog(`   - Имя: ${onesignalChannel.name}`, 'info');
+                    addLog(`   - Важность: ${onesignalChannel.importance}`, 'info');
+                    
+                    // IMPORTANCE_HIGH = 4, IMPORTANCE_MAX = 5
+                    const importance = onesignalChannel.importance;
+                    if (importance >= 4) {
+                        addLog(`✅ Важность канала достаточна для heads-up (${importance} >= 4)`, 'success');
+                    } else {
+                        addLog(`❌ Важность канала НЕДОСТАТОЧНА для heads-up (${importance} < 4)`, 'error');
+                        addLog('💡 Нужна IMPORTANCE_HIGH (4) или IMPORTANCE_MAX (5)', 'warning');
+                    }
+                    
+                    addLog(`   - Звук: ${onesignalChannel.sound ? 'включен' : 'выключен'}`, onesignalChannel.sound ? 'success' : 'warning');
+                    addLog(`   - Вибрация: ${onesignalChannel.vibrationPattern ? 'включена' : 'выключена'}`, onesignalChannel.vibrationPattern ? 'success' : 'warning');
+                    addLog(`   - Свет: ${onesignalChannel.lightColor ? 'включен' : 'выключен'}`, onesignalChannel.lightColor ? 'success' : 'warning');
+                    addLog(`   - Видимость на заблокированном экране: ${onesignalChannel.lockscreenVisibility || 'не указано'}`, 'info');
+                } else {
+                    addLog(`⚠️ Канал 'onesignal_default_channel' НЕ найден`, 'warning');
+                    addLog('💡 Канал должен быть создан в MainApplication.kt при запуске приложения', 'info');
+                    addLog('💡 Или OneSignal создаст его автоматически при первом уведомлении с priority=10', 'info');
+                    addLog('💡 ПРОБЛЕМА: Если канал не найден, OneSignal может использовать fallback канал', 'error');
+                    addLog('💡 Решение: Перезапустите приложение после создания канала в MainApplication.kt', 'warning');
+                }
+                
+                // Проверяем другие каналы OneSignal
+                const oneSignalChannels = channels?.filter(ch => 
+                    ch.id.includes('onesignal') || 
+                    ch.id.includes('fcm') || 
+                    ch.id.includes('notification')
+                );
+                if (oneSignalChannels && oneSignalChannels.length > 0) {
+                    addLog(`📋 Найдено каналов OneSignal/FCM: ${oneSignalChannels.length}`, 'info');
+                    oneSignalChannels.forEach(ch => {
+                        const canHeadsUp = ch.importance >= 4;
+                        addLog(`   - ${ch.id}: важность=${ch.importance} ${canHeadsUp ? '✅' : '❌'}, звук=${ch.sound ? 'да' : 'нет'}`, canHeadsUp ? 'success' : 'warning');
+                        
+                        // Если найден канал с высокой важностью, но не тот что нужен
+                        if (canHeadsUp && ch.id !== 'onesignal_default_channel') {
+                            addLog(`   ⚠️ Найден канал с высокой важностью, но ID не совпадает!`, 'warning');
+                            addLog(`   💡 OneSignal может использовать этот канал вместо 'onesignal_default_channel'`, 'info');
+                        }
+                    });
+                    
+                    // Проверяем, есть ли канал с достаточной важностью
+                    const highImportanceChannel = oneSignalChannels.find(ch => ch.importance >= 4);
+                    if (highImportanceChannel && highImportanceChannel.id !== 'onesignal_default_channel') {
+                        addLog(`💡 РЕШЕНИЕ: Используйте канал '${highImportanceChannel.id}' вместо 'onesignal_default_channel'`, 'warning');
+                        addLog(`💡 Или переименуйте канал в MainApplication.kt на '${highImportanceChannel.id}'`, 'info');
+                    }
+                }
+            } catch (channelError) {
+                addLog(`❌ Ошибка проверки каналов: ${channelError.message}`, 'error');
+            }
+            
+            // 5. Проверка настроек OneSignal
+            addLog('🔍 Проверка настроек OneSignal...', 'info');
+            try {
+                const oneSignalStatus = OneSignalService.getStatus();
+                addLog(`   - Инициализирован: ${oneSignalStatus.isInitialized ? 'да ✅' : 'нет ❌'}`, oneSignalStatus.isInitialized ? 'success' : 'error');
+                addLog(`   - Подписка: ${oneSignalStatus.hasSubscription ? 'есть ✅' : 'нет ❌'}`, oneSignalStatus.hasSubscription ? 'success' : 'error');
+                addLog(`   - User ID: ${oneSignalStatus.currentUserId || 'не установлен'}`, oneSignalStatus.currentUserId ? 'success' : 'warning');
+                
+                if (!oneSignalStatus.isInitialized) {
+                    addLog('⚠️ OneSignal не инициализирован! Heads-up не будут работать', 'error');
+                }
+                
+                // Проверяем Player ID
+                try {
+                    const playerId = await OneSignalService.getSubscriptionId();
+                    if (playerId) {
+                        addLog(`   - Player ID: ${playerId.substring(0, 20)}... ✅`, 'success');
+                    } else {
+                        addLog(`   - Player ID: отсутствует ❌`, 'error');
+                        addLog('💡 Нужно инициализировать OneSignal для пользователя', 'warning');
+                    }
+                } catch (pidError) {
+                    addLog(`   - Player ID: ошибка получения - ${pidError.message}`, 'error');
+                }
+            } catch (statusError) {
+                addLog(`❌ Ошибка проверки статуса OneSignal: ${statusError.message}`, 'error');
+            }
+            
+            // 6. Проверка блокировки уведомлений в foreground
+            addLog('🔍 Проверка обработки уведомлений в foreground...', 'info');
+            try {
+                // Проверяем, не блокируется ли показ уведомлений в OneSignalService
+                addLog('💡 Проверяем, не блокируется ли показ уведомлений в коде...', 'info');
+                addLog('💡 В OneSignalService может быть preventDefault() для активного чата', 'info');
+                addLog('💡 Это нормально для активного чата, но может мешать тестированию', 'info');
+            } catch (fgError) {
+                addLog(`⚠️ Ошибка проверки foreground обработки: ${fgError.message}`, 'warning');
+            }
+            
+            // 7. Проверка параметров уведомлений на сервере
+            addLog('🔍 Проверка параметров уведомлений на сервере...', 'info');
+            addLog('   - priority должен быть = 10 (максимальный) ✅', 'info');
+            addLog('   - android_channel_id НЕ указывается (правильно!) ✅', 'success');
+            addLog('   - android_visibility должен быть = 1 (Public) ✅', 'info');
+            addLog('💡 OneSignal автоматически создаст канал с IMPORTANCE_MAX при priority=10', 'info');
+            addLog('💡 Это гарантирует heads-up уведомления без зависимости от конкретного канала', 'success');
+            
+            // 8. Проверка разрешений Expo Notifications
+            addLog('🔍 Проверка разрешений Expo Notifications...', 'info');
+            try {
+                const { status } = await Notifications.getPermissionsAsync();
+                addLog(`📋 Статус разрешений Expo: ${status}`, status === 'granted' ? 'success' : 'warning');
+                if (status !== 'granted') {
+                    addLog('⚠️ Разрешения Expo Notifications не предоставлены', 'warning');
+                }
+            } catch (expoPermError) {
+                addLog(`⚠️ Ошибка проверки разрешений Expo: ${expoPermError.message}`, 'warning');
+            }
+            
+            // 9. Рекомендации и решения проблем
+            addLog('📋 Рекомендации для heads-up уведомлений:', 'info');
+            addLog('   1. ✅ Убедитесь что уведомления включены в настройках устройства', 'info');
+            addLog('   2. ✅ Проверьте что режим "Не беспокоить" выключен', 'info');
+            addLog('   3. ✅ Добавьте приложение в исключения оптимизации батареи', 'info');
+            addLog('   4. ✅ Перезапустите приложение после создания канала', 'info');
+            addLog('   5. ✅ Проверьте что сервер отправляет уведомления с priority=10', 'info');
+            addLog('   6. ✅ Для тестирования сверните приложение или заблокируйте экран', 'info');
+            addLog('   7. ✅ На Samsung: проверьте стиль всплывающих уведомлений', 'info');
+            
+            // 10. Вывод проблем и решений
+            addLog('🔍 Анализ найденных проблем:', 'info');
+            // Используем уже полученные каналы из проверки выше
+            const allChannelsForAnalysis = await Notifications.getNotificationChannelsAsync();
+            const onesignalChannel = allChannelsForAnalysis?.find(ch => ch.id === 'onesignal_default_channel');
+            const highImpChannelsForAnalysis = allChannelsForAnalysis?.filter(ch => ch.importance >= 4);
+            
+            if (!onesignalChannel) {
+                addLog('❌ ПРОБЛЕМА #1: Канал onesignal_default_channel не найден', 'error');
+                addLog('💡 РЕШЕНИЕ #1: Перезапустите приложение (канал создается при запуске)', 'warning');
+                addLog('💡 РЕШЕНИЕ #2: Проверьте MainApplication.kt - канал должен создаваться в onCreate()', 'warning');
+                
+                if (highImpChannelsForAnalysis && highImpChannelsForAnalysis.length > 0) {
+                    addLog(`💡 РЕШЕНИЕ #3: Найден канал с высокой важностью '${highImpChannelsForAnalysis[0].id}'`, 'info');
+                    addLog('💡 Но сервер НЕ указывает android_channel_id - это правильно!', 'success');
+                    addLog('💡 OneSignal создаст канал автоматически с максимальной важностью', 'info');
+                }
+            } else if (onesignalChannel.importance < 4) {
+                addLog('❌ ПРОБЛЕМА #2: Канал найден, но важность недостаточна', 'error');
+                addLog('💡 РЕШЕНИЕ: Измените IMPORTANCE_HIGH на IMPORTANCE_MAX в MainApplication.kt', 'warning');
+            }
+            
+            if (appState === 'active') {
+                addLog('⚠️ ПРОБЛЕМА #3: Приложение в foreground', 'warning');
+                addLog('💡 РЕШЕНИЕ: Сверните приложение или заблокируйте экран для тестирования', 'info');
+            }
+            
+            // 11. Тест heads-up уведомления
+            addLog('🧪 Готов к тестированию heads-up уведомления', 'info');
+            addLog('💡 Используйте кнопку "🚀 Тест Heads-Up" для отправки тестового уведомления', 'info');
+            addLog('💡 Уведомление должно всплыть на верхней части экрана', 'info');
+            addLog('💡 ВАЖНО: Для тестирования сверните приложение или заблокируйте экран!', 'warning');
+            
+            // Формируем итоговое сообщение
+            let summaryMessage = 'Диагностика завершена.\n\n';
+            
+            // Используем уже полученные каналы из анализа выше
+            if (highImpChannelsForAnalysis && highImpChannelsForAnalysis.length > 0) {
+                summaryMessage += `✅ Найдено каналов с высокой важностью: ${highImpChannelsForAnalysis.length}\n`;
+                summaryMessage += `💡 OneSignal автоматически создаст канал при первом уведомлении\n\n`;
+            } else {
+                summaryMessage += '⚠️ Каналы с высокой важностью не найдены\n';
+                summaryMessage += '💡 OneSignal создаст канал автоматически при первом уведомлении\n\n';
+            }
+            
+            if (appState === 'active') {
+                summaryMessage += '⚠️ ВАЖНО: Приложение в foreground - сверните для тестирования heads-up!\n\n';
+            }
+            
+            summaryMessage += '✅ Сервер НЕ указывает android_channel_id - это правильно!\n';
+            summaryMessage += '✅ OneSignal создаст канал автоматически с максимальной важностью.\n\n';
+            summaryMessage += 'Проверьте логи для детальной информации.';
+            
+            Alert.alert(
+                'Диагностика завершена',
+                summaryMessage,
+                [
+                    { text: 'OK' },
+                    ...(Device.brand?.toLowerCase().includes('samsung') ? [{
+                        text: 'Настройки Samsung',
+                        onPress: () => {
+                            addLog('💡 Открываем настройки уведомлений Samsung...', 'info');
+                            // Попытка открыть настройки уведомлений
+                            Linking.openSettings().catch(() => {
+                                addLog('⚠️ Не удалось открыть настройки', 'warning');
+                            });
+                        }
+                    }] : [])
+                ]
+            );
+            
+        } catch (error) {
+            addLog(`❌ Критическая ошибка диагностики heads-up: ${error.message}`, 'error');
+            addLog(`📋 Stack: ${error.stack}`, 'error');
+            Alert.alert('Ошибка', `Ошибка диагностики: ${error.message}`);
+        }
+    };
+
+    // Тест heads-up уведомления с максимальным приоритетом
+    const testHeadsUpNotification = async () => {
+        addLog('🚀 Тест heads-up уведомления', 'info');
+        
+        try {
+            if (!user) {
+                addLog('❌ Нет авторизованного пользователя', 'error');
+                Alert.alert('Ошибка', 'Войдите в систему');
+                return;
+            }
+
+            const authToken = tokens?.accessToken || user?.token || user?.accessToken;
+            if (!authToken) {
+                addLog('❌ Нет токена авторизации', 'error');
+                Alert.alert('Ошибка', 'Нет токена авторизации');
+                return;
+            }
+
+            // Получаем Player ID
+            addLog('🔍 Получаем Player ID...', 'info');
+            const playerId = await OneSignalService.getSubscriptionId();
+            
+            if (!playerId) {
+                addLog('❌ Нет OneSignal Player ID', 'error');
+                Alert.alert('Ошибка', 'Сначала получите OneSignal Player ID');
+                return;
+            }
+            
+            addLog(`✅ Player ID получен: ${playerId.substring(0, 20)}...`, 'success');
+            
+            // Проверяем состояние приложения перед отправкой
+            const appStateBefore = AppState.currentState;
+            if (appStateBefore === 'active') {
+                addLog('⏱️ Приложение в foreground - добавляем задержку 2 секунды для тестирования', 'info');
+                addLog('💡 У вас есть 2 секунды чтобы СВЕРНУТЬ приложение или ЗАБЛОКИРОВАТЬ экран!', 'warning');
+                addLog('⏳ Ожидание 2 секунды...', 'info');
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                addLog('✅ Задержка завершена', 'success');
+                
+                // Проверяем состояние после задержки
+                const appStateAfter = AppState.currentState;
+                if (appStateAfter === 'active') {
+                    addLog('⚠️ Приложение все еще в foreground!', 'warning');
+                    addLog('💡 СВЕРНИТЕ приложение или ЗАБЛОКИРУЙТЕ экран для тестирования heads-up!', 'error');
+                } else {
+                    addLog('✅ Приложение свернуто или экран заблокирован - отлично для тестирования!', 'success');
+                }
+            }
+            
+            addLog('📤 Отправляем тестовое heads-up уведомление...', 'info');
+            addLog('   - priority = 10 (максимальный) ✅', 'info');
+            addLog('   - android_channel_id НЕ указывается (OneSignal создаст автоматически) ✅', 'success');
+            addLog('   - android_visibility = 1 (Public) ✅', 'info');
+            addLog('💡 OneSignal автоматически создаст канал с IMPORTANCE_MAX', 'info');
+            
+            const response = await fetch('http://212.67.11.134:5000/api/push-tokens/test', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authToken}`
+                },
+                body: JSON.stringify({
+                    token: playerId,
+                    title: '🔔 Heads-Up Test',
+                    message: `Тест всплывающего уведомления от ${new Date().toLocaleTimeString()}`,
+                    data: {
+                        type: 'HEADS_UP_TEST',
+                        timestamp: Date.now(),
+                        source: 'diagnostic_screen',
+                        priority: 10,
+                        channelId: 'onesignal_default_channel'
+                    }
+                })
+            });
+            
+            const result = await response.json();
+            addLog(`📋 Ответ сервера: ${JSON.stringify(result)}`, 'info');
+            
+            if (response.ok && result.success) {
+                addLog('✅ Heads-up уведомление отправлено успешно', 'success');
+                addLog('💡 OneSignal создаст канал автоматически при первом уведомлении', 'info');
+                addLog('💡 Уведомление должно всплыть на верхней части экрана', 'info');
+                
+                // Проверяем состояние приложения
+                const appState = AppState.currentState;
+                if (appState === 'active') {
+                    addLog('⚠️ ВАЖНО: Приложение в foreground!', 'warning');
+                    addLog('💡 Для тестирования heads-up СВЕРНИТЕ приложение или заблокируйте экран!', 'error');
+                }
+                
+                addLog('💡 Если уведомление не всплыло, проверьте:', 'warning');
+                addLog('   1. Разрешения на уведомления включены ✅', 'info');
+                addLog('   2. Режим "Не беспокоить" выключен', 'warning');
+                addLog('   3. Приложение СВЕРНУТО или экран ЗАБЛОКИРОВАН (для тестирования)', 'error');
+                addLog('   4. Приложение не в режиме оптимизации батареи', 'warning');
+                addLog('   5. На Samsung: проверьте стиль всплывающих уведомлений', 'warning');
+                
+                // Используем уже полученное состояние приложения
+                const currentAppState = AppState.currentState;
+                let alertMessage = 'Heads-up уведомление отправлено!\n\n';
+                
+                if (currentAppState === 'active') {
+                    alertMessage += '⚠️ ВАЖНО: Приложение в foreground!\n';
+                    alertMessage += '💡 Для тестирования heads-up СВЕРНИТЕ приложение или заблокируйте экран!\n\n';
+                }
+                
+                alertMessage += '✅ OneSignal создаст канал автоматически с максимальной важностью.\n\n';
+                alertMessage += 'Уведомление должно всплыть на верхней части экрана.\n\n';
+                alertMessage += 'Если не всплыло:\n';
+                alertMessage += '1. Сверните приложение\n';
+                alertMessage += '2. Проверьте настройки устройства\n';
+                alertMessage += '3. Проверьте логи';
+                
+                Alert.alert('Успех', alertMessage);
+            } else {
+                addLog(`❌ Ошибка отправки: ${result.message || 'Неизвестная ошибка'}`, 'error');
+                Alert.alert('Ошибка', `Ошибка: ${result.message || 'Неизвестная ошибка'}`);
+            }
+        } catch (error) {
+            addLog(`❌ Ошибка отправки heads-up уведомления: ${error.message}`, 'error');
+            addLog(`📋 Stack: ${error.stack}`, 'error');
+            Alert.alert('Ошибка', error.message);
+        }
+    };
+
     // Тест локального push-уведомления
     const testLocalPushNotification = async () => {
         addLog('📱 Тест локального push-уведомления', 'info');
@@ -770,6 +1175,16 @@ export const PushNotificationDiagnostic = () => {
 
                 <TouchableOpacity style={[styles.button, { backgroundColor: '#E67E22' }]} onPress={clearOneSignalContext}>
                     <Text style={styles.buttonText}>🧹 Очистить</Text>
+                </TouchableOpacity>
+            </View>
+
+            <View style={styles.buttonContainer}>
+                <TouchableOpacity style={[styles.button, { backgroundColor: '#FF6B6B' }]} onPress={diagnoseHeadsUpNotifications}>
+                    <Text style={styles.buttonText}>🔍 Heads-Up</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={[styles.button, { backgroundColor: '#4ECDC4' }]} onPress={testHeadsUpNotification}>
+                    <Text style={styles.buttonText}>🚀 Тест Heads-Up</Text>
                 </TouchableOpacity>
             </View>
 

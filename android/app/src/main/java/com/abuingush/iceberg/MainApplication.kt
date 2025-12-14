@@ -60,9 +60,10 @@ class MainApplication : Application(), ReactApplication {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       val channelId = "onesignal_default_channel"
       val channelName = "Сообщения чата"
-      // Используем IMPORTANCE_HIGH для heads-up уведомлений
-      // IMPORTANCE_MAX может быть слишком агрессивным и может быть заблокирован системой
-      val importance = NotificationManager.IMPORTANCE_HIGH
+      // Используем IMPORTANCE_MAX для гарантированных heads-up уведомлений
+      // IMPORTANCE_HIGH (4) может не всегда показывать heads-up на некоторых устройствах
+      // IMPORTANCE_MAX (5) гарантирует всплывающие уведомления
+      val importance = NotificationManager.IMPORTANCE_MAX
       
       val channel = NotificationChannel(channelId, channelName, importance).apply {
         description = "Уведомления о новых сообщениях в чате"
@@ -72,23 +73,31 @@ class MainApplication : Application(), ReactApplication {
         vibrationPattern = longArrayOf(0, 250, 250, 250)
         setShowBadge(true)
         // Для heads-up уведомлений важно установить звук
-        // Звук будет установлен через OneSignal payload (android_sound)
-        // Но можно также установить здесь для гарантии
         setSound(android.provider.Settings.System.DEFAULT_NOTIFICATION_URI, null)
         // Устанавливаем, что уведомления должны показываться на заблокированном экране
         lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+        // Включаем все возможности для heads-up
+        setBypassDnd(false) // Не обходим режим "Не беспокоить" (может быть заблокировано системой)
       }
       
       val notificationManager = getSystemService(NotificationManager::class.java)
-      notificationManager?.createNotificationChannel(channel)
-      
-      // Проверяем, что канал создан правильно
-      val createdChannel = notificationManager?.getNotificationChannel(channelId)
-      if (createdChannel != null) {
-        android.util.Log.d("MainApplication", "Канал уведомлений создан: $channelId, важность: ${createdChannel.importance}")
-      } else {
-        android.util.Log.e("MainApplication", "Ошибка: канал уведомлений не создан")
+      try {
+        notificationManager?.createNotificationChannel(channel)
+        
+        // Проверяем, что канал создан правильно
+        val createdChannel = notificationManager?.getNotificationChannel(channelId)
+        if (createdChannel != null) {
+          android.util.Log.d("MainApplication", "✅ Канал уведомлений создан: $channelId, важность: ${createdChannel.importance}")
+          android.util.Log.d("MainApplication", "   Звук: ${createdChannel.sound != null}, Вибрация: ${createdChannel.shouldVibrate()}")
+        } else {
+          android.util.Log.e("MainApplication", "❌ Ошибка: канал уведомлений не создан после попытки создания")
+        }
+      } catch (e: Exception) {
+        android.util.Log.e("MainApplication", "❌ Исключение при создании канала: ${e.message}")
+        e.printStackTrace()
       }
+    } else {
+      android.util.Log.d("MainApplication", "⚠️ Версия Android < 8.0, каналы не требуются")
     }
   }
 

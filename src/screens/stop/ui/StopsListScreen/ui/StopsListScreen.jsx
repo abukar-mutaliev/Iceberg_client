@@ -150,7 +150,7 @@ export const StopsListScreen = ({ navigation }) => {
 
     const getScreenTitle = () => {
         if (selectedDistrictId && selectedDistrictName) {
-            return `Остановки: ${selectedDistrictName}`;
+            return `${selectedDistrictName}`;
         } else if (selectedDistrictId) {
             return 'Остановки в районе';
         }
@@ -361,13 +361,6 @@ export const StopsListScreen = ({ navigation }) => {
                     <Text style={styles.headerTitle}>
                         {getScreenTitle()}
                     </Text>
-
-                    {filteredStops.length > 0 && (
-                        <Text style={styles.headerSubtitle}>
-                            {filteredStops.length} {filteredStops.length === 1 ? 'остановка' :
-                            filteredStops.length < 5 ? 'остановки' : 'остановок'}
-                        </Text>
-                    )}
                 </View>
 
                 <View style={styles.backButton} />
@@ -413,21 +406,15 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         letterSpacing: 0.9,
     },
-    headerSubtitle: {
-        fontSize: FontSize.size_sm,
-        fontWeight: '400',
-        color: Color.gray,
-        fontFamily: FontFamily.sFProText,
-        textAlign: 'center',
-        marginTop: 2,
-    },
     scrollView: {
         flex: 1,
     },
     searchContainer: {
         paddingHorizontal: 16,
-        paddingVertical: 12,
+        paddingTop: 2,
+        paddingBottom: 8,
         backgroundColor: Color.colorLightMode,
+        marginTop: -25,
     },
     searchInputContainer: {
         flexDirection: 'row',

@@ -68,16 +68,35 @@ const SupplierContent = React.memo(({
         [supplierProducts]
     );
 
-    const reviews = useMemo(() =>
-            Array.isArray(feedbacks) ? feedbacks : [],
-        [feedbacks]
-    );
+    const reviews = useMemo(() => {
+        const result = Array.isArray(feedbacks) ? feedbacks : [];
+        // Логируем изменения для отладки
+        if (__DEV__ && result.length > 0) {
+            console.log('SupplierContent - отзывы обновлены:', {
+                count: result.length,
+                firstFeedbackId: result[0]?.id,
+                supplierId
+            });
+        }
+        return result;
+    }, [feedbacks, supplierId]);
 
     const productsCount = useMemo(() => products.length, [products]);
     const hasProducts = useMemo(() => productsCount > 0, [productsCount]);
 
     const feedbacksCount = useMemo(() => reviews.length, [reviews]);
     const hasFeedbacks = useMemo(() => feedbacksCount > 0, [feedbacksCount]);
+    
+    // Логируем изменения количества отзывов
+    useEffect(() => {
+        if (__DEV__ && feedbacksCount > 0) {
+            console.log('SupplierContent - количество отзывов изменилось:', {
+                feedbacksCount,
+                hasFeedbacks,
+                supplierId
+            });
+        }
+    }, [feedbacksCount, hasFeedbacks, supplierId]);
 
     const supplierName = useMemo(() => {
         if (!enrichedSupplier) return 'Неизвестный поставщик';
@@ -122,7 +141,7 @@ const SupplierContent = React.memo(({
     }, [navigation, fromScreen]);
 
 
-    const handleProductPress = (product) => {
+    const handleProductPress = useCallback((product) => {
         // Поддержка как productId, так и объекта продукта
         const productId = typeof product === 'object' && product?.id ? product.id : product;
         navigation.navigate('ProductDetail', {
@@ -131,16 +150,7 @@ const SupplierContent = React.memo(({
             supplierId: supplierId,
             previousScreen: fromScreen
         });
-
-        if (process.env.NODE_ENV === 'development') {
-            console.log('SupplierContent - Переход к товару:', {
-                productId,
-                fromScreen: 'SupplierScreen',
-                supplierId,
-                previousScreen: fromScreen
-            });
-        }
-    };
+    }, [navigation, supplierId, fromScreen]);
 
     // Обработчики навигации к возвратам товаров
     const handleStagnantProductsPress = useCallback(() => {

@@ -154,7 +154,7 @@ const LoadingComponent = () => {
 };
 
 // Компонент пустого состояния
-const EmptyStateComponent = ({ categoryDescription, onRetry, navigation }) => {
+const EmptyStateComponent = ({ categoryName, onRetry, navigation }) => {
     const fadeAnim = new Animated.Value(0);
     const slideAnim = new Animated.Value(30);
 
@@ -207,7 +207,7 @@ const EmptyStateComponent = ({ categoryDescription, onRetry, navigation }) => {
 
                 <Text style={styles.emptyTitle}>Товары не найдены</Text>
                 <Text style={styles.emptySubtitle}>
-                    В категории "{categoryDescription || 'Категория'}" пока нет товаров
+                    В категории "{categoryName || 'Категория'}" пока нет товаров
                 </Text>
 
                 <View style={styles.emptyActions}>
@@ -441,7 +441,7 @@ const AnimatedProductCard = React.memo(({ item, onPress, index }) => {
 });
 
 export const ProductsByCategoryScreen = ({ route, navigation }) => {
-    const { categoryId, categoryDescription } = route.params || {};
+    const { categoryId, categoryName } = route.params || {};
     const dispatch = useDispatch();
     const [refreshing, setRefreshing] = useState(false);
 
@@ -583,7 +583,7 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
         if (!refreshing && !isLoading) {
             return (
                 <EmptyStateComponent
-                    categoryDescription={categoryDescription}
+                    categoryName={categoryName}
                     onRetry={handleRetry}
                     navigation={navigation}
                 />
@@ -607,7 +607,7 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
                 }
             />
         );
-    }, [isLoading, error, products, renderProductItem, refreshing, onRefresh, handleRetry, categoryDescription, navigation]);
+    }, [isLoading, error, products, renderProductItem, refreshing, onRefresh, handleRetry, categoryName, navigation]);
 
     return (
         <SafeAreaView style={styles.container}>
@@ -634,7 +634,7 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
 
                     <View style={styles.headerTitleContainer}>
                         <Text style={styles.headerTitle} numberOfLines={1}>
-                            {categoryDescription || 'Категория'}
+                            {categoryName || 'Категория'}
                         </Text>
                         <Text style={styles.headerSubtitle}>
                             {Array.isArray(products) ? `${products.length} товаров` : ''}
