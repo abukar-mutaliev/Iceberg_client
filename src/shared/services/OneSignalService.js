@@ -77,6 +77,34 @@ class OneSignalService {
                 console.warn('[OneSignal] Разрешения не предоставлены, но продолжаем');
             }
 
+            // КРИТИЧЕСКИ ВАЖНО: Явно подписываем на уведомления (opt-in)
+            // В продакшн-билдах без этого Player ID создается, но устройство не подписано!
+            console.log('[OneSignal] Подписываем устройство на уведомления (opt-in)...');
+            try {
+                if (oneSignal.User?.pushSubscription?.optIn) {
+                    await oneSignal.User.pushSubscription.optIn();
+                    console.log('[OneSignal] ✅ Устройство подписано на уведомления');
+                } else {
+                    console.warn('[OneSignal] ⚠️ Метод optIn не доступен, попробуем альтернативный способ');
+                    // Альтернативный способ для старых версий SDK
+                    if (oneSignal.User?.pushSubscription?.setOptedIn) {
+                        await oneSignal.User.pushSubscription.setOptedIn(true);
+                        console.log('[OneSignal] ✅ Устройство подписано через setOptedIn');
+                    }
+                }
+
+                // Проверяем статус подписки
+                const optedIn = await this.getOptedIn();
+                console.log('[OneSignal] Статус подписки после opt-in:', optedIn);
+                
+                if (!optedIn) {
+                    console.error('[OneSignal] ❌ Не удалось подписать устройство!');
+                    console.error('[OneSignal] Это может быть причиной "All included players are not subscribed"');
+                }
+            } catch (optInError) {
+                console.error('[OneSignal] Ошибка opt-in:', optInError.message);
+            }
+
             // Настройка канала уведомлений для Android (heads-up уведомления)
             if (Platform.OS === 'android') {
                 try {
@@ -296,9 +324,36 @@ class OneSignalService {
             console.log('[OneSignal] Устанавливаем External User ID...');
             await this.setExternalUserId(user.id.toString());
 
+            // КРИТИЧЕСКИ ВАЖНО: Проверяем и активируем подписку после установки User ID
+            console.log('[OneSignal] Проверяем статус подписки после установки User ID...');
+            let optedIn = await this.getOptedIn();
+            console.log('[OneSignal] Текущий статус opt-in:', optedIn);
+            
+            if (!optedIn) {
+                console.warn('[OneSignal] ⚠️ Устройство не подписано! Принудительно подписываем...');
+                const oneSignal = getOneSignal();
+                if (oneSignal?.User?.pushSubscription?.optIn) {
+                    try {
+                        await oneSignal.User.pushSubscription.optIn();
+                        console.log('[OneSignal] ✅ Устройство подписано');
+                        
+                        // Проверяем еще раз
+                        optedIn = await this.getOptedIn();
+                        console.log('[OneSignal] Статус opt-in после подписки:', optedIn);
+                    } catch (optInError) {
+                        console.error('[OneSignal] ❌ Ошибка подписки:', optInError.message);
+                    }
+                }
+                
+                if (!optedIn) {
+                    console.error('[OneSignal] ❌ НЕ УДАЛОСЬ ПОДПИСАТЬ УСТРОЙСТВО!');
+                    console.error('[OneSignal] Push-уведомления работать НЕ БУДУТ!');
+                }
+            }
+
             // Даем время OneSignal зарегистрировать устройство (важно!)
-            console.log('[OneSignal] Ожидаем регистрацию устройства (3 секунды)...');
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            console.log('[OneSignal] Ожидаем регистрацию устройства (5 секунд)...');
+            await new Promise(resolve => setTimeout(resolve, 5000));
 
             // Получаем subscription ID с повторными попытками
             console.log('[OneSignal] Получаем Subscription ID...');
@@ -603,6 +658,86 @@ class OneSignalService {
             return optedIn;
         } catch (error) {
             console.error('[OneSignal] Ошибка получения Opted In статуса:', error);
+            return false;
+        }
+    }
+
+    // Явная подписка на уведомления (opt-in)
+    async optIn() {
+        try {
+            console.log('[OneSignal] Подписываем устройство на уведомления...');
+            
+            const oneSignal = getOneSignal();
+            if (!oneSignal) {
+                console.error('[OneSignal] SDK не доступен');
+                return false;
+            }
+
+            // Проверяем текущий статус
+            const currentStatus = await this.getOptedIn();
+            console.log('[OneSignal] Текущий статус opt-in:', currentStatus);
+
+            if (currentStatus) {
+                console.log('[OneSignal] ✅ Устройство уже подписано');
+                return true;
+            }
+
+            // Подписываем через optIn()
+            if (oneSignal.User?.pushSubscription?.optIn) {
+                await oneSignal.User.pushSubscription.optIn();
+                console.log('[OneSignal] Вызван метод optIn()');
+            } else if (oneSignal.User?.pushSubscription?.setOptedIn) {
+                // Альтернативный способ для старых версий SDK
+                await oneSignal.User.pushSubscription.setOptedIn(true);
+                console.log('[OneSignal] Вызван метод setOptedIn(true)');
+            } else {
+                console.error('[OneSignal] Методы opt-in не доступны в SDK');
+                return false;
+            }
+
+            // Проверяем результат
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            const newStatus = await this.getOptedIn();
+            console.log('[OneSignal] Новый статус opt-in:', newStatus);
+
+            if (newStatus) {
+                console.log('[OneSignal] ✅ Устройство успешно подписано!');
+                return true;
+            } else {
+                console.error('[OneSignal] ❌ Не удалось подписать устройство');
+                return false;
+            }
+        } catch (error) {
+            console.error('[OneSignal] Ошибка подписки (opt-in):', error);
+            return false;
+        }
+    }
+
+    // Отписка от уведомлений (opt-out)
+    async optOut() {
+        try {
+            console.log('[OneSignal] Отписываем устройство от уведомлений...');
+            
+            const oneSignal = getOneSignal();
+            if (!oneSignal) {
+                console.error('[OneSignal] SDK не доступен');
+                return false;
+            }
+
+            if (oneSignal.User?.pushSubscription?.optOut) {
+                await oneSignal.User.pushSubscription.optOut();
+                console.log('[OneSignal] ✅ Устройство отписано');
+                return true;
+            } else if (oneSignal.User?.pushSubscription?.setOptedIn) {
+                await oneSignal.User.pushSubscription.setOptedIn(false);
+                console.log('[OneSignal] ✅ Устройство отписано через setOptedIn(false)');
+                return true;
+            } else {
+                console.error('[OneSignal] Методы opt-out не доступны в SDK');
+                return false;
+            }
+        } catch (error) {
+            console.error('[OneSignal] Ошибка отписки (opt-out):', error);
             return false;
         }
     }

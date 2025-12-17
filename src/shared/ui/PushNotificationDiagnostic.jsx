@@ -143,6 +143,21 @@ export const PushNotificationDiagnostic = () => {
                 if (oneSignalStatus.currentUserId) {
                     addLog(`👤 OneSignal User ID: ${oneSignalStatus.currentUserId}`, 'info');
                 }
+                
+                // КРИТИЧЕСКИ ВАЖНО: Проверяем opt-in статус
+                try {
+                    const optedIn = await OneSignalService.getOptedIn();
+                    addLog(`📬 Opt-In статус: ${optedIn ? 'ПОДПИСАН ✅' : 'НЕ ПОДПИСАН ❌'}`, optedIn ? 'success' : 'error');
+                    data.oneSignalService.optedIn = optedIn;
+                    
+                    if (!optedIn) {
+                        addLog(`⚠️ ПРОБЛЕМА: Устройство не подписано на уведомления!`, 'error');
+                        addLog(`💡 Это объясняет ошибку "All included players are not subscribed"`, 'warning');
+                        addLog(`💡 Используйте кнопку "📬 Подписка" для активации opt-in`, 'info');
+                    }
+                } catch (optInError) {
+                    addLog(`❌ Ошибка проверки opt-in: ${optInError.message}`, 'error');
+                }
             } catch (error) {
                 data.oneSignalService = { error: error.message };
                 addLog(`❌ Ошибка OneSignal Service: ${error.message}`, 'error');
@@ -344,6 +359,23 @@ export const PushNotificationDiagnostic = () => {
                             
                             if (!optedIn) {
                                 addLog('💡 Устройство не подписано! Возможно проблема с OneSignal App ID или Firebase', 'warning');
+                                addLog('🔧 Попытка подписать устройство принудительно...', 'info');
+                                
+                                // Пытаемся подписать принудительно
+                                try {
+                                    if (oneSignal?.User?.pushSubscription?.optIn) {
+                                        await oneSignal.User.pushSubscription.optIn();
+                                        addLog('✅ Устройство подписано через optIn()', 'success');
+                                        
+                                        // Проверяем еще раз
+                                        const optedInAfter = await oneSignal.User.pushSubscription.getOptedIn();
+                                        addLog(`🔍 Opted In после подписки: ${optedInAfter ? 'TRUE ✅' : 'FALSE ❌'}`, optedInAfter ? 'success' : 'error');
+                                    } else {
+                                        addLog('⚠️ Метод optIn() недоступен', 'warning');
+                                    }
+                                } catch (optInErr) {
+                                    addLog(`❌ Ошибка подписки: ${optInErr.message}`, 'error');
+                                }
                             }
                         }
                         
@@ -1018,6 +1050,59 @@ export const PushNotificationDiagnostic = () => {
         }
     };
 
+    // Явная подписка на уведомления (opt-in)
+    const enablePushSubscription = async () => {
+        addLog('📬 Подписка на уведомления (opt-in)', 'info');
+        
+        try {
+            // Проверяем текущий статус
+            addLog('🔍 Проверяем текущий статус подписки...', 'info');
+            const currentStatus = await OneSignalService.getOptedIn();
+            addLog(`📊 Текущий статус: ${currentStatus ? 'ПОДПИСАН ✅' : 'НЕ ПОДПИСАН ❌'}`, currentStatus ? 'success' : 'warning');
+            
+            if (currentStatus) {
+                addLog('✅ Устройство уже подписано на уведомления', 'success');
+                Alert.alert('Информация', 'Устройство уже подписано на уведомления');
+                return;
+            }
+            
+            // Подписываем
+            addLog('🚀 Подписываем устройство на уведомления...', 'info');
+            const result = await OneSignalService.optIn();
+            
+            if (result) {
+                addLog('✅ Устройство успешно подписано!', 'success');
+                addLog('💡 Теперь push-уведомления должны работать', 'info');
+                
+                // Проверяем Player ID
+                const playerId = await OneSignalService.getSubscriptionId();
+                if (playerId) {
+                    addLog(`🎫 Player ID: ${playerId.substring(0, 20)}...`, 'success');
+                } else {
+                    addLog('⚠️ Player ID не найден, попробуйте переинициализировать', 'warning');
+                }
+                
+                Alert.alert(
+                    'Успех!', 
+                    'Устройство подписано на уведомления!\n\nТеперь можно протестировать отправку push-уведомлений.'
+                );
+                
+                // Обновляем диагностику
+                runOneSignalDiagnostic();
+            } else {
+                addLog('❌ Не удалось подписать устройство', 'error');
+                addLog('💡 Попробуйте переинициализировать OneSignal для пользователя', 'info');
+                Alert.alert(
+                    'Ошибка',
+                    'Не удалось подписать устройство на уведомления.\n\nПопробуйте:\n1. Переинициализировать через "👤 Для пользователя"\n2. Проверить разрешения в настройках устройства'
+                );
+            }
+        } catch (error) {
+            addLog(`❌ Ошибка подписки: ${error.message}`, 'error');
+            Alert.alert('Ошибка', `Не удалось подписать устройство: ${error.message}`);
+        }
+    };
+
     // Тест локального push-уведомления
     const testLocalPushNotification = async () => {
         addLog('📱 Тест локального push-уведомления', 'info');
@@ -1175,6 +1260,10 @@ export const PushNotificationDiagnostic = () => {
 
                 <TouchableOpacity style={[styles.button, { backgroundColor: '#E67E22' }]} onPress={clearOneSignalContext}>
                     <Text style={styles.buttonText}>🧹 Очистить</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={[styles.button, { backgroundColor: '#2ECC71' }]} onPress={enablePushSubscription}>
+                    <Text style={styles.buttonText}>📬 Подписка</Text>
                 </TouchableOpacity>
             </View>
 
