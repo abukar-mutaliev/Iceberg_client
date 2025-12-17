@@ -74,6 +74,9 @@ export default {
                 'onesignal-expo-plugin',
                 {
                     mode: IS_DEV ? 'development' : 'production',
+                    // ВАЖНО: Не используем smallIcons здесь - иконка ic_stat_iceberg.png 
+                    // уже установлена вручную в android/app/src/main/res/drawable-*/
+                    // и используется через серверный код (small_icon: 'ic_stat_iceberg')
                 }
             ]
         ],
@@ -99,12 +102,14 @@ export default {
         },
         android: {
             package: 'com.abuingush.iceberg',
-            versionCode: 9,
+            versionCode: 15,
+            versionName: '1.1.3',
             icon: './assets/icon.png',
             adaptiveIcon: {
                 foregroundImage: './assets/icon.png',
                 backgroundColor: '#E3F2FD',
             },
+            softwareKeyboardLayoutMode: 'resize',
             config: {
                 googleMaps: {
                     apiKey: 'AIzaSyDev-AMb24bvlQn3a-b4DGsItiYB6su6_E',

@@ -22,7 +22,6 @@ import { fetchAllDistricts } from "@entities/district";
 import { AddStopHeader } from './AddStopHeader';
 import { LoadingState } from '@shared/ui/states/LoadingState';
 import { StopForm } from "@features/driver/addDriverStop";
-import { logData } from '@shared/lib/logger';
 import { ReusableModal } from '@shared/ui/Modal';
 import MapView, { Marker } from 'react-native-maps';
 import { parseCoordinates } from '@/shared/lib/coordinatesHelper';
@@ -86,12 +85,9 @@ export const AddStopScreen = ({ navigation, route }) => {
                         }
                     };
                 });
-                logData('AddStopScreen: Координаты успешно обновлены', coordinates);
-            } else {
-                logData('AddStopScreen: Неверный формат координат', coordinates);
             }
         } catch (error) {
-            logData('AddStopScreen: Ошибка при обработке координат', error);
+            // Ошибка при обработке координат
         }
     }, []);
 
@@ -154,7 +150,7 @@ export const AddStopScreen = ({ navigation, route }) => {
                 await Promise.all(promises);
 
             } catch (error) {
-                logData('AddStopScreen: Ошибка при загрузке начальных данных', error);
+                // Ошибка при загрузке начальных данных
             }
         };
 
@@ -188,7 +184,7 @@ export const AddStopScreen = ({ navigation, route }) => {
                     }));
                 }
             } catch (error) {
-                logData('AddStopScreen: Ошибка при обработке существующих координат', error);
+                // Ошибка при обработке существующих координат
             }
         }
         setMapModalVisible(true);

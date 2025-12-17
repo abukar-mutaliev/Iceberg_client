@@ -17,7 +17,6 @@ import {
 import { fetchAllDistricts } from "@entities/district";
 import { LoadingState } from '@shared/ui/states/LoadingState';
 import { ErrorState } from '@shared/ui/states/ErrorState';
-import { logData } from '@shared/lib/logger';
 import { EditStopForm } from "@features/driver/editDriverStop";
 import {
     fetchDriverStops,
@@ -34,7 +33,6 @@ export const EditStopScreen = ({ route, navigation }) => {
     const { stopId, selectedLocation, addressString, timestamp, navId } = route.params || {};
 
     const lastParamsRef = useRef({ selectedLocation, addressString, timestamp, navId });
-    const screenInstanceId = useRef(Math.random().toString(36).substr(2, 9)).current;
     const prevLocationRef = useRef(selectedLocation);
 
     const [currentLocation, setCurrentLocation] = useState(selectedLocation);
@@ -57,61 +55,22 @@ export const EditStopScreen = ({ route, navigation }) => {
     const lastUpdateTime = useRef(0);
 
     useEffect(() => {
-        logData('EditStopScreen: Компонент инициализирован', {
-            stopId,
-            selectedLocation,
-            addressString,
-            instanceId: screenInstanceId,
-            timestamp: new Date().toISOString()
-        });
-
-        return () => {
-            logData('EditStopScreen: Компонент размонтирован', {
-                instanceId: screenInstanceId,
-                timestamp: new Date().toISOString()
-            });
-        };
-    }, []);
-
-    useEffect(() => {
         const hasChanged = selectedLocation !== lastParamsRef.current.selectedLocation ||
             addressString !== lastParamsRef.current.addressString ||
             timestamp !== lastParamsRef.current.timestamp ||
             navId !== lastParamsRef.current.navId;
 
         if (hasChanged && selectedLocation && selectedLocation !== prevLocationRef.current) {
-            logData('EditStopScreen: Получены новые параметры маршрута', {
-                selectedLocation,
-                addressString,
-                previousLocation: lastParamsRef.current.selectedLocation,
-                previousAddress: lastParamsRef.current.addressString,
-                timestamp,
-                navId,
-                instanceId: screenInstanceId
-            });
-
             try {
                 const parsedCoords = parseCoordinates(selectedLocation);
                 
                 if (parsedCoords) {
                     const formattedLocation = `${parsedCoords.latitude},${parsedCoords.longitude}`;
-                    
-                    logData('EditStopScreen: Координаты нормализованы', {
-                        original: selectedLocation,
-                        normalized: formattedLocation,
-                        instanceId: screenInstanceId
-                    });
-                    
                     setCurrentLocation(formattedLocation);
                 } else {
                     setCurrentLocation(selectedLocation);
                 }
             } catch (error) {
-                logData('EditStopScreen: Ошибка при обработке координат', {
-                    error: error.message,
-                    selectedLocation,
-                    instanceId: screenInstanceId
-                });
                 setCurrentLocation(selectedLocation);
             }
 
@@ -150,10 +109,6 @@ export const EditStopScreen = ({ route, navigation }) => {
         });
 
         if (!stopData && stopId) {
-            logData('EditStopScreen: Загрузка данных остановки', {
-                stopId,
-                instanceId: screenInstanceId
-            });
             dispatch(fetchDriverStops())
                 .then(() => setInitialLoadComplete(true))
                 .catch(() => setInitialLoadComplete(true));
@@ -164,11 +119,6 @@ export const EditStopScreen = ({ route, navigation }) => {
 
     useFocusEffect(
         React.useCallback(() => {
-            logData('EditStopScreen: Получил фокус', {
-                instanceId: screenInstanceId,
-                currentLocation,
-                timestamp: new Date().toISOString()
-            });
             setIsScreenFocused(true);
 
             if (error) {
@@ -176,18 +126,13 @@ export const EditStopScreen = ({ route, navigation }) => {
             }
 
             return () => {
-                logData('EditStopScreen: Потерял фокус', {
-                    instanceId: screenInstanceId,
-                    timestamp: new Date().toISOString()
-                });
                 setIsScreenFocused(false);
             };
-        }, [dispatch, error, currentLocation])
+        }, [dispatch, error])
     );
 
     useEffect(() => {
         if (districts.length === 0) {
-            logData('Загрузка списка районов для EditStopScreen');
             dispatch(fetchAllDistricts());
         }
     }, [dispatch, districts.length]);
@@ -211,7 +156,7 @@ export const EditStopScreen = ({ route, navigation }) => {
                     setCurrentLocation(stopData.mapLocation);
                 }
             } catch (error) {
-                logData('EditStopScreen: Ошибка при инициализации координат', error);
+                // Ошибка при инициализации координат
             }
         }
         if (stopData?.address && !addressFromMap) {
@@ -246,12 +191,9 @@ export const EditStopScreen = ({ route, navigation }) => {
                     };
                 });
                 setCurrentLocation(coordinates);
-                logData('EditStopScreen: Координаты успешно обновлены', coordinates);
-            } else {
-                logData('EditStopScreen: Неверный формат координат', coordinates);
             }
         } catch (error) {
-            logData('EditStopScreen: Ошибка при обработке координат', error);
+            // Ошибка при обработке координат
         }
     }, []);
 
@@ -283,7 +225,7 @@ export const EditStopScreen = ({ route, navigation }) => {
                     }));
                 }
             } catch (error) {
-                logData('EditStopScreen: Ошибка при обработке существующих координат', error);
+                // Ошибка при обработке существующих координат
             }
         }
         setMapModalVisible(true);
@@ -299,8 +241,6 @@ export const EditStopScreen = ({ route, navigation }) => {
     }, []);
 
     const handleClose = () => {
-        logData('Закрытие редактирования остановки', { stopId });
-        
         if (navigation.canGoBack()) {
             navigation.goBack();
         } else {
@@ -309,38 +249,16 @@ export const EditStopScreen = ({ route, navigation }) => {
     };
 
     const handleSave = (formData) => {
-        logData('Сохранение данных остановки из EditStopScreen', { stopId });
-
         return dispatch(updateStop({ stopId, stopData: formData }))
             .unwrap()
             .then((result) => {
-                logData('Успешное сохранение остановки', { stopId, result });
                 return result;
             })
             .catch((error) => {
-                logData('Ошибка при сохранении остановки', { stopId, error });
                 throw error;
             });
     };
 
-    // Сохраняем координаты в память устройства для отладки
-    useEffect(() => {
-        if (currentLocation) {
-            try {
-                logData('EditStopScreen: Сохранены координаты для остановки', {
-                    stopId,
-                    coordinates: currentLocation,
-                    timestamp: new Date().toISOString(),
-                    instanceId: screenInstanceId
-                });
-            } catch (error) {
-                logData('EditStopScreen: Ошибка при сохранении координат', {
-                    error: error.message,
-                    instanceId: screenInstanceId
-                });
-            }
-        }
-    }, [currentLocation, stopId]);
 
     if (!initialLoadComplete || (isDriverLoading && !stopData)) {
         return <LoadingState message="Загрузка данных..." />;

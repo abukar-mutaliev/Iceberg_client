@@ -660,7 +660,9 @@ export const EditStopForm = ({
                             <View style={[styles.inputUnderline, errors.startTime ? styles.underlineError : null]} />
                           </View>
                         </View>
-                        {errors.startTime && typeof errors.startTime === 'string' && errors.startTime.trim() ? <Text style={styles.errorText}>{String(errors.startTime)}</Text> : null}
+                        {errors.startTime && typeof errors.startTime === 'string' && errors.startTime.trim() ? (
+                          <Text style={styles.errorText}>{String(errors.startTime)}</Text>
+                        ) : null}
                       </View>
                     </View>
 
@@ -706,7 +708,9 @@ export const EditStopForm = ({
                           placeholder="Введите адрес"
                         />
                         <View style={[styles.inputUnderline, errors.address ? styles.underlineError : null]}/>
-                        {errors.address && typeof errors.address === 'string' && errors.address.trim() ? <Text style={styles.errorText}>{String(errors.address)}</Text> : null}
+                        {errors.address && typeof errors.address === 'string' && errors.address.trim() ? (
+                          <Text style={styles.errorText}>{String(errors.address)}</Text>
+                        ) : null}
                       </View>
 
                       <View style={styles.inputGroup}>
@@ -723,7 +727,9 @@ export const EditStopForm = ({
                           placeholder="Введите модель"
                         />
                         <View style={[styles.inputUnderline, errors.truckModel ? styles.underlineError : null]}/>
-                        {errors.truckModel && typeof errors.truckModel === 'string' && errors.truckModel.trim() ? <Text style={styles.errorText}>{String(errors.truckModel)}</Text> : null}
+                        {errors.truckModel && typeof errors.truckModel === 'string' && errors.truckModel.trim() ? (
+                          <Text style={styles.errorText}>{String(errors.truckModel)}</Text>
+                        ) : null}
                       </View>
 
                       {/* Блок для ввода номера транспорта */}
@@ -740,7 +746,9 @@ export const EditStopForm = ({
                           placeholder="А001АА 06"
                         />
                         <View style={[styles.inputUnderline, errors.truckNumber ? styles.underlineError : null]}/>
-                        {errors.truckNumber && typeof errors.truckNumber === 'string' && errors.truckNumber.trim() ? <Text style={styles.errorText}>{String(errors.truckNumber)}</Text> : null}
+                        {errors.truckNumber && typeof errors.truckNumber === 'string' && errors.truckNumber.trim() ? (
+                          <Text style={styles.errorText}>{String(errors.truckNumber)}</Text>
+                        ) : null}
                       </View>
                     </View>
                   </View>
@@ -748,25 +756,31 @@ export const EditStopForm = ({
                   {/* Блок для выбора времени начала и окончания стоянки (напротив друг друга) */}
                   <View style={styles.timeContainer}>
                     <View style={[styles.timeSection, styles.timeLeft]}>
-                      <View style={[styles.timeRow, { width: 320 }]}> {/* Исправлено с "90%" на числовое значение */}
+                      {/* Исправлено с "90%" на числовое значение */}
+                      <View style={[styles.timeRow, { width: 320 }]}>
                         <View style={[styles.inputGroup, { flex: 1 }]}>
                           <Text style={styles.sublabel}>Начало</Text>
                           <CustomTimePicker date={startTime} onTimeChange={onStartTimeChange} />
                           <View style={[styles.inputUnderline, errors.startTime ? styles.underlineError : null]} />
                         </View>
                       </View>
-                      {errors.startTime && typeof errors.startTime === 'string' && errors.startTime.trim() ? <Text style={styles.errorText}>{String(errors.startTime)}</Text> : null}
+                      {errors.startTime && typeof errors.startTime === 'string' && errors.startTime.trim() ? (
+                        <Text style={styles.errorText}>{String(errors.startTime)}</Text>
+                      ) : null}
                     </View>
 
                     <View style={[styles.timeSection, styles.timeRight]}>
-                      <View style={[styles.timeRow, { width: 320 }]}> {/* Исправлено с "90%" на числовое значение */}
+                      {/* Исправлено с "90%" на числовое значение */}
+                      <View style={[styles.timeRow, { width: 320 }]}>
                         <View style={[styles.inputGroup, { flex: 1}]}>
                           <Text style={styles.sublabel}>Окончание</Text>
                           <CustomTimePicker date={endTime} onTimeChange={onEndTimeChange} />
                           <View style={[styles.inputUnderline, errors.endTime ? styles.underlineError : null]} />
                         </View>
                       </View>
-                      {errors.endTime && typeof errors.endTime === 'string' && errors.endTime.trim() ? <Text style={styles.errorText}>{String(errors.endTime)}</Text> : null}
+                      {errors.endTime && typeof errors.endTime === 'string' && errors.endTime.trim() ? (
+                        <Text style={styles.errorText}>{String(errors.endTime)}</Text>
+                      ) : null}
                     </View>
                   </View>
 

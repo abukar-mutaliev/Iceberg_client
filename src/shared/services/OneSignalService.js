@@ -3,7 +3,7 @@
  * Работает во всех типах сборок: development, preview, production
  */
 
-import { Platform, AppState } from 'react-native';
+import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -39,113 +39,59 @@ class OneSignalService {
         this.isInitialized = false;
         this.currentUserId = null;
         this.subscriptionId = null;
-        this.version = '2.0.0-fix-player-id'; // Версия с исправлениями
     }
 
     // Инициализация OneSignal
     async initialize(appId) {
         try {
+            console.log('[OneSignal] 🔧 initialize() вызван с appId:', appId?.substring(0, 10) + '...');
+            
             if (this.isInitialized) {
-                console.log('[OneSignal] Уже инициализирован');
+                console.log('[OneSignal] ✅ Уже инициализирован');
                 return true;
             }
 
             const oneSignal = getOneSignal();
             if (!oneSignal) {
-                console.warn('[OneSignal] SDK не доступен');
+                console.warn('[OneSignal] ⚠️ OneSignal SDK не доступен');
                 return false;
             }
 
             if (!appId) {
-                console.error('[OneSignal] App ID не предоставлен');
+                console.error('[OneSignal] ❌ OneSignal App ID не предоставлен');
                 return false;
             }
 
-            console.log('[OneSignal] Начинаем инициализацию с App ID:', appId);
-
             // Инициализируем OneSignal
+            console.log('[OneSignal] 📱 Вызываем oneSignal.initialize()');
             oneSignal.initialize(appId);
 
-            console.log('[OneSignal] SDK инициализирован, запрашиваем разрешения...');
-
             // Запрашиваем разрешения
+            console.log('[OneSignal] 🔔 Запрашиваем разрешения');
             const hasPermission = await oneSignal.Notifications.requestPermission(true);
-
-            console.log('[OneSignal] Разрешения получены:', hasPermission);
+            console.log('[OneSignal] 🔔 Разрешения:', hasPermission ? 'GRANTED' : 'DENIED');
 
             if (!hasPermission) {
-                console.warn('[OneSignal] Разрешения не предоставлены, но продолжаем');
+                console.warn('[OneSignal] ⚠️ Разрешения не предоставлены');
+                // Продолжаем инициализацию даже без разрешений
             }
 
-            // КРИТИЧЕСКИ ВАЖНО: Явно подписываем на уведомления (opt-in)
-            // В продакшн-билдах без этого Player ID создается, но устройство не подписано!
-            console.log('[OneSignal] Подписываем устройство на уведомления (opt-in)...');
-            try {
-                if (oneSignal.User?.pushSubscription?.optIn) {
-                    await oneSignal.User.pushSubscription.optIn();
-                    console.log('[OneSignal] ✅ Устройство подписано на уведомления');
-                } else {
-                    console.warn('[OneSignal] ⚠️ Метод optIn не доступен, попробуем альтернативный способ');
-                    // Альтернативный способ для старых версий SDK
-                    if (oneSignal.User?.pushSubscription?.setOptedIn) {
-                        await oneSignal.User.pushSubscription.setOptedIn(true);
-                        console.log('[OneSignal] ✅ Устройство подписано через setOptedIn');
-                    }
-                }
-
-                // Проверяем статус подписки
-                const optedIn = await this.getOptedIn();
-                console.log('[OneSignal] Статус подписки после opt-in:', optedIn);
-                
-                if (!optedIn) {
-                    console.error('[OneSignal] ❌ Не удалось подписать устройство!');
-                    console.error('[OneSignal] Это может быть причиной "All included players are not subscribed"');
-                }
-            } catch (optInError) {
-                console.error('[OneSignal] Ошибка opt-in:', optInError.message);
-            }
-
-            // Настройка канала уведомлений для Android (heads-up уведомления)
-            if (Platform.OS === 'android') {
-                try {
-                    console.log('[OneSignal] Настройка канала уведомлений для Android...');
-                    
-                    // OneSignal SDK автоматически создаст канал с высоким приоритетом
-                    // когда мы отправляем уведомления с priority = 10 на сервере
-                    // Канал будет создан автоматически при первом уведомлении
-                    
-                    // Для heads-up уведомлений OneSignal использует канал с IMPORTANCE_HIGH
-                    // если в payload указан priority = 10
-                    // Также можно использовать канал, созданный нативно в MainApplication.kt
-                    // но нужно указать его ID в payload на сервере
-                    
-                    // Проверяем, доступен ли метод для настройки канала через OneSignal SDK
-                    if (oneSignal.Notifications && typeof oneSignal.Notifications.setNotificationChannel === 'function') {
-                        try {
-                            // OneSignal SDK может иметь метод для настройки канала
-                            // Но в React Native OneSignal SDK это обычно не требуется
-                            console.log('[OneSignal] OneSignal SDK будет использовать канал автоматически');
-                        } catch (e) {
-                            console.log('[OneSignal] Используется автоматическое создание канала');
-                        }
-                    }
-                    
-                    console.log('[OneSignal] Канал будет создан автоматически при первом уведомлении с priority=10');
-                } catch (channelError) {
-                    console.warn('[OneSignal] Ошибка настройки канала (не критично):', channelError.message);
-                }
+            // ВАЖНО: Принудительно подписываем после получения разрешений
+            if (hasPermission && oneSignal.User?.pushSubscription?.optIn) {
+                console.log('[OneSignal] ✅ Вызываем optIn() после получения разрешений');
+                await oneSignal.User.pushSubscription.optIn();
             }
 
             // Настройка обработчиков
             this.setupNotificationHandlers(oneSignal);
 
             this.isInitialized = true;
+            console.log('[OneSignal] ✅ Инициализация завершена успешно');
             
-            console.log('[OneSignal] Инициализация завершена успешно');
             return true;
 
         } catch (error) {
-            console.error('[OneSignal] Ошибка инициализации:', error);
+            console.error('[OneSignal] ❌ Ошибка инициализации:', error);
             return false;
         }
     }
@@ -154,122 +100,34 @@ class OneSignalService {
     setupNotificationHandlers(oneSignal) {
         try {
             if (!oneSignal) {
-                console.warn('[OneSignal] SDK не доступен для настройки обработчиков');
+                // Временно отключены логи OneSignal
+                // console.warn('OneSignal не доступен для настройки обработчиков');
                 return;
             }
 
-            console.log('[OneSignal] Настраиваем обработчики уведомлений...');
-
             // Обработчик нажатий на уведомления
             oneSignal.Notifications.addEventListener('click', (event) => {
-                console.log('[OneSignal] Уведомление нажато:', event);
                 const data = event.notification.additionalData;
                 if (data) {
-                    // Обновляем статус сообщения на DELIVERED при получении push-уведомления
-                    this.handleChatMessagePushNotification(data);
                     this.handleNotificationNavigation(data);
                 }
             });
 
             // Обработчик получения уведомлений в foreground
             oneSignal.Notifications.addEventListener('foregroundWillDisplay', (event) => {
-                console.log('[OneSignal] Уведомление получено в foreground:', event);
-                const data = event.notification?.additionalData;
+                console.log('[OneSignal] Уведомление в foreground:', event.notification);
                 
-                if (data) {
-                    // Для уведомлений о сообщениях чата проверяем, нужно ли показывать уведомление
-                    if (data.type === 'CHAT_MESSAGE' && data.roomId) {
-                        // Проверяем состояние приложения и активную комнату
-                        const appState = AppState.currentState;
-                        const isAppInForeground = appState === 'active';
-                        
-                        // Ленивая загрузка store для избежания циклических зависимостей
-                        try {
-                            const { store } = require('@app/store/store');
-                            const activeRoomId = store.getState()?.chat?.activeRoomId;
-                            const notificationRoomId = parseInt(data.roomId, 10);
-                            
-                            // Если приложение в foreground и комната активна - не показываем уведомление
-                            if (isAppInForeground && activeRoomId === notificationRoomId) {
-                                console.log('[OneSignal] Пропускаем уведомление - комната активна в foreground:', {
-                                    roomId: notificationRoomId,
-                                    activeRoomId,
-                                    appState
-                                });
-                                // Отменяем показ уведомления
-                                event.preventDefault();
-                                // Но все равно обновляем статус сообщения
-                                this.handleChatMessagePushNotification(data);
-                                return;
-                            }
-                        } catch (storeError) {
-                            // Если store недоступен, показываем уведомление
-                            console.warn('[OneSignal] Не удалось проверить активную комнату:', storeError.message);
-                        }
-                    }
-                    
-                    // Обновляем статус сообщения на DELIVERED при получении push-уведомления
-                    this.handleChatMessagePushNotification(data);
-                }
+                // НЕ блокируем системное уведомление - позволяем Android показывать heads-up
+                // Это работает как в WhatsApp - системные уведомления показываются даже когда приложение активно
+                // event.preventDefault(); // УБРАНО - теперь показываем системные уведомления
+                
+                console.log('[OneSignal] Показываем системное heads-up уведомление (как в WhatsApp)');
+                // Системное уведомление будет показано автоматически, так как мы не вызываем preventDefault()
             });
 
-            // Обработчик получения уведомлений в background
-            // ВАЖНО: Этот обработчик вызывается когда приложение в background или закрыто
-            // OneSignal автоматически покажет heads-up уведомления, если параметры правильные
-            oneSignal.Notifications.addEventListener('received', (event) => {
-                console.log('[OneSignal] Уведомление получено в background:', event);
-                const data = event.notification?.additionalData;
-                
-                if (data && data.type === 'CHAT_MESSAGE') {
-                    console.log('[OneSignal] Background уведомление чата получено:', {
-                        roomId: data.roomId,
-                        messageId: data.messageId,
-                        appState: AppState.currentState
-                    });
-                    
-                    // Обновляем статус сообщения на DELIVERED
-                    this.handleChatMessagePushNotification(data);
-                }
-            });
-
-            console.log('[OneSignal] ✅ Обработчики настроены');
-
         } catch (error) {
-            console.error('[OneSignal] Ошибка настройки обработчиков:', error);
-        }
-    }
-
-    // Обработка push-уведомления о сообщении - обновление статуса на DELIVERED
-    handleChatMessagePushNotification(data) {
-        try {
-            // Проверяем, что это уведомление о сообщении чата
-            if (data?.type === 'CHAT_MESSAGE' && data?.messageId && data?.roomId) {
-                const messageId = parseInt(data.messageId, 10);
-                const roomId = parseInt(data.roomId, 10);
-                
-                if (messageId && roomId) {
-                    console.log('[OneSignal] Обновляем статус сообщения на DELIVERED:', { messageId, roomId });
-                    
-                    // Ленивая загрузка store и action для избежания циклических зависимостей
-                    try {
-                        // Динамический импорт для избежания циклических зависимостей
-                        const { store } = require('@app/store/store');
-                        const { updateMessageStatus } = require('@entities/chat/model/slice');
-                        
-                        // Обновляем статус сообщения на DELIVERED
-                        store.dispatch(updateMessageStatus({
-                            roomId,
-                            messageId,
-                            status: 'DELIVERED',
-                            deliveredAt: new Date().toISOString()
-                        }));
-                    } catch (importError) {
-                        console.warn('[OneSignal] Не удалось обновить статус сообщения (store недоступен):', importError.message);
-                    }
-                }
-            }
-        } catch (error) {
-            console.error('[OneSignal] Ошибка при обновлении статуса сообщения:', error);
+            // Временно отключены логи OneSignal
+            // console.error('Ошибка настройки OneSignal обработчиков:', error);
         }
     }
 
@@ -302,88 +160,57 @@ class OneSignalService {
     // Инициализация для пользователя
     async initializeForUser(user) {
         try {
-            console.log('[OneSignal] ===== Начинаем инициализацию для пользователя =====');
-            console.log('[OneSignal] User ID:', user.id);
-
-            // Всегда проверяем инициализацию заново для пользователя
-            const appId =
-                process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ||
-                (Constants?.expoConfig?.extra?.oneSignalAppId ?? null);
-
-            console.log('[OneSignal] Инициализация с App ID:', appId);
+            console.log('[OneSignal] 🚀 initializeForUser начата для userId:', user.id);
             
-            const initResult = await this.initialize(appId);
-            if (!initResult) {
-                console.error('[OneSignal] ❌ Не удалось инициализировать SDK');
-                return false;
-            }
-
-            console.log('[OneSignal] ✅ SDK инициализирован');
-
-            // Устанавливаем внешний ID пользователя
-            console.log('[OneSignal] Устанавливаем External User ID...');
-            await this.setExternalUserId(user.id.toString());
-
-            // КРИТИЧЕСКИ ВАЖНО: Проверяем и активируем подписку после установки User ID
-            console.log('[OneSignal] Проверяем статус подписки после установки User ID...');
-            let optedIn = await this.getOptedIn();
-            console.log('[OneSignal] Текущий статус opt-in:', optedIn);
-            
-            if (!optedIn) {
-                console.warn('[OneSignal] ⚠️ Устройство не подписано! Принудительно подписываем...');
-                const oneSignal = getOneSignal();
-                if (oneSignal?.User?.pushSubscription?.optIn) {
-                    try {
-                        await oneSignal.User.pushSubscription.optIn();
-                        console.log('[OneSignal] ✅ Устройство подписано');
-                        
-                        // Проверяем еще раз
-                        optedIn = await this.getOptedIn();
-                        console.log('[OneSignal] Статус opt-in после подписки:', optedIn);
-                    } catch (optInError) {
-                        console.error('[OneSignal] ❌ Ошибка подписки:', optInError.message);
-                    }
-                }
+            if (!this.isInitialized) {
+                // Пытаемся инициализировать OneSignal с App ID
+                const appId =
+                    process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ||
+                    (Constants?.expoConfig?.extra?.oneSignalAppId ?? null);
+                console.log('[OneSignal] 📱 App ID:', appId);
                 
-                if (!optedIn) {
-                    console.error('[OneSignal] ❌ НЕ УДАЛОСЬ ПОДПИСАТЬ УСТРОЙСТВО!');
-                    console.error('[OneSignal] Push-уведомления работать НЕ БУДУТ!');
-                }
-            }
-
-            // Даем время OneSignal зарегистрировать устройство (важно!)
-            console.log('[OneSignal] Ожидаем регистрацию устройства (5 секунд)...');
-            await new Promise(resolve => setTimeout(resolve, 5000));
-
-            // Получаем subscription ID с повторными попытками
-            console.log('[OneSignal] Получаем Subscription ID...');
-            const subscriptionId = await this.getSubscriptionId();
-            
-            if (subscriptionId) {
-                console.log('[OneSignal] ✅ Player ID получен:', subscriptionId.substring(0, 8) + '...');
-                
-                // Сохраняем на сервер
-                console.log('[OneSignal] Сохраняем токен на сервер...');
-                const saveResult = await this.saveSubscriptionToServer(subscriptionId, user.id);
-                
-                if (!saveResult) {
-                    console.warn('[OneSignal] ⚠️ Не удалось сохранить токен на сервер');
+                const initResult = await this.initialize(appId);
+                if (!initResult) {
+                    console.log('[OneSignal] ❌ Инициализация не удалась');
                     return false;
                 }
-                
-                console.log('[OneSignal] ✅ Токен сохранен на сервер');
+            }
+
+            // Устанавливаем внешний ID пользователя
+            console.log('[OneSignal] 👤 Устанавливаем External User ID:', user.id.toString());
+            await this.setExternalUserId(user.id.toString());
+
+            // ВАЖНО: Принудительно подписываем пользователя на уведомления
+            const oneSignal = getOneSignal();
+            if (oneSignal?.User?.pushSubscription?.optIn) {
+                console.log('[OneSignal] ✅ Вызываем optIn() для подписки');
+                await oneSignal.User.pushSubscription.optIn();
+            }
+
+            // Получаем subscription ID
+            const subscriptionId = await this.getSubscriptionId();
+            console.log('[OneSignal] 🎫 Subscription ID:', subscriptionId);
+            
+            if (subscriptionId) {
+                // Сохраняем на сервер
+                const saveResult = await this.saveSubscriptionToServer(subscriptionId, user.id);
+                if (!saveResult) {
+                    console.log('[OneSignal] ❌ Не удалось сохранить subscription на сервер');
+                    return false;
+                }
+                console.log('[OneSignal] ✅ Subscription сохранен на сервер');
             } else {
-                console.error('[OneSignal] ❌ Player ID не получен после всех попыток');
+                console.warn('[OneSignal] ⚠️ No subscription ID received');
                 return false;
             }
 
             this.currentUserId = user.id;
-            console.log('[OneSignal] ===== Инициализация завершена успешно =====');
+            console.log('[OneSignal] ✅ initializeForUser завершена успешно');
 
             return true;
 
         } catch (error) {
-            console.error('[OneSignal] ❌ Критическая ошибка initializeForUser:', error);
+            console.error('[OneSignal] ❌ Ошибка initializeForUser:', error);
             return false;
         }
     }
@@ -393,75 +220,48 @@ class OneSignalService {
         try {
             const oneSignal = getOneSignal();
             if (!oneSignal) {
-                console.warn('[OneSignal] SDK не доступен для установки User ID');
+                // Временно отключены логи OneSignal
+                // console.warn('OneSignal не доступен для установки User ID');
                 return;
             }
 
             // Проверяем доступность метода login
             if (!oneSignal.login || typeof oneSignal.login !== 'function') {
-                console.warn('[OneSignal] Метод login не доступен');
+                // Временно отключены логи OneSignal
+                // console.warn('OneSignal.login не доступен');
                 return;
             }
 
-            console.log('[OneSignal] Устанавливаем External User ID:', userId);
             await oneSignal.login(userId);
-            console.log('[OneSignal] External User ID установлен успешно');
         } catch (error) {
-            console.error('[OneSignal] Ошибка установки External User ID:', error);
+            // Временно отключены логи OneSignal
+            // console.error('Ошибка установки External User ID:', error);
         }
     }
 
-    // Получение Subscription ID с повторными попытками
-    async getSubscriptionId(retries = 5, delayMs = 2000) {
+    // Получение Subscription ID
+    async getSubscriptionId() {
         try {
             const oneSignal = getOneSignal();
             if (!oneSignal) {
-                console.warn('[OneSignal] SDK не доступен для получения Subscription ID');
+                // Временно отключены логи OneSignal
+                // console.warn('OneSignal не доступен для получения Subscription ID');
                 return null;
             }
 
             // Проверяем доступность методов
             if (!oneSignal.User?.pushSubscription?.getIdAsync) {
-                console.warn('[OneSignal] pushSubscription.getIdAsync не доступен');
+                // Временно отключены логи OneSignal
+                // console.warn('OneSignal.User.pushSubscription.getIdAsync не доступен');
                 return null;
             }
 
-            console.log('[OneSignal] Получение Subscription ID, попыток осталось:', retries);
-
-            // Пытаемся получить subscription ID
-            for (let attempt = 1; attempt <= retries; attempt++) {
-                try {
-                    console.log(`[OneSignal] Попытка ${attempt}/${retries} получить Player ID...`);
-                    
-                    const subscriptionId = await oneSignal.User.pushSubscription.getIdAsync();
-                    
-                    if (subscriptionId) {
-                        console.log('[OneSignal] ✅ Player ID успешно получен:', subscriptionId.substring(0, 8) + '...');
-                        this.subscriptionId = subscriptionId;
-                        return subscriptionId;
-                    }
-                    
-                    console.log(`[OneSignal] Player ID null на попытке ${attempt}/${retries}, ожидаем ${delayMs}ms...`);
-                    
-                    // Если это не последняя попытка, ждем перед следующей
-                    if (attempt < retries) {
-                        await new Promise(resolve => setTimeout(resolve, delayMs));
-                    }
-                } catch (attemptError) {
-                    console.error(`[OneSignal] Ошибка на попытке ${attempt}/${retries}:`, attemptError.message);
-                    
-                    // Если это не последняя попытка, ждем перед следующей
-                    if (attempt < retries) {
-                        await new Promise(resolve => setTimeout(resolve, delayMs));
-                    }
-                }
-            }
-            
-            console.error('[OneSignal] ❌ Не удалось получить Player ID после всех попыток');
-            return null;
-            
+            const deviceState = await oneSignal.User.pushSubscription.getIdAsync();
+            this.subscriptionId = deviceState;
+            return deviceState;
         } catch (error) {
-            console.error('[OneSignal] Критическая ошибка получения Subscription ID:', error);
+            // Временно отключены логи OneSignal
+            // console.error('Ошибка получения Subscription ID:', error);
             return null;
         }
     }
@@ -470,20 +270,17 @@ class OneSignalService {
     async saveSubscriptionToServer(subscriptionId, userId) {
         try {
             if (!subscriptionId) {
-                console.error('[OneSignal] subscriptionId пустой или undefined');
+                // Временно отключены логи OneSignal
+                // console.error('subscriptionId пустой или undefined');
                 return false;
             }
-
-            console.log('[OneSignal] Сохраняем токен на сервер...', {
-                subscriptionId: subscriptionId.substring(0, 8) + '...',
-                userId
-            });
 
             // Импортируем API только когда нужно (чтобы избежать циклических зависимостей)
             const { createProtectedRequest } = require('@shared/api/api');
             
             if (!createProtectedRequest) {
-                console.error('[OneSignal] createProtectedRequest не найден');
+                // Временно отключены логи OneSignal
+                // console.error('createProtectedRequest не найден');
                 return false;
             }
 
@@ -494,27 +291,23 @@ class OneSignalService {
                 tokenType: 'onesignal'
             };
             
-            console.log('[OneSignal] Отправляем запрос на сервер:', {
-                ...tokenData,
-                token: tokenData.token.substring(0, 8) + '...'
-            });
-            
             const response = await createProtectedRequest('post', '/api/push-tokens', tokenData);
 
             if (response) {
-                console.log('[OneSignal] ✅ Токен успешно сохранен на сервер');
                 return true;
             } else {
-                console.warn('[OneSignal] ⚠️ Пустой ответ от сервера');
+                // Временно отключены логи OneSignal
+                // console.warn('Пустой ответ от сервера');
                 return false;
             }
 
         } catch (error) {
-            console.error('[OneSignal] ❌ Ошибка сохранения subscription:', {
-                message: error.message,
-                response: error.response?.data,
-                status: error.response?.status
-            });
+            // Временно отключены логи OneSignal
+            // console.error('Ошибка сохранения OneSignal subscription:', {
+            //     message: error.message,
+            //     response: error.response?.data,
+            //     status: error.response?.status
+            // });
             return false;
         }
     }
@@ -522,28 +315,21 @@ class OneSignalService {
     // Очистка при выходе пользователя с деактивацией токена на сервере
     async clearUserContext() {
         try {
-            console.log('[OneSignal] Начинаем очистку контекста пользователя...');
-            
             // Сначала получаем актуальный Player ID и деактивируем токен на сервере
             try {
-                const currentPlayerId = this.subscriptionId || await this.getSubscriptionId(2, 1000);
+                const currentPlayerId = this.subscriptionId || await this.getSubscriptionId();
                 
                 if (currentPlayerId) {
-                    console.log('[OneSignal] Деактивируем токен на сервере:', currentPlayerId.substring(0, 8) + '...');
-                    
                     // Импортируем API только когда нужно
                     const { createProtectedRequest } = require('@shared/api/api');
                     
                     await createProtectedRequest('put', '/api/push-tokens/deactivate', {
                         token: currentPlayerId
                     });
-                    
-                    console.log('[OneSignal] ✅ Токен деактивирован на сервере');
-                } else {
-                    console.log('[OneSignal] Player ID отсутствует, пропускаем деактивацию на сервере');
                 }
             } catch (deactivateError) {
-                console.error('[OneSignal] Ошибка деактивации токена на сервере:', deactivateError.message);
+                // Временно отключены логи OneSignal
+                // console.error('Ошибка деактивации OneSignal токена на сервере:', deactivateError.message);
                 // Продолжаем очистку даже если деактивация не удалась
             }
 
@@ -552,13 +338,12 @@ class OneSignalService {
             this.subscriptionId = null;
             this.isInitialized = false;
 
-            console.log('[OneSignal] ✅ Контекст очищен');
-
             // Во время выхода из системы не пытаемся использовать OneSignal модуль
             // чтобы избежать ошибок "Could not load RNOneSignal native module"
 
         } catch (error) {
-            console.error('[OneSignal] Ошибка очистки контекста:', error);
+            // Временно отключены логи OneSignal
+            // console.error('Ошибка очистки OneSignal контекста:', error);
             // Гарантируем очистку локального состояния даже при ошибке
             this.currentUserId = null;
             this.subscriptionId = null;
@@ -572,14 +357,8 @@ class OneSignalService {
             isInitialized: this.isInitialized,
             hasSubscription: !!this.subscriptionId,
             currentUserId: this.currentUserId,
-            service: 'OneSignal',
-            version: this.version || '1.0.0-old' // Для совместимости
+            service: 'OneSignal'
         };
-    }
-
-    // Получение версии сервиса
-    getVersion() {
-        return this.version || '1.0.0-old';
     }
 
     // Отправка тега пользователю
@@ -587,159 +366,28 @@ class OneSignalService {
         try {
             const oneSignal = getOneSignal();
             if (!oneSignal) {
-                console.warn('[OneSignal] SDK не доступен для установки тегов');
+                // Временно отключены логи OneSignal
+                // console.warn('OneSignal не доступен для установки тегов');
                 return;
             }
 
             // Проверяем доступность метода addTags
             if (!oneSignal.User?.addTags || typeof oneSignal.User.addTags !== 'function') {
-                console.warn('[OneSignal] User.addTags не доступен');
+                // Временно отключены логи OneSignal
+                // console.warn('OneSignal.User.addTags не доступен');
                 return;
             }
 
-            console.log('[OneSignal] Устанавливаем теги:', tags);
             await oneSignal.User.addTags(tags);
-            console.log('[OneSignal] ✅ Теги установлены успешно');
         } catch (error) {
-            console.error('[OneSignal] Ошибка установки тегов:', error);
+            // Временно отключены логи OneSignal
+            // console.error('Ошибка установки OneSignal тегов:', error);
         }
     }
 
     // Получение текущего subscription ID
     getCurrentSubscriptionId() {
         return this.subscriptionId;
-    }
-
-    // Получение FCM Push Token (для диагностики)
-    async getPushToken() {
-        try {
-            const oneSignal = getOneSignal();
-            if (!oneSignal) {
-                console.warn('[OneSignal] SDK не доступен для получения Push Token');
-                return null;
-            }
-
-            // Проверяем доступность метода
-            if (!oneSignal.User?.pushSubscription?.getTokenAsync) {
-                console.warn('[OneSignal] pushSubscription.getTokenAsync не доступен');
-                return null;
-            }
-
-            console.log('[OneSignal] Получаем FCM Push Token...');
-            const pushToken = await oneSignal.User.pushSubscription.getTokenAsync();
-            
-            if (pushToken) {
-                console.log('[OneSignal] ✅ FCM Token получен:', pushToken.substring(0, 20) + '...');
-            } else {
-                console.log('[OneSignal] FCM Token null');
-            }
-            
-            return pushToken;
-        } catch (error) {
-            console.error('[OneSignal] Ошибка получения Push Token:', error);
-            return null;
-        }
-    }
-
-    // Проверка статуса подписки
-    async getOptedIn() {
-        try {
-            const oneSignal = getOneSignal();
-            if (!oneSignal) {
-                return false;
-            }
-
-            if (!oneSignal.User?.pushSubscription?.getOptedIn) {
-                return false;
-            }
-
-            const optedIn = await oneSignal.User.pushSubscription.getOptedIn();
-            console.log('[OneSignal] Opted In статус:', optedIn);
-            return optedIn;
-        } catch (error) {
-            console.error('[OneSignal] Ошибка получения Opted In статуса:', error);
-            return false;
-        }
-    }
-
-    // Явная подписка на уведомления (opt-in)
-    async optIn() {
-        try {
-            console.log('[OneSignal] Подписываем устройство на уведомления...');
-            
-            const oneSignal = getOneSignal();
-            if (!oneSignal) {
-                console.error('[OneSignal] SDK не доступен');
-                return false;
-            }
-
-            // Проверяем текущий статус
-            const currentStatus = await this.getOptedIn();
-            console.log('[OneSignal] Текущий статус opt-in:', currentStatus);
-
-            if (currentStatus) {
-                console.log('[OneSignal] ✅ Устройство уже подписано');
-                return true;
-            }
-
-            // Подписываем через optIn()
-            if (oneSignal.User?.pushSubscription?.optIn) {
-                await oneSignal.User.pushSubscription.optIn();
-                console.log('[OneSignal] Вызван метод optIn()');
-            } else if (oneSignal.User?.pushSubscription?.setOptedIn) {
-                // Альтернативный способ для старых версий SDK
-                await oneSignal.User.pushSubscription.setOptedIn(true);
-                console.log('[OneSignal] Вызван метод setOptedIn(true)');
-            } else {
-                console.error('[OneSignal] Методы opt-in не доступны в SDK');
-                return false;
-            }
-
-            // Проверяем результат
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            const newStatus = await this.getOptedIn();
-            console.log('[OneSignal] Новый статус opt-in:', newStatus);
-
-            if (newStatus) {
-                console.log('[OneSignal] ✅ Устройство успешно подписано!');
-                return true;
-            } else {
-                console.error('[OneSignal] ❌ Не удалось подписать устройство');
-                return false;
-            }
-        } catch (error) {
-            console.error('[OneSignal] Ошибка подписки (opt-in):', error);
-            return false;
-        }
-    }
-
-    // Отписка от уведомлений (opt-out)
-    async optOut() {
-        try {
-            console.log('[OneSignal] Отписываем устройство от уведомлений...');
-            
-            const oneSignal = getOneSignal();
-            if (!oneSignal) {
-                console.error('[OneSignal] SDK не доступен');
-                return false;
-            }
-
-            if (oneSignal.User?.pushSubscription?.optOut) {
-                await oneSignal.User.pushSubscription.optOut();
-                console.log('[OneSignal] ✅ Устройство отписано');
-                return true;
-            } else if (oneSignal.User?.pushSubscription?.setOptedIn) {
-                await oneSignal.User.pushSubscription.setOptedIn(false);
-                console.log('[OneSignal] ✅ Устройство отписано через setOptedIn(false)');
-                return true;
-            } else {
-                console.error('[OneSignal] Методы opt-out не доступны в SDK');
-                return false;
-            }
-        } catch (error) {
-            console.error('[OneSignal] Ошибка отписки (opt-out):', error);
-            return false;
-        }
     }
 }
 

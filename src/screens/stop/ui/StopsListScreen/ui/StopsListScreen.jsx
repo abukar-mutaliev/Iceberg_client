@@ -19,6 +19,7 @@ import { InteractiveMap } from "@shared/ui/InteractiveMapIngushetia";
 import { SearchIcon } from "@shared/ui/Icon/SearchIcon";
 import CloseIcon from "@shared/ui/Icon/Profile/CloseIcon";
 import { navigationRef } from '@shared/utils/NavigationRef';
+import { Ionicons } from '@expo/vector-icons';
 
 export const StopsListScreen = ({ navigation }) => {
     const dispatch = useDispatch();
@@ -26,17 +27,17 @@ export const StopsListScreen = ({ navigation }) => {
 
     const { districtId: routeDistrictId, districtName: routeDistrictName, highlightStopId, fromScreen } = route.params || {};
 
-    // Логирование параметров для отладки
-    console.log('StopsListScreen: Route params:', route.params);
-    console.log('StopsListScreen: fromScreen param:', fromScreen);
-
     const stops = useSelector(selectStops);
     const loading = useSelector(selectStopLoading);
     const error = useSelector(selectStopError);
+    const userRole = useSelector(state => state.auth?.user?.role);
 
     const highlightedStop = useSelector(state =>
         highlightStopId ? selectStopById(state, highlightStopId) : null
     );
+
+    // Проверка доступа к добавлению остановок (только для админов и водителей)
+    const canAddStop = userRole === 'ADMIN' || userRole === 'DRIVER';
 
     const [refreshing, setRefreshing] = useState(false);
     const [selectedDistrictId, setSelectedDistrictId] = useState(routeDistrictId || null);
@@ -61,10 +62,7 @@ export const StopsListScreen = ({ navigation }) => {
     }, [highlightStopId, highlightedStop, navigation]);
 
     const loadStops = () => {
-        dispatch(fetchAllStops())
-            .catch(error => {
-                console.error('Ошибка при загрузке остановок:', error);
-            });
+        dispatch(fetchAllStops());
     };
 
     const handleRefresh = () => {
@@ -72,9 +70,6 @@ export const StopsListScreen = ({ navigation }) => {
         dispatch(fetchAllStops())
             .finally(() => {
                 setRefreshing(false);
-            })
-            .catch(error => {
-                console.error('Ошибка при обновлении остановок:', error);
             });
     };
 
@@ -174,6 +169,10 @@ export const StopsListScreen = ({ navigation }) => {
         setSelectedDistrictName(null);
     };
 
+    const handleAddStop = () => {
+        navigation.navigate('AddStop');
+    };
+
     const renderSearchBar = () => (
         <View style={styles.searchContainer}>
             <View style={styles.searchInputContainer}>
@@ -269,42 +268,33 @@ export const StopsListScreen = ({ navigation }) => {
     };
 
     const handleGoBack = React.useCallback(() => {
-        console.log('StopsListScreen: handleGoBack called, fromScreen:', fromScreen);
-        
         if (fromScreen === 'AdminPanel') {
-            console.log('StopsListScreen: Navigating back to AdminPanel');
             // Возвращаемся в AdminPanel через корневой навигатор
             try {
                 // Используем navigationRef для доступа к корневому навигатору
                 if (navigationRef.current) {
-                    console.log('StopsListScreen: Using navigationRef to navigate to Admin');
                     navigationRef.current.navigate('Admin', {
                         screen: 'AdminPanel'
                     });
                     return true; // Важно для BackHandler - говорит что мы обработали событие
                 } else {
-                    console.log('StopsListScreen: navigationRef not available, trying parent navigator');
                     // Fallback - пробуем через родительский навигатор
                     const parentNav = navigation.getParent()?.getParent();
                     if (parentNav) {
-                        console.log('StopsListScreen: Using parent navigator');
                         parentNav.navigate('Admin', {
                             screen: 'AdminPanel'
                         });
                         return true;
                     } else {
-                        console.log('StopsListScreen: No parent navigator, using goBack');
                         navigation.goBack();
                         return true;
                     }
                 }
             } catch (error) {
-                console.error('StopsListScreen: Error navigating back to AdminPanel:', error);
                 navigation.goBack();
                 return true;
             }
         } else {
-            console.log('StopsListScreen: Standard goBack navigation');
             // Обычная навигация назад
             navigation.goBack();
             return true;
@@ -315,7 +305,6 @@ export const StopsListScreen = ({ navigation }) => {
     useFocusEffect(
         React.useCallback(() => {
             const onBackPress = () => {
-                console.log('StopsListScreen: Hardware back button pressed');
                 handleGoBack();
                 return true; // Предотвращаем стандартное поведение
             };
@@ -335,7 +324,6 @@ export const StopsListScreen = ({ navigation }) => {
         const unsubscribe = navigation.addListener('beforeRemove', (e) => {
             // Если мы пришли из AdminPanel и происходит попытка навигации назад
             if (fromScreen === 'AdminPanel') {
-                console.log('StopsListScreen: beforeRemove event triggered');
                 // Предотвращаем стандартное действие
                 e.preventDefault();
                 
@@ -363,7 +351,17 @@ export const StopsListScreen = ({ navigation }) => {
                     </Text>
                 </View>
 
-                <View style={styles.backButton} />
+                {canAddStop ? (
+                    <TouchableOpacity
+                        style={styles.addButton}
+                        onPress={handleAddStop}
+                        activeOpacity={0.7}
+                    >
+                        <Ionicons name="add" size={28} color={Color.blue3} />
+                    </TouchableOpacity>
+                ) : (
+                    <View style={styles.backButton} />
+                )}
             </View>
 
             {renderContent()}
@@ -389,6 +387,13 @@ const styles = StyleSheet.create({
     },
     backButton: {
         padding: 15,
+        width: 50,
+        height: 50,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    addButton: {
+        padding: 10,
         width: 50,
         height: 50,
         justifyContent: 'center',

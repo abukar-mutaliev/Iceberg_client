@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useMemo } from 'react';
-import { View, Text, Pressable, StyleSheet, Animated, Dimensions } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Dimensions, Keyboard, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
 import {
@@ -13,6 +13,7 @@ import {
 import { useCartAvailability } from '@entities/cart';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { selectWaitingStockCountCombined, selectSupplierWaitingStockCount } from '@entities/order';
+import { useTabBar } from '../../context';
 
 const { width } = Dimensions.get('window');
 
@@ -20,6 +21,7 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
     const insets = useSafeAreaInsets();
     const { isCartAvailable } = useCartAvailability();
     const { currentUser } = useAuth();
+    const { hideTabBar, showTabBar, isTabBarVisible } = useTabBar();
     
     // Логируем изменения активного таба
     const prevIndexRef = useRef(state.index);
@@ -35,6 +37,87 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
             prevIndexRef.current = state.index;
         }
     }, [state.index, state.routes]);
+    
+    // Отслеживаем состояние клавиатуры
+    useEffect(() => {
+        const keyboardWillShow = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+            (e) => {
+                // Проверяем, находимся ли мы в чате
+                const currentRoute = state.routes[state.index];
+                
+                // Детальная отладка структуры маршрутов
+                console.log('🔍 Route structure:', {
+                    currentRouteName: currentRoute?.name,
+                    hasState: !!currentRoute?.state,
+                    stateRoutes: currentRoute?.state?.routes?.map(r => r.name),
+                    nestedRoutes: currentRoute?.state?.routes?.map(r => ({
+                        name: r.name,
+                        hasState: !!r?.state,
+                        nestedNames: r?.state?.routes?.map(nr => nr.name)
+                    }))
+                });
+                
+                // Проверяем различные варианты навигации к чату
+                const isChatTab = currentRoute?.name === 'ChatList';
+                const hasChatRoom = currentRoute?.state?.routes?.some(route => 
+                    route.name === 'ChatRoom' || 
+                    route.name === 'ChatMain'
+                );
+                
+                // Дополнительная проверка для глубоко вложенных маршрутов
+                const hasNestedChatRoom = currentRoute?.state?.routes?.some(route => 
+                    route?.state?.routes?.some(nestedRoute => 
+                        nestedRoute.name === 'ChatRoom'
+                    )
+                );
+                
+                // Проверяем, находимся ли мы в поиске
+                const isSearchTab = currentRoute?.name === 'Search';
+                const hasSearchMain = currentRoute?.state?.routes?.some(route => 
+                    route.name === 'SearchMain'
+                );
+                
+                const isChatScreen = isChatTab || hasChatRoom || hasNestedChatRoom;
+                const isSearchScreen = isSearchTab || hasSearchMain;
+                
+                console.log('⌨️ Keyboard shown:', {
+                    currentTab: currentRoute?.name,
+                    isChatTab,
+                    hasChatRoom,
+                    hasNestedChatRoom,
+                    isChatScreen,
+                    isSearchTab,
+                    hasSearchMain,
+                    isSearchScreen,
+                    keyboardHeight: e.endCoordinates.height
+                });
+                
+                // Скрываем TabBar для чата или поиска
+                if (isChatScreen || isSearchScreen) {
+                    console.log('🔴 Hiding TabBar for:', isChatScreen ? 'chat' : 'search');
+                    hideTabBar();
+                } else {
+                    console.log('🟢 Not hiding TabBar - not in chat or search');
+                }
+            }
+        );
+
+        const keyboardWillHide = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+            () => {
+                if (__DEV__) {
+                    console.log('⌨️ Keyboard hidden');
+                }
+                showTabBar();
+            }
+        );
+
+        return () => {
+            keyboardWillShow.remove();
+            keyboardWillHide.remove();
+        };
+    }, [hideTabBar, showTabBar, state.index, state.routes]);
     
     // Получаем ID поставщика, если пользователь является поставщиком
     const supplierId = currentUser?.supplier?.id;
@@ -181,8 +264,14 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
         }
     };
 
+    // Если TabBar должен быть скрыт, не рендерим ничего
+    if (!isTabBarVisible) {
+        console.log('🚫 TabBar hidden - returning null');
+        return null;
+    }
+
     return (
-        <View style={[styles.menuDoneWithBack]}>
+        <View style={styles.menuDoneWithBack}>
             <View style={styles.iconMenuHomeParent}>
                 {visibleRoutes.map((route, visibleIndex) => {
                     const actualIndex = state.routes.findIndex(r => r.key === route.key);

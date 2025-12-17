@@ -286,9 +286,8 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
     return (
         <KeyboardAvoidingView
             style={styles.container}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-            enabled={Platform.OS === 'ios'}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={0}
         >
             <View style={styles.innerContainer}>
                 <Animated.View

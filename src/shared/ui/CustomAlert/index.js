@@ -1,3 +1,3 @@
 export { CustomAlert } from './CustomAlert';
-export { CustomAlertProvider, useGlobalAlert, useCustomAlert, GlobalAlert } from './CustomAlertProvider';
+export { CustomAlertProvider, CustomAlertContainer, useGlobalAlert, useCustomAlert, GlobalAlert } from './CustomAlertProvider';
 

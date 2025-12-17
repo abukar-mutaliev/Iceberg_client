@@ -96,8 +96,12 @@ import { getBaseUrl } from "@shared/api/api";
 import { linkingConfig } from '@shared/config/linkingConfig';
 import { DeepLinkHandler } from '@shared/ui/DeepLinkHandler';
 import { AppContainer } from "@app/providers/AppContainer/AppContainer";
-import { CustomTabBar } from "@widgets/navigation";
+import { CustomTabBar, TabBarProvider, useTabBar } from "@widgets/navigation";
 import { featureFlags } from "@shared/config/featureFlags";
+// InAppNotificationProvider больше не используется - показываем системные уведомления как в WhatsApp
+// import { InAppNotificationProvider } from '@shared/ui/InAppNotificationBanner';
+import OneSignalService from '@shared/services/OneSignalService';
+// import { useOneSignalInAppNotifications } from '@shared/hooks/useOneSignalInAppNotifications';
 
 // Transition Configs
 import {
@@ -367,6 +371,13 @@ const createNavigationFunctions = (navigation) => {
 // ============================================================================
 // ЧАСТЬ 5: Navigation Wrapper
 // ============================================================================
+
+// Компонент для инициализации InApp уведомлений - БОЛЬШЕ НЕ ИСПОЛЬЗУЕТСЯ
+// Теперь показываем системные уведомления как в WhatsApp
+// const InAppNotificationInitializer = ({ children }) => {
+//     useOneSignalInAppNotifications();
+//     return children;
+// };
 
 const NavigationWrapper = ({ children }) => {
     const navigation = useNavigation();
@@ -1117,32 +1128,56 @@ const SearchStackScreen = () => (
         />
     </SearchStack.Navigator>
 );
+const MainTabNavigatorContent = () => {
+    const { isTabBarVisible } = useTabBar();
+    
+    React.useEffect(() => {
+        console.log('🎯 TabBar visibility changed:', isTabBarVisible);
+    }, [isTabBarVisible]);
+    
+    const tabBarStyle = React.useMemo(() => {
+        const style = isTabBarVisible ? {
+            elevation: 8,
+            shadowOpacity: 0.1,
+            shadowRadius: 6,
+            shadowOffset: { width: 0, height: -2 },
+        } : {
+            display: 'none',
+            position: 'absolute',
+            bottom: -100,
+        };
+        console.log('📐 TabBar style:', style);
+        return style;
+    }, [isTabBarVisible]);
+    
+    return (
+        <Tab.Navigator
+            id="MainTabs"
+            screenOptions={{
+                headerShown: false,
+                tabBarStyle,
+                lazy: true,
+                unmountOnBlur: true,
+                freezeOnBlur: true,
+            }}
+            detachInactiveScreens={true}
+            tabBar={props => <CustomTabBar {...props} />}
+            backBehavior="none"
+        >
+            <Tab.Screen name="MainTab" component={MainStackScreen} options={{ lazy: false }} />
+            <Tab.Screen name="Search" component={SearchStackScreen} />
+            <Tab.Screen name="Cart" component={CartStackScreen} />
+            {featureFlags.chat && <Tab.Screen name="ChatList" component={ChatStackScreen} options={{ unmountOnBlur: false }} />}
+            <Tab.Screen name="ProfileTab" component={ProfileStackScreen} />
+            <Tab.Screen name="Catalog" component={CatalogScreen} options={{ tabBarVisible: false }} />
+        </Tab.Navigator>
+    );
+};
+
 export const MainTabNavigator = () => (
-    <Tab.Navigator
-        id="MainTabs"
-        screenOptions={{
-            headerShown: false,
-            tabBarStyle: {
-                elevation: 8,
-                shadowOpacity: 0.1,
-                shadowRadius: 6,
-                shadowOffset: { width: 0, height: -2 },
-            },
-            lazy: true,
-            unmountOnBlur: true,
-            freezeOnBlur: true,
-        }}
-        detachInactiveScreens={true}
-        tabBar={props => <CustomTabBar {...props} />}
-        backBehavior="none"
-    >
-        <Tab.Screen name="MainTab" component={MainStackScreen} options={{ lazy: false }} />
-        <Tab.Screen name="Search" component={SearchStackScreen} />
-        <Tab.Screen name="Cart" component={CartStackScreen} />
-        {featureFlags.chat && <Tab.Screen name="ChatList" component={ChatStackScreen} options={{ unmountOnBlur: false }} />}
-        <Tab.Screen name="ProfileTab" component={ProfileStackScreen} />
-        <Tab.Screen name="Catalog" component={CatalogScreen} options={{ tabBarVisible: false }} />
-    </Tab.Navigator>
+    <TabBarProvider>
+        <MainTabNavigatorContent />
+    </TabBarProvider>
 );
 
 // ============================================================================

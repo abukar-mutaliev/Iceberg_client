@@ -1,7 +1,8 @@
 import React, {useEffect, useState, useRef} from 'react';
-import {View, ActivityIndicator, Text, Button, StyleSheet, Animated} from 'react-native';
+import {View, ActivityIndicator, Text, Button, StyleSheet, Animated, Platform} from 'react-native';
 import {AppNavigator} from '@app/providers/navigation/AppNavigator';
 import * as Font from 'expo-font';
+import * as Notifications from 'expo-notifications';
 import {AppProviders} from './providers';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {useAuth} from "@entities/auth/hooks/useAuth";
@@ -15,8 +16,39 @@ import {testNetworkConnection} from '@shared/api/api';
 import {useChatSocket} from '@entities/chat/hooks/useChatSocket';
 import {usePushTokenAutoRegistration} from '@shared/hooks/usePushTokenAutoRegistration';
 import {ToastContainer} from '@shared/ui/Toast';
+import {CustomAlertContainer} from '@shared/ui/CustomAlert';
 
 initConsolePolyfill();
+
+// ⚠️ КРИТИЧЕСКИ ВАЖНО: Настройка показа уведомлений в foreground
+// Без этого уведомления НЕ будут отображаться когда приложение активно!
+Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+        shouldShowAlert: true,  // Показывать уведомление как alert
+        shouldPlaySound: true,  // Воспроизводить звук
+        shouldSetBadge: true,   // Обновлять badge на иконке
+    }),
+});
+
+// Создаем канал с ВЫСОКОЙ важностью для heads-up уведомлений (Android)
+// Этот канал используется OneSignal для показа всплывающих уведомлений
+if (Platform.OS === 'android') {
+    Notifications.setNotificationChannelAsync('fcm_fallback_notification_channel', {
+        name: 'Сообщения',
+        importance: Notifications.AndroidImportance.MAX, // MAX = heads-up уведомления
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#007AFF',
+        sound: 'default',
+        enableVibrate: true,
+        enableLights: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: false,
+    }).then(() => {
+        console.log('✅ Notification channel created with MAX importance');
+    }).catch((err) => {
+        console.warn('⚠️ Failed to create notification channel:', err);
+    });
+}
 
 
 class ErrorBoundary extends React.Component {
@@ -320,8 +352,9 @@ export default function App() {
                         </PersistGate>
                     </AppProviders>
                 </SafeAreaProvider>
-                {/* ToastContainer на самом верхнем уровне для отображения поверх всех модальных окон */}
+                {/* ToastContainer и CustomAlertContainer на самом верхнем уровне для отображения поверх всех модальных окон */}
                 <ToastContainer/>
+                <CustomAlertContainer/>
             </GestureHandlerRootView>
         </ErrorBoundary>
     );

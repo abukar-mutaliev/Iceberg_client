@@ -6,13 +6,11 @@ import {
     TouchableOpacity,
     Modal,
     Animated,
-    Dimensions,
+    useWindowDimensions,
     Platform
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { Color, FontFamily, FontSize, Shadow, Border } from '@app/styles/GlobalStyles';
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const ALERT_TYPES = {
     success: {
@@ -54,6 +52,7 @@ export const CustomAlert = ({
     showCloseButton = true,
     customIcon = null,
 }) => {
+    const { width: SCREEN_WIDTH } = useWindowDimensions();
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const scaleAnim = useRef(new Animated.Value(0.8)).current;
     const slideAnim = useRef(new Animated.Value(50)).current;
@@ -148,7 +147,8 @@ export const CustomAlert = ({
             visible={visible}
             animationType="none"
             onRequestClose={handleClose}
-            statusBarTranslucent
+            statusBarTranslucent={false}
+            presentationStyle="overFullScreen"
         >
             <View style={styles.overlay}>
                 <TouchableOpacity
@@ -161,6 +161,8 @@ export const CustomAlert = ({
                     style={[
                         styles.alertContainer,
                         {
+                            width: SCREEN_WIDTH - 48,
+                            maxWidth: 400,
                             opacity: fadeAnim,
                             transform: [
                                 { scale: scaleAnim },
@@ -270,8 +272,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#fff',
         borderRadius: 24,
         padding: 24,
-        width: SCREEN_WIDTH - 48,
-        maxWidth: 400,
+        alignSelf: 'center',
         ...Shadow.heavy,
         ...Platform.select({
             ios: {

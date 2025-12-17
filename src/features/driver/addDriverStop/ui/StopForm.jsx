@@ -49,10 +49,8 @@ export const StopForm = memo(({
     const allDrivers = useSelector(state => state.driver?.allDrivers || []);
     const { showError, showInfo } = useToast();
     const { 
-        showSuccess: showAlertSuccess, 
-        showError: showAlertError, 
         showWarning: showAlertWarning,
-        showInfo: showAlertInfo 
+        showError: showAlertError
     } = useCustomAlert();
 
     const isAdminOrEmployee = userRole === 'ADMIN' || userRole === 'EMPLOYEE';
@@ -114,17 +112,21 @@ export const StopForm = memo(({
             setLastSubmitData(null);
             setRetryCount(0);
             
-            showAlertSuccess(
-                'Успешно!',
-                'Остановка успешно добавлена',
-                [
-                    {
-                        text: 'OK',
-                        style: 'primary',
-                        onPress: () => navigation.goBack()
-                    }
-                ]
-            );
+            // Показываем краткое уведомление
+            showInfo('✅ Остановка успешно добавлена');
+            
+            // Переходим к деталям созданной остановки
+            const stopId = result?.data?.id || result?.id;
+            logData('Навигация к остановке (повторная отправка)', { stopId, result });
+            
+            setTimeout(() => {
+                if (stopId) {
+                    navigation.replace('StopDetails', { stopId });
+                } else {
+                    logData('Не удалось получить ID остановки для навигации', result);
+                    navigation.goBack();
+                }
+            }, 300);
         } catch (error) {
             logData('Ошибка при повторной отправке', error);
             setUploadFailed(true);
@@ -133,7 +135,7 @@ export const StopForm = memo(({
             setIsSubmitting(false);
             setFormSubmitted(false);
         }
-    }, [lastSubmitData, dispatch, navigation, showAlertSuccess, showError, retryCount]);
+    }, [lastSubmitData, dispatch, navigation, showInfo, showError, retryCount]);
 
     // Функция отмены неудачной отправки
     const handleCancelUpload = useCallback(() => {
@@ -578,17 +580,21 @@ export const StopForm = memo(({
                     setLastSubmitData(null);
                     setRetryCount(0);
                     
-                    showAlertSuccess(
-                        'Успешно!',
-                        'Остановка успешно добавлена',
-                        [
-                            {
-                                text: 'OK',
-                                style: 'primary',
-                                onPress: () => navigation.goBack()
-                            }
-                        ]
-                    );
+                    // Показываем краткое уведомление
+                    showInfo('✅ Остановка успешно добавлена');
+                    
+                    // Переходим к деталям созданной остановки
+                    const stopId = result?.data?.id || result?.id;
+                    logData('Навигация к остановке', { stopId, result });
+                    
+                    setTimeout(() => {
+                        if (stopId) {
+                            navigation.replace('StopDetails', { stopId });
+                        } else {
+                            logData('Не удалось получить ID остановки для навигации', result);
+                            navigation.goBack();
+                        }
+                    }, 300);
                     
                     return result;
                 } catch (error) {
@@ -827,9 +833,6 @@ export const StopForm = memo(({
         dispatch,
         navigation,
         addressFromMap,
-        showAlertSuccess,
-        showAlertError,
-        showAlertWarning,
         showError,
         showInfo,
         warehouseId,

@@ -63,6 +63,20 @@ export const useGlobalAlert = () => {
 // Алиас для удобства использования
 export const useCustomAlert = useGlobalAlert;
 
+// Глобальное состояние для алерта (используется CustomAlertContainer)
+let globalAlertState = {
+    visible: false,
+    type: 'info',
+    title: '',
+    message: '',
+    buttons: [],
+    autoClose: false,
+    autoCloseDuration: 3000,
+    showCloseButton: true,
+    customIcon: null,
+};
+let globalAlertSetter = null;
+
 export const CustomAlertProvider = ({ children }) => {
     const [alertConfig, setAlertConfig] = useState({
         visible: false,
@@ -76,8 +90,16 @@ export const CustomAlertProvider = ({ children }) => {
         customIcon: null,
     });
 
+    // Сохраняем setter для использования в CustomAlertContainer
+    useEffect(() => {
+        globalAlertSetter = setAlertConfig;
+        return () => {
+            globalAlertSetter = null;
+        };
+    }, []);
+
     const showAlert = useCallback((config) => {
-        setAlertConfig({
+        const newConfig = {
             visible: true,
             type: config.type || 'info',
             title: config.title || '',
@@ -87,7 +109,15 @@ export const CustomAlertProvider = ({ children }) => {
             autoCloseDuration: config.autoCloseDuration || 3000,
             showCloseButton: config.showCloseButton !== false,
             customIcon: config.customIcon || null,
-        });
+        };
+        
+        globalAlertState = newConfig;
+        setAlertConfig(newConfig);
+        
+        // Также обновляем состояние в CustomAlertContainer если он существует
+        if (globalAlertSetter) {
+            globalAlertSetter(newConfig);
+        }
     }, []);
 
     const hideAlert = useCallback(() => {
@@ -95,6 +125,15 @@ export const CustomAlertProvider = ({ children }) => {
             ...prev,
             visible: false,
         }));
+        
+        globalAlertState = { ...globalAlertState, visible: false };
+        
+        if (globalAlertSetter) {
+            globalAlertSetter((prev) => ({
+                ...prev,
+                visible: false,
+            }));
+        }
     }, []);
 
     const showSuccess = useCallback((title, message, buttons) => {
@@ -206,19 +245,45 @@ export const CustomAlertProvider = ({ children }) => {
     return (
         <CustomAlertContext.Provider value={contextValue}>
             {children}
-            <CustomAlert
-                visible={alertConfig.visible}
-                type={alertConfig.type}
-                title={alertConfig.title}
-                message={alertConfig.message}
-                buttons={alertConfig.buttons}
-                onClose={hideAlert}
-                autoClose={alertConfig.autoClose}
-                autoCloseDuration={alertConfig.autoCloseDuration}
-                showCloseButton={alertConfig.showCloseButton}
-                customIcon={alertConfig.customIcon}
-            />
         </CustomAlertContext.Provider>
+    );
+};
+
+// Компонент для рендеринга алерта на верхнем уровне (должен быть добавлен в App.jsx рядом с ToastContainer)
+export const CustomAlertContainer = () => {
+    const [alertConfig, setAlertConfig] = useState(globalAlertState);
+
+    // Синхронизируем с глобальным setter
+    useEffect(() => {
+        globalAlertSetter = setAlertConfig;
+        return () => {
+            if (globalAlertSetter === setAlertConfig) {
+                globalAlertSetter = null;
+            }
+        };
+    }, []);
+
+    const hideAlert = useCallback(() => {
+        setAlertConfig((prev) => ({
+            ...prev,
+            visible: false,
+        }));
+        globalAlertState = { ...globalAlertState, visible: false };
+    }, []);
+
+    return (
+        <CustomAlert
+            visible={alertConfig.visible}
+            type={alertConfig.type}
+            title={alertConfig.title}
+            message={alertConfig.message}
+            buttons={alertConfig.buttons}
+            onClose={hideAlert}
+            autoClose={alertConfig.autoClose}
+            autoCloseDuration={alertConfig.autoCloseDuration}
+            showCloseButton={alertConfig.showCloseButton}
+            customIcon={alertConfig.customIcon}
+        />
     );
 };
 
