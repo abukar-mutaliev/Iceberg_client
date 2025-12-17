@@ -72,13 +72,18 @@ export const LoginForm = () => {
         };
     }, []);
 
+    // Синхронизируем локальное состояние с Redux только при монтировании
     useEffect(() => {
-        setLocalEmail(email);
-    }, [email]);
+        if (email) {
+            setLocalEmail(email);
+        }
+    }, []); // Убрали зависимость от email
 
     useEffect(() => {
-        setLocalPassword(password);
-    }, [password]);
+        if (password) {
+            setLocalPassword(password);
+        }
+    }, []); // Убрали зависимость от password
 
     useEffect(() => {
         if (email) setEmailError('');
@@ -104,8 +109,9 @@ export const LoginForm = () => {
             : '';
 
         if (lowerCaseError.includes('неверный email') ||
+            lowerCaseError.includes('неверный номер') ||
             lowerCaseError.includes('не найден')) {
-            setEmailError('Пользователь с таким email не найден');
+            setEmailError('Пользователь не найден');
             setPasswordError('');
             setFormError('');
         } else if (lowerCaseError.includes('пароль') ||
@@ -117,7 +123,7 @@ export const LoginForm = () => {
         } else if (lowerCaseError.includes('401') ||
             lowerCaseError.includes('unauthorized') ||
             lowerCaseError.includes('неверн')) {
-            setPasswordError('Неверный email или пароль');
+            setPasswordError('Неверные данные для входа');
             setEmailError('');
             setFormError('');
         } else {
@@ -131,11 +137,17 @@ export const LoginForm = () => {
         let isValid = true;
 
         if (!localEmail) {
-            setEmailError('Пожалуйста, введите email');
+            setEmailError('Пожалуйста, введите email или номер телефона');
             isValid = false;
-        } else if (!/\S+@\S+\.\S+/.test(localEmail)) {
-            setEmailError('Пожалуйста, введите корректный email');
-            isValid = false;
+        } else {
+            // Проверяем, является ли введенное значение телефоном или email
+            const isPhone = /^[+8]?\d[\d\s\-()]+$/.test(localEmail);
+            const isEmail = /\S+@\S+\.\S+/.test(localEmail);
+
+            if (!isPhone && !isEmail) {
+                setEmailError('Пожалуйста, введите корректный email или номер телефона');
+                isValid = false;
+            }
         }
 
         if (!localPassword) {
@@ -156,15 +168,13 @@ export const LoginForm = () => {
         setFormError('');
         dispatch(clearError());
 
-        dispatch(setEmail(localEmail));
-        dispatch(setPassword(localPassword));
-
         if (!validateForm()) {
             return;
         }
 
-        // Полный сброс состояния перед входом нового пользователя
-        dispatch({ type: 'RESET_APP_STATE' });
+        // Сохраняем введенные данные в Redux только перед отправкой
+        dispatch(setEmail(localEmail));
+        dispatch(setPassword(localPassword));
 
         dispatch(login({email: localEmail, password: localPassword}))
             .unwrap()
@@ -174,6 +184,9 @@ export const LoginForm = () => {
                 }
 
                 if (result.tokens && result.user) {
+                    // Сброс состояния только ПОСЛЕ успешного входа
+                    dispatch({ type: 'RESET_APP_STATE' });
+                    
                     dispatch(setTokens(result.tokens));
                     dispatch(setUser(result.user));
                     dispatch(fetchProfile());
@@ -225,15 +238,15 @@ export const LoginForm = () => {
         ]}>
             <View style={styles.inputsContainer}>
                 <View style={styles.emailInputContainer}>
-                    <Text style={styles.inputLabel}>Ваша почта</Text>
+                    <Text style={styles.inputLabel}>Email или номер телефона</Text>
                     <CustomTextInput
                         style={styles.input}
                         value={localEmail}
                         onChangeText={handleEmailChange}
                         onBlur={handleEmailBlur}
-                        keyboardType="email-address"
+                        keyboardType="default"
                         autoCapitalize="none"
-                        placeholder="Icbrg@gmail.com"
+                        placeholder="email@example.com или 8 928 000 00 00"
                         editable={!isLoading}
                     />
                     <View style={[

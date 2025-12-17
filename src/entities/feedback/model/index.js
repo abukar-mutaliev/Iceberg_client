@@ -45,34 +45,16 @@ export const fixAvatarUrl = (url) => {
     if (!url) return null;
 
     try {
-        // Фильтруем только явно неправильные пути (placeholder, path/to)
-        if (url.includes('placeholder') || url.includes('path/to')) {
-            return null;
-        }
-
-        // Если URL уже полный и валидный, возвращаем как есть
-        if (url.startsWith('http://') || url.startsWith('https://')) {
-            return url;
-        }
-
-        // Обработка относительных путей с timestamp
-        // Если URL содержит только timestamp (число), пытаемся построить полный путь
-        const timestampMatch = url.match(/\/uploads\/avatars\/(\d+)/) || url.match(/^(\d+)$/);
+        const timestampMatch = url.match(/\/uploads\/avatars\/(\d+)/);
         if (timestampMatch && timestampMatch[1]) {
             const timestamp = timestampMatch[1];
-            // Пытаемся извлечь базовый URL из окружения или использовать дефолтный
-            const baseUrl = process.env.REACT_APP_API_URL || 'http://212.67.11.134:5000';
+            const baseUrl = url.split('/uploads/')[0];
             return `${baseUrl}/uploads/avatars/${timestamp}.jpg`;
         }
-
-        // Если URL не соответствует ожидаемому формату, возвращаем исходный URL
-        // Пусть клиент сам обработает ошибку загрузки
         return url;
     } catch (error) {
-        if (__DEV__) {
-            console.error('Ошибка обработки URL аватара:', error);
-        }
-        return url; // Возвращаем исходный URL вместо null
+        console.error('Ошибка обработки URL аватара:', error);
+        return url;
     }
 };
 

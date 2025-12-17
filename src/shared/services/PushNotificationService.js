@@ -22,15 +22,9 @@ class PushNotificationService {
     // Инициализация сервиса
     async initialize() {
         try {
-            console.log('[PushService] Начинаем инициализацию...');
-            
             if (this.isInitialized) {
-                console.log('[PushService] Уже инициализирован');
                 return true;
             }
-            
-            console.log('[PushService] Инициализируем OneSignal с App ID:', this.oneSignalAppId);
-            
             // Инициализируем OneSignal
             const success = await OneSignalService.initialize(this.oneSignalAppId);
             
@@ -39,12 +33,10 @@ class PushNotificationService {
             }
 
             this.isInitialized = true;
-            console.log('[PushService] ✅ Сервис инициализирован успешно');
             
             return true;
 
         } catch (error) {
-            console.error('[PushService] Ошибка инициализации:', error);
             return false;
         }
     }
@@ -52,12 +44,6 @@ class PushNotificationService {
     // Инициализация для пользователя
     async initializeForUser(user) {
         try {
-            console.log('[PushService] ===== Инициализация для пользователя =====');
-            console.log('[PushService] User:', { id: user?.id, email: user?.email, role: user?.role });
-
-            if (!user || !user.id) {
-                return false;
-            }
 
             // Инициализируем базовый сервис
             const baseInitResult = await this.initialize();
@@ -65,18 +51,11 @@ class PushNotificationService {
                 return false;
             }
 
-            console.log('[PushService] ✅ Базовая инициализация выполнена');
-
             // Настраиваем OneSignal для пользователя
-            console.log('[PushService] Настраиваем OneSignal для пользователя...');
             const userInitResult = await OneSignalService.initializeForUser(user);
-            
             if (!userInitResult) {
                 return false;
             }
-
-            console.log('[PushService] ✅ OneSignal настроен для пользователя');
-            console.log('[PushService] ===== Инициализация завершена успешно =====');
 
             return true;
 
@@ -88,11 +67,9 @@ class PushNotificationService {
     // Очистка контекста пользователя
     async clearUserContext() {
         try {
-            console.log('[PushService] Очищаем контекст пользователя...');
             await OneSignalService.clearUserContext();
-            console.log('[PushService] ✅ Контекст очищен');
         } catch (error) {
-            console.error('[PushService] ❌ Ошибка очистки контекста:', error);
+            console.error('❌ Ошибка очистки контекста:', error);
         }
     }
 

@@ -49,8 +49,12 @@ export const useSupplierData = (supplierId) => {
     }, [supplierId]);
 
     // Используем селектор для получения отзывов
-    // Мемоизируем результат селектора через useMemo для предотвращения лишних ререндеров
-    const allFeedbacks = useSelector((state) => selectAllSupplierFeedbacks(state, supplierId));
+    const allFeedbacks = useSelector(state => {
+        if (!supplierId) return [];
+
+        // Используем наш мемоизированный селектор
+        return selectAllSupplierFeedbacks(state, supplierId);
+    }, [supplierId]);
 
     // Проверяем валидность поставщика
     const hasValidSupplier = useMemo(() => {
@@ -74,6 +78,10 @@ export const useSupplierData = (supplierId) => {
         }
 
         try {
+            if (process.env.NODE_ENV === 'development') {
+                console.log('SupplierData - Начало загрузки данных для:', supplierId);
+            }
+
             // Сначала загружаем данные поставщика и продукты
             await dispatch(fetchSupplierWithProducts(supplierId)).unwrap();
 
@@ -81,22 +89,27 @@ export const useSupplierData = (supplierId) => {
             loadingState.current.productsLoaded = true;
             setProductsLoaded(true);
 
-            // Загружаем рейтинг сразу (быстрая операция)
-            dispatch(fetchSupplierRating(supplierId));
+            // После загрузки продуктов (с небольшой задержкой для последовательности)
+            await new Promise(resolve => setTimeout(resolve, 100));
 
-            // Загружаем отзывы асинхронно (не блокируем UI)
-            // fetchSupplierFeedbacks теперь оптимизирован - загружает только те, которых нет в кэше
-            // и использует батчинг для оптимизации (по 10 продуктов за раз)
-            dispatch(fetchSupplierFeedbacks(supplierId)).then((result) => {
-                if (result.type.endsWith('/fulfilled')) {
-                    loadingState.current.feedbacksLoaded = true;
-                }
-            }).catch(() => {
-                // Ошибка уже обработана в thunk
-            });
+            // Загружаем отзывы и рейтинг
+            await Promise.all([
+                dispatch(fetchSupplierFeedbacks(supplierId)).unwrap(),
+                dispatch(fetchSupplierRating(supplierId)).unwrap()
+            ]);
 
-            // Отмечаем, что начальная загрузка выполнена (продукты загружены)
+            // Отмечаем, что отзывы загружены
+            loadingState.current.feedbacksLoaded = true;
+
+            // Отмечаем, что начальная загрузка выполнена
             loadingState.current.initialLoadDone = true;
+
+            if (process.env.NODE_ENV === 'development') {
+                console.log('SupplierData - Загрузка данных завершена для:', supplierId, {
+                    productsLoaded: loadingState.current.productsLoaded,
+                    feedbacksLoaded: loadingState.current.feedbacksLoaded
+                });
+            }
         } catch (error) {
             console.error('Ошибка загрузки данных поставщика:', error);
         } finally {
@@ -140,8 +153,7 @@ export const useSupplierData = (supplierId) => {
         // Загружаем данные
         loadSupplierData();
 
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [supplierId]); // Убираем loadSupplierData из зависимостей, чтобы избежать бесконечных циклов
+    }, [supplierId, loadSupplierData]);
 
     // Мемоизируем количество продуктов и наличие продуктов
     const supplierProductsCount = useMemo(() =>

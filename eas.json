@@ -122,6 +122,26 @@
         "YANDEX_MAPS_API_KEY": "17ee620d-aee1-482c-acc9-c7144fd46087"
       },
       "channel": "production"
+    },
+    "internal-testing": {
+      "extends": "production",
+      "distribution": "internal",
+      "android": {
+        "buildType": "app-bundle",
+        "developmentClient": false
+      },
+      "ios": {
+        "buildConfiguration": "Release",
+        "developmentClient": false
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://212.67.11.134:5000",
+        "NODE_ENV": "production",
+        "EXPO_PUBLIC_BUILD_TYPE": "internal-testing",
+        "EXPO_PUSH_TOKEN_ENABLED": "true",
+        "YANDEX_MAPS_API_KEY": "17ee620d-aee1-482c-acc9-c7144fd46087"
+      },
+      "channel": "internal-testing"
     }
   },
   "submit": {

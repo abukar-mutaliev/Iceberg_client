@@ -30,15 +30,15 @@ export const BestFeedbacks = React.memo(({
         );
     }, [feedbacks]);
 
-    // Мемоизированный обработчик для отзыва
-    // ВАЖНО: Хуки должны вызываться до любого условного возврата
-    const handleExpandComment = React.useCallback((id, isExpanded) => {
-        // Обработчик разворачивания комментария (если нужен)
-    }, []);
-
     // Если нет отзывов, не отображаем компонент вообще
-    // ВАЖНО: Условный возврат должен быть ПОСЛЕ всех хуков
     if (validFeedbacks.length === 0) return null;
+
+    // Мемоизированный обработчик для отзыва
+    const handleExpandComment = (id, isExpanded) => {
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`Отзыв ${id} развернут: ${isExpanded}`);
+        }
+    };
 
     return (
         <View style={styles.container}>

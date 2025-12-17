@@ -164,3 +164,6 @@ E/OneSignal: external_id is blocked
 Если видите STATUS: 400 - нужно обращаться в support OneSignal или использовать новый App ID.
 
 
+
+
+

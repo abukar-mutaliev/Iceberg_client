@@ -282,7 +282,7 @@ export const ChatSearchScreen = () => {
       {searchQuery.length >= 2 ? (
         <FlatList
           data={searchResults}
-          keyExtractor={(item) => item.id.toString()}
+          keyExtractor={(item) => `${item.type}-${item.id}`}
           renderItem={renderUserItem}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={

@@ -9,6 +9,10 @@ const staffApplicationsApi = createApiModule('/api/staff-applications');
 const BASE_AUTH_URL = '/api/auth';
 
 export const authApiMethods = {
+    // ========================================
+    // РЕГИСТРАЦИЯ ПО EMAIL
+    // ========================================
+    
     // Инициация регистрации - публичный запрос
     initiateRegister: (data) => 
         createPublicRequest('post', `${BASE_AUTH_URL}/register/initiate`, data),
@@ -20,15 +24,50 @@ export const authApiMethods = {
             verificationCode: data.verificationCode,
         }),
 
-    // Вход в систему - публичный запрос
+    // ========================================
+    // РЕГИСТРАЦИЯ ПО ТЕЛЕФОНУ
+    // ========================================
+    
+    // Инициация регистрации по телефону - публичный запрос
+    initiatePhoneRegister: (data) => 
+        createPublicRequest('post', `${BASE_AUTH_URL}/initiate-register-phone`, data),
+
+    // Завершение регистрации по телефону - публичный запрос
+    completePhoneRegister: (data) => 
+        createPublicRequest('post', `${BASE_AUTH_URL}/complete-register-phone`, {
+            registrationToken: data.registrationToken,
+            verificationCode: data.verificationCode,
+        }),
+
+    // ========================================
+    // ВХОД В СИСТЕМУ
+    // ========================================
+    
+    // Вход в систему (email + пароль) - публичный запрос
     login: (data) => 
         createPublicRequest('post', `${BASE_AUTH_URL}/login`, data),
+
+    // Инициация входа по телефону - публичный запрос
+    initiatePhoneLogin: (data) => 
+        createPublicRequest('post', `${BASE_AUTH_URL}/initiate-phone-login`, data),
+
+    // Завершение входа по телефону - публичный запрос
+    verifyPhoneLogin: (data) => 
+        createPublicRequest('post', `${BASE_AUTH_URL}/verify-phone-login`, data),
+
+    // Вход по телефону + пароль - публичный запрос
+    loginPhone: (data) => 
+        createPublicRequest('post', `${BASE_AUTH_URL}/login-phone`, data),
 
     // Верификация 2FA - публичный запрос
     verify2FALogin: ({ tempToken, twoFactorCode }) =>
         createPublicRequest('post', `${BASE_AUTH_URL}/2fa/verify-login`, 
             { tempToken, twoFactorCode: twoFactorCode.toString() }),
 
+    // ========================================
+    // ОБЩИЕ МЕТОДЫ
+    // ========================================
+    
     // Выход из системы - требует авторизации
     logout: (refreshToken) => authApi.post('/logout', { refreshToken }),
 

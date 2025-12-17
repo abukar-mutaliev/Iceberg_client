@@ -10,11 +10,14 @@ import {
     Dimensions,
     Platform,
     StatusBar,
-    Clipboard
+    Clipboard,
+    ScrollView,
+    Animated
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
-import { completeRegister, clearError } from '@entities/auth';
-import {normalize} from "@shared/lib/normalize";
+import { completeRegister, completePhoneRegister, clearError } from '@entities/auth';
+import { normalize } from "@shared/lib/normalize";
+import { ReceiveCallCard } from '../../ReceiveCallCard';
 
 const { width, height } = Dimensions.get('window');
 const isSmallDevice = height < 700;
@@ -28,8 +31,19 @@ const adaptiveSize = (baseSize) => {
     return baseSize;
 };
 
-export const VerificationForm = ({ tempToken, onBack }) => {
-    const [code, setCode] = useState(['', '', '', '', '', '']);
+export const VerificationForm = ({ 
+    tempToken, 
+    registrationType = 'email', 
+    receiveCall = null,
+    onBack 
+}) => {
+    const codeLength = receiveCall ? 4 : 6;
+    const initialCode = new Array(codeLength).fill('');
+    
+    const [code, setCode] = useState(initialCode);
+    const [focusedIndex, setFocusedIndex] = useState(0);
+    const [shakeAnimation] = useState(new Animated.Value(0));
+    
     const dispatch = useDispatch();
     const isLoading = useSelector((state) => state.auth?.isLoading ?? false);
     const error = useSelector((state) => state.auth?.error);
@@ -38,6 +52,7 @@ export const VerificationForm = ({ tempToken, onBack }) => {
     inputRefs.current = code.map((_, index) => inputRefs.current[index] ?? React.createRef());
 
     const isCodeComplete = code.every(digit => digit !== '');
+    const filledCount = code.filter(digit => digit !== '').length;
 
     useEffect(() => {
         dispatch(clearError());
@@ -46,31 +61,44 @@ export const VerificationForm = ({ tempToken, onBack }) => {
 
     useEffect(() => {
         if (error) {
-            console.log('Current error state:', error);
+            // Анимация тряски при ошибке
+            Animated.sequence([
+                Animated.timing(shakeAnimation, { toValue: 10, duration: 50, useNativeDriver: true }),
+                Animated.timing(shakeAnimation, { toValue: -10, duration: 50, useNativeDriver: true }),
+                Animated.timing(shakeAnimation, { toValue: 10, duration: 50, useNativeDriver: true }),
+                Animated.timing(shakeAnimation, { toValue: 0, duration: 50, useNativeDriver: true })
+            ]).start();
         }
     }, [error]);
 
+    // Автоматическое заполнение кода для Receive Call
+    useEffect(() => {
+        if (receiveCall && receiveCall.code) {
+            const digits = receiveCall.code.split('');
+            if (digits.length === 4) {
+                setCode(digits);
+            }
+        }
+    }, [receiveCall]);
+
     const handleCodePaste = (pastedText, currentIndex) => {
         const cleanedText = pastedText.replace(/\D/g, '');
-
-        const validText = cleanedText.slice(0, 6);
+        const validText = cleanedText.slice(0, codeLength);
 
         if (validText.length === 0) return;
 
         const newCode = [...code];
 
-        if (validText.length === 6) {
-            for (let i = 0; i < 6; i++) {
+        if (validText.length === codeLength) {
+            for (let i = 0; i < codeLength; i++) {
                 newCode[i] = validText[i];
             }
             setCode(newCode);
-
             setTimeout(() => {
-                inputRefs.current[5]?.current?.focus();
+                inputRefs.current[codeLength - 1]?.current?.focus();
             }, 10);
-        }
-        else {
-            let remainingFields = 6 - currentIndex;
+        } else {
+            let remainingFields = codeLength - currentIndex;
             let charsToFill = Math.min(validText.length, remainingFields);
 
             for (let i = 0; i < charsToFill; i++) {
@@ -78,7 +106,7 @@ export const VerificationForm = ({ tempToken, onBack }) => {
             }
             setCode(newCode);
 
-            const nextIndex = Math.min(currentIndex + charsToFill, 5);
+            const nextIndex = Math.min(currentIndex + charsToFill, codeLength - 1);
             setTimeout(() => {
                 inputRefs.current[nextIndex]?.current?.focus();
             }, 10);
@@ -101,7 +129,7 @@ export const VerificationForm = ({ tempToken, onBack }) => {
         newCode[index] = text;
         setCode(newCode);
 
-        if (text && index < 5) {
+        if (text && index < codeLength - 1) {
             setTimeout(() => {
                 inputRefs.current[index + 1]?.current?.focus();
             }, 10);
@@ -135,13 +163,15 @@ export const VerificationForm = ({ tempToken, onBack }) => {
 
     const handleSubmit = async () => {
         const verificationCode = code.join('');
-        if (verificationCode.length !== 6 || !/^\d+$/.test(verificationCode)) {
-            Alert.alert('Ошибка', 'Пожалуйста, введите 6-значный код');
+        if (verificationCode.length !== codeLength || !/^\d+$/.test(verificationCode)) {
+            Alert.alert('Ошибка', `Пожалуйста, введите ${codeLength}-значный код`);
             return;
         }
 
         try {
-            await dispatch(completeRegister({
+            const action = registrationType === 'phone' ? completePhoneRegister : completeRegister;
+            
+            await dispatch(action({
                 registrationToken: tempToken,
                 verificationCode
             })).unwrap();
@@ -151,11 +181,24 @@ export const VerificationForm = ({ tempToken, onBack }) => {
     };
 
     const resetCode = () => {
-        setCode(['', '', '', '', '', '']);
         dispatch(clearError());
-        setTimeout(() => {
-            inputRefs.current[0]?.current?.focus();
-        }, 50);
+        
+        // Для Receive Call автоматически заполняем код снова
+        if (receiveCall && receiveCall.code) {
+            const digits = receiveCall.code.split('');
+            if (digits.length === codeLength) {
+                setTimeout(() => {
+                    setCode(digits);
+                    console.log('✅ Код автоматически заполнен после сброса:', digits.join(''));
+                }, 100);
+            }
+        } else {
+            // Для обычной верификации очищаем код
+            setCode(new Array(codeLength).fill(''));
+            setTimeout(() => {
+                inputRefs.current[0]?.current?.focus();
+            }, 50);
+        }
     };
 
     const handleLayout = () => {
@@ -167,169 +210,437 @@ export const VerificationForm = ({ tempToken, onBack }) => {
         }
     };
 
+    // Определяем текст в зависимости от контекста
+    const getTitle = () => {
+        if (receiveCall) return 'Подтверждение номера телефона';
+        return 'Код подтверждения';
+    };
+
+    const getSubtitle = () => {
+        if (receiveCall) {
+            return null; // Убираем дублирование текста для receiveCall
+        }
+        if (registrationType === 'phone') {
+            return 'Мы отправили SMS с кодом на ваш номер';
+        }
+        return 'Мы отправили код на вашу почту';
+    };
+
+    const getHintText = () => {
+        if (receiveCall) return null;
+        if (registrationType === 'email') {
+            return '💡 Проверьте папку "Спам", если код не пришёл';
+        }
+        return '💡 SMS придёт в течение 1-2 минут';
+    };
+
     return (
-        <View
-            style={styles.container}
-            onLayout={handleLayout}
+        <ScrollView
+            style={styles.scrollContainer}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
         >
-            <Text style={styles.title}>Введите код подтверждения</Text>
-            <Text style={styles.subtitle}>Мы отправили код на вашу почту</Text>
-            <Text style={styles.subtitle}>Если письмо с кодом не пришло, проверьте папку спам</Text>
-
-            <View style={styles.codeContainer}>
-                {code.map((digit, index) => (
-                    <TextInput
-                        key={index}
-                        ref={inputRefs.current[index]}
-                        style={[
-                            styles.codeInput,
-                            error && styles.codeInputError
-                        ]}
-                        value={digit}
-                        onChangeText={(text) => handleCodeChange(text, index)}
-                        onKeyPress={(e) => handleKeyPress(e, index)}
-                        onPaste={() => handlePaste(index)}
-                        keyboardType="numeric"
-                        maxLength={6}
-                        autoFocus={index === 0}
-                        textAlign="center"
-                        blurOnSubmit={false}
-                        autoCorrect={false}
-                        underlineColorAndroid="transparent"
-                        caretHidden={Platform.OS === 'android'}
-                        contextMenuHidden={false}
-                    />
-                ))}
-            </View>
-
-            {error && (
-                <View style={styles.errorContainer}>
-                    <Text style={styles.errorText}>{error}</Text>
-                    <TouchableOpacity onPress={resetCode} style={styles.resetButton}>
-                        <Text style={styles.resetButtonText}>Сбросить код</Text>
-                    </TouchableOpacity>
+            <View style={styles.container} onLayout={handleLayout}>
+                {/* Шаг прогресса */}
+                <View style={styles.progressContainer}>
+                    <View style={styles.progressBar}>
+                        <View style={[styles.progressFill, { width: '66%' }]} />
+                    </View>
+                    <Text style={styles.progressText}>Шаг 2 из 3</Text>
                 </View>
-            )}
 
-            <TouchableOpacity
-                style={[styles.button, (isLoading || !isCodeComplete) && styles.buttonDisabled]}
-                onPress={handleSubmit}
-                disabled={isLoading || !isCodeComplete}
-            >
-                {isLoading ? (
-                    <ActivityIndicator color="#fff" />
+                {/* Заголовок и описание */}
+                <View style={styles.headerContainer}>
+                    <Text style={styles.title}>{getTitle()}</Text>
+                    {getSubtitle() && <Text style={styles.subtitle}>{getSubtitle()}</Text>}
+                    {getHintText() && (
+                        <View style={styles.hintContainer}>
+                            <Text style={styles.hintText}>{getHintText()}</Text>
+                        </View>
+                    )}
+                </View>
+
+                {/* Карточка Receive Call или поля ввода кода */}
+                {receiveCall ? (
+                    <View style={styles.receiveCallContainer}>
+                        <ReceiveCallCard
+                            phoneToCall={receiveCall.phoneToCall}
+                            code={receiveCall.code}
+                            onCallPress={() => {
+                                console.log('Пользователь нажал кнопку "Позвонить"');
+                            }}
+                        />
+      
+                    </View>
                 ) : (
-                    <Text style={[styles.buttonText, (isLoading || !isCodeComplete) && styles.buttonTextDisabled]}>
-                        Подтвердить
-                    </Text>
-                )}
-            </TouchableOpacity>
+                    <>
+                        {/* Индикатор прогресса ввода */}
+                        <View style={styles.inputProgressContainer}>
+                            <Text style={styles.inputProgressText}>
+                                {filledCount} из {codeLength}
+                            </Text>
+                        </View>
 
-            <TouchableOpacity style={styles.backButton} onPress={onBack}>
-                <Text style={styles.backButtonText}>Назад</Text>
-            </TouchableOpacity>
-        </View>
+                        {/* Поля ввода кода */}
+                        <Animated.View 
+                            style={[
+                                styles.codeContainer,
+                                { transform: [{ translateX: shakeAnimation }] }
+                            ]}
+                        >
+                            {code.map((digit, index) => (
+                                <View key={index} style={styles.inputWrapper}>
+                                    <TextInput
+                                        ref={inputRefs.current[index]}
+                                        style={[
+                                            styles.codeInput,
+                                            digit !== '' && styles.codeInputFilled,
+                                            focusedIndex === index && styles.codeInputFocused,
+                                            error && styles.codeInputError
+                                        ]}
+                                        value={digit}
+                                        onChangeText={(text) => handleCodeChange(text, index)}
+                                        onKeyPress={(e) => handleKeyPress(e, index)}
+                                        onPaste={() => handlePaste(index)}
+                                        onFocus={() => setFocusedIndex(index)}
+                                        onBlur={() => setFocusedIndex(-1)}
+                                        keyboardType="numeric"
+                                        maxLength={6}
+                                        autoFocus={index === 0}
+                                        textAlign="center"
+                                        blurOnSubmit={false}
+                                        autoCorrect={false}
+                                        underlineColorAndroid="transparent"
+                                        caretHidden={Platform.OS === 'android'}
+                                        contextMenuHidden={false}
+                                    />
+                                    {digit !== '' && (
+                                        <View style={styles.checkmarkBadge}>
+                                            <Text style={styles.checkmark}>✓</Text>
+                                        </View>
+                                    )}
+                                </View>
+                            ))}
+                        </Animated.View>
+                    </>
+                )}
+
+                {/* Сообщение об ошибке */}
+                {error && (
+                    <View style={styles.errorContainer}>
+                        <TouchableOpacity 
+                            style={styles.dismissError}
+                            onPress={() => {
+                                resetCode();
+                                console.log('Ошибка очищена, код автоматически заполнен');
+                            }}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={styles.dismissErrorText}>✕</Text>
+                        </TouchableOpacity>
+                        <View style={styles.errorBadge}>
+                            <Text style={styles.errorIcon}>⚠️</Text>
+                            <Text style={styles.errorText}>{error}</Text>
+                        </View>
+                    </View>
+                )}
+
+                {/* Кнопка подтверждения */}
+                <TouchableOpacity
+                    style={[
+                        styles.button,
+                        (isLoading || !isCodeComplete) && styles.buttonDisabled,
+                        isCodeComplete && !isLoading && styles.buttonReady
+                    ]}
+                    onPress={handleSubmit}
+                    disabled={isLoading || !isCodeComplete}
+                    activeOpacity={0.8}
+                >
+                    {isLoading ? (
+                        <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                        <View style={styles.buttonContent}>
+                            <Text style={styles.buttonText}>
+                                {receiveCall ? 'Я позвонил(а)' : 'Подтвердить'}
+                            </Text>
+                            {isCodeComplete && <Text style={styles.buttonIcon}>→</Text>}
+                        </View>
+                    )}
+                </TouchableOpacity>
+
+                {/* Дополнительные действия */}
+                <View style={styles.actionsContainer}>
+                    <TouchableOpacity style={styles.actionButton} onPress={onBack}>
+                        <Text style={styles.actionButtonText}>← Назад</Text>
+                    </TouchableOpacity>
+                    
+                    {!receiveCall && (
+                        <TouchableOpacity 
+                            style={styles.actionButton}
+                            onPress={() => Alert.alert('Повторная отправка', 'Код будет отправлен повторно')}
+                        >
+                            <Text style={styles.actionButtonText}>Отправить снова</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
+            </View>
+        </ScrollView>
     );
 };
 
 const styles = StyleSheet.create({
+    scrollContainer: {
+        flex: 1,
+        backgroundColor: '#F8F9FA',
+    },
+    scrollContent: {
+        flexGrow: 1,
+    },
     container: {
         flex: 1,
-        justifyContent: 'center',
+        paddingHorizontal: 24,
+        paddingTop: safeTopPadding + 10,
+        backgroundColor: '#F8F9FA',
+    },
+    progressContainer: {
+        marginBottom: adaptiveSize(24),
         alignItems: 'center',
-        paddingHorizontal: 20,
-        backgroundColor: '#F3F3F3',
-        paddingTop: safeTopPadding,
+    },
+    progressBar: {
+        width: '100%',
+        height: 4,
+        backgroundColor: '#E0E0E0',
+        borderRadius: 2,
+        overflow: 'hidden',
+        marginBottom: 8,
+    },
+    progressFill: {
+        height: '100%',
+        backgroundColor: '#000CFF',
+        borderRadius: 2,
+    },
+    progressText: {
+        fontSize: adaptiveSize(12),
+        color: '#666',
+        fontWeight: '500',
+    },
+    headerContainer: {
+        marginBottom: adaptiveSize(24),
+        alignItems: 'center',
     },
     title: {
-        fontSize: adaptiveSize(18),
-        fontWeight: 'bold',
-        color: '#333',
-        marginBottom: adaptiveSize(8),
+        fontSize: adaptiveSize(24),
+        fontWeight: '700',
+        color: '#1A1A1A',
+        marginBottom: adaptiveSize(12),
         textAlign: 'center',
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
     },
     subtitle: {
-        fontSize: adaptiveSize(14),
+        fontSize: adaptiveSize(16),
         color: '#666',
-        marginBottom: adaptiveSize(24),
+        lineHeight: adaptiveSize(24),
         textAlign: 'center',
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+    },
+    hintContainer: {
+        marginTop: adaptiveSize(16),
+        backgroundColor: '#FFF9E6',
+        paddingVertical: adaptiveSize(12),
+        paddingHorizontal: adaptiveSize(16),
+        borderRadius: adaptiveSize(12),
+        borderWidth: 1,
+        borderColor: '#FFE082',
+    },
+    hintText: {
+        fontSize: adaptiveSize(13),
+        color: '#856404',
+        textAlign: 'center',
+        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+    },
+    receiveCallContainer: {
+        width: '100%',
+        alignItems: 'center',
+        marginBottom: adaptiveSize(24),
+    },
+    inputProgressContainer: {
+        alignItems: 'center',
+        marginBottom: adaptiveSize(16),
+    },
+    inputProgressText: {
+        fontSize: adaptiveSize(14),
+        color: '#000CFF',
+        fontWeight: '600',
     },
     codeContainer: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
-        width: Math.min(width - 40, 360),
-        marginBottom: adaptiveSize(20),
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: adaptiveSize(12),
+        marginBottom: adaptiveSize(24),
+        paddingHorizontal: adaptiveSize(8),
+    },
+    inputWrapper: {
+        position: 'relative',
     },
     codeInput: {
-        width: adaptiveSize(48),
-        height: adaptiveSize(56),
-        borderRadius: adaptiveSize(10),
-        backgroundColor: '#d9d9d9',
+        width: adaptiveSize(52),
+        height: adaptiveSize(64),
+        borderRadius: adaptiveSize(12),
+        backgroundColor: '#FFFFFF',
+        borderWidth: 2,
+        borderColor: '#E0E0E0',
         textAlign: 'center',
-        fontSize: adaptiveSize(24),
-        color: '#000',
+        fontSize: adaptiveSize(28),
+        fontWeight: '700',
+        color: '#1A1A1A',
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
+        elevation: 2,
+    },
+    codeInputFilled: {
+        borderColor: '#000CFF',
+        backgroundColor: '#F0F4FF',
+    },
+    codeInputFocused: {
+        borderColor: '#000CFF',
+        borderWidth: 2.5,
+        backgroundColor: '#FFFFFF',
     },
     codeInputError: {
-        borderWidth: 1,
-        borderColor: 'red',
-        backgroundColor: '#ffeeee',
+        borderColor: '#F44336',
+        backgroundColor: '#FFEBEE',
     },
-    errorContainer: {
-        marginVertical: adaptiveSize(16),
-        alignItems: 'center',
-        paddingHorizontal: 20,
-        width: '100%',
-    },
-    errorText: {
-        color: 'red',
-        fontSize: adaptiveSize(14),
-        textAlign: 'center',
-        marginBottom: adaptiveSize(8),
-        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
-    },
-    resetButton: {
-        paddingVertical: adaptiveSize(8),
-    },
-    resetButtonText: {
-        color: '#3949ab',
-        fontSize: adaptiveSize(14),
-        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
-    },
-    button: {
-        backgroundColor: '#000CFF',
-        paddingVertical: adaptiveSize(20),
-        paddingHorizontal: adaptiveSize(20),
-        borderRadius: adaptiveSize(20),
-        width: '90%',
-        alignItems: 'center',
-        marginBottom: adaptiveSize(20),
-    },
-    buttonDisabled: {
-        backgroundColor: '#ddd',
-    },
-    buttonText: {
-        color: '#fff',
-        fontSize: adaptiveSize(16),
-        textTransform: 'uppercase',
-        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
-    },
-    buttonTextDisabled: {
-        color: '#A0A0A0',
-    },
-    backButton: {
-        padding: 15,
-        width: normalize(90),
-        height: 50,
+    checkmarkBadge: {
+        position: 'absolute',
+        top: -6,
+        right: -6,
+        backgroundColor: '#4CAF50',
+        borderRadius: 10,
+        width: 20,
+        height: 20,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    backButtonText: {
+    checkmark: {
+        color: '#FFFFFF',
+        fontSize: 12,
+        fontWeight: 'bold',
+    },
+    errorContainer: {
+        marginBottom: adaptiveSize(24),
+        alignItems: 'center',
         width: '100%',
-        color: '#3949ab',
+        position: 'relative',
+    },
+    dismissError: {
+        position: 'absolute',
+        top: adaptiveSize(8),
+        right: adaptiveSize(8),
+        width: adaptiveSize(28),
+        height: adaptiveSize(28),
+        borderRadius: adaptiveSize(14),
+        backgroundColor: 'rgba(0,0,0,0.1)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 10,
+    },
+    dismissErrorText: {
+        fontSize: adaptiveSize(16),
+        color: '#666',
+        fontWeight: '600',
+    },
+    errorBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFEBEE',
+        paddingVertical: adaptiveSize(12),
+        paddingHorizontal: adaptiveSize(16),
+        borderRadius: adaptiveSize(12),
+        borderWidth: 1,
+        borderColor: '#F44336',
+        marginBottom: adaptiveSize(12),
+        maxWidth: '100%',
+    },
+    errorIcon: {
+        fontSize: adaptiveSize(18),
+        marginRight: adaptiveSize(8),
+    },
+    errorText: {
+        color: '#C62828',
         fontSize: adaptiveSize(14),
+        fontWeight: '500',
+        flex: 1,
+        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+    },
+    resetButton: {
+        paddingVertical: adaptiveSize(10),
+        paddingHorizontal: adaptiveSize(16),
+    },
+    resetButtonText: {
+        color: '#000CFF',
+        fontSize: adaptiveSize(14),
+        fontWeight: '600',
+        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+    },
+    button: {
+        backgroundColor: '#E0E0E0',
+        paddingVertical: adaptiveSize(18),
+        paddingHorizontal: adaptiveSize(24),
+        borderRadius: adaptiveSize(16),
+        width: '100%',
+        alignItems: 'center',
+        marginBottom: adaptiveSize(20),
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    buttonDisabled: {
+        backgroundColor: '#E0E0E0',
+        shadowOpacity: 0,
+        elevation: 0,
+    },
+    buttonReady: {
+        backgroundColor: '#000CFF',
+    },
+    buttonContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    buttonText: {
+        color: '#FFFFFF',
+        fontSize: adaptiveSize(17),
+        fontWeight: '700',
+        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+    },
+    buttonIcon: {
+        color: '#FFFFFF',
+        fontSize: adaptiveSize(20),
+        fontWeight: 'bold',
+    },
+    actionsContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+        paddingHorizontal: adaptiveSize(8),
+        marginBottom: adaptiveSize(24),
+    },
+    actionButton: {
+        paddingVertical: adaptiveSize(12),
+        paddingHorizontal: adaptiveSize(16),
+    },
+    actionButtonText: {
+        color: '#000CFF',
+        fontSize: adaptiveSize(15),
+        fontWeight: '600',
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
     },
 });

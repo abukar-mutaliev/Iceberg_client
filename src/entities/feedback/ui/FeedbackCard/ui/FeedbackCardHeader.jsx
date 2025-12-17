@@ -12,101 +12,44 @@ import { formatFeedbackDate, fixAvatarUrl } from '../../../model';
  * @param {Object} props.feedback - Данные отзыва
  * @param {Object} props.currentUser - Текущий пользователь
  */
-export const FeedbackCardHeader = React.memo(({ feedback, currentUser }) => {
+export const FeedbackCardHeader = ({ feedback, currentUser }) => {
     const { colors } = useTheme();
 
     const {
-        client,
+        client = {},
         clientId,
         createdAt,
         rating = 0,
         avatar,
     } = feedback;
 
-    // Определение имени клиента (мемоизировано для предотвращения ререндеров)
-    const clientName = React.useMemo(() => {
-        let name = 'Анонимный клиент';
+    // Определение имени клиента
+    let clientName = 'Анонимный клиент';
 
-        // Проверяем, является ли это текущий пользователь
-        if (clientId && currentUser && currentUser.profile && currentUser.profile.id === clientId) {
-            name = 'Вы';
-        }
-        // Проверяем различные варианты получения имени
-        else if (client) {
-            // Основной вариант: client.name
-            const nameFromClient = client.name;
-            if (nameFromClient && String(nameFromClient).trim()) {
-                name = String(nameFromClient).trim();
-            }
-            // Альтернативный вариант: client.user.name (если имя хранится там)
-            else if (client.user) {
-                const nameFromUser = client.user.name;
-                if (nameFromUser && String(nameFromUser).trim()) {
-                    name = String(nameFromUser).trim();
-                }
-                // Fallback: используем email как имя
-                else if (client.user.email && String(client.user.email).trim()) {
-                    const email = String(client.user.email).trim();
-                    // Извлекаем часть до @ как имя
-                    const emailName = email.split('@')[0];
-                    if (emailName) {
-                        name = emailName;
-                    }
-                }
-            }
-            // Последний fallback: используем clientId
-            if (name === 'Анонимный клиент' && clientId) {
-                name = `Клиент #${clientId}`;
-            }
-        }
-        // Если client отсутствует, но есть clientId
-        else if (clientId) {
-            name = `Клиент #${clientId}`;
-        }
-
-        return name;
-    }, [client, clientId, currentUser]);
+    if (client && client.name) {
+        clientName = client.name;
+    }
+    else if (clientId && currentUser && currentUser.profile && currentUser.profile.id === clientId) {
+        clientName = 'Вы';
+    }
 
     const formattedDate = formatFeedbackDate(createdAt);
 
-    // Безопасное получение URL аватара
-    const rawAvatarUrl = avatar || (client?.user?.avatar) || null;
+    const rawAvatarUrl = avatar || (client && client.user ? client.user.avatar : null);
     const fixedAvatarUrl = rawAvatarUrl ? fixAvatarUrl(rawAvatarUrl) : null;
 
-    // Логируем для отладки (только в dev режиме)
-    React.useEffect(() => {
-        if (__DEV__ && rawAvatarUrl && !fixedAvatarUrl) {
-            console.log('FeedbackCardHeader - URL аватара был отфильтрован:', {
-                rawAvatarUrl,
-                fixedAvatarUrl,
-                feedbackId: feedback.id
-            });
-        }
-    }, [rawAvatarUrl, fixedAvatarUrl, feedback.id]);
-
-    // Проверяем, что URL валидный (не содержит placeholder или неверные пути)
-    // Но не блокируем URL, если он просто не начинается с http - возможно это относительный путь
-    const isValidUrl = fixedAvatarUrl && 
-        !fixedAvatarUrl.includes('placeholder') && 
-        !fixedAvatarUrl.includes('path/to');
-
-    const [avatarError, setAvatarError] = React.useState(false);
+    const hasValidAvatarUrl = !!fixedAvatarUrl;
 
     return (
         <View style={styles.header}>
             {/* Аватар пользователя */}
             <View style={styles.avatarContainer}>
-                {isValidUrl && !avatarError ? (
+                {hasValidAvatarUrl ? (
                     <Image
                         source={{ uri: fixedAvatarUrl }}
                         style={styles.avatarImage}
                         resizeMode="cover"
-                        onError={(e) => {
-                            if (__DEV__) {
-                                console.log('Ошибка загрузки аватара:', e.nativeEvent.error);
-                            }
-                            setAvatarError(true);
-                        }}
+                        onError={(e) => console.log('Ошибка загрузки аватара:', e.nativeEvent.error)}
                     />
                 ) : (
                     <AvatarPlaceholder width={40} height={40} color="#BEBEBE" />
@@ -115,12 +58,8 @@ export const FeedbackCardHeader = React.memo(({ feedback, currentUser }) => {
 
             {/* Информация о пользователе */}
             <View style={styles.userInfo}>
-                <Text 
-                    style={styles.userName}
-                    numberOfLines={1}
-                    allowFontScaling={true}
-                >
-                    {clientName || 'Анонимный клиент'}
+                <Text style={[styles.userName, { color: colors.text }]}>
+                    {clientName}
                 </Text>
                 <Text style={styles.dateText}>
                     {formattedDate}
@@ -141,9 +80,7 @@ export const FeedbackCardHeader = React.memo(({ feedback, currentUser }) => {
             </View>
         </View>
     );
-});
-
-FeedbackCardHeader.displayName = 'FeedbackCardHeader';
+};
 
 const styles = StyleSheet.create({
     header: {
@@ -175,7 +112,6 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
-        color: '#000000', // Темный цвет для читаемости на светлом фоне карточки
     },
     dateText: {
         fontSize: 11,

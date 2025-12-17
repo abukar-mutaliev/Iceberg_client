@@ -16,10 +16,6 @@ import {
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 import { 
-    selectEmail, 
-    selectPassword, 
-    setEmail, 
-    setPassword, 
     selectName, 
     setName, 
     selectPhone, 
@@ -31,18 +27,16 @@ import {
     selectDistrictId,
     selectCustomDistrict,
     setDistrictId,
-    setCustomDistrict 
+    setCustomDistrict,
+    initiatePhoneRegister
 } from '@entities/auth';
-import { initiateRegister } from '@entities/auth';
 import { CustomTextInput } from '@shared/ui/CustomTextInput/CustomTextInput';
 import { api } from '@shared/api/api';
 
-export const RegisterForm = ({ onVerification }) => {
+export const PhoneRegisterForm = ({ onVerification }) => {
     const dispatch = useDispatch();
     const navigation = useNavigation();
 
-    const reduxEmail = useSelector(selectEmail) || '';
-    const reduxPassword = useSelector(selectPassword) || '';
     const reduxName = useSelector(selectName) || '';
     const reduxPhone = useSelector(selectPhone) || '';
     const reduxAddress = useSelector(selectAddress) || '';
@@ -53,14 +47,15 @@ export const RegisterForm = ({ onVerification }) => {
 
     const [privacyAgreed, setPrivacyAgreed] = useState(false);
 
-    const [email, setLocalEmail] = useState(reduxEmail);
-    const [password, setLocalPassword] = useState(reduxPassword);
     const [name, setLocalName] = useState(reduxName);
     const [phone, setLocalPhone] = useState(reduxPhone);
+    const [email, setEmail] = useState('');
     const [address, setLocalAddress] = useState(reduxAddress);
     const [gender, setLocalGender] = useState(reduxGender);
     const [districtId, setLocalDistrictId] = useState(reduxDistrictId);
     const [customDistrict, setLocalCustomDistrict] = useState(reduxCustomDistrict);
+    const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
     const [showGenderModal, setShowGenderModal] = useState(false);
     const [showDistrictModal, setShowDistrictModal] = useState(false);
     const [districts, setDistricts] = useState([]);
@@ -68,13 +63,14 @@ export const RegisterForm = ({ onVerification }) => {
     const [isOtherDistrict, setIsOtherDistrict] = useState(!!reduxCustomDistrict);
 
     // Состояния для ошибок
-    const [emailError, setEmailError] = useState('');
-    const [passwordError, setPasswordError] = useState('');
     const [nameError, setNameError] = useState('');
     const [phoneError, setPhoneError] = useState('');
+    const [emailError, setEmailError] = useState('');
     const [addressError, setAddressError] = useState('');
     const [genderError, setGenderError] = useState('');
     const [districtError, setDistrictError] = useState('');
+    const [passwordError, setPasswordError] = useState('');
+    const [confirmPasswordError, setConfirmPasswordError] = useState('');
 
     const genderOptions = [
         { value: 'MALE', label: 'Мужской' },
@@ -101,14 +97,6 @@ export const RegisterForm = ({ onVerification }) => {
     useEffect(() => {
         loadDistricts();
     }, [loadDistricts]);
-
-    useEffect(() => {
-        setLocalEmail(reduxEmail);
-    }, [reduxEmail]);
-
-    useEffect(() => {
-        setLocalPassword(reduxPassword);
-    }, [reduxPassword]);
 
     useEffect(() => {
         setLocalName(reduxName);
@@ -174,16 +162,6 @@ export const RegisterForm = ({ onVerification }) => {
         }
     };
 
-    const handleEmailChange = (text) => {
-        setLocalEmail(text);
-        setEmailError('');
-    };
-
-    const handlePasswordChange = (text) => {
-        setLocalPassword(text);
-        setPasswordError('');
-    };
-
     const handleNameChange = (text) => {
         setLocalName(text);
         setNameError('');
@@ -191,23 +169,18 @@ export const RegisterForm = ({ onVerification }) => {
 
     // Форматирование телефона: +7 (XXX) XXX-XX-XX
     const formatPhoneNumber = (text) => {
-        // Убираем все нецифровые символы
         let digits = text.replace(/\D/g, '');
         
-        // Если начинается с 8, заменяем на 7
         if (digits.startsWith('8')) {
             digits = '7' + digits.slice(1);
         }
         
-        // Если не начинается с 7, добавляем 7
         if (digits.length > 0 && !digits.startsWith('7')) {
             digits = '7' + digits;
         }
         
-        // Ограничиваем до 11 цифр (7 + 10 цифр номера)
         digits = digits.slice(0, 11);
         
-        // Форматируем
         let formatted = '';
         if (digits.length > 0) {
             formatted = '+7';
@@ -238,7 +211,6 @@ export const RegisterForm = ({ onVerification }) => {
     };
 
     const handlePhoneFocus = () => {
-        // При фокусе на поле телефона, если оно пустое, устанавливаем +7
         if (!phone || phone.trim() === '') {
             setLocalPhone('+7 (');
         }
@@ -253,14 +225,6 @@ export const RegisterForm = ({ onVerification }) => {
         setLocalCustomDistrict(text);
         dispatch(setCustomDistrict(text));
         setDistrictError('');
-    };
-
-    const handleEmailBlur = () => {
-        dispatch(setEmail(email));
-    };
-
-    const handlePasswordBlur = () => {
-        dispatch(setPassword(password));
     };
 
     const handleNameBlur = () => {
@@ -278,22 +242,6 @@ export const RegisterForm = ({ onVerification }) => {
     const validateForm = () => {
         let isValid = true;
 
-        if (!email) {
-            setEmailError('Пожалуйста, введите email');
-            isValid = false;
-        } else if (!/\S+@\S+\.\S+/.test(email)) {
-            setEmailError('Пожалуйста, введите корректный email');
-            isValid = false;
-        }
-
-        if (!password) {
-            setPasswordError('Пожалуйста, введите пароль');
-            isValid = false;
-        } else if (password.length < 6) {
-            setPasswordError('Пароль должен содержать не менее 6 символов');
-            isValid = false;
-        }
-
         if (!name) {
             setNameError('Пожалуйста, введите ФИО');
             isValid = false;
@@ -306,7 +254,6 @@ export const RegisterForm = ({ onVerification }) => {
             setPhoneError('Пожалуйста, введите номер телефона');
             isValid = false;
         } else {
-            // Проверяем что номер полный (11 цифр)
             const digits = phone.replace(/\D/g, '');
             if (digits.length < 11) {
                 setPhoneError('Введите полный номер телефона');
@@ -314,33 +261,52 @@ export const RegisterForm = ({ onVerification }) => {
             }
         }
 
-        // Адрес необязателен, но если указан - минимум 5 символов
         if (address && address.trim().length > 0 && address.trim().length < 5) {
             setAddressError('Адрес должен содержать минимум 5 символов');
             isValid = false;
         }
 
-        // Район обязателен
         if (!districtId && !customDistrict) {
             setDistrictError('Пожалуйста, выберите или укажите район');
+            isValid = false;
+        }
+
+        // Валидация email (опциональный)
+        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            setEmailError('Введите корректный email');
+            isValid = false;
+        }
+
+        // Валидация пароля
+        if (!password) {
+            setPasswordError('Пожалуйста, введите пароль');
+            isValid = false;
+        } else if (password.length < 6) {
+            setPasswordError('Пароль должен содержать минимум 6 символов');
+            isValid = false;
+        }
+
+        if (!confirmPassword) {
+            setConfirmPasswordError('Пожалуйста, подтвердите пароль');
+            isValid = false;
+        } else if (password !== confirmPassword) {
+            setConfirmPasswordError('Пароли не совпадают');
             isValid = false;
         }
 
         return isValid;
     };
 
-    // Функция для обработки серверных ошибок валидации
     const handleServerErrors = (error) => {
-        // Сброс всех ошибок
-        setEmailError('');
-        setPasswordError('');
         setNameError('');
         setPhoneError('');
+        setEmailError('');
         setAddressError('');
         setGenderError('');
         setDistrictError('');
+        setPasswordError('');
+        setConfirmPasswordError('');
 
-        // Проверяем есть ли массив ошибок валидации
         const errors = error?.errors || error?.details || [];
         
         if (Array.isArray(errors) && errors.length > 0) {
@@ -350,16 +316,7 @@ export const RegisterForm = ({ onVerification }) => {
                 const field = err.field || err.param || '';
                 const message = err.message || err.msg || '';
                 
-                // Маппинг полей сервера на локальные поля
                 switch (field.toLowerCase()) {
-                    case 'email':
-                        setEmailError(message);
-                        hasFieldError = true;
-                        break;
-                    case 'password':
-                        setPasswordError(message);
-                        hasFieldError = true;
-                        break;
                     case 'name':
                         setNameError(message);
                         hasFieldError = true;
@@ -383,15 +340,8 @@ export const RegisterForm = ({ onVerification }) => {
                         hasFieldError = true;
                         break;
                     default:
-                        // Если поле не определено, пробуем определить по тексту ошибки
                         const lowerMessage = message.toLowerCase();
-                        if (lowerMessage.includes('email') || lowerMessage.includes('почт')) {
-                            setEmailError(message);
-                            hasFieldError = true;
-                        } else if (lowerMessage.includes('пароль') || lowerMessage.includes('password')) {
-                            setPasswordError(message);
-                            hasFieldError = true;
-                        } else if (lowerMessage.includes('имя') || lowerMessage.includes('фио') || lowerMessage.includes('name')) {
+                        if (lowerMessage.includes('имя') || lowerMessage.includes('фио') || lowerMessage.includes('name')) {
                             setNameError(message);
                             hasFieldError = true;
                         } else if (lowerMessage.includes('телефон') || lowerMessage.includes('phone')) {
@@ -411,23 +361,15 @@ export const RegisterForm = ({ onVerification }) => {
                 }
             });
             
-            // Если удалось привязать хотя бы одну ошибку к полю, не показываем Alert
             if (hasFieldError) {
                 return true;
             }
         }
         
-        // Проверяем сообщение об ошибке на ключевые слова
         const errorMessage = error?.message || '';
         const lowerMessage = errorMessage.toLowerCase();
         
-        if (lowerMessage.includes('email') || lowerMessage.includes('почт')) {
-            setEmailError(errorMessage);
-            return true;
-        } else if (lowerMessage.includes('пароль') || lowerMessage.includes('password')) {
-            setPasswordError(errorMessage);
-            return true;
-        } else if (lowerMessage.includes('телефон') || lowerMessage.includes('phone')) {
+        if (lowerMessage.includes('телефон') || lowerMessage.includes('phone')) {
             setPhoneError(errorMessage);
             return true;
         } else if (lowerMessage.includes('адрес') || lowerMessage.includes('address')) {
@@ -442,9 +384,7 @@ export const RegisterForm = ({ onVerification }) => {
     };
 
     const handleRegister = async () => {
-        console.log('Данные формы перед отправкой:', { email, password, name, phone, address, gender, districtId, customDistrict });
-        dispatch(setEmail(email));
-        dispatch(setPassword(password));
+        console.log('Данные формы (телефон) перед отправкой:', { name, phone, address, gender, districtId, customDistrict });
         dispatch(setName(name));
         dispatch(setPhone(phone));
         dispatch(setAddress(address));
@@ -463,31 +403,30 @@ export const RegisterForm = ({ onVerification }) => {
         }
 
         try {
-            const result = await dispatch(initiateRegister({ 
-                email, 
-                password, 
-                name, 
+            const result = await dispatch(initiatePhoneRegister({ 
                 phone, 
+                name,
+                email: email || null, 
                 address, 
                 gender,
                 districtId: isOtherDistrict ? null : districtId,
-                customDistrict: isOtherDistrict ? customDistrict : null
+                customDistrict: isOtherDistrict ? customDistrict : null,
+                password
             })).unwrap();
-            console.log('Результат initiateRegister:', result);
+            
+            console.log('Результат initiatePhoneRegister:', result);
             const tempToken = result?.registrationToken || null;
             const receiveCall = result?.receiveCall || null; // Данные для Receive Call
             
             if (tempToken) {
-                // Передаем receiveCall если он есть
-                onVerification(tempToken, receiveCall);
+                // Передаем receiveCall если он есть, иначе передаем тип 'phone'
+                onVerification(tempToken, receiveCall || 'phone');
             }
         } catch (error) {
-            console.error('Ошибка регистрации:', error);
+            console.error('Ошибка регистрации по телефону:', error);
             
-            // Пробуем обработать ошибки и показать под полями
             const handledAsFieldError = handleServerErrors(error);
             
-            // Если не удалось привязать к полю, показываем общий Alert
             if (!handledAsFieldError) {
                 Alert.alert(
                     'Ошибка регистрации', 
@@ -497,7 +436,6 @@ export const RegisterForm = ({ onVerification }) => {
         }
     };
 
-    // Компонент для отображения лейбла с обязательной звёздочкой
     const RequiredLabel = ({ text, required = true }) => (
         <Text style={styles.inputLabel}>
             {text}
@@ -507,42 +445,51 @@ export const RegisterForm = ({ onVerification }) => {
 
     return (
         <View style={styles.formContainer}>
+            <Text style={styles.infoText}>
+                📱 Вы получите номер для звонка
+            </Text>
+
             <View style={styles.inputsContainer}>
                 <View style={styles.inputContainer}>
-                    <RequiredLabel text="Ваша почта" />
+                    <RequiredLabel text="Ваш телефон" />
+                    <CustomTextInput
+                        style={[
+                            styles.input,
+                            phoneError ? styles.inputError : null
+                        ]}
+                        value={phone}
+                        onChangeText={handlePhoneChange}
+                        onBlur={handlePhoneBlur}
+                        onFocus={handlePhoneFocus}
+                        keyboardType="phone-pad"
+                        placeholder="+7 (___) ___-__-__"
+                        maxLength={18}
+                    />
+                    {phoneError ? (
+                        <Text style={styles.errorText}>{phoneError}</Text>
+                    ) : null}
+                    <View style={styles.inputUnderline} />
+                </View>
+
+                <View style={styles.inputContainer}>
+                    <RequiredLabel text="Email" required={false} />
                     <CustomTextInput
                         style={[
                             styles.input,
                             emailError ? styles.inputError : null
                         ]}
                         value={email}
-                        onChangeText={handleEmailChange}
-                        onBlur={handleEmailBlur}
+                        onChangeText={(text) => {
+                            setEmail(text);
+                            if (emailError) setEmailError('');
+                        }}
+                        placeholder="example@mail.com"
                         keyboardType="email-address"
                         autoCapitalize="none"
-                        placeholder="Icbrg@gmail.com"
+                        autoCorrect={false}
                     />
                     {emailError ? (
                         <Text style={styles.errorText}>{emailError}</Text>
-                    ) : null}
-                    <View style={styles.inputUnderline} />
-                </View>
-
-                <View style={styles.inputContainer}>
-                    <RequiredLabel text="Ваш пароль" />
-                    <CustomTextInput
-                        style={[
-                            styles.input,
-                            passwordError ? styles.inputError : null
-                        ]}
-                        value={password}
-                        onChangeText={handlePasswordChange}
-                        onBlur={handlePasswordBlur}
-                        secureTextEntry
-                        placeholder="********"
-                    />
-                    {passwordError ? (
-                        <Text style={styles.errorText}>{passwordError}</Text>
                     ) : null}
                     <View style={styles.inputUnderline} />
                 </View>
@@ -566,27 +513,6 @@ export const RegisterForm = ({ onVerification }) => {
                 </View>
 
                 <View style={styles.inputContainer}>
-                    <RequiredLabel text="Ваш телефон" />
-                    <CustomTextInput
-                        style={[
-                            styles.input,
-                            phoneError ? styles.inputError : null
-                        ]}
-                        value={phone}
-                        onChangeText={handlePhoneChange}
-                        onBlur={handlePhoneBlur}
-                        onFocus={handlePhoneFocus}
-                        keyboardType="phone-pad"
-                        placeholder="+7 (___) ___-__-__"
-                        maxLength={18}
-                    />
-                    {phoneError ? (
-                        <Text style={styles.errorText}>{phoneError}</Text>
-                    ) : null}
-                    <View style={styles.inputUnderline} />
-                </View>
-
-                <View style={styles.inputContainer}>
                     <RequiredLabel text="Ваш адрес" required={false} />
                     <CustomTextInput
                         style={[
@@ -604,7 +530,6 @@ export const RegisterForm = ({ onVerification }) => {
                     <View style={styles.inputUnderline} />
                 </View>
 
-                {/* Поле выбора района */}
                 <View style={styles.inputContainer}>
                     <RequiredLabel text="Ваш район" />
                     <TouchableOpacity
@@ -621,7 +546,6 @@ export const RegisterForm = ({ onVerification }) => {
                     <View style={styles.inputUnderline} />
                 </View>
 
-                {/* Поле для ввода кастомного района */}
                 {isOtherDistrict && (
                     <View style={styles.inputContainer}>
                         <RequiredLabel text="Название вашего района" />
@@ -638,7 +562,6 @@ export const RegisterForm = ({ onVerification }) => {
                     </View>
                 )}
 
-                {/* Поле выбора пола */}
                 <View style={styles.inputContainer}>
                     <RequiredLabel text="Ваш пол" required={false} />
                     <TouchableOpacity
@@ -654,9 +577,52 @@ export const RegisterForm = ({ onVerification }) => {
                     ) : null}
                     <View style={styles.inputUnderline} />
                 </View>
+
+                <View style={styles.inputContainer}>
+                    <RequiredLabel text="Пароль" />
+                    <CustomTextInput
+                        style={[
+                            styles.input,
+                            passwordError ? styles.inputError : null
+                        ]}
+                        value={password}
+                        onChangeText={(text) => {
+                            setPassword(text);
+                            if (passwordError) setPasswordError('');
+                        }}
+                        placeholder="Минимум 6 символов"
+                        secureTextEntry
+                        autoCapitalize="none"
+                    />
+                    {passwordError ? (
+                        <Text style={styles.errorText}>{passwordError}</Text>
+                    ) : null}
+                    <View style={styles.inputUnderline} />
+                </View>
+
+                <View style={styles.inputContainer}>
+                    <RequiredLabel text="Подтверждение пароля" />
+                    <CustomTextInput
+                        style={[
+                            styles.input,
+                            confirmPasswordError ? styles.inputError : null
+                        ]}
+                        value={confirmPassword}
+                        onChangeText={(text) => {
+                            setConfirmPassword(text);
+                            if (confirmPasswordError) setConfirmPasswordError('');
+                        }}
+                        placeholder="Повторите пароль"
+                        secureTextEntry
+                        autoCapitalize="none"
+                    />
+                    {confirmPasswordError ? (
+                        <Text style={styles.errorText}>{confirmPasswordError}</Text>
+                    ) : null}
+                    <View style={styles.inputUnderline} />
+                </View>
             </View>
 
-            {/* Согласие на обработку персональных данных */}
             <View style={styles.privacyContainer}>
                 <View style={styles.checkboxContainer}>
                     <TouchableOpacity
@@ -695,7 +661,7 @@ export const RegisterForm = ({ onVerification }) => {
                 {isLoading ? (
                     <ActivityIndicator color="#fff" />
                 ) : (
-                    <Text style={styles.buttonText}>Подтвердить</Text>
+                    <Text style={styles.buttonText}>Продолжить</Text>
                 )}
             </TouchableOpacity>
 
@@ -773,7 +739,6 @@ export const RegisterForm = ({ onVerification }) => {
                                         </Text>
                                     </TouchableOpacity>
                                 ))}
-                                {/* Опция "Другой район" */}
                                 <TouchableOpacity
                                     style={[
                                         styles.optionItem,
@@ -836,6 +801,17 @@ const styles = StyleSheet.create({
         width: '100%',
         marginTop: 0,
         marginBottom: 50,
+    },
+    infoText: {
+        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+        fontSize: normalizeFont(14),
+        color: '#000cff',
+        textAlign: 'center',
+        marginBottom: normalize(20),
+        paddingHorizontal: normalize(10),
+        paddingVertical: normalize(10),
+        backgroundColor: 'rgba(0, 12, 255, 0.05)',
+        borderRadius: 8,
     },
     inputsContainer: {
         marginBottom: normalize(20),
@@ -900,13 +876,6 @@ const styles = StyleSheet.create({
         marginTop: normalize(5),
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
     },
-    globalErrorText: {
-        color: '#FF0000',
-        fontSize: normalizeFont(14),
-        textAlign: 'center',
-        marginBottom: normalize(15),
-        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
-    },
     button: {
         backgroundColor: '#000cff',
         borderRadius: 30,
@@ -930,7 +899,6 @@ const styles = StyleSheet.create({
         color: '#fff',
         lineHeight: normalize(30),
     },
-    // Стили для модального окна
     modalContainer: {
         flex: 1,
         justifyContent: 'center',
@@ -982,7 +950,6 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: '#fff',
     },
-    // Стили для списка районов
     districtsList: {
         maxHeight: height * 0.4,
     },
@@ -1052,3 +1019,4 @@ const styles = StyleSheet.create({
         fontWeight: '500',
     },
 });
+

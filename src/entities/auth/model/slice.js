@@ -173,6 +173,105 @@ export const completeRegister = createAsyncThunk(
     }
 );
 
+// ========================================
+// РЕГИСТРАЦИЯ ПО ТЕЛЕФОНУ
+// ========================================
+
+export const initiatePhoneRegister = createAsyncThunk(
+    'auth/initiatePhoneRegister',
+    async (data, { rejectWithValue }) => {
+        try {
+            const { phone, name, email, address, gender, districtId, customDistrict, password } = data;
+            const payload = {
+                phone,
+                name,
+                ...(email && { email }),
+                ...(password && { password }),
+                ...(address && { address }),
+                gender: gender || 'PREFER_NOT_TO_SAY',
+                ...(districtId && { districtId: parseInt(districtId) }),
+                ...(customDistrict && { customDistrict })
+            };
+            
+            console.log('📤 Отправка данных телефонной регистрации:', {
+                ...payload,
+                password: password ? '***' : undefined
+            });
+            
+            const response = await authApi.initiatePhoneRegister(payload);
+
+            if (!response || !response.status) {
+                return rejectWithValue('Неожиданный формат ответа');
+            }
+
+            if (response.status === 'error') {
+                return rejectWithValue({
+                    message: response.message || 'Ошибка при инициализации регистрации по телефону',
+                    errors: response.errors || [],
+                    code: response.code || 400
+                });
+            }
+
+            return response.data;
+        } catch (error) {
+            const errorData = {
+                message: error?.message || handleError(error),
+                errors: error?.errors || error?.response?.data?.errors || [],
+                code: error?.code || error?.response?.status
+            };
+            return rejectWithValue(errorData);
+        }
+    }
+);
+
+export const completePhoneRegister = createAsyncThunk(
+    'auth/completePhoneRegister',
+    async (data, { rejectWithValue }) => {
+        try {
+            const response = await authApi.completePhoneRegister(data);
+
+            if (!response || typeof response !== 'object') {
+                return rejectWithValue('Сервер вернул некорректный ответ');
+            }
+
+            if (response.status !== 'success') {
+                return rejectWithValue(response.message || 'Произошла ошибка при регистрации');
+            }
+
+            const responseData = response.data;
+            if (!responseData) {
+                return rejectWithValue('Сервер вернул некорректный ответ');
+            }
+
+            const { accessToken, refreshToken, user } = responseData;
+
+            if (!accessToken || !refreshToken) {
+                return rejectWithValue('Токены авторизации не получены от сервера');
+            }
+
+            const tokens = { accessToken, refreshToken };
+
+            try {
+                await saveTokensToStorage(tokens);
+            } catch (storageError) {
+                // Ошибка сохранения токенов игнорируется
+            }
+
+            return {
+                user,
+                tokens
+            };
+        } catch (error) {
+            if (error.response?.data) {
+                const serverError = error.response.data;
+                return rejectWithValue(serverError.message || 'Произошла ошибка при подтверждении кода');
+            }
+
+            return rejectWithValue(error.message || 'Произошла неизвестная ошибка при регистрации');
+        }
+    }
+);
+
 export const verify2FALogin = createAsyncThunk(
     'auth/verify2FALogin',
     async ({ tempToken, twoFactorCode }, { rejectWithValue }) => {
@@ -663,6 +762,37 @@ const authSlice = createSlice({
                 state.error = action.payload || 'Произошла ошибка при завершении регистрации';
                 state.isAuthenticated = false;
             })
+            // Телефонная регистрация
+            .addCase(initiatePhoneRegister.pending, setPending)
+            .addCase(initiatePhoneRegister.fulfilled, (state, action) => {
+                state.isLoading = false;
+                state.error = null;
+                state.tempToken = action.payload?.registrationToken || null;
+            })
+            .addCase(initiatePhoneRegister.rejected, setRejected)
+            .addCase(completePhoneRegister.pending, (state) => {
+                state.isLoading = true;
+                state.error = null;
+            })
+            .addCase(completePhoneRegister.fulfilled, (state, action) => {
+                state.isLoading = false;
+                state.error = null;
+
+                if (action.payload && action.payload.user && action.payload.tokens) {
+                    state.user = action.payload.user;
+                    state.tokens = action.payload.tokens;
+                    state.isAuthenticated = true;
+                    state.tempToken = null;
+                } else {
+                    state.error = 'Ошибка авторизации: недостаточно данных';
+                    state.isAuthenticated = false;
+                }
+            })
+            .addCase(completePhoneRegister.rejected, (state, action) => {
+                state.isLoading = false;
+                state.error = action.payload || 'Произошла ошибка при завершении регистрации';
+                state.isAuthenticated = false;
+            })
             .addCase(logout.fulfilled, (state) => {
                 Object.assign(state, initialState);
             })
@@ -724,5 +854,8 @@ export const {
     updateUserWithProfile,
     updateUserClient,
 } = authSlice.actions;
+
+// Примечание: initiatePhoneRegister и completePhoneRegister 
+// уже экспортированы как export const при их объявлении выше
 
 export default authSlice.reducer;

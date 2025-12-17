@@ -20,6 +20,7 @@ import { CommonActions, useFocusEffect, useNavigation } from '@react-navigation/
 import { useDispatch, useSelector } from 'react-redux';
 import { LoginForm } from '@features/auth/ui/LoginForm';
 import { RegisterForm } from '@features/auth/ui/RegisterForm';
+import { PhoneRegisterForm } from '@features/auth/ui/PhoneRegisterForm';
 import { VerificationForm } from '@features/auth/ui/VerificationForm';
 import { Color } from "@app/styles/GlobalStyles";
 import { useAuth } from "@entities/auth/hooks/useAuth";
@@ -60,7 +61,9 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
 
     const [activeTab, setActiveTab] = useState('login');
     const [formState, setFormState] = useState('register');
+    const [registrationType, setRegistrationType] = useState('email'); // 'email' или 'phone'
     const [currentTempToken, setCurrentTempToken] = useState(null);
+    const [receiveCallData, setReceiveCallData] = useState(null); // Данные для Receive Call
     const [keyboardVisible, setKeyboardVisible] = useState(false);
     const scrollViewRef = useRef(null);
     const [isCheckingAuth, setIsCheckingAuth] = useState(true);
@@ -221,14 +224,31 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
         }, [formState, isAuthenticated, navigation])
     );
 
-    const handleVerification = (tempToken) => {
+    const handleVerification = (tempToken, receiveCallOrRegType = null) => {
         setCurrentTempToken(tempToken);
+        
+        // Проверяем тип второго аргумента
+        if (typeof receiveCallOrRegType === 'string') {
+            // Старый вариант: второй аргумент - regType ('email' или 'phone')
+            setRegistrationType(receiveCallOrRegType);
+            setReceiveCallData(null);
+        } else if (receiveCallOrRegType && receiveCallOrRegType.phoneToCall) {
+            // Новый вариант: второй аргумент - данные receiveCall
+            setRegistrationType('phone');
+            setReceiveCallData(receiveCallOrRegType);
+        } else {
+            // По умолчанию - email
+            setRegistrationType('email');
+            setReceiveCallData(null);
+        }
+        
         setFormState('verification');
     };
 
     const handleBackToRegister = () => {
         setFormState('register');
         setCurrentTempToken(null);
+        setReceiveCallData(null);
     };
 
     const handleLoginTab = () => {
@@ -343,6 +363,42 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
                             {activeTab === 'register' && <View style={styles.activeTabIndicator} />}
                         </TouchableOpacity>
                     </Animated.View>
+
+                    {/* Переключатель типа регистрации */}
+                    {activeTab === 'register' && formState === 'register' && (
+                        <Animated.View style={[styles.registrationTypeContainer, { marginTop: normalize(10) }]}>
+                            <TouchableOpacity
+                                style={[
+                                    styles.registrationTypeButton,
+                                    registrationType === 'email' && styles.registrationTypeButtonActive
+                                ]}
+                                onPress={() => setRegistrationType('email')}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={[
+                                    styles.registrationTypeText,
+                                    registrationType === 'email' && styles.registrationTypeTextActive
+                                ]}>
+                                    📧 Email
+                                </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[
+                                    styles.registrationTypeButton,
+                                    registrationType === 'phone' && styles.registrationTypeButtonActive
+                                ]}
+                                onPress={() => setRegistrationType('phone')}
+                                activeOpacity={0.7}
+                            >
+                                <Text style={[
+                                    styles.registrationTypeText,
+                                    registrationType === 'phone' && styles.registrationTypeTextActive
+                                ]}>
+                                    📱 Телефон
+                                </Text>
+                            </TouchableOpacity>
+                        </Animated.View>
+                    )}
                 </Animated.View>
 
                 <ScrollView
@@ -353,7 +409,10 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
                     ]}
                     contentContainerStyle={[
                         styles.scrollViewContent,
-                        { paddingBottom: extraScrollHeight + 100 }
+                        { 
+                            paddingBottom: extraScrollHeight + 100,
+                            paddingTop: (activeTab === 'register' && formState === 'register') ? normalize(50) : 0
+                        }
                     ]}
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={true}
@@ -366,12 +425,19 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
                             ) : formState === 'verification' ? (
                                 <VerificationForm
                                     tempToken={currentTempToken}
+                                    registrationType={registrationType}
+                                    receiveCall={receiveCallData}
                                     onBack={handleBackToRegister}
+                                />
+                            ) : registrationType === 'phone' ? (
+                                <PhoneRegisterForm
+                                    navigation={navigation}
+                                    onVerification={(token, receiveCallData) => handleVerification(token, receiveCallData || 'phone')}
                                 />
                             ) : (
                                 <RegisterForm
                                     navigation={navigation}
-                                    onVerification={handleVerification}
+                                    onVerification={(token, receiveCallData) => handleVerification(token, receiveCallData || 'email')}
                                 />
                             )}
                             <View style={styles.bottomPadding} />
@@ -478,5 +544,36 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         zIndex: 10,
+    },
+    registrationTypeContainer: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: normalize(20),
+        paddingBottom: normalize(10),
+        gap: normalize(10),
+    },
+    registrationTypeButton: {
+        flex: 1,
+        paddingVertical: normalize(10),
+        paddingHorizontal: normalize(15),
+        borderRadius: normalize(8),
+        borderWidth: 1,
+        borderColor: '#E0E0E0',
+        backgroundColor: '#FFFFFF',
+        alignItems: 'center',
+    },
+    registrationTypeButtonActive: {
+        borderColor: '#000cff',
+        backgroundColor: 'rgba(0, 12, 255, 0.05)',
+    },
+    registrationTypeText: {
+        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+        fontSize: normalizeFont(14),
+        fontWeight: '600',
+        color: '#666',
+    },
+    registrationTypeTextActive: {
+        color: '#000cff',
     },
 });

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { StyleSheet, View, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, TouchableOpacity, ActivityIndicator, InteractionManager } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, CommonActions } from '@react-navigation/native';
 import {deleteProduct, fetchProductById, resetCurrentProduct, updateProductOptimistic} from '@entities/product';
 import { fetchCategories } from '@entities/category';
 import { fetchProfile } from '@entities/profile';
@@ -254,52 +254,23 @@ export const ProductActions = React.memo(({
             `Вы уверены, что хотите удалить товар "${product.name}"?`,
             async () => {
                 try {
+                    // Сначала сбрасываем текущий продукт в Redux, чтобы предотвратить загрузку удаленного товара
+                    dispatch(resetCurrentProduct());
+
                     await dispatch(deleteProduct(product.id)).unwrap();
                     GlobalAlert.showSuccess('', 'Товар успешно удален');
 
-                    // Сбрасываем текущий продукт в Redux
-                    dispatch(resetCurrentProduct());
-
-                    // Определяем, куда вернуться на основе навигационного контекста
-                    const navigationState = navigation.getState();
-                    const routes = navigationState?.routes || [];  
-                    const currentRoute = routes[navigationState?.index];
-                    
-                    // Отладочная информация для навигации после удаления
-                    console.log('ProductActions - Delete Navigation:', currentRoute?.name, currentRoute?.params);
-                    
-                    if (currentRoute?.name === 'ProductDetail') {
-                        // Проверяем параметры текущего роута
-                        const currentParams = currentRoute.params || {};
-                        const fromScreen = currentParams.fromScreen;
-                        const originalFromScreen = currentParams.originalFromScreen;
-                        
-                        if (fromScreen === 'ProductManagement' && originalFromScreen === 'AdminPanel') {
-                            navigation.navigate('MainTab', {
-                                screen: 'ProductManagement',
-                                params: { fromScreen: 'AdminPanel' }
-                            });
-                        } else if (fromScreen === 'ProductManagement') {
-                            navigation.navigate('MainTab', {
-                                screen: 'ProductManagement'
-                            });
-                        } else {
-                            navigation.goBack();
-                        }
-                    } else if (currentRoute?.name === 'ProductManagement') {
-                        // Если мы на ProductManagement, проверяем его параметры
-                        const currentParams = currentRoute.params || {};
-                        const fromScreen = currentParams.fromScreen;
-                        
-                        if (fromScreen === 'AdminPanel') {
-                            // Остаемся на том же экране, просто товар удален из списка
-                            return;
-                        } else {
-                            navigation.goBack();
-                        }
-                    } else {
-                        navigation.goBack();
-                    }
+                    // Используем InteractionManager для безопасной навигации после удаления
+                    // Полностью сбрасываем стек навигации к Main, что размонтирует все дочерние экраны
+                    // включая ProductDetail, что предотвратит попытки загрузки удаленного продукта
+                    InteractionManager.runAfterInteractions(() => {
+                        navigation.dispatch(
+                            CommonActions.reset({
+                                index: 0,
+                                routes: [{ name: 'Main' }]
+                            })
+                        );
+                    });
                 } catch (error) {
                     GlobalAlert.showError('Ошибка', error.toString());
                 }

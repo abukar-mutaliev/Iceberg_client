@@ -53,85 +53,17 @@ export const fetchSupplierFeedbacks = createAsyncThunk(
             const supplierProducts = state.suppliers.supplierProducts[supplierId] || [];
 
             if (!supplierProducts.length) {
+                console.log('Нет продуктов для загрузки отзывов');
                 return { supplierId, feedbacks: [] };
             }
 
-            // Проверяем кэш и загружаем только те продукты, у которых нет отзывов или кэш устарел
-            const CACHE_DURATION = 5 * 60 * 1000;
-            const feedbackState = state.feedback;
-            const loadedProductIds = feedbackState.loadedProductIds || [];
-            const cacheTimestamps = feedbackState.cacheTimestamps || {};
+            console.log(`Загрузка отзывов для ${supplierProducts.length} продуктов поставщика`);
 
-            // Фильтруем продукты, для которых нужно загрузить отзывы
-            const productsToLoad = supplierProducts.filter(product => {
-                if (!product || !product.id) return false;
-                
-                const productId = product.id;
-                const isLoaded = loadedProductIds.includes(productId);
-                const cacheTimestamp = cacheTimestamps[productId];
-                const isCacheValid = cacheTimestamp && (Date.now() - cacheTimestamp < CACHE_DURATION);
-                
-                // Загружаем только если не загружено или кэш устарел
-                return !isLoaded || !isCacheValid;
-            });
+            const feedbackPromises = supplierProducts.map(product =>
+                dispatch(fetchProductFeedbacks(product.id))
+            );
 
-            // Если все отзывы уже загружены и кэш актуален, возвращаем успех без загрузки
-            if (productsToLoad.length === 0) {
-                return { supplierId, success: true, skipped: true };
-            }
-
-            // ОПТИМИЗАЦИЯ: Ограничиваем количество продуктов для загрузки
-            // Загружаем только первые 10 продуктов с отзывами для быстрой загрузки
-            // Остальные будут загружаться по требованию
-            // Сначала загружаем продукты, у которых точно есть отзывы (если есть информация)
-            const MAX_PRODUCTS_TO_LOAD = 10;
-            
-            // Приоритет: сначала продукты с отзывами (если есть информация о feedbackCount)
-            const productsWithFeedbacks = productsToLoad.filter(p => p.feedbackCount > 0);
-            const productsWithoutFeedbacks = productsToLoad.filter(p => !p.feedbackCount || p.feedbackCount === 0);
-            
-            // Берем сначала продукты с отзывами, потом остальные
-            const prioritizedProducts = [
-                ...productsWithFeedbacks.slice(0, MAX_PRODUCTS_TO_LOAD),
-                ...productsWithoutFeedbacks.slice(0, Math.max(0, MAX_PRODUCTS_TO_LOAD - productsWithFeedbacks.length))
-            ];
-            
-            const limitedProducts = prioritizedProducts.slice(0, MAX_PRODUCTS_TO_LOAD);
-
-            if (__DEV__) {
-                console.log(`Загрузка отзывов: ${limitedProducts.length} из ${productsToLoad.length} продуктов (${productsWithFeedbacks.length} с отзывами, ограничено до ${MAX_PRODUCTS_TO_LOAD})`);
-            }
-
-            // Загружаем отзывы батчами по 5 продуктов для оптимизации (меньше запросов одновременно)
-            const BATCH_SIZE = 5;
-            const batches = [];
-            for (let i = 0; i < limitedProducts.length; i += BATCH_SIZE) {
-                batches.push(limitedProducts.slice(i, i + BATCH_SIZE));
-            }
-
-            if (__DEV__) {
-                console.log(`Загрузка отзывов батчами: ${batches.length} батчей по ${BATCH_SIZE} продуктов`);
-            }
-
-            // Загружаем батчи параллельно для максимальной скорости
-            const batchPromises = batches.map((batch, batchIndex) => {
-                if (__DEV__) {
-                    console.log(`Начало загрузки батча ${batchIndex + 1}/${batches.length} (${batch.length} продуктов)`);
-                }
-                return Promise.all(batch.map(product =>
-                    dispatch(fetchProductFeedbacks(product.id))
-                )).then(() => {
-                    if (__DEV__) {
-                        console.log(`Батч ${batchIndex + 1}/${batches.length} загружен`);
-                    }
-                });
-            });
-            
-            await Promise.all(batchPromises);
-            
-            if (__DEV__) {
-                console.log(`Все отзывы загружены для поставщика ${supplierId}`);
-            }
+            await Promise.all(feedbackPromises);
 
             return { supplierId, success: true };
         } catch (error) {

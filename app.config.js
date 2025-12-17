@@ -15,7 +15,7 @@ export default {
             backgroundColor: '#ffffff',
         },
         platforms: ['ios', 'android'],
-        assetBundlePatterns: ['**/*', 'assets/**/*', 'src/assets/**/*'],
+        assetBundlePatterns: ['**/*', 'src/assets/**/*', 'src/assets/images/**/*'],
         web: {
             favicon: './assets/icon.png',
             bundler: 'metro',
