@@ -6,6 +6,7 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 
 // Ленивая загрузка OneSignal для избежания ошибок при выходе
 let OneSignal = null;
@@ -39,6 +40,40 @@ class OneSignalService {
         this.isInitialized = false;
         this.currentUserId = null;
         this.subscriptionId = null;
+        this.notificationChannelCreated = false;
+    }
+
+    // ⚠️ КРИТИЧЕСКИ ВАЖНО: Создание канала уведомлений для Android
+    // Этот канал ОБЯЗАТЕЛЬНО нужен для heads-up уведомлений
+    async ensureNotificationChannelExists() {
+        // Пропускаем если не Android или уже создан
+        if (Platform.OS !== 'android' || this.notificationChannelCreated) {
+            return true;
+        }
+
+        try {
+            console.log('[OneSignal] 📢 Создаем канал уведомлений fcm_fallback_notification_channel');
+            
+            await Notifications.setNotificationChannelAsync('fcm_fallback_notification_channel', {
+                name: 'Сообщения',
+                importance: Notifications.AndroidImportance.MAX, // MAX = heads-up уведомления
+                vibrationPattern: [0, 250, 250, 250],
+                lightColor: '#007AFF',
+                sound: 'default',
+                enableVibrate: true,
+                enableLights: true,
+                lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+                bypassDnd: false,
+            });
+
+            this.notificationChannelCreated = true;
+            console.log('[OneSignal] ✅ Канал уведомлений создан с MAX importance');
+            return true;
+            
+        } catch (error) {
+            console.error('[OneSignal] ❌ Ошибка создания канала уведомлений:', error);
+            return false;
+        }
     }
 
     // Инициализация OneSignal
@@ -50,6 +85,10 @@ class OneSignalService {
                 console.log('[OneSignal] ✅ Уже инициализирован');
                 return true;
             }
+
+            // ⚠️ КРИТИЧЕСКИ ВАЖНО: Создаем канал уведомлений ДО инициализации OneSignal
+            // Это гарантирует что канал существует на устройстве перед получением уведомлений
+            await this.ensureNotificationChannelExists();
 
             const oneSignal = getOneSignal();
             if (!oneSignal) {
@@ -161,6 +200,9 @@ class OneSignalService {
     async initializeForUser(user) {
         try {
             console.log('[OneSignal] 🚀 initializeForUser начата для userId:', user.id);
+            
+            // ⚠️ КРИТИЧЕСКИ ВАЖНО: Убеждаемся что канал уведомлений существует
+            await this.ensureNotificationChannelExists();
             
             if (!this.isInitialized) {
                 // Пытаемся инициализировать OneSignal с App ID

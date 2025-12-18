@@ -30,25 +30,8 @@ Notifications.setNotificationHandler({
     }),
 });
 
-// Создаем канал с ВЫСОКОЙ важностью для heads-up уведомлений (Android)
-// Этот канал используется OneSignal для показа всплывающих уведомлений
-if (Platform.OS === 'android') {
-    Notifications.setNotificationChannelAsync('fcm_fallback_notification_channel', {
-        name: 'Сообщения',
-        importance: Notifications.AndroidImportance.MAX, // MAX = heads-up уведомления
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#007AFF',
-        sound: 'default',
-        enableVibrate: true,
-        enableLights: true,
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-        bypassDnd: false,
-    }).then(() => {
-        console.log('✅ Notification channel created with MAX importance');
-    }).catch((err) => {
-        console.warn('⚠️ Failed to create notification channel:', err);
-    });
-}
+// 📝 ВАЖНО: Создание канала уведомлений теперь в OneSignalService.initialize()
+// Канал создается синхронно при инициализации сервиса для ВСЕХ пользователей
 
 
 class ErrorBoundary extends React.Component {

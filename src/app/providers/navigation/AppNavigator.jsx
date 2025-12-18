@@ -1242,7 +1242,11 @@ export const AppNavigator = () => {
                     <Stack.Screen
                         name="Welcome"
                         component={WelcomeScreen}
-                        options={createScreenOptions()}
+                        options={{
+                            ...createScreenOptions(),
+                            gestureEnabled: false, // Запрещаем возврат жестом
+                            headerLeft: null, // Убираем кнопку назад
+                        }}
                     />
                     <Stack.Screen
                         name="Auth"

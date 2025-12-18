@@ -1,6 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useRef} from 'react';
 import {View, FlatList, TouchableOpacity, Text, StyleSheet, RefreshControl, Image} from 'react-native';
-import {useFocusEffect} from '@react-navigation/native';
+import {useFocusEffect, CommonActions} from '@react-navigation/native';
 import {useDispatch, useSelector} from 'react-redux';
 import {fetchRooms, setActiveRoom, loadRoomsCache, fetchRoom, fetchMessages} from '@entities/chat/model/slice';
 import {fetchProductById} from '@entities/product/model/slice';
@@ -144,6 +144,69 @@ export const ChatListScreen = ({navigation}) => {
             dispatch(setActiveRoom(null));
         }, [dispatch])
     );
+
+    // Перехватываем попытки возврата на WelcomeScreen и перенаправляем на Main
+    // ВАЖНО: ChatListScreen находится в табе, поэтому прямой возврат на WelcomeScreen маловероятен
+    // Но на всякий случай перехватываем явные попытки
+    useEffect(() => {
+        const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+            try {
+                const actionType = e?.data?.action?.type;
+                const targetRouteName = e?.data?.action?.payload?.name;
+                
+                // Перехватываем ТОЛЬКО если явно пытаемся вернуться на WelcomeScreen или Splash
+                // И это не обычный POP/GO_BACK внутри стека
+                const isReturningToWelcome = targetRouteName === 'Welcome' || targetRouteName === 'Splash';
+                
+                if (!isReturningToWelcome) {
+                    // Для всех остальных случаев разрешаем стандартную навигацию
+                    return;
+                }
+                
+                console.log('ChatListScreen: Intercepting navigation to WelcomeScreen');
+                
+                // Предотвращаем возврат на WelcomeScreen
+                e.preventDefault();
+                
+                // Перенаправляем на главный экран вместо WelcomeScreen
+                // Используем requestAnimationFrame для безопасной асинхронной навигации
+                requestAnimationFrame(() => {
+                    try {
+                        // Пытаемся найти корневой навигатор через иерархию
+                        let rootNavigation = navigation;
+                        let parent = navigation.getParent();
+                        let depth = 0;
+                        const maxDepth = 5; // Защита от бесконечного цикла
+                        
+                        while (parent && depth < maxDepth) {
+                            rootNavigation = parent;
+                            parent = parent.getParent();
+                            depth++;
+                        }
+                        
+                        // Проверяем, что навигатор существует и имеет метод navigate
+                        if (rootNavigation && typeof rootNavigation.navigate === 'function') {
+                            // Используем navigate для безопасной навигации
+                            rootNavigation.navigate('Main');
+                            console.log('ChatListScreen: Successfully redirected to Main');
+                        } else {
+                            console.warn('ChatListScreen: Root navigation not found or invalid');
+                        }
+                    } catch (error) {
+                        console.error('ChatListScreen: Failed to redirect to Main:', error);
+                        // Если не удалось навигировать, просто предотвращаем возврат
+                        // Пользователь останется на ChatListScreen
+                    }
+                });
+            } catch (error) {
+                console.error('ChatListScreen: Error in beforeRemove listener:', error);
+                // В случае любой ошибки разрешаем стандартную навигацию, чтобы не блокировать приложение
+                // НЕ вызываем e.preventDefault() при ошибке
+            }
+        });
+
+        return unsubscribe;
+    }, [navigation]);
 
     const getChatTitle = useCallback((room) => {
         // Для групповых чатов и каналов BROADCAST сразу возвращаем название
