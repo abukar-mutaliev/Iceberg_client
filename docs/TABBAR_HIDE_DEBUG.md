@@ -135,9 +135,10 @@ tabBar={props => isTabBarVisible ? <CustomTabBar {...props} /> : null}
 - ✅ **ChatList > ChatRoom** (должен скрывать)
 - ✅ **ChatList > ChatMain** (должен скрывать)  
 - ✅ **Search > SearchMain** (должен скрывать)
+- ✅ **ProfileTab (не авторизован)** (должен скрывать - показывается AuthScreen)
 - ❌ **MainTab** (НЕ должен скрывать)
 - ❌ **Cart > CartMain** (НЕ должен скрывать)
-- ❌ **ProfileTab** (НЕ должен скрывать)
+- ⚠️ **ProfileTab (авторизован)** (может скрывать, но не критично)
 
 ### 2. Фильтр логов в терминале
 

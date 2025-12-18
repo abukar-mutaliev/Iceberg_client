@@ -40,38 +40,46 @@ class OneSignalService {
         this.isInitialized = false;
         this.currentUserId = null;
         this.subscriptionId = null;
-        this.notificationChannelCreated = false;
     }
 
     // ⚠️ КРИТИЧЕСКИ ВАЖНО: Создание канала уведомлений для Android
     // Этот канал ОБЯЗАТЕЛЬНО нужен для heads-up уведомлений
     async ensureNotificationChannelExists() {
-        // Пропускаем если не Android или уже создан
-        if (Platform.OS !== 'android' || this.notificationChannelCreated) {
+        // Пропускаем только если не Android
+        if (Platform.OS !== 'android') {
             return true;
         }
 
         try {
-            console.log('[OneSignal] 📢 Создаем канал уведомлений fcm_fallback_notification_channel');
-            
-            await Notifications.setNotificationChannelAsync('fcm_fallback_notification_channel', {
-                name: 'Сообщения',
-                importance: Notifications.AndroidImportance.MAX, // MAX = heads-up уведомления
-                vibrationPattern: [0, 250, 250, 250],
-                lightColor: '#007AFF',
-                sound: 'default',
-                enableVibrate: true,
-                enableLights: true,
-                lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-                bypassDnd: false,
-            });
+            // На реальных устройствах push часто попадает в канал `default` или `fcm_fallback_notification_channel`.
+            // Для heads-up важно, чтобы эти каналы существовали и были MAX/HIGH.
+            // Важно: Android может не позволить повысить importance для уже созданного канала.
+            // Но на "чистой" установке (после удаления приложения) это создаст каналы сразу с MAX.
 
-            this.notificationChannelCreated = true;
-            console.log('[OneSignal] ✅ Канал уведомлений создан с MAX importance');
+            const ensure = async (id, name) => {
+                await Notifications.setNotificationChannelAsync(id, {
+                    name,
+                    importance: Notifications.AndroidImportance.MAX,
+                    vibrationPattern: [0, 250, 250, 250],
+                    lightColor: '#007AFF',
+                    sound: 'default',
+                    enableVibrate: true,
+                    enableLights: true,
+                    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+                    // bypassDnd лучше не включать по умолчанию — зависит от политики приложения
+                    bypassDnd: false,
+                });
+            };
+
+            await ensure('default', 'Уведомления');
+            await ensure('chat', 'Чат');
+            await ensure('fcm_fallback_notification_channel', 'Сообщения');
+            await ensure('iceberg-high-priority', 'Iceberg (High Priority)');
+
             return true;
             
         } catch (error) {
-            console.error('[OneSignal] ❌ Ошибка создания канала уведомлений:', error);
+            console.error('[OneSignal] ❌ Ошибка создания/обновления канала уведомлений:', error);
             return false;
         }
     }
@@ -81,14 +89,14 @@ class OneSignalService {
         try {
             console.log('[OneSignal] 🔧 initialize() вызван с appId:', appId?.substring(0, 10) + '...');
             
+            // ⚠️ КРИТИЧЕСКИ ВАЖНО: Создаем канал уведомлений ПЕРЕД проверкой isInitialized
+            // Это гарантирует что канал существует на устройстве при каждом запуске приложения
+            await this.ensureNotificationChannelExists();
+
             if (this.isInitialized) {
                 console.log('[OneSignal] ✅ Уже инициализирован');
                 return true;
             }
-
-            // ⚠️ КРИТИЧЕСКИ ВАЖНО: Создаем канал уведомлений ДО инициализации OneSignal
-            // Это гарантирует что канал существует на устройстве перед получением уведомлений
-            await this.ensureNotificationChannelExists();
 
             const oneSignal = getOneSignal();
             if (!oneSignal) {
@@ -154,14 +162,24 @@ class OneSignalService {
 
             // Обработчик получения уведомлений в foreground
             oneSignal.Notifications.addEventListener('foregroundWillDisplay', (event) => {
-                console.log('[OneSignal] Уведомление в foreground:', event.notification);
-                
-                // НЕ блокируем системное уведомление - позволяем Android показывать heads-up
-                // Это работает как в WhatsApp - системные уведомления показываются даже когда приложение активно
-                // event.preventDefault(); // УБРАНО - теперь показываем системные уведомления
-                
-                console.log('[OneSignal] Показываем системное heads-up уведомление (как в WhatsApp)');
-                // Системное уведомление будет показано автоматически, так как мы не вызываем preventDefault()
+                try {
+                    // ВАЖНО:
+                    // В некоторых версиях OneSignal RN SDK уведомления в foreground НЕ показываются,
+                    // пока мы явно не вызовем display(). Для WhatsApp-поведения (heads-up даже в foreground)
+                    // пытаемся безопасно показать системное уведомление.
+                    const notification = event?.getNotification?.() || event?.notification;
+
+                    // Если SDK поддерживает preventDefault + display, используем их чтобы избежать дублей
+                    if (event?.preventDefault && typeof event.preventDefault === 'function') {
+                        event.preventDefault();
+                    }
+
+                    if (notification?.display && typeof notification.display === 'function') {
+                        notification.display();
+                    }
+                } catch (e) {
+                    // Не ломаем приложение из-за ошибок в SDK/событиях
+                }
             });
 
         } catch (error) {

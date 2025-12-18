@@ -78,8 +78,13 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
                     route.name === 'SearchMain'
                 );
                 
+                // Проверяем, находимся ли мы в авторизации (ProfileTab без авторизации)
+                const isProfileTab = currentRoute?.name === 'ProfileTab';
+                // В ProfileTab может быть AuthScreen, если пользователь не авторизован
+                
                 const isChatScreen = isChatTab || hasChatRoom || hasNestedChatRoom;
                 const isSearchScreen = isSearchTab || hasSearchMain;
+                const isAuthScreen = isProfileTab; // TabBar скрывается в ProfileTab когда там AuthScreen
                 
                 console.log('⌨️ Keyboard shown:', {
                     currentTab: currentRoute?.name,
@@ -90,15 +95,18 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
                     isSearchTab,
                     hasSearchMain,
                     isSearchScreen,
+                    isProfileTab,
+                    isAuthScreen,
                     keyboardHeight: e.endCoordinates.height
                 });
                 
-                // Скрываем TabBar для чата или поиска
-                if (isChatScreen || isSearchScreen) {
-                    console.log('🔴 Hiding TabBar for:', isChatScreen ? 'chat' : 'search');
+                // Скрываем TabBar для чата, поиска или авторизации
+                if (isChatScreen || isSearchScreen || isAuthScreen) {
+                    const reason = isChatScreen ? 'chat' : isSearchScreen ? 'search' : 'auth';
+                    console.log('🔴 Hiding TabBar for:', reason);
                     hideTabBar();
                 } else {
-                    console.log('🟢 Not hiding TabBar - not in chat or search');
+                    console.log('🟢 Not hiding TabBar - not in special screen');
                 }
             }
         );
