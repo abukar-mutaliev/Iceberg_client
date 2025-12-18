@@ -76,6 +76,22 @@ class OneSignalService {
             await ensure('fcm_fallback_notification_channel', 'Сообщения');
             await ensure('iceberg-high-priority', 'Iceberg (High Priority)');
 
+            // Если мы знаем UUID канала из OneSignal Dashboard, заранее создадим канал,
+            // который OneSignal SDK использует в Android как `OS_<uuid>`.
+            // Это важно: на "чистой" установке канал будет создан с MAX importance и даст heads-up.
+            try {
+                const uuid =
+                    process.env.EXPO_PUBLIC_ONESIGNAL_ANDROID_CHANNEL_UUID ||
+                    Constants?.expoConfig?.extra?.oneSignalAndroidChannelUuid ||
+                    null;
+
+                const cleanUuid = typeof uuid === 'string' ? uuid.trim() : null;
+                const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                if (cleanUuid && uuidRegex.test(cleanUuid)) {
+                    await ensure(`OS_${cleanUuid}`, 'Чат (OneSignal)');
+                }
+            } catch (_) {}
+
             return true;
             
         } catch (error) {

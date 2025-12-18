@@ -91,6 +91,10 @@ export default {
             expoPushToken: true,
             // OneSignal App ID для нативной конфигурации плагина
             oneSignalAppId: 'a1bde379-4211-4fb9-89e2-3e94530a7041',
+            // OneSignal Android Notification Channel UUID (из OneSignal Dashboard).
+            // Если задан, приложение заранее создаст канал `OS_<uuid>` с MAX importance для heads-up.
+            // Удобно, когда сервер отправляет android_channel_id и OneSignal SDK создает `OS_<uuid>` канал на устройстве.
+            oneSignalAndroidChannelUuid: process.env.EXPO_PUBLIC_ONESIGNAL_ANDROID_CHANNEL_UUID || null,
         },
         owner: 'abuingush',
         runtimeVersion: '1.0.0',
