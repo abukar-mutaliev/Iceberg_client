@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import {View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert} from 'react-native';
+import {View, Text, StyleSheet, TouchableOpacity, ScrollView} from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 import {
@@ -17,11 +17,13 @@ import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { FontFamily, Border, Color } from '@app/styles/GlobalStyles';
 import ArrowBackIcon from '@shared/ui/Icon/Common/ArrowBackIcon';
 import { useToast } from '@shared/ui/Toast';
+import { useGlobalAlert } from '@shared/ui/CustomAlert';
 
 export const NotificationSettings = () => {
     const navigation = useNavigation();
     const dispatch = useDispatch();
     const { showSuccess, showError } = useToast();
+    const { showConfirm, showAlert } = useGlobalAlert();
 
     const settings = useSelector(selectNotificationSettings);
     const isLoading = useSelector(selectNotificationLoading);
@@ -119,42 +121,50 @@ export const NotificationSettings = () => {
 
     // Сброс к дефолтным настройкам
     const handleReset = () => {
-        Alert.alert(
+        showConfirm(
             'Сброс настроек',
             'Вы уверены, что хотите сбросить все настройки к значениям по умолчанию?',
-            [
-                { text: 'Отмена', style: 'cancel' },
-                {
-                    text: 'Сбросить',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            if (resetNotificationSettings) {
-                                await dispatch(resetNotificationSettings()).unwrap();
-                            } else {
-                                throw new Error('resetNotificationSettings function not available');
-                            }
-                            showSuccess('Настройки сброшены к значениям по умолчанию');
-                        } catch (error) {
-                            showError('Не удалось сбросить настройки');
-                        }
+            async () => {
+                try {
+                    if (resetNotificationSettings) {
+                        await dispatch(resetNotificationSettings()).unwrap();
+                    } else {
+                        throw new Error('resetNotificationSettings function not available');
                     }
+                    showSuccess('Настройки сброшены к значениям по умолчанию');
+                } catch (error) {
+                    showError('Не удалось сбросить настройки');
                 }
-            ]
+            }
         );
     };
 
     const handleGoBack = () => {
         if (hasUnsavedChanges) {
-            Alert.alert(
-                'Несохраненные изменения',
-                'У вас есть несохраненные изменения. Сохранить перед выходом?',
-                [
-                    { text: 'Не сохранять', style: 'destructive', onPress: () => navigation.goBack() },
-                    { text: 'Отмена', style: 'cancel' },
-                    { text: 'Сохранить', onPress: handleSave }
+            showAlert({
+                type: 'warning',
+                title: 'Несохраненные изменения',
+                message: 'У вас есть несохраненные изменения. Сохранить перед выходом?',
+                buttons: [
+                    { 
+                        text: 'Не сохранять', 
+                        style: 'destructive', 
+                        icon: 'close',
+                        onPress: () => navigation.goBack() 
+                    },
+                    { 
+                        text: 'Отмена', 
+                        style: 'cancel',
+                        icon: 'cancel'
+                    },
+                    { 
+                        text: 'Сохранить', 
+                        style: 'primary',
+                        icon: 'save',
+                        onPress: handleSave 
+                    }
                 ]
-            );
+            });
         } else {
             navigation.goBack();
         }

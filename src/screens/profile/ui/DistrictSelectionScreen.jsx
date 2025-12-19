@@ -5,7 +5,6 @@ import {
     StyleSheet,
     FlatList,
     TouchableOpacity,
-    Alert,
     SafeAreaView,
     ActivityIndicator
 } from 'react-native';
@@ -22,11 +21,13 @@ import { employeeApi } from '@entities/user/api/userApi';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { loadUserProfile } from '@entities/auth/model/slice';
 import { fetchStaffOrders } from '@entities/order';
+import { useGlobalAlert } from '@shared/ui/CustomAlert';
 
 export const DistrictSelectionScreen = () => {
     const navigation = useNavigation();
     const dispatch = useDispatch();
     const { currentUser } = useAuth();
+    const { showError, showSuccess, showConfirm } = useGlobalAlert();
     
     const { districts, isLoading: districtsLoading } = useSelector(state => state.district);
 
@@ -56,7 +57,7 @@ export const DistrictSelectionScreen = () => {
                 }
             } catch (error) {
                 console.error('Ошибка загрузки данных:', error);
-                Alert.alert('Ошибка', 'Не удалось загрузить данные');
+                showError('Ошибка', 'Не удалось загрузить данные');
             } finally {
                 setIsLoading(false);
             }
@@ -118,12 +119,14 @@ export const DistrictSelectionScreen = () => {
                 alertMessage += '\n\nВнимание: В выбранном районе нет доступного склада';
             }
 
-            Alert.alert(
+            showSuccess(
                 'Успешно!',
                 alertMessage,
                 [
                     {
                         text: 'OK',
+                        style: 'primary',
+                        icon: 'check',
                         onPress: () => navigation.goBack()
                     }
                 ]
@@ -131,7 +134,7 @@ export const DistrictSelectionScreen = () => {
 
         } catch (error) {
             console.error('Ошибка сохранения районов:', error);
-            Alert.alert(
+            showError(
                 'Ошибка',
                 error.response?.data?.message || error.message || 'Не удалось сохранить изменения'
             );
@@ -143,20 +146,10 @@ export const DistrictSelectionScreen = () => {
     // Обработчик отмены
     const handleCancel = () => {
         if (hasChanges()) {
-            Alert.alert(
+            showConfirm(
                 'Несохраненные изменения',
                 'У вас есть несохраненные изменения. Вы уверены, что хотите выйти?',
-                [
-                    {
-                        text: 'Отмена',
-                        style: 'cancel'
-                    },
-                    {
-                        text: 'Выйти',
-                        style: 'destructive',
-                        onPress: () => navigation.goBack()
-                    }
-                ]
+                () => navigation.goBack()
             );
         } else {
             navigation.goBack();
