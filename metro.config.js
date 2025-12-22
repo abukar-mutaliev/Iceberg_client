@@ -1,25 +1,27 @@
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
-const config = getDefaultConfig(__dirname);
+// Исправление для Windows - используем process.cwd() вместо __dirname
+const projectRoot = __dirname || process.cwd();
+const config = getDefaultConfig(projectRoot);
 
 // Добавление алиасов для путей
-    config.resolver = {
-        ...config.resolver,
-        alias: {
-            '@': path.resolve(__dirname, 'src'),
-            '@app': path.resolve(__dirname, 'src/app'),
-            '@shared': path.resolve(__dirname, 'src/shared'),
-            '@assets': path.resolve(__dirname, 'assets'),
-            '@features': path.resolve(__dirname, 'src/features'),
-            '@widgets': path.resolve(__dirname, 'src/widgets'),
-            '@screens': path.resolve(__dirname, 'src/screens'),
-            '@entities': path.resolve(__dirname, 'src/entities'),
-            '@services': path.resolve(__dirname, 'src/services'),
-            '@styles': path.resolve(__dirname, 'src/styles'),
-        },
-        sourceExts: ['js', 'jsx', 'ts', 'tsx', 'json'],
-    };
+config.resolver = {
+    ...config.resolver,
+    alias: {
+        '@': path.resolve(projectRoot, 'src'),
+        '@app': path.resolve(projectRoot, 'src/app'),
+        '@shared': path.resolve(projectRoot, 'src/shared'),
+        '@assets': path.resolve(projectRoot, 'assets'),
+        '@features': path.resolve(projectRoot, 'src/features'),
+        '@widgets': path.resolve(projectRoot, 'src/widgets'),
+        '@screens': path.resolve(projectRoot, 'src/screens'),
+        '@entities': path.resolve(projectRoot, 'src/entities'),
+        '@services': path.resolve(projectRoot, 'src/services'),
+        '@styles': path.resolve(projectRoot, 'src/styles'),
+    },
+    // НЕ переопределяем sourceExts - используем дефолтные из Expo и добавляем к ним
+};
 
 // Безопасная настройка SVG трансформера
 try {
@@ -48,15 +50,8 @@ try {
     ];
 }
 
-// Добавляем остальные расширения для изображений
-config.resolver.assetExts = [
-    ...config.resolver.assetExts,
-    'png',
-    'jpg',
-    'jpeg',
-    'gif',
-    'webp'
-];
+// Расширения для изображений уже включены в дефолтные assetExts Expo
+// Не нужно добавлять их вручную
 
 
 module.exports = config;
