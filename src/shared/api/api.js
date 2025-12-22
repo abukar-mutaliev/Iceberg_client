@@ -70,12 +70,12 @@ export const getBaseUrl = () => {
 
 
 
-    //  if (__DEV__) {
-    //      if (Platform.OS === 'android') {
-    //          return 'http://192.168.1.226:5000';
-    //      }
-    //      return 'http://localhost:5000';
-    //  }
+     if (__DEV__) {
+         if (Platform.OS === 'android') {
+             return 'http://192.168.1.226:5000';
+         }
+         return 'http://localhost:5000';
+     }
     return 'http://212.67.11.134:5000';
 
 };

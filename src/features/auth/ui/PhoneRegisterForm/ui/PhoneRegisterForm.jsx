@@ -49,7 +49,6 @@ export const PhoneRegisterForm = ({ onVerification }) => {
 
     const [name, setLocalName] = useState(reduxName);
     const [phone, setLocalPhone] = useState(reduxPhone);
-    const [email, setEmail] = useState('');
     const [address, setLocalAddress] = useState(reduxAddress);
     const [gender, setLocalGender] = useState(reduxGender);
     const [districtId, setLocalDistrictId] = useState(reduxDistrictId);
@@ -65,7 +64,6 @@ export const PhoneRegisterForm = ({ onVerification }) => {
     // Состояния для ошибок
     const [nameError, setNameError] = useState('');
     const [phoneError, setPhoneError] = useState('');
-    const [emailError, setEmailError] = useState('');
     const [addressError, setAddressError] = useState('');
     const [genderError, setGenderError] = useState('');
     const [districtError, setDistrictError] = useState('');
@@ -271,12 +269,6 @@ export const PhoneRegisterForm = ({ onVerification }) => {
             isValid = false;
         }
 
-        // Валидация email (опциональный)
-        if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-            setEmailError('Введите корректный email');
-            isValid = false;
-        }
-
         // Валидация пароля
         if (!password) {
             setPasswordError('Пожалуйста, введите пароль');
@@ -300,7 +292,6 @@ export const PhoneRegisterForm = ({ onVerification }) => {
     const handleServerErrors = (error) => {
         setNameError('');
         setPhoneError('');
-        setEmailError('');
         setAddressError('');
         setGenderError('');
         setDistrictError('');
@@ -405,8 +396,7 @@ export const PhoneRegisterForm = ({ onVerification }) => {
         try {
             const result = await dispatch(initiatePhoneRegister({ 
                 phone, 
-                name,
-                email: email || null, 
+                name, 
                 address, 
                 gender,
                 districtId: isOtherDistrict ? null : districtId,
@@ -467,29 +457,6 @@ export const PhoneRegisterForm = ({ onVerification }) => {
                     />
                     {phoneError ? (
                         <Text style={styles.errorText}>{phoneError}</Text>
-                    ) : null}
-                    <View style={styles.inputUnderline} />
-                </View>
-
-                <View style={styles.inputContainer}>
-                    <RequiredLabel text="Email" required={false} />
-                    <CustomTextInput
-                        style={[
-                            styles.input,
-                            emailError ? styles.inputError : null
-                        ]}
-                        value={email}
-                        onChangeText={(text) => {
-                            setEmail(text);
-                            if (emailError) setEmailError('');
-                        }}
-                        placeholder="example@mail.com"
-                        keyboardType="email-address"
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                    />
-                    {emailError ? (
-                        <Text style={styles.errorText}>{emailError}</Text>
                     ) : null}
                     <View style={styles.inputUnderline} />
                 </View>

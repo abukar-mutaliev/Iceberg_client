@@ -82,7 +82,6 @@ export const CustomAlert = ({
             ]).start();
 
             // Авто-закрытие
-            console.log('🔔 CustomAlert autoClose:', autoClose, 'buttons:', buttons?.length || 0);
             if (autoClose) {
                 const timer = setTimeout(() => {
                     handleClose();

@@ -23,6 +23,9 @@ import { LoginForm } from '@features/auth/ui/LoginForm';
 import { RegisterForm } from '@features/auth/ui/RegisterForm';
 import { PhoneRegisterForm } from '@features/auth/ui/PhoneRegisterForm';
 import { VerificationForm } from '@features/auth/ui/VerificationForm';
+import { ForgotPasswordForm } from '@features/auth/ui/ForgotPasswordForm';
+import { ResetPasswordCodeForm } from '@features/auth/ui/ResetPasswordCodeForm';
+import { NewPasswordForm } from '@features/auth/ui/NewPasswordForm';
 import { Color } from "@app/styles/GlobalStyles";
 import { useAuth } from "@entities/auth/hooks/useAuth";
 import { selectRequiresTwoFactor, selectTempToken } from "@entities/auth";
@@ -67,6 +70,11 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
     const [keyboardVisible, setKeyboardVisible] = useState(false);
     const scrollViewRef = useRef(null);
     const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
+    // Восстановление пароля
+    const [resetToken, setResetToken] = useState(null);
+    const [confirmResetToken, setConfirmResetToken] = useState(null);
+    const [resetReceiveCall, setResetReceiveCall] = useState(null);
 
     const headerTranslateY = useRef(new Animated.Value(0)).current;
     const formMarginTop = useRef(new Animated.Value(0)).current;
@@ -239,11 +247,63 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
     const handleLoginTab = () => {
         setActiveTab('login');
         setFormState('register');
+        // Сброс состояния восстановления пароля
+        setResetToken(null);
+        setConfirmResetToken(null);
+        setResetReceiveCall(null);
     };
 
     const handleRegisterTab = () => {
         setActiveTab('register');
         setFormState('register');
+        // Сброс состояния восстановления пароля
+        setResetToken(null);
+        setConfirmResetToken(null);
+        setResetReceiveCall(null);
+    };
+
+    // Обработка клика "Забыли пароль?"
+    const handleForgotPassword = () => {
+        setFormState('forgotPassword');
+        setResetToken(null);
+        setConfirmResetToken(null);
+        setResetReceiveCall(null);
+    };
+
+    // Когда код сброса пароля успешно отправлен
+    const handleResetCodeSent = (token, receiveCall) => {
+        setResetToken(token);
+        setResetReceiveCall(receiveCall);
+        setFormState('resetCode');
+    };
+
+    // Когда код подтверждения проверен
+    const handleResetCodeVerified = (confirmToken) => {
+        setConfirmResetToken(confirmToken);
+        setFormState('newPassword');
+    };
+
+    // Когда пароль успешно изменен
+    const handlePasswordResetSuccess = () => {
+        setFormState('register');
+        setActiveTab('login');
+        setResetToken(null);
+        setConfirmResetToken(null);
+        setResetReceiveCall(null);
+    };
+
+    // Возврат с формы восстановления
+    const handleBackFromReset = () => {
+        if (formState === 'resetCode') {
+            setFormState('forgotPassword');
+        } else if (formState === 'newPassword') {
+            setFormState('resetCode');
+        } else if (formState === 'forgotPassword') {
+            setFormState('register');
+            setResetToken(null);
+            setConfirmResetToken(null);
+            setResetReceiveCall(null);
+        }
     };
 
     const dismissKeyboard = () => {
@@ -253,6 +313,8 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
     const handleBackPress = () => {
         if (formState === 'verification') {
             handleBackToRegister();
+        } else if (formState === 'resetCode' || formState === 'newPassword' || formState === 'forgotPassword') {
+            handleBackFromReset();
         } else if (!isAuthenticated && navigation) {
             navigation.navigate('Main');
         } else if (navigation) {
@@ -395,8 +457,28 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
                     >
                         <TouchableWithoutFeedback onPress={dismissKeyboard}>
                             <View>
-                                {activeTab === 'login' ? (
-                                    <LoginForm navigation={navigation} />
+                                {activeTab === 'login' && formState === 'register' ? (
+                                    <LoginForm 
+                                        navigation={navigation} 
+                                        onForgotPassword={handleForgotPassword}
+                                    />
+                                ) : formState === 'forgotPassword' ? (
+                                    <ForgotPasswordForm 
+                                        onCodeSent={handleResetCodeSent}
+                                    />
+                                ) : formState === 'resetCode' ? (
+                                    <ResetPasswordCodeForm 
+                                        resetToken={resetToken}
+                                        receiveCall={resetReceiveCall}
+                                        onCodeVerified={handleResetCodeVerified}
+                                        onBack={handleBackFromReset}
+                                    />
+                                ) : formState === 'newPassword' ? (
+                                    <NewPasswordForm 
+                                        confirmResetToken={confirmResetToken}
+                                        onSuccess={handlePasswordResetSuccess}
+                                        onBack={handleBackFromReset}
+                                    />
                                 ) : formState === 'verification' ? (
                                     <VerificationForm
                                         tempToken={currentTempToken}

@@ -181,24 +181,11 @@ export const VerificationForm = ({
     };
 
     const resetCode = () => {
+        setCode(new Array(codeLength).fill(''));
         dispatch(clearError());
-        
-        // Для Receive Call автоматически заполняем код снова
-        if (receiveCall && receiveCall.code) {
-            const digits = receiveCall.code.split('');
-            if (digits.length === codeLength) {
-                setTimeout(() => {
-                    setCode(digits);
-                    console.log('✅ Код автоматически заполнен после сброса:', digits.join(''));
-                }, 100);
-            }
-        } else {
-            // Для обычной верификации очищаем код
-            setCode(new Array(codeLength).fill(''));
-            setTimeout(() => {
-                inputRefs.current[0]?.current?.focus();
-            }, 50);
-        }
+        setTimeout(() => {
+            inputRefs.current[0]?.current?.focus();
+        }, 50);
     };
 
     const handleLayout = () => {
@@ -329,20 +316,13 @@ export const VerificationForm = ({
                 {/* Сообщение об ошибке */}
                 {error && (
                     <View style={styles.errorContainer}>
-                        <TouchableOpacity 
-                            style={styles.dismissError}
-                            onPress={() => {
-                                resetCode();
-                                console.log('Ошибка очищена, код автоматически заполнен');
-                            }}
-                            activeOpacity={0.7}
-                        >
-                            <Text style={styles.dismissErrorText}>✕</Text>
-                        </TouchableOpacity>
                         <View style={styles.errorBadge}>
                             <Text style={styles.errorIcon}>⚠️</Text>
                             <Text style={styles.errorText}>{error}</Text>
                         </View>
+                        <TouchableOpacity onPress={resetCode} style={styles.resetButton}>
+                            <Text style={styles.resetButtonText}>🔄 Очистить и попробовать снова</Text>
+                        </TouchableOpacity>
                     </View>
                 )}
 
@@ -535,24 +515,6 @@ const styles = StyleSheet.create({
         marginBottom: adaptiveSize(24),
         alignItems: 'center',
         width: '100%',
-        position: 'relative',
-    },
-    dismissError: {
-        position: 'absolute',
-        top: adaptiveSize(8),
-        right: adaptiveSize(8),
-        width: adaptiveSize(28),
-        height: adaptiveSize(28),
-        borderRadius: adaptiveSize(14),
-        backgroundColor: 'rgba(0,0,0,0.1)',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 10,
-    },
-    dismissErrorText: {
-        fontSize: adaptiveSize(16),
-        color: '#666',
-        fontWeight: '600',
     },
     errorBadge: {
         flexDirection: 'row',

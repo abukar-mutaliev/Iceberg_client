@@ -16,7 +16,6 @@ import {testNetworkConnection} from '@shared/api/api';
 import {useChatSocket} from '@entities/chat/hooks/useChatSocket';
 import {usePushTokenAutoRegistration} from '@shared/hooks/usePushTokenAutoRegistration';
 import {ToastContainer} from '@shared/ui/Toast';
-import {CustomAlertContainer} from '@shared/ui/CustomAlert';
 
 initConsolePolyfill();
 
@@ -335,9 +334,9 @@ export default function App() {
                         </PersistGate>
                     </AppProviders>
                 </SafeAreaProvider>
-                {/* ToastContainer и CustomAlertContainer на самом верхнем уровне для отображения поверх всех модальных окон */}
+                {/* ToastContainer на самом верхнем уровне для отображения поверх всех модальных окон */}
+                {/* CustomAlertContainer теперь внутри AppProviders для доступа к контексту */}
                 <ToastContainer/>
-                <CustomAlertContainer/>
             </GestureHandlerRootView>
         </ErrorBoundary>
     );

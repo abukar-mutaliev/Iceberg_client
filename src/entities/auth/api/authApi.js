@@ -80,6 +80,28 @@ export const authApiMethods = {
 
     // Подача заявки на роль сотрудника - требует авторизации
     applyForStaff: (data) => staffApplicationsApi.post('/apply', data),
+
+    // ========================================
+    // ВОССТАНОВЛЕНИЕ ПАРОЛЯ
+    // ========================================
+    
+    // Инициация сброса пароля (email или телефон) - публичный запрос
+    initiatePasswordReset: (data) => 
+        createPublicRequest('post', `${BASE_AUTH_URL}/password/reset/initiate`, data),
+
+    // Проверка кода сброса пароля - публичный запрос
+    verifyResetCode: (data) => 
+        createPublicRequest('post', `${BASE_AUTH_URL}/password/reset/verify`, {
+            resetToken: data.resetToken,
+            verificationCode: data.verificationCode,
+        }),
+
+    // Установка нового пароля - публичный запрос
+    completePasswordReset: (data) => 
+        createPublicRequest('post', `${BASE_AUTH_URL}/password/reset/complete`, {
+            confirmResetToken: data.confirmResetToken,
+            password: data.password,
+        }),
 };
 
 export { authApiMethods as authApi };

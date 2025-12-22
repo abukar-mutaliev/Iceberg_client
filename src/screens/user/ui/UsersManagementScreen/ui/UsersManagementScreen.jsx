@@ -228,10 +228,29 @@ export const UsersManagementScreen = () => {
 
     // Обработчик удаления пользователя
     const handleDeleteUser = (user) => {
+        // Получаем имя пользователя в зависимости от роли
+        const getUserDisplayName = () => {
+            if (user.profile?.name) {
+                return user.profile.name;
+            }
+            if (user.employee?.name) {
+                return user.employee.name;
+            }
+            if (user.supplier?.companyName) {
+                return user.supplier.companyName;
+            }
+            if (user.driver?.name) {
+                return user.driver.name;
+            }
+            return user.email || 'этого пользователя';
+        };
+        
+        const displayName = getUserDisplayName();
+        
         showAlert({
             type: 'warning',
             title: 'Подтверждение',
-            message: `Вы уверены, что хотите удалить пользователя "${user.email}"?`,
+            message: `Вы уверены, что хотите удалить пользователя "${displayName}"?`,
             buttons: [
                 {
                     text: 'Отмена',
@@ -240,11 +259,15 @@ export const UsersManagementScreen = () => {
                 {
                     text: 'Удалить',
                     style: 'destructive',
-                    onPress: () => {
-                        if (user.role === 'ADMIN') {
-                            deleteAdmin(user.id);
-                        } else {
-                            deleteStaff(user.id);
+                    onPress: async () => {
+                        try {
+                            if (user.role === 'ADMIN') {
+                                await deleteAdmin(user.id);
+                            } else {
+                                await deleteStaff(user.id);
+                            }
+                        } catch (error) {
+                            console.error('Error during deletion:', error);
                         }
                     }
                 }

@@ -131,11 +131,31 @@ export const useAdmin = () => {
     }, [dispatch]);
 
     const removeAdmin = useCallback((adminId) => {
-        return dispatch(deleteAdmin(adminId));
+        return new Promise((resolve, reject) => {
+            dispatch(deleteAdmin(adminId))
+                .unwrap()
+                .then(result => {
+                    resolve(result);
+                })
+                .catch(error => {
+                    console.error('Error in removeAdmin:', error);
+                    reject(error);
+                });
+        });
     }, [dispatch]);
 
     const removeStaff = useCallback((userId) => {
-        return dispatch(deleteStaff(userId));
+        return new Promise((resolve, reject) => {
+            dispatch(deleteStaff(userId))
+                .unwrap()
+                .then(result => {
+                    resolve(result);
+                })
+                .catch(error => {
+                    console.error('Error in removeStaff:', error);
+                    reject(error);
+                });
+        });
     }, [dispatch]);
 
     const clearErrors = useCallback(() => {

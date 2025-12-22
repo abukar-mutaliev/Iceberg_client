@@ -21,7 +21,7 @@ import {clearProfile, fetchProfile} from '@entities/profile';
 import {normalize, normalizeFont} from "@shared/lib/normalize";
 
 
-export const LoginForm = () => {
+export const LoginForm = ({ onForgotPassword }) => {
     const dispatch = useDispatch();
     const email = useSelector(selectEmail) || '';
     const password = useSelector(selectPassword) || '';
@@ -282,6 +282,13 @@ export const LoginForm = () => {
             {formError ? (
                 <Text style={styles.globalErrorText}>{formError}</Text>
             ) : null}
+
+            <TouchableOpacity
+                style={styles.forgotPasswordContainer}
+                onPress={onForgotPassword}
+            >
+                <Text style={styles.forgotPasswordText}>Забыли пароль?</Text>
+            </TouchableOpacity>
 
             <TouchableOpacity
                 style={[

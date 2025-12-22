@@ -478,8 +478,8 @@ export const RegisterForm = ({ onVerification }) => {
             const receiveCall = result?.receiveCall || null; // Данные для Receive Call
             
             if (tempToken) {
-                // Передаем receiveCall если он есть
-                onVerification(tempToken, receiveCall);
+                // Передаем receiveCall и email для возможности повторной отправки
+                onVerification(tempToken, receiveCall, email);
             }
         } catch (error) {
             console.error('Ошибка регистрации:', error);
@@ -489,9 +489,23 @@ export const RegisterForm = ({ onVerification }) => {
             
             // Если не удалось привязать к полю, показываем общий Alert
             if (!handledAsFieldError) {
+                // Проверяем, является ли это ошибкой отправки email
+                const errorMessage = error?.message || '';
+                const isEmailError = errorMessage.includes('отправк') || 
+                                    errorMessage.includes('соединен') ||
+                                    errorMessage.includes('письм') ||
+                                    error?.code === 500;
+                
+                let userMessage = errorMessage;
+                if (isEmailError && !errorMessage.includes('попробуйте позже')) {
+                    userMessage = 'Не удалось отправить код подтверждения на email. Пожалуйста, проверьте подключение к интернету и попробуйте позже.';
+                } else if (!userMessage) {
+                    userMessage = 'Произошла ошибка при регистрации. Проверьте введённые данные и попробуйте снова.';
+                }
+                
                 Alert.alert(
                     'Ошибка регистрации', 
-                    error?.message || 'Произошла ошибка при регистрации. Проверьте введённые данные и попробуйте снова.'
+                    userMessage
                 );
             }
         }

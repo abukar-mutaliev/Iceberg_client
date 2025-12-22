@@ -9,6 +9,7 @@ export const AppProviders = ({ children }) => {
         <ReduxProvider store={store}>
             <ThemeProvider>
                 <CustomAlertProvider>
+                    {/* CustomAlert теперь рендерится автоматически внутри CustomAlertProvider */}
                     {children}
                 </CustomAlertProvider>
             </ThemeProvider>

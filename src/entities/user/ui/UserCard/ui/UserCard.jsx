@@ -51,7 +51,8 @@ export const UserCard = ({ user, onEdit, onDelete, onRoleChange, onProcessingRol
 
         switch (user.role) {
             case 'ADMIN':
-                return user.profile.isSuperAdmin ? 'Супер-администратор' : 'Администратор';
+                const isUserSuperAdmin = user.profile?.isSuperAdmin || user.admin?.isSuperAdmin || user.isSuperAdmin;
+                return isUserSuperAdmin ? 'Супер-администратор' : 'Администратор';
             case 'CLIENT':
                 return user.profile.district?.name || 'Район не указан';
             case 'EMPLOYEE':
@@ -86,11 +87,30 @@ export const UserCard = ({ user, onEdit, onDelete, onRoleChange, onProcessingRol
 
     // Проверяем, является ли текущий пользователь администратором
     const isAdmin = currentUser?.role === 'ADMIN';
-    const isSuperAdmin = currentUser?.role === 'ADMIN' && currentUser?.profile?.isSuperAdmin;
+    // Проверяем isSuperAdmin в разных возможных местах структуры данных
+    const isSuperAdmin = currentUser?.role === 'ADMIN' && (
+        currentUser?.admin?.isSuperAdmin || 
+        currentUser?.profile?.isSuperAdmin || 
+        currentUser?.isSuperAdmin
+    );
+    
+    // Проверяем, можно ли изменять роль пользователя
+    // Разрешаем только суперадминам изменять роли
+    const canChangeRole = isSuperAdmin;
     
     // Проверяем, можно ли назначать должности обработки для данного пользователя
-    // Разрешаем всем администраторам назначать должности
-    const canAssignProcessingRole = isAdmin && user.role === 'EMPLOYEE';
+    // Разрешаем только суперадминам назначать должности
+    const canAssignProcessingRole = isSuperAdmin && user.role === 'EMPLOYEE';
+    
+    // Проверяем, можно ли удалять пользователя
+    // Разрешаем только суперадминам удалять пользователей
+    // Также проверяем, что удаляемый пользователь не является суперадмином
+    const targetIsSuperAdmin = user.role === 'ADMIN' && (
+        user.profile?.isSuperAdmin || 
+        user.admin?.isSuperAdmin || 
+        user.isSuperAdmin
+    );
+    const canDeleteUser = isSuperAdmin && !targetIsSuperAdmin;
 
     return (
         <View style={[styles.userCard, getCardColor()]}>
@@ -115,10 +135,14 @@ export const UserCard = ({ user, onEdit, onDelete, onRoleChange, onProcessingRol
                 {/*    <IconEdit width={18} height={18} color={Color.blue2} />*/}
                 {/*    <Text style={styles.actionText}>Изменить</Text>*/}
                 {/*</TouchableOpacity>*/}
-                <TouchableOpacity style={styles.actionButton} onPress={() => onRoleChange(user)}>
-                    <IconAdmin width={18} height={18} color={Color.blue2} />
-                    <Text style={styles.actionText}>Роль</Text>
-                </TouchableOpacity>
+                
+                {/* Кнопка изменения роли - только для суперадминов */}
+                {canChangeRole && (
+                    <TouchableOpacity style={styles.actionButton} onPress={() => onRoleChange(user)}>
+                        <IconAdmin width={18} height={18} color={Color.blue2} />
+                        <Text style={styles.actionText}>Роль</Text>
+                    </TouchableOpacity>
+                )}
                 
                 {/* Кнопка назначения должности обработки - только для суперадминов и только для сотрудников */}
                 {canAssignProcessingRole && onProcessingRoleChange && (
@@ -128,14 +152,16 @@ export const UserCard = ({ user, onEdit, onDelete, onRoleChange, onProcessingRol
                     </TouchableOpacity>
                 )}
                 
-                <TouchableOpacity
-                    style={[styles.actionButton, { opacity: user.role === 'ADMIN' && user.profile?.isSuperAdmin ? 0.5 : 1 }]}
-                    onPress={() => onDelete(user)}
-                    disabled={user.role === 'ADMIN' && user.profile?.isSuperAdmin}
-                >
-                    <IconDelete width={18} height={18} color="red" />
-                    <Text style={[styles.actionText, { color: 'red' }]}>Удалить</Text>
-                </TouchableOpacity>
+                {/* Кнопка удаления - только для суперадминов */}
+                {canDeleteUser && (
+                    <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => onDelete && onDelete(user)}
+                    >
+                        <IconDelete width={18} height={18} color="red" />
+                        <Text style={[styles.actionText, { color: 'red' }]}>Удалить</Text>
+                    </TouchableOpacity>
+                )}
             </View>
         </View>
     );

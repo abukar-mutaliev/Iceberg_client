@@ -64,6 +64,10 @@ const initialState = {
     isAuthenticated: false,
     requiresTwoFactor: false,
     tempToken: null,
+    // Восстановление пароля
+    resetToken: null,
+    confirmResetToken: null,
+    resetReceiveCall: null,
 };
 
 const handleError = (error) => {
@@ -517,6 +521,102 @@ export const loadUserProfile = createAsyncThunk(
     }
 );
 
+// ========================================
+// ВОССТАНОВЛЕНИЕ ПАРОЛЯ
+// ========================================
+
+export const initiatePasswordReset = createAsyncThunk(
+    'auth/initiatePasswordReset',
+    async (identifier, { rejectWithValue }) => {
+        try {
+            // identifier может быть email или телефоном
+            const response = await authApi.initiatePasswordReset({ identifier });
+
+            if (!response || !response.status) {
+                return rejectWithValue('Неожиданный формат ответа');
+            }
+
+            if (response.status === 'error') {
+                return rejectWithValue({
+                    message: response.message || 'Ошибка при отправке кода восстановления',
+                    errors: response.errors || [],
+                    code: response.code || 400
+                });
+            }
+
+            return {
+                resetToken: response.resetToken,
+                message: response.message,
+                receiveCall: response.receiveCall || null // Для телефонного сброса
+            };
+        } catch (error) {
+            const errorData = {
+                message: error?.message || handleError(error),
+                errors: error?.errors || error?.response?.data?.errors || [],
+                code: error?.code || error?.response?.status
+            };
+            return rejectWithValue(errorData);
+        }
+    }
+);
+
+export const verifyResetCode = createAsyncThunk(
+    'auth/verifyResetCode',
+    async (data, { rejectWithValue }) => {
+        try {
+            const response = await authApi.verifyResetCode(data);
+
+            if (!response || typeof response !== 'object') {
+                return rejectWithValue('Сервер вернул некорректный ответ');
+            }
+
+            if (response.status !== 'success') {
+                return rejectWithValue(response.message || 'Неверный код подтверждения');
+            }
+
+            return {
+                confirmResetToken: response.confirmResetToken,
+                message: response.message
+            };
+        } catch (error) {
+            if (error.response?.data) {
+                const serverError = error.response.data;
+                return rejectWithValue(serverError.message || 'Неверный код подтверждения');
+            }
+
+            return rejectWithValue(error.message || 'Произошла ошибка при проверке кода');
+        }
+    }
+);
+
+export const completePasswordReset = createAsyncThunk(
+    'auth/completePasswordReset',
+    async (data, { rejectWithValue }) => {
+        try {
+            const response = await authApi.completePasswordReset(data);
+
+            if (!response || typeof response !== 'object') {
+                return rejectWithValue('Сервер вернул некорректный ответ');
+            }
+
+            if (response.status !== 'success') {
+                return rejectWithValue(response.message || 'Произошла ошибка при установке пароля');
+            }
+
+            return {
+                message: response.message || 'Пароль успешно изменен'
+            };
+        } catch (error) {
+            if (error.response?.data) {
+                const serverError = error.response.data;
+                return rejectWithValue(serverError.message || 'Произошла ошибка при установке пароля');
+            }
+
+            return rejectWithValue(error.message || 'Произошла ошибка при установке пароля');
+        }
+    }
+);
+
 const authSlice = createSlice({
     name: 'auth',
     initialState,
@@ -650,6 +750,12 @@ const authSlice = createSlice({
                     orders: clientData.orders || []
                 };
             }
+        },
+        clearPasswordReset: (state) => {
+            state.resetToken = null;
+            state.confirmResetToken = null;
+            state.resetReceiveCall = null;
+            state.error = null;
         },
     },
     extraReducers: (builder) => {
@@ -831,6 +937,32 @@ const authSlice = createSlice({
             .addCase(loadUserProfile.rejected, (state, action) => {
                 state.error = action.payload;
             })
+            // Password Reset
+            .addCase(initiatePasswordReset.pending, setPending)
+            .addCase(initiatePasswordReset.fulfilled, (state, action) => {
+                state.isLoading = false;
+                state.error = null;
+                state.resetToken = action.payload?.resetToken || null;
+                state.resetReceiveCall = action.payload?.receiveCall || null;
+            })
+            .addCase(initiatePasswordReset.rejected, setRejected)
+            .addCase(verifyResetCode.pending, setPending)
+            .addCase(verifyResetCode.fulfilled, (state, action) => {
+                state.isLoading = false;
+                state.error = null;
+                state.confirmResetToken = action.payload?.confirmResetToken || null;
+            })
+            .addCase(verifyResetCode.rejected, setRejected)
+            .addCase(completePasswordReset.pending, setPending)
+            .addCase(completePasswordReset.fulfilled, (state, action) => {
+                state.isLoading = false;
+                state.error = null;
+                // Очищаем токены после успешной смены пароля
+                state.resetToken = null;
+                state.confirmResetToken = null;
+                state.resetReceiveCall = null;
+            })
+            .addCase(completePasswordReset.rejected, setRejected)
     },
 });
 
@@ -853,6 +985,7 @@ export const {
     clearProfile,
     updateUserWithProfile,
     updateUserClient,
+    clearPasswordReset,
 } = authSlice.actions;
 
 // Примечание: initiatePhoneRegister и completePhoneRegister 
