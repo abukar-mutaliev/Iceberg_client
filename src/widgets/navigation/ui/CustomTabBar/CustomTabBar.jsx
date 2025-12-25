@@ -232,7 +232,7 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
     }
 
     return (
-        <View style={styles.menuDoneWithBack}>
+        <View style={[styles.menuDoneWithBack, { paddingBottom: insets.bottom }]}>
             <View style={styles.iconMenuHomeParent}>
                 {visibleRoutes.map((route, visibleIndex) => {
                     const actualIndex = state.routes.findIndex(r => r.key === route.key);

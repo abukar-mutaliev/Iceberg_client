@@ -247,13 +247,14 @@ export const cartReloadMiddleware = (store) => (next) => (action) => {
                            errorMessage.includes('Доступ запрещен') ||
                            errorMessage.includes('Корзина недоступна') ||
                            errorMessage.includes('unauthorized') ||
-                           errorMessage.includes('403');
+                           errorMessage.includes('403') ||
+                           errorMessage.includes('401') ||
+                           errorMessage.includes('токена истек') ||
+                           errorMessage.includes('Срок действия токена');
 
-        // Только логируем ошибки авторизации в DEV режиме, не показываем пользователю
+        // Не логируем ошибки авторизации для корзины (корзина скрыта в первой версии приложения)
         if (isAuthError) {
-            if (__DEV__) {
-                console.log(`🔒 CartReloadMiddleware: Auth/Role error (expected):`, errorMessage);
-            }
+            // Не логируем вообще, так как корзина скрыта
         } else {
             // Показываем только реальные ошибки
             store.dispatch(addNotification({

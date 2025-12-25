@@ -9,7 +9,7 @@
  */
 
 import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing, TouchableWithoutFeedback } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -22,6 +22,21 @@ import { audioManager } from '../../lib/audioManager';
 
 const CACHE_DIR = `${FileSystem.documentDirectory}chat_voice/`;
 const verifiedCachePaths = new Map();
+
+// Условное логирование (только в dev режиме и только критичные сообщения)
+const ENABLE_VERBOSE_LOGS = false; // Отключаем избыточное логирование для производительности
+
+const devLog = (...args) => {
+  if (__DEV__ && ENABLE_VERBOSE_LOGS) {
+    console.log(...args);
+  }
+};
+
+const devWarn = (...args) => {
+  if (__DEV__) {
+    console.warn(...args);
+  }
+};
 
 // Хеширование URL для имени файла
 const hashUrl = (url) => {
@@ -111,12 +126,12 @@ const useAudioUri = (attachment) => {
     // Формируем полный URL и fallback варианты для старых сообщений
     let fullUrl = path;
     const fallbackUrls = [];
+    const baseUrl = getBaseUrl();
     
     if (!path.startsWith('http://') && !path.startsWith('https://')) {
+      // Относительный путь
       path = path.replace(/\\/g, '/');
       if (!path.startsWith('/')) path = '/' + path;
-      
-      const baseUrl = getBaseUrl();
       
       // Основной URL с /uploads
       fullUrl = `${baseUrl}/uploads${path}`;
@@ -133,16 +148,46 @@ const useAudioUri = (attachment) => {
         fallbackUrls.push(`${baseUrl}/uploads${path}`);
       }
     } else {
-      // Если уже полный URL, используем как есть
+      // Если уже полный URL, создаем fallback варианты
       fullUrl = path;
+      
+      // Парсим URL для создания альтернативных вариантов
+      try {
+        const urlObj = new URL(path);
+        const urlPath = urlObj.pathname;
+        
+        // Пробуем вариант с другим протоколом (HTTPS -> HTTP)
+        // ВАЖНО: не добавляем HTTP->HTTPS, иначе на Android получаем SSLException
+        if (urlObj.protocol === 'https:') {
+          const httpUrl = path.replace('https://', 'http://');
+          if (httpUrl !== path) {
+            fallbackUrls.push(httpUrl);
+          }
+        }
+        
+        // НЕ добавляем варианты с /uploads - это создает битые URL
+        // Просто используем оригинальный путь
+      } catch (e) {
+        // Если не удалось распарсить URL, игнорируем
+        devWarn('Failed to parse URL for fallbacks:', path, e);
+      }
     }
     
     // Вычисляем путь к кэшу
-    const extension = fullUrl.includes('.m4a') ? 'm4a' : 'aac';
+    // ВАЖНО для Android: корректное расширение файла повышает шанс успешного декодирования (особенно для m4a/mp4 контейнера).
+    const mime = String(attachment?.mimeType || attachment?.mimetype || '').toLowerCase();
+    const urlLower = String(fullUrl || '').toLowerCase();
+    const isM4A =
+      mime.includes('audio/mp4') ||
+      mime.includes('audio/m4a') ||
+      mime.includes('x-m4a') ||
+      urlLower.includes('.m4a') ||
+      urlLower.includes('.mp4');
+    const extension = isM4A ? 'm4a' : 'aac';
     const cached = `${CACHE_DIR}voice_${hashUrl(fullUrl)}.${extension}`;
     
     return { audioUri: fullUrl, cachedPath: cached, fallbackUrls };
-  }, [attachment?.path]);
+  }, [attachment?.path, attachment?.mimeType, attachment?.mimetype]);
 };
 
 // Хук для парсинга waveform
@@ -155,9 +200,6 @@ const useWaveform = (attachment, messageId) => {
           : attachment.waveform;
 
         if (Array.isArray(parsed) && parsed.length > 0) {
-          if (__DEV__) {
-            console.log(`🎵 Using saved waveform for message ${messageId}, length: ${parsed.length}`);
-          }
           return parsed;
         }
       } catch (e) {
@@ -166,9 +208,6 @@ const useWaveform = (attachment, messageId) => {
     }
 
     const generated = generateWaveform(attachment);
-    if (__DEV__) {
-      console.log(`🎵 Generated waveform for message ${messageId}, duration: ${attachment?.duration}, size: ${attachment?.size}, length: ${generated.length}`);
-    }
     return generated;
   }, [attachment?.waveform, attachment?.duration, attachment?.size, messageId]);
 };
@@ -219,8 +258,63 @@ const useProgressAnimation = (playbackPosition, playbackDuration, isPlaying) => 
 };
 
 // Хук для загрузки и управления аудио
-const useAudioPlayer = (audioUri, cachedPath, messageId, onPlaybackStatusUpdate) => {
+const useAudioPlayer = (audioUri, cachedPath, messageId, onPlaybackStatusUpdate, fallbackUrls = []) => {
   const soundRef = useRef(null);
+  const androidDownloadTriedRef = useRef(false);
+
+  useEffect(() => {
+    androidDownloadTriedRef.current = false;
+  }, [audioUri, cachedPath]);
+
+  const withTimeout = useCallback((promise, ms, label) => {
+    return Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout: ${label}`)), ms)),
+    ]);
+  }, []);
+
+  // Android: content:// нужен редко (обычно для расшаривания файла наружу),
+  // а в некоторых случаях может ломать/подвешивать загрузку в expo-av.
+  // Поэтому: сначала пробуем file://, и только если не загрузилось — пробуем content://.
+  const createSoundAndroidFileFirst = useCallback(async (fileUri, soundOptions) => {
+    const baseSource = { uri: fileUri };
+    if (__DEV__) {
+      devLog('🎧 [Android] createAsync(file://) attempt', { messageId, uri: fileUri });
+    }
+    try {
+        const { sound } = await withTimeout(
+          Audio.Sound.createAsync(baseSource, soundOptions, onPlaybackStatusUpdate),
+          3000, // Увеличено с 1500 до 3000ms для медленных сетей
+          'Audio.Sound.createAsync(file://)'
+        );
+      return sound;
+    } catch (e1) {
+      if (__DEV__) {
+        devWarn('🎧 [Android] createAsync(file://) failed', { messageId, error: e1.message, uri: fileUri });
+      }
+      try {
+        const contentUri = await withTimeout(
+          FileSystem.getContentUriAsync(fileUri),
+          2000, // Увеличено с 1000 до 2000ms
+          'FileSystem.getContentUriAsync'
+        );
+        if (__DEV__) {
+          devLog('🎧 [Android] createAsync(content://) attempt', { messageId, uri: contentUri });
+        }
+        const { sound } = await withTimeout(
+          Audio.Sound.createAsync({ uri: contentUri }, soundOptions, onPlaybackStatusUpdate),
+          3000, // Увеличено с 1500 до 3000ms
+          'Audio.Sound.createAsync(content://)'
+        );
+        return sound;
+      } catch (e2) {
+        if (__DEV__) {
+          devWarn('🎧 [Android] createAsync(content://) failed', { messageId, error: e2.message, uri: fileUri });
+        }
+        throw e1;
+      }
+    }
+  }, [messageId, onPlaybackStatusUpdate, withTimeout]);
 
   const downloadInBackground = useCallback(async (url, destPath) => {
     try {
@@ -230,7 +324,9 @@ const useAudioPlayer = (audioUri, cachedPath, messageId, onPlaybackStatusUpdate)
       }
       
       const result = await FileSystem.downloadAsync(url, destPath);
-      if (result.status === 200) {
+      // Некоторые сервера (и/или клиенты) могут возвращать 206 Partial Content,
+      // что для нас тоже успех, если файл корректно скачался.
+      if ((result.status === 200 || result.status === 206) && result.uri) {
         verifiedCachePaths.set(destPath, true);
       }
     } catch {
@@ -238,28 +334,89 @@ const useAudioPlayer = (audioUri, cachedPath, messageId, onPlaybackStatusUpdate)
     }
   }, []);
 
+  // Загрузка файла через fetch и сохранение локально (для iOS с проблемными URL)
+  const downloadAndCacheAudio = useCallback(async (url, destPath) => {
+    try {
+      const dirInfo = await FileSystem.getInfoAsync(CACHE_DIR);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(CACHE_DIR, { intermediates: true });
+      }
+      
+      if (__DEV__) {
+        devLog(`📥 Downloading audio via fetch for message ${messageId}: ${url}`);
+      }
+      
+      // Используем FileSystem.downloadAsync с дополнительными опциями.
+      // ВАЖНО: для download Range не нужен (и часто приводит к status=206),
+      // поэтому на Android оставляем только Accept.
+      const downloadOptions = Platform.OS === 'ios'
+        ? { cache: false }
+        : {
+            headers: {
+              'Accept': 'audio/aac, audio/mpeg, audio/mp4, audio/*',
+            }
+          };
+      
+      const result = await FileSystem.downloadAsync(url, destPath, downloadOptions);
+      
+      if ((result.status === 200 || result.status === 206) && result.uri) {
+        // Проверяем, что файл действительно сохранен и имеет размер
+        try {
+          const fileInfo = await FileSystem.getInfoAsync(result.uri);
+          if (!fileInfo.exists || fileInfo.size === 0) {
+            throw new Error('Downloaded file is empty or does not exist');
+          }
+          
+          if (__DEV__) {
+            devLog(`✅ Successfully downloaded and cached audio for message ${messageId}, size: ${fileInfo.size} bytes`);
+          }
+          
+          verifiedCachePaths.set(destPath, true);
+          return result.uri;
+        } catch (checkError) {
+          if (__DEV__) {
+            devWarn(`⚠️ Downloaded file verification failed for message ${messageId}:`, checkError.message);
+          }
+          throw new Error(`File verification failed: ${checkError.message}`);
+        }
+      } else {
+        throw new Error(`Download failed with status ${result.status}`);
+      }
+    } catch (error) {
+      if (__DEV__) {
+        devWarn(`❌ Failed to download audio via fetch for message ${messageId}:`, error.message);
+      }
+      verifiedCachePaths.set(destPath, false);
+      throw error;
+    }
+  }, [messageId]);
+
+  // Проверка доступности URL через HEAD запрос (только для iOS)
+  // Используется только для fallback URLs, чтобы не замедлять основной поток
+  const checkUrlAvailability = useCallback(async (url) => {
+    if (Platform.OS !== 'ios') return true; // На Android пропускаем проверку
+    
+    try {
+      // Используем таймаут для быстрой проверки
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500); // Уменьшено с 3000 до 1500ms
+      
+      const response = await fetch(url, { 
+        method: 'HEAD', 
+        cache: 'no-store',
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      return response.ok;
+    } catch {
+      // Если проверка не удалась, все равно пробуем загрузить (может быть временная проблема)
+      return true;
+    }
+  }, []);
+
   const loadAndPlayAudio = useCallback(async () => {
     if (!audioUri) return null;
-
-    let uriToLoad = audioUri;
-    
-    // Проверяем кэш
-    if (cachedPath && verifiedCachePaths.has(cachedPath)) {
-      uriToLoad = verifiedCachePaths.get(cachedPath) ? cachedPath : audioUri;
-    } else if (cachedPath) {
-      try {
-        const fileInfo = await FileSystem.getInfoAsync(cachedPath);
-        if (fileInfo.exists) {
-          verifiedCachePaths.set(cachedPath, true);
-          uriToLoad = cachedPath;
-        } else {
-          verifiedCachePaths.set(cachedPath, false);
-          downloadInBackground(audioUri, cachedPath);
-        }
-      } catch {
-        verifiedCachePaths.set(cachedPath, false);
-      }
-    }
 
     await Audio.setAudioModeAsync({
       allowsRecordingIOS: false,
@@ -269,22 +426,462 @@ const useAudioPlayer = (audioUri, cachedPath, messageId, onPlaybackStatusUpdate)
       shouldDuckAndroid: true,
     });
 
-    const { sound: newSound } = await Audio.Sound.createAsync(
-      { uri: uriToLoad },
-      { shouldPlay: false },
-      onPlaybackStatusUpdate
-    );
-
-    const soundStatus = await newSound.getStatusAsync();
-    if (!soundStatus.isLoaded) {
-      throw new Error('Sound not loaded');
+    // Сначала проверяем кэш
+    let cachedUri = null;
+    if (cachedPath) {
+      if (verifiedCachePaths.has(cachedPath)) {
+        const isCached = verifiedCachePaths.get(cachedPath);
+        if (isCached) {
+            try {
+              const fileInfo = await FileSystem.getInfoAsync(cachedPath);
+              if (fileInfo.exists && fileInfo.size > 0) {
+                cachedUri = cachedPath;
+              } else {
+              // Файл существует, но пустой или поврежден - помечаем как невалидный
+              verifiedCachePaths.set(cachedPath, false);
+              if (__DEV__) {
+                devWarn(`⚠️ Cached file is empty or invalid for message ${messageId}, will re-download`);
+              }
+            }
+          } catch {
+            verifiedCachePaths.set(cachedPath, false);
+          }
+        }
+      } else {
+        try {
+          const fileInfo = await FileSystem.getInfoAsync(cachedPath);
+          if (fileInfo.exists && fileInfo.size > 0) {
+            // Файл существует, но не проверен - проверим его при попытке загрузки
+            // Пока не помечаем как валидный, чтобы попробовать загрузить сначала
+          } else {
+            verifiedCachePaths.set(cachedPath, false);
+            // Запускаем фоновую загрузку
+            downloadInBackground(audioUri, cachedPath);
+          }
+        } catch {
+          verifiedCachePaths.set(cachedPath, false);
+        }
+      }
     }
 
-    // Устанавливаем duration из загруженного звука, если она не была установлена из attachment
-    // Note: attachment is not available in this hook scope, duration is handled in component level
+    // ===== ANDROID: всегда предпочитаем локальный файл для сетевых voice =====
+    // Практика: ExoPlayer/HTTP стриминг m4a иногда "молчит" или падает без понятной ошибки,
+    // а локальный файл воспроизводится стабильно. Поэтому, если это сетевой URL и кэша нет —
+    // скачиваем синхронно и играем локально.
+    if (
+      Platform.OS === 'android' &&
+      audioUri &&
+      !audioUri.startsWith('file://') &&
+      cachedPath &&
+      !cachedUri
+    ) {
+      try {
+        const downloadedPath = await downloadAndCacheAudio(audioUri, cachedPath);
+        const uriToLoad = downloadedPath && !downloadedPath.startsWith('file://')
+          ? `file://${downloadedPath}`
+          : downloadedPath;
 
-    return newSound;
-  }, [audioUri, cachedPath, onPlaybackStatusUpdate, downloadInBackground]);
+        const localSound = await createSoundAndroidFileFirst(uriToLoad, { shouldPlay: false, volume: 1.0 });
+
+        const localStatus = await localSound.getStatusAsync();
+        if (localStatus.isLoaded) {
+          verifiedCachePaths.set(cachedPath, true);
+          return localSound;
+        }
+
+        if (__DEV__) {
+          devWarn(`⚠️ Android localSound not loaded for message ${messageId}`, {
+            status: localStatus,
+            uri: uriToLoad
+          });
+        }
+        await localSound.unloadAsync();
+        verifiedCachePaths.set(cachedPath, false);
+      } catch (androidPreErr) {
+        if (__DEV__) {
+          devWarn(`❌ Android pre-download failed for message ${messageId}:`, androidPreErr.message);
+        }
+        // Если не удалось скачать/проиграть локально — продолжаем стандартный цикл (stream/fallback)
+      }
+    }
+
+    // Формируем список URL для попыток: сначала кэш, потом основной URL, потом fallback
+    const urlsToTry = [];
+    if (cachedUri) {
+      urlsToTry.push(cachedUri);
+    }
+    urlsToTry.push(audioUri);
+    // Добавляем fallback URLs, исключая дубликаты
+    fallbackUrls.forEach(url => {
+      if (url !== audioUri && !urlsToTry.includes(url)) {
+        urlsToTry.push(url);
+      }
+    });
+
+    // Пытаемся загрузить с каждого URL по очереди
+    let lastError = null;
+    
+    for (const urlToTry of urlsToTry) {
+      try {
+        // На iOS проверяем доступность URL перед загрузкой только для fallback URLs
+        // Основной URL и кэш пробуем сразу
+        const isFallbackUrl = urlToTry !== audioUri && urlToTry !== cachedUri;
+        if (Platform.OS === 'ios' && isFallbackUrl && !urlToTry.startsWith('file://')) {
+          const isAvailable = await checkUrlAvailability(urlToTry);
+          if (!isAvailable) {
+            if (__DEV__) {
+              devWarn(`⚠️ Fallback URL not available for message ${messageId}: ${urlToTry}`);
+            }
+            lastError = new Error(`URL not available: ${urlToTry}`);
+            continue;
+          }
+        }
+
+        // На iOS для локальных файлов и AAC используем дополнительные опции
+        let soundOptions = { shouldPlay: false };
+        if (Platform.OS === 'ios' && (urlToTry.startsWith('file://') || urlToTry.includes('.aac'))) {
+          soundOptions = {
+            shouldPlay: false,
+            isMuted: false,
+            volume: 1.0,
+            rate: 1.0,
+            shouldCorrectPitch: true,
+            progressUpdateIntervalMillis: 1000,
+          };
+        }
+        
+        // Для сетевых URL добавляем заголовки и на iOS, и на Android:
+        // - Accept: помогает корректно выбрать тип
+        // - Range: позволяет стриминг/перемотку (сервер поддерживает Accept-Ranges)
+        const isNetworkUrl = !urlToTry.startsWith('file://');
+        const sourceOptions = isNetworkUrl
+          ? {
+              uri: urlToTry,
+              headers: {
+                'Accept': 'audio/aac, audio/mpeg, audio/mp4, audio/*',
+                'Range': 'bytes=0-'
+              }
+            }
+          : { uri: urlToTry };
+        
+        if (__DEV__) {
+          devLog('🎧 createAsync attempt', { messageId, urlToTry, isNetworkUrl });
+        }
+
+        // Для Android локальные файлы пробуем file:// -> content:// (если понадобится)
+        const newSound = (Platform.OS === 'android' && !isNetworkUrl)
+          ? await createSoundAndroidFileFirst(sourceOptions.uri, soundOptions)
+          : (await withTimeout(
+              Audio.Sound.createAsync(sourceOptions, soundOptions, onPlaybackStatusUpdate),
+              5000, // Увеличено с 2000 до 5000ms для медленных сетей
+              'Audio.Sound.createAsync(network)'
+            )).sound;
+
+        const soundStatus = await newSound.getStatusAsync();
+        if (soundStatus.isLoaded) {
+          // Если это кэшированный файл, помечаем его как валидный
+          if (urlToTry === cachedUri || urlToTry === cachedPath) {
+            verifiedCachePaths.set(cachedPath, true);
+            if (__DEV__) {
+              devLog(`✅ Loaded from cache for message ${messageId}`);
+            }
+          } else if (urlToTry !== audioUri) {
+            if (__DEV__) {
+              devLog(`✅ Successfully loaded audio from fallback URL for message ${messageId}: ${urlToTry}`);
+            }
+          }
+          return newSound;
+        } else {
+          if (__DEV__) {
+            devWarn(`⚠️ Sound created but not loaded for message ${messageId}`, {
+              urlToTry,
+              status: soundStatus
+            });
+          }
+          await newSound.unloadAsync();
+          // Если это кэшированный файл и он не загрузился, помечаем как невалидный
+          if (urlToTry === cachedUri || urlToTry === cachedPath) {
+            verifiedCachePaths.set(cachedPath, false);
+            if (__DEV__) {
+              devWarn(`⚠️ Cached file failed to load for message ${messageId}, marking as invalid`);
+            }
+          }
+          lastError = new Error('Sound not loaded');
+        }
+      } catch (err) {
+        lastError = err;
+        if (__DEV__) {
+          devWarn(`❌ Failed to load audio from ${urlToTry} for message ${messageId}:`, err.message);
+        }
+        
+        // ===== ANDROID FALLBACK =====
+        // Если Android не смог загрузить по URL (часто бывает со стримингом m4a),
+        // пробуем скачать файл в cachedPath и загрузить локально.
+        if (
+          Platform.OS === 'android' &&
+          !androidDownloadTriedRef.current &&
+          !urlToTry.startsWith('file://') &&
+          cachedPath
+        ) {
+          androidDownloadTriedRef.current = true;
+          try {
+            if (__DEV__) {
+              devLog(`📥 Android fallback download for message ${messageId}: ${urlToTry}`);
+            }
+            
+            // Если в кэше уже лежит файл — но он мог быть битым, удалим перед скачиванием
+            try {
+              const existing = await FileSystem.getInfoAsync(cachedPath);
+              if (existing.exists) {
+                await FileSystem.deleteAsync(cachedPath, { idempotent: true });
+                verifiedCachePaths.set(cachedPath, false);
+              }
+            } catch {
+              // ignore
+            }
+            
+            const downloadedPath = await downloadAndCacheAudio(urlToTry, cachedPath);
+            const uriToLoad = downloadedPath && !downloadedPath.startsWith('file://')
+              ? `file://${downloadedPath}`
+              : downloadedPath;
+            
+            const { sound: localSound } = await Audio.Sound.createAsync(
+              { uri: uriToLoad },
+              { shouldPlay: false },
+              onPlaybackStatusUpdate
+            );
+            
+            const localStatus = await localSound.getStatusAsync();
+            if (localStatus.isLoaded) {
+              verifiedCachePaths.set(cachedPath, true);
+              if (__DEV__) {
+                devLog(`✅ Android fallback loaded from downloaded file for message ${messageId}`);
+              }
+              return localSound;
+            }
+            
+            await localSound.unloadAsync();
+          } catch (androidDlErr) {
+            if (__DEV__) {
+              devWarn(`❌ Android fallback download/load failed for message ${messageId}:`, androidDlErr.message);
+            }
+          }
+        }
+        
+        // На iOS, если это сетевой URL и ошибка -11800, пробуем загрузить через fetch
+        if (Platform.OS === 'ios' && 
+            !urlToTry.startsWith('file://') && 
+            cachedPath &&
+            (err.message?.includes('11800') || err.message?.includes('AVFoundationErrorDomain'))) {
+          
+          try {
+            if (__DEV__) {
+              devLog(`🔄 Attempting to download via fetch for message ${messageId} due to AVFoundation error`);
+            }
+            
+            // Если кэшированный файл существует, но поврежден, удаляем его
+            try {
+              const existingFileInfo = await FileSystem.getInfoAsync(cachedPath);
+              if (existingFileInfo.exists) {
+                await FileSystem.deleteAsync(cachedPath, { idempotent: true });
+                verifiedCachePaths.set(cachedPath, false);
+                if (__DEV__) {
+                  devLog(`🗑️ Deleted corrupted cached file for message ${messageId}`);
+                }
+              }
+            } catch (deleteErr) {
+              // Игнорируем ошибки удаления
+            }
+            
+            // Пытаемся загрузить через fetch и сохранить локально
+            const downloadedPath = await downloadAndCacheAudio(urlToTry, cachedPath);
+            
+            // Проверяем файл перед попыткой воспроизведения
+            try {
+              const fileInfo = await FileSystem.getInfoAsync(downloadedPath);
+              if (!fileInfo.exists || fileInfo.size === 0) {
+                throw new Error('Downloaded file is invalid');
+              }
+              
+              if (__DEV__) {
+                devLog(`🎵 Attempting to load downloaded file for message ${messageId}, size: ${fileInfo.size} bytes`);
+              }
+              
+              // На iOS добавляем небольшую задержку, чтобы файл точно был записан на диск
+              if (Platform.OS === 'ios') {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                // Дополнительная проверка, что файл все еще существует и имеет размер
+                const recheckInfo = await FileSystem.getInfoAsync(downloadedPath);
+                if (!recheckInfo.exists || recheckInfo.size === 0) {
+                  throw new Error('File disappeared or became empty after download');
+                }
+              }
+              
+              // На iOS пробуем загрузить с дополнительными опциями для AAC файлов
+              let soundOptions = { shouldPlay: false };
+              
+              // Для iOS добавляем дополнительные опции для AAC файлов
+              if (Platform.OS === 'ios') {
+                soundOptions = {
+                  shouldPlay: false,
+                  isMuted: false,
+                  volume: 1.0,
+                  rate: 1.0,
+                  shouldCorrectPitch: true,
+                  progressUpdateIntervalMillis: 1000,
+                };
+              }
+              
+              // Пробуем загрузить с локального файла
+              // На iOS используем file:// префикс явно, если его нет
+              const uriToLoad = Platform.OS === 'ios' && !downloadedPath.startsWith('file://') 
+                ? `file://${downloadedPath}` 
+                : downloadedPath;
+              
+              // На iOS пробуем загрузить с локального файла
+              let downloadedSound = null;
+              let downloadSuccess = false;
+              
+              try {
+                if (__DEV__) {
+                  devLog(`🎵 Trying to load from local file: ${uriToLoad}`);
+                }
+                
+                // Для iOS добавляем дополнительные опции
+                const localSourceOptions = Platform.OS === 'ios' 
+                  ? { 
+                      uri: uriToLoad,
+                      headers: {
+                        'Accept': 'audio/aac, audio/mpeg, audio/mp4, audio/*'
+                      }
+                    }
+                  : { uri: uriToLoad };
+                
+                const { sound: localSound } = await Audio.Sound.createAsync(
+                  localSourceOptions,
+                  soundOptions,
+                  onPlaybackStatusUpdate
+                );
+                
+                const localStatus = await localSound.getStatusAsync();
+                if (localStatus.isLoaded) {
+                  downloadedSound = localSound;
+                  downloadSuccess = true;
+                  if (__DEV__) {
+                    devLog(`✅ Local file loaded successfully for message ${messageId}`);
+                  }
+                } else {
+                  await localSound.unloadAsync();
+                  throw new Error(`Sound not loaded, status: ${JSON.stringify(localStatus)}`);
+                }
+              } catch (localErr) {
+                if (__DEV__) {
+                  devWarn(`⚠️ Failed to load from local file for message ${messageId}:`, {
+                    error: localErr.message,
+                    uri: uriToLoad,
+                    fileSize: fileInfo.size,
+                    fileExists: fileInfo.exists
+                  });
+                }
+                
+                // Если локальный файл не работает, пробуем загрузить напрямую с сервера
+                // Это может помочь, если проблема в том, как файл сохраняется
+                try {
+                  if (__DEV__) {
+                    devLog(`🔄 Trying direct URL as fallback: ${urlToTry}`);
+                  }
+                  
+                  // Для iOS добавляем дополнительные опции
+                  const directSourceOptions = Platform.OS === 'ios' 
+                    ? { 
+                        uri: urlToTry,
+                        headers: {
+                          'Accept': 'audio/aac, audio/mpeg, audio/mp4, audio/*',
+                          'Range': 'bytes=0-'
+                        }
+                      }
+                    : { uri: urlToTry };
+                  
+                  const { sound: directSound } = await Audio.Sound.createAsync(
+                    directSourceOptions,
+                    soundOptions,
+                    onPlaybackStatusUpdate
+                  );
+                  
+                  const directStatus = await directSound.getStatusAsync();
+                  if (directStatus.isLoaded) {
+                    downloadedSound = directSound;
+                    downloadSuccess = true;
+                    if (__DEV__) {
+                      devLog(`✅ Successfully loaded audio directly from URL for message ${messageId}`);
+                    }
+                  } else {
+                    await directSound.unloadAsync();
+                    throw new Error(`Direct URL not loaded, status: ${JSON.stringify(directStatus)}`);
+                  }
+                } catch (directErr) {
+                  if (__DEV__) {
+                    console.error(`❌ Both local file and direct URL failed for message ${messageId}:`, {
+                      localError: localErr.message,
+                      directError: directErr.message,
+                      filePath: uriToLoad,
+                      url: urlToTry
+                    });
+                  }
+                  throw localErr; // Выбрасываем исходную ошибку
+                }
+              }
+              
+              if (downloadSuccess && downloadedSound) {
+                verifiedCachePaths.set(cachedPath, true);
+                if (__DEV__) {
+                  devLog(`✅ Successfully loaded audio via fetch download for message ${messageId}`);
+                }
+                return downloadedSound;
+              } else {
+                if (downloadedSound) {
+                  await downloadedSound.unloadAsync();
+                }
+                verifiedCachePaths.set(cachedPath, false);
+                throw new Error('Sound not loaded after download');
+              }
+            } catch (fileErr) {
+              verifiedCachePaths.set(cachedPath, false);
+              if (__DEV__) {
+                devWarn(`⚠️ Downloaded file check failed for message ${messageId}:`, fileErr.message);
+              }
+              throw fileErr;
+            }
+          } catch (fetchErr) {
+            verifiedCachePaths.set(cachedPath, false);
+            if (__DEV__) {
+              devWarn(`❌ Failed to download via fetch for message ${messageId}:`, fetchErr.message);
+            }
+            // Продолжаем пробовать другие URL
+          }
+        }
+        
+        // Если это кэшированный файл и он не загрузился, помечаем как невалидный
+        if (urlToTry.startsWith('file://') && (urlToTry === cachedUri || urlToTry === cachedPath)) {
+          verifiedCachePaths.set(cachedPath, false);
+          if (__DEV__) {
+            devWarn(`⚠️ Cached file failed to load for message ${messageId}, marking as invalid`);
+          }
+        }
+        
+        // Продолжаем пробовать другие URL
+        continue;
+      }
+    }
+
+    // Если все URL не сработали, выбрасываем последнюю ошибку
+    if (lastError) {
+      throw new Error(`Failed to load audio: ${lastError.message}`);
+    }
+
+    throw new Error('No valid audio URL found');
+  }, [audioUri, cachedPath, fallbackUrls, messageId, onPlaybackStatusUpdate, downloadInBackground, checkUrlAvailability, downloadAndCacheAudio]);
 
   useEffect(() => {
     return () => {
@@ -306,19 +903,13 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
   // Защита от undefined/null attachment
   if (!attachment || typeof attachment !== 'object') {
     if (__DEV__) {
-      console.warn(`CachedVoice: Invalid attachment for message ${messageId}:`, attachment);
+      devWarn(`CachedVoice: Invalid attachment for message ${messageId}:`, attachment);
     }
     return null;
   }
 
-  if (__DEV__) {
-    console.log(`CachedVoice: Rendering message ${messageId}, attachment:`, {
-      hasPath: !!attachment.path,
-      duration: attachment.duration,
-      hasWaveform: !!attachment.waveform,
-      size: attachment.size
-    });
-  }
+  // Убрано избыточное логирование для производительности
+  // devLog убирается отсюда полностью
 
   const [sound, setSound] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -331,7 +922,7 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
   const messageIdRef = useRef(messageId);
   const waveformWidthRef = useRef(0);
 
-  const { audioUri, cachedPath } = useAudioUri(attachment);
+  const { audioUri, cachedPath, fallbackUrls } = useAudioUri(attachment);
   const waveformData = useWaveform(attachment, messageId);
 
   // Обновляем duration при изменении attachment или загрузке звука
@@ -350,8 +941,18 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
 
       try {
         // Создаем временный Sound для получения duration
+        // Для iOS добавляем дополнительные опции
+        const tempSourceOptions = Platform.OS === 'ios' 
+          ? { 
+              uri: audioUri,
+              headers: {
+                'Accept': 'audio/aac, audio/mpeg, audio/mp4, audio/*'
+              }
+            }
+          : { uri: audioUri };
+        
         const { sound: tempSound } = await Audio.Sound.createAsync(
-          { uri: audioUri },
+          tempSourceOptions,
           { shouldPlay: false }
         );
 
@@ -379,7 +980,16 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
       setPlaybackPosition(playbackStatus.positionMillis / 1000);
       setPlaybackDuration(playbackStatus.durationMillis / 1000);
 
-      if (playbackStatus.didJustFinish) {
+      // Проверяем завершение воспроизведения двумя способами:
+      // 1. Стандартный didJustFinish
+      // 2. Позиция достигла конца (для случаев когда didJustFinish не срабатывает)
+      const isFinished = playbackStatus.didJustFinish || 
+        (!playbackStatus.isPlaying && 
+         playbackStatus.positionMillis > 0 &&
+         playbackStatus.durationMillis > 0 &&
+         playbackStatus.positionMillis >= playbackStatus.durationMillis - 100); // 100ms допуск
+
+      if (isFinished) {
         setIsPlaying(false);
         setPlaybackPosition(0);
         // Сбрасываем скорость воспроизведения после окончания
@@ -405,7 +1015,8 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
     audioUri, 
     cachedPath, 
     messageId, 
-    onPlaybackStatusUpdate
+    onPlaybackStatusUpdate,
+    fallbackUrls
   );
 
   const progressAnim = useProgressAnimation(playbackPosition, playbackDuration, isPlaying);
@@ -454,7 +1065,7 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
     const nextRate = rates[nextIndex];
     
     if (__DEV__) {
-      console.log('Toggle playback rate:', playbackRate, '->', nextRate);
+      devLog('Toggle playback rate:', playbackRate, '->', nextRate);
     }
     
     setPlaybackRate(nextRate);
@@ -478,10 +1089,26 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
   const togglePlayPause = useCallback(async () => {
     try {
       setError(null);
+      
+      devLog('🎧 togglePlayPause start', {
+        messageId,
+        isPlaying,
+        audioUri,
+        cachedPath,
+        fallbackCount: Array.isArray(fallbackUrls) ? fallbackUrls.length : 0
+      });
 
       if (soundRef.current) {
         try {
           const soundStatus = await soundRef.current.getStatusAsync();
+          devLog('🎧 current sound status', {
+            messageId,
+            isLoaded: soundStatus?.isLoaded,
+            isPlaying: soundStatus?.isPlaying,
+            durationMillis: soundStatus?.durationMillis,
+            positionMillis: soundStatus?.positionMillis,
+            error: soundStatus?.error
+          });
           
           if (!soundStatus.isLoaded) {
             // Звук не загружен, очищаем ref и загружаем заново
@@ -496,16 +1123,23 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
               } catch (pauseErr) {
                 // Игнорируем ошибки паузы
                 if (pauseErr.message && !pauseErr.message.includes('not loaded')) {
-                  console.warn('Ошибка при паузе:', pauseErr);
+                  devWarn('Ошибка при паузе:', pauseErr);
                 }
               }
             } else {
               setIsPlaying(true);
+              // ВАЖНО: Регистрируем звук в audioManager ДО запуска воспроизведения
+              // Это остановит предыдущее воспроизводящееся аудио
               await audioManager.registerSound(messageIdRef.current, soundRef.current);
               // Применяем текущую скорость воспроизведения
               try {
                 await soundRef.current.setRateAsync(playbackRate, true);
                 await soundRef.current.playAsync();
+                devLog('🎧 after playAsync status', {
+                  messageId,
+                  isLoaded: (await soundRef.current.getStatusAsync())?.isLoaded,
+                  isPlaying: (await soundRef.current.getStatusAsync())?.isPlaying,
+                });
               } catch (playErr) {
                 // Если не удалось воспроизвести, сбрасываем состояние
                 if (playErr.message && playErr.message.includes('not loaded')) {
@@ -540,12 +1174,22 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
       soundRef.current = newSound;
       setSound(newSound);
       
+      // ВАЖНО: Регистрируем звук в audioManager ДО запуска воспроизведения
       await audioManager.registerSound(messageIdRef.current, newSound);
+      devLog('🎧 newSound loaded status', {
+        messageId,
+        isLoaded: (await newSound.getStatusAsync())?.isLoaded,
+      });
       // Применяем текущую скорость воспроизведения перед запуском
       try {
         await newSound.setRateAsync(playbackRate, true);
         await newSound.playAsync();
         setIsPlaying(true);
+        devLog('🎧 newSound after playAsync status', {
+          messageId,
+          isLoaded: (await newSound.getStatusAsync())?.isLoaded,
+          isPlaying: (await newSound.getStatusAsync())?.isPlaying,
+        });
       } catch (playErr) {
         console.error('Ошибка при воспроизведении загруженного звука:', playErr);
         setError('Не удалось воспроизвести');
@@ -554,10 +1198,30 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
 
     } catch (err) {
       console.error('Audio playback error:', err);
-      setError('Не удалось воспроизвести');
+      
+      // Более информативное сообщение об ошибке
+      let errorMessage = 'Не удалось воспроизвести';
+      if (err.message) {
+        if (err.message.includes('11800') || err.message.includes('AVFoundationErrorDomain')) {
+          errorMessage = 'Файл недоступен';
+        } else if (err.message.includes('not loaded')) {
+          errorMessage = 'Ошибка загрузки';
+        } else if (err.message.includes('Failed to load')) {
+          errorMessage = 'Файл не найден';
+        }
+      }
+      
+      setError(errorMessage);
       setIsPlaying(false);
+      
+      console.error(`❌ Audio playback failed for message ${messageId}:`, {
+        error: err.message,
+        audioUri,
+        fallbackUrls,
+        cachedPath
+      });
     }
-  }, [isPlaying, loadAndPlayAudio, playbackRate]);
+  }, [isPlaying, loadAndPlayAudio, playbackRate, audioUri, cachedPath, fallbackUrls, messageId]);
 
   const handleWaveformLayout = useCallback((event) => {
     waveformWidthRef.current = event.nativeEvent.layout.width;
@@ -566,29 +1230,47 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
   const handleWaveformPress = useCallback((event) => {
     if (!soundRef.current || playbackDuration <= 0) return;
     
-    const { locationX, locationY } = event.nativeEvent;
+    // Останавливаем всплытие события, чтобы BubbleContainer не перехватывал нажатие
+    if (event?.stopPropagation) {
+      event.stopPropagation();
+    }
+    
+    const { locationX, locationY } = event.nativeEvent || event;
     
     const width = waveformWidthRef.current || 200;
+    
+    if (__DEV__) {
+      devLog('🎵 Waveform press:', { locationX, locationY, width });
+    }
     
     // Мягкие границы для locationX - допускаем небольшое выхождение за пределы
     const validLocationX = Math.max(-10, Math.min(width + 10, locationX));
     
     // Игнорируем нажатия слишком далеко за пределами по горизонтали
     if (locationX < -20 || locationX > width + 20) {
+      if (__DEV__) {
+        devLog('🎵 Waveform press ignored: out of horizontal bounds');
+      }
       return;
     }
     
     // Игнорируем нажатия слишком далеко внизу (вне области компонента)
-    // locationY отсчитывается от начала Pressable, который теперь включает весь контейнер
-    const maxValidY = 1000; // Большое значение, так как Pressable теперь включает весь контейнер
+    // locationY отсчитывается от начала Pressable
+    const maxValidY = 100; // Разумное значение для области waveform + время
     
-    if (locationY > maxValidY || locationY < 0) {
+    if (locationY > maxValidY || locationY < -10) {
+      if (__DEV__) {
+        devLog('🎵 Waveform press ignored: out of vertical bounds');
+      }
       return;
     }
     
     // Игнорируем нажатия с очень малым locationX только если трек уже играет и позиция > 5 секунд
     // Это предотвращает случайный сброс при нажатии на левый край, но позволяет перематывать в начало
     if (validLocationX < 3 && playbackPosition > 5) {
+      if (__DEV__) {
+        devLog('🎵 Waveform press ignored: too close to start while playing');
+      }
       return; // Игнорируем нажатия в самом начале (меньше 3px), если трек уже играет больше 5 секунд
     }
     
@@ -597,6 +1279,10 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
     const progress = Math.max(0, Math.min(100, (normalizedX / width) * 100));
     const newPosition = (progress / 100) * playbackDuration;
     
+    if (__DEV__) {
+      devLog('🎵 Seeking to:', { progress: progress.toFixed(1), newPosition: newPosition.toFixed(1) });
+    }
+    
     const seekAudio = async () => {
       if (!soundRef.current) return;
       
@@ -604,6 +1290,9 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
         // Проверяем статус перед перемоткой
         const soundStatus = await soundRef.current.getStatusAsync();
         if (!soundStatus.isLoaded) {
+          if (__DEV__) {
+            devWarn('🎵 Cannot seek: sound not loaded');
+          }
           return; // Звук не загружен, не можем перематывать
         }
         
@@ -614,10 +1303,14 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
         if (playbackRate !== 1.0) {
           await soundRef.current.setRateAsync(playbackRate, true);
         }
+        
+        if (__DEV__) {
+          devLog('🎵 Seek successful');
+        }
       } catch (err) {
         // Игнорируем ошибки перемотки (включая "not loaded")
         if (err.message && !err.message.includes('not loaded')) {
-          console.warn('Ошибка при перемотке:', err);
+          devWarn('Ошибка при перемотке:', err);
         }
       }
     };
@@ -651,12 +1344,17 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
 
       {/* Waveform и время */}
       <View style={styles.contentContainer}>
-        <TouchableWithoutFeedback 
+        <Pressable 
           onPress={handleWaveformPress}
           disabled={!soundRef.current}
+          style={({ pressed }) => [
+            styles.waveformPressable,
+            pressed && Platform.OS === 'ios' && { opacity: 0.7 }
+          ]}
+          hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
         >
           <View 
-            style={styles.waveformPressable}
+            style={styles.waveformWrapper}
             onLayout={handleWaveformLayout}
           >
             <View style={styles.waveformBars}>
@@ -693,7 +1391,7 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
               })}
             </View>
           </View>
-        </TouchableWithoutFeedback>
+        </Pressable>
 
         <View style={styles.timeRow}>
           <View style={styles.durationContainer}>
@@ -805,9 +1503,10 @@ const styles = StyleSheet.create({
   },
   waveformPressable: {
     width: '100%',
-    paddingTop: 0,
-    paddingBottom: 0,
-    justifyContent: 'center',
+    paddingVertical: 8,
+  },
+  waveformWrapper: {
+    width: '100%',
   },
   waveformBars: {
     flexDirection: 'row',
@@ -815,7 +1514,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     height: 18,
     gap: 1.5,
-    marginTop: 7,
   },
   waveBarContainer: {
     flex: 1,

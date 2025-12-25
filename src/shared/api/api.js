@@ -510,7 +510,11 @@ api.interceptors.response.use(
             ? Date.now() - originalRequest.metadata.startTime 
             : 0;
 
-        // Всегда логируем ошибки
+        // Проверяем, не является ли это ошибкой корзины со статусом 401 (корзина скрыта в первой версии)
+        const isCart401Error = error.response?.status === 401 && 
+                              originalRequest?.url?.includes('/api/cart');
+        
+        // Всегда логируем ошибки (кроме 401 для корзины, так как она скрыта)
         const errorDetails = {
             requestId: originalRequest?.requestId,
             status: error.response?.status,
@@ -531,7 +535,10 @@ api.interceptors.response.use(
             });
         }
         
-        apiDebugLog('ERROR', `Request failed: ${originalRequest?.url}`, errorDetails);
+        // Не логируем 401 ошибки для корзины (корзина скрыта в первой версии приложения)
+        if (!isCart401Error) {
+            apiDebugLog('ERROR', `Request failed: ${originalRequest?.url}`, errorDetails);
+        }
 
         // Обработка ошибок загрузки файлов
         if (error.config && error.config.headers &&

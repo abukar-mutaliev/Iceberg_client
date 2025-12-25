@@ -314,9 +314,38 @@ export const VoiceRecorder = ({ onSend, onCancel, roomId }) => {
       });
 
       // Создаем запись
+      // ✅ ИСПРАВЛЕНИЕ: iOS записывает M4A с новым 'chnl' box (version 1),
+      // который не поддерживается FFmpeg 6.1.1
+      // Решение: записываем в формате CAF (Core Audio Format) с LinearPCM,
+      // который FFmpeg отлично обрабатывает
+      const recordingOptions = Platform.OS === 'ios' ? {
+        android: {
+          extension: '.m4a',
+          outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_MPEG_4,
+          audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_AAC,
+          sampleRate: 44100,
+          numberOfChannels: 1, // Моно для голосовых сообщений (экономия трафика)
+          bitRate: 128000,
+        },
+        ios: {
+          extension: '.caf',
+          outputFormat: Audio.RECORDING_OPTION_IOS_OUTPUT_FORMAT_LINEARPCM,
+          audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
+          sampleRate: 44100,
+          numberOfChannels: 1, // Моно для голосовых сообщений
+          bitRate: 128000,
+          linearPCMBitDepth: 16,
+          linearPCMIsBigEndian: false,
+          linearPCMIsFloat: false,
+        },
+        web: {
+          mimeType: 'audio/webm',
+          bitsPerSecond: 128000,
+        },
+      } : Audio.RecordingOptionsPresets.HIGH_QUALITY;
+      
       const { recording: newRecording } = await Audio.Recording.createAsync(
-        // Настройки записи для высокого качества
-        Audio.RecordingOptionsPresets.HIGH_QUALITY,
+        recordingOptions,
         (status) => {
           // ✅ Обновление длительности из callback
           if (status.isRecording && status.durationMillis !== undefined) {
@@ -423,12 +452,18 @@ export const VoiceRecorder = ({ onSend, onCancel, roomId }) => {
             normalizedWaveform = Array.from({ length: targetWaveformLength }, () => 0.3 + Math.random() * 0.7);
           }
           
+          // ✅ Определяем MIME-тип на основе расширения файла
+          const fileExtension = uri.split('.').pop().toLowerCase();
+          const mimeType = fileExtension === 'm4a' ? 'audio/mp4' : 'audio/aac';
+          
           if (__DEV__) {
             console.log('🎤 VoiceRecorder: Запись остановлена', {
               uri,
               duration: finalDuration,
               size: fileInfo.size,
-              waveformPoints: normalizedWaveform.length
+              waveformPoints: normalizedWaveform.length,
+              mimeType,
+              fileExtension
             });
           }
           
@@ -436,6 +471,7 @@ export const VoiceRecorder = ({ onSend, onCancel, roomId }) => {
             uri,
             duration: finalDuration,
             size: fileInfo.size,
+            type: mimeType, // ✅ Добавляем MIME-тип
             waveform: normalizedWaveform // ✅ Добавляем waveform данные
           };
         }

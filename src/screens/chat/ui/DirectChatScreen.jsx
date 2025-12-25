@@ -1239,6 +1239,21 @@ export const DirectChatScreen = ({route, navigation}) => {
         setSelectedImageUri(null);
     }, []);
 
+    const handleSenderNamePress = useCallback((senderId) => {
+        if (!senderId || senderId === currentUserId) return;
+        
+        const rootNavigation =
+            navigation?.getParent?.('AppStack') ||
+            navigation?.getParent?.() ||
+            navigation;
+
+        (rootNavigation || navigation).navigate('UserPublicProfile', {
+            userId: senderId,
+            fromScreen: 'DirectChatRoom',
+            roomId,
+        });
+    }, [currentUserId, navigation, roomId]);
+
     const renderItem = useCallback(({item}) => (
         <SwipeableMessageBubble
             message={item}
@@ -1303,8 +1318,11 @@ export const DirectChatScreen = ({route, navigation}) => {
             onReplyPress={handleReplyPress}
             onAddReaction={(emoji) => handleToggleReaction(item.id, emoji)}
             onShowReactionPicker={(position) => handleShowReactionPicker(item.id, position)}
+            roomType={roomData?.type}
+            participants={roomData?.participants}
+            onSenderNamePress={handleSenderNamePress}
         />
-    ), [currentUserId, partnerAvatar, isSelectionMode, selectedMessages, canDeleteMessage, toggleMessageSelection, handleRetryMessage, handleCancelMessage, retryingMessages, handleImagePress, handleAvatarPress, handleContactDriver, handleReply, handleReplyPress, navigation, highlightedMessageId, handleToggleReaction, handleShowReactionPicker]);
+    ), [currentUserId, partnerAvatar, isSelectionMode, selectedMessages, canDeleteMessage, toggleMessageSelection, handleRetryMessage, handleCancelMessage, retryingMessages, handleImagePress, handleAvatarPress, handleContactDriver, handleReply, handleReplyPress, navigation, highlightedMessageId, handleToggleReaction, handleShowReactionPicker, roomData?.type, roomData?.participants, handleSenderNamePress]);
 
     const keyExtractor = useCallback((item) => {
         if (item.temporaryId) {

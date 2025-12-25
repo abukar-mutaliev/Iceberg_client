@@ -3,7 +3,12 @@ let SQLite = null;
 try {
   SQLite = require('expo-sqlite');
 } catch (error) {
-  console.warn('⚠️ expo-sqlite not available. SQLite features will be disabled.');
+  // expo-sqlite недоступен в Expo Go - это нормально, SQLite функции будут отключены
+  // Не показываем предупреждение, так как это ожидаемое поведение в режиме разработки
+  if (__DEV__) {
+    // Логируем только в DEV режиме для отладки
+    console.log('ℹ️ expo-sqlite not available (normal in Expo Go), SQLite features disabled');
+  }
 }
 
 const DB_NAME = 'chat_cache.db';
@@ -150,7 +155,12 @@ function safeMs(iso) {
 export const chatMessagesDb = {
   async initialize() {
     if (!SQLite) {
-      console.warn('⚠️ SQLite not available, skipping database initialization');
+      // SQLite недоступен в Expo Go - это нормально, кэш сообщений просто не будет работать
+      // Предупреждение скрыто, так как это ожидаемое поведение в режиме разработки
+      if (__DEV__) {
+        // Логируем только в DEV режиме для отладки, но не показываем как warning
+        console.log('ℹ️ SQLite not available (normal in Expo Go), chat cache disabled');
+      }
       return;
     }
     
@@ -316,6 +326,7 @@ export const chatMessagesDb = {
 };
 
 export default chatMessagesDb;
+
 
 
 

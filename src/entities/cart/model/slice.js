@@ -122,7 +122,15 @@ export const fetchCart = createAsyncThunk(
                 throw new Error(response.message || 'Ошибка при загрузке корзины');
             }
         } catch (error) {
-            console.error('Ошибка при загрузке корзины:', error);
+            // Не логируем ошибки 401 для корзины (корзина скрыта в первой версии приложения)
+            const is401Error = error.response?.status === 401 || 
+                              error.message?.includes('401') || 
+                              error.message?.includes('токена истек') ||
+                              error.message?.includes('Срок действия токена');
+            
+            if (!is401Error) {
+                console.error('Ошибка при загрузке корзины:', error);
+            }
             return rejectWithValue(error.message || 'Ошибка при загрузке корзины');
         }
     }
