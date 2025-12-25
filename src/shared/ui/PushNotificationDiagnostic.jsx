@@ -14,19 +14,34 @@ import { Platform } from 'react-native';
 import { resetHeadsUpPrompt } from '@shared/hooks/useHeadsUpNotificationPrompt';
 import { InAppLogsViewer } from '@shared/ui/InAppLogsViewer';
 
-// Условный импорт expo-notifications для избежания предупреждений в Expo Go
-let Notifications = null;
-const isExpoGo = Constants?.executionEnvironment === 'storeClient' || 
-                  Constants?.appOwnership === 'expo';
-
-if (!isExpoGo) {
+// Ленивая загрузка expo-notifications только когда нужно (не в Expo Go)
+const getNotifications = () => {
     try {
-        Notifications = require('expo-notifications');
+        // Строгая проверка на Expo Go - если мы в Expo Go, никогда не загружаем expo-notifications
+        const executionEnvironment = Constants?.executionEnvironment;
+        const appOwnership = Constants?.appOwnership;
+        
+        const isExpoGo = executionEnvironment === 'storeClient' || 
+                         appOwnership === 'expo' ||
+                         executionEnvironment === 'expoGo';
+        
+        if (isExpoGo) {
+            // В Expo Go expo-notifications недоступен - не пытаемся загружать
+            return null;
+        }
+        
+        // Ленивая загрузка только при вызове функции и только если НЕ в Expo Go
+        try {
+            return require('expo-notifications');
+        } catch (requireError) {
+            // Если require не удался (например, модуль не установлен), возвращаем null
+            return null;
+        }
     } catch (error) {
-        // Если импорт не удался, Notifications останется null
-        console.warn('expo-notifications not available:', error.message);
+        // Если любая проверка не удалась, возвращаем null
+        return null;
     }
-}
+};
 
 export const PushNotificationDiagnostic = () => {
     const [diagnosticData, setDiagnosticData] = useState({});
@@ -39,12 +54,13 @@ export const PushNotificationDiagnostic = () => {
 
     // Вспомогательная функция для проверки доступности Notifications
     const checkNotificationsAvailable = () => {
+        const Notifications = getNotifications();
         if (!Notifications) {
             addLog('⚠️ expo-notifications недоступен в Expo Go. Используйте development build.', 'warning');
             Alert.alert('Недоступно', 'expo-notifications недоступен в Expo Go. Используйте development build для тестирования.');
-            return false;
+            return null;
         }
-        return true;
+        return Notifications;
     }; 
 
     const addLog = (message, type = 'info') => {
@@ -471,11 +487,8 @@ export const PushNotificationDiagnostic = () => {
     const testLocalNotification = async () => {
         addLog('🔔 Тест ЛОКАЛЬНОГО уведомления (Expo)', 'info');
         
-        if (!Notifications) {
-            addLog('⚠️ expo-notifications недоступен в Expo Go. Используйте development build.', 'warning');
-            Alert.alert('Недоступно', 'expo-notifications недоступен в Expo Go. Используйте development build для тестирования.');
-            return;
-        }
+        const Notifications = checkNotificationsAvailable();
+        if (!Notifications) return;
         
         try {
             // Проверяем разрешения
@@ -686,6 +699,7 @@ export const PushNotificationDiagnostic = () => {
             return;
         }
         
+        const Notifications = getNotifications();
         if (!Notifications) {
             addLog('⚠️ expo-notifications недоступен в Expo Go', 'warning');
             return;
@@ -762,6 +776,7 @@ export const PushNotificationDiagnostic = () => {
             return;
         }
         
+        const Notifications = getNotifications();
         if (!Notifications) {
             addLog('⚠️ expo-notifications недоступен в Expo Go', 'warning');
             return;
@@ -995,6 +1010,9 @@ export const PushNotificationDiagnostic = () => {
         addLog('⏱️ Тест с задержкой 5 секунд...', 'info');
         addLog('💡 Сверните приложение в течение 5 секунд!', 'warning');
         
+        const Notifications = checkNotificationsAvailable();
+        if (!Notifications) return;
+        
         try {
             const notificationId = await Notifications.scheduleNotificationAsync({
                 content: {
@@ -1063,9 +1081,8 @@ export const PushNotificationDiagnostic = () => {
     const checkSystemNotificationSettings = async () => {
         addLog('⚙️ Проверка системных настроек уведомлений...', 'info');
         
-        if (!checkNotificationsAvailable()) return;
-        
-        if (!checkNotificationsAvailable()) return;
+        const Notifications = checkNotificationsAvailable();
+        if (!Notifications) return;
         
         try {
             // Expo Notifications permissions
@@ -1185,6 +1202,9 @@ ${logs.map(log => `[${log.timestamp}] [${log.type.toUpperCase()}] ${log.message}
             Alert.alert('Недоступно', 'Доступно только на Android');
             return;
         }
+        
+        const Notifications = checkNotificationsAvailable();
+        if (!Notifications) return;
         
         try {
             // Вызываем метод который УДАЛИТ и пересоздаст все каналы

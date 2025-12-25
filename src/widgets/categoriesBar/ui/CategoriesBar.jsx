@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, Pressable, Text, ScrollView } from 'react-native';
+import { View, StyleSheet, Pressable, Text, ScrollView, Platform } from 'react-native';
 import { useSelector } from 'react-redux';
 import {
     selectCategories,
@@ -33,12 +33,10 @@ const CATEGORY_ORDER = [
     'Рожки',
     'Рожок',
     'Брикеты',
-    'Килограммовые',
     'Брикет',
+    'Килограммовые',
     'Фруктовый лед',
-    'Фруктовый лёд',
-    'Рыба',
-    'Стандартный'
+    'Рыба'
 ];
 
 export const CategoriesBar = ({ hideLoader = true }) => {
@@ -47,6 +45,23 @@ export const CategoriesBar = ({ hideLoader = true }) => {
     const error = useSelector(selectCategoriesError);
     const navigation = useNavigation();
 
+    // Показываем скелетон загрузки
+    if (isLoading && !hideLoader && categories.length === 0) {
+        return (
+            <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.scrollContainer}
+            >
+                {[...Array(6)].map((_, index) => (
+                    <View key={`skeleton-${index}`} style={styles.categoryItem}>
+                        <View style={styles.skeletonButton} />
+                        <View style={styles.skeletonText} />
+                    </View>
+                ))}
+            </ScrollView>
+        );
+    }
 
     if (error) {
         return (
@@ -68,8 +83,9 @@ export const CategoriesBar = ({ hideLoader = true }) => {
         }
     };
 
-    // Сортируем категории в нужном порядке
-    const sortedCategories = [...categories].sort((a, b) => {
+    // Фильтруем категорию "Набор" и сортируем категории в нужном порядке
+    const filteredCategories = categories.filter(category => category.name !== 'Набор');
+    const sortedCategories = [...filteredCategories].sort((a, b) => {
         const indexA = CATEGORY_ORDER.indexOf(a.name);
         const indexB = CATEGORY_ORDER.indexOf(b.name);
         
@@ -104,26 +120,39 @@ export const CategoriesBar = ({ hideLoader = true }) => {
                         onPress={() => handleCategoryPress(category)}
                     >
                         <View style={getButtonStyle(iconType)}>
-                            <AndroidShadow
-                                style={styles.iconContainer}
-                                shadowColor="rgba(51, 57, 176, 0.05)"
-                                shadowConfig={{
-                                    offsetX: -9,
-                                    offsetY: 0,
-                                    elevation: 14,
-                                    radius: 19,
-                                    opacity: 0.4
-                                }}
-                            >
-                                <View style={styles.iconWrapper}>
-                                    <CategoryIcon
-                                        type={iconType}
-                                        style={iconType === 'рожок' || iconType === 'эскимо'
-                                            ? styles.smallIcon
-                                            : styles.largeIcon}
-                                    />
+                            {Platform.OS === 'ios' ? (
+                                <View style={[styles.iconContainer, styles.iosShadow]}>
+                                    <View style={styles.iconWrapper}>
+                                        <CategoryIcon
+                                            type={iconType}
+                                            style={iconType === 'рожок' || iconType === 'эскимо'
+                                                ? styles.smallIcon
+                                                : styles.largeIcon}
+                                        />
+                                    </View>
                                 </View>
-                            </AndroidShadow>
+                            ) : (
+                                <AndroidShadow
+                                    style={styles.iconContainer}
+                                    shadowColor="rgba(51, 57, 176, 0.05)"
+                                    shadowConfig={{
+                                        offsetX: -9,
+                                        offsetY: 0,
+                                        elevation: 14,
+                                        radius: 19,
+                                        opacity: 0.4
+                                    }}
+                                >
+                                    <View style={styles.iconWrapper}>
+                                        <CategoryIcon
+                                            type={iconType}
+                                            style={iconType === 'рожок' || iconType === 'эскимо'
+                                                ? styles.smallIcon
+                                                : styles.largeIcon}
+                                        />
+                                    </View>
+                                </AndroidShadow>
+                            )}
                         </View>
                         {category.isCategoriesLink ? (
                             <Text style={styles.categoryName} numberOfLines={2}>
@@ -204,6 +233,16 @@ const styles = StyleSheet.create({
         height: 57,
         width: 65,
         borderRadius: 19,
+        backgroundColor: '#fff',
+    },
+    iosShadow: {
+        shadowColor: 'rgba(51, 57, 176, 0.25)',
+        shadowOffset: {
+            width: 0,
+            height: 3,
+        },
+        shadowOpacity: 0.6,
+        shadowRadius: 8,
     },
     iconWrapper: {
         width: '100%',
@@ -219,10 +258,24 @@ const styles = StyleSheet.create({
     },
     categoryName: {
         marginTop: normalize(6),
-        fontSize: 10,
+        fontSize: FontSize.size_xs,
         fontFamily: FontFamily.sFProText,
         color: Color.colorDarkslategray,
         textAlign: 'center',
         maxWidth: 85,
-    }
+    },
+    // Стили для скелетона
+    skeletonButton: {
+        height: 57,
+        width: 65,
+        borderRadius: 19,
+        backgroundColor: '#f0f0f0',
+    },
+    skeletonText: {
+        marginTop: normalize(6),
+        height: 12,
+        width: 60,
+        borderRadius: 6,
+        backgroundColor: '#f0f0f0',
+    },
 });

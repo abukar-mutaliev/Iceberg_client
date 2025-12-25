@@ -74,11 +74,24 @@ export const AndroidShadow = ({
     }
 
     // На iOS используем нативную тень
+    // На iOS shadowColor должен быть без альфа-канала, прозрачность контролируется через shadowOpacity
+    let iosShadowColor = shadowColor;
+    if (shadowColor.includes('rgba')) {
+        // Извлекаем цвет из rgba, убирая альфа-канал
+        const rgbaMatch = shadowColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (rgbaMatch) {
+            iosShadowColor = `rgb(${rgbaMatch[1]}, ${rgbaMatch[2]}, ${rgbaMatch[3]})`;
+        } else {
+            // Если не удалось распарсить, используем черный цвет по умолчанию
+            iosShadowColor = '#000';
+        }
+    }
+    
     return (
         <View style={[
             style,
             {
-                shadowColor: shadowColor,
+                shadowColor: iosShadowColor,
                 shadowOffset: {
                     width: shadowConfig.offsetX,
                     height: shadowConfig.offsetY

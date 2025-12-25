@@ -97,15 +97,9 @@ class OneSignalService {
             
             // Если мы знаем UUID канала из OneSignal Dashboard, OneSignal SDK автоматически
             // создаст канал `OS_<uuid>` для heads-up уведомлений
-            try {
-                const cleanUuid = this.getConfiguredAndroidChannelUuid();
-                if (cleanUuid) {
-                    const osChannelId = `OS_${cleanUuid}`;
-                    await ensureChannel(osChannelId, 'Iceberg (OneSignal)');
-                }
-            } catch (e) {
-                // Ошибка создания OneSignal канала
-            }
+            // 
+            // ВАЖНО: Не пытаемся вручную создавать каналы - OneSignal сделает это сам
+            // при инициализации, используя настройки из Dashboard
 
             return true;
             

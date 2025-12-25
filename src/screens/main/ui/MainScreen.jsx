@@ -301,7 +301,7 @@ export const MainScreen = ({ navigation, route }) => {
         <>
             <Header navigation={navigation} />
             <PromoBanner hideLoader={isDataReady} />
-            <CategoriesBar hideLoader={isDataReady} />
+            <CategoriesBar hideLoader={false} />
             <DriverLocator onPress={handleDriverLocatorPress} />
         </>
     ), [navigation, isDataReady, handleDriverLocatorPress]);
