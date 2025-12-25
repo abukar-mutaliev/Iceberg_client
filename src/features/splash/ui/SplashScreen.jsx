@@ -8,7 +8,7 @@ export const SplashScreen = () => {
     const navigation = useNavigation();
 
     const [logoScale] = useState(new Animated.Value(1));
-    const [logoPosition] = useState(new Animated.Value(100));
+    const [logoPosition] = useState(new Animated.Value(70));
     const [textOpacity] = useState(new Animated.Value(0));
     const [textPosition] = useState(new Animated.Value(50));
 
@@ -20,8 +20,8 @@ export const SplashScreen = () => {
                 <Image
                     source={require('@assets/logo/logo.png')}
                     style={{
-                        width: 296,
-                        height: 252,
+                        width: 250,
+                        height: 213,
                         resizeMode: 'contain',
                     }}
                 />
@@ -29,8 +29,8 @@ export const SplashScreen = () => {
         } catch (error) {
             return (
                 <View style={{ 
-                    width: 296, 
-                    height: 252, 
+                    width: 250, 
+                    height: 213, 
                     backgroundColor: '#3339B0',
                     borderRadius: 20,
                     justifyContent: 'center',

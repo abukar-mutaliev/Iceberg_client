@@ -8,10 +8,10 @@ import {
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useFocusEffect } from '@react-navigation/native';
-import { resetCurrentProduct } from '@entities/product';
+import { resetCurrentProduct, fetchProductById } from '@entities/product';
 import ChatApi from '@entities/chat/api/chatApi';
 import { selectRoomsList } from '@entities/chat/model/selectors';
-import { sendProduct } from '@entities/chat/model/slice';
+import { sendProduct, fetchRooms, hydrateRooms } from '@entities/chat/model/slice';
 
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
@@ -346,6 +346,31 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                     return;
                 }
                 shouldSendProduct = true; // Отправляем товар при создании нового чата
+                
+                // Загружаем продукт в Redux store для отображения в списке чатов
+                try {
+                    await dispatch(fetchProductById(enrichedProduct.id));
+                } catch (error) {
+                    console.warn('Failed to load product to store:', error);
+                }
+                
+                // Немедленно добавляем созданную комнату в Redux store
+                // чтобы она сразу появилась в списке чатов с правильным productId
+                if (roomObj && roomObj.id) {
+                    const roomToAdd = {
+                        ...roomObj,
+                        productId: enrichedProduct.id,
+                        type: 'PRODUCT'
+                    };
+                    dispatch(hydrateRooms({ rooms: [roomToAdd] }));
+                }
+                
+                // Обновляем список комнат, чтобы получить актуальные данные
+                try {
+                    await dispatch(fetchRooms({ page: 1, forceRefresh: true }));
+                } catch (error) {
+                    console.warn('Failed to refresh rooms list:', error);
+                }
             }
 
             const productInfo = {
@@ -388,21 +413,28 @@ export const ProductDetailScreen = ({ route, navigation }) => {
             
             // Открываем чат
             try {
-                navigation.navigate('ChatList', {
-                    screen: 'ChatRoom',
-                    params: {
-                        roomId,
-                        roomTitle,
-                        productId: enrichedProduct.id,
-                        productInfo,
-                        roomData: roomObj,
-                        currentUserId,
-                        fromScreen: 'ProductDetail'
-                    }
+                const rootNavigation =
+                    navigation?.getParent?.('AppStack') ||
+                    navigation?.getParent?.()?.getParent?.() ||
+                    null;
+
+                (rootNavigation || navigation).navigate('ChatRoom', {
+                    roomId,
+                    roomTitle,
+                    productId: enrichedProduct.id,
+                    productInfo,
+                    roomData: roomObj,
+                    currentUserId,
+                    fromScreen: 'ProductDetail'
                 });
             } catch (err) {
-                navigation.navigate('ChatRoom', { 
-                    roomId, 
+                const rootNavigation =
+                    navigation?.getParent?.('AppStack') ||
+                    navigation?.getParent?.()?.getParent?.() ||
+                    null;
+
+                (rootNavigation || navigation).navigate('ChatRoom', {
+                    roomId,
                     roomTitle,
                     productId: enrichedProduct.id,
                     productInfo,

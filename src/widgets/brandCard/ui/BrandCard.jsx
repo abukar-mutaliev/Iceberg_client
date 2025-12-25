@@ -3,10 +3,9 @@ import { StyleSheet, View, Image, Text, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import ArrowIcons from '@shared/ui/Icon/DetailScreenIcons/ArrowIcon';
-import { FontFamily, FontSize } from "@app/styles/GlobalStyles";
+import { FontFamily, FontSize, Color } from "@app/styles/GlobalStyles";
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import {SupplierRatingFromRedux} from "@entities/supplier";
-import {Colors} from "react-native/Libraries/NewAppScreen";
 
 export const BrandCard = ({ supplier, onSupplierPress }) => {
 
@@ -55,7 +54,7 @@ export const BrandCard = ({ supplier, onSupplierPress }) => {
             />
 
             <View style={styles.brandNameContainer}>
-                <Text style={[styles.brandName, { color: Colors.purpleSoft }]} numberOfLines={1} ellipsizeMode="tail">
+                <Text style={[styles.brandName, { color: Color.purpleSoft }]} numberOfLines={1} ellipsizeMode="tail">
                     {companyName}
                 </Text>
             </View>

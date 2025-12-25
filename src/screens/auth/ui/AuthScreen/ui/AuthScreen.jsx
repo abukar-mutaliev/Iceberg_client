@@ -99,18 +99,33 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
 
     useEffect(() => {
         if (!isCheckingAuth && isAuthenticated) {
-            navigation.dispatch(
-                CommonActions.reset({
-                    index: 0,
-                    routes: [{ name: 'Main' }],
-                })
-            );
+            const redirectTo = route?.params?.redirectTo;
+
+            if (redirectTo?.name) {
+                // Если нас попросили вернуть пользователя на конкретный экран после авторизации
+                navigation.dispatch(
+                    CommonActions.reset({
+                        index: 1,
+                        routes: [
+                            { name: 'Main' },
+                            { name: redirectTo.name, params: redirectTo.params || {} },
+                        ],
+                    })
+                );
+            } else {
+                navigation.dispatch(
+                    CommonActions.reset({
+                        index: 0,
+                        routes: [{ name: 'Main' }],
+                    })
+                );
+            }
         }
 
         if (!isCheckingAuth && requiresTwoFactor) {
             navigation.navigate('TwoFactorAuth', { tempToken });
         }
-    }, [isAuthenticated, requiresTwoFactor, tempToken, navigation, isCheckingAuth]);
+    }, [isAuthenticated, requiresTwoFactor, tempToken, navigation, isCheckingAuth, route?.params?.redirectTo]);
 
     useEffect(() => {
         const keyboardWillShowListener = Keyboard.addListener(
@@ -205,13 +220,14 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
                 return false;
             };
 
+            let backHandler = null;
             if (Platform.OS === 'android') {
-                BackHandler.addEventListener('hardwareBackPress', onBackPress);
+                backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
             }
 
             return () => {
-                if (Platform.OS === 'android') {
-                    BackHandler.removeEventListener('hardwareBackPress', onBackPress);
+                if (backHandler && typeof backHandler.remove === 'function') {
+                    backHandler.remove();
                 }
             };
         }, [formState, isAuthenticated, navigation])

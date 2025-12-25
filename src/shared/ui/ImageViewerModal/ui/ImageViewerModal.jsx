@@ -11,17 +11,19 @@ import {
     StatusBar,
     Platform,
     Text,
-    ActivityIndicator
+    ActivityIndicator,
+    PanResponder
 } from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {X, MoreVertical, Download} from 'lucide-react-native';
 import * as MediaLibrary from 'expo-media-library';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import {getBaseUrl} from '@shared/api/api';
 import {useCustomAlert} from '@shared/ui/CustomAlert';
 
 const {width: SCREEN_WIDTH, height: SCREEN_HEIGHT} = Dimensions.get('window');
+const SWIPE_THRESHOLD = 100; // Минимальное расстояние свайпа для закрытия
 
 /**
  * Универсальное модальное окно для просмотра изображений с возможностью сохранения
@@ -43,12 +45,105 @@ export const ImageViewerModal = ({
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const scaleAnim = useRef(new Animated.Value(0.3)).current;
     const backgroundOpacity = useRef(new Animated.Value(0)).current;
+    const translateY = useRef(new Animated.Value(0)).current;
+    const imageScale = useRef(new Animated.Value(1)).current;
+    const baseScale = useRef(new Animated.Value(0.95)).current; // Уменьшаем на 5%
 
     const [menuVisible, setMenuVisible] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
+
+    // PanResponder для обработки свайпа вниз
+    const panResponder = useRef(
+        PanResponder.create({
+            onStartShouldSetPanResponder: () => true,
+            onMoveShouldSetPanResponder: (evt, gestureState) => {
+                // Активируем только при вертикальном свайпе вниз
+                return Math.abs(gestureState.dy) > 10 && gestureState.dy > 0;
+            },
+            onPanResponderGrant: () => {
+                setIsDragging(true);
+                // Сохраняем текущее значение через listener или используем 0
+                const currentValue = translateY._value || 0;
+                translateY.setOffset(currentValue);
+                translateY.setValue(0);
+            },
+            onPanResponderMove: (evt, gestureState) => {
+                // Разрешаем только свайп вниз
+                if (gestureState.dy > 0) {
+                    translateY.setValue(gestureState.dy);
+                    
+                    // Уменьшаем масштаб и прозрачность при свайпе
+                    const progress = Math.min(gestureState.dy / SCREEN_HEIGHT, 1);
+                    const scale = 1 - progress * 0.3;
+                    const opacity = 1 - progress;
+                    
+                    imageScale.setValue(scale);
+                    backgroundOpacity.setValue(1 - progress * 0.5);
+                }
+            },
+            onPanResponderRelease: (evt, gestureState) => {
+                translateY.flattenOffset();
+                
+                // Если свайпнули достаточно далеко вниз - закрываем
+                if (gestureState.dy > SWIPE_THRESHOLD || gestureState.vy > 0.5) {
+                    // Анимация закрытия при свайпе
+                    Animated.parallel([
+                        Animated.timing(translateY, {
+                            toValue: SCREEN_HEIGHT,
+                            duration: 300,
+                            useNativeDriver: true,
+                        }),
+                        Animated.timing(backgroundOpacity, {
+                            toValue: 0,
+                            duration: 300,
+                            useNativeDriver: true,
+                        }),
+                        Animated.timing(imageScale, {
+                            toValue: 0.8,
+                            duration: 300,
+                            useNativeDriver: true,
+                        }),
+                    ]).start(() => {
+                        handleClose();
+                        // Сбрасываем значения после закрытия
+                        translateY.setValue(0);
+                        imageScale.setValue(1);
+                        backgroundOpacity.setValue(1);
+                    });
+                } else {
+                    // Возвращаем на место
+                    Animated.parallel([
+                        Animated.spring(translateY, {
+                            toValue: 0,
+                            tension: 100,
+                            friction: 8,
+                            useNativeDriver: true,
+                        }),
+                        Animated.spring(imageScale, {
+                            toValue: 1,
+                            tension: 100,
+                            friction: 8,
+                            useNativeDriver: true,
+                        }),
+                        Animated.timing(backgroundOpacity, {
+                            toValue: 1,
+                            duration: 200,
+                            useNativeDriver: true,
+                        }),
+                    ]).start();
+                }
+                setIsDragging(false);
+            },
+        })
+    ).current;
 
     useEffect(() => {
         if (visible) {
+            // Сбрасываем значения перед открытием
+            translateY.setValue(0);
+            imageScale.setValue(1);
+            
             // Анимация появления
             Animated.parallel([
                 Animated.timing(backgroundOpacity, {
@@ -87,7 +182,11 @@ export const ImageViewerModal = ({
                     friction: 8,
                     useNativeDriver: true,
                 }),
-            ]).start();
+            ]).start(() => {
+                // Сбрасываем значения после закрытия
+                translateY.setValue(0);
+                imageScale.setValue(1);
+            });
         }
     }, [visible]);
 
@@ -376,7 +475,7 @@ export const ImageViewerModal = ({
             {/* Контейнер модального окна */}
             <View style={styles.modalContainer} pointerEvents="box-none">
                 {/* Верхняя панель с заголовком и кнопками - поверх всего */}
-                <View style={styles.topPanel}>
+                <View style={[styles.topPanel, { paddingTop: Math.max(insets.top, 10) + 20 }]}>
                     {/* Кнопка назад (слева) */}
                     <TouchableOpacity
                         style={styles.backButton}
@@ -421,7 +520,7 @@ export const ImageViewerModal = ({
 
                 {/* Меню действий */}
                 {menuVisible && imageUri && (
-                    <View style={styles.menu}>
+                    <View style={[styles.menu, { top: Math.max(insets.top, 10) + 60 }]}>
                         <TouchableOpacity
                             style={styles.menuItem}
                             onPress={saveImageToGallery}
@@ -442,9 +541,14 @@ export const ImageViewerModal = ({
                         styles.imageContainer,
                         {
                             opacity: fadeAnim,
-                            transform: [{scale: scaleAnim}],
+                            // paddingTop: Math.max(insets.top, 10) + 60, // Отступ сверху чтобы не перекрывалось шапкой
+                            transform: [
+                                {scale: Animated.multiply(Animated.multiply(scaleAnim, imageScale), baseScale)},
+                                {translateY: translateY}
+                            ],
                         }
                     ]}
+                    {...panResponder.panHandlers}
                 >
                     {/* Изображение */}
                     {imageUri ? (
@@ -482,7 +586,7 @@ const styles = StyleSheet.create({
     },
     topPanel: {
         position: 'absolute',
-        top: 10,
+        top: 0,
         left: 0,
         right: 0,
         zIndex: 10, // Поверх всего
@@ -490,7 +594,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: 16,
-        paddingVertical: 16,
+        paddingBottom: 12,
         backgroundColor: 'rgba(0, 0, 0, 0.7)', // Полупрозрачный фон для читаемости
     },
     backButton: {
@@ -543,7 +647,6 @@ const styles = StyleSheet.create({
     },
     menu: {
         position: 'absolute',
-        top: 60, // Под верхней панелью
         right: 16,
         backgroundColor: 'rgba(0, 0, 0, 0.9)',
         borderRadius: 8,

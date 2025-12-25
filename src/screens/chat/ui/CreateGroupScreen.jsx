@@ -11,6 +11,7 @@ import {
   ScrollView,
   SafeAreaView,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -756,7 +757,16 @@ export const CreateGroupScreen = ({ navigation, route }) => {
         </View>
       )}
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
+        <ScrollView 
+          style={styles.content} 
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
         {/* Group Info Section */}
         <View style={styles.groupInfoSection}>
           <Text style={styles.sectionTitle}>
@@ -948,6 +958,7 @@ export const CreateGroupScreen = ({ navigation, route }) => {
           )}
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };

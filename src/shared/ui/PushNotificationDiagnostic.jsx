@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Clipboard, AppState } from 'react-native';
 import * as Constants from 'expo-constants';
 import * as Device from 'expo-device';
-import * as Notifications from 'expo-notifications';
+import * as IntentLauncher from 'expo-intent-launcher';
+import * as Application from 'expo-application';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PushNotificationService } from '@shared/services/PushNotificationService';
 import OneSignalService from '@shared/services/OneSignalService';
@@ -10,6 +11,22 @@ import { pushTokenApi } from '@entities/notification/api/pushTokenApi';
 import { useSelector } from 'react-redux';
 import { selectUser, selectTokens } from '@entities/auth';
 import { Platform } from 'react-native';
+import { resetHeadsUpPrompt } from '@shared/hooks/useHeadsUpNotificationPrompt';
+import { InAppLogsViewer } from '@shared/ui/InAppLogsViewer';
+
+// Условный импорт expo-notifications для избежания предупреждений в Expo Go
+let Notifications = null;
+const isExpoGo = Constants?.executionEnvironment === 'storeClient' || 
+                  Constants?.appOwnership === 'expo';
+
+if (!isExpoGo) {
+    try {
+        Notifications = require('expo-notifications');
+    } catch (error) {
+        // Если импорт не удался, Notifications останется null
+        console.warn('expo-notifications not available:', error.message);
+    }
+}
 
 export const PushNotificationDiagnostic = () => {
     const [diagnosticData, setDiagnosticData] = useState({});
@@ -18,7 +35,17 @@ export const PushNotificationDiagnostic = () => {
     const [logs, setLogs] = useState([]);
     
     const user = useSelector(selectUser);
-    const tokens = useSelector(selectTokens); 
+    const tokens = useSelector(selectTokens);
+
+    // Вспомогательная функция для проверки доступности Notifications
+    const checkNotificationsAvailable = () => {
+        if (!Notifications) {
+            addLog('⚠️ expo-notifications недоступен в Expo Go. Используйте development build.', 'warning');
+            Alert.alert('Недоступно', 'expo-notifications недоступен в Expo Go. Используйте development build для тестирования.');
+            return false;
+        }
+        return true;
+    }; 
 
     const addLog = (message, type = 'info') => {
         const timestamp = new Date().toISOString();
@@ -150,11 +177,27 @@ export const PushNotificationDiagnostic = () => {
     };
 
     // Инициализация OneSignal
+    const getConfiguredOneSignalAppId = () => {
+        const appId =
+            process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ||
+            Constants?.expoConfig?.extra?.oneSignalAppId ||
+            null;
+
+        const clean = typeof appId === 'string' ? appId.trim() : null;
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        return clean && uuidRegex.test(clean) ? clean : null;
+    };
+
     const initializeOneSignal = async () => {
         addLog('🚀 Инициализация OneSignal', 'info');
         
         try {
-            const appId = 'a1bde379-4211-4fb9-89e2-3e94530a7041';
+            const appId = getConfiguredOneSignalAppId();
+            if (!appId) {
+                addLog('❌ Не найден валидный EXPO_PUBLIC_ONESIGNAL_APP_ID (UUID). Проверь env/extra.', 'error');
+                Alert.alert('Ошибка', 'Не найден валидный OneSignal App ID в env. Проверьте EXPO_PUBLIC_ONESIGNAL_APP_ID.');
+                return;
+            }
             const result = await OneSignalService.initialize(appId);
             
             if (result) {
@@ -428,6 +471,12 @@ export const PushNotificationDiagnostic = () => {
     const testLocalNotification = async () => {
         addLog('🔔 Тест ЛОКАЛЬНОГО уведомления (Expo)', 'info');
         
+        if (!Notifications) {
+            addLog('⚠️ expo-notifications недоступен в Expo Go. Используйте development build.', 'warning');
+            Alert.alert('Недоступно', 'expo-notifications недоступен в Expo Go. Используйте development build для тестирования.');
+            return;
+        }
+        
         try {
             // Проверяем разрешения
             const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -494,9 +543,10 @@ export const PushNotificationDiagnostic = () => {
 
             // 2. Проверка App ID
             addLog('2️⃣ Проверка App ID...', 'info');
-            const appId = process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID || 
-                          Constants?.expoConfig?.extra?.oneSignalAppId || 
-                          'a1bde379-4211-4fb9-89e2-3e94530a7041';
+            const appId =
+                process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ||
+                Constants?.expoConfig?.extra?.oneSignalAppId ||
+                null;
             addLog(`📱 App ID: ${appId}`, appId ? 'success' : 'error');
 
             // 3. Проверка разрешений
@@ -636,6 +686,11 @@ export const PushNotificationDiagnostic = () => {
             return;
         }
         
+        if (!Notifications) {
+            addLog('⚠️ expo-notifications недоступен в Expo Go', 'warning');
+            return;
+        }
+        
         try {
             // Получаем все каналы
             const channels = await Notifications.getNotificationChannelsAsync();
@@ -668,6 +723,30 @@ export const PushNotificationDiagnostic = () => {
             } else {
                 addLog('⚠️ OneSignal каналы не найдены - будет создан автоматически', 'warning');
             }
+
+            // Явная проверка ожидаемого OS_<uuid> канала (если настроен UUID)
+            try {
+                const status = OneSignalService.getStatus?.() || {};
+                const expectedId = status.expectedAndroidChannelId;
+                if (expectedId) {
+                    const expected = channels?.find(c => c.id === expectedId);
+                    if (!expected) {
+                        addLog(`❌ Ожидаемый OneSignal канал НЕ найден: ${expectedId}`, 'error');
+                        addLog('💡 Это обычно значит, что OneSignal создаст канал сам при первом push. Важно чтобы он был HIGH/MAX.', 'warning');
+                        addLog('💡 Если heads-up не появляется — проверьте важность канала в настройках или переустановите приложение (чтобы пересоздать канал с нужной важностью).', 'warning');
+                    } else {
+                        addLog(`✅ Ожидаемый OneSignal канал найден: ${expectedId}`, 'success');
+                        addLog(`📊 Важность ожидаемого канала: ${expected.importance} (4=HIGH, 5=MAX)`, expected.importance >= 4 ? 'success' : 'warning');
+                        if (expected.importance < 4) {
+                            addLog('❌ Важность канала ниже HIGH — heads-up (всплывающие) могут не показываться.', 'error');
+                            addLog('💡 Android не позволяет программно повысить важность уже созданного канала. Решение: включить "Всплывающие" в настройках канала или переустановить приложение.', 'warning');
+                        }
+                    }
+                } else {
+                    addLog('⚠️ Не задан EXPO_PUBLIC_ONESIGNAL_ANDROID_CHANNEL_UUID → невозможно проверить OS_<uuid> канал.', 'warning');
+                    addLog('💡 Для стабильных heads-up через OneSignal REST задайте UUID канала из OneSignal Dashboard и на сервере (ONESIGNAL_ANDROID_CHANNEL_ID), и в приложении (EXPO_PUBLIC_ONESIGNAL_ANDROID_CHANNEL_UUID).', 'info');
+                }
+            } catch (_) {}
             
         } catch (error) {
             addLog(`❌ Ошибка проверки каналов: ${error.message}`, 'error');
@@ -680,6 +759,11 @@ export const PushNotificationDiagnostic = () => {
         
         if (Platform.OS !== 'android') {
             addLog('⚠️ Только для Android', 'warning');
+            return;
+        }
+        
+        if (!Notifications) {
+            addLog('⚠️ expo-notifications недоступен в Expo Go', 'warning');
             return;
         }
         
@@ -740,6 +824,12 @@ export const PushNotificationDiagnostic = () => {
         addLog('📡 Тест через OneSignal REST API напрямую...', 'info');
         
         try {
+            // Перед API тестом полезно проверить, что ожидаемый OneSignal канал существует и имеет HIGH/MAX.
+            // Это самый частый источник "push приходит, но heads-up не всплывает" на отдельных устройствах.
+            try {
+                await checkNotificationChannels();
+            } catch (_) {}
+
             const playerId = await OneSignalService.getSubscriptionId();
             if (!playerId) {
                 addLog('❌ Нет Player ID', 'error');
@@ -819,10 +909,85 @@ export const PushNotificationDiagnostic = () => {
             '📱 Настройки Samsung',
             '1. Настройки → Уведомления → Дополнительные → Всплывающие → ВКЛ\n\n' +
             '2. Настройки → Приложения → Iceberg → Уведомления → Все ВКЛ + Важность: Срочные\n\n' +
+            '3. Важно: Настройки → Приложения → Iceberg → Уведомления → Категории → chat_messages → "Показывать всплывающее" → ВКЛ\n\n' +
             '3. Настройки → Батарея → Iceberg → Не ограничивать\n\n' +
             '4. После настроек нажмите "🔊 HIGH канал"',
             [{ text: 'OK' }]
         );
+    };
+
+    // Открыть настройки конкретного Android канала уведомлений (Samsung часто требует включить "Показывать всплывающее" именно тут)
+    const openAndroidChannelSettings = async () => {
+        if (Platform.OS !== 'android') {
+            Alert.alert('Недоступно', 'Настройки каналов доступны только на Android.');
+            return;
+        }
+
+        try {
+            const status = OneSignalService.getStatus?.() || {};
+            const channelId = status.expectedAndroidChannelId;
+
+            if (!channelId) {
+                Alert.alert(
+                    'Не настроено',
+                    'Не задан EXPO_PUBLIC_ONESIGNAL_ANDROID_CHANNEL_UUID, поэтому нельзя открыть настройки канала OS_<uuid>.'
+                );
+                return;
+            }
+
+            const packageName =
+                Application?.applicationId ||
+                Constants?.expoConfig?.android?.package ||
+                Constants?.manifest?.android?.package ||
+                null;
+
+            if (!packageName) {
+                Alert.alert('Ошибка', 'Не удалось определить package name приложения.');
+                return;
+            }
+
+            addLog(`⚙️ Открываем настройки канала: ${channelId}`, 'info');
+
+            await IntentLauncher.startActivityAsync(
+                IntentLauncher.ActivityAction.CHANNEL_NOTIFICATION_SETTINGS,
+                {
+                    extra: {
+                        'android.provider.extra.APP_PACKAGE': packageName,
+                        'android.provider.extra.CHANNEL_ID': channelId,
+                    },
+                }
+            );
+        } catch (e) {
+            addLog(`❌ Не удалось открыть настройки канала: ${e?.message || String(e)}`, 'error');
+            Alert.alert('Ошибка', 'Не удалось открыть настройки канала уведомлений.');
+        }
+    };
+
+    const openAndroidAppNotificationSettings = async () => {
+        if (Platform.OS !== 'android') {
+            Alert.alert('Недоступно', 'Доступно только на Android.');
+            return;
+        }
+        try {
+            const packageName =
+                Application?.applicationId ||
+                Constants?.expoConfig?.android?.package ||
+                Constants?.manifest?.android?.package ||
+                null;
+
+            if (!packageName) {
+                Alert.alert('Ошибка', 'Не удалось определить package name приложения.');
+                return;
+            }
+
+            addLog('⚙️ Открываем настройки уведомлений приложения', 'info');
+            await IntentLauncher.startActivityAsync(IntentLauncher.ActivityAction.APP_NOTIFICATION_SETTINGS, {
+                extra: { 'android.provider.extra.APP_PACKAGE': packageName },
+            });
+        } catch (e) {
+            addLog(`❌ Не удалось открыть настройки приложения: ${e?.message || String(e)}`, 'error');
+            Alert.alert('Ошибка', 'Не удалось открыть настройки уведомлений приложения.');
+        }
     };
 
     // Тест с задержкой (для foreground)
@@ -870,7 +1035,11 @@ export const PushNotificationDiagnostic = () => {
             
             // 2. Переинициализация
             addLog('2️⃣ Переинициализация OneSignal...', 'info');
-            const appId = 'a1bde379-4211-4fb9-89e2-3e94530a7041';
+            const appId = getConfiguredOneSignalAppId();
+            if (!appId) {
+                addLog('❌ Не найден валидный EXPO_PUBLIC_ONESIGNAL_APP_ID (UUID). Проверь env/extra.', 'error');
+                return;
+            }
             const initResult = await OneSignalService.initialize(appId);
             addLog(`📱 Инициализация: ${initResult ? 'УСПЕХ' : 'ОШИБКА'}`, initResult ? 'success' : 'error');
             
@@ -893,6 +1062,10 @@ export const PushNotificationDiagnostic = () => {
     // Проверка настроек системных уведомлений
     const checkSystemNotificationSettings = async () => {
         addLog('⚙️ Проверка системных настроек уведомлений...', 'info');
+        
+        if (!checkNotificationsAvailable()) return;
+        
+        if (!checkNotificationsAvailable()) return;
         
         try {
             // Expo Notifications permissions
@@ -977,6 +1150,83 @@ ${logs.map(log => `[${log.timestamp}] [${log.type.toUpperCase()}] ${log.message}
         }
     };
 
+    // Сброс флага heads-up подсказки для тестирования
+    const resetHeadsUpPromptFlag = async () => {
+        addLog('🔄 Сброс флага heads-up подсказки...', 'info');
+        
+        try {
+            const success = await resetHeadsUpPrompt();
+            if (success) {
+                addLog('✅ Флаг heads-up подсказки сброшен! Подсказка покажется при следующем уведомлении', 'success');
+                Alert.alert(
+                    'Успех', 
+                    'Флаг сброшен! Теперь:\n\n' +
+                    '1. Отправьте себе уведомление (чат или остановка)\n' +
+                    '2. Подождите 2 секунды\n' +
+                    '3. Должна появиться подсказка "🔔 Срочные уведомления"\n\n' +
+                    'Проверьте логи [HeadsUpPrompt] в консоли!'
+                );
+            } else {
+                addLog('❌ Не удалось сбросить флаг', 'error');
+                Alert.alert('Ошибка', 'Не удалось сбросить флаг');
+            }
+        } catch (error) {
+            addLog(`❌ Ошибка сброса: ${error.message}`, 'error');
+            Alert.alert('Ошибка', `Не удалось сбросить флаг: ${error.message}`);
+        }
+    };
+
+    // Принудительное пересоздание всех каналов уведомлений
+    const recreateAllChannels = async () => {
+        addLog('🔄 ПРИНУДИТЕЛЬНОЕ пересоздание ВСЕХ каналов уведомлений...', 'info');
+        
+        if (Platform.OS !== 'android') {
+            addLog('⚠️ Только для Android', 'warning');
+            Alert.alert('Недоступно', 'Доступно только на Android');
+            return;
+        }
+        
+        try {
+            // Вызываем метод который УДАЛИТ и пересоздаст все каналы
+            const success = await OneSignalService.forceRecreateAllChannels();
+            
+            if (success) {
+                addLog('✅ Все каналы успешно пересозданы с MAX importance!', 'success');
+                
+                // Проверяем результат
+                const channels = await Notifications.getNotificationChannelsAsync();
+                const maxChannels = channels?.filter(c => c.importance === 5) || [];
+                const highChannels = channels?.filter(c => c.importance === 4) || [];
+                const higherChannels = channels?.filter(c => c.importance >= 6) || [];
+                
+                addLog(`📊 Каналов с importance >= 6: ${higherChannels.length}`, 'info');
+                addLog(`📊 Каналов с MAX importance (5): ${maxChannels.length}`, 'success');
+                addLog(`📊 Каналов с HIGH importance (4): ${highChannels.length}`, 'info');
+                
+                // Показываем детали ключевого OneSignal канала
+                const oneSignalChannels = channels?.filter(c => c.id.startsWith('OS_')) || [];
+                oneSignalChannels.forEach(ch => {
+                    addLog(`  🔑 ${ch.id}: importance=${ch.importance}, name="${ch.name}"`, 'success');
+                });
+                
+                Alert.alert(
+                    'Успех!', 
+                    `Все каналы принудительно пересозданы!\n\n` +
+                    `importance >= 6: ${higherChannels.length}\n` +
+                    `MAX (5): ${maxChannels.length}\n` +
+                    `HIGH (4): ${highChannels.length}\n\n` +
+                    `Теперь отправьте себе тестовое уведомление через "📡 API тест"!`
+                );
+            } else {
+                addLog('❌ Не удалось пересоздать каналы', 'error');
+                Alert.alert('Ошибка', 'Не удалось пересоздать каналы');
+            }
+        } catch (error) {
+            addLog(`❌ Ошибка пересоздания каналов: ${error.message}`, 'error');
+            Alert.alert('Ошибка', `Не удалось пересоздать каналы: ${error.message}`);
+        }
+    };
+
     const renderValue = (value, label) => (
         <View style={styles.item}>
             <Text style={styles.label}>{label}:</Text>
@@ -994,6 +1244,11 @@ ${logs.map(log => `[${log.timestamp}] [${log.type.toUpperCase()}] ${log.message}
     return (
         <ScrollView style={styles.container}>
             <Text style={styles.title}>🔔 OneSignal Diagnostic</Text>
+            
+            {/* Логи в реальном времени */}
+            <View style={{ height: 400, marginBottom: 16, backgroundColor: '#f5f5f5', borderRadius: 8 }}>
+                <InAppLogsViewer />
+            </View>
             
             <View style={styles.buttonContainer}>
                 <TouchableOpacity style={styles.button} onPress={runOneSignalDiagnostic} disabled={loading}>
@@ -1080,12 +1335,33 @@ ${logs.map(log => `[${log.timestamp}] [${log.type.toUpperCase()}] ${log.message}
                 </TouchableOpacity>
             </View>
 
+            {/* UX тесты */}
+            <Text style={styles.sectionDivider}>🎨 UX тесты</Text>
+            
+            <View style={styles.buttonContainer}>
+                <TouchableOpacity style={[styles.button, { backgroundColor: '#FF6B6B' }]} onPress={resetHeadsUpPromptFlag}>
+                    <Text style={styles.buttonText}>🔄 Сброс Heads-Up</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={[styles.button, { backgroundColor: '#4CAF50' }]} onPress={recreateAllChannels}>
+                    <Text style={styles.buttonText}>🔊 Пересоздать каналы</Text>
+                </TouchableOpacity>
+            </View>
+
             {/* Samsung специфичные тесты */}
             <Text style={styles.sectionDivider}>📱 Samsung / Android 16</Text>
             
             <View style={styles.buttonContainer}>
                 <TouchableOpacity style={[styles.button, { backgroundColor: '#1565C0' }]} onPress={checkSamsungSettings}>
                     <Text style={styles.buttonText}>📱 Samsung инстр.</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={[styles.button, { backgroundColor: '#546E7A' }]} onPress={openAndroidAppNotificationSettings}>
+                    <Text style={styles.buttonText}>⚙️ Настр. app</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={[styles.button, { backgroundColor: '#455A64' }]} onPress={openAndroidChannelSettings}>
+                    <Text style={styles.buttonText}>⚙️ Канал чат</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={[styles.button, { backgroundColor: '#D32F2F' }]} onPress={createHighPriorityChannel}>

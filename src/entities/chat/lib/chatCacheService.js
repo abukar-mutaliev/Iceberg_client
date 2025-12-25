@@ -9,8 +9,9 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { getBaseUrl } from '@shared/api/api';
+import { chatMessagesDb } from './chatMessagesDb';
 
 // Константы конфигурации
 const CONFIG = {
@@ -61,6 +62,9 @@ class ChatCacheService {
       
       // Загружаем индекс медиафайлов
       await this.loadMediaIndex();
+
+      // Инициализируем SQLite для сообщений
+      await chatMessagesDb.initialize();
       
       this.isInitialized = true;
       console.log('✅ ChatCacheService initialized');
@@ -129,6 +133,35 @@ class ChatCacheService {
   }
 
   /**
+   * Legacy: загрузить сообщения комнаты из AsyncStorage (старый формат chat_cache_messages_*)
+   * Нужен для миграции в SQLite.
+   */
+  async loadRoomMessagesFromLegacyStorage(roomId) {
+    if (!roomId) return null;
+    try {
+      const cacheJson = await AsyncStorage.getItem(this.getMessagesKey(roomId));
+      if (!cacheJson) return null;
+
+      const cacheData = JSON.parse(cacheJson);
+      if (!cacheData?.messages || !Array.isArray(cacheData.messages)) return null;
+
+      // Проверяем срок годности
+      const ageInDays = (Date.now() - cacheData.cachedAt) / (1000 * 60 * 60 * 24);
+
+      // Заменяем URL на локальные пути для кэшированных медиа
+      const messagesWithLocalMedia = this.replaceWithLocalMedia(cacheData.messages);
+
+      return {
+        messages: messagesWithLocalMedia,
+        cachedAt: cacheData.cachedAt,
+        isStale: ageInDays > 1,
+      };
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
    * Сохранить сообщения комнаты
    */
   async saveRoomMessages(roomId, messages) {
@@ -180,32 +213,8 @@ class ChatCacheService {
         return message;
       });
       
-      // Сохраняем с метаданными
-      const cacheData = {
-        roomId,
-        messages: normalizedMessages,
-        cachedAt: Date.now(),
-        version: 1,
-      };
-
-      // Debug logging
-      if (__DEV__) {
-        console.log(`💾 Saving ${normalizedMessages.length} messages to cache for room ${roomId}`);
-        normalizedMessages.slice(0, 3).forEach((msg, msgIndex) => {
-          if (msg.attachments?.length > 0) {
-            msg.attachments.forEach((att, attIndex) => {
-              if (att.type === 'VOICE') {
-                console.log(`💾 Voice attachment msg${msgIndex} att${attIndex}: duration=${att.duration}, size=${att.size}, waveformType=${typeof att.waveform}, waveformLength=${Array.isArray(att.waveform) ? att.waveform.length : 'N/A'}`);
-              }
-            });
-          }
-        });
-      }
-
-      await AsyncStorage.setItem(
-        this.getMessagesKey(roomId),
-        JSON.stringify(cacheData)
-      );
+      // ✅ Новое хранилище: SQLite (быстрее и надежнее для больших объемов)
+      await chatMessagesDb.saveRoomMessages(roomId, normalizedMessages, CONFIG.MAX_MESSAGES_PER_ROOM);
 
       // Запускаем фоновое кэширование медиа
       this.queueMediaCaching(messagesToSave);
@@ -222,40 +231,33 @@ class ChatCacheService {
     if (!roomId) return null;
 
     try {
-      const cacheJson = await AsyncStorage.getItem(this.getMessagesKey(roomId));
-      if (!cacheJson) return null;
-
-      const cacheData = JSON.parse(cacheJson);
-      
-      // Проверяем срок годности
-      const ageInDays = (Date.now() - cacheData.cachedAt) / (1000 * 60 * 60 * 24);
-      if (ageInDays > CONFIG.MESSAGES_CACHE_DAYS) {
-        // Кэш устарел, но всё равно возвращаем для быстрого отображения
-        console.log(`⚠️ Cache for room ${roomId} is stale (${ageInDays.toFixed(1)} days old)`);
+      // 1) Пробуем SQLite
+      const dbResult = await chatMessagesDb.loadRoomMessages(roomId, CONFIG.MAX_MESSAGES_PER_ROOM);
+      if (dbResult?.messages && dbResult.messages.length > 0) {
+        const cachedAt = dbResult.cachedAt || Date.now();
+        const ageInDays = (Date.now() - cachedAt) / (1000 * 60 * 60 * 24);
+        const messagesWithLocalMedia = this.replaceWithLocalMedia(dbResult.messages);
+        return {
+          messages: messagesWithLocalMedia,
+          cachedAt,
+          isStale: ageInDays > 1,
+        };
       }
 
-      // Заменяем URL на локальные пути для кэшированных медиа
-      const messagesWithLocalMedia = this.replaceWithLocalMedia(cacheData.messages);
-
-      // Debug logging
-      if (__DEV__) {
-        console.log(`📖 Loaded ${messagesWithLocalMedia.length} messages from cache for room ${roomId}`);
-        messagesWithLocalMedia.slice(0, 3).forEach(msg => {
-          if (msg.attachments?.length > 0) {
-            msg.attachments.forEach(att => {
-              if (att.type === 'VOICE') {
-                console.log(`📖 Voice attachment: duration=${att.duration}, hasWaveform=${!!att.waveform}`);
-              }
-            });
-          }
-        });
+      // 2) Если SQLite пуст — мигрируем старый AsyncStorage кэш "на лету"
+      const legacy = await this.loadRoomMessagesFromLegacyStorage(roomId);
+      if (legacy?.messages && legacy.messages.length > 0) {
+        try {
+          await chatMessagesDb.saveRoomMessages(roomId, legacy.messages, CONFIG.MAX_MESSAGES_PER_ROOM);
+          // Не обязательно удалять legacy ключ сразу, но можно для экономии места
+          await AsyncStorage.removeItem(this.getMessagesKey(roomId));
+        } catch {
+          // noop
+        }
+        return legacy;
       }
 
-      return {
-        messages: messagesWithLocalMedia,
-        cachedAt: cacheData.cachedAt,
-        isStale: ageInDays > 1, // Считаем устаревшим если старше 1 дня
-      };
+      return null;
     } catch (error) {
       console.warn('Failed to load room messages:', error);
       return null;
@@ -269,20 +271,7 @@ class ChatCacheService {
     if (!roomId || !message) return;
 
     try {
-      const cached = await this.loadRoomMessages(roomId);
-      let messages = cached?.messages || [];
-      
-      // Проверяем, нет ли уже такого сообщения
-      const existingIndex = messages.findIndex(m => m.id === message.id);
-      if (existingIndex >= 0) {
-        // Обновляем существующее
-        messages[existingIndex] = { ...messages[existingIndex], ...message };
-      } else {
-        // Добавляем новое в начало (новые сообщения первые)
-        messages = [message, ...messages];
-      }
-      
-      await this.saveRoomMessages(roomId, messages);
+      await chatMessagesDb.saveRoomMessages(roomId, [message], CONFIG.MAX_MESSAGES_PER_ROOM);
 
       // Кэшируем медиа нового сообщения
       this.queueMediaCaching([message]);
@@ -299,14 +288,12 @@ class ChatCacheService {
     if (!roomId || !messageId) return;
 
     try {
-      const cached = await this.loadRoomMessages(roomId);
-      if (!cached?.messages) return;
-
-      const messages = cached.messages.map(msg => 
-        msg.id === messageId ? { ...msg, ...updates } : msg
-      );
-      
-      await this.saveRoomMessages(roomId, messages);
+      // Загружаем одно сообщение из SQLite, обновляем и сохраняем обратно
+      const loaded = await chatMessagesDb.loadRoomMessages(roomId, CONFIG.MAX_MESSAGES_PER_ROOM);
+      const existing = (loaded?.messages || []).find(m => String(m?.id) === String(messageId));
+      if (!existing) return;
+      const merged = { ...existing, ...updates };
+      await chatMessagesDb.saveRoomMessages(roomId, [merged], CONFIG.MAX_MESSAGES_PER_ROOM);
     } catch (error) {
       console.warn('Failed to update message in cache:', error);
     }
@@ -319,11 +306,7 @@ class ChatCacheService {
     if (!roomId || !messageId) return;
 
     try {
-      const cached = await this.loadRoomMessages(roomId);
-      if (!cached?.messages) return;
-
-      const messages = cached.messages.filter(msg => msg.id !== messageId);
-      await this.saveRoomMessages(roomId, messages);
+      await chatMessagesDb.deleteMessage(roomId, messageId);
     } catch (error) {
       console.warn('Failed to remove message from cache:', error);
     }
@@ -686,27 +669,9 @@ class ChatCacheService {
   async cleanupStaleCache() {
     try {
       console.log('🧹 Starting cache cleanup...');
-      
-      // Очистка устаревших сообщений
-      const keys = await AsyncStorage.getAllKeys();
-      const messageKeys = keys.filter(k => k.startsWith(CONFIG.STORAGE_KEYS.MESSAGES_PREFIX));
-      
-      for (const key of messageKeys) {
-        try {
-          const cacheJson = await AsyncStorage.getItem(key);
-          if (cacheJson) {
-            const cacheData = JSON.parse(cacheJson);
-            const ageInDays = (Date.now() - cacheData.cachedAt) / (1000 * 60 * 60 * 24);
-            
-            if (ageInDays > CONFIG.MESSAGES_CACHE_DAYS) {
-              await AsyncStorage.removeItem(key);
-              console.log(`🗑️ Removed stale cache: ${key}`);
-            }
-          }
-        } catch (e) {
-          // Пропускаем ошибки отдельных ключей
-        }
-      }
+
+      // Очистка устаревших сообщений в SQLite
+      await chatMessagesDb.cleanupOldMessages(CONFIG.MESSAGES_CACHE_DAYS);
       
       // Очистка устаревших медиафайлов
       await this.cleanupStaleMedia();
@@ -814,6 +779,9 @@ class ChatCacheService {
         k.startsWith('chat.') // Старый формат
       );
       await AsyncStorage.multiRemove(chatKeys);
+
+      // Очистка SQLite
+      await chatMessagesDb.clearAll();
       
       // Очистка файлов
       const dirs = [
@@ -905,7 +873,8 @@ class ChatCacheService {
     if (!roomId) return;
 
     try {
-      // Удаляем сообщения комнаты
+      // Удаляем сообщения комнаты (SQLite + legacy ключ на всякий)
+      await chatMessagesDb.clearRoom(roomId);
       await AsyncStorage.removeItem(this.getMessagesKey(roomId));
       
       // Удаляем из sync state

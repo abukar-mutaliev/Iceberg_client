@@ -67,17 +67,16 @@ const processQueue = (error, token = null) => {
 };
 
 export const getBaseUrl = () => {
+    let baseUrl;
+    
+    if (__DEV__) {
+            baseUrl = 'http://192.168.1.226:5000';
+    } else {
+        baseUrl = 'http://212.67.11.134:5000';
+    }
+    
 
-
-
-     if (__DEV__) {
-         if (Platform.OS === 'android') {
-             return 'http://192.168.1.226:5000';
-         }
-         return 'http://localhost:5000';
-     }
-    return 'http://212.67.11.134:5000';
-
+    return baseUrl;
 };
 
 
@@ -132,7 +131,6 @@ const saveTokens = async (tokens) => {
         await AsyncStorage.setItem(STORAGE_KEYS.TOKENS, JSON.stringify(tokens));
         api.defaults.headers.common['Authorization'] = `Bearer ${tokens.accessToken}`;
 
-        // console.log('💾 [API] Tokens saved successfully, Authorization header set');
     } catch (error) {
         console.error('❌ [API] Ошибка сохранения токенов:', error);
     }
@@ -367,7 +365,8 @@ api.interceptors.request.use(async (config) => {
         // Логируем только важные запросы
         apiDebugLog('REQUEST', `${config.method?.toUpperCase()} ${config.url}`, {
             requestId,
-            url: config.url
+            url: config.url,
+            baseURL: config.baseURL || api.defaults.baseURL
         });
 
         // Пропускаем проверку токена для endpoints авторизации
@@ -512,13 +511,27 @@ api.interceptors.response.use(
             : 0;
 
         // Всегда логируем ошибки
-        apiDebugLog('ERROR', `Request failed: ${originalRequest?.url}`, {
+        const errorDetails = {
             requestId: originalRequest?.requestId,
             status: error.response?.status,
             duration: `${duration}ms`,
             message: error.message,
-            url: originalRequest?.url
-        });
+            url: originalRequest?.url,
+            code: error.code,
+            baseURL: api.defaults.baseURL
+        };
+        
+        // Дополнительное логирование для сетевых ошибок
+        if (error.code === 'ERR_NETWORK' || error.message?.includes('Network')) {
+            console.error('🌐 [API ERROR] Network connection error:', {
+                ...errorDetails,
+                fullError: error.message,
+                baseURL: api.defaults.baseURL,
+                suggestion: 'Проверьте подключение к интернету и убедитесь что сервер доступен'
+            });
+        }
+        
+        apiDebugLog('ERROR', `Request failed: ${originalRequest?.url}`, errorDetails);
 
         // Обработка ошибок загрузки файлов
         if (error.config && error.config.headers &&

@@ -6,7 +6,6 @@ import RatingStarSvg from '@shared/ui/Icon/SupplierScreenIcons/RatingStarSvg';
 import { FontFamily, Color } from '@app/styles/GlobalStyles';
 import { selectSupplierRating, selectSupplierTotalFeedbacks } from '@entities/supplier/model/selectors';
 import { fetchSupplierRating } from '@entities/supplier';
-import {Colors} from "react-native/Libraries/NewAppScreen";
 
 export const SupplierRatingFromRedux = React.memo(({
                                                 supplierId,

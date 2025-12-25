@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Image, View, StyleSheet } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { getBaseUrl } from '@shared/api/api';
 
 // Глобальный кэш проверенных путей

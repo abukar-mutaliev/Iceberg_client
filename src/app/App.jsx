@@ -1,8 +1,7 @@
-import React, {useEffect, useState, useRef} from 'react';
-import {View, ActivityIndicator, Text, Button, StyleSheet, Animated, Platform} from 'react-native';
+import React, {useEffect, useRef, useState} from 'react';
+import {View, Text, Button, StyleSheet, Image} from 'react-native';
 import {AppNavigator} from '@app/providers/navigation/AppNavigator';
 import * as Font from 'expo-font';
-import * as Notifications from 'expo-notifications';
 import {AppProviders} from './providers';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import {useAuth} from "@entities/auth/hooks/useAuth";
@@ -16,35 +15,110 @@ import {testNetworkConnection} from '@shared/api/api';
 import {useChatSocket} from '@entities/chat/hooks/useChatSocket';
 import {usePushTokenAutoRegistration} from '@shared/hooks/usePushTokenAutoRegistration';
 import {ToastContainer} from '@shared/ui/Toast';
+import InAppLogger from '@shared/services/InAppLogger';
 
 initConsolePolyfill();
 
-// ⚠️ КРИТИЧЕСКИ ВАЖНО: Настройка показа уведомлений в foreground
-// Без этого уведомления НЕ будут отображаться когда приложение активно!
-Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-        shouldShowAlert: true,  // Показывать уведомление как alert
-        shouldPlaySound: true,  // Воспроизводить звук
-        shouldSetBadge: true,   // Обновлять badge на иконке
-    }),
-});
+// Инициализируем InAppLogger для сбора логов на prod/preview
+// Логи будут доступны в PushNotificationDiagnostic экране
+console.log('[App] 🔍 InAppLogger initialized');
+// InAppLogger автоматически начинает перехватывать console.log при создании
 
-// 📝 ВАЖНО: Создание канала уведомлений теперь в OneSignalService.initialize()
-// Канал создается синхронно при инициализации сервиса для ВСЕХ пользователей
+// 📝 ВАЖНО: Уведомления обрабатываются через OneSignal
+// OneSignal автоматически настраивает показ уведомлений в foreground
+// Канал уведомлений создается в OneSignalService.initialize()
+
+// 🔍 ГЛОБАЛЬНАЯ ОБРАБОТКА ОШИБОК ДЛЯ ДИАГНОСТИКИ КРАШЕЙ
+if (typeof ErrorUtils !== 'undefined') {
+    const originalGlobalHandler = ErrorUtils.getGlobalHandler();
+    
+    ErrorUtils.setGlobalHandler((error, isFatal) => {
+        const errorInfo = {
+            message: error?.message || 'Unknown error',
+            stack: error?.stack || 'No stack trace',
+            name: error?.name || 'Error',
+            isFatal: isFatal || false,
+            timestamp: new Date().toISOString(),
+        };
+        
+        // Детальное логирование для диагностики
+        console.error('🚨 GLOBAL ERROR HANDLER:', errorInfo);
+        console.error('🚨 Error details:', JSON.stringify(errorInfo, null, 2));
+        
+        // Логируем в консоль с максимальной детализацией
+        if (error?.stack) {
+            console.error('🚨 Stack trace:', error.stack);
+        }
+        
+        // Вызываем оригинальный обработчик если он есть
+        if (originalGlobalHandler) {
+            originalGlobalHandler(error, isFatal);
+        }
+    });
+}
+
+// 🔍 ОБРАБОТКА НЕОБРАБОТАННЫХ ПРОМИСОВ
+if (typeof global !== 'undefined') {
+    const originalUnhandledRejection = global.onunhandledrejection;
+    
+    global.onunhandledrejection = (event) => {
+        const errorInfo = {
+            reason: event?.reason || 'Unknown rejection',
+            message: event?.reason?.message || String(event?.reason || 'Unhandled promise rejection'),
+            stack: event?.reason?.stack || 'No stack trace',
+            timestamp: new Date().toISOString(),
+        };
+        
+        console.error('🚨 UNHANDLED PROMISE REJECTION:', errorInfo);
+        console.error('🚨 Rejection details:', JSON.stringify(errorInfo, null, 2));
+        
+        if (originalUnhandledRejection) {
+            originalUnhandledRejection(event);
+        }
+    };
+}
 
 
 class ErrorBoundary extends React.Component {
     constructor(props) {
         super(props);
-        this.state = { hasError: false, error: null };
+        this.state = { hasError: false, error: null, errorInfo: null };
     }
 
     static getDerivedStateFromError(error) {
-        return { hasError: true };
+        return { hasError: true, error };
     }
 
     componentDidCatch(error, errorInfo) {
-        this.setState({ error });
+        const errorDetails = {
+            message: error?.message || 'Unknown error',
+            name: error?.name || 'Error',
+            stack: error?.stack || 'No stack trace',
+            componentStack: errorInfo?.componentStack || 'No component stack',
+            errorInfo: errorInfo,
+            timestamp: new Date().toISOString(),
+        };
+        
+        // Детальное логирование для диагностики
+        console.error('🚨 ErrorBoundary caught error:', errorDetails);
+        console.error('🚨 Full error object:', JSON.stringify(errorDetails, null, 2));
+        console.error('🚨 Error stack:', error?.stack);
+        console.error('🚨 Component stack:', errorInfo?.componentStack);
+        
+        // Пытаемся сохранить информацию об ошибке для последующего анализа
+        try {
+            if (__DEV__) {
+                // В dev режиме выводим больше информации
+                console.error('🚨 Error boundary state:', this.state);
+            }
+        } catch (e) {
+            console.error('🚨 Failed to log error details:', e);
+        }
+        
+        this.setState({ 
+            error,
+            errorInfo: errorInfo?.componentStack || 'No component stack available'
+        });
     }
 
     render() {
@@ -53,11 +127,11 @@ class ErrorBoundary extends React.Component {
                 <View style={styles.errorContainer}>
                     <Text style={styles.errorTitle}>Что-то пошло не так!</Text>
                     <Text style={styles.errorText}>
-                        Произошла ошибка в приложении. Попробуйте перезапустить.
+                        {this.state.error?.message || 'Произошла ошибка в приложении'}
                     </Text>
                     <Button
                         title="Перезагрузить приложение"
-                        onPress={() => this.setState({ hasError: false, error: null })}
+                        onPress={() => this.setState({ hasError: false, error: null, errorInfo: null })}
                     />
                 </View>
             );
@@ -67,83 +141,16 @@ class ErrorBoundary extends React.Component {
     }
 }
 
-const CustomLoadingScreen = ({ loadingText = "Загрузка..." }) => {
-    const [logoScale] = useState(new Animated.Value(0.8));
-    const [logoOpacity] = useState(new Animated.Value(0));
-    const [textOpacity] = useState(new Animated.Value(0));
-
-    useEffect(() => {
-        // Анимация появления логотипа
-        Animated.sequence([
-            Animated.parallel([
-                Animated.timing(logoOpacity, {
-                    toValue: 1,
-                    duration: 600,
-                    useNativeDriver: true,
-                }),
-                Animated.timing(logoScale, {
-                    toValue: 1,
-                    duration: 600,
-                    useNativeDriver: true,
-                }),
-            ]),
-            Animated.delay(200),
-            Animated.timing(textOpacity, {
-                toValue: 1,
-                duration: 400,
-                useNativeDriver: true,
-            }),
-        ]).start();
-    }, []);
-
-    const RenderLogo = () => {
-        try {
-            const LogoSvg = require('@assets/logo/Logo').default;
-            return <LogoSvg width={120} height={102} />;
-        } catch (error) {
-            return (
-                <View style={styles.logoFallback}>
-                    <Text style={styles.logoText}>🍦</Text>
-                </View>
-            );
-        }
-    };
-
-    return (
-        <View style={styles.customLoadingContainer}>
-            <Animated.View
-                style={[
-                    styles.logoContainer,
-                    {
-                        opacity: logoOpacity,
-                        transform: [{ scale: logoScale }],
-                    },
-                ]}
-            >
-                <RenderLogo />
-            </Animated.View>
-
-            <Animated.View
-                style={[
-                    styles.loadingTextContainer,
-                    { opacity: textOpacity },
-                ]}
-            >
-                <Text style={styles.customLoadingText}>{loadingText}</Text>
-                <ActivityIndicator size="small" color="#3339B0" style={{ marginTop: 10 }} />
-            </Animated.View>
-        </View>
-    );
-};
-
 const AppInitializer = ({children}) => {
-    const [isInitializing, setIsInitializing] = useState(true);
     const [error, setError] = useState(null);
-    const [loadingText, setLoadingText] = useState("Инициализация...");
-    const {refreshToken, logout} = useAuth();
-    const dispatch = useDispatch();
     const hasInitialized = useRef(false);
-
+    
+    // Хуки вызываются безусловно (правило React hooks)
+    // Защита от ошибок добавлена в useEffect и внутри самих хуков
+    const auth = useAuth();
+    const dispatch = useDispatch();
+    
+    // Необязательные хуки - должны иметь внутреннюю защиту от ошибок
     usePushTokenAutoRegistration();
     useChatSocket();
 
@@ -155,33 +162,49 @@ const AppInitializer = ({children}) => {
             hasInitialized.current = true;
 
             try {
-                setLoadingText("Проверка подключения к серверу...");
+                console.log('🚀 App: Starting background initialization...');
 
+                // Безопасная проверка сети
                 try {
                     await testNetworkConnection();
                 } catch (networkError) {
+                    console.warn('⚠️ App: Network check failed (non-critical):', networkError);
                     // Не блокируем инициализацию при ошибках сети
                 }
 
-                setLoadingText("Проверка аутентификации...");
-                const initialized = await authService.initializeAuth();
-
-                if (!initialized) {
-                    setIsInitializing(false);
+                // Безопасная инициализация auth
+                try {
+                    const initialized = await authService.initializeAuth();
+                    if (!initialized) {
+                        return;
+                    }
+                } catch (authError) {
+                    console.error('❌ App: Auth initialization failed:', authError);
                     return;
                 }
 
-                setLoadingText("Проверка токенов...");
-                const tokens = await authService.getStoredTokens();
-
-                if (!tokens || !tokens.refreshToken) {
-                    setIsInitializing(false);
+                // Безопасное получение токенов
+                let tokens;
+                try {
+                    tokens = await authService.getStoredTokens();
+                    if (!tokens || !tokens.refreshToken) {
+                        return;
+                    }
+                } catch (tokenError) {
+                    console.error('❌ App: Failed to get stored tokens:', tokenError);
                     return;
                 }
 
-                setLoadingText("Валидация сессии...");
-                const accessTokenValid = tokens.accessToken ? authService.isTokenValid(tokens.accessToken) : false;
-                const refreshTokenValid = tokens.refreshToken ? authService.isTokenValid(tokens.refreshToken) : false;
+                // Безопасная валидация токенов
+                let accessTokenValid = false;
+                let refreshTokenValid = false;
+                try {
+                    accessTokenValid = tokens.accessToken ? authService.isTokenValid(tokens.accessToken) : false;
+                    refreshTokenValid = tokens.refreshToken ? authService.isTokenValid(tokens.refreshToken) : false;
+                } catch (validationError) {
+                    console.error('❌ App: Token validation failed:', validationError);
+                    return;
+                }
 
                 console.log('🔍 Token validation:', {
                     hasAccessToken: !!tokens.accessToken,
@@ -192,61 +215,72 @@ const AppInitializer = ({children}) => {
 
                 if (!refreshTokenValid) {
                     console.log('⚠️ Refresh token expired, need to re-login');
-                    setLoadingText("Сессия истекла...");
-                    // Сбрасываем состояние Redux и очищаем токены
-                    dispatch({ type: 'auth/resetState' });
-                    await authService.clearTokens();
-                    setIsInitializing(false);
+                    try {
+                        if (dispatch && typeof dispatch === 'function') {
+                            dispatch({ type: 'auth/resetState' });
+                        }
+                        await authService.clearTokens();
+                    } catch (clearError) {
+                        console.error('❌ App: Failed to clear tokens:', clearError);
+                    }
                     return;
                 }
 
                 if (!accessTokenValid && refreshTokenValid) {
-                    setLoadingText("Обновление токена...");
                     try {
-                        const result = await refreshToken();
+                        if (!auth?.refreshToken || typeof auth.refreshToken !== 'function') {
+                            console.warn('⚠️ App: refreshToken not available');
+                            return;
+                        }
+                        
+                        const result = await auth.refreshToken();
                         if (result && !result.error) {
                             console.log('✅ App: Token refreshed successfully on initialization');
                         } else {
                             console.warn('⚠️ App: Token refresh returned error:', result?.error || result);
                             await authService.clearTokens();
-                            setIsInitializing(false);
                             return;
                         }
                     } catch (refreshError) {
                         console.error('❌ App: Failed to refresh token on initialization:', refreshError?.message || refreshError);
-                        await authService.clearTokens();
-                        setIsInitializing(false);
+                        try {
+                            await authService.clearTokens();
+                        } catch (clearError) {
+                            console.error('❌ App: Failed to clear tokens after refresh error:', clearError);
+                        }
                         return;
                     }
                 }
 
-                setLoadingText("Инициализация push-уведомлений...");
+                // Безопасная инициализация push-уведомлений
                 try {
                     const pushService = await import('@shared/services/PushNotificationService');
-                    await pushService.default.initialize();
-                    console.log('✅ App: Push notifications initialized successfully');
+                    if (pushService?.default?.initialize) {
+                        await pushService.default.initialize();
+                    }
                 } catch (pushError) {
                     console.warn('⚠️ App: Push notification initialization failed (non-critical):', pushError?.message || pushError);
                     // Ошибка инициализации push-уведомлений не критична - продолжаем работу
                 }
 
-                setLoadingText("Завершение...");
             } catch (err) {
-                if (err.response && err.response.status === 401) {
-                    await authService.clearTokens();
-                    logout();
+                console.error('❌ App: Initialization error:', err);
+                try {
+                    if (err?.response?.status === 401) {
+                        await authService.clearTokens();
+                        if (auth?.logout && typeof auth.logout === 'function') {
+                            auth.logout();
+                        }
+                    }
+                } catch (cleanupError) {
+                    console.error('❌ App: Cleanup error:', cleanupError);
                 }
-            } finally {
-                setIsInitializing(false);
             }
         };
 
+        // Инициализация в фоне без блокировки UI
         initializeApp();
-    }, [refreshToken, logout]);
-
-    if (isInitializing) {
-        return <CustomLoadingScreen loadingText={loadingText} />;
-    }
+    }, [auth, dispatch]);
 
     if (error) {
         return (
@@ -257,7 +291,6 @@ const AppInitializer = ({children}) => {
                     onPress={() => {
                         setError(null);
                         hasInitialized.current = false;
-                        setIsInitializing(true);
                     }}
                 />
             </View>
@@ -268,51 +301,106 @@ const AppInitializer = ({children}) => {
 };
 
 const AppContent = () => {
-    const [fontsLoaded, setFontsLoaded] = useState(__DEV__ ? false : true);
-
     useEffect(() => {
+        // В продакшене полностью отключаем загрузку шрифтов
+        // Система будет использовать системные fallback шрифты
         if (!__DEV__) {
-            setFontsLoaded(true);
+            console.log('ℹ️ App: Font loading disabled in production - using system fonts');
             return;
         }
 
+        // Загрузка шрифтов только в DEV режиме
         async function loadFonts() {
             try {
                 const fontMap = {};
 
+                // Безопасная загрузка каждого шрифта
                 try {
-                    fontMap['BezierSans'] = require('../assets/fonts/BezierSans_Regular.ttf');
-                } catch (e) {}
-
-                try {
-                    fontMap['SFProText'] = require('../assets/fonts/SFProText-Regular.ttf');
-                } catch (e) {}
-
-                try {
-                    fontMap['SF Pro Display'] = require('../assets/fonts/SF-Pro-Display-Regular.otf');
-                } catch (e) {}
-
-                try {
-                    fontMap['SFProDisplayMedium'] = require('../assets/fonts/SF-Pro-Display-Medium.otf');
-                } catch (e) {}
-
-                if (Object.keys(fontMap).length > 0) {
-                    await Font.loadAsync(fontMap);
+                    const bezierSans = require('../assets/fonts/BezierSans_Regular.ttf');
+                    if (bezierSans !== undefined && bezierSans !== null && bezierSans !== 'undefined') {
+                        const font = bezierSans.default || bezierSans;
+                        if (font !== undefined && font !== null && font !== 'undefined') {
+                            fontMap['BezierSans'] = font;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('⚠️ BezierSans font not found (non-critical):', e?.message || e);
                 }
 
-                setFontsLoaded(true);
+                try {
+                    const sfProText = require('../assets/fonts/SFProText-Regular.ttf');
+                    if (sfProText !== undefined && sfProText !== null && sfProText !== 'undefined') {
+                        const font = sfProText.default || sfProText;
+                        if (font !== undefined && font !== null && font !== 'undefined') {
+                            fontMap['SFProText'] = font;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('⚠️ SFProText font not found (non-critical):', e?.message || e);
+                }
+
+                try {
+                    const sfProDisplay = require('../assets/fonts/SF-Pro-Display-Regular.otf');
+                    if (sfProDisplay !== undefined && sfProDisplay !== null && sfProDisplay !== 'undefined') {
+                        const font = sfProDisplay.default || sfProDisplay;
+                        if (font !== undefined && font !== null && font !== 'undefined') {
+                            fontMap['SF Pro Display'] = font;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('⚠️ SF Pro Display font not found (non-critical):', e?.message || e);
+                }
+
+                try {
+                    const sfProDisplayMedium = require('../assets/fonts/SF-Pro-Display-Medium.otf');
+                    if (sfProDisplayMedium !== undefined && sfProDisplayMedium !== null && sfProDisplayMedium !== 'undefined') {
+                        const font = sfProDisplayMedium.default || sfProDisplayMedium;
+                        if (font !== undefined && font !== null && font !== 'undefined') {
+                            fontMap['SFProDisplayMedium'] = font;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('⚠️ SFProDisplayMedium font not found (non-critical):', e?.message || e);
+                }
+
+                // Проверяем валидность шрифтов
+                const validFonts = Object.keys(fontMap).filter(key => {
+                    const font = fontMap[key];
+                    if (font === undefined || font === null) return false;
+                    if (typeof font === 'string' && font === 'undefined') return false;
+                    return true;
+                });
+
+                if (validFonts.length > 0 && Font && typeof Font.loadAsync === 'function') {
+                    try {
+                        const validFontMap = {};
+                        validFonts.forEach(key => {
+                            const font = fontMap[key];
+                            if (font !== undefined && font !== null && font !== 'undefined') {
+                                validFontMap[key] = font;
+                            }
+                        });
+                        
+                        const finalValidFonts = Object.keys(validFontMap);
+                        if (finalValidFonts.length > 0) {
+                            await Font.loadAsync(validFontMap);
+                            console.log(`✅ App: ${finalValidFonts.length} font(s) loaded in DEV mode`);
+                        }
+                    } catch (fontLoadError) {
+                        console.error('❌ App: Font.loadAsync error (non-critical):', fontLoadError);
+                    }
+                }
             } catch (e) {
-                setFontsLoaded(true);
+                console.error('❌ App: Font loading error (non-critical):', e);
             }
         }
 
-        loadFonts();
+        loadFonts().catch(err => {
+            console.error('❌ App: Unexpected error in loadFonts (non-critical):', err);
+        });
     }, []);
 
-    if (!fontsLoaded) {
-        return <CustomLoadingScreen loadingText="Загрузка шрифтов..." />;
-    }
-
+    // Сразу показываем навигатор - все загрузки происходят в фоне во время SplashScreen
     return (
         <AppInitializer>
             <AppNavigator/>
@@ -321,17 +409,37 @@ const AppContent = () => {
 };
 
 export default function App() {
+    // Безопасная обертка для PersistGate
+    const SafePersistGate = ({ children }) => {
+        try {
+            if (!persistor) {
+                console.warn('⚠️ App: Persistor not available, skipping PersistGate');
+                return children;
+            }
+            
+            return (
+                <PersistGate
+                    loading={null}
+                    persistor={persistor}
+                >
+                    {children}
+                </PersistGate>
+            );
+        } catch (error) {
+            console.error('❌ App: PersistGate error:', error);
+            // В случае ошибки показываем children без PersistGate
+            return children;
+        }
+    };
+
     return (
         <ErrorBoundary>
             <GestureHandlerRootView style={{flex: 1}}>
                 <SafeAreaProvider>
                     <AppProviders>
-                        <PersistGate
-                            loading={<CustomLoadingScreen loadingText="Загрузка данных..." />}
-                            persistor={persistor}
-                        >
+                        <SafePersistGate>
                             <AppContent/>
-                        </PersistGate>
+                        </SafePersistGate>
                     </AppProviders>
                 </SafeAreaProvider>
                 {/* ToastContainer на самом верхнем уровне для отображения поверх всех модальных окон */}
@@ -343,46 +451,6 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-    customLoadingContainer: {
-        flex: 1,
-        backgroundColor: '#ffffff',
-        justifyContent: 'center',
-        alignItems: 'center',
-        paddingHorizontal: 40,
-    },
-    logoContainer: {
-        marginBottom: 40,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    logoFallback: {
-        width: 120,
-        height: 102,
-        backgroundColor: '#3339B0',
-        borderRadius: 20,
-        justifyContent: 'center',
-        alignItems: 'center',
-        shadowColor: '#3339B0',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.3,
-        shadowRadius: 16,
-        elevation: 8,
-    },
-    logoText: {
-        fontSize: 48,
-        textAlign: 'center',
-    },
-    loadingTextContainer: {
-        alignItems: 'center',
-    },
-    customLoadingText: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#3339B0',
-        textAlign: 'center',
-        fontFamily: __DEV__ ? 'System' : 'System',
-    },
-
     errorContainer: {
         flex: 1,
         justifyContent: 'center',

@@ -9,7 +9,6 @@ import { resetCurrentProduct } from '@entities/product';
 export const useProductDetailNavigation = (navigation, fromScreen, params) => {
     const dispatch = useDispatch();
     const isNavigatingRef = useRef(false);
-    const backInterceptRef = useRef(false);
     const navigationParamsRef = useRef(params);
 
     // Обновляем ссылку на параметры при их изменении
@@ -17,22 +16,9 @@ export const useProductDetailNavigation = (navigation, fromScreen, params) => {
         navigationParamsRef.current = params;
     }, [params]);
 
-    // Перехватчик для кнопки "назад" из чата
-    useEffect(() => {
-        const unsubscribe = navigation.addListener('beforeRemove', (e) => {
-            const origin = navigationParamsRef.current?.fromScreen || fromScreen;
-            if (origin === 'ChatRoom' || origin === 'ChatList') {
-                if (backInterceptRef.current) return;
-                backInterceptRef.current = true;
-                e.preventDefault();
-                navigation.dispatch(
-                    CommonActions.reset({ index: 0, routes: [{ name: 'MainTab' }] })
-                );
-                setTimeout(() => { backInterceptRef.current = false; }, 800);
-            }
-        });
-        return unsubscribe;
-    }, [navigation, fromScreen]);
+    // Раньше здесь был перехват "назад" из чата с reset в MainTab.
+    // Это ломает UX: если товар открыт из комнаты чата, назад должен возвращать в ChatRoom.
+    // Теперь ProductDetail может открываться в AppStack поверх ChatRoom, поэтому стандартный back работает корректно.
 
     const handleGoBack = useCallback(() => {
         // Разрешаем навигацию даже если предыдущая еще не завершена
@@ -49,9 +35,28 @@ export const useProductDetailNavigation = (navigation, fromScreen, params) => {
             dispatch(resetCurrentProduct());
 
             const origin = navigationParamsRef.current?.fromScreen || fromScreen;
-            if (origin === 'ChatRoom' || origin === 'ChatList') {
-                navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'MainTab' }] }));
-                setTimeout(() => { isNavigatingRef.current = false; }, 300);
+            const roomId = navigationParamsRef.current?.roomId;
+
+            // Если открыли товар из ChatRoom — возвращаемся обратно в комнату.
+            // Обычно достаточно goBack(), но оставляем fallback для случаев, когда стека нет.
+            if (origin === 'ChatRoom') {
+                if (navigation?.canGoBack?.()) {
+                    navigation.dispatch(CommonActions.goBack());
+                } else if (roomId) {
+                    navigation.navigate('ChatRoom', { roomId });
+                }
+                setTimeout(() => { isNavigatingRef.current = false; }, 200);
+                return;
+            }
+
+            // Если открыли из списка чатов — возвращаемся назад, либо на ChatList.
+            if (origin === 'ChatList') {
+                if (navigation?.canGoBack?.()) {
+                    navigation.dispatch(CommonActions.goBack());
+                } else {
+                    navigation.navigate('ChatList');
+                }
+                setTimeout(() => { isNavigatingRef.current = false; }, 200);
                 return;
             }
             

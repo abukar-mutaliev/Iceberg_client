@@ -6,7 +6,6 @@
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Notifications from 'expo-notifications';
 
 // Ленивая загрузка OneSignal для избежания ошибок при выходе
 let OneSignal = null;
@@ -19,6 +18,19 @@ const getOneSignal = () => {
 
     if (oneSignalLoadAttempted) {
         return null; // Уже пытались загрузить и не смогли
+    }
+
+    // Проверяем, что мы не в Expo Go (где OneSignal недоступен)
+    try {
+        const isExpoGo = Constants?.executionEnvironment === 'storeClient' || 
+                          Constants?.appOwnership === 'expo';
+        
+        if (isExpoGo) {
+            oneSignalLoadAttempted = true;
+            return null; // OneSignal не работает в Expo Go
+        }
+    } catch (e) {
+        // Если не удалось проверить, продолжаем попытку загрузки
     }
 
     oneSignalLoadAttempted = true;
@@ -42,6 +54,31 @@ class OneSignalService {
         this.subscriptionId = null;
     }
 
+    // Получить экземпляр OneSignal SDK
+    getOneSignal() {
+        return getOneSignal();
+    }
+
+    getConfiguredAndroidChannelUuid() {
+        try {
+            const uuid =
+                process.env.EXPO_PUBLIC_ONESIGNAL_ANDROID_CHANNEL_UUID ||
+                Constants?.expoConfig?.extra?.oneSignalAndroidChannelUuid ||
+                null;
+
+            const cleanUuid = typeof uuid === 'string' ? uuid.trim() : null;
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            return cleanUuid && uuidRegex.test(cleanUuid) ? cleanUuid : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    getExpectedOneSignalAndroidChannelId() {
+        const uuid = this.getConfiguredAndroidChannelUuid();
+        return uuid ? `OS_${uuid}` : null;
+    }
+
     // ⚠️ КРИТИЧЕСКИ ВАЖНО: Создание канала уведомлений для Android
     // Этот канал ОБЯЗАТЕЛЬНО нужен для heads-up уведомлений
     async ensureNotificationChannelExists() {
@@ -51,51 +88,28 @@ class OneSignalService {
         }
 
         try {
-            // На реальных устройствах push часто попадает в канал `default` или `fcm_fallback_notification_channel`.
-            // Для heads-up важно, чтобы эти каналы существовали и были MAX/HIGH.
-            // Важно: Android может не позволить повысить importance для уже созданного канала.
-            // Но на "чистой" установке (после удаления приложения) это создаст каналы сразу с MAX.
+            // КРИТИЧНО: Android НЕ ПОЗВОЛЯЕТ изменить importance уже существующего канала!
+            // Поэтому проверяем существующие каналы и пересоздаем только если нужно.
 
-            const ensure = async (id, name) => {
-                await Notifications.setNotificationChannelAsync(id, {
-                    name,
-                    importance: Notifications.AndroidImportance.MAX,
-                    vibrationPattern: [0, 250, 250, 250],
-                    lightColor: '#007AFF',
-                    sound: 'default',
-                    enableVibrate: true,
-                    enableLights: true,
-                    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-                    // bypassDnd лучше не включать по умолчанию — зависит от политики приложения
-                    bypassDnd: false,
-                });
-            };
-
-            await ensure('default', 'Уведомления');
-            await ensure('chat', 'Чат');
-            await ensure('fcm_fallback_notification_channel', 'Сообщения');
-            await ensure('iceberg-high-priority', 'Iceberg (High Priority)');
-
-            // Если мы знаем UUID канала из OneSignal Dashboard, заранее создадим канал,
-            // который OneSignal SDK использует в Android как `OS_<uuid>`.
-            // Это важно: на "чистой" установке канал будет создан с MAX importance и даст heads-up.
+            // Примечание: OneSignal автоматически управляет каналами уведомлений
+            // Каналы создаются через OneSignal Dashboard или через нативный код
+            // Не нужно создавать каналы вручную через expo-notifications
+            
+            // Если мы знаем UUID канала из OneSignal Dashboard, OneSignal SDK автоматически
+            // создаст канал `OS_<uuid>` для heads-up уведомлений
             try {
-                const uuid =
-                    process.env.EXPO_PUBLIC_ONESIGNAL_ANDROID_CHANNEL_UUID ||
-                    Constants?.expoConfig?.extra?.oneSignalAndroidChannelUuid ||
-                    null;
-
-                const cleanUuid = typeof uuid === 'string' ? uuid.trim() : null;
-                const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-                if (cleanUuid && uuidRegex.test(cleanUuid)) {
-                    await ensure(`OS_${cleanUuid}`, 'Чат (OneSignal)');
+                const cleanUuid = this.getConfiguredAndroidChannelUuid();
+                if (cleanUuid) {
+                    const osChannelId = `OS_${cleanUuid}`;
+                    await ensureChannel(osChannelId, 'Iceberg (OneSignal)');
                 }
-            } catch (_) {}
+            } catch (e) {
+                // Ошибка создания OneSignal канала
+            }
 
             return true;
             
         } catch (error) {
-            console.error('[OneSignal] ❌ Ошибка создания/обновления канала уведомлений:', error);
             return false;
         }
     }
@@ -103,58 +117,55 @@ class OneSignalService {
     // Инициализация OneSignal
     async initialize(appId) {
         try {
-            console.log('[OneSignal] 🔧 initialize() вызван с appId:', appId?.substring(0, 10) + '...');
-            
-            // ⚠️ КРИТИЧЕСКИ ВАЖНО: Создаем канал уведомлений ПЕРЕД проверкой isInitialized
-            // Это гарантирует что канал существует на устройстве при каждом запуске приложения
-            await this.ensureNotificationChannelExists();
+            const configuredAppId =
+                process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ||
+                (Constants?.expoConfig?.extra?.oneSignalAppId ?? null);
+
+            // Защита от случайной инициализации "не тем" App ID (особенно из диагностических экранов).
+            // Если appId передан, но отличается от сконфигурированного — используем сконфигурированный.
+            const effectiveAppId = configuredAppId || appId;
 
             if (this.isInitialized) {
-                console.log('[OneSignal] ✅ Уже инициализирован');
+                // Но все равно проверяем каналы - на случай если они были удалены пользователем
+                await this.ensureNotificationChannelExists();
                 return true;
             }
+            
+            // ⚠️ КРИТИЧЕСКИ ВАЖНО: Создаем каналы уведомлений ПЕРЕД инициализацией OneSignal
+            // Это гарантирует что когда OneSignal создаст свой канал, он будет создан правильно
+            await this.ensureNotificationChannelExists();
 
             const oneSignal = getOneSignal();
             if (!oneSignal) {
-                console.warn('[OneSignal] ⚠️ OneSignal SDK не доступен');
                 return false;
             }
 
-            if (!appId) {
-                console.error('[OneSignal] ❌ OneSignal App ID не предоставлен');
+            if (!effectiveAppId) {
                 return false;
             }
 
             // Инициализируем OneSignal
-            console.log('[OneSignal] 📱 Вызываем oneSignal.initialize()');
-            oneSignal.initialize(appId);
+            oneSignal.initialize(effectiveAppId);
 
             // Запрашиваем разрешения
-            console.log('[OneSignal] 🔔 Запрашиваем разрешения');
-            const hasPermission = await oneSignal.Notifications.requestPermission(true);
-            console.log('[OneSignal] 🔔 Разрешения:', hasPermission ? 'GRANTED' : 'DENIED');
+            await oneSignal.Notifications.requestPermission(true);
 
-            if (!hasPermission) {
-                console.warn('[OneSignal] ⚠️ Разрешения не предоставлены');
-                // Продолжаем инициализацию даже без разрешений
-            }
-
-            // ВАЖНО: Принудительно подписываем после получения разрешений
-            if (hasPermission && oneSignal.User?.pushSubscription?.optIn) {
-                console.log('[OneSignal] ✅ Вызываем optIn() после получения разрешений');
-                await oneSignal.User.pushSubscription.optIn();
+            // ВАЖНО: Принудительно подписываем. На Android requestPermission() может вернуть false,
+            // но подписка всё равно должна быть включена для получения пушей.
+            if (oneSignal.User?.pushSubscription?.optIn) {
+                try {
+                    await oneSignal.User.pushSubscription.optIn();
+                } catch (_) {}
             }
 
             // Настройка обработчиков
             this.setupNotificationHandlers(oneSignal);
 
             this.isInitialized = true;
-            console.log('[OneSignal] ✅ Инициализация завершена успешно');
             
             return true;
 
         } catch (error) {
-            console.error('[OneSignal] ❌ Ошибка инициализации:', error);
             return false;
         }
     }
@@ -170,10 +181,19 @@ class OneSignalService {
 
             // Обработчик нажатий на уведомления
             oneSignal.Notifications.addEventListener('click', (event) => {
-                const data = event.notification.additionalData;
-                if (data) {
-                    this.handleNotificationNavigation(data);
-                }
+                try {
+                    const n = event?.notification || {};
+                    const data =
+                        n.additionalData ||
+                        n.additional_data ||
+                        n?.payload?.additionalData ||
+                        n?.payload?.additional_data ||
+                        null;
+
+                    if (data) {
+                        this.handleNotificationNavigation(data);
+                    }
+                } catch (_) {}
             });
 
             // Обработчик получения уведомлений в foreground
@@ -185,11 +205,31 @@ class OneSignalService {
                     // пытаемся безопасно показать системное уведомление.
                     const notification = event?.getNotification?.() || event?.notification;
 
-                    // Если SDK поддерживает preventDefault + display, используем их чтобы избежать дублей
-                    if (event?.preventDefault && typeof event.preventDefault === 'function') {
-                        event.preventDefault();
-                    }
+                    // Если сейчас открыт этот же чат — не показываем уведомление в foreground
+                    try {
+                        const additionalData =
+                            notification?.additionalData ||
+                            notification?.additional_data ||
+                            event?.notification?.additionalData ||
+                            event?.notification?.additional_data ||
+                            null;
 
+                        const data = additionalData || {};
+                        const PushNotificationService = require('@shared/services/PushNotificationService');
+                        const pushNotificationService = PushNotificationService.default || PushNotificationService;
+
+                        if (pushNotificationService?.shouldSuppressChatNotification?.(data)) {
+                            if (event?.preventDefault && typeof event.preventDefault === 'function') {
+                                event.preventDefault();
+                            }
+                            return; // ✅ suppress
+                        }
+                    } catch (_) {}
+
+                    // Показываем уведомление через OneSignal SDK
+                    // НЕ вызываем preventDefault - пусть OneSignal покажет уведомление стандартным способом
+                    // Это должно гарантировать что уведомление появится
+                    
                     if (notification?.display && typeof notification.display === 'function') {
                         notification.display();
                     }
@@ -208,7 +248,7 @@ class OneSignalService {
     handleNotificationNavigation(data) {
         try {
             // Используем PushNotificationService для обработки навигации
-            const PushNotificationService = require('./PushNotificationService');
+            const PushNotificationService = require('@shared/services/PushNotificationService');
             const pushNotificationService = PushNotificationService.default || PushNotificationService;
             
             if (pushNotificationService && pushNotificationService.handleNotificationNavigation) {
@@ -390,6 +430,9 @@ class OneSignalService {
 
     // Очистка при выходе пользователя с деактивацией токена на сервере
     async clearUserContext() {
+        let deactivationSuccess = false;
+        let deactivationError = null;
+
         try {
             // Сначала получаем актуальный Player ID и деактивируем токен на сервере
             try {
@@ -399,14 +442,21 @@ class OneSignalService {
                     // Импортируем API только когда нужно
                     const { createProtectedRequest } = require('@shared/api/api');
                     
-                    await createProtectedRequest('put', '/api/push-tokens/deactivate', {
+                    const response = await createProtectedRequest('put', '/api/push-tokens/deactivate', {
                         token: currentPlayerId
                     });
+                    
+                    if (response) {
+                        deactivationSuccess = true;
+                    } else {
+                        deactivationError = new Error('Empty response from server');
+                    }
+                } else {
+                    deactivationSuccess = true; // Нечего деактивировать - считаем успехом
                 }
             } catch (deactivateError) {
-                // Временно отключены логи OneSignal
-                // console.error('Ошибка деактивации OneSignal токена на сервере:', deactivateError.message);
-                // Продолжаем очистку даже если деактивация не удалась
+                deactivationError = deactivateError;
+                // Продолжаем очистку локального состояния даже если деактивация не удалась
             }
 
             // Сбрасываем локальное состояние
@@ -417,22 +467,35 @@ class OneSignalService {
             // Во время выхода из системы не пытаемся использовать OneSignal модуль
             // чтобы избежать ошибок "Could not load RNOneSignal native module"
 
+            return {
+                success: deactivationSuccess,
+                error: deactivationError
+            };
+
         } catch (error) {
-            // Временно отключены логи OneSignal
-            // console.error('Ошибка очистки OneSignal контекста:', error);
             // Гарантируем очистку локального состояния даже при ошибке
             this.currentUserId = null;
             this.subscriptionId = null;
             this.isInitialized = false;
+            
+            return {
+                success: false,
+                error: error
+            };
         }
     }
 
     // Получение статуса сервиса
     getStatus() {
+        const configuredAndroidChannelUuid = this.getConfiguredAndroidChannelUuid();
+        const expectedAndroidChannelId = this.getExpectedOneSignalAndroidChannelId();
+
         return {
             isInitialized: this.isInitialized,
             hasSubscription: !!this.subscriptionId,
             currentUserId: this.currentUserId,
+            configuredAndroidChannelUuid,
+            expectedAndroidChannelId,
             service: 'OneSignal'
         };
     }
@@ -464,6 +527,14 @@ class OneSignalService {
     // Получение текущего subscription ID
     getCurrentSubscriptionId() {
         return this.subscriptionId;
+    }
+
+    // Принудительное пересоздание ВСЕХ каналов (для диагностики/исправления проблем)
+    // Примечание: Каналы управляются через OneSignal Dashboard или нативный код
+    async forceRecreateAllChannels() {
+        // OneSignal автоматически управляет каналами
+        // Для изменения каналов используйте OneSignal Dashboard
+        return false;
     }
 }
 

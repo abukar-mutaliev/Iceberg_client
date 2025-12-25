@@ -310,11 +310,13 @@ export const StopsListScreen = ({ navigation }) => {
             };
 
             // Добавляем обработчик аппаратной кнопки назад
-            BackHandler.addEventListener('hardwareBackPress', onBackPress);
+            const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
 
             return () => {
                 // Удаляем обработчик при размонтировании
-                BackHandler.removeEventListener('hardwareBackPress', onBackPress);
+                if (backHandler && typeof backHandler.remove === 'function') {
+                    backHandler.remove();
+                }
             };
         }, [handleGoBack])
     );

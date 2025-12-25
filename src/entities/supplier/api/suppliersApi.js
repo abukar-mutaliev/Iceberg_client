@@ -1,4 +1,4 @@
-import { createProtectedRequest } from '@shared/api/api';
+import { createProtectedRequest, createPublicRequest } from '@shared/api/api';
 
 export const suppliersApi = {
 
@@ -23,7 +23,8 @@ export const suppliersApi = {
 
     getSupplierById: async (supplierId) => {
         try {
-            const response = await createProtectedRequest('get', `/api/users/suppliers/${supplierId}`);
+            // Публичный эндпоинт - не требует авторизации
+            const response = await createPublicRequest('get', `/api/users/suppliers/${supplierId}`);
 
             if (response && response.status === 'success' && response.data && response.data.user) {
                 return response;
@@ -56,7 +57,8 @@ export const suppliersApi = {
 
 
     getSupplierProducts: async (supplierId) => {
-        return await createProtectedRequest('get', `/api/products/supplier/${supplierId}`);
+        // Публичный эндпоинт - не требует авторизации
+        return await createPublicRequest('get', `/api/products/supplier/${supplierId}`);
     },
 
     createSupplierProduct: async (productData) => {
@@ -151,7 +153,8 @@ export const suppliersApi = {
     },
 
     getSupplierProductsForRating: async (supplierId) => {
-        return await createProtectedRequest('get', `/api/products?supplierId=${supplierId}`);
+        // Публичный эндпоинт - не требует авторизации
+        return await createPublicRequest('get', `/api/products?supplierId=${supplierId}`);
     },
 };
 

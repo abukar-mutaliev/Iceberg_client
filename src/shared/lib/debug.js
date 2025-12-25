@@ -1,6 +1,6 @@
 // src/shared/utils/debug.js
 
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 
 // Debug configuration

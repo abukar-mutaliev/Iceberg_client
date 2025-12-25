@@ -1,8 +1,9 @@
-import { createProtectedRequest } from '@shared/api/api';
+import { api, createProtectedRequest } from '@shared/api/api';
 export const stopApi = {
     getAllStops: async (params = {}) => {
         try {
-            const response = await createProtectedRequest('get', '/api/stops/all', params);
+            // Публичный эндпоинт: доступен гостям, поэтому НЕ используем createProtectedRequest
+            const response = await api.get('/api/stops/all', { params });
             if (!response || !response.data) {
                 throw new Error('Получен некорректный ответ от сервера');
             }
@@ -132,7 +133,8 @@ export const stopApi = {
 
     getStopProducts: async (stopId) => {
         try {
-            const response = await createProtectedRequest('get', `/api/stops/${stopId}/products`);
+            // Эндпоинт с optionalAuth: должен работать и для гостей
+            const response = await api.get(`/api/stops/${stopId}/products`);
             return response;
         } catch (error) {
             console.error(`Error in getStopProducts(${stopId}) API call:`, error);

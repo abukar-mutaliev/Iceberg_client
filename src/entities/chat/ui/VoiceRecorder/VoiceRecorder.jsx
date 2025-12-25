@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated, Platform } from 'react-native';
 import { Audio } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Ionicons } from '@expo/vector-icons';
 import { useChatSocketActions } from '@entities/chat/hooks/useChatSocketActions';
 
@@ -56,7 +56,16 @@ export const VoiceRecorder = ({ onSend, onCancel, roomId }) => {
       }
       const currentRecording = recordingRef.current;
       if (currentRecording) {
-        currentRecording.stopAndUnloadAsync().catch(() => {});
+        // Безопасная остановка записи при размонтировании
+        currentRecording.getStatusAsync()
+          .then(status => {
+            if (status && status.canRecord !== false) {
+              return currentRecording.stopAndUnloadAsync();
+            }
+          })
+          .catch(() => {
+            // Игнорируем ошибки при cleanup
+          });
       }
     };
   }, []);
@@ -359,12 +368,37 @@ export const VoiceRecorder = ({ onSend, onCancel, roomId }) => {
       setIsRecording(false);
       
       // ✅ Получаем финальный статус перед остановкой
-      const status = await currentRecording.getStatusAsync();
-      const finalDuration = status.durationMillis ? Math.floor(status.durationMillis / 1000) : recordingDuration;
+      let status;
+      let finalDuration = recordingDuration;
+      try {
+        status = await currentRecording.getStatusAsync();
+        finalDuration = status.durationMillis ? Math.floor(status.durationMillis / 1000) : recordingDuration;
+      } catch (err) {
+        // Если не удалось получить статус, используем текущую длительность
+        console.warn('Не удалось получить статус записи:', err);
+      }
       
-      await currentRecording.stopAndUnloadAsync();
+      // Проверяем, что запись еще не была выгружена
+      try {
+        if (status && status.canRecord !== false) {
+          await currentRecording.stopAndUnloadAsync();
+        }
+      } catch (err) {
+        // Игнорируем ошибки, если запись уже была выгружена
+        if (err.message && err.message.includes('already been unloaded')) {
+          // Запись уже выгружена, это нормально
+        } else {
+          console.warn('Ошибка при остановке записи:', err);
+        }
+      }
       
-      const uri = currentRecording.getURI();
+      let uri = null;
+      try {
+        uri = currentRecording.getURI();
+      } catch (err) {
+        // Игнорируем ошибки получения URI
+        console.warn('Не удалось получить URI записи:', err);
+      }
       
       // Очищаем ref
       recordingRef.current = null;
@@ -467,9 +501,16 @@ export const VoiceRecorder = ({ onSend, onCancel, roomId }) => {
       }
       setIsRecording(false);
       try {
-        await currentRecording.stopAndUnloadAsync();
+        // Проверяем статус перед остановкой
+        const status = await currentRecording.getStatusAsync();
+        if (status && status.canRecord !== false) {
+          await currentRecording.stopAndUnloadAsync();
+        }
       } catch (error) {
-        // Игнорируем ошибки при остановке
+        // Игнорируем ошибки при остановке (включая "already been unloaded")
+        if (error.message && !error.message.includes('already been unloaded')) {
+          console.warn('Ошибка при отмене записи:', error);
+        }
       }
       recordingRef.current = null;
     }

@@ -108,9 +108,14 @@ export const ChatSearchScreen = () => {
 
   // Открыть или создать чат с пользователем
   const handleUserPress = async (item) => {
+    const rootNavigation =
+      navigation?.getParent?.('AppStack') ||
+      navigation?.getParent?.()?.getParent?.() ||
+      null;
+
     if (item.type === 'room') {
       // Открываем существующую комнату
-      navigation.navigate('ChatRoom', {
+      (rootNavigation || navigation).navigate('ChatRoom', {
         roomId: item.id,
         roomTitle: item.displayName,
         fromScreen: 'ChatSearch',
@@ -139,7 +144,7 @@ export const ChatSearchScreen = () => {
 
       const room = response?.data?.room;
       if (room) {
-        navigation.navigate('ChatRoom', {
+        (rootNavigation || navigation).navigate('ChatRoom', {
           roomId: room.id,
           roomTitle: item.displayName,
           roomData: {

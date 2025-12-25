@@ -37,6 +37,7 @@ export const Composer = ({
   const [showPollModal, setShowPollModal] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false); // По умолчанию скрываем эмодзи-пикер
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null); // 'gallery' | 'camera' | 'poll' | null
   const isSendingRef = useRef(false);
   const typingTimeoutRef = useRef(null);
   const textInputRef = useRef(null);
@@ -89,7 +90,27 @@ export const Composer = ({
 
   const pickImages = async () => {
     if (disabled) return;
+    
+    console.log('📸 pickImages: Начало выбора изображений');
+    
     try {
+      // Проверяем текущий статус разрешений
+      const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
+      console.log('📸 Текущий статус разрешений:', currentStatus);
+      
+      // Если разрешения не предоставлены, запрашиваем их
+      if (currentStatus !== 'granted') {
+        console.log('📸 Запрашиваем разрешение на доступ к галерее');
+        const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        console.log('📸 Результат запроса разрешения:', permissionResult.status);
+        
+        if (permissionResult.status !== 'granted') {
+          console.log('❌ Разрешение на доступ к галерее не предоставлено');
+          return;
+        }
+      }
+
+      console.log('📸 Открываем галерею...');
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsMultipleSelection: true,
@@ -97,37 +118,69 @@ export const Composer = ({
         quality: 0.9,
       });
 
-      if (!result.canceled) {
-        const selected = (result.assets || []).map((asset) => ({
+      console.log('📸 Результат выбора:', { canceled: result.canceled, assetsCount: result.assets?.length });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const selected = result.assets.map((asset) => ({
           uri: asset.uri,
           name: asset.fileName || `photo_${Date.now()}.jpg`,
           type: asset.type || 'image/jpeg',
         }));
+        console.log('✅ Выбрано изображений:', selected.length);
         setFiles((prev) => [...prev, ...selected]);
+      } else {
+        console.log('ℹ️ Выбор изображений отменен');
       }
     } catch (e) {
-      // noop
+      console.error('❌ Ошибка при выборе изображений:', e);
+      console.error('❌ Stack trace:', e.stack);
     }
   };
 
   const takePhoto = async () => {
     if (disabled) return;
+    
+    console.log('📷 takePhoto: Начало съемки фото');
+    
     try {
+      // Проверяем текущий статус разрешений
+      const { status: currentStatus } = await ImagePicker.getCameraPermissionsAsync();
+      console.log('📷 Текущий статус разрешений камеры:', currentStatus);
+      
+      // Если разрешения не предоставлены, запрашиваем их
+      if (currentStatus !== 'granted') {
+        console.log('📷 Запрашиваем разрешение на доступ к камере');
+        const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+        console.log('📷 Результат запроса разрешения:', permissionResult.status);
+        
+        if (permissionResult.status !== 'granted') {
+          console.log('❌ Разрешение на доступ к камере не предоставлено');
+          return;
+        }
+      }
+
+      console.log('📷 Открываем камеру...');
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         quality: 0.9,
       });
 
-      if (!result.canceled) {
-        const selected = (result.assets || []).map((asset) => ({
+      console.log('📷 Результат съемки:', { canceled: result.canceled, assetsCount: result.assets?.length });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const selected = result.assets.map((asset) => ({
           uri: asset.uri,
           name: asset.fileName || `photo_${Date.now()}.jpg`,
           type: asset.type || 'image/jpeg',
         }));
+        console.log('✅ Снято фото:', selected.length);
         setFiles((prev) => [...prev, ...selected]);
+      } else {
+        console.log('ℹ️ Съемка фото отменена');
       }
     } catch (e) {
-      // noop
+      console.error('❌ Ошибка при съемке фото:', e);
+      console.error('❌ Stack trace:', e.stack);
     }
   };
 
@@ -651,6 +704,19 @@ export const Composer = ({
         transparent={true}
         animationType="fade"
         onRequestClose={() => setShowAttachmentMenu(false)}
+        onDismiss={() => {
+          // Вызывается когда модальное окно полностью закрылось (только iOS)
+          if (pendingAction === 'gallery') {
+            setPendingAction(null);
+            pickImages();
+          } else if (pendingAction === 'camera') {
+            setPendingAction(null);
+            takePhoto();
+          } else if (pendingAction === 'poll') {
+            setPendingAction(null);
+            setShowPollModal(true);
+          }
+        }}
       >
         <TouchableOpacity
           style={styles.attachmentMenuOverlay}
@@ -661,8 +727,15 @@ export const Composer = ({
             <TouchableOpacity
               style={styles.attachmentMenuItem}
               onPress={() => {
-                setShowAttachmentMenu(false);
-                pickImages();
+                if (Platform.OS === 'ios') {
+                  // iOS: используем onDismiss callback
+                  setPendingAction('gallery');
+                  setShowAttachmentMenu(false);
+                } else {
+                  // Android: можем открыть сразу
+                  setShowAttachmentMenu(false);
+                  setTimeout(() => pickImages(), 50);
+                }
               }}
             >
               <View style={[styles.attachmentMenuIcon, { backgroundColor: '#2196F3' }]}>
@@ -674,8 +747,15 @@ export const Composer = ({
             <TouchableOpacity
               style={styles.attachmentMenuItem}
               onPress={() => {
-                setShowAttachmentMenu(false);
-                takePhoto();
+                if (Platform.OS === 'ios') {
+                  // iOS: используем onDismiss callback
+                  setPendingAction('camera');
+                  setShowAttachmentMenu(false);
+                } else {
+                  // Android: можем открыть сразу
+                  setShowAttachmentMenu(false);
+                  setTimeout(() => takePhoto(), 50);
+                }
               }}
             >
               <View style={[styles.attachmentMenuIcon, { backgroundColor: '#E91E63' }]}>
@@ -687,8 +767,15 @@ export const Composer = ({
             <TouchableOpacity
               style={styles.attachmentMenuItem}
               onPress={() => {
-                setShowAttachmentMenu(false);
-                setShowPollModal(true);
+                if (Platform.OS === 'ios') {
+                  // iOS: используем onDismiss callback
+                  setPendingAction('poll');
+                  setShowAttachmentMenu(false);
+                } else {
+                  // Android: можем открыть сразу
+                  setShowAttachmentMenu(false);
+                  setShowPollModal(true);
+                }
               }}
             >
               <View style={[styles.attachmentMenuIcon, { backgroundColor: '#FFC107' }]}>

@@ -7,7 +7,8 @@ import {
     Modal,
     Animated,
     useWindowDimensions,
-    Platform
+    Platform,
+    ScrollView
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { Color, FontFamily, FontSize, Shadow, Border } from '@app/styles/GlobalStyles';
@@ -199,7 +200,14 @@ export const CustomAlert = ({
 
                     {/* Сообщение */}
                     {message ? (
-                        <Text style={styles.message}>{message}</Text>
+                        <ScrollView 
+                            style={styles.messageScrollContainer}
+                            contentContainerStyle={styles.messageScrollContent}
+                            showsVerticalScrollIndicator={true}
+                            bounces={false}
+                        >
+                            <Text style={styles.message}>{message}</Text>
+                        </ScrollView>
                     ) : null}
 
                     {/* Кнопки */}
@@ -318,12 +326,18 @@ const styles = StyleSheet.create({
         marginBottom: 12,
         fontFamily: FontFamily.sFProDisplay,
     },
+    messageScrollContainer: {
+        maxHeight: 200,
+        marginBottom: 24,
+    },
+    messageScrollContent: {
+        flexGrow: 0,
+    },
     message: {
         fontSize: 16,
         color: '#666',
         textAlign: 'center',
         lineHeight: 24,
-        marginBottom: 24,
         fontFamily: FontFamily.sFProText,
     },
     buttonsContainer: {

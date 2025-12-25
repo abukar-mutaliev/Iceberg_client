@@ -427,7 +427,7 @@ const BubbleContainer = ({
                 !isSelectionMode && isContextMenuActive && (isOwn ? styles.contextMenuActiveContainerOwn : styles.contextMenuActiveContainerOther)
             ]}
             onLongPress={handleLongPress}
-            delayLongPress={300}
+            delayLongPress={150}
             onPress={canPress ? handlePress : undefined}
             activeOpacity={canPress ? 0.7 : 1}
             disabled={false}
@@ -825,7 +825,14 @@ const ProductMessage = ({
                     <ProductCard
                         product={transformedProduct}
                         productId={productId}
-                        onPress={() => onOpenProduct?.(productId)}
+                        onPress={() => {
+                            // Если режим выбора активен, выделяем сообщение вместо открытия товара
+                            if (isSelectionMode && onToggleSelection) {
+                                onToggleSelection();
+                            } else {
+                                onOpenProduct?.(productId);
+                            }
+                        }}
                         width={250}
                         compact={true}
                     />
@@ -1602,7 +1609,7 @@ const styles = StyleSheet.create({
     pollContainer: {
         padding: 8,
         paddingTop: 6,
-        minWidth: 260,
+        minWidth: 220,
         maxWidth: '100%',
     },
     pollQuestion: {

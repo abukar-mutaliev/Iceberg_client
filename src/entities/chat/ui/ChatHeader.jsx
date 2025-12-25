@@ -1,4 +1,4 @@
-import React, {useState, useMemo} from 'react';
+import React, {useState} from 'react';
 import {View, Text, TouchableOpacity, Image, Modal, Dimensions, StyleSheet} from 'react-native';
 import {useSelector, useDispatch} from 'react-redux';
 import {CommonActions} from '@react-navigation/native';
@@ -30,31 +30,41 @@ export const ChatHeader = ({route, navigation}) => {
 
 
     const getDisplayName = (user) => {
-        if (!user) return 'Пользователь';
+        if (!user) {
+            return 'Пользователь';
+        }
 
         if (user.role === 'SUPPLIER') {
             const companyName =
                 user.supplier?.companyName ||
                 user.companyName ||
                 user.profile?.companyName;
-            if (companyName) return companyName;
+            if (companyName) {
+                return companyName;
+            }
         }
 
         // Для водителей проверяем driver.name в первую очередь
         if (user.role === 'DRIVER') {
             const driverName = user.driver?.name || user.name;
-            if (driverName) return driverName;
+            if (driverName) {
+                return driverName;
+            }
         }
 
         const name = user.name || user.profile?.name || user.firstName || user.profile?.firstName || user.companyName || user.profile?.companyName;
-        if (name) return name;
+        if (name) {
+            return name;
+        }
 
         if (user.role === 'SUPPLIER') {
             const contactPerson =
                 user.supplier?.contactPerson ||
                 user.contactPerson ||
                 user.profile?.contactPerson;
-            if (contactPerson) return contactPerson;
+            if (contactPerson) {
+                return contactPerson;
+            }
         }
 
         if (user.email) {
@@ -63,14 +73,50 @@ export const ChatHeader = ({route, navigation}) => {
                 .replace(/[-_]?test[-_]?/gi, '')
                 .replace(/[-_]?example[-_]?/gi, '')
                 .replace(/\d+/g, '');
-            return cleanName.charAt(0).toUpperCase() + cleanName.slice(1) || 'Пользователь';
+            const result = cleanName.charAt(0).toUpperCase() + cleanName.slice(1) || 'Пользователь';
+            return result;
         }
 
         if (user.id) {
-            return `Пользователь #${user.id}`;
+            const result = `Пользователь #${user.id}`;
+            return result;
         }
 
         return 'Пользователь';
+    };
+
+    // Функция для получения всех возможных вариантов имени пользователя
+    const getCurrentUserNames = (user) => {
+        if (!user) return [];
+        const names = [];
+        if (user.role === 'CLIENT') {
+            if (user.client?.name) names.push(user.client.name);
+            if (user.client?.companyName) names.push(user.client.companyName);
+            if (user.profile?.name) names.push(user.profile.name);
+            if (user.profile?.companyName) names.push(user.profile.companyName);
+        } else if (user.role === 'SUPPLIER') {
+            if (user.supplier?.companyName) names.push(user.supplier.companyName);
+            if (user.supplier?.contactPerson) names.push(user.supplier.contactPerson);
+            if (user.profile?.companyName) names.push(user.profile.companyName);
+            if (user.profile?.contactPerson) names.push(user.profile.contactPerson);
+        } else if (user.role === 'DRIVER') {
+            if (user.driver?.name) names.push(user.driver.name);
+            if (user.profile?.name) names.push(user.profile.name);
+        } else if (user.role === 'EMPLOYEE') {
+            if (user.employee?.name) names.push(user.employee.name);
+            if (user.profile?.name) names.push(user.profile.name);
+        } else if (user.role === 'ADMIN') {
+            if (user.admin?.name) names.push(user.admin.name);
+            if (user.profile?.name) names.push(user.profile.name);
+        }
+        if (user.name) names.push(user.name);
+        if (user.companyName) names.push(user.companyName);
+        // Также добавляем результат getDisplayName
+        const displayNameResult = getDisplayName(user);
+        if (displayNameResult && !names.includes(displayNameResult)) {
+            names.push(displayNameResult);
+        }
+        return names;
     };
 
     const roomData = roomDataParam?.participants ? roomDataParam : (roomDataParam?.room ? roomDataParam.room : roomDataParam);
@@ -80,35 +126,9 @@ export const ChatHeader = ({route, navigation}) => {
     );
     const userRoleInRoom = currentUserParticipant?.role;
     const isOwner = userRoleInRoom === 'OWNER';
-    
-    // Проверяем, является ли пользователь суперадмином
-    const isSuperAdmin = useMemo(() => {
-        return currentUser?.role === 'ADMIN' && 
-               (currentUser?.admin?.isSuperAdmin || currentUser?.profile?.isSuperAdmin || currentUser?.isSuperAdmin);
-    }, [currentUser]);
-    
-    // Проверяем право на удаление комнаты
-    // BROADCAST - только суперадмин, GROUP - только владелец или суперадмин
-    const canDeleteRoom = useMemo(() => {
-        if (roomData?.type === 'BROADCAST') {
-            return isSuperAdmin;
-        }
-        return isOwner || isSuperAdmin;
-    }, [roomData?.type, isOwner, isSuperAdmin]);
-    
-    // Проверяем право на выход из комнаты
-    // BROADCAST - только суперадмин может покинуть канал, GROUP - все участники могут покинуть
-    const canLeaveRoom = useMemo(() => {
-        if (roomData?.type === 'BROADCAST') {
-            return isSuperAdmin;
-        }
-        // В группах все участники могут покинуть группу
-        return true;
-    }, [roomData?.type, isSuperAdmin]);
 
     let chatPartner = null;
-    // Используем roomTitle только как fallback, основное имя будет из данных участника
-    let chatPartnerName = 'Чат';
+    let chatPartnerName = params.roomTitle || 'Чат';
     let chatPartnerAvatar = null;
     let chatPartnerStatus = 'онлайн';
 
@@ -116,79 +136,66 @@ export const ChatHeader = ({route, navigation}) => {
         chatPartnerName = roomData.title || (roomData?.type === 'BROADCAST' ? 'Канал' : 'Группа');
         chatPartnerAvatar = roomData.avatar;
 
-        // Для клиентов в BROADCAST каналах - показываем сотрудников и водителей своего района
+        // Для клиентов в BROADCAST каналах - показываем только менеджеров и водителей склада клиента
         let participantsCount = roomData.participants ? roomData.participants.length : 0;
         
         if (roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT') {
             const clientDistrictId = currentUser?.client?.districtId;
-            
-            // Если у клиента нет района - не показываем никого
-            if (!clientDistrictId) {
-                participantsCount = 0;
-            } else {
-                const filteredParticipants = (roomData.participants || []).filter(p => {
-                    const user = p.user || p;
-                    const userRole = user?.role;
+            const filteredParticipants = (roomData.participants || []).filter(p => {
+                const user = p.user || p;
+                const userRole = user?.role;
+                
+                // Скрываем суперадминов от клиентов
+                if (userRole === 'ADMIN') {
+                    const isSuperAdmin = user?.admin?.isSuperAdmin;
+                    if (isSuperAdmin) return false;
+                    return true; // Обычные админы показываются
+                }
+                
+                // Сотрудники - только менеджеры из района клиента
+                if (userRole === 'EMPLOYEE') {
+                    const processingRole = user?.employee?.processingRole;
+                    // Скрываем сборщиков, упаковщиков, контроллеров качества, курьеров
+                    const hiddenRoles = ['PICKER', 'PACKER', 'QUALITY_CHECKER', 'COURIER'];
+                    if (processingRole && hiddenRoles.includes(processingRole)) {
+                        return false;
+                    }
                     
-                    // Скрываем суперадминов от клиентов
-                    if (userRole === 'ADMIN') {
-                        const isSuperAdmin = user?.admin?.isSuperAdmin;
-                        if (isSuperAdmin) return false;
-                        // Обычные админы показываются
+                    // Показываем только если есть должность (например "Менеджер по продажам")
+                    const position = user?.employee?.position;
+                    if (!position) {
+                        return false;
+                    }
+                    
+                    // Проверяем, что сотрудник работает на складе в районе клиента
+                    const employeeWarehouseDistrictId = user?.employee?.warehouse?.districtId;
+                    if (employeeWarehouseDistrictId && clientDistrictId && employeeWarehouseDistrictId !== clientDistrictId) {
+                        return false;
+                    }
+                    
+                    return true;
+                }
+                
+                // Поставщиков не показываем
+                if (userRole === 'SUPPLIER') {
+                    return false;
+                }
+                
+                // Водители - только если их склад в районе клиента
+                if (userRole === 'DRIVER') {
+                    if (!clientDistrictId) return false;
+                    const driverWarehouseDistrictId = user?.driver?.warehouse?.district?.id || 
+                                                      user?.driver?.warehouse?.districtId;
+                    if (driverWarehouseDistrictId === clientDistrictId) {
                         return true;
                     }
-                    
-                    // Сотрудники - все кроме сборщиков и курьеров, только из района клиента
-                    if (userRole === 'EMPLOYEE') {
-                        const processingRole = user?.employee?.processingRole;
-                        // Скрываем только сборщиков и курьеров
-                        if (processingRole === 'PICKER' || processingRole === 'COURIER') {
-                            return false;
-                        }
-                        
-                        // Проверяем, что сотрудник работает в районе клиента
-                        // Вариант 1: через склад сотрудника
-                        const employeeWarehouseDistrictId = user?.employee?.warehouse?.districtId;
-                        if (employeeWarehouseDistrictId === clientDistrictId) {
-                            return true;
-                        }
-                        
-                        // Вариант 2: через районы, закрепленные за сотрудником
-                        const employeeDistricts = user?.employee?.districts || [];
-                        if (employeeDistricts.some(d => d.id === clientDistrictId)) {
-                            return true;
-                        }
-                        
-                        // Если у сотрудника нет склада и нет закрепленных районов - не показываем
-                        return false;
-                    }
-                    
-                    // Поставщиков не показываем
-                    if (userRole === 'SUPPLIER') {
-                        return false;
-                    }
-                    
-                    // Водители - только из района клиента
-                    if (userRole === 'DRIVER') {
-                        // Проверяем, что склад водителя находится в районе клиента
-                        const driverWarehouseDistrictId = user?.driver?.warehouse?.districtId;
-                        if (driverWarehouseDistrictId === clientDistrictId) {
-                            return true;
-                        }
-                        
-                        // Проверяем районы обслуживания водителя
-                        const driverDistricts = user?.driver?.districts || [];
-                        if (driverDistricts.some(d => d.id === clientDistrictId)) {
-                            return true;
-                        }
-                        
-                        return false;
-                    }
-                    
-                    return false;
-                });
-                participantsCount = filteredParticipants.length;
-            }
+                    const driverDistricts = user?.driver?.districts || [];
+                    return driverDistricts.some(d => d.id === clientDistrictId);
+                }
+                
+                return false;
+            });
+            participantsCount = filteredParticipants.length;
             chatPartnerStatus = `📢 Канал • ${participantsCount} контакт${participantsCount === 1 ? '' : participantsCount < 5 ? 'а' : 'ов'}`;
         } else if (roomData?.type === 'BROADCAST') {
             chatPartnerStatus = `📢 Канал • ${participantsCount} подписчик${participantsCount === 1 ? '' : participantsCount < 5 ? 'а' : 'ов'}`;
@@ -197,73 +204,62 @@ export const ChatHeader = ({route, navigation}) => {
         }
     }
     else if (roomData?.participants && Array.isArray(roomData.participants) && currentUserId) {
-        // Ищем собеседника - участника, который не является текущим пользователем
-        // Проверяем разные варианты структуры данных
+        // Нормализуем currentUserId для сравнения
+        const normalizedCurrentUserId = Number(currentUserId);
+        
         chatPartner = roomData.participants.find(p => {
             const participantId = p?.userId ?? p?.user?.id ?? p?.id;
-            // Сравниваем как числа, так и строки
-            return participantId && String(participantId) !== String(currentUserId);
+            const normalizedParticipantId = Number(participantId);
+            const isNotCurrentUser = normalizedParticipantId !== normalizedCurrentUserId;
+            
+            return isNotCurrentUser;
         });
         
         if (chatPartner) {
             const partnerId = chatPartner?.userId ?? chatPartner?.user?.id ?? chatPartner?.id;
-            
-            // Дополнительная проверка: убеждаемся, что partnerId не равен currentUserId
-            if (!partnerId || String(partnerId) === String(currentUserId)) {
-                // Если по какой-то причине нашли себя или ID не определен, ищем другого участника
-                chatPartner = roomData.participants.find(p => {
-                    const pId = p?.userId ?? p?.user?.id ?? p?.id;
-                    return pId && String(pId) !== String(currentUserId);
-                });
-            }
-            
-            if (chatPartner) {
-                const finalPartnerId = chatPartner?.userId ?? chatPartner?.user?.id ?? chatPartner?.id;
-                const cachedUser = participantsById[finalPartnerId];
+            const cachedUser = participantsById[partnerId];
 
-                if (cachedUser) {
-                    // Приоритет: данные из кэша участников (самые актуальные)
-                    const displayName = getDisplayName(cachedUser);
-                    // Проверяем, что это не имя текущего пользователя
-                    const currentUserName = getDisplayName(currentUser);
-                    if (displayName && displayName !== currentUserName) {
-                        chatPartnerName = displayName;
-                    } else if (__DEV__) {
-                        console.warn('ChatHeader: displayName совпадает с текущим пользователем, используем fallback');
-                    }
-                    chatPartnerAvatar = cachedUser.avatar || cachedUser.image || null;
-                    const userIsOnline = isUserOnline(cachedUser.lastSeenAt);
-                    chatPartnerStatus = formatLastSeen(cachedUser.lastSeenAt, userIsOnline);
-                } else {
-                    // Если нет в кэше, используем данные из участника
-                    const userData = chatPartner.user || chatPartner;
-                    const displayName = getDisplayName(userData);
-                    // Проверяем, что это не имя текущего пользователя
-                    const currentUserName = getDisplayName(currentUser);
-                    if (displayName && displayName !== currentUserName) {
-                        chatPartnerName = displayName;
-                    } else if (__DEV__) {
-                        console.warn('ChatHeader: displayName из участника совпадает с текущим пользователем');
-                    }
-                    
-                    chatPartnerAvatar =
-                        chatPartner.avatar ||
-                        chatPartner.image ||
-                        chatPartner.user?.avatar ||
-                        chatPartner.user?.image ||
-                        null;
-                    const userIsOnline = isUserOnline(userData.lastSeenAt);
-                    chatPartnerStatus = formatLastSeen(userData.lastSeenAt, userIsOnline);
-                }
-            }
-        }
-        
-        // Если после всех проверок имя осталось дефолтным, пробуем использовать roomTitle
-        // Но только если roomTitle не совпадает с именем текущего пользователя
-        if (chatPartnerName === 'Чат' && params.roomTitle) {
-            const currentUserName = getDisplayName(currentUser);
-            if (params.roomTitle !== 'Чат' && params.roomTitle !== 'Водитель' && params.roomTitle !== currentUserName) {
-                chatPartnerName = params.roomTitle;
+            if (cachedUser) {
+                const displayName = getDisplayName(cachedUser);
+                
+                // Получаем все возможные варианты имени текущего пользователя для проверки
+                const currentUserNames = currentUser ? getCurrentUserNames(currentUser) : [];
+                const isCurrentUserName = currentUserNames.some(name => name === params.roomTitle);
+                
+                // Используем roomTitle только если он передан, не равен дефолтному значению И не равен имени текущего пользователя
+                // Приоритет: roomTitle (если валидный) > getDisplayName
+                const isDefaultTitle = params.roomTitle === 'Чат' || params.roomTitle === 'Водитель';
+                const shouldUseRoomTitle = params.roomTitle && !isDefaultTitle && !isCurrentUserName;
+                
+                chatPartnerName = shouldUseRoomTitle ? params.roomTitle : displayName;
+                
+                chatPartnerAvatar = cachedUser.avatar || cachedUser.image || null;
+                const userIsOnline = isUserOnline(cachedUser.lastSeenAt);
+                chatPartnerStatus = formatLastSeen(cachedUser.lastSeenAt, userIsOnline);
+            } else {
+                const userData = chatPartner.user || chatPartner;
+                
+                const displayName = getDisplayName(userData);
+                
+                // Получаем все возможные варианты имени текущего пользователя для проверки
+                const currentUserNames = currentUser ? getCurrentUserNames(currentUser) : [];
+                const isCurrentUserName = currentUserNames.some(name => name === params.roomTitle);
+                
+                // Используем roomTitle только если он передан, не равен дефолтному значению И не равен имени текущего пользователя
+                // Приоритет: roomTitle (если валидный) > getDisplayName
+                const isDefaultTitle = params.roomTitle === 'Чат' || params.roomTitle === 'Водитель';
+                const shouldUseRoomTitle = params.roomTitle && !isDefaultTitle && !isCurrentUserName;
+                
+                chatPartnerName = shouldUseRoomTitle ? params.roomTitle : displayName;
+                
+                chatPartnerAvatar =
+                    chatPartner.avatar ||
+                    chatPartner.image ||
+                    chatPartner.user?.avatar ||
+                    chatPartner.user?.image ||
+                    null;
+                const userIsOnline = isUserOnline(userData.lastSeenAt);
+                chatPartnerStatus = formatLastSeen(userData.lastSeenAt, userIsOnline);
             }
         }
 
@@ -278,11 +274,14 @@ export const ChatHeader = ({route, navigation}) => {
         const fromScreen = params.fromScreen;
         const productId = params.productId || params.productInfo?.id;
 
-        // ProductDetail - особый случай, переходим напрямую
+        // ProductDetail - особый случай, переходим напрямую в AppStack
+        // ProductDetail находится в корневом AppStack (как и ChatRoom), поэтому навигируем напрямую
         if (productId && (fromScreen === 'ProductDetail' || !fromScreen)) {
-            navigation.navigate('MainTab', {
-                screen: 'ProductDetail',
-                params: {productId, fromScreen: 'ChatRoom'}
+            // Получаем корневой навигатор (AppStack)
+            const rootNavigation = navigation.getParent() || navigation;
+            rootNavigation.navigate('ProductDetail', {
+                productId,
+                fromScreen: 'ChatRoom'
             });
             return;
         }
@@ -319,16 +318,9 @@ export const ChatHeader = ({route, navigation}) => {
                 supplierId = partnerUserId;
             }
 
-            console.log('ChatHeader navigating to SupplierScreen with supplierId:', supplierId);
-
             if (supplierId) {
                 try {
-                    console.log('Attempting navigation to SupplierScreen...');
-
                     const rootNavigation = navigation.getParent();
-                    const grandParentNavigation = rootNavigation?.getParent?.();
-                    console.log('Root navigation available:', !!rootNavigation);
-                    console.log('Grand parent navigation available:', !!grandParentNavigation);
 
                     if (rootNavigation) {
                         navigation.navigate('SupplierScreen', {
@@ -366,9 +358,17 @@ export const ChatHeader = ({route, navigation}) => {
         }
 
         if (partnerUserId) {
-            navigation.navigate('UserPublicProfile', {
+            // Открываем профиль в корневом AppStack (там же где ChatRoom),
+            // иначе назад может увести в ChatMain (таба), а не обратно в комнату.
+            const rootNavigation =
+                navigation?.getParent?.('AppStack') ||
+                navigation?.getParent?.() ||
+                navigation;
+
+            (rootNavigation || navigation).navigate('UserPublicProfile', {
                 userId: partnerUserId,
-                fromScreen: 'ChatRoom'
+                fromScreen: 'ChatRoom',
+                roomId,
             });
         }
     };
@@ -605,8 +605,8 @@ export const ChatHeader = ({route, navigation}) => {
                     <View style={styles.modalContainer}>
                         {(roomData?.type === 'GROUP' || roomData?.type === 'BROADCAST') ? (
                             <>
-                                {/* Удалить группу/канал - для BROADCAST только суперадмин, для GROUP только владелец или суперадмин */}
-                                {canDeleteRoom && (
+                                {/* Удалить группу/канал - только для владельца */}
+                                {isOwner && (
                                     <TouchableOpacity
                                         style={styles.modalItem}
                                         onPress={handleDeleteGroup}
@@ -618,15 +618,26 @@ export const ChatHeader = ({route, navigation}) => {
                                     </TouchableOpacity>
                                 )}
 
-                                {/* Выход из группы/канала - для BROADCAST только суперадмин, для GROUP - все участники */}
-                                {canLeaveRoom && (
+                                {/* Выход из группы/канала - для всех, но с ограничениями для владельца */}
+                                <TouchableOpacity
+                                    style={styles.modalItem}
+                                    onPress={handleLeaveGroup}
+                                    activeOpacity={0.7}
+                                >
+                                    <Text style={styles.modalItemText}>
+                                        {roomData?.type === 'BROADCAST' ? 'Покинуть канал' : 'Покинуть группу'}
+                                    </Text>
+                                </TouchableOpacity>
+
+                                {/* Выход из группы/канала с удалением сообщений - только для не-владельцев */}
+                                {!isOwner && (
                                     <TouchableOpacity
                                         style={styles.modalItem}
-                                        onPress={handleLeaveGroup}
+                                        onPress={handleLeaveGroupWithDeletion}
                                         activeOpacity={0.7}
                                     >
-                                        <Text style={styles.modalItemText}>
-                                            {roomData?.type === 'BROADCAST' ? 'Покинуть канал' : 'Покинуть группу'}
+                                        <Text style={styles.modalItemTextDestructive}>
+                                            Покинуть с удалением
                                         </Text>
                                     </TouchableOpacity>
                                 )}
@@ -696,26 +707,17 @@ export const ChatHeader = ({route, navigation}) => {
                     </Text>
                 </TouchableOpacity>
 
-                {/* Кнопка меню - для BROADCAST каналов показываем только суперадмину */}
-                {(() => {
-                    const roomType = String(roomData?.type || '').toUpperCase().trim();
-                    if (roomType === 'BROADCAST') {
-                        // Для BROADCAST каналов показываем меню только суперадмину
-                        if (!isSuperAdmin) {
-                            return null;
-                        }
-                    }
-                    return (
-                        <TouchableOpacity
-                            onPress={() => setMenuVisible(true)}
-                            style={styles.menuButton}
-                            activeOpacity={0.6}
-                            hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
-                        >
-                            <MenuDotsIcon size={20} color={textColor}/>
-                        </TouchableOpacity>
-                    );
-                })()}
+                {/* Кнопка меню - скрываем для клиентов в BROADCAST каналах */}
+                {!(roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT') && (
+                    <TouchableOpacity
+                        onPress={() => setMenuVisible(true)}
+                        style={styles.menuButton}
+                        activeOpacity={0.6}
+                        hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
+                    >
+                        <MenuDotsIcon size={20} color={textColor}/>
+                    </TouchableOpacity>
+                )}
             </View>
         </>
     );
@@ -723,18 +725,14 @@ export const ChatHeader = ({route, navigation}) => {
 
 const styles = StyleSheet.create({
     header: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
+        position: 'relative',
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: '#FFFFFF',
         paddingHorizontal: 8,
         paddingVertical: 8,
         height: 64,
-        width: screenWidth,
-        zIndex: 1000,
+        width: '100%',
     },
     backButton: {
         padding: 12,

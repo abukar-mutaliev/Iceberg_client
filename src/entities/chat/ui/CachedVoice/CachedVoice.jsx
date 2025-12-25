@@ -12,7 +12,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from '
 import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing, TouchableWithoutFeedback } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { getBaseUrl } from '@shared/api/api';
 import { audioManager } from '../../lib/audioManager';
 
@@ -99,28 +99,49 @@ StatusTicks.displayName = 'StatusTicks';
 // Хук для работы с аудио URI и кэшем
 const useAudioUri = (attachment) => {
   return useMemo(() => {
-    if (!attachment?.path) return { audioUri: null, cachedPath: null };
+    if (!attachment?.path) return { audioUri: null, cachedPath: null, fallbackUrls: [] };
     
     let path = attachment.path;
     
     // Уже локальный файл
     if (path.startsWith('file://')) {
-      return { audioUri: path, cachedPath: path };
+      return { audioUri: path, cachedPath: path, fallbackUrls: [] };
     }
     
-    // Формируем полный URL
+    // Формируем полный URL и fallback варианты для старых сообщений
     let fullUrl = path;
+    const fallbackUrls = [];
+    
     if (!path.startsWith('http://') && !path.startsWith('https://')) {
       path = path.replace(/\\/g, '/');
       if (!path.startsWith('/')) path = '/' + path;
-      fullUrl = `${getBaseUrl()}/uploads${path}`;
+      
+      const baseUrl = getBaseUrl();
+      
+      // Основной URL с /uploads
+      fullUrl = `${baseUrl}/uploads${path}`;
+      
+      // Fallback варианты для старых сообщений
+      // Старый формат без /uploads
+      if (!path.includes('/uploads')) {
+        fallbackUrls.push(`${baseUrl}${path}`);
+      }
+      // Вариант с прямым путем
+      if (path.startsWith('/uploads')) {
+        fallbackUrls.push(`${baseUrl}${path}`);
+      } else {
+        fallbackUrls.push(`${baseUrl}/uploads${path}`);
+      }
+    } else {
+      // Если уже полный URL, используем как есть
+      fullUrl = path;
     }
     
     // Вычисляем путь к кэшу
     const extension = fullUrl.includes('.m4a') ? 'm4a' : 'aac';
     const cached = `${CACHE_DIR}voice_${hashUrl(fullUrl)}.${extension}`;
     
-    return { audioUri: fullUrl, cachedPath: cached };
+    return { audioUri: fullUrl, cachedPath: cached, fallbackUrls };
   }, [attachment?.path]);
 };
 
@@ -407,13 +428,16 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
   // Применяем скорость воспроизведения при изменении playbackRate во время воспроизведения
   useEffect(() => {
     const applyPlaybackRate = async () => {
-      if (soundRef.current && isPlaying) {
-        try {
-          const soundStatus = await soundRef.current.getStatusAsync();
-          if (soundStatus.isLoaded) {
-            await soundRef.current.setRateAsync(playbackRate, true);
-          }
-        } catch (err) {
+      if (!soundRef.current || !isPlaying) return;
+      
+      try {
+        const soundStatus = await soundRef.current.getStatusAsync();
+        if (soundStatus.isLoaded) {
+          await soundRef.current.setRateAsync(playbackRate, true);
+        }
+      } catch (err) {
+        // Игнорируем ошибки, если звук не загружен
+        if (err.message && !err.message.includes('not loaded')) {
           console.error('Error applying playback rate:', err);
         }
       }
@@ -443,7 +467,10 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
           await soundRef.current.setRateAsync(nextRate, true);
         }
       } catch (err) {
-        console.error('Error setting playback rate:', err);
+        // Игнорируем ошибки, если звук не загружен
+        if (err.message && !err.message.includes('not loaded')) {
+          console.error('Error setting playback rate:', err);
+        }
       }
     }
   }, [playbackRate, isPlaying]);
@@ -453,26 +480,58 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
       setError(null);
 
       if (soundRef.current) {
-        const soundStatus = await soundRef.current.getStatusAsync();
-        
-        if (!soundStatus.isLoaded) {
-          setSound(null);
-          soundRef.current = null;
-        } else {
-          if (isPlaying) {
-            setIsPlaying(false);
-            await soundRef.current.pauseAsync();
+        try {
+          const soundStatus = await soundRef.current.getStatusAsync();
+          
+          if (!soundStatus.isLoaded) {
+            // Звук не загружен, очищаем ref и загружаем заново
+            setSound(null);
+            soundRef.current = null;
           } else {
-            setIsPlaying(true);
-            await audioManager.registerSound(messageIdRef.current, soundRef.current);
-            // Применяем текущую скорость воспроизведения
-            await soundRef.current.setRateAsync(playbackRate, true);
-            await soundRef.current.playAsync();
+            // Звук загружен, переключаем воспроизведение
+            if (isPlaying) {
+              setIsPlaying(false);
+              try {
+                await soundRef.current.pauseAsync();
+              } catch (pauseErr) {
+                // Игнорируем ошибки паузы
+                if (pauseErr.message && !pauseErr.message.includes('not loaded')) {
+                  console.warn('Ошибка при паузе:', pauseErr);
+                }
+              }
+            } else {
+              setIsPlaying(true);
+              await audioManager.registerSound(messageIdRef.current, soundRef.current);
+              // Применяем текущую скорость воспроизведения
+              try {
+                await soundRef.current.setRateAsync(playbackRate, true);
+                await soundRef.current.playAsync();
+              } catch (playErr) {
+                // Если не удалось воспроизвести, сбрасываем состояние
+                if (playErr.message && playErr.message.includes('not loaded')) {
+                  setSound(null);
+                  soundRef.current = null;
+                  setIsPlaying(false);
+                  // Продолжаем загрузку нового звука
+                } else {
+                  throw playErr;
+                }
+              }
+            }
+            return;
           }
-          return;
+        } catch (statusErr) {
+          // Ошибка при получении статуса, очищаем и загружаем заново
+          if (statusErr.message && statusErr.message.includes('not loaded')) {
+            setSound(null);
+            soundRef.current = null;
+          } else {
+            throw statusErr;
+          }
         }
       }
 
+      // Загружаем новый звук
       const newSound = await loadAndPlayAudio();
       if (!newSound) {
         throw new Error('Failed to load audio');
@@ -483,10 +542,15 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
       
       await audioManager.registerSound(messageIdRef.current, newSound);
       // Применяем текущую скорость воспроизведения перед запуском
-      await newSound.setRateAsync(playbackRate, true);
-      await newSound.playAsync();
-      
-      setIsPlaying(true);
+      try {
+        await newSound.setRateAsync(playbackRate, true);
+        await newSound.playAsync();
+        setIsPlaying(true);
+      } catch (playErr) {
+        console.error('Ошибка при воспроизведении загруженного звука:', playErr);
+        setError('Не удалось воспроизвести');
+        setIsPlaying(false);
+      }
 
     } catch (err) {
       console.error('Audio playback error:', err);
@@ -534,7 +598,15 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
     const newPosition = (progress / 100) * playbackDuration;
     
     const seekAudio = async () => {
+      if (!soundRef.current) return;
+      
       try {
+        // Проверяем статус перед перемоткой
+        const soundStatus = await soundRef.current.getStatusAsync();
+        if (!soundStatus.isLoaded) {
+          return; // Звук не загружен, не можем перематывать
+        }
+        
         await soundRef.current.setPositionAsync(newPosition * 1000);
         setPlaybackPosition(newPosition);
         progressAnim.setValue(progress);
@@ -543,12 +615,15 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
           await soundRef.current.setRateAsync(playbackRate, true);
         }
       } catch (err) {
-        // Игнорируем ошибки перемотки
+        // Игнорируем ошибки перемотки (включая "not loaded")
+        if (err.message && !err.message.includes('not loaded')) {
+          console.warn('Ошибка при перемотке:', err);
+        }
       }
     };
     
     seekAudio();
-  }, [playbackDuration, progressAnim, playbackPosition]);
+  }, [playbackDuration, progressAnim, playbackPosition, playbackRate]);
 
   return (
     <View style={styles.container}>

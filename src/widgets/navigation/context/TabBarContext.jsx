@@ -10,13 +10,25 @@ export const TabBarProvider = ({ children }) => {
     const [isTabBarVisible, setIsTabBarVisible] = useState(true);
 
     const hideTabBar = useCallback(() => {
-        console.log('📊 TabBarContext: Hiding TabBar');
-        setIsTabBarVisible(false);
+        setIsTabBarVisible(prev => {
+            if (prev === false) {
+                // Уже скрыт, не вызываем ререндер
+                return prev;
+            }
+            console.log('📊 TabBarContext: Hiding TabBar');
+            return false;
+        });
     }, []);
 
     const showTabBar = useCallback(() => {
-        console.log('📊 TabBarContext: Showing TabBar');
-        setIsTabBarVisible(true);
+        setIsTabBarVisible(prev => {
+            if (prev === true) {
+                // Уже показан, не вызываем ререндер
+                return prev;
+            }
+            console.log('📊 TabBarContext: Showing TabBar');
+            return true;
+        });
     }, []);
 
     return (

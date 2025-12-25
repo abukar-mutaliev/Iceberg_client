@@ -2,11 +2,19 @@ import { useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import { Platform } from 'react-native';
 import PushNotificationService from '@shared/services/PushNotificationService';
+import { useNotificationOnboardingHint } from '@shared/hooks/useNotificationOnboardingHint';
+import { useHeadsUpNotificationPrompt } from '@shared/hooks/useHeadsUpNotificationPrompt';
 
 export const usePushTokenAutoRegistration = () => {
   const user = useSelector((s) => s.auth?.user);
   const isAuthenticated = useSelector((s) => s.auth?.isAuthenticated);
   const hasAttemptedRegistration = useRef(false);
+
+  // 1️⃣ Базовый запрос разрешения на уведомления после авторизации
+  useNotificationOnboardingHint({ isAuthenticated, userId: user?.id });
+  
+  // 2️⃣ Подсказка про всплывающие уведомления при первом получении push
+  useHeadsUpNotificationPrompt({ isAuthenticated });
 
   useEffect(() => {
     const register = async () => {

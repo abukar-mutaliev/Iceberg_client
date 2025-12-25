@@ -113,7 +113,12 @@ export const RepostProductModal = ({ visible, onClose, product, currentUser }) =
       onClose();
       
       // Переходим в чат
-      navigation.navigate('ChatRoom', {
+      const rootNavigation =
+        navigation?.getParent?.('AppStack') ||
+        navigation?.getParent?.()?.getParent?.() ||
+        null;
+
+      (rootNavigation || navigation).navigate('ChatRoom', {
         roomId: room.id,
         roomTitle: room.title || 'Чат',
         productId: product.id,
@@ -170,7 +175,12 @@ export const RepostProductModal = ({ visible, onClose, product, currentUser }) =
       onClose();
       
       // Переходим в чат
-      navigation.navigate('ChatRoom', {
+      const rootNavigation =
+        navigation?.getParent?.('AppStack') ||
+        navigation?.getParent?.()?.getParent?.() ||
+        null;
+
+      (rootNavigation || navigation).navigate('ChatRoom', {
         roomId,
         roomTitle: user.displayName,
         productId: product.id,

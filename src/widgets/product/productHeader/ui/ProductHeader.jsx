@@ -8,7 +8,6 @@ import { FontFamily, FontSize, Color } from '@app/styles/GlobalStyles';
 import { ProductFavoriteButton } from "@features/productFavorite";
 import {checkIsFavorite} from "@entities/favorites";
 import {useDispatch} from "react-redux";
-import {Colors} from "react-native/Libraries/NewAppScreen";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -129,7 +128,7 @@ export const ProductHeader = React.memo(({ product, scrollY, onGoBack, onSharePr
             </View>
             <Animated.View style={[styles.floatingHeader, { opacity: headerOpacity }]}>
                 <Text style={[styles.floatingTitle, {
-                    color: Colors.purpleSoft,
+                    color: Color.purpleSoft,
                     backgroundColor: colors.theme === 'light'
                         ? 'rgba(255, 255, 255, 0.8)'
                         : 'rgba(30, 30, 30, 0.8)'

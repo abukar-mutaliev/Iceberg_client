@@ -137,7 +137,7 @@ const imageToBase64 = async (uri) => {
 
         if (Platform.OS === 'android') {
             try {
-                const FileSystem = require('expo-file-system');
+                const FileSystem = require('expo-file-system/legacy');
                 const base64String = await FileSystem.readAsStringAsync(compressResult.uri, {
                     encoding: FileSystem.EncodingType.Base64,
                 });

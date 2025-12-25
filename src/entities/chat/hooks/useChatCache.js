@@ -231,14 +231,36 @@ export const useCachedMessages = (roomId) => {
 
   // Фоновая синхронизация после загрузки из кэша (тихая, без блокировки)
   useEffect(() => {
-    if (!isLoadingFromCache && roomId && messages.length > 0 && !isRoomDeleted && cacheInfo?.isStale) {
-      // Синхронизировать только если кэш устарел
-      const timer = setTimeout(() => {
-        syncWithServer({ silent: true });
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [isLoadingFromCache, roomId, messages.length, syncWithServer, isRoomDeleted, cacheInfo?.isStale]);
+    if (isLoadingFromCache || !roomId || isRoomDeleted) return;
+
+    let cancelled = false;
+    let timer = null;
+
+    (async () => {
+      try {
+        // ✅ Важно: синхронизируем не только "устаревший кэш", иначе в проде можно застрять
+        // на локальных данных и не видеть последние сообщения.
+        //
+        // Берём throttle по sync-state, чтобы не дергать сервер слишком часто.
+        const shouldSync = await chatCacheService.needsSync(roomId, 15_000);
+        if (!shouldSync || cancelled) return;
+
+        // Небольшая задержка, чтобы сначала отрисовать кэш (мгновенный UI)
+        timer = setTimeout(() => {
+          if (!cancelled) {
+            syncWithServer({ silent: true, limit: 100, cursorId: null, direction: 'backward' });
+          }
+        }, 250);
+      } catch {
+        // noop
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [isLoadingFromCache, roomId, syncWithServer, isRoomDeleted]);
 
   // Добавление нового сообщения в кэш
   const addMessageToCache = useCallback(async (message) => {

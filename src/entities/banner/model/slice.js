@@ -225,4 +225,5 @@ const bannerSlice = createSlice({
 
 export const { setCurrentBanner, clearCurrentBanner, setBanners, resetBannerState } = bannerSlice.actions;
 
-export default bannerReducer = bannerSlice.reducer;
+export const bannerReducer = bannerSlice.reducer;
+export default bannerReducer;

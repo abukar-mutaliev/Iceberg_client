@@ -119,6 +119,12 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                 return employeeData.name || 'Сотрудник';
             }
         }
+        if (userData.role === 'DRIVER') {
+            const driverData = userData.driver || userData.profile;
+            if (driverData) {
+                return driverData.name || 'Водитель';
+            }
+        }
         if (userData.role === 'ADMIN') {
             const adminData = userData.admin || userData.profile;
             if (adminData) {
@@ -147,10 +153,41 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
         console.log('===== UserPublicProfileScreen handleGoBack =====');
         console.log('fromScreen:', fromScreen);
         console.log('roomId:', roomId);
-        
-        // Всегда используем стандартный goBack() для возврата на предыдущий экран
-        console.log('Action: navigation.goBack() (fromScreen:', fromScreen, ')');
-        navigation.goBack();
+
+        // Если профиль открыт из ChatRoom — стараемся вернуться именно в комнату, а не в список чатов.
+        try {
+            const state = navigation?.getState?.();
+            const routes = state?.routes || [];
+            const prevRoute = routes.length >= 2 ? routes[routes.length - 2] : null;
+
+            // Если предыдущий экран в этом же навигаторе — ChatRoom, просто goBack().
+            if (navigation?.canGoBack?.() && prevRoute?.name === 'ChatRoom') {
+                navigation.goBack();
+                return;
+            }
+        } catch (e) {
+            // игнорируем
+        }
+
+        // Fallback: если у нас есть roomId, уходим в ChatRoom через корневой AppStack.
+        if (roomId) {
+            const rootNavigation =
+                navigation?.getParent?.('AppStack') ||
+                navigation?.getParent?.()?.getParent?.() ||
+                navigation;
+
+            (rootNavigation || navigation).navigate('ChatRoom', {
+                roomId,
+                fromScreen: 'UserPublicProfile',
+                userId,
+            });
+            return;
+        }
+
+        // В остальных случаях — стандартный back.
+        if (navigation?.canGoBack?.()) {
+            navigation.goBack();
+        }
     };
 
     const getRoleText = (role) => {
@@ -158,6 +195,7 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
             case 'CLIENT': return 'Клиент';
             case 'SUPPLIER': return 'Поставщик';
             case 'EMPLOYEE': return 'Сотрудник';
+            case 'DRIVER': return 'Водитель';
             case 'ADMIN': return 'Администратор';
             default: return 'Пользователь';
         }
@@ -168,6 +206,7 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
         return userData.client?.phone ||
             userData.supplier?.phone ||
             userData.employee?.phone ||
+            userData.driver?.phone ||
             userData.admin?.phone ||
             userData.profile?.phone ||
             null;
@@ -217,7 +256,12 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
             };
             console.log('===== UserPublicProfileScreen: Navigate to ChatRoom =====');
             console.log('ChatRoom params:', JSON.stringify(chatParams, null, 2));
-            navigation.navigate('ChatRoom', chatParams);
+            const rootNavigation =
+                navigation?.getParent?.('AppStack') ||
+                navigation?.getParent?.()?.getParent?.() ||
+                null;
+
+            (rootNavigation || navigation).navigate('ChatRoom', chatParams);
             return;
         }
 
@@ -261,7 +305,12 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                 };
                 console.log('===== UserPublicProfileScreen: Navigate to NEW ChatRoom =====');
                 console.log('ChatRoom params:', JSON.stringify(chatParams, null, 2));
-                navigation.navigate('ChatRoom', chatParams);
+                const rootNavigation =
+                    navigation?.getParent?.('AppStack') ||
+                    navigation?.getParent?.()?.getParent?.() ||
+                    null;
+
+                (rootNavigation || navigation).navigate('ChatRoom', chatParams);
             } else {
                 throw new Error('Не удалось создать чат');
             }
@@ -442,6 +491,20 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                                     <Text style={styles.sectionLabel}>Адрес</Text>
                                 </View>
                                 <Text style={styles.infoText}>{user.employee?.address || user.profile?.address}</Text>
+                            </View>
+                        )}
+                    </>
+                )}
+
+                {/* Driver Info - показываем только если есть права доступа */}
+                {(user?.driver || (user?.role === 'DRIVER' && user?.profile)) && canViewSensitiveInfo && (
+                    <>
+                        {(user.driver?.address || user.profile?.address) && (
+                            <View style={styles.infoSection}>
+                                <View style={styles.infoRow}>
+                                    <Text style={styles.sectionLabel}>Адрес</Text>
+                                </View>
+                                <Text style={styles.infoText}>{user.driver?.address || user.profile?.address}</Text>
                             </View>
                         )}
                     </>

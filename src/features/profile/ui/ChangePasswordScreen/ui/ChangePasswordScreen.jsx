@@ -8,7 +8,9 @@ import {
     Alert,
     SafeAreaView,
     ActivityIndicator,
-    ScrollView
+    ScrollView,
+    KeyboardAvoidingView,
+    Platform
 } from 'react-native';
 import {CommonActions, useNavigation} from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
@@ -129,11 +131,17 @@ export const ChangePasswordScreen = () => {
                 </View>
             </View>
 
-            <ScrollView 
-                style={styles.content}
-                contentContainerStyle={styles.contentContainer}
-                keyboardShouldPersistTaps="handled"
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
             >
+                <ScrollView 
+                    style={styles.content}
+                    contentContainerStyle={styles.contentContainer}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                >
                 <View style={styles.inputContainer}>
                     <Text style={styles.label}>Текущий пароль</Text>
                     <View style={[styles.inputWrapper, validationErrors.currentPassword && styles.errorInput]}>
@@ -214,6 +222,7 @@ export const ChangePasswordScreen = () => {
                     </TouchableOpacity>
                 </View>
             </ScrollView>
+            </KeyboardAvoidingView>
         </SafeAreaView>
     );
 };

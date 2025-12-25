@@ -1,17 +1,16 @@
-import React, {useState, useRef, useEffect} from 'react';
+import React, {useState, useEffect, useMemo} from 'react';
 import {
     View,
     Text,
     Pressable,
     ScrollView,
     StyleSheet,
-    Dimensions,
     SafeAreaView,
     StatusBar,
+    useWindowDimensions,
 } from 'react-native';
-import {PanGestureHandler, PinchGestureHandler, State} from 'react-native-gesture-handler';
+import {Gesture, GestureDetector} from 'react-native-gesture-handler';
 import Animated, {
-    useAnimatedGestureHandler,
     useAnimatedStyle,
     useSharedValue,
     withSpring,
@@ -29,25 +28,40 @@ import { Color } from "@app/styles/GlobalStyles";
 import { Loader } from "@shared/ui/Loader";
 import { ErrorState } from "@shared/ui/states/ErrorState";
 
-const { width: screenWidth, height: screenHeight} = Dimensions.get('window');
+// Базовая ширина для дизайна (эталон)
+const BASE_DESIGN_WIDTH = 400;
+const BASE_DESIGN_HEIGHT = 800;
 
-// Коэффициенты масштабирования
-const scaleUI = Math.min(screenWidth / 400, screenHeight / 800);
-
-// Масштабирование позиций районов только для планшетов (ширина > 500px)
-const scaleDistricts = screenWidth > 500 ? screenWidth / 400 : 1;
+// Ограничения масштабирования для предотвращения слишком маленьких/больших размеров
+const MIN_SCALE = 0.8;
+const MAX_SCALE = 1.5;
 
 export const InteractiveMap = ({ onDistrictSelect }) => {
     const [selectedRegion, setSelectedRegion] = useState(null);
     const [showInfo, setShowInfo] = useState(false);
 
+    // Используем useWindowDimensions для адаптивности при изменении ориентации
+    const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
-    const panRef = useRef();
-    const pinchRef = useRef();
+    // Адаптивные коэффициенты масштабирования
+    const scaleUI = useMemo(() => {
+        const scale = Math.min(screenWidth / BASE_DESIGN_WIDTH, screenHeight / BASE_DESIGN_HEIGHT);
+        return Math.max(MIN_SCALE, Math.min(scale, MAX_SCALE));
+    }, [screenWidth, screenHeight]);
+
+    // Коэффициент масштабирования для позиций районов (основан на ширине)
+    const scaleDistricts = useMemo(() => {
+        const scale = screenWidth / BASE_DESIGN_WIDTH;
+        // Ограничиваем масштабирование для сохранения пропорций
+        return Math.max(MIN_SCALE, Math.min(scale, MAX_SCALE));
+    }, [screenWidth]);
 
     const scale = useSharedValue(1);
     const translateX = useSharedValue(0);
     const translateY = useSharedValue(0);
+    const savedScale = useSharedValue(1);
+    const savedTranslateX = useSharedValue(0);
+    const savedTranslateY = useSharedValue(0);
 
     const districtsWithStats = useSelector(selectDistrictsWithStats);
     const {
@@ -130,88 +144,147 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
 
     const regionInfo = getRegionInfo();
 
-    const districts = [
+    // ==========================================
+    // КОНФИГУРАЦИЯ ПОЗИЦИЙ РАЙОНОВ
+    // Регулируйте значения ниже для корректного соединения районов в цельную карту
+    // Все значения указаны для эталонной ширины экрана 400px
+    //
+    // ВИЗУАЛЬНАЯ СХЕМА КАРТЫ (вид сверху):
+    // ┌─────────────────────────────────────┐
+    // │ [Малгобек] [Назран]         [Сунжа]│ ← top: -2, 92, 40
+    // │               │                │    │
+    // │          [Пригородный]         │    │
+    // │               │                │    │
+    // │         [Джейрахский]              │ ← bottom
+    // └─────────────────────────────────────┘
+    //
+    // ПАРАМЕТРЫ ДЛЯ НАСТРОЙКИ:
+    // - position.left/right - горизонтальная позиция (в пикселях для 400px ширины)
+    // - position.top - вертикальная позиция (в пикселях для 400px ширины)
+    // - size.width - ширина в пикселях (для 400px ширины экрана)
+    // - size.height - высота в пикселях (для 400px ширины экрана)
+    // - zIndex - порядок слоев (больше = выше, перекрывает нижние)
+    // - hitSlop - дополнительная область для нажатия (в пикселях)
+    // ==========================================
+    
+    const districtConfig = {
+        // Малгобекский район - верхний левый угол карты
+        malgobek: {
+            position: { left: 105, top: 0 }, // Позиция от левого верхнего угла
+            size: { width: 148, height: 128 }, // Фиксированные размеры в пикселях
+            zIndex: 2, // Слой отображения (меньше = ниже)
+            hitSlop: 10, // Дополнительная область для нажатия
+            borderRadius: 8,
+        },
+        
+        // Назрановский район - центр-верх карты
+        nazran: {
+            position: { left: 152, top: 93.5 },
+            size: { width: 140, height: 140 },
+            zIndex: 5, // Выше остальных (перекрывает соседние)
+            hitSlop: 0,
+            borderRadius: 10,
+        },
+        
+        // Сунженский район - правый верх карты (высокий)
+        sunzha: {
+            position: { right: 50, top: 49 }, // Используем right вместо left
+            size: { width: 116, height: 302 },
+            zIndex: 1, // Самый нижний слой
+            hitSlop: 0,
+            borderRadius: 12,
+        },
+        
+        // Пригородный район - центр карты
+        prigorodny: {
+            position: { left: 147, top: 129 },
+            size: { width: 130, height: 237 },
+            zIndex: 4,
+            hitSlop: 0,
+            borderRadius: 8,
+        },
+        
+        // Джейрахский район - нижняя часть карты (широкий)
+        dzheirakhsky: {
+            position: { left: 144, top: 311 },
+            size: { width: 192, height: 144 },
+            zIndex: 3,
+            hitSlop: 5,
+            borderRadius: 10,
+        },
+    };
+
+    // Адаптивные размеры и позиции районов (генерируются из конфигурации)
+    const districts = useMemo(() => {
+        // Функция для создания стиля района из конфигурации
+        const createDistrictStyle = (config) => {
+            const { position, size, zIndex, hitSlop, borderRadius } = config;
+            const hitSlopValue = hitSlop * scaleDistricts;
+            
+            const style = {
+                position: 'absolute',
+                zIndex,
+            };
+            
+            // Обрабатываем left/right/top позиции - масштабируем единообразно
+            if (position.left !== undefined) {
+                style.left = position.left * scaleDistricts;
+            }
+            if (position.right !== undefined) {
+                style.right = position.right * scaleDistricts;
+            }
+            if (position.top !== undefined) {
+                style.top = position.top * scaleDistricts;
+            }
+            if (position.bottom !== undefined) {
+                style.bottom = position.bottom * scaleDistricts;
+            }
+            
+            return {
+                style,
+                // Масштабируем размеры так же, как и позиции - для сохранения пропорций
+                width: size.width * scaleDistricts,
+                height: size.height * scaleDistricts,
+                hitSlop: {
+                    top: hitSlopValue,
+                    bottom: hitSlopValue,
+                    left: hitSlopValue,
+                    right: hitSlopValue,
+                },
+                pressableStyle: {
+                    borderRadius: borderRadius * scaleDistricts,
+                }
+            };
+        };
+
+        return [
         {
             id: 'malgobek',
             Component: Malgobek,
-            style: {
-                position: 'absolute',
-                left: 117 * scaleDistricts,
-                top: -2 * scaleDistricts,
-                zIndex: 2,
-            },
-            width: screenWidth * 0.35,
-            height: screenHeight * 0.15,
-            hitSlop: {top: 10 * scaleDistricts, bottom: 10 * scaleDistricts, left: 10 * scaleDistricts, right: 10 * scaleDistricts},
-            pressableStyle: {
-                borderRadius: 8,
-            }
+            ...createDistrictStyle(districtConfig.malgobek),
         },
         {
             id: 'nazran',
             Component: Nazran,
-            style: {
-                position: 'absolute',
-                left: 155 * scaleDistricts,
-                top: 78 * scaleDistricts,
-                zIndex: 5,
-            },
-            width: screenWidth * 0.34,
-            height: screenHeight * 0.16,
-            hitSlop: {top: 0, bottom: 0, left: 0, right: 0},
-            pressableStyle: {
-                borderRadius: 10,
-            }
+            ...createDistrictStyle(districtConfig.nazran),
         },
         {
             id: 'sunzha',
             Component: Sunzha,
-            style: {
-                position: 'absolute',
-                right: 25 * scaleDistricts,
-                top: 40 * scaleDistricts,
-                zIndex: 1,
-            },
-            width: screenWidth * 0.33,
-            height: screenHeight * 0.35,
-            hitSlop: {top: 0, bottom: 0, left: 0, right: 0},
-            pressableStyle: {
-                borderRadius: 12,
-            }
+            ...createDistrictStyle(districtConfig.sunzha),
         },
         {
             id: 'prigorodny',
             Component: Prigorodny,
-            style: {
-                position: 'absolute',
-                left: 152 * scaleDistricts,
-                top: 124 * scaleDistricts,
-                zIndex: 4,
-            },
-            width: screenWidth * 0.31,
-            height: screenHeight * 0.23,
-            hitSlop: {top: 0, bottom: 0, left: 0, right: 0},
-            pressableStyle: {
-                borderRadius: 8,
-            }
+            ...createDistrictStyle(districtConfig.prigorodny),
         },
         {
             id: 'dzheirakhsky',
             Component: Dzheirakh,
-            style: {
-                position: 'absolute',
-                left: 150 * scaleDistricts,
-                top: 261 * scaleDistricts,
-                zIndex: 3,
-            },
-            width: screenWidth * 0.45,
-            height: screenHeight * 0.17,
-            hitSlop: {top: 5 * scaleDistricts, bottom: 5 * scaleDistricts, left: 5 * scaleDistricts, right: 5 * scaleDistricts},
-            pressableStyle: {
-                borderRadius: 10,
-            }
+            ...createDistrictStyle(districtConfig.dzheirakhsky),
         },
-    ];
+        ];
+    }, [screenWidth, screenHeight, scaleDistricts]);
 
     const handleRegionPress = (regionId) => {
         if (regionInfo[regionId]) {
@@ -241,32 +314,35 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
         setSelectedRegion(null);
     };
 
-    const pinchHandler = useAnimatedGestureHandler({
-        onStart: (_, context) => {
-            context.startScale = scale.value;
-        },
-        onActive: (event, context) => {
-            scale.value = Math.max(0.5, Math.min(context.startScale * event.scale, 3));
-        },
-        onEnd: () => {
+    const pinchGesture = Gesture.Pinch()
+        .onStart(() => {
+            savedScale.value = scale.value;
+        })
+        .onUpdate((event) => {
+            scale.value = Math.max(0.5, Math.min(savedScale.value * event.scale, 3));
+        })
+        .onEnd(() => {
             scale.value = withSpring(Math.max(0.5, Math.min(scale.value, 3)));
-        },
-    });
+            savedScale.value = scale.value;
+        });
 
-    const panHandler = useAnimatedGestureHandler({
-        onStart: (_, context) => {
-            context.startX = translateX.value;
-            context.startY = translateY.value;
-        },
-        onActive: (event, context) => {
-            translateX.value = context.startX + event.translationX;
-            translateY.value = context.startY + event.translationY;
-        },
-        onEnd: () => {
+    const panGesture = Gesture.Pan()
+        .onStart(() => {
+            savedTranslateX.value = translateX.value;
+            savedTranslateY.value = translateY.value;
+        })
+        .onUpdate((event) => {
+            translateX.value = savedTranslateX.value + event.translationX;
+            translateY.value = savedTranslateY.value + event.translationY;
+        })
+        .onEnd(() => {
             translateX.value = withSpring(translateX.value);
             translateY.value = withSpring(translateY.value);
-        },
-    });
+            savedTranslateX.value = translateX.value;
+            savedTranslateY.value = translateY.value;
+        });
+
+    const composedGesture = Gesture.Simultaneous(pinchGesture, panGesture);
 
     const animatedStyle = useAnimatedStyle(() => {
         return {
@@ -281,16 +357,21 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
     // Функции для управления зумом
     const zoomIn = () => {
         scale.value = withSpring(Math.min(scale.value + 0.5, 3));
+        savedScale.value = scale.value;
     };
 
     const zoomOut = () => {
         scale.value = withSpring(Math.max(scale.value - 0.5, 0.5));
+        savedScale.value = scale.value;
     };
 
     const resetView = () => {
         scale.value = withSpring(1);
         translateX.value = withSpring(0);
         translateY.value = withSpring(0);
+        savedScale.value = 1;
+        savedTranslateX.value = 0;
+        savedTranslateY.value = 0;
         setSelectedRegion(null);
         setShowInfo(false);
         resetDistrictSelection();
@@ -466,6 +547,53 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
         );
     }
 
+    // Адаптивные стили на основе текущих размеров экрана
+    const adaptiveStyles = useMemo(() => ({
+        sideControls: {
+            ...styles.sideControls,
+            left: 16 * scaleUI,
+            top: 200 * scaleUI,
+            marginTop: -75 * scaleUI,
+            padding: 8 * scaleUI,
+        },
+        sideControlButton: {
+            ...styles.sideControlButton,
+            width: 44 * scaleUI,
+            height: 44 * scaleUI,
+            marginBottom: 8 * scaleUI,
+        },
+        sideControlButtonText: {
+            ...styles.sideControlButtonText,
+            fontSize: 20 * scaleUI,
+        },
+        sideResetButtonText: {
+            ...styles.sideResetButtonText,
+            fontSize: 18 * scaleUI,
+        },
+        mapWrapper: {
+            ...styles.mapWrapper,
+            width: screenWidth,
+            height: screenHeight * 0.5,
+            paddingTop: 20 * scaleUI,
+        },
+        instruction: {
+            ...styles.instruction,
+            bottom: 2 * scaleUI,
+            left: 16 * scaleUI,
+            right: 16 * scaleUI,
+            paddingHorizontal: 16 * scaleUI,
+            paddingVertical: 5 * scaleUI,
+        },
+        instructionText: {
+            ...styles.instructionText,
+            fontSize: 14 * scaleUI,
+        },
+        bottomPanel: {
+            ...styles.bottomPanel,
+            minHeight: screenHeight * 0.25,
+        },
+    }), [screenWidth, screenHeight, scaleUI]);
+
     return (
         <SafeAreaView style={styles.container}>
             {/* Заголовок без кнопок управления */}
@@ -477,58 +605,45 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
                 {isLoading && renderLoadingState()}
 
                 {/* Боковые кнопки управления */}
-                <View style={styles.sideControls} pointerEvents="box-none">
-                    <Pressable style={styles.sideControlButton} onPress={zoomIn}>
-                        <Text style={styles.sideControlButtonText}>+</Text>
+                <View style={adaptiveStyles.sideControls} pointerEvents="box-none">
+                    <Pressable style={adaptiveStyles.sideControlButton} onPress={zoomIn}>
+                        <Text style={adaptiveStyles.sideControlButtonText}>+</Text>
                     </Pressable>
-                    <Pressable style={styles.sideControlButton} onPress={zoomOut}>
-                        <Text style={styles.sideControlButtonText}>-</Text>
+                    <Pressable style={[adaptiveStyles.sideControlButton, styles.sideResetButton]} onPress={zoomOut}>
+                        <Text style={adaptiveStyles.sideControlButtonText}>-</Text>
                     </Pressable>
-                    <Pressable style={[styles.sideControlButton, styles.sideResetButton]} onPress={resetView}>
-                        <Text style={styles.sideResetButtonText}>⌂</Text>
+                    <Pressable style={[adaptiveStyles.sideControlButton, styles.sideResetButton]} onPress={resetView}>
+                        <Text style={adaptiveStyles.sideResetButtonText}>⌂</Text>
                     </Pressable>
                 </View>
 
-                <PinchGestureHandler
-                    ref={pinchRef}
-                    onGestureEvent={pinchHandler}
-                    simultaneousHandlers={[panRef]}
-                    minPointers={2}
-                >
-                    <Animated.View style={styles.gestureContainer}>
-                        <PanGestureHandler
-                            ref={panRef}
-                            onGestureEvent={panHandler}
-                            simultaneousHandlers={[pinchRef]}
-                            minPointers={1}
-                            maxPointers={1}
-                        >
-                            <Animated.View style={[styles.mapWrapper, animatedStyle]}>
-                                {districts
-                                    .sort((a, b) => (b.style.zIndex || 0) - (a.style.zIndex || 0))
-                                    .map((district) => {
-                                        if (!district.Component) {
-                                            console.warn(`Компонент для района ${district.id} не найден`);
-                                            return null;
-                                        }
+                <GestureDetector gesture={composedGesture}>
+                    <Animated.View style={[styles.gestureContainer, animatedStyle]}>
+                        <Animated.View style={adaptiveStyles.mapWrapper}>
+                            {districts
+                                .sort((a, b) => (b.style.zIndex || 0) - (a.style.zIndex || 0))
+                                .map((district) => {
+                                    if (!district.Component) {
+                                        console.warn(`Компонент для района ${district.id} не найден`);
+                                        return null;
+                                    }
 
-                                        return (
-                                            <InteractiveDistrict
-                                                key={district.id}
-                                                district={district}
-                                            />
-                                        );
-                                    })
-                                }
-                            </Animated.View>
-                        </PanGestureHandler>
+                                    return (
+                                        <InteractiveDistrict
+                                            key={district.id}
+                                            district={district}
+                                        />
+                                    );
+                                })
+                            }
+                        </Animated.View>
                     </Animated.View>
-                </PinchGestureHandler>
+                </GestureDetector>
 
                 {/* Инструкция */}
                 {!showInfo && !isLoading && (
-                    <View style={styles.instruction}>
-                        <Text style={styles.instructionText}>
+                    <View style={adaptiveStyles.instruction}>
+                        <Text style={adaptiveStyles.instructionText}>
                             Нажмите на район - остановки сразу отфильтруются по этому району
                         </Text>
                     </View>
@@ -536,7 +651,7 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
             </View>
 
             {/* Нижняя панель с информацией или легендой */}
-            <View style={styles.bottomPanel}>
+            <View style={adaptiveStyles.bottomPanel}>
                 <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
                     {showInfo ? renderInfoPanel() : renderLegend()}
                 </ScrollView>
@@ -574,13 +689,9 @@ const styles = StyleSheet.create({
     },
     sideControls: {
         position: 'absolute',
-        left: 16 * scaleUI,
-        top: 200 * scaleUI,
-        marginTop: -75 * scaleUI,
         zIndex: 100,
         backgroundColor: 'rgba(255, 255, 255, 0.95)',
         borderRadius: 12,
-        padding: 8 * scaleUI,
         elevation: 6,
         shadowColor: '#000',
         shadowOffset: {
@@ -592,12 +703,9 @@ const styles = StyleSheet.create({
     },
     sideControlButton: {
         backgroundColor: '#3b82f6',
-        width: 44 * scaleUI,
-        height: 44 * scaleUI,
         borderRadius: 8,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 8 * scaleUI,
         elevation: 2,
         shadowColor: '#000',
         shadowOffset: {
@@ -609,16 +717,13 @@ const styles = StyleSheet.create({
     },
     sideControlButtonText: {
         color: '#ffffff',
-        fontSize: 20 * scaleUI,
         fontWeight: 'bold',
     },
     sideResetButton: {
         backgroundColor: '#6b7280',
-        marginBottom: 0,
     },
     sideResetButtonText: {
         color: '#ffffff',
-        fontSize: 18 * scaleUI,
         fontWeight: 'bold',
     },
     gestureContainer: {
@@ -630,29 +735,19 @@ const styles = StyleSheet.create({
     mapWrapper: {
         justifyContent: 'flex-start',
         alignItems: 'center',
-        width: screenWidth,
-        height: screenHeight * 0.5,
-        paddingTop: 20 * scaleUI,
     },
     instruction: {
         position: 'absolute',
-        bottom: 2 * scaleUI,
-        left: 16 * scaleUI,
-        right: 16 * scaleUI,
         backgroundColor: 'rgba(59, 130, 246, 0.9)',
-        paddingHorizontal: 16 * scaleUI,
-        paddingVertical: 5 * scaleUI,
         borderRadius: 8,
     },
     instructionText: {
         color: '#ffffff',
         textAlign: 'center',
-        fontSize: 14 * scaleUI,
         fontWeight: '500',
     },
     bottomPanel: {
         backgroundColor: '#ffffff',
-        minHeight: screenHeight * 0.25,
         borderTopWidth: 1,
         borderTopColor: '#e5e7eb',
     },

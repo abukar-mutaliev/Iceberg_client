@@ -174,11 +174,9 @@ export const useChatSocket = () => {
           
           // join existing rooms
           const roomIds = roomsState?.ids || [];
-          console.log('🏠 Auto-joining rooms:', roomIds);
           
           roomIds.forEach((roomId) => {
             if (!joinedRoomsRef.current.has(roomId)) {
-              console.log('🏠 Attempting to join room:', roomId);
               socket.emit('chat:join', { roomId });
               joinedRoomsRef.current.add(roomId);
               console.log('🏠 ✅ Joined room:', roomId);

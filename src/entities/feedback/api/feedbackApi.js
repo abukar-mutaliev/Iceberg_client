@@ -1,4 +1,4 @@
-import { createProtectedRequest } from '@shared/api/api';
+import { createProtectedRequest, createPublicRequest } from '@shared/api/api';
 
 const formatFeedback = (feedback, userData) => {
     // Если в отзыве уже есть клиент с именем, возвращаем его как есть с проверкой на photoUrls
@@ -131,7 +131,8 @@ const createFormDataWithPhotos = (photos) => {
 export const feedbackApi = {
     getProductFeedbacks: async (productId, userData) => {
         try {
-            const response = await createProtectedRequest('get', `/api/feedbacks?productId=${productId}`);
+            // Публичный эндпоинт - не требует авторизации для просмотра отзывов
+            const response = await createPublicRequest('get', `/api/feedbacks?productId=${productId}`);
 
             if (response && response.status === 'success' && Array.isArray(response.data)) {
                 // Форматируем все отзывы, добавляя информацию о клиенте и URL фотографий

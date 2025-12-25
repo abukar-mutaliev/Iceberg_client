@@ -60,7 +60,8 @@ export const ChatListScreen = ({navigation}) => {
     const dispatch = useDispatch();
     const rooms = useSelector(selectRoomsList) || [];
     const loading = useSelector((s) => s.chat?.rooms?.loading);
-    const currentUserId = useSelector((s) => s.auth?.user?.id);
+    const currentUser = useSelector((s) => s.auth?.user);
+    const currentUserId = currentUser?.id;
     const participantsById = useSelector((s) => s.chat?.participants?.byUserId || {});
     const productsById = useSelector(selectProductsById);
     const page = useSelector((s) => s.chat?.rooms?.page);
@@ -214,24 +215,57 @@ export const ChatListScreen = ({navigation}) => {
             return room.title;
         }
 
-        // Для чатов с товарами показываем название товара
+        // Для чатов с товарами показываем название товара в первую очередь
         if (room?.type === 'PRODUCT') {
-            // Сначала проверяем товар в объекте комнаты
+            // Приоритет 1: Название товара из объекта product
             if (room?.product?.name) {
-                return `Товар: ${room.product.name}`;
+                return room.product.name;
             }
             
-            // Если товар не в объекте комнаты, проверяем productsById
+            // Приоритет 2: Название товара из кэша productsById
             if (room?.productId && productsById[room.productId]?.name) {
-                return `Товар: ${productsById[room.productId].name}`;
+                return productsById[room.productId].name;
             }
             
-            // Если товар еще не загружен, используем title комнаты (который должен содержать название товара)
+            // Приоритет 3: Название товара из room.title
             if (room?.title) {
-                return `Товар: ${room.title}`;
+                return room.title;
             }
             
-            // Fallback - показываем что это товар
+            // Fallback: Если товар не найден, показываем имя поставщика
+            if (room?.participants && Array.isArray(room.participants)) {
+                const supplierParticipant = room.participants.find(p => {
+                    const user = p?.user || p;
+                    return user?.role === 'SUPPLIER';
+                });
+
+                if (supplierParticipant) {
+                    const supplierUser = supplierParticipant.user || supplierParticipant;
+                    
+                    // Сначала проверяем name, который сервер уже установил правильно
+                    if (supplierUser.name && supplierUser.name !== supplierUser.email) {
+                        return supplierUser.name;
+                    }
+                    
+                    // Проверяем название компании поставщика
+                    const companyName =
+                        supplierUser.supplier?.companyName ||
+                        supplierUser.companyName ||
+                        supplierUser.profile?.companyName ||
+                        null;
+                    if (companyName) return companyName;
+
+                    // Если компании нет, показываем контактное лицо
+                    const contactPerson =
+                        supplierUser.supplier?.contactPerson ||
+                        supplierUser.contactPerson ||
+                        supplierUser.profile?.contactPerson ||
+                        null;
+                    if (contactPerson) return contactPerson;
+                }
+            }
+            
+            // Последний fallback - показываем что это товар
             return `Товар #${room.productId || room.id}`;
         }
 
@@ -279,6 +313,17 @@ export const ChatListScreen = ({navigation}) => {
 
                 // Если ничего не найдено, показываем ID пользователя
                 return `Пользователь #${partnerUser.id || partner.id}`;
+            } else {
+                // Если партнер не найден (например, второй участник покинул чат),
+                // используем room.title как fallback, если он есть и не равен имени текущего пользователя
+                const currentUserName = currentUser?.client?.name || 
+                                      currentUser?.name || 
+                                      currentUser?.email?.split('@')[0] || 
+                                      '';
+                
+                if (room?.title && room.title !== currentUserName && room.title !== 'Чат' && room.title !== 'Водитель') {
+                    return room.title;
+                }
             }
         }
 
@@ -288,7 +333,7 @@ export const ChatListScreen = ({navigation}) => {
         }
 
         return room?.id ? `Комната ${room.id}` : 'Чат';
-    }, [currentUserId, productsById]);
+    }, [currentUserId, currentUser, productsById]);
 
     const toAbsoluteUri = useCallback((raw) => {
         if (!raw || typeof raw !== 'string') return null;
@@ -376,7 +421,13 @@ export const ChatListScreen = ({navigation}) => {
         }
         dispatch(setActiveRoom(rid));
         const productInfo = room?.product ? {id: room.product?.id, supplier: room.product?.supplier} : undefined;
-        navigation.navigate('ChatRoom', {
+        // ✅ ChatRoom теперь в корневом Stack (AppStack), чтобы таббар не мог появляться в комнате
+        const rootNavigation =
+            navigation?.getParent?.('AppStack') ||
+            navigation?.getParent?.()?.getParent?.() ||
+            null;
+
+        (rootNavigation || navigation).navigate('ChatRoom', {
             roomId: rid,
             roomTitle: room?.title,
             productId: room?.productId || room?.product?.id,

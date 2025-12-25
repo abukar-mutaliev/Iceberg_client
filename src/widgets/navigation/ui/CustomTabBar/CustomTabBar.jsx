@@ -13,7 +13,8 @@ import {
 import { useCartAvailability } from '@entities/cart';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { selectWaitingStockCountCombined, selectSupplierWaitingStockCount } from '@entities/order';
-import { useTabBar } from '../../context';
+// Важно: используем тот же экземпляр контекста, что и экраны (иначе hideTabBar() не влияет на CustomTabBar)
+import { useTabBar } from '@widgets/navigation';
 
 const { width } = Dimensions.get('window');
 
@@ -43,70 +44,16 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
         const keyboardWillShow = Keyboard.addListener(
             Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
             (e) => {
-                // Проверяем, находимся ли мы в чате
-                const currentRoute = state.routes[state.index];
-                
-                // Детальная отладка структуры маршрутов
-                console.log('🔍 Route structure:', {
-                    currentRouteName: currentRoute?.name,
-                    hasState: !!currentRoute?.state,
-                    stateRoutes: currentRoute?.state?.routes?.map(r => r.name),
-                    nestedRoutes: currentRoute?.state?.routes?.map(r => ({
-                        name: r.name,
-                        hasState: !!r?.state,
-                        nestedNames: r?.state?.routes?.map(nr => nr.name)
-                    }))
-                });
-                
-                // Проверяем различные варианты навигации к чату
-                const isChatTab = currentRoute?.name === 'ChatList';
-                const hasChatRoom = currentRoute?.state?.routes?.some(route => 
-                    route.name === 'ChatRoom' || 
-                    route.name === 'ChatMain'
-                );
-                
-                // Дополнительная проверка для глубоко вложенных маршрутов
-                const hasNestedChatRoom = currentRoute?.state?.routes?.some(route => 
-                    route?.state?.routes?.some(nestedRoute => 
-                        nestedRoute.name === 'ChatRoom'
-                    )
-                );
-                
-                // Проверяем, находимся ли мы в поиске
-                const isSearchTab = currentRoute?.name === 'Search';
-                const hasSearchMain = currentRoute?.state?.routes?.some(route => 
-                    route.name === 'SearchMain'
-                );
-                
-                // Проверяем, находимся ли мы в авторизации (ProfileTab без авторизации)
-                const isProfileTab = currentRoute?.name === 'ProfileTab';
-                // В ProfileTab может быть AuthScreen, если пользователь не авторизован
-                
-                const isChatScreen = isChatTab || hasChatRoom || hasNestedChatRoom;
-                const isSearchScreen = isSearchTab || hasSearchMain;
-                const isAuthScreen = isProfileTab; // TabBar скрывается в ProfileTab когда там AuthScreen
-                
-                console.log('⌨️ Keyboard shown:', {
-                    currentTab: currentRoute?.name,
-                    isChatTab,
-                    hasChatRoom,
-                    hasNestedChatRoom,
-                    isChatScreen,
-                    isSearchTab,
-                    hasSearchMain,
-                    isSearchScreen,
-                    isProfileTab,
-                    isAuthScreen,
-                    keyboardHeight: e.endCoordinates.height
-                });
-                
-                // Скрываем TabBar для чата, поиска или авторизации
-                if (isChatScreen || isSearchScreen || isAuthScreen) {
-                    const reason = isChatScreen ? 'chat' : isSearchScreen ? 'search' : 'auth';
-                    console.log('🔴 Hiding TabBar for:', reason);
+                // НЕ скрываем таббар глобально во всём приложении.
+                // В чатах мы скрываем таббар на уровне экранов (useFocusEffect),
+                // а здесь оставляем безопасное поведение только для Search/Auth.
+                const currentTab = state.routes[state.index]?.name;
+                const shouldHide = currentTab === 'Search' || currentTab === 'ProfileTab';
+                if (shouldHide) {
+                    if (__DEV__) {
+                        console.log('⌨️ Keyboard shown: hiding TabBar', { currentTab });
+                    }
                     hideTabBar();
-                } else {
-                    console.log('🟢 Not hiding TabBar - not in special screen');
                 }
             }
         );
@@ -115,9 +62,15 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
             Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
             () => {
                 if (__DEV__) {
-                    console.log('⌨️ Keyboard hidden');
+                    console.log('⌨️ Keyboard hidden, current visibility:', isTabBarVisible);
                 }
-                showTabBar();
+                // Показываем таббар только если мы в табах Search или ProfileTab
+                // В чатах таббар управляется через useFocusEffect в экранах чата
+                const currentTab = state.routes[state.index]?.name;
+                const shouldShow = currentTab === 'Search' || currentTab === 'ProfileTab';
+                if (shouldShow) {
+                    showTabBar();
+                }
             }
         );
 
@@ -125,7 +78,7 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
             keyboardWillShow.remove();
             keyboardWillHide.remove();
         };
-    }, [hideTabBar, showTabBar, state.index, state.routes]);
+    }, [hideTabBar, showTabBar, isTabBarVisible, state.index, state.routes]);
     
     // Получаем ID поставщика, если пользователь является поставщиком
     const supplierId = currentUser?.supplier?.id;

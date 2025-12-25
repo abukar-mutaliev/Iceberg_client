@@ -14,8 +14,9 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '@entities/auth/hooks/useAuth';
-import { fetchRooms, sendProduct } from '@entities/chat/model/slice';
+import { fetchRooms, sendProduct, fetchRoom, hydrateRooms } from '@entities/chat/model/slice';
 import { selectRoomsList } from '@entities/chat/model/selectors';
+import { selectProductsById } from '@entities/product/model/selectors';
 import ChatApi from '@entities/chat/api/chatApi';
 import { getBaseUrl } from '@shared/api/api';
 import { debounce } from 'lodash';
@@ -35,6 +36,7 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
   const rooms = useSelector(selectRoomsList) || [];
   const currentUserId = currentUser?.id;
   const currentUserRole = useSelector((s) => s.auth?.user?.role);
+  const productsById = useSelector(selectProductsById);
 
   // Загружаем существующие чаты при открытии (только для авторизованных пользователей)
   useEffect(() => {
@@ -165,7 +167,12 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
        onClose();
       
       // Переходим в чат
-      navigation.navigate('ChatRoom', {
+      const rootNavigation =
+        navigation?.getParent?.('AppStack') ||
+        navigation?.getParent?.()?.getParent?.() ||
+        null;
+
+      (rootNavigation || navigation).navigate('ChatRoom', {
         roomId: room.id,
         roomTitle: room.title || 'Чат',
         productId: product.id,
@@ -203,6 +210,25 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
         const room = response?.data?.room;
         if (room) {
           roomId = room.id;
+          
+          // Загружаем полные данные комнаты с участниками
+          try {
+            const roomResult = await dispatch(fetchRoom(roomId));
+            if (roomResult.payload?.room) {
+              // Добавляем комнату в Redux store с полными данными участников
+              dispatch(hydrateRooms({ rooms: [roomResult.payload.room] }));
+            }
+          } catch (error) {
+            console.warn('Failed to load room details:', error);
+            // Продолжаем даже если не удалось загрузить детали
+          }
+          
+          // Обновляем список комнат
+          try {
+            await dispatch(fetchRooms({ page: 1, forceRefresh: true }));
+          } catch (error) {
+            console.warn('Failed to refresh rooms list:', error);
+          }
         } else {
           throw new Error('Не удалось создать чат');
         }
@@ -221,7 +247,12 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
        onClose();
       
       // Переходим в чат
-      navigation.navigate('ChatRoom', {
+      const rootNavigation =
+        navigation?.getParent?.('AppStack') ||
+        navigation?.getParent?.()?.getParent?.() ||
+        null;
+
+      (rootNavigation || navigation).navigate('ChatRoom', {
         roomId,
         roomTitle: user.displayName,
         productId: product.id,
@@ -297,11 +328,66 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
 
   // Получение заголовка чата
   const getChatTitle = useCallback((room) => {
+    // Для групповых чатов и каналов BROADCAST сразу возвращаем название
     if ((room?.type === 'GROUP' || room?.type === 'BROADCAST') && room?.title) {
       return room.title;
     }
 
+    // Для чатов с товарами показываем название компании поставщика
+    if (room?.type === 'PRODUCT') {
+      // Ищем поставщика среди участников
+      if (room?.participants && Array.isArray(room.participants)) {
+        const supplierParticipant = room.participants.find(p => {
+          const user = p?.user || p;
+          return user?.role === 'SUPPLIER';
+        });
+
+        if (supplierParticipant) {
+          const supplierUser = supplierParticipant.user || supplierParticipant;
+          
+          // Сначала проверяем name, который сервер уже установил правильно
+          if (supplierUser.name && supplierUser.name !== supplierUser.email) {
+            return supplierUser.name;
+          }
+          
+          // Проверяем название компании поставщика
+          const companyName =
+            supplierUser.supplier?.companyName ||
+            supplierUser.companyName ||
+            supplierUser.profile?.companyName ||
+            null;
+          if (companyName) return companyName;
+
+          // Если компании нет, показываем контактное лицо
+          const contactPerson =
+            supplierUser.supplier?.contactPerson ||
+            supplierUser.contactPerson ||
+            supplierUser.profile?.contactPerson ||
+            null;
+          if (contactPerson) return contactPerson;
+        }
+      }
+      
+      // Если поставщик не найден, показываем название товара как fallback
+      if (room?.product?.name) {
+        return `Товар: ${room.product.name}`;
+      }
+      
+      if (room?.productId && productsById[room.productId]?.name) {
+        return `Товар: ${productsById[room.productId].name}`;
+      }
+      
+      if (room?.title) {
+        return `Товар: ${room.title}`;
+      }
+      
+      // Fallback - показываем что это товар
+      return `Товар #${room.productId || room.id}`;
+    }
+
+    // Проверяем участников чата (только для DIRECT чатов)
     if (room?.type === 'DIRECT' && room?.participants && Array.isArray(room.participants) && currentUserId) {
+      // Ищем участника, который НЕ является текущим пользователем
       const partner = room.participants.find(p => {
         const participantId = p?.userId ?? p?.user?.id;
         return participantId !== currentUserId;
@@ -310,45 +396,120 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
       if (partner) {
         const partnerUser = partner.user || partner;
 
+        // Для поставщиков показываем название компании
+        // Сервер уже устанавливает правильное имя в user.name, но проверяем и другие источники
         if (partnerUser?.role === 'SUPPLIER') {
+          // Сначала проверяем name, который сервер уже установил правильно
+          if (partnerUser.name && partnerUser.name !== partnerUser.email) {
+            return partnerUser.name;
+          }
+          
+          // Проверяем все возможные места, где может быть название компании
           const companyName =
             partnerUser.supplier?.companyName ||
             partnerUser.companyName ||
-            partnerUser.profile?.companyName;
+            partnerUser.profile?.companyName ||
+            null;
           if (companyName) return companyName;
+
+          // Если компании нет, показываем контактное лицо
+          const contactPerson =
+            partnerUser.supplier?.contactPerson ||
+            partnerUser.contactPerson ||
+            partnerUser.profile?.contactPerson ||
+            null;
+          if (contactPerson) return contactPerson;
         }
 
-        const name = partnerUser.name || partnerUser.profile?.name || partnerUser.firstName;
+        // Для водителей проверяем driver.name в первую очередь
+        if (partnerUser?.role === 'DRIVER') {
+          // Сначала проверяем name, который сервер уже установил правильно
+          if (partnerUser.name && partnerUser.name !== partnerUser.email) {
+            return partnerUser.name;
+          }
+          const driverName = partnerUser.driver?.name || partnerUser.name;
+          if (driverName) return driverName;
+        }
+
+        // Для сотрудников и админов тоже используем name от сервера
+        if (partnerUser?.role === 'EMPLOYEE' || partnerUser?.role === 'ADMIN') {
+          if (partnerUser.name && partnerUser.name !== partnerUser.email) {
+            return partnerUser.name;
+          }
+        }
+
+        // Обычное имя пользователя
+        // Сначала проверяем name, который сервер уже установил правильно
+        if (partnerUser.name && partnerUser.name !== partnerUser.email) {
+          return partnerUser.name;
+        }
+        const name = partnerUser.profile?.name || partnerUser.firstName || partnerUser.profile?.firstName;
         if (name) return name;
 
+        // Fallback на email
         if (partnerUser.email) {
           const emailName = partnerUser.email.split('@')[0];
           return emailName.charAt(0).toUpperCase() + emailName.slice(1);
         }
 
+        // Если ничего не найдено, показываем ID пользователя
         return `Пользователь #${partnerUser.id || partner.id}`;
       }
     }
 
+    // Fallback для групповых чатов и каналов
     if (room?.type === 'GROUP' || room?.type === 'BROADCAST') {
       return room.title || (room?.type === 'BROADCAST' ? 'Канал' : 'Группа');
     }
 
     return room?.id ? `Комната ${room.id}` : 'Чат';
-  }, [currentUserId]);
+  }, [currentUserId, productsById]);
+
+  // Функция для преобразования относительных путей в абсолютные URL
+  const toAbsoluteUri = useCallback((raw) => {
+    if (!raw || typeof raw !== 'string') return null;
+    if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+    let path = raw.replace(/^\\+/g, '').replace(/^\/+/, '');
+    // убираем ведущий uploads/ если есть
+    path = path.replace(/^uploads\/?/, '');
+    return `${getBaseUrl()}/uploads/${path}`;
+  }, []);
 
   // Получение аватара чата
   const getChatAvatar = useCallback((room) => {
+    if (!room?.id) return null;
+
     // Для групп и каналов
-    if (room?.type === 'GROUP' || room?.type === 'BROADCAST') {
-      if (room?.avatar) {
-        const avatar = room.avatar;
-        if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
-          return avatar;
-        }
-        return `${getBaseUrl()}${avatar}`;
+    if (room.type === 'GROUP' || room.type === 'BROADCAST') {
+      if (room.avatar) {
+        return toAbsoluteUri(room.avatar);
       }
       return null;
+    }
+
+    // Для PRODUCT комнат - изображение товара
+    if (room?.product) {
+      if (room.product.images && Array.isArray(room.product.images) && room.product.images.length > 0) {
+        return toAbsoluteUri(room.product.images[0]);
+      }
+
+      if (room.product.image) {
+        return toAbsoluteUri(room.product.image);
+      }
+    }
+
+    if (room?.type === 'PRODUCT' && room?.productId && !room?.product) {
+      const productFromStore = productsById[room.productId];
+
+      if (productFromStore) {
+        if (productFromStore.images && Array.isArray(productFromStore.images) && productFromStore.images.length > 0) {
+          return toAbsoluteUri(productFromStore.images[0]);
+        }
+
+        if (productFromStore.image) {
+          return toAbsoluteUri(productFromStore.image);
+        }
+      }
     }
 
     // Для личных чатов - аватар собеседника
@@ -365,16 +526,13 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
                       partnerUser?.image;
         
         if (avatar) {
-          if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
-            return avatar;
-          }
-          return `${getBaseUrl()}${avatar}`;
+          return toAbsoluteUri(avatar);
         }
       }
     }
 
     return null;
-  }, [currentUserId]);
+  }, [currentUserId, productsById, toAbsoluteUri]);
 
   // Рендер элемента списка чатов
   const renderChatItem = ({ item }) => {

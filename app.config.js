@@ -32,6 +32,13 @@ export default {
                     locationAlwaysAndWhenInUsePermission: 'This app uses location to show your position on the map.',
                 },
             ],
+            [
+                'expo-image-picker',
+                {
+                    photosPermission: 'Приложению требуется доступ к вашим фотографиям для отправки изображений в чате.',
+                    cameraPermission: 'Приложению требуется доступ к камере для съемки фотографий в чате.',
+                },
+            ],
             // Добавляем expo-dev-client плагин для preview и dev сборок
             ...(IS_DEV || IS_PREVIEW ? ['expo-dev-client'] : []),
             [
@@ -98,7 +105,6 @@ export default {
         },
         owner: 'abuingush',
         runtimeVersion: '1.0.0',
-        newArchEnabled: false,
         updates: {
             enabled: true,
             fallbackToCacheTimeout: 0,
@@ -172,6 +178,9 @@ export default {
                 NSAppTransportSecurity: {
                     NSAllowsArbitraryLoads: true,
                 },
+                NSCameraUsageDescription: 'Приложению требуется доступ к камере для съемки фотографий в чате.',
+                NSPhotoLibraryUsageDescription: 'Приложению требуется доступ к вашим фотографиям для отправки изображений в чате.',
+                NSPhotoLibraryAddUsageDescription: 'Приложению требуется доступ для сохранения фотографий в вашу галерею.',
             },
         },
     },

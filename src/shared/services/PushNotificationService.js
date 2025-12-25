@@ -1,5 +1,7 @@
-import OneSignalService from './OneSignalService';
+import OneSignalService from '@shared/services/OneSignalService';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
+import { navigationRef } from '@shared/utils/NavigationRef';
 
 class PushNotificationService {
     constructor() {
@@ -10,6 +12,8 @@ class PushNotificationService {
         this.isInitialized = false;
         this.navigationReady = false;
         this.pendingNavigations = [];
+        this.authResolved = false; // isAuthenticated !== undefined
+        this.isAuthenticated = null;
         
         // Функции навигации
         this.navigateToStopsFunc = null;
@@ -17,6 +21,26 @@ class PushNotificationService {
         this.navigateToChatFunc = null;
         this.navigateToUrlFunc = null;
         this.navigateToOrderChoiceFunc = null;
+
+        // Текущий открытый чат (для подавления уведомлений в этом чате)
+        this.activeChatRoomId = null;
+        // Текущий собеседник в direct-чате (для подавления уведомлений "от этого пользователя")
+        this.activeChatPeerUserId = null;
+    }
+
+    // Проверяем, что нужный роут реально зарегистрирован в текущем root navigator.
+    // Это важно на cold start: пока показывается только Splash, ChatRoom ещё не в routeNames,
+    // и попытка navigationRef.navigate('ChatRoom') будет "unhandled".
+    canNavigateToRoute(routeName) {
+        try {
+            if (!navigationRef.isReady()) return false;
+            const state = navigationRef.getRootState?.();
+            const routeNames = state?.routeNames;
+            if (!Array.isArray(routeNames)) return false;
+            return routeNames.includes(routeName);
+        } catch (_) {
+            return false;
+        }
     }
 
     // Инициализация сервиса
@@ -67,9 +91,14 @@ class PushNotificationService {
     // Очистка контекста пользователя
     async clearUserContext() {
         try {
-            await OneSignalService.clearUserContext();
+            const result = await OneSignalService.clearUserContext();
+            return result;
         } catch (error) {
             console.error('❌ Ошибка очистки контекста:', error);
+            return {
+                success: false,
+                error: error
+            };
         }
     }
 
@@ -95,6 +124,71 @@ class PushNotificationService {
         return this.getServiceStatus();
     }
 
+    // =============================
+    // Chat notification suppression
+    // =============================
+    setActiveChatRoomId(roomId) {
+        this.activeChatRoomId = roomId ? String(roomId) : null;
+    }
+
+    getActiveChatRoomId() {
+        return this.activeChatRoomId;
+    }
+
+    setActiveChatPeerUserId(userId) {
+        this.activeChatPeerUserId = userId ? String(userId) : null;
+    }
+
+    getActiveChatPeerUserId() {
+        return this.activeChatPeerUserId;
+    }
+
+    shouldSuppressChatNotification(data) {
+        try {
+            const type = data?.type || data?.notificationType;
+            const roomId = data?.roomId;
+            const senderId = data?.senderId;
+            if (String(type || '').toUpperCase() !== 'CHAT_MESSAGE' || !roomId) return false;
+            // 1) Если открыт именно этот roomId — всегда подавляем
+            if (this.activeChatRoomId && String(this.activeChatRoomId) === String(roomId)) {
+                return true;
+            }
+            // 2) Если открыт direct-чат с этим пользователем — подавляем пуши от него (даже если room другой)
+            if (this.activeChatPeerUserId && senderId && String(this.activeChatPeerUserId) === String(senderId)) {
+                return true;
+            }
+            return false;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    // =============================
+    // OS notifications helpers
+    // =============================
+    // Примечание: Управление уведомлениями теперь через OneSignal
+    // Эти методы оставлены для совместимости, но могут быть пустыми
+    
+    async setBadgeCount(count) {
+        // OneSignal управляет badge автоматически
+        // Можно добавить через OneSignal API если нужно
+    }
+
+    async clearAllNotifications() {
+        // OneSignal не предоставляет API для удаления всех уведомлений
+        // Это нормально - пользователь может сделать это вручную
+    }
+
+    async clearChatNotifications(roomId) {
+        // OneSignal не предоставляет API для удаления конкретных уведомлений
+        // Это нормально - уведомления автоматически исчезают при открытии чата
+    }
+
+    async clearChatNotificationsForPeerUser(userId) {
+        // OneSignal не предоставляет API для удаления конкретных уведомлений
+        // Это нормально - уведомления автоматически исчезают при открытии чата
+    }
+
     // Установка функций навигации
     setNavigationFunctions(navigateToStops, navigateToOrder, navigateToChat, navigateToUrl, navigateToOrderChoice = null) {
         this.navigateToStopsFunc = navigateToStops;
@@ -111,16 +205,37 @@ class PushNotificationService {
         this.navigationReady = true;
 
         if (this.pendingNavigations.length > 0) {
-            this.pendingNavigations.forEach(data => {
-                this.handleNotificationNavigation(data);
-            });
-            this.pendingNavigations = [];
+            this.flushPendingNavigations();
         }
+    }
+
+    setAuthState(isAuthenticated) {
+        // isAuthenticated can be true/false/undefined
+        this.authResolved = isAuthenticated !== undefined;
+        this.isAuthenticated = isAuthenticated === undefined ? null : !!isAuthenticated;
+        this.flushPendingNavigations();
+    }
+
+    flushPendingNavigations() {
+        if (!this.navigationReady) return;
+        if (!this.authResolved) return;
+        if (this.pendingNavigations.length === 0) return;
+
+        const queue = [...this.pendingNavigations];
+        this.pendingNavigations = [];
+
+        queue.forEach((data) => {
+            try {
+                this.handleNotificationNavigation(data);
+            } catch (_) {}
+        });
     }
 
     // Обработка навигации (упрощенная)
     handleNotificationNavigation(data) {
-        if (!this.navigationReady) {
+        // На cold start auth может ещё не быть восстановлен, и навигация "перетрётся" Welcome/Auth.
+        // Поэтому ждём пока isAuthenticated станет true/false (authResolved).
+        if (!this.navigationReady || !this.authResolved) {
             this.pendingNavigations.push(data);
             return;
         }
@@ -135,6 +250,17 @@ class PushNotificationService {
         } else if (data.productId || data.type === 'PRODUCT_NOTIFICATION' || data.type === 'PROMOTION') {
             this.navigateToProduct(data);
         } else if (data.type === 'CHAT_MESSAGE' && data.roomId) {
+            // Если пользователь не авторизован — сначала ведём на экран Auth, а навигацию в чат оставляем в очереди
+            if (!this.isAuthenticated) {
+                // сохраняем, чтобы после логина открыло чат
+                this.pendingNavigations.push(data);
+                try {
+                    if (navigationRef.isReady()) {
+                        navigationRef.navigate('Auth', { initialScreen: 'login', fromNotification: true });
+                    }
+                } catch (_) {}
+                return;
+            }
             this.navigateToChat(data);
         } else if (data.url) {
             this.navigateToUrl(data.url);
@@ -177,13 +303,40 @@ class PushNotificationService {
 
     // Навигация к чату
     navigateToChat(data) {
+        // Сначала пробуем установленную функцию навигации
         if (this.navigateToChatFunc && typeof this.navigateToChatFunc === 'function') {
             this.navigateToChatFunc(data);
-        } else {
-            if (data.url) {
-                this.navigateToUrl(data.url);
-            }
+            return;
         }
+
+        // Fallback через глобальный navigationRef (работает из любого места, включая cold start)
+        try {
+            const roomId = data?.roomId ? parseInt(String(data.roomId), 10) : null;
+            if (!roomId) return;
+
+            // Если навигация ещё не готова — сохраняем и выйдем (flushPendingNavigations добьёт позже)
+            if (!navigationRef.isReady()) {
+                this.pendingNavigations.push(data);
+                return;
+            }
+
+            // Если ChatRoom ещё не зарегистрирован (например, пока открыт только Splash) — подождём.
+            if (!this.canNavigateToRoute('ChatRoom')) {
+                this.pendingNavigations.push(data);
+                // небольшой отложенный повтор (на случай, если setAuthState уже true, а роуты ещё не смонтированы)
+                setTimeout(() => {
+                    try { this.flushPendingNavigations(); } catch (_) {}
+                }, 350);
+                return;
+            }
+
+            // ✅ ChatRoom теперь в корневом Stack (AppStack), поэтому навигируем напрямую.
+            navigationRef.navigate('ChatRoom', {
+                roomId,
+                fromNotification: true,
+                messageId: data?.messageId || null,
+            });
+        } catch (_) {}
     }
 
     // Навигация по URL

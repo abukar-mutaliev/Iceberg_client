@@ -215,7 +215,8 @@ export const StopDetailsContent = ({ stop, navigation }) => {
     // Данные о водителе
     const driver = stop?.driver;
     const hasDriverInfo = driver && (driver.name || driver.phone);
-    const canContactDriver = isAuthenticated && hasDriverInfo && user?.id !== driver?.userId;
+    const canCallDriver = !!driver?.phone && user?.id !== driver?.userId;
+    const canChatWithDriver = isAuthenticated && hasDriverInfo && user?.id !== driver?.userId;
     
     // Проверяем существование чата с водителем
     const existingChatWithDriver = React.useMemo(() => {
@@ -239,13 +240,21 @@ export const StopDetailsContent = ({ stop, navigation }) => {
         );
     }
 
+    const goToAuth = (activeTab = 'login') => {
+        navigation.navigate('Auth', {
+            activeTab,
+            redirectTo: { name: 'StopDetails', params: { stopId: stop.id } }
+        });
+    };
+
     const handleEditPress = () => {
         navigation.navigate('EditStop', { stopId: stop.id });
     };
 
     const handleSharePress = () => {
         if (!isAuthenticated) {
-            Alert.alert('Требуется авторизация', 'Для отправки остановки в чат необходимо войти в систему');
+            // Без алертов — сразу на авторизацию
+            goToAuth('login');
             return;
         }
         setShareModalVisible(true);
@@ -299,7 +308,8 @@ export const StopDetailsContent = ({ stop, navigation }) => {
     // Функция для открытия чата с водителем
     const handleChatWithDriver = async () => {
         if (!isAuthenticated) {
-            Alert.alert('Требуется авторизация', 'Для связи с водителем необходимо войти в систему');
+            // Без алертов — сразу на авторизацию
+            goToAuth('login');
             return;
         }
         
@@ -312,7 +322,12 @@ export const StopDetailsContent = ({ stop, navigation }) => {
         
         // Если чат уже существует, переходим в него
         if (existingChatWithDriver) {
-            navigation.navigate('ChatRoom', {
+            const rootNavigation =
+                navigation?.getParent?.('AppStack') ||
+                navigation?.getParent?.()?.getParent?.() ||
+                null;
+
+            (rootNavigation || navigation).navigate('ChatRoom', {
                 roomId: existingChatWithDriver.id,
                 roomTitle: driverName,
                 roomData: existingChatWithDriver,
@@ -335,7 +350,12 @@ export const StopDetailsContent = ({ stop, navigation }) => {
             const room = response?.data?.room || response?.data;
             
             if (room?.id) {
-                navigation.navigate('ChatRoom', {
+                const rootNavigation =
+                    navigation?.getParent?.('AppStack') ||
+                    navigation?.getParent?.()?.getParent?.() ||
+                    null;
+
+                (rootNavigation || navigation).navigate('ChatRoom', {
                     roomId: room.id,
                     roomTitle: driverName,
                     roomData: room,
@@ -478,7 +498,13 @@ export const StopDetailsContent = ({ stop, navigation }) => {
                         <Icon name="share" size={24} color={Color.purpleSoft} />
                     </TouchableOpacity>
                 ) : (
-                    <View style={styles.backButton} />
+                    <TouchableOpacity
+                        style={styles.shareIconButton}
+                        onPress={handleSharePress}
+                        activeOpacity={0.7}
+                    >
+                        <Icon name="share" size={24} color={Color.purpleSoft} />
+                    </TouchableOpacity>
                 )}
             </View>
 
@@ -656,43 +682,46 @@ export const StopDetailsContent = ({ stop, navigation }) => {
                         </View>
                         
                         {/* Кнопки связи с водителем */}
-                        {canContactDriver && (
+                        {hasDriverInfo && (
                             <View style={styles.driverActions}>
                                 {driver.phone && (
                                     <TouchableOpacity
                                         style={[styles.driverButton, styles.callButton]}
                                         onPress={handleCallDriver}
                                         activeOpacity={0.7}
+                                        disabled={!canCallDriver}
                                     >
                                         <Icon name="phone" size={20} color="#fff" />
                                         <Text style={styles.callButtonText}>Позвонить</Text>
                                     </TouchableOpacity>
                                 )}
-                                
-                                <TouchableOpacity
-                                    style={[styles.driverButton, styles.chatButton]}
-                                    onPress={handleChatWithDriver}
-                                    activeOpacity={0.7}
-                                    disabled={isCreatingChat}
-                                >
-                                    {isCreatingChat ? (
-                                        <ActivityIndicator size="small" color="#fff" />
-                                    ) : (
-                                        <>
-                                            <Icon name="chat" size={20} color="#fff" />
-                                            <Text style={styles.chatButtonText}>Написать</Text>
-                                        </>
-                                    )}
-                                </TouchableOpacity>
-                            </View>
-                        )}
-                        
-                        {/* Если пользователь не авторизован */}
-                        {!isAuthenticated && hasDriverInfo && (
-                            <View style={styles.authHintContainer}>
-                                <Text style={styles.authHintText}>
-                                    Войдите в аккаунт, чтобы связаться с водителем
-                                </Text>
+
+                                {isAuthenticated ? (
+                                    <TouchableOpacity
+                                        style={[styles.driverButton, styles.chatButton]}
+                                        onPress={handleChatWithDriver}
+                                        activeOpacity={0.7}
+                                        disabled={isCreatingChat || !canChatWithDriver}
+                                    >
+                                        {isCreatingChat ? (
+                                            <ActivityIndicator size="small" color="#fff" />
+                                        ) : (
+                                            <>
+                                                <Icon name="chat" size={20} color="#fff" />
+                                                <Text style={styles.chatButtonText}>Написать</Text>
+                                            </>
+                                        )}
+                                    </TouchableOpacity>
+                                ) : (
+                                    <TouchableOpacity
+                                        style={[styles.driverButton, styles.chatButton]}
+                                        onPress={() => goToAuth('login')}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Icon name="login" size={20} color="#fff" />
+                                        <Text style={styles.chatButtonText}>Войти</Text>
+                                    </TouchableOpacity>
+                                )}
                             </View>
                         )}
                     </View>
@@ -1262,20 +1291,5 @@ const styles = StyleSheet.create({
         fontSize: FontSize.size_sm,
         fontWeight: '600',
         fontFamily: FontFamily.sFProText,
-    },
-    authHintContainer: {
-        marginTop: 12,
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-        backgroundColor: '#FFF3CD',
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: '#FFECB5',
-    },
-    authHintText: {
-        fontSize: FontSize.size_xs,
-        color: '#856404',
-        fontFamily: FontFamily.sFProText,
-        textAlign: 'center',
     },
 });

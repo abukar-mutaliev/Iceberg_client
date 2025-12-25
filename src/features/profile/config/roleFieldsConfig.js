@@ -7,7 +7,7 @@ export const roleFieldsConfig = {
         name: {
             id: 'name',
             type: 'text',
-            label: 'ФИО*',
+            label: 'ФИО',
             placeholder: 'Введите ФИО',
             validation: (value) => value.length >= 2,
             errorMessage: 'ФИО должно содержать не менее 2 символов',
@@ -169,7 +169,7 @@ export const roleFieldsConfig = {
         name: {
             id: 'name',
             type: 'text',
-            label: 'ФИО*',
+            label: 'ФИО',
             placeholder: 'Введите ФИО сотрудника',
             validation: (value) => value.length >= 2,
             errorMessage: 'ФИО должно содержать не менее 2 символов',
@@ -245,7 +245,7 @@ export const roleFieldsConfig = {
         name: {
             id: 'name',
             type: 'text',
-            label: 'ФИО*',
+            label: 'ФИО',
             placeholder: 'Введите ФИО водителя',
             validation: (value) => value.length >= 2,
             errorMessage: 'ФИО должно содержать не менее 2 символов',
@@ -303,7 +303,7 @@ export const roleFieldsConfig = {
         name: {
             id: 'name',
             type: 'text',
-            label: 'ФИО*',
+            label: 'ФИО',
             placeholder: 'Введите ФИО администратора',
             validation: (value) => value.length >= 2,
             errorMessage: 'ФИО должно содержать не менее 2 символов',

@@ -329,17 +329,11 @@ const createNavigationFunctions = (navigation) => {
                 console.warn('No roomId provided for chat navigation');
                 return;
             }
-
-            navigation.navigate('Main', {
-                screen: 'ChatList',
-                params: {
-                    screen: 'ChatRoom',
-                    params: {
-                        roomId: parseInt(data.roomId),
-                        fromNotification: true,
-                        messageId: data.messageId || null
-                    }
-                }
+            // ✅ ChatRoom теперь в корневом Stack (AppStack), чтобы таббар физически не мог появляться в комнате.
+            navigation.navigate('ChatRoom', {
+                roomId: parseInt(data.roomId),
+                fromNotification: true,
+                messageId: data.messageId || null,
             });
         } catch (error) {
             console.error('Navigation error to chat:', error);
@@ -722,6 +716,10 @@ const ChatStackScreen = () => (
                 ...fadeIn,
                 headerShown: true,
                 title: '',
+                // В продакшен-сборках (особенно Android) иногда появляется смещение контента хедера по вертикали
+                // из-за дополнительного status-bar inset'а. Мы уже оборачиваем приложение в SafeAreaView,
+                // поэтому явно убираем headerStatusBarHeight и центрируем контейнер.
+                headerStatusBarHeight: 0,
                 headerStyle: {
                     backgroundColor: '#FFFFFF',
                     elevation: 4,
@@ -732,29 +730,6 @@ const ChatStackScreen = () => (
                 headerLeft: () => null,
                 headerTintColor: '#000000',
                 cardOverlayEnabled: false,
-            })}
-        />
-        <ChatStack.Screen
-            name="ChatRoom"
-            component={ChatRoomScreen}
-            options={({ route, navigation }) => ({
-                ...slideFromRight,
-                headerShown: true,
-                title: '',
-                headerStyle: {
-                    backgroundColor: '#FFFFFF',
-                    elevation: 2,
-                    shadowOpacity: 0.1,
-                    shadowRadius: 2,
-                    shadowOffset: { width: 0, height: 1 },
-                    borderBottomWidth: 0.5,
-                    borderBottomColor: '#E0E0E0',
-                },
-                headerTintColor: '#000000',
-                headerLeft: () => <ChatHeader route={route} navigation={navigation} />,
-                gestureEnabled: true,
-                cardStyle: { backgroundColor: '#ECE5DD' },
-                headerRight: null
             })}
         />
         <ChatStack.Screen
@@ -1130,9 +1105,19 @@ const SearchStackScreen = () => (
 );
 const MainTabNavigatorContent = () => {
     const { isTabBarVisible } = useTabBar();
+
+    const getLeafRouteName = React.useCallback((route) => {
+        let r = route;
+        while (r?.state?.routes && typeof r.state.index === 'number') {
+            r = r.state.routes[r.state.index];
+        }
+        return r?.name;
+    }, []);
     
     React.useEffect(() => {
-        console.log('🎯 TabBar visibility changed:', isTabBarVisible);
+        if (__DEV__) {
+            console.log('🎯 TabBar visibility changed:', isTabBarVisible);
+        }
     }, [isTabBarVisible]);
     
     const tabBarStyle = React.useMemo(() => {
@@ -1143,22 +1128,30 @@ const MainTabNavigatorContent = () => {
             shadowOffset: { width: 0, height: -2 },
         } : {
             display: 'none',
-            position: 'absolute',
-            bottom: -100,
+            height: 0,
+            overflow: 'hidden',
         };
-        console.log('📐 TabBar style:', style);
+        if (__DEV__) {
+            console.log('📐 TabBar style:', style);
+        }
         return style;
     }, [isTabBarVisible]);
     
     return (
         <Tab.Navigator
             id="MainTabs"
-            screenOptions={{
-                headerShown: false,
-                tabBarStyle,
-                lazy: true,
-                unmountOnBlur: true,
-                freezeOnBlur: true,
+            screenOptions={({ route }) => {
+                return {
+                    headerShown: false,
+                    // ChatRoom вынесен в корневой Stack (AppStack), поэтому здесь таббар больше не нужно
+                    // прятать по leaf-роуту — в комнате он физически не рендерится.
+                    tabBarStyle: tabBarStyle,
+                    lazy: true,
+                    unmountOnBlur: true,
+                    freezeOnBlur: true,
+                    // Отключаем анимацию таббара для предотвращения дергания
+                    animationEnabled: false,
+                };
             }}
             detachInactiveScreens={true}
             tabBar={props => <CustomTabBar {...props} />}
@@ -1189,6 +1182,13 @@ export const AppNavigator = () => {
     const { isAuthenticated } = useSelector((state) => state.auth);
     useFavoritesCleanup(isAuthenticated);
     useDeepLinking();
+
+    // Важно для push-навигации на cold start:
+    // пока isAuthenticated === undefined, навигацию по уведомлению лучше не выполнять,
+    // иначе она может быть перетёрта Welcome/Auth редиректом.
+    useEffect(() => {
+        PushNotificationService.setAuthState?.(isAuthenticated);
+    }, [isAuthenticated]);
 
     if (isAuthenticated === undefined) {
         return (
@@ -1275,6 +1275,22 @@ export const AppNavigator = () => {
                         options={createScreenOptions()}
                     />
 
+                    {/* Доступно всем (включая гостей) */}
+                    <Stack.Screen
+                        name="StopDetails"
+                        component={StopDetailsScreen}
+                        options={createScreenOptions()}
+                    />
+                    
+                    {/* Важно: ProductDetail в AppStack нужен для переходов из ChatRoom.
+                       Тогда экран товара ложится поверх ChatRoom и back возвращает обратно в комнату,
+                       а не в список чатов (ChatMain) внутри табового ChatStack. */}
+                    <Stack.Screen
+                        name="ProductDetail"
+                        component={ProductDetailScreen}
+                        options={createScreenOptions({ ...cardStackTransition })}
+                    />
+
                     {/* Экраны доступные после авторизации */}
                     {isAuthenticated && (
                         <>
@@ -1296,11 +1312,6 @@ export const AppNavigator = () => {
                             <Stack.Screen 
                                 name="AddStop" 
                                 component={AddStopScreen} 
-                                options={createScreenOptions()} 
-                            />
-                            <Stack.Screen 
-                                name="StopDetails" 
-                                component={StopDetailsScreen} 
                                 options={createScreenOptions()} 
                             />
                             <Stack.Screen 
@@ -1426,6 +1437,7 @@ export const AppNavigator = () => {
                                             headerShown: true,
                                             headerTitle: () => <ChatListHeader navigation={navigation} />,
                                             title: '',
+                                            headerStatusBarHeight: 0,
                                             headerLeft: () => (
                                                 <TouchableOpacity
                                                     onPress={() => navigation.goBack()}
@@ -1443,6 +1455,15 @@ export const AppNavigator = () => {
                                             headerTintColor: '#000000',
                                             gestureEnabled: true,
                                             cardStyle: { backgroundColor: '#ffffff' },
+                                        })}
+                                    />
+                                    {/* Профиль пользователя из чата должен открываться в корневом AppStack,
+                                       иначе back() может вернуть в ChatMain (внутри табового ChatStack). */}
+                                    <Stack.Screen
+                                        name="UserPublicProfile"
+                                        component={UserPublicProfileScreen}
+                                        options={createScreenOptions({
+                                            headerShown: false,
                                         })}
                                     />
                                     <Stack.Screen
@@ -1525,18 +1546,50 @@ export const AppNavigator = () => {
                                     <Stack.Screen
                                         name="ChatSearch"
                                         component={ChatSearchScreen}
-                                        options={{
+                                        options={({ navigation }) => ({
                                             ...slideFromRight,
                                             headerShown: true,
                                             title: 'Поиск чатов',
                                             gestureEnabled: true,
                                             cardStyle: { backgroundColor: '#ffffff' },
+                                            headerStatusBarHeight: 0,
                                             headerStyle: {
                                                 backgroundColor: '#FFFFFF',
                                                 height: 56,
                                             },
+                                            headerTitleStyle: {
+                                                fontSize: 18,
+                                                fontWeight: '500',
+                                            },
+                                            headerTitleAlign: 'center',
+                                            headerLeftContainerStyle: {
+                                                left: 0,
+                                                alignItems: 'flex-start',
+                                                justifyContent: 'center',
+                                                paddingRight: 50,
+                                            },
+                                            headerTitleContainerStyle: {
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                            },
+                                            headerLeft: () => (
+                                                <TouchableOpacity
+                                                    onPress={() => navigation.goBack()}
+                                                    style={{ 
+                                                        paddingLeft: 16,
+                                                        paddingRight: 8,
+                                                        paddingVertical: 8,
+                                                        justifyContent: 'center',
+                                                        alignItems: 'center',
+                                                    }}
+                                                    activeOpacity={0.6}
+                                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                >
+                                                    <Text style={{ fontSize: 28, color: '#000000', fontWeight: '300', lineHeight: 28 }}>‹</Text>
+                                                </TouchableOpacity>
+                                            ),
                                             headerTintColor: '#000000',
-                                        }}
+                                        })}
                                     />
                                     <Stack.Screen
                                         name="CreateGroup"

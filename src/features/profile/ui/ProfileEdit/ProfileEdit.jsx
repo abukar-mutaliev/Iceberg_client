@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { View, Text, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Animated, Keyboard } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { selectProfile, selectProfileLoading } from '@entities/profile';
 import { useNavigation } from '@react-navigation/native';
@@ -26,6 +26,7 @@ export const ProfileEdit = () => {
 
     const [formInitialValues, setFormInitialValues] = useState({});
     const [isFormInitialized, setIsFormInitialized] = useState(false);
+    const [keyboardVisible, setKeyboardVisible] = useState(false);
 
     const {
         userType,
@@ -45,6 +46,28 @@ export const ProfileEdit = () => {
     } = useProfileEdit(profile, dispatch, navigation, currentUser);
 
     const displayName = useMemo(() => getProfileName(), [getProfileName]);
+
+    // Отслеживание состояния клавиатуры
+    useEffect(() => {
+        const keyboardWillShow = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+            () => {
+                setKeyboardVisible(true);
+            }
+        );
+
+        const keyboardWillHide = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+            () => {
+                setKeyboardVisible(false);
+            }
+        );
+
+        return () => {
+            keyboardWillShow.remove();
+            keyboardWillHide.remove();
+        };
+    }, []);
 
     useEffect(() => {
         if (isDistrictsNeeded() && !districts?.length && !districtsLoading) {
@@ -135,22 +158,31 @@ export const ProfileEdit = () => {
     }
 
     return (
-        <View style={styles.container}>
+        <KeyboardAvoidingView 
+            style={styles.container}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        >
             <ProfileHeader title="Редактирование профиля" onGoBack={handleGoBack} />
 
-            <View style={styles.profileImageContainer}>
-                <ProfileAvatar
-                    profile={profile}
-                    size={118}
-                    editable={true}
-                />
-            </View>
+            {/* Условно рендерим хедер с аватаром только когда клавиатура скрыта */}
+            {!keyboardVisible && (
+                <View style={styles.headerAvatarContainer}>
+                    <View style={styles.profileImageContainer}>
+                        <ProfileAvatar
+                            profile={profile}
+                            size={118}
+                            editable={true}
+                        />
+                    </View>
 
-            <View style={[styles.nameContainer, { marginTop: normalize(10), marginBottom: normalize(20) }]}>
-                <Text style={[styles.profileName, { fontSize: normalizeFont(18) }]}>
-                    {displayName}
-                </Text>
-            </View>
+                    <View style={[styles.nameContainer, { marginTop: normalize(10), marginBottom: normalize(20) }]}>
+                        <Text style={[styles.profileName, { fontSize: normalizeFont(18) }]}>
+                            {displayName}
+                        </Text>
+                    </View>
+                </View>
+            )}
 
             <ProfileForm
                 userType={userType}
@@ -163,7 +195,7 @@ export const ProfileEdit = () => {
                 editableFields={editableFields}
                 toggleFieldEditable={toggleFieldEditable}
             />
-        </View>
+        </KeyboardAvoidingView>
     );
 };
 
@@ -172,6 +204,10 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#FFFFFF',
         paddingBottom: normalize(0),
+    },
+    headerAvatarContainer: {
+        width: '100%',
+        backgroundColor: '#FFFFFF',
     },
     centered: {
         flex: 1,
