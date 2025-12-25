@@ -45,9 +45,12 @@ export const StopsListScreen = ({ navigation }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
 
-    useEffect(() => {
-        loadStops();
-    }, [dispatch]);
+    // Загрузка остановок при фокусе экрана (один раз при монтировании)
+    useFocusEffect(
+        React.useCallback(() => {
+            dispatch(fetchAllStops());
+        }, [dispatch])
+    );
 
     useEffect(() => {
         if (highlightStopId && highlightedStop) {
@@ -60,10 +63,6 @@ export const StopsListScreen = ({ navigation }) => {
             return () => clearTimeout(timer);
         }
     }, [highlightStopId, highlightedStop, navigation]);
-
-    const loadStops = () => {
-        dispatch(fetchAllStops());
-    };
 
     const handleRefresh = () => {
         setRefreshing(true);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     View,
     Text,
@@ -10,23 +10,31 @@ import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { stopApi } from '../api/stopApi';
 import { ProductTile } from '@entities/product/ui/ProductTile';
 
-export const StopProductsList = ({ stopId, isActive }) => {
+export const StopProductsList = ({ stopId, isActive, refreshKey }) => {
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
-    useEffect(() => {
-        if (stopId && isActive) {
-            loadProducts();
+    const loadProducts = useCallback(async () => {
+        if (!stopId || !isActive) {
+            console.log('[StopProductsList] loadProducts skipped', { stopId, isActive });
+            return;
         }
-    }, [stopId, isActive]);
-
-    const loadProducts = async () => {
+        
+        console.log('[StopProductsList] Загрузка товаров', { stopId, refreshKey });
         setLoading(true);
         setError(null);
         try {
             const response = await stopApi.getStopProducts(stopId);
-            const productsData = response.data?.products || [];
+            console.log('[StopProductsList] Ответ от API', {
+                status: response.status,
+                dataKeys: response.data ? Object.keys(response.data) : [],
+                productsCount: response.data?.products?.length || 0,
+                productsData: response.data?.products || [],
+                fullResponse: response.data
+            });
+            const productsData = response.data?.products || response.data?.data?.products || [];
+            console.log('[StopProductsList] Товары загружены', { count: productsData.length, productsData });
             setProducts(productsData);
         } catch (err) {
             console.error('Ошибка загрузки товаров остановки:', err);
@@ -34,7 +42,18 @@ export const StopProductsList = ({ stopId, isActive }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [stopId, isActive, refreshKey]);
+
+    useEffect(() => {
+        console.log('[StopProductsList] useEffect triggered', { stopId, isActive, refreshKey });
+        if (stopId && isActive) {
+            loadProducts();
+        } else {
+            // Очищаем товары если остановка неактивна или stopId отсутствует
+            setProducts([]);
+        }
+    }, [stopId, isActive, loadProducts, refreshKey]);
+
 
     // Преобразуем данные товаров из остановки в формат для ProductTile
     const normalizedProducts = useMemo(() => {

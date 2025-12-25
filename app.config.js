@@ -6,7 +6,7 @@ export default {
     expo: {
         name: IS_DEV ? 'Iceberg (Dev)' : 'Iceberg',
         slug: 'iceberg',
-        version: '1.0.7',
+        version: '1.0.8',
         scheme: 'iceberg',
         icon: './assets/notification-icon.png',
         splash: {
@@ -26,6 +26,8 @@ export default {
         },
         plugins: [
             'expo-font',
+            // Требуется для корректной работы expo-sqlite в dev-client / production сборках
+            'expo-sqlite',
             [
                 'expo-location',
                 {
@@ -41,15 +43,21 @@ export default {
             ],
             // Добавляем expo-dev-client плагин для preview и dev сборок
             ...(IS_DEV || IS_PREVIEW ? ['expo-dev-client'] : []),
+            // Кастомный плагин для настройки windowSoftInputMode
+            './app.plugin.js',
             [
                 'expo-build-properties',
                 {
                     android: {
+                        minSdkVersion: 24,
+                        compileSdkVersion: 35,
+                        targetSdkVersion: 35,
                         usesCleartextTraffic: true,
                         networkSecurityConfig: './network_security_config.xml',
-                        // Отключаем proguard и shrink во всех релизных сборках для стабильной работы OneSignal
-                        enableProguardInReleaseBuilds: false,
-                        enableShrinkResourcesInReleaseBuilds: false,
+                        // Включаем оптимизацию для уменьшения размера приложения
+                        // OneSignal работает корректно с включенной минификацией при наличии правильных ProGuard правил
+                        enableProguardInReleaseBuilds: true,
+                        enableShrinkResourcesInReleaseBuilds: true,
                         // Дополнительные настройки для preview-debug
                         ...(IS_PREVIEW_DEBUG && {
                             enableHermes: true,
@@ -96,15 +104,18 @@ export default {
             googleMapsApiKey: 'AIzaSyDev-AMb24bvlQn3a-b4DGsItiYB6su6_E',
             yandexMapsApiKey: '17ee620d-aee1-482c-acc9-c7144fd46087',
             expoPushToken: true,
-            // OneSignal App ID для нативной конфигурации плагина
-            oneSignalAppId: 'a1bde379-4211-4fb9-89e2-3e94530a7041',
+            // OneSignal App ID (берем из env для EAS build). Fallback оставляем, чтобы dev/preview не ломались.
+            oneSignalAppId:
+                process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ||
+                'a1bde379-4211-4fb9-89e2-3e94530a7041',
             // OneSignal Android Notification Channel UUID (из OneSignal Dashboard).
             // Если задан, приложение заранее создаст канал `OS_<uuid>` с MAX importance для heads-up.
             // Удобно, когда сервер отправляет android_channel_id и OneSignal SDK создает `OS_<uuid>` канал на устройстве.
-            oneSignalAndroidChannelUuid: process.env.EXPO_PUBLIC_ONESIGNAL_ANDROID_CHANNEL_UUID || null,
+            oneSignalAndroidChannelUuid: process.env.EXPO_PUBLIC_ONESIGNAL_ANDROID_CHANNEL_UUID || "084a368f-9843-40cc-91a7-cdb835b445df",
         },
         owner: 'abuingush',
         runtimeVersion: '1.0.0',
+        newArchEnabled: true,
         updates: {
             enabled: true,
             fallbackToCacheTimeout: 0,
@@ -119,6 +130,8 @@ export default {
                 foregroundImage: './assets/icon.png',
                 backgroundColor: '#E3F2FD',
             },
+            // Важно: 'resize' не сдвигает весь экран (и stack header), а уменьшает высоту окна.
+            // Это предотвращает "уезжание" хедера вверх и перекрытие поля ввода клавиатурой.
             softwareKeyboardLayoutMode: 'resize',
             config: {
                 googleMaps: {
@@ -138,6 +151,7 @@ export default {
                 'SYSTEM_ALERT_WINDOW',
                 'FOREGROUND_SERVICE',
                 'com.android.vending.BILLING',
+                'com.google.android.gms.permission.AD_ID',
                 'android.permission.RECEIVE_BOOT_COMPLETED',
                 'android.permission.VIBRATE',
                 'android.permission.WAKE_LOCK',

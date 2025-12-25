@@ -21,7 +21,9 @@ import { EditStopForm } from "@features/driver/editDriverStop";
 import {
     fetchDriverStops,
     selectStopById,
-    updateStop
+    updateStop,
+    fetchAllStops,
+    clearStopCache
 } from "@entities/stop";
 import { parseCoordinates } from '@/shared/lib/coordinatesHelper';
 import { EditStopHeader } from './EditStopHeader';
@@ -102,6 +104,36 @@ export const EditStopScreen = ({ route, navigation }) => {
     const districts = useSelector(selectDistricts);
     const districtsForDropdown = useSelector(selectDistrictsForDropdown);
     const error = useSelector(selectDriverError);
+    const [stopWithProducts, setStopWithProducts] = useState(null);
+
+    // Загружаем товары отдельно если их нет в stopData
+    useEffect(() => {
+        const loadStopProducts = async () => {
+            if (stopData && stopId && (!stopData.products || stopData.products.length === 0)) {
+                try {
+                    const { stopApi } = await import('@entities/stop/api/stopApi');
+                    const response = await stopApi.getStopProducts(stopId);
+                    if (response?.data?.data?.products) {
+                        setStopWithProducts({
+                            ...stopData,
+                            products: response.data.data.products
+                        });
+                    } else {
+                        setStopWithProducts(stopData);
+                    }
+                } catch (err) {
+                    console.error('Ошибка загрузки товаров остановки:', err);
+                    setStopWithProducts(stopData);
+                }
+            } else {
+                setStopWithProducts(stopData);
+            }
+        };
+
+        if (stopData) {
+            loadStopProducts();
+        }
+    }, [stopData, stopId]);
 
     useEffect(() => {
         navigation.setOptions({
@@ -251,7 +283,10 @@ export const EditStopScreen = ({ route, navigation }) => {
     const handleSave = (formData) => {
         return dispatch(updateStop({ stopId, stopData: formData }))
             .unwrap()
-            .then((result) => {
+            .then(async (result) => {
+                // Обновляем данные остановок после успешного сохранения
+                dispatch(clearStopCache());
+                await dispatch(fetchAllStops());
                 return result;
             })
             .catch((error) => {
@@ -359,10 +394,10 @@ export const EditStopScreen = ({ route, navigation }) => {
                 keyboardDismissMode="on-drag"
                 scrollEventThrottle={16}
             >
-                {isScreenFocused && stopData && (
+                {isScreenFocused && (stopWithProducts || stopData) && (
                     <EditStopForm
                         stopData={{
-                            ...stopData,
+                            ...(stopWithProducts || stopData),
                             ...(currentLocation ? { mapLocation: currentLocation } : {}),
                             ...(currentAddress ? { address: currentAddress } : {}),
                             ...(locationData.mapLocation ? { mapLocation: locationData.mapLocation } : {})

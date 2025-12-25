@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, ScrollView, SafeAreaView } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Text, ScrollView, SafeAreaView, KeyboardAvoidingView, Platform } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useFocusEffect } from '@react-navigation/native';
 
@@ -31,6 +31,7 @@ export const AddStopScreen = ({ navigation, route }) => {
     const isProcessingRouteParams = useRef(false);
     const isInitialized = useRef(false);
     const lastUpdateTime = useRef(0);
+    const scrollViewRef = useRef(null);
 
     const dispatch = useDispatch();
     const isLoading = useSelector(selectDriverLoading);
@@ -251,37 +252,64 @@ export const AddStopScreen = ({ navigation, route }) => {
         </View>
     ));
 
+    const handleScrollToInput = useCallback((yOffset) => {
+        if (scrollViewRef.current) {
+            setTimeout(() => {
+                scrollViewRef.current?.scrollTo({
+                    y: Math.max(0, yOffset),
+                    animated: true
+                });
+            }, 100);
+        }
+    }, []);
+
+    const handleScrollToEnd = useCallback(() => {
+        if (scrollViewRef.current) {
+            setTimeout(() => {
+                scrollViewRef.current?.scrollToEnd({ animated: true });
+            }, 300);
+        }
+    }, []);
+
     return (
         <SafeAreaView style={styles.container}>
             <AddStopHeader />
-            <ScrollView 
-                style={styles.scrollView}
-                contentContainerStyle={styles.scrollContent}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={true}
-                showsHorizontalScrollIndicator={false}
-                scrollEnabled={true}
-                bounces={true}
-                nestedScrollEnabled={true}
-                automaticallyAdjustContentInsets={false}
-                contentInsetAdjustmentBehavior="never"
-                contentInset={{ top: 0, left: 0, bottom: 0, right: 0 }}
-                keyboardDismissMode="on-drag"
-                scrollEventThrottle={16}
+            <KeyboardAvoidingView
+                style={styles.keyboardAvoidingView}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
             >
-                <StopForm
-                    districts={districtsForDropdown}
-                    onMapOpen={handleMapModalOpen}
-                    locationData={locationData}
-                    setLocationData={setLocationData}
-                    formSubmitted={formSubmitted}
-                    setFormSubmitted={setFormSubmitted}
-                    userRole={userRole}
-                    isLocationLoading={isLocationLoading}
-                    setIsLocationLoading={setIsLocationLoading}
-                    addressFromMap={addressFromMap}
-                />
-            </ScrollView>
+                <ScrollView 
+                    ref={scrollViewRef}
+                    style={styles.scrollView}
+                    contentContainerStyle={styles.scrollContent}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={true}
+                    showsHorizontalScrollIndicator={false}
+                    scrollEnabled={true}
+                    bounces={true}
+                    nestedScrollEnabled={true}
+                    automaticallyAdjustContentInsets={false}
+                    contentInsetAdjustmentBehavior="automatic"
+                    keyboardDismissMode="on-drag"
+                    scrollEventThrottle={16}
+                >
+                    <StopForm
+                        districts={districtsForDropdown}
+                        onMapOpen={handleMapModalOpen}
+                        locationData={locationData}
+                        setLocationData={setLocationData}
+                        formSubmitted={formSubmitted}
+                        setFormSubmitted={setFormSubmitted}
+                        userRole={userRole}
+                        isLocationLoading={isLocationLoading}
+                        setIsLocationLoading={setIsLocationLoading}
+                        addressFromMap={addressFromMap}
+                        scrollToInput={handleScrollToInput}
+                        scrollToEnd={handleScrollToEnd}
+                    />
+                </ScrollView>
+            </KeyboardAvoidingView>
 
             <ReusableModal
                 visible={mapModalVisible}
@@ -301,11 +329,14 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: Color.colorLightMode,
     },
+    keyboardAvoidingView: {
+        flex: 1,
+    },
     scrollView: {
         flex: 1,
     },
     scrollContent: {
-        paddingBottom: 40,
+        paddingBottom: 100,
     },
 });
 

@@ -366,11 +366,13 @@ const BubbleContainer = ({
     isSelectionMode = false,
     isSelected = false,
     isHighlighted = false,
+    isPressed = false,
     isContextMenuActive = false,
     hasContextMenu = false,
     canDelete = false,
     onToggleSelection,
     onLongPress,
+    onPress,
     onAvatarPress,
     replyTo,
     onReplyPress,
@@ -410,14 +412,16 @@ const BubbleContainer = ({
     }, [onLongPress]);
 
     const handlePress = useCallback(() => {
-        if (onToggleSelection) {
+        if (isSelectionMode && onToggleSelection) {
             onToggleSelection();
+        } else if (onPress && !isSelectionMode) {
+            onPress();
         }
-    }, [onToggleSelection]);
+    }, [onToggleSelection, onPress, isSelectionMode]);
 
     // Для голосовых сообщений отключаем перехват нажатий в BubbleContainer
     const isVoiceMessage = text === '' && !hasImage && !replyTo;
-    const canPress = isSelectionMode || (hasContextMenu && !isVoiceMessage);
+    const canPress = isSelectionMode || (hasContextMenu && !isVoiceMessage) || (onPress && !isSelectionMode);
 
     return (
         <TouchableOpacity
@@ -426,7 +430,8 @@ const BubbleContainer = ({
                 styles.messageContainer,
                 isOwn ? styles.ownMessageContainer : styles.otherMessageContainer,
                 isSelectionMode && isSelected && styles.selectedMessageContainer,
-                !isSelectionMode && isContextMenuActive && (isOwn ? styles.contextMenuActiveContainerOwn : styles.contextMenuActiveContainerOther)
+                !isSelectionMode && isContextMenuActive && (isOwn ? styles.contextMenuActiveContainerOwn : styles.contextMenuActiveContainerOther),
+                isPressed && !isSelectionMode && (isOwn ? styles.pressedBubbleOwn : styles.pressedBubbleOther)
             ]}
             onLongPress={handleLongPress}
             delayLongPress={150}
@@ -456,11 +461,12 @@ const BubbleContainer = ({
             {!isOwn && !showAvatar && <View style={styles.avatarSpacer}/>}
 
             <View style={[styles.bubbleWrapper, isOwn && styles.ownBubbleWrapper]}>
-                <View
+                    <View
                     style={[
                         styles.bubble, 
                         isOwn ? styles.ownBubble : styles.otherBubble,
-                        isHighlighted && styles.highlightedBubble
+                        isHighlighted && styles.highlightedBubble,
+                        isPressed && !isSelectionMode && (isOwn ? styles.pressedBubbleInnerOwn : styles.pressedBubbleInnerOther)
                     ]}
                 >
                     <View style={styles.messageContent}>
@@ -541,11 +547,13 @@ const TextMessage = ({
     isSelectionMode,
     isSelected,
     isHighlighted,
+    isPressed = false,
     isContextMenuActive,
     hasContextMenu,
     canDelete,
     onToggleSelection,
     onLongPress,
+    onPress,
     onAvatarPress,
     replyTo,
     onReplyPress,
@@ -626,11 +634,13 @@ const TextMessage = ({
                 isSelectionMode={isSelectionMode}
                 isSelected={isSelected}
                 isHighlighted={isHighlighted}
+                isPressed={isPressed}
                 isContextMenuActive={isContextMenuActive}
                 hasContextMenu={hasContextMenu}
                 canDelete={canDelete}
                 onToggleSelection={onToggleSelection}
                 onLongPress={onLongPress}
+                onPress={onPress}
                 onAvatarPress={onAvatarPress}
                 replyTo={replyTo}
                 onReplyPress={onReplyPress}
@@ -673,11 +683,13 @@ const ImageMessage = ({
     isSelectionMode,
     isSelected,
     isHighlighted,
+    isPressed = false,
     isContextMenuActive,
     hasContextMenu,
     canDelete,
     onToggleSelection,
     onLongPress,
+    onPress,
     onAvatarPress,
     replyTo,
     onReplyPress,
@@ -703,16 +715,23 @@ const ImageMessage = ({
             isSelectionMode={isSelectionMode}
             isSelected={isSelected}
             isHighlighted={isHighlighted}
+            isPressed={isPressed}
             isContextMenuActive={isContextMenuActive}
             hasContextMenu={hasContextMenu}
             canDelete={canDelete}
             onToggleSelection={onToggleSelection}
             onLongPress={onLongPress}
+            onPress={onPress}
             onAvatarPress={onAvatarPress}
             replyTo={replyTo}
             onReplyPress={onReplyPress}
             onReply={onReply}
             currentUserId={currentUserId}
+            showSenderName={showSenderName}
+            senderName={senderName}
+            senderId={senderId}
+            senderNameColor={senderNameColor}
+            onSenderNamePress={onSenderNamePress}
         >
             <View style={styles.imageContainer}>
                 {attachments.map((attachment, index) => (
@@ -761,11 +780,13 @@ const ProductMessage = ({
     showAvatar,
     isSelectionMode,
     isSelected,
+    isPressed = false,
     isContextMenuActive,
     hasContextMenu,
     canDelete,
     onToggleSelection,
     onLongPress,
+    onPress,
     onAvatarPress,
     replyTo,
     onReplyPress,
@@ -808,10 +829,12 @@ const ProductMessage = ({
                 hasImage={false}
                 isSelectionMode={isSelectionMode}
                 isSelected={isSelected}
+                isPressed={isPressed}
                 isContextMenuActive={isContextMenuActive}
                 canDelete={canDelete}
                 onToggleSelection={onToggleSelection}
                 onLongPress={onLongPress}
+                onPress={onPress}
                 onAvatarPress={onAvatarPress}
                 replyTo={replyTo}
                 onReplyPress={onReplyPress}
@@ -866,11 +889,13 @@ const StopMessage = ({
     showAvatar,
     isSelectionMode,
     isSelected,
+    isPressed = false,
     isContextMenuActive,
     hasContextMenu,
     canDelete,
     onToggleSelection,
     onLongPress,
+    onPress,
     onAvatarPress,
     onContactDriver,
     replyTo,
@@ -918,10 +943,12 @@ const StopMessage = ({
                 hasImage={false}
                 isSelectionMode={isSelectionMode}
                 isSelected={isSelected}
+                isPressed={isPressed}
                 isContextMenuActive={isContextMenuActive}
                 canDelete={canDelete}
                 onToggleSelection={onToggleSelection}
                 onLongPress={onLongPress}
+                onPress={onPress}
                 onAvatarPress={onAvatarPress}
                 replyTo={replyTo}
                 onReplyPress={onReplyPress}
@@ -982,11 +1009,13 @@ export const MessageBubble = memo(({
                                        isSelectionMode = false,
                                        isSelected = false,
                                        isHighlighted = false,
+                                       isPressed = false,
                                        isContextMenuActive = false,
                                        hasContextMenu = false,
                                        canDelete = false,
                                        onToggleSelection,
                                        onLongPress,
+                                       onPress,
                                        onRetryMessage,
                                        onCancelMessage,
                                        isRetrying = false,
@@ -1145,11 +1174,13 @@ export const MessageBubble = memo(({
                     isSelectionMode={isSelectionMode}
                     isSelected={isSelected}
                     isHighlighted={isHighlighted}
+                    isPressed={isPressed}
                     isContextMenuActive={isContextMenuActive}
                     hasContextMenu={hasContextMenu}
                     canDelete={canDelete}
                     onToggleSelection={onToggleSelection}
                     onLongPress={onLongPress}
+                    onPress={onPress}
                     onAvatarPress={onAvatarPress}
                     replyTo={message.replyTo}
                     onReplyPress={onReplyPress}
@@ -1193,11 +1224,13 @@ export const MessageBubble = memo(({
                     isSelectionMode={isSelectionMode}
                     isSelected={isSelected}
                     isHighlighted={isHighlighted}
+                    isPressed={isPressed}
                     isContextMenuActive={isContextMenuActive}
                     hasContextMenu={hasContextMenu}
                     canDelete={canDelete}
                     onToggleSelection={onToggleSelection}
                     onLongPress={onLongPress}
+                    onPress={onPress}
                     onAvatarPress={onAvatarPress}
                     replyTo={message.replyTo}
                     onReplyPress={onReplyPress}
@@ -1226,11 +1259,13 @@ export const MessageBubble = memo(({
                     isSelectionMode={isSelectionMode}
                     isSelected={isSelected}
                     isHighlighted={isHighlighted}
+                    isPressed={isPressed}
                     isContextMenuActive={isContextMenuActive}
                     hasContextMenu={hasContextMenu}
                     canDelete={canDelete}
                     onToggleSelection={onToggleSelection}
                     onLongPress={onLongPress}
+                    onPress={onPress}
                     onAvatarPress={onAvatarPress}
                     replyTo={message.replyTo}
                     onReplyPress={onReplyPress}
@@ -1306,10 +1341,12 @@ export const MessageBubble = memo(({
                     isSelectionMode={isSelectionMode}
                     isSelected={isSelected}
                     isHighlighted={isHighlighted}
+                    isPressed={isPressed}
                     isContextMenuActive={isContextMenuActive}
                     canDelete={canDelete}
                     onToggleSelection={onToggleSelection}
                     onLongPress={onLongPress}
+                    onPress={onPress}
                     onAvatarPress={onAvatarPress}
                     replyTo={message.replyTo}
                     onReplyPress={onReplyPress}
@@ -1335,10 +1372,12 @@ export const MessageBubble = memo(({
                     isSelectionMode={isSelectionMode}
                     isSelected={isSelected}
                     isHighlighted={isHighlighted}
+                    isPressed={isPressed}
                     isContextMenuActive={isContextMenuActive}
                     canDelete={canDelete}
                     onToggleSelection={onToggleSelection}
                     onLongPress={onLongPress}
+                    onPress={onPress}
                     onAvatarPress={onAvatarPress}
                     replyTo={message.replyTo}
                     onReplyPress={onReplyPress}
@@ -1362,11 +1401,13 @@ export const MessageBubble = memo(({
                 showAvatar={showAvatar}
                 isSelectionMode={isSelectionMode}
                 isSelected={isSelected}
+                isPressed={isPressed}
                 isContextMenuActive={isContextMenuActive}
                 hasContextMenu={hasContextMenu}
                 canDelete={canDelete}
                 onToggleSelection={onToggleSelection}
                 onLongPress={onLongPress}
+                onPress={onPress}
                 onAvatarPress={onAvatarPress}
                 replyTo={message.replyTo}
                 onReplyPress={onReplyPress}
@@ -1395,11 +1436,13 @@ export const MessageBubble = memo(({
                 showAvatar={showAvatar}
                 isSelectionMode={isSelectionMode}
                 isSelected={isSelected}
+                isPressed={isPressed}
                 isContextMenuActive={isContextMenuActive}
                 hasContextMenu={hasContextMenu}
                 canDelete={canDelete}
                 onToggleSelection={onToggleSelection}
                 onLongPress={onLongPress}
+                onPress={onPress}
                 onAvatarPress={onAvatarPress}
                 currentUserId={currentUserId}
                 replyTo={message.replyTo}
@@ -1446,10 +1489,12 @@ export const MessageBubble = memo(({
                     isSelectionMode={isSelectionMode}
                     isSelected={isSelected}
                     isHighlighted={isHighlighted}
+                    isPressed={isPressed}
                     isContextMenuActive={isContextMenuActive}
                     canDelete={canDelete}
                     onToggleSelection={onToggleSelection}
                     onLongPress={onLongPress}
+                    onPress={onPress}
                     onAvatarPress={onAvatarPress}
                     replyTo={message.replyTo}
                     onReplyPress={onReplyPress}
@@ -1475,10 +1520,12 @@ export const MessageBubble = memo(({
                     isSelectionMode={isSelectionMode}
                     isSelected={isSelected}
                     isHighlighted={isHighlighted}
+                    isPressed={isPressed}
                     isContextMenuActive={isContextMenuActive}
                     canDelete={canDelete}
                     onToggleSelection={onToggleSelection}
                     onLongPress={onLongPress}
+                    onPress={onPress}
                     onAvatarPress={onAvatarPress}
                     replyTo={message.replyTo}
                     onReplyPress={onReplyPress}
@@ -1502,11 +1549,13 @@ export const MessageBubble = memo(({
                 showAvatar={showAvatar}
                 isSelectionMode={isSelectionMode}
                 isSelected={isSelected}
+                isPressed={isPressed}
                 isContextMenuActive={isContextMenuActive}
                 hasContextMenu={hasContextMenu}
                 canDelete={canDelete}
                 onToggleSelection={onToggleSelection}
                 onLongPress={onLongPress}
+                onPress={onPress}
                 onAvatarPress={onAvatarPress}
                 onContactDriver={onContactDriver}
                 replyTo={message.replyTo}
@@ -1536,11 +1585,13 @@ export const MessageBubble = memo(({
             isSelectionMode={isSelectionMode}
             isSelected={isSelected}
             isHighlighted={isHighlighted}
+            isPressed={isPressed}
             isContextMenuActive={isContextMenuActive}
             hasContextMenu={hasContextMenu}
             canDelete={canDelete}
             onToggleSelection={onToggleSelection}
             onLongPress={onLongPress}
+            onPress={onPress}
             onAvatarPress={onAvatarPress}
             replyTo={message.replyTo}
             onReplyPress={onReplyPress}
@@ -1810,6 +1861,18 @@ const styles = StyleSheet.create({
     },
     contextMenuActiveContainerOther: {
         backgroundColor: 'rgba(34, 197, 94, 0.15)', // Зеленоватое выделение для чужих сообщений
+    },
+    pressedBubbleOwn: {
+        opacity: 0.85,
+    },
+    pressedBubbleOther: {
+        opacity: 0.85,
+    },
+    pressedBubbleInnerOwn: {
+        backgroundColor: '#C8E6A0', // Более темный зеленый для своих сообщений при нажатии
+    },
+    pressedBubbleInnerOther: {
+        backgroundColor: '#E8E8E8', // Более темный белый для чужих сообщений при нажатии
     },
 
     // Контент

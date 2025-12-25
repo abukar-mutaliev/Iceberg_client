@@ -15,7 +15,8 @@
     "build": "eas build --profile preview --platform android --clear-cache",
     "production": "eas build --platform android --profile production",
     "prebuild": "npx expo prebuild --clean",
-    "ios": "npx expo start --lan --go"
+    "ios": "npx expo start --lan --go",
+    "eas-build-pre-install": "npm install --legacy-peer-deps"
   },
   "dependencies": {
     "@babel/runtime": "^7.27.1",
@@ -52,7 +53,7 @@
     "expo-media-library": "~18.2.1",
     "expo-notifications": "~0.32.15",
     "expo-sharing": "~14.0.8",
-    "expo-sqlite": "~14.0.0",
+    "expo-sqlite": "~16.0.10",
     "expo-status-bar": "~3.0.9",
     "expo-updates": "~29.0.15",
     "lodash": "^4.17.21",

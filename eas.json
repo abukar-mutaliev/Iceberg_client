@@ -22,7 +22,9 @@
         "NODE_ENV": "production",
         "EXPO_PUBLIC_BUILD_TYPE": "standalone",
         "EXPO_DEBUG": "false",
-        "YANDEX_MAPS_API_KEY": "17ee620d-aee1-482c-acc9-c7144fd46087"
+        "YANDEX_MAPS_API_KEY": "17ee620d-aee1-482c-acc9-c7144fd46087",
+        "EXPO_PUBLIC_ONESIGNAL_APP_ID": "a1bde379-4211-4fb9-89e2-3e94530a7041",
+        "EXPO_PUBLIC_ONESIGNAL_ANDROID_CHANNEL_UUID": "084a368f-9843-40cc-91a7-cdb835b445df"
       },
       "channel": "standalone"
     },
@@ -70,7 +72,8 @@
         "EXPO_PUBLIC_BUILD_TYPE": "preview",
         "EXPO_DEBUG": "false",
         "YANDEX_MAPS_API_KEY": "17ee620d-aee1-482c-acc9-c7144fd46087",
-        "EXPO_PUBLIC_ONESIGNAL_APP_ID": "4ad5c8d5-4818-4e13-beac-fb1ec63285ad"
+        "EXPO_PUBLIC_ONESIGNAL_APP_ID": "a1bde379-4211-4fb9-89e2-3e94530a7041",
+        "EXPO_PUBLIC_ONESIGNAL_ANDROID_CHANNEL_UUID": "084a368f-9843-40cc-91a7-cdb835b445df"
       },
       "channel": "preview",
       "cache": {
@@ -119,9 +122,14 @@
         "NODE_ENV": "production",
         "EXPO_PUBLIC_BUILD_TYPE": "production",
         "EXPO_PUSH_TOKEN_ENABLED": "true",
-        "YANDEX_MAPS_API_KEY": "17ee620d-aee1-482c-acc9-c7144fd46087"
+        "YANDEX_MAPS_API_KEY": "17ee620d-aee1-482c-acc9-c7144fd46087",
+        "EXPO_PUBLIC_ONESIGNAL_APP_ID": "a1bde379-4211-4fb9-89e2-3e94530a7041",
+        "EXPO_PUBLIC_ONESIGNAL_ANDROID_CHANNEL_UUID": "084a368f-9843-40cc-91a7-cdb835b445df"
       },
-      "channel": "production"
+      "channel": "production",
+      "cache": {
+        "disabled": false
+      }
     },
     "internal-testing": {
       "extends": "production",
@@ -139,7 +147,9 @@
         "NODE_ENV": "production",
         "EXPO_PUBLIC_BUILD_TYPE": "internal-testing",
         "EXPO_PUSH_TOKEN_ENABLED": "true",
-        "YANDEX_MAPS_API_KEY": "17ee620d-aee1-482c-acc9-c7144fd46087"
+        "YANDEX_MAPS_API_KEY": "17ee620d-aee1-482c-acc9-c7144fd46087",
+        "EXPO_PUBLIC_ONESIGNAL_APP_ID": "a1bde379-4211-4fb9-89e2-3e94530a7041",
+        "EXPO_PUBLIC_ONESIGNAL_ANDROID_CHANNEL_UUID": "084a368f-9843-40cc-91a7-cdb835b445df"
       },
       "channel": "internal-testing"
     }

@@ -453,6 +453,7 @@ export const PhoneRegisterForm = ({ onVerification }) => {
                         onFocus={handlePhoneFocus}
                         keyboardType="phone-pad"
                         placeholder="+7 (___) ___-__-__"
+                        placeholderTextColor="#888"
                         maxLength={18}
                     />
                     {phoneError ? (
@@ -472,6 +473,7 @@ export const PhoneRegisterForm = ({ onVerification }) => {
                         onChangeText={handleNameChange}
                         onBlur={handleNameBlur}
                         placeholder="Фамилия Имя Отчество"
+                        placeholderTextColor="#888"
                     />
                     {nameError ? (
                         <Text style={styles.errorText}>{nameError}</Text>
@@ -490,6 +492,7 @@ export const PhoneRegisterForm = ({ onVerification }) => {
                         onChangeText={handleAddressChange}
                         onBlur={handleAddressBlur}
                         placeholder="г. Магас, ул. Примерная, д. 1"
+                        placeholderTextColor="#888"
                     />
                     {addressError ? (
                         <Text style={styles.errorText}>{addressError}</Text>
@@ -524,6 +527,7 @@ export const PhoneRegisterForm = ({ onVerification }) => {
                             value={customDistrict}
                             onChangeText={handleCustomDistrictChange}
                             placeholder="Введите название района"
+                            placeholderTextColor="#888"
                         />
                         <View style={styles.inputUnderline} />
                     </View>
@@ -558,6 +562,7 @@ export const PhoneRegisterForm = ({ onVerification }) => {
                             if (passwordError) setPasswordError('');
                         }}
                         placeholder="Минимум 6 символов"
+                        placeholderTextColor="#888"
                         secureTextEntry
                         autoCapitalize="none"
                     />
@@ -580,6 +585,7 @@ export const PhoneRegisterForm = ({ onVerification }) => {
                             if (confirmPasswordError) setConfirmPasswordError('');
                         }}
                         placeholder="Повторите пароль"
+                        placeholderTextColor="#888"
                         secureTextEntry
                         autoCapitalize="none"
                     />

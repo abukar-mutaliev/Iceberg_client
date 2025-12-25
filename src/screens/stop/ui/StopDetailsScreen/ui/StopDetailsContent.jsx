@@ -415,7 +415,6 @@ export const StopDetailsContent = ({ stop, navigation }) => {
             const parsedCoords = parseMapLocation(stop.mapLocation);
             
             if (parsedCoords) {
-                logData('Используем координаты из mapLocation', parsedCoords);
                 setMapCoordinates(parsedCoords);
                 setMapLoaded(true);
                 return;
@@ -824,6 +823,7 @@ export const StopDetailsContent = ({ stop, navigation }) => {
                         new Date(stop.startTime) <= new Date() &&
                         new Date() <= new Date(stop.endTime)
                     }
+                    refreshKey={stop.updatedAt || stop.createdAt}
                 />
 
                 {canEdit && (

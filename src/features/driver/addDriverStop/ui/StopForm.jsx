@@ -39,12 +39,16 @@ export const StopForm = memo(({
                                   userRole,
                                   isLocationLoading,
                                   setIsLocationLoading,
-                                  addressFromMap
+                                  addressFromMap,
+                                  scrollToInput,
+                                  scrollToEnd
                               }) => {
     const dispatch = useDispatch();
     const navigation = useNavigation();
     const route = useRoute();
     const scrollViewRef = useRef(null);
+    const commentInputRef = useRef(null);
+    const commentInputYPosition = useRef(0);
     const isLoading = useSelector(selectDriverLoading);
     const allDrivers = useSelector(state => state.driver?.allDrivers || []);
     const { showError, showInfo } = useToast();
@@ -869,7 +873,6 @@ export const StopForm = memo(({
                 {isAdminOrEmployee && (
                     <FormSection title="Водитель">
                         <FormField
-                            label="Выберите водителя"
                             required={isAdminOrEmployee}
                             error={errors.driver}
                         >
@@ -890,7 +893,6 @@ export const StopForm = memo(({
 
                 <FormSection title="Фотография" subtitle="Прикрепите фотографию остановки">
                     <FormField
-                        label="Фотография"
                         required
                         error={errors.photo}
                     >
@@ -907,10 +909,8 @@ export const StopForm = memo(({
 
                 <FormSection 
                     title="Местоположение" 
-                    subtitle="Укажите адрес и координаты остановки"
                 >
                     <FormField
-                        label="Район"
                         required
                         error={errors.district}
                     >
@@ -1067,13 +1067,13 @@ export const StopForm = memo(({
                     >
                         <View style={styles.dateTimeRow}>
                             <View style={styles.dateTimeColumn}>
-                                <Text style={styles.sublabel}>Дата начала</Text>
+                                <Text style={styles.sublabel}>Дата</Text>
                                 <CustomDatePicker date={startDate} onDateChange={onStartDateChange} />
                                 <View style={[styles.inputUnderline, errors.startTime ? styles.underlineError : null]} />
                             </View>
                             
                             <View style={styles.dateTimeColumn}>
-                                <Text style={styles.sublabel}>Время начала</Text>
+                                <Text style={styles.sublabel}>Время</Text>
                                 <CustomTimePicker date={startTime} onTimeChange={onStartTimeChange} />
                                 <View style={[styles.inputUnderline, errors.startTime ? styles.underlineError : null]} />
                             </View>
@@ -1087,13 +1087,13 @@ export const StopForm = memo(({
                     >
                         <View style={styles.dateTimeRow}>
                             <View style={styles.dateTimeColumn}>
-                                <Text style={styles.sublabel}>Дата окончания</Text>
+                                <Text style={styles.sublabel}>Дата</Text>
                                 <CustomDatePicker date={endDate} onDateChange={onEndDateChange} />
                                 <View style={[styles.inputUnderline, errors.endTime ? styles.underlineError : null]} />
                             </View>
                             
                             <View style={styles.dateTimeColumn}>
-                                <Text style={styles.sublabel}>Время окончания</Text>
+                                <Text style={styles.sublabel}>Время</Text>
                                 <CustomTimePicker date={endTime} onTimeChange={onEndTimeChange} />
                                 <View style={[styles.inputUnderline, errors.endTime ? styles.underlineError : null]} />
                             </View>
@@ -1103,19 +1103,36 @@ export const StopForm = memo(({
 
                 <FormSection title="Дополнительная информация">
                     <FormField label="Комментарий">
-                        <TextInput
-                            style={[styles.input, styles.commentInput]}
-                            value={description}
-                            onChangeText={(text) => {
-                                setDescription(text);
-                                logData('Изменено описание', text);
+                        <View
+                            onLayout={(event) => {
+                                const { y } = event.nativeEvent.layout;
+                                commentInputYPosition.current = y;
                             }}
-                            placeholder="Введите дополнительную информацию"
-                            placeholderTextColor="#999"
-                            multiline
-                            numberOfLines={4}
-                            textAlignVertical="top"
-                        />
+                        >
+                            <TextInput
+                                ref={commentInputRef}
+                                style={[styles.input, styles.commentInput]}
+                                value={description}
+                                onChangeText={(text) => {
+                                    setDescription(text);
+                                    logData('Изменено описание', text);
+                                }}
+                                onFocus={() => {
+                                    if (scrollToEnd) {
+                                        scrollToEnd();
+                                    } else if (scrollToInput && commentInputYPosition.current > 0) {
+                                        setTimeout(() => {
+                                            scrollToInput(commentInputYPosition.current - 150);
+                                        }, 300);
+                                    }
+                                }}
+                                placeholder="Введите дополнительную информацию"
+                                placeholderTextColor="#999"
+                                multiline
+                                numberOfLines={4}
+                                textAlignVertical="top"
+                            />
+                        </View>
                         <View style={styles.inputUnderline}/>
                     </FormField>
                 </FormSection>

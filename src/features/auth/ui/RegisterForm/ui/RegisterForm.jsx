@@ -535,6 +535,7 @@ export const RegisterForm = ({ onVerification }) => {
                         keyboardType="email-address"
                         autoCapitalize="none"
                         placeholder="Icbrg@gmail.com"
+                        placeholderTextColor="#888"
                     />
                     {emailError ? (
                         <Text style={styles.errorText}>{emailError}</Text>
@@ -554,6 +555,7 @@ export const RegisterForm = ({ onVerification }) => {
                         onBlur={handlePasswordBlur}
                         secureTextEntry
                         placeholder="********"
+                        placeholderTextColor="#888"
                     />
                     {passwordError ? (
                         <Text style={styles.errorText}>{passwordError}</Text>
@@ -572,6 +574,7 @@ export const RegisterForm = ({ onVerification }) => {
                         onChangeText={handleNameChange}
                         onBlur={handleNameBlur}
                         placeholder="Фамилия Имя Отчество"
+                        placeholderTextColor="#888"
                     />
                     {nameError ? (
                         <Text style={styles.errorText}>{nameError}</Text>
@@ -592,6 +595,7 @@ export const RegisterForm = ({ onVerification }) => {
                         onFocus={handlePhoneFocus}
                         keyboardType="phone-pad"
                         placeholder="+7 (___) ___-__-__"
+                        placeholderTextColor="#888"
                         maxLength={18}
                     />
                     {phoneError ? (
@@ -611,6 +615,7 @@ export const RegisterForm = ({ onVerification }) => {
                         onChangeText={handleAddressChange}
                         onBlur={handleAddressBlur}
                         placeholder="г. Магас, ул. Примерная, д. 1"
+                        placeholderTextColor="#888"
                     />
                     {addressError ? (
                         <Text style={styles.errorText}>{addressError}</Text>
@@ -647,6 +652,7 @@ export const RegisterForm = ({ onVerification }) => {
                             value={customDistrict}
                             onChangeText={handleCustomDistrictChange}
                             placeholder="Введите название района"
+                            placeholderTextColor="#888"
                         />
                         <View style={styles.inputUnderline} />
                     </View>

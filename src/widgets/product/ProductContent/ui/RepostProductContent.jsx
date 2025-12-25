@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Platform,
+  useWindowDimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useDispatch, useSelector } from 'react-redux';
@@ -25,6 +27,7 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
   const navigation = useNavigation();
   const dispatch = useDispatch();
   const { isAuthenticated } = useAuth();
+  const { width } = useWindowDimensions();
   
   const [activeTab, setActiveTab] = useState('chats'); 
   const [searchQuery, setSearchQuery] = useState('');
@@ -37,6 +40,109 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
   const currentUserId = currentUser?.id;
   const currentUserRole = useSelector((s) => s.auth?.user?.role);
   const productsById = useSelector(selectProductsById);
+  
+  // Определяем, является ли экран маленьким
+  const isSmallScreen = width < 375;
+  
+  // Адаптивные стили для мелких экранов
+  const adaptiveStyles = useMemo(() => ({
+    container: {
+      paddingHorizontal: isSmallScreen ? 12 : 20,
+    },
+    productInfo: {
+      paddingVertical: isSmallScreen ? 8 : 12,
+    },
+    productImage: {
+      width: isSmallScreen ? 40 : 50,
+      height: isSmallScreen ? 40 : 50,
+      marginRight: isSmallScreen ? 8 : 10,
+    },
+    productName: {
+      fontSize: isSmallScreen ? 14 : 16,
+    },
+    productPrice: {
+      fontSize: isSmallScreen ? 12 : 14,
+    },
+    tab: {
+      paddingHorizontal: isSmallScreen ? 4 : 8,
+      height: isSmallScreen ? 40 : 44,
+    },
+    tabText: {
+      fontSize: isSmallScreen ? 12 : 14,
+      lineHeight: isSmallScreen ? 16 : 20,
+    },
+    searchInput: {
+      fontSize: isSmallScreen ? 14 : 16,
+      height: isSmallScreen ? 36 : 40,
+      paddingHorizontal: isSmallScreen ? 12 : 16,
+    },
+    chatTitle: {
+      fontSize: isSmallScreen ? 14 : 16,
+    },
+    chatPreview: {
+      fontSize: isSmallScreen ? 12 : 14,
+    },
+    chatTime: {
+      fontSize: isSmallScreen ? 10 : 12,
+    },
+    avatarContainer: {
+      width: isSmallScreen ? 36 : 40,
+      height: isSmallScreen ? 36 : 40,
+      borderRadius: isSmallScreen ? 18 : 20,
+      marginRight: isSmallScreen ? 8 : 10,
+    },
+    avatar: {
+      width: isSmallScreen ? 36 : 40,
+      height: isSmallScreen ? 36 : 40,
+    },
+    avatarPlaceholder: {
+      width: isSmallScreen ? 36 : 40,
+      height: isSmallScreen ? 36 : 40,
+    },
+    avatarPlaceholderText: {
+      fontSize: isSmallScreen ? 18 : 20,
+    },
+    userName: {
+      fontSize: isSmallScreen ? 14 : 16,
+    },
+    supplierName: {
+      fontSize: isSmallScreen ? 15 : 17,
+    },
+    userSubtitle: {
+      fontSize: isSmallScreen ? 12 : 14,
+    },
+    supplierSubtitle: {
+      fontSize: isSmallScreen ? 11 : 13,
+    },
+    existingChatText: {
+      fontSize: isSmallScreen ? 10 : 12,
+    },
+    sendButton: {
+      width: isSmallScreen ? 32 : 36,
+      height: isSmallScreen ? 32 : 36,
+      borderRadius: isSmallScreen ? 16 : 18,
+    },
+    iconContainer: {
+      width: isSmallScreen ? 18 : 20,
+      height: isSmallScreen ? 18 : 20,
+    },
+    iconSize: isSmallScreen ? 18 : 20,
+    emptyText: {
+      fontSize: isSmallScreen ? 14 : 16,
+    },
+    loadingText: {
+      fontSize: isSmallScreen ? 14 : 16,
+    },
+    chatItem: {
+      paddingVertical: isSmallScreen ? 8 : 10,
+      paddingRight: isSmallScreen ? 2 : 4,
+    },
+    userItem: {
+      paddingVertical: isSmallScreen ? 10 : 12,
+      paddingHorizontal: isSmallScreen ? 6 : 8,
+      paddingRight: isSmallScreen ? 8 : 12,
+    },
+  }), [isSmallScreen]);
 
   // Загружаем существующие чаты при открытии (только для авторизованных пользователей)
   useEffect(() => {
@@ -586,42 +692,42 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
 
     return (
       <TouchableOpacity
-        style={styles.chatItem}
+        style={[styles.chatItem, adaptiveStyles.chatItem]}
         onPress={() => handleSendToExistingChat(item)}
         disabled={sending}
       >
-        <View style={styles.avatarContainer}>
+        <View style={[styles.avatarContainer, adaptiveStyles.avatarContainer]}>
           {avatar ? (
             <Image 
               source={{ uri: avatar }} 
-              style={styles.avatar}
+              style={[styles.avatar, adaptiveStyles.avatar]}
               resizeMode="cover"
             />
           ) : (
-            <View style={[styles.avatar, styles.placeholderAvatar]}>
+            <View style={[styles.avatar, adaptiveStyles.avatar, styles.placeholderAvatar]}>
               {item.type === 'BROADCAST' ? (
-                <Icon name="campaign" size={20} color="#8696A0" />
+                <Icon name="campaign" size={adaptiveStyles.iconSize} color="#8696A0" />
               ) : item.type === 'GROUP' ? (
-                <Icon name="group" size={20} color="#8696A0" />
+                <Icon name="group" size={adaptiveStyles.iconSize} color="#8696A0" />
               ) : (
-                <Icon name="person" size={20} color="#8696A0" />
+                <Icon name="person" size={adaptiveStyles.iconSize} color="#8696A0" />
               )}
             </View>
           )}
         </View>
         <View style={styles.chatInfo}>
-          <Text style={styles.chatTitle} numberOfLines={1}>{title}</Text>
-          <Text style={styles.chatPreview} numberOfLines={1}>{lastMessageText}</Text>
+          <Text style={[styles.chatTitle, adaptiveStyles.chatTitle]} numberOfLines={1}>{title}</Text>
+          <Text style={[styles.chatPreview, adaptiveStyles.chatPreview]} numberOfLines={1}>{lastMessageText}</Text>
         </View>
         <View style={styles.chatMeta}>
-          <Text style={styles.chatTime}>{time}</Text>
+          <Text style={[styles.chatTime, adaptiveStyles.chatTime]}>{time}</Text>
           <TouchableOpacity
-            style={styles.sendButton}
+            style={[styles.sendButton, adaptiveStyles.sendButton]}
             onPress={() => handleSendToExistingChat(item)}
             disabled={sending}
           >
-            <View style={styles.iconContainer}>
-              <Icon name="send" size={20} color="#ffffff" />
+            <View style={[styles.iconContainer, adaptiveStyles.iconContainer]}>
+              <Icon name="send" size={adaptiveStyles.iconSize} color="#ffffff" />
             </View>
           </TouchableOpacity>
         </View>
@@ -643,20 +749,24 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
 
     return (
       <TouchableOpacity
-        style={[styles.userItem, item.isProductSupplier && styles.supplierItem]}
+        style={[
+          styles.userItem, 
+          adaptiveStyles.userItem, 
+          item.isProductSupplier && styles.supplierItem
+        ]}
         onPress={() => handleSendToUser(item)}
         disabled={sending}
       >
-        <View style={styles.avatarContainer}>
+        <View style={[styles.avatarContainer, adaptiveStyles.avatarContainer]}>
           {avatarUri ? (
             <Image 
               source={{ uri: avatarUri }}
-              style={[styles.avatar, item.isProductSupplier && styles.supplierAvatarBorder]}
+              style={[styles.avatar, adaptiveStyles.avatar, item.isProductSupplier && styles.supplierAvatarBorder]}
               resizeMode="cover"
             />
           ) : (
-            <View style={[styles.avatarPlaceholder, item.isProductSupplier && styles.supplierAvatar]}>
-              <Text style={styles.avatarPlaceholderText}>
+            <View style={[styles.avatarPlaceholder, adaptiveStyles.avatarPlaceholder, item.isProductSupplier && styles.supplierAvatar]}>
+              <Text style={[styles.avatarPlaceholderText, adaptiveStyles.avatarPlaceholderText]}>
                 {item.displayName ? item.displayName[0].toUpperCase() : '👤'}
               </Text>
             </View>
@@ -664,24 +774,34 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
         </View>
         
         <View style={styles.userInfo}>
-          <Text style={[styles.userName, item.isProductSupplier && styles.supplierName]}>
+          <Text style={[
+            styles.userName, 
+            adaptiveStyles.userName, 
+            item.isProductSupplier && styles.supplierName,
+            item.isProductSupplier && adaptiveStyles.supplierName
+          ]}>
             {item.displayName}
           </Text>
-          <Text style={[styles.userSubtitle, item.isProductSupplier && styles.supplierSubtitle]}>
+          <Text style={[
+            styles.userSubtitle, 
+            adaptiveStyles.userSubtitle, 
+            item.isProductSupplier && styles.supplierSubtitle,
+            item.isProductSupplier && adaptiveStyles.supplierSubtitle
+          ]}>
             {subtitle}
           </Text>
           {item.hasExistingChat && (
-            <Text style={styles.existingChatText}>Чат существует</Text>
+            <Text style={[styles.existingChatText, adaptiveStyles.existingChatText]}>Чат существует</Text>
           )}
         </View>
 
         <TouchableOpacity
-          style={[styles.sendButton, item.isProductSupplier && styles.supplierSendButton]}
+          style={[styles.sendButton, adaptiveStyles.sendButton, item.isProductSupplier && styles.supplierSendButton]}
           onPress={() => handleSendToUser(item)}
           disabled={sending}
         >
-          <View style={styles.iconContainer}>
-            <Icon name="send" size={20} color="#ffffff" />
+          <View style={[styles.iconContainer, adaptiveStyles.iconContainer]}>
+            <Icon name="send" size={adaptiveStyles.iconSize} color="#ffffff" />
           </View>
         </TouchableOpacity>
       </TouchableOpacity>
@@ -689,21 +809,21 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, adaptiveStyles.container]}>
       {/* Информация о товаре */}
-      <View style={styles.productInfo}>
+      <View style={[styles.productInfo, adaptiveStyles.productInfo]}>
         {product?.images?.[0] && (
           <Image 
             source={{ uri: product.images[0].startsWith('http') ? product.images[0] : `${getBaseUrl()}/uploads/${product.images[0]}` }}
-            style={styles.productImage}
+            style={[styles.productImage, adaptiveStyles.productImage]}
             resizeMode="cover"
           />
         )}
         <View style={styles.productDetails}>
-          <Text style={styles.productName} numberOfLines={2}>
+          <Text style={[styles.productName, adaptiveStyles.productName]} numberOfLines={2}>
             {product?.name || 'Название товара'}
           </Text>
-          <Text style={styles.productPrice}>
+          <Text style={[styles.productPrice, adaptiveStyles.productPrice]}>
             {product?.price ? `${product.price} ₽` : 'Цена не указана'}
           </Text>
         </View>
@@ -712,20 +832,26 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
       {/* Переключатель вкладок */}
       <View style={styles.tabContainer}>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'chats' && styles.activeTab]}
+          style={[styles.tab, adaptiveStyles.tab, activeTab === 'chats' && styles.activeTab]}
           onPress={() => setActiveTab('chats')}
+          activeOpacity={0.7}
         >
-          <Text style={[styles.tabText, activeTab === 'chats' && styles.activeTabText]}>
-            Мои чаты ({filteredRooms.length})
-          </Text>
+          <View style={styles.tabTextContainer}>
+            <Text style={[styles.tabText, adaptiveStyles.tabText, activeTab === 'chats' && styles.activeTabText]}>
+              Мои чаты ({filteredRooms.length})
+            </Text>
+          </View>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.tab, activeTab === 'search' && styles.activeTab]}
+          style={[styles.tab, adaptiveStyles.tab, activeTab === 'search' && styles.activeTab]}
           onPress={() => setActiveTab('search')}
+          activeOpacity={0.7}
         >
-          <Text style={[styles.tabText, activeTab === 'search' && styles.activeTabText]}>
-            Поиск пользователей
-          </Text>
+          <View style={styles.tabTextContainer}>
+            <Text style={[styles.tabText, adaptiveStyles.tabText, activeTab === 'search' && styles.activeTabText]}>
+              Поиск пользователей
+            </Text>
+          </View>
         </TouchableOpacity>
       </View>
 
@@ -740,7 +866,7 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>У вас пока нет чатов</Text>
+                <Text style={[styles.emptyText, adaptiveStyles.emptyText]}>У вас пока нет чатов</Text>
               </View>
             }
           />
@@ -748,7 +874,7 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
       ) : (
         <View style={styles.searchContainer}>
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, adaptiveStyles.searchInput]}
             placeholder="Поиск по имени или компании..."
             value={searchQuery}
             onChangeText={handleSearchChange}
@@ -769,7 +895,7 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
               ListEmptyComponent={
                 !searching && (
                   <View style={styles.emptyContainer}>
-                    <Text style={styles.emptyText}>
+                    <Text style={[styles.emptyText, adaptiveStyles.emptyText]}>
                       {searchQuery.length > 0 
                         ? 'Пользователи не найдены'
                         : 'Нет доступных пользователей'}
@@ -786,7 +912,7 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
       {sending && (
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color="#075E54" />
-          <Text style={styles.loadingText}>Отправляем товар...</Text>
+          <Text style={[styles.loadingText, adaptiveStyles.loadingText]}>Отправляем товар...</Text>
         </View>
       )}
     </View>
@@ -832,18 +958,35 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
-    paddingVertical: 8,
+    height: 44,
     alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: 8,
     marginHorizontal: 4,
+    paddingHorizontal: 8,
   },
   activeTab: {
     backgroundColor: '#075E54',
+  },
+  tabTextContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
   },
   tabText: {
     fontSize: 14,
     color: '#666666',
     fontWeight: '500',
+    textAlign: 'center',
+    includeFontPadding: false,
+    lineHeight: 20,
+    ...Platform.select({
+      ios: {
+        textAlign: 'center',
+      },
+    }),
   },
   activeTabText: {
     color: '#ffffff',

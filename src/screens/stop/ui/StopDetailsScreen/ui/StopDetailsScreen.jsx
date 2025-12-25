@@ -22,6 +22,22 @@ export const StopDetailsScreen = ({ navigation }) => {
     const isLoading = useSelector(selectDriverLoading);
     const error = useSelector(selectDriverError);
 
+    // Функция для ручной загрузки данных
+    const loadStopsData = React.useCallback(async () => {
+        setIsLoadingStops(true);
+
+        try {
+            // Принудительно очищаем кеш
+            dispatch(clearStopCache());
+            await dispatch(fetchAllStops()).unwrap();
+            setRetryCount(0);
+        } catch (error) {
+            setRetryCount(prev => prev + 1);
+        } finally {
+            setIsLoadingStops(false);
+        }
+    }, [dispatch]);
+
     // КРИТИЧНО: Принудительная загрузка данных при монтировании
     useEffect(() => {
         const loadStopsImmediately = async () => {
@@ -72,36 +88,19 @@ export const StopDetailsScreen = ({ navigation }) => {
 
             return () => clearTimeout(timer);
         }
-    }, [stopId, stop, allStops.length, retryCount]);
+    }, [stopId, stop, allStops.length, retryCount, loadStopsData]);
 
-    // Фокус на экране - дополнительная проверка
+    // Фокус на экране - дополнительная проверка и перезагрузка после редактирования
     useFocusEffect(
         React.useCallback(() => {
+            // Загружаем данные только если остановка не найдена и данных нет
             if (!stop && stopId && !isLoadingStops && allStops.length === 0) {
                 loadStopsData();
             }
-        }, [stopId, stop, isLoadingStops, allStops.length])
+            // НЕ перезагружаем данные автоматически при каждом фокусе - это вызывает бесконечные запросы
+            // Перезагрузка происходит только через useEffect при монтировании
+        }, [stopId, stop, isLoadingStops, allStops.length, loadStopsData])
     );
-
-    // Функция для ручной загрузки данных
-    const loadStopsData = async () => {
-        if (isLoadingStops) {
-            return;
-        }
-
-        setIsLoadingStops(true);
-
-        try {
-            // Принудительно очищаем кеш
-            dispatch(clearStopCache());
-            await dispatch(fetchAllStops()).unwrap();
-            setRetryCount(0);
-        } catch (error) {
-            setRetryCount(prev => prev + 1);
-        } finally {
-            setIsLoadingStops(false);
-        }
-    };
 
     const handleRetry = () => {
         setRetryCount(0);

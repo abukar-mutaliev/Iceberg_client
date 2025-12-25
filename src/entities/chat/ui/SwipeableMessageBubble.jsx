@@ -11,6 +11,8 @@ export const SwipeableMessageBubble = ({
   onReply, 
   message,
   isHighlighted = false,
+  isPressed = false,
+  onPress,
   onAddReaction,
   onRemoveReaction,
   ...props 
@@ -100,6 +102,8 @@ export const SwipeableMessageBubble = ({
             message={message}
             onReply={onReply}
             isHighlighted={isHighlighted}
+            isPressed={isPressed}
+            onPress={onPress}
             onAddReaction={onAddReaction}
             onRemoveReaction={onRemoveReaction}
             {...props} 

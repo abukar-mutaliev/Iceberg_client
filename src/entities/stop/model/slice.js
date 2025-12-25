@@ -315,10 +315,14 @@ const stopSlice = createSlice({
                     const oldLocation = state.stops[index].mapLocation;
                     const newLocation = action.payload.mapLocation;
                     
-                    // Обновляем остановку в массиве
+                    // Обновляем остановку в массиве (включая товары если они есть в ответе)
                     state.stops[index] = {
                         ...state.stops[index],
                         ...action.payload,
+                        // Убеждаемся, что товары обновляются если они есть в ответе
+                        products: action.payload.products !== undefined 
+                            ? action.payload.products 
+                            : state.stops[index].products
                     };
                     
                     // Для обработки случая, когда координаты изменились
@@ -334,10 +338,19 @@ const stopSlice = createSlice({
                     if (state.currentStop && state.currentStop.id === action.payload.id) {
                         state.currentStop = {
                             ...state.currentStop,
-                            ...action.payload
+                            ...action.payload,
+                            // Убеждаемся, что товары обновляются если они есть в ответе
+                            products: action.payload.products !== undefined 
+                                ? action.payload.products 
+                                : state.currentStop.products
                         };
                     }
+                } else {
+                    // Если остановка не найдена в списке, добавляем её
+                    state.stops.push(action.payload);
                 }
+                // Сбрасываем кэш чтобы при следующей загрузке получить свежие данные
+                state.lastFetchTime = Date.now();
             })
             .addCase(updateStop.rejected, (state, action) => {
                 state.loading = false;

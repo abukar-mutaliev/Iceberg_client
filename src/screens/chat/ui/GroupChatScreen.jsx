@@ -78,6 +78,7 @@ export const GroupChatScreen = ({route, navigation}) => {
     const [isSelectionMode, setIsSelectionMode] = useState(false);
     const [selectedMessages, setSelectedMessages] = useState(new Set());
     const [retryingMessages, setRetryingMessages] = useState(new Set());
+    const [pressedMessageId, setPressedMessageId] = useState(null);
     
     // Reply and Forward State
     const [replyTo, setReplyTo] = useState(null);
@@ -182,9 +183,21 @@ export const GroupChatScreen = ({route, navigation}) => {
         styles.listContent,
         { 
             paddingTop: animatedPaddingTop, 
-            paddingBottom: 90 + headerOffset 
+            paddingBottom: 0 + headerOffset 
         }
     ], [animatedPaddingTop, headerOffset]);
+    
+    // Динамический стиль для контейнера чата
+    const chatContentStyle = useMemo(() => [
+        styles.chatContent
+    ], []);
+    
+    // Стиль для белой панели системных кнопок
+    const systemBarStyle = useMemo(() => ({
+        height: insets.bottom,
+        backgroundColor: '#ffffff',
+        width: '100%',
+    }), [insets.bottom]);
     
     // Стиль для Composer контейнера (БЕЗ белого фона)
     const composerContainerStyle = useMemo(() => {
@@ -1130,6 +1143,16 @@ export const GroupChatScreen = ({route, navigation}) => {
         });
     }, [currentUserId, navigation, roomId]);
 
+    const handleMessagePress = useCallback((messageId) => {
+        if (isSelectionMode) return; // Не обрабатываем нажатия в режиме выбора
+        
+        setPressedMessageId(messageId);
+        // Сбрасываем состояние через 150мс для визуальной обратной связи
+        setTimeout(() => {
+            setPressedMessageId(null);
+        }, 150);
+    }, [isSelectionMode]);
+
     const renderItem = useCallback(({item}) => (
         <SwipeableMessageBubble
             message={item}
@@ -1166,6 +1189,7 @@ export const GroupChatScreen = ({route, navigation}) => {
             isSelectionMode={isSelectionMode}
             isSelected={selectedMessages.has(item.id)}
             isHighlighted={highlightedMessageId === item.id}
+            isPressed={pressedMessageId === item.id}
             isContextMenuActive={false}
             hasContextMenu={false}
             canDelete={canDeleteMessage(item)}
@@ -1175,6 +1199,7 @@ export const GroupChatScreen = ({route, navigation}) => {
                 }
                 toggleMessageSelection(item.id);
             }}
+            onPress={() => handleMessagePress(item.id)}
             onLongPress={(position) => {
                 if (!isSelectionMode) {
                     setIsSelectionMode(true);
@@ -1195,7 +1220,7 @@ export const GroupChatScreen = ({route, navigation}) => {
             participants={roomData?.participants}
             onSenderNamePress={handleSenderNamePress}
         />
-    ), [currentUserId, isSelectionMode, selectedMessages, canDeleteMessage, toggleMessageSelection, handleRetryMessage, handleCancelMessage, retryingMessages, handleImagePress, handleReply, handleReplyPress, navigation, highlightedMessageId, handleToggleReaction, handleShowReactionPicker, roomData?.type, roomData?.participants, handleSenderNamePress]);
+    ), [currentUserId, isSelectionMode, selectedMessages, pressedMessageId, canDeleteMessage, toggleMessageSelection, handleRetryMessage, handleCancelMessage, retryingMessages, handleImagePress, handleReply, handleReplyPress, navigation, highlightedMessageId, handleToggleReaction, handleShowReactionPicker, roomData?.type, roomData?.participants, handleSenderNamePress, handleMessagePress]);
 
     const keyExtractor = useCallback((item) => {
         if (item.temporaryId) {
@@ -1210,7 +1235,7 @@ export const GroupChatScreen = ({route, navigation}) => {
     return (
         <View style={styles.container}>
             <ChatBackground>
-                <View style={styles.chatContent}>
+                <View style={chatContentStyle}>
                     <View style={styles.messagesContainer}>
                         {!loading && (!messages || messages.length === 0) && (
                             <View style={styles.emptyStateContainer}>
@@ -1300,12 +1325,12 @@ export const GroupChatScreen = ({route, navigation}) => {
                     </View>
                     
                     <KeyboardAvoidingView
-                        behavior={Platform.OS === 'ios' ? 'padding' : (isSamsung ? 'padding' : undefined)}
-                        keyboardVerticalOffset={keyboardVerticalOffset}
+                        behavior={Platform.OS === 'ios' ? 'padding' : (isSamsung ? 'padding' : 'height')}
+                        keyboardVerticalOffset={Platform.OS === 'ios' ? keyboardVerticalOffset : (isSamsung ? keyboardVerticalOffset : 0)}
                         style={styles.keyboardAvoidingView}
-                        enabled={Platform.OS === 'ios' || isSamsung}
+                        enabled={true}
                     >
-                        {canSendMessages && (
+                        {canSendMessages ? (
                             <View style={composerContainerStyle}>
                                 <Composer
                                     roomId={roomId}
@@ -1317,8 +1342,20 @@ export const GroupChatScreen = ({route, navigation}) => {
                                 />
                                 <TypingIndicator roomId={roomId} />
                             </View>
+                        ) : (
+                            <View style={styles.lockedChatContainer}>
+                                <View style={styles.lockedChatMessage}>
+                                    <Ionicons name="lock-closed" size={20} color="#999" />
+                                    <Text style={styles.lockedChatText}>
+                                        {roomData?.type === 'BROADCAST' 
+                                            ? 'Только администраторы могут отправлять сообщения.'
+                                            : 'Только администраторы могут отправлять сообщения.'}
+                                    </Text>
+                                </View>
+                            </View>
                         )}
                     </KeyboardAvoidingView>
+                    {insets.bottom > 0 && <View style={systemBarStyle} />}
                 </View>
             </ChatBackground>
 
@@ -1428,7 +1465,7 @@ const styles = StyleSheet.create({
     },
     listContent: {
         paddingHorizontal: 8,
-        paddingTop: 10,
+        paddingTop: 5,
     },
     emptyStateContainer: {
         flex: 1,
@@ -1468,6 +1505,25 @@ const styles = StyleSheet.create({
     },
     destructiveText: {
         color: '#ff3b30',
+    },
+    lockedChatContainer: {
+        backgroundColor: '#f5f5f5',
+        paddingVertical: 16,
+        paddingHorizontal: 16,
+        borderTopWidth: 1,
+        borderTopColor: '#e0e0e0',
+    },
+    lockedChatMessage: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+    },
+    lockedChatText: {
+        fontSize: 14,
+        color: '#666',
+        textAlign: 'center',
+        flex: 1,
     },
 });
 

@@ -247,6 +247,7 @@ export const LoginForm = ({ onForgotPassword }) => {
                         keyboardType="default"
                         autoCapitalize="none"
                         placeholder="email@example.com или 8 928 000 00 00"
+                        placeholderTextColor="#888"
                         editable={!isLoading}
                     />
                     <View style={[
@@ -267,6 +268,7 @@ export const LoginForm = ({ onForgotPassword }) => {
                         onBlur={handlePasswordBlur}
                         secureTextEntry
                         placeholder="********"
+                        placeholderTextColor="#888"
                         editable={!isLoading}
                     />
                     <View style={[

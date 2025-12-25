@@ -134,7 +134,9 @@ export const stopApi = {
     getStopProducts: async (stopId) => {
         try {
             // Эндпоинт с optionalAuth: должен работать и для гостей
-            const response = await api.get(`/api/stops/${stopId}/products`);
+            // Добавляем timestamp для предотвращения кеширования
+            const timestamp = Date.now();
+            const response = await api.get(`/api/stops/${stopId}/products?_t=${timestamp}`);
             return response;
         } catch (error) {
             console.error(`Error in getStopProducts(${stopId}) API call:`, error);

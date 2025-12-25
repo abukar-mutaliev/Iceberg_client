@@ -183,7 +183,7 @@ export const DriverPicker = ({
 
 const styles = StyleSheet.create({
     container: {
-        marginBottom: normalize(20),
+        marginBottom: normalize(0),
         width: '100%',
     },
     label: {

@@ -1507,7 +1507,8 @@ export const AppNavigator = () => {
                                                                     }
                                                                 }
                                                             } else if (productId && fromScreen === 'ProductDetail') {
-                                                                navigation.navigate('ProductDetail', { id: productId });
+                                                                // ProductDetail уже в стеке (AppStack), просто возвращаемся назад
+                                                                navigation.goBack();
                                                             } else {
                                                                 navigation.goBack();
                                                             }

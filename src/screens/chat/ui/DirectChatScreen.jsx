@@ -86,6 +86,7 @@ export const DirectChatScreen = ({route, navigation}) => {
     const [isSelectionMode, setIsSelectionMode] = useState(false);
     const [selectedMessages, setSelectedMessages] = useState(new Set());
     const [retryingMessages, setRetryingMessages] = useState(new Set());
+    const [pressedMessageId, setPressedMessageId] = useState(null);
     
     // Reply and Forward State
     const [replyTo, setReplyTo] = useState(null);
@@ -190,9 +191,21 @@ export const DirectChatScreen = ({route, navigation}) => {
         styles.listContent,
         { 
             paddingTop: animatedPaddingTop, 
-            paddingBottom: 90 + headerOffset 
+            paddingBottom: 0 + headerOffset 
         }
     ], [animatedPaddingTop, headerOffset]);
+    
+    // Динамический стиль для контейнера чата
+    const chatContentStyle = useMemo(() => [
+        styles.chatContent
+    ], []);
+    
+    // Стиль для белой панели системных кнопок
+    const systemBarStyle = useMemo(() => ({
+        height: insets.bottom,
+        backgroundColor: '#ffffff',
+        width: '100%',
+    }), [insets.bottom]);
     
     // Стиль для Composer контейнера (БЕЗ белого фона)
     const composerContainerStyle = useMemo(() => {
@@ -365,12 +378,13 @@ export const DirectChatScreen = ({route, navigation}) => {
 
             dispatch(setActiveRoom(null));
 
+            // Если возвращаемся к ProductDetail из ChatRoom, и оба в AppStack,
+            // просто разрешаем обычный back - не перехватываем навигацию
+            // ProductDetail и ChatRoom оба находятся в AppStack, поэтому обычный back должен работать
             if (productId && fromScreen === 'ProductDetail' && (actionType === 'POP' || actionType === 'GO_BACK' || !actionType)) {
-                e.preventDefault();
-                navigation.navigate('MainTab', {
-                    screen: 'ProductDetail',
-                    params: {productId, fromScreen: 'ChatRoom'}
-                });
+                // Не перехватываем навигацию - разрешаем обычный back
+                // React Navigation автоматически вернет к предыдущему экрану (ProductDetail) в стеке
+                return;
             }
         });
         return sub;
@@ -1254,6 +1268,16 @@ export const DirectChatScreen = ({route, navigation}) => {
         });
     }, [currentUserId, navigation, roomId]);
 
+    const handleMessagePress = useCallback((messageId) => {
+        if (isSelectionMode) return; // Не обрабатываем нажатия в режиме выбора
+        
+        setPressedMessageId(messageId);
+        // Сбрасываем состояние через 150мс для визуальной обратной связи
+        setTimeout(() => {
+            setPressedMessageId(null);
+        }, 150);
+    }, [isSelectionMode]);
+
     const renderItem = useCallback(({item}) => (
         <SwipeableMessageBubble
             message={item}
@@ -1291,6 +1315,7 @@ export const DirectChatScreen = ({route, navigation}) => {
             isSelectionMode={isSelectionMode}
             isSelected={selectedMessages.has(item.id)}
             isHighlighted={highlightedMessageId === item.id}
+            isPressed={pressedMessageId === item.id}
             isContextMenuActive={false}
             hasContextMenu={false}
             canDelete={canDeleteMessage(item)}
@@ -1300,6 +1325,7 @@ export const DirectChatScreen = ({route, navigation}) => {
                 }
                 toggleMessageSelection(item.id);
             }}
+            onPress={() => handleMessagePress(item.id)}
             onLongPress={(position) => {
                 if (!isSelectionMode) {
                     setIsSelectionMode(true);
@@ -1322,7 +1348,7 @@ export const DirectChatScreen = ({route, navigation}) => {
             participants={roomData?.participants}
             onSenderNamePress={handleSenderNamePress}
         />
-    ), [currentUserId, partnerAvatar, isSelectionMode, selectedMessages, canDeleteMessage, toggleMessageSelection, handleRetryMessage, handleCancelMessage, retryingMessages, handleImagePress, handleAvatarPress, handleContactDriver, handleReply, handleReplyPress, navigation, highlightedMessageId, handleToggleReaction, handleShowReactionPicker, roomData?.type, roomData?.participants, handleSenderNamePress]);
+    ), [currentUserId, partnerAvatar, isSelectionMode, selectedMessages, pressedMessageId, canDeleteMessage, toggleMessageSelection, handleRetryMessage, handleCancelMessage, retryingMessages, handleImagePress, handleAvatarPress, handleContactDriver, handleReply, handleReplyPress, navigation, highlightedMessageId, handleToggleReaction, handleShowReactionPicker, roomData?.type, roomData?.participants, handleSenderNamePress, handleMessagePress]);
 
     const keyExtractor = useCallback((item) => {
         if (item.temporaryId) {
@@ -1336,7 +1362,7 @@ export const DirectChatScreen = ({route, navigation}) => {
     return (
         <View style={styles.container}>
             <ChatBackground>
-                <View style={styles.chatContent}>
+                <View style={chatContentStyle}>
                     <View style={styles.messagesContainer}>
                         {!loading && (!messages || messages.length === 0) && (
                             <View style={styles.emptyStateContainer}>
@@ -1410,10 +1436,10 @@ export const DirectChatScreen = ({route, navigation}) => {
                     </View>
                     
                     <KeyboardAvoidingView
-                        behavior={Platform.OS === 'ios' ? 'padding' : (isSamsung ? 'padding' : undefined)}
-                        keyboardVerticalOffset={keyboardVerticalOffset}
+                        behavior={Platform.OS === 'ios' ? 'padding' : (isSamsung ? 'padding' : 'height')}
+                        keyboardVerticalOffset={Platform.OS === 'ios' ? keyboardVerticalOffset : (isSamsung ? keyboardVerticalOffset : 0)}
                         style={styles.keyboardAvoidingView}
-                        enabled={Platform.OS === 'ios' || isSamsung}
+                        enabled={true}
                     >
                         <View style={composerContainerStyle}>
                             <Composer
@@ -1427,6 +1453,7 @@ export const DirectChatScreen = ({route, navigation}) => {
                             <TypingIndicator roomId={roomId} />
                         </View>
                     </KeyboardAvoidingView>
+                    {insets.bottom > 0 && <View style={systemBarStyle} />}
                 </View>
             </ChatBackground>
 
@@ -1536,7 +1563,7 @@ const styles = StyleSheet.create({
     },
     listContent: {
         paddingHorizontal: 8,
-        paddingTop: 10,
+        paddingTop: 5,
     },
     emptyStateContainer: {
         flex: 1,

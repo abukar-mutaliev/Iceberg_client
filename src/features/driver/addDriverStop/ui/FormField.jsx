@@ -55,10 +55,10 @@ export const FormDivider = ({ style }) => {
 
 const styles = StyleSheet.create({
     section: {
-        marginBottom: normalize(28),
+        marginBottom: normalize(5),
         backgroundColor: '#fff',
         borderRadius: 12,
-        padding: normalize(16),
+        padding: normalize(10),
         shadowColor: '#000',
         shadowOffset: {
             width: 0,

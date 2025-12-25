@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useRef} from 'react';
-import {View, FlatList, TouchableOpacity, Text, StyleSheet, RefreshControl, Image} from 'react-native';
+import {View, FlatList, TouchableOpacity, Text, StyleSheet, RefreshControl, Image, InteractionManager} from 'react-native';
 import {useFocusEffect, CommonActions} from '@react-navigation/native';
 import {useDispatch, useSelector} from 'react-redux';
 import {fetchRooms, setActiveRoom, loadRoomsCache, fetchRoom, fetchMessages} from '@entities/chat/model/slice';
@@ -69,8 +69,20 @@ export const ChatListScreen = ({navigation}) => {
     const connection = useSelector((s) => s.chat?.connection);
     const deletedRoomIds = useSelector((s) => s.chat?.deletedRoomIds || []);
 
-    const memoizedRooms = useMemo(() => rooms, [rooms]);
     const loadedProductsRef = useRef(new Set());
+    const isNavigatingRef = useRef(false);
+    const previousRoomsRef = useRef(rooms);
+    
+    // Мемоизируем список комнат, но не обновляем его при навигации
+    const memoizedRooms = useMemo(() => {
+        // Если идет навигация, возвращаем предыдущее значение
+        if (isNavigatingRef.current && previousRoomsRef.current) {
+            return previousRoomsRef.current;
+        }
+        // Обновляем предыдущее значение только если не идет навигация
+        previousRoomsRef.current = rooms;
+        return rooms;
+    }, [rooms]);
 
     useEffect(() => {
         dispatch(loadRoomsCache());
@@ -143,6 +155,8 @@ export const ChatListScreen = ({navigation}) => {
     useFocusEffect(
         useCallback(() => {
             dispatch(setActiveRoom(null));
+            // Сбрасываем флаг навигации при возврате на экран
+            isNavigatingRef.current = false;
         }, [dispatch])
     );
 
@@ -419,7 +433,13 @@ export const ChatListScreen = ({navigation}) => {
         if (!rid) {
             return;
         }
-        dispatch(setActiveRoom(rid));
+        
+        // Устанавливаем флаг навигации для предотвращения обновления списка
+        isNavigatingRef.current = true;
+        
+        // Убираем setActiveRoom отсюда - экран чата сам установит активную комнату в useEffect
+        // Это предотвращает ререндер списка перед навигацией
+        
         const productInfo = room?.product ? {id: room.product?.id, supplier: room.product?.supplier} : undefined;
         // ✅ ChatRoom теперь в корневом Stack (AppStack), чтобы таббар не мог появляться в комнате
         const rootNavigation =
@@ -427,13 +447,25 @@ export const ChatListScreen = ({navigation}) => {
             navigation?.getParent?.()?.getParent?.() ||
             null;
 
-        (rootNavigation || navigation).navigate('ChatRoom', {
-            roomId: rid,
-            roomTitle: room?.title,
-            productId: room?.productId || room?.product?.id,
-            productInfo,
-            currentUserId,
-            fromScreen: 'ChatList'
+        // Используем комбинацию requestAnimationFrame и InteractionManager
+        // для максимально плавной навигации без визуальных артефактов
+        requestAnimationFrame(() => {
+            InteractionManager.runAfterInteractions(() => {
+                (rootNavigation || navigation).navigate('ChatRoom', {
+                    roomId: rid,
+                    roomTitle: room?.title,
+                    productId: room?.productId || room?.product?.id,
+                    productInfo,
+                    currentUserId,
+                    fromScreen: 'ChatList'
+                });
+                
+                // Сбрасываем флаг навигации после небольшой задержки
+                // чтобы дать время экрану чата загрузиться
+                setTimeout(() => {
+                    isNavigatingRef.current = false;
+                }, 300);
+            });
         });
     };
 
@@ -662,7 +694,7 @@ export const ChatListScreen = ({navigation}) => {
                 onEndReachedThreshold={0.1}
                 refreshControl={
                     <RefreshControl
-                        refreshing={loading}
+                        refreshing={loading && !isNavigatingRef.current}
                         onRefresh={handleRefresh}
                         colors={['#007AFF']}
                         tintColor="#007AFF"

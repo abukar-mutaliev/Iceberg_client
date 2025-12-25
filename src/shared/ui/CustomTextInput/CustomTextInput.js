@@ -42,6 +42,7 @@ export const CustomTextInput = forwardRef((props, ref) => {
             onChangeText={handleTextChange}
             onFocus={handleFocus}
             style={[styles.input, restProps.style]}
+            placeholderTextColor={restProps.placeholderTextColor || '#888'}
         />
     );
 });

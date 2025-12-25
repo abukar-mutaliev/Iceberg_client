@@ -685,17 +685,6 @@ export const EditStopForm = ({
                           error={errors.district && typeof errors.district === 'string' ? errors.district : ''}
                         />
                         
-                        {/* Блок для выбора склада и товаров */}
-                        {selectedDistrict != null && selectedDistrict !== '' && (
-                          <StopProductsSelector
-                            warehouseId={warehouseId}
-                            districtId={selectedDistrict}
-                            selectedProducts={selectedProducts}
-                            onWarehouseChange={setWarehouseId}
-                            onProductsChange={setSelectedProducts}
-                          />
-                        )}
-                        
                         <Text style={styles.label}>Адрес остановки *</Text>
                         <TextInput
                           style={[styles.input, errors.address ? styles.inputError : null]}
@@ -752,6 +741,19 @@ export const EditStopForm = ({
                       </View>
                     </View>
                   </View>
+
+                  {/* Блок для выбора склада и товаров на всю ширину */}
+                  {selectedDistrict != null && selectedDistrict !== '' && (
+                    <View style={styles.fullWidthContainer}>
+                      <StopProductsSelector
+                        warehouseId={warehouseId}
+                        districtId={selectedDistrict}
+                        selectedProducts={selectedProducts}
+                        onWarehouseChange={setWarehouseId}
+                        onProductsChange={setSelectedProducts}
+                      />
+                    </View>
+                  )}
 
                   {/* Блок для выбора времени начала и окончания стоянки (напротив друг друга) */}
                   <View style={styles.timeContainer}>
@@ -982,6 +984,10 @@ const styles = StyleSheet.create({
   },
   rightColumn: {
     width: '55%',
+  },
+  fullWidthContainer: {
+    width: '100%',
+    marginBottom: normalize(5),
   },
   timeLeft: {
     width: '45%',

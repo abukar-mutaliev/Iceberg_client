@@ -64,6 +64,8 @@ export const MainScreen = ({ navigation, route }) => {
     const isInitializedRef = useRef(false);
     const previousProductsLengthRef = useRef(0);
     const previousProductsIdsRef = useRef(new Set());
+    const isRefreshingRef = useRef(false);
+    const loadAllDataRef = useRef(null);
 
     // Проверка готовности данных
     const isDataReady = useMemo(() => {
@@ -154,14 +156,21 @@ export const MainScreen = ({ navigation, route }) => {
 
     // Загрузка всех данных
     const loadAllData = useCallback(async (forceRefresh = false) => {
+        // Проверяем готовность данных напрямую через селекторы
+        const productsReady = products?.length > 0;
+        const bannersReady = activeBanners !== undefined;
+        const categoriesReady = categories?.length > 0;
+        const dataReady = productsReady && bannersReady && categoriesReady;
+        
         // Если данные уже есть и кэш свежий, не загружаем
-        if (!forceRefresh && isDataReady && !shouldRefreshCache()) {
+        if (!forceRefresh && dataReady && !shouldRefreshCache()) {
             return;
         }
 
-        const isRefresh = forceRefresh || isRefreshing;
+        const isRefresh = forceRefresh || isRefreshingRef.current;
         
         if (isRefresh) {
+            isRefreshingRef.current = true;
             setIsRefreshing(true);
         } else if (!isInitializedRef.current) {
             setIsInitialLoading(true);
@@ -198,10 +207,16 @@ export const MainScreen = ({ navigation, route }) => {
         } finally {
             if (isMountedRef.current) {
                 setIsInitialLoading(false);
+                isRefreshingRef.current = false;
                 setIsRefreshing(false);
             }
         }
-    }, [dispatch, isDataReady, shouldRefreshCache, isRefreshing]);
+    }, [dispatch, products?.length, activeBanners, categories?.length, shouldRefreshCache]);
+    
+    // Сохраняем стабильную ссылку на loadAllData
+    useEffect(() => {
+        loadAllDataRef.current = loadAllData;
+    }, [loadAllData]);
 
     // Загрузка дополнительных продуктов
     const loadMoreProducts = useCallback(() => {
@@ -217,15 +232,19 @@ export const MainScreen = ({ navigation, route }) => {
 
     // Принудительное обновление
     const handleRefresh = useCallback(() => {
-        loadAllData(true);
-    }, [loadAllData]);
+        if (loadAllDataRef.current) {
+            loadAllDataRef.current(true);
+        }
+    }, []);
 
     // Инициализация при монтировании
     useEffect(() => {
         isMountedRef.current = true;
 
         const initialize = async () => {
-            await loadAllData(false);
+            if (loadAllDataRef.current) {
+                await loadAllDataRef.current(false);
+            }
 
             // Инициализация push уведомлений
             if (notifications?.initializePushNotifications) {
@@ -238,6 +257,7 @@ export const MainScreen = ({ navigation, route }) => {
         return () => {
             isMountedRef.current = false;
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Обработка фокуса экрана
@@ -251,7 +271,9 @@ export const MainScreen = ({ navigation, route }) => {
             // Принудительное обновление по запросу
             if (route?.params?.refreshMainScreen) {
                 navigation.setParams({ refreshMainScreen: undefined });
-                handleRefresh();
+                if (loadAllDataRef.current) {
+                    loadAllDataRef.current(true);
+                }
                 return;
             }
 
@@ -268,18 +290,18 @@ export const MainScreen = ({ navigation, route }) => {
 
             // Проверка и обновление устаревшего кэша
             if (isInitializedRef.current && shouldRefreshCache()) {
-                loadAllData(false);
+                if (loadAllDataRef.current) {
+                    loadAllDataRef.current(false);
+                }
             }
         }, [
-            route?.params,
+            route?.params?.resetProduct,
+            route?.params?.refreshMainScreen,
             navigation,
             isCartAvailable,
-            user,
+            user?.role,
             dispatch,
-            notifications,
-            shouldRefreshCache,
-            loadAllData,
-            handleRefresh
+            notifications?.refreshNotifications
         ])
     );
 
