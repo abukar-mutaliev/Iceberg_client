@@ -26,7 +26,6 @@ const SupplierContent = React.memo(({
                                         navigation,
                                         onRefresh,
                                         isRefreshing = false,
-                                        productsLoaded = false,
                                         fromScreen = null,
                                         previousProductId = null
                                     }) => {
@@ -90,21 +89,35 @@ const SupplierContent = React.memo(({
     useEffect(() => {
         renderCount.current += 1;
 
-        if (process.env.NODE_ENV === 'development' && !dataLogged.current && hasProducts) {
-            console.log('SupplierContent - Итоговые данные:', {
+        if (process.env.NODE_ENV === 'development') {
+            console.log('SupplierContent - Рендер:', {
                 supplierId,
-                supplierName,
+                supplierProductsType: typeof supplierProducts,
+                supplierProductsIsArray: Array.isArray(supplierProducts),
+                supplierProductsLength: supplierProducts?.length,
                 productsCount,
                 hasProducts,
                 feedbacksCount,
                 hasFeedbacks,
-                fromScreen,
-                previousProductId,
                 renderCount: renderCount.current
             });
-            dataLogged.current = true;
+            
+            if (!dataLogged.current && hasProducts) {
+                console.log('SupplierContent - Итоговые данные:', {
+                    supplierId,
+                    supplierName,
+                    productsCount,
+                    hasProducts,
+                    feedbacksCount,
+                    hasFeedbacks,
+                    fromScreen,
+                    previousProductId,
+                    renderCount: renderCount.current
+                });
+                dataLogged.current = true;
+            }
         }
-    }, [supplierId, supplierName, productsCount, hasProducts, feedbacksCount, hasFeedbacks, fromScreen, previousProductId]);
+    }, [supplierId, supplierName, productsCount, hasProducts, feedbacksCount, hasFeedbacks, fromScreen, previousProductId, supplierProducts]);
 
     const handleGoBack = useCallback(() => {
         console.log('SupplierContent handleGoBack called with fromScreen:', fromScreen);

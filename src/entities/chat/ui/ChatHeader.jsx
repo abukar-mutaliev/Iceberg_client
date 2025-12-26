@@ -320,38 +320,19 @@ export const ChatHeader = ({route, navigation}) => {
 
             if (supplierId) {
                 try {
-                    const rootNavigation = navigation.getParent();
+                    // Открываем экран поставщика в корневом AppStack (там же где ChatRoom),
+                    // иначе назад может увести в ChatMain (таба), а не обратно в комнату.
+                    const rootNavigation =
+                        navigation?.getParent?.('AppStack') ||
+                        navigation?.getParent?.() ||
+                        navigation;
 
-                    if (rootNavigation) {
-                        navigation.navigate('SupplierScreen', {
-                            supplierId,
-                            fromScreen: 'ChatRoom'
-                        });
-                    } else {
-                        navigation.dispatch(
-                            CommonActions.reset({
-                                index: 0,
-                                routes: [
-                                    {
-                                        name: 'MainTab',
-                                        params: {
-                                            screen: 'ProfileTab',
-                                            params: {
-                                                screen: 'SupplierScreen',
-                                                params: {
-                                                    supplierId,
-                                                    fromScreen: 'ChatRoom'
-                                                }
-                                            }
-                                        }
-                                    }
-                                ]
-                            })
-                        );
-                    }
-
+                    (rootNavigation || navigation).navigate('SupplierScreen', {
+                        supplierId,
+                        fromScreen: 'ChatRoom'
+                    });
                 } catch (error) {
-                    console.error('Navigation error:', error);
+                    console.error('Navigation error to SupplierScreen:', error);
                 }
                 return;
             }

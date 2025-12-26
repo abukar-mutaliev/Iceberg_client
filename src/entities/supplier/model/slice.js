@@ -61,14 +61,17 @@ export const fetchSupplierById = createAsyncThunk(
     'suppliers/fetchSupplierById',
     async (supplierId, { rejectWithValue, getState }) => {
         try {
+            // Нормализуем supplierId к числу
+            const normalizedSupplierId = Number(supplierId);
+            
             const state = getState();
-            // Проверка валидности кэша
-            if (state.suppliers.supplierDetails[supplierId] &&
-                isCacheValid(state.suppliers.lastFetchTime[`supplier_${supplierId}`])) {
+            // Проверка валидности кэша с нормализованным ID
+            if (state.suppliers.supplierDetails[normalizedSupplierId] &&
+                isCacheValid(state.suppliers.lastFetchTime[`supplier_${normalizedSupplierId}`])) {
                 return {
-                    supplier: state.suppliers.supplierDetails[supplierId],
+                    supplier: state.suppliers.supplierDetails[normalizedSupplierId],
                     fromCache: true,
-                    supplierId
+                    supplierId: normalizedSupplierId
                 };
             }
 
@@ -90,7 +93,7 @@ export const fetchSupplierById = createAsyncThunk(
             return {
                 supplier,
                 fromCache: false,
-                supplierId
+                supplierId: normalizedSupplierId
             };
         } catch (error) {
             console.error(`Ошибка при получении поставщика ${supplierId}:`, error);
@@ -104,30 +107,39 @@ export const fetchSupplierProducts = createAsyncThunk(
     'suppliers/fetchSupplierProducts',
     async (supplierId, { rejectWithValue, getState }) => {
         try {
+            // Нормализуем supplierId к числу
+            const normalizedSupplierId = Number(supplierId);
+            
             const state = getState();
-            // Проверка валидности кэша
-            if (state.suppliers.supplierProducts[supplierId] &&
-                isCacheValid(state.suppliers.lastFetchTime[`products_${supplierId}`])) {
+            // Проверка валидности кэша с нормализованным ID
+            if (state.suppliers.supplierProducts[normalizedSupplierId] &&
+                isCacheValid(state.suppliers.lastFetchTime[`products_${normalizedSupplierId}`])) {
                 return {
-                    products: state.suppliers.supplierProducts[supplierId],
+                    products: state.suppliers.supplierProducts[normalizedSupplierId],
                     fromCache: true,
-                    supplierId
+                    supplierId: normalizedSupplierId
                 };
             }
 
             const response = await suppliersApi.getSupplierProducts(supplierId);
 
+            // Обработка разных форматов ответа API
             let products = [];
-            if (response.data && response.data.data) {
-                products = response.data.data;
-            } else if (response.data) {
+            if (response && response.status === 'success' && response.data) {
+                // Формат: { status: 'success', data: [...] }
+                products = Array.isArray(response.data) ? response.data : [];
+            } else if (response && Array.isArray(response.data)) {
+                // Формат: { data: [...] }
                 products = response.data;
+            } else if (Array.isArray(response)) {
+                // Формат: [...]
+                products = response;
             }
 
             return {
                 products: Array.isArray(products) ? products : [],
                 fromCache: false,
-                supplierId
+                supplierId: normalizedSupplierId
             };
         } catch (error) {
             console.error(`Ошибка при получении продуктов поставщика ${supplierId}:`, error);
@@ -141,32 +153,68 @@ export const fetchSupplierWithProducts = createAsyncThunk(
     'suppliers/fetchSupplierWithProducts',
     async (supplierId, { rejectWithValue, getState }) => {
         try {
+            // Нормализуем supplierId к числу
+            const normalizedSupplierId = Number(supplierId);
+            
             const state = getState();
-            const hasValidSupplierCache = state.suppliers.supplierDetails[supplierId] &&
-                isCacheValid(state.suppliers.lastFetchTime[`supplier_${supplierId}`]);
-            const hasValidProductsCache = state.suppliers.supplierProducts[supplierId] &&
-                isCacheValid(state.suppliers.lastFetchTime[`products_${supplierId}`]);
+            const hasValidSupplierCache = state.suppliers.supplierDetails[normalizedSupplierId] &&
+                isCacheValid(state.suppliers.lastFetchTime[`supplier_${normalizedSupplierId}`]);
+            const hasValidProductsCache = state.suppliers.supplierProducts[normalizedSupplierId] &&
+                isCacheValid(state.suppliers.lastFetchTime[`products_${normalizedSupplierId}`]);
 
             // Если всё в кэше, используем его
             if (hasValidSupplierCache && hasValidProductsCache) {
+                const cachedProducts = state.suppliers.supplierProducts[normalizedSupplierId];
+                if (process.env.NODE_ENV === 'development') {
+                    console.log('Использование кэша для fetchSupplierWithProducts:', {
+                        normalizedSupplierId,
+                        cachedProductsType: typeof cachedProducts,
+                        isCachedProductsArray: Array.isArray(cachedProducts),
+                        cachedProductsLength: Array.isArray(cachedProducts) ? cachedProducts.length : 'not array'
+                    });
+                }
                 return {
-                    supplier: state.suppliers.supplierDetails[supplierId],
-                    products: state.suppliers.supplierProducts[supplierId],
+                    supplier: state.suppliers.supplierDetails[normalizedSupplierId],
+                    products: Array.isArray(cachedProducts) ? cachedProducts : [],
                     fromCache: true,
-                    supplierId
+                    supplierId: normalizedSupplierId
                 };
             }
 
-            // Иначе запрашиваем с сервера
+            // Иначе запрашиваем с сервера (используем оригинальный supplierId для запроса)
             const response = await suppliersApi.getSupplierWithProducts(supplierId);
 
-            const { supplier, products } = response.data;
+            if (process.env.NODE_ENV === 'development') {
+                console.log('fetchSupplierWithProducts - Ответ API:', {
+                    supplierId,
+                    responseData: !!response?.data,
+                    responseDataType: typeof response?.data,
+                    hasSupplier: !!response?.data?.supplier,
+                    hasProducts: !!response?.data?.products,
+                    productsType: typeof response?.data?.products,
+                    isProductsArray: Array.isArray(response?.data?.products),
+                    productsLength: Array.isArray(response?.data?.products) ? response.data.products.length : 'not array'
+                });
+            }
+
+            const { supplier, products } = response.data || {};
+
+            // Убеждаемся что products - это массив
+            const productsArray = Array.isArray(products) ? products : [];
+            
+            if (process.env.NODE_ENV === 'development') {
+                console.log('fetchSupplierWithProducts - Возвращаем:', {
+                    normalizedSupplierId,
+                    productsArrayLength: productsArray.length,
+                    isArray: Array.isArray(productsArray)
+                });
+            }
 
             return {
                 supplier,
-                products: Array.isArray(products) ? products : [],
+                products: productsArray,
                 fromCache: false,
-                supplierId
+                supplierId: normalizedSupplierId
             };
         } catch (error) {
             console.error(`Ошибка при получении данных поставщика ${supplierId}:`, error);
@@ -300,8 +348,13 @@ const suppliersSlice = createSlice({
             const { supplierId } = action.payload || {};
 
             if (supplierId) {
-                delete state.lastFetchTime[`supplier_${supplierId}`];
-                delete state.lastFetchTime[`products_${supplierId}`];
+                // Нормализуем supplierId к числу
+                const normalizedSupplierId = Number(supplierId);
+                delete state.lastFetchTime[`supplier_${normalizedSupplierId}`];
+                delete state.lastFetchTime[`products_${normalizedSupplierId}`];
+                delete state.supplierDetails[normalizedSupplierId];
+                delete state.supplierProducts[normalizedSupplierId];
+                // Также удаляем возможные варианты со строковым ключом
                 delete state.supplierDetails[supplierId];
                 delete state.supplierProducts[supplierId];
             } else {
@@ -379,16 +432,19 @@ const suppliersSlice = createSlice({
                 if (action.payload.fromCache) return;
 
                 const { supplier, supplierId } = action.payload;
+                
+                // Нормализуем supplierId к числу для консистентности
+                const normalizedSupplierId = Number(supplierId);
 
                 // Проверяем наличие несериализуемых данных
                 const { headers, ...serializable } = supplier || {};
 
-                // Сохранение данных поставщика (только сериализуемые)
-                state.supplierDetails[supplierId] = serializable;
-                state.lastFetchTime[`supplier_${supplierId}`] = Date.now();
+                // Сохранение данных поставщика (только сериализуемые) с нормализованным ID
+                state.supplierDetails[normalizedSupplierId] = serializable;
+                state.lastFetchTime[`supplier_${normalizedSupplierId}`] = Date.now();
 
                 // Обновление в списке, если есть
-                const existingIndex = state.list.findIndex(item => item.id === supplierId);
+                const existingIndex = state.list.findIndex(item => item.id === normalizedSupplierId || item.id === supplierId);
                 if (existingIndex !== -1) {
                     state.list[existingIndex] = serializable;
                 }
@@ -403,10 +459,13 @@ const suppliersSlice = createSlice({
                 if (action.payload.fromCache) return;
 
                 const { products, supplierId } = action.payload;
+                
+                // Нормализуем supplierId к числу для консистентности
+                const normalizedSupplierId = Number(supplierId);
 
                 // Сохранение продуктов
-                state.supplierProducts[supplierId] = products;
-                state.lastFetchTime[`products_${supplierId}`] = Date.now();
+                state.supplierProducts[normalizedSupplierId] = Array.isArray(products) ? products : [];
+                state.lastFetchTime[`products_${normalizedSupplierId}`] = Date.now();
             })
             .addCase(fetchSupplierProducts.rejected, setRejected)
 
@@ -415,32 +474,65 @@ const suppliersSlice = createSlice({
             .addCase(fetchSupplierWithProducts.fulfilled, (state, action) => {
                 state.loading = false;
 
-                if (action.payload.fromCache) return;
-
-                const { supplier, products, supplierId } = action.payload;
-
-                // Проверяем наличие несериализуемых данных
-                const { headers, ...serializable } = supplier || {};
-
-                // Сохранение поставщика и продуктов
-                state.supplierDetails[supplierId] = serializable;
-                state.lastFetchTime[`supplier_${supplierId}`] = Date.now();
-
-                // Сериализуемые продукты
-                const serializableProducts = Array.isArray(products) ? products.map(product => {
-                    const { headers: productHeaders, ...serializableProduct } = product || {};
-                    return serializableProduct;
-                }) : [];
+                const { supplier, products, supplierId, fromCache } = action.payload;
                 
-                state.supplierProducts[supplierId] = serializableProducts;
-                state.lastFetchTime[`products_${supplierId}`] = Date.now();
+                // Нормализуем supplierId к числу для консистентности
+                const normalizedSupplierId = Number(supplierId);
 
-                state.currentSupplierId = supplierId;
+                if (process.env.NODE_ENV === 'development') {
+                    console.log('fetchSupplierWithProducts.fulfilled:', {
+                        normalizedSupplierId,
+                        supplierId,
+                        productsType: typeof products,
+                        isProductsArray: Array.isArray(products),
+                        productsLength: Array.isArray(products) ? products.length : 'not array',
+                        fromCache
+                    });
+                }
 
-                // Обновление в списке, если есть
-                const existingIndex = state.list.findIndex(item => item.id === supplierId);
-                if (existingIndex !== -1) {
-                    state.list[existingIndex] = serializable;
+                // ВАЖНО: Обновляем store ВСЕГДА (даже если из кэша)
+                // Это гарантирует что селекторы всегда получат актуальные данные
+                if (supplier && products !== undefined) {
+                    // Проверяем наличие несериализуемых данных
+                    const { headers, ...serializable } = supplier || {};
+
+                    // Сохранение поставщика с нормализованным ID
+                    state.supplierDetails[normalizedSupplierId] = serializable;
+                    
+                    // Обновляем время кэша только если это не из кэша
+                    if (!fromCache) {
+                        state.lastFetchTime[`supplier_${normalizedSupplierId}`] = Date.now();
+                    }
+
+                    // Сериализуемые продукты - ВАЖНО: products должен быть массивом!
+                    const serializableProducts = Array.isArray(products) ? products.map(product => {
+                        const { headers: productHeaders, ...serializableProduct } = product || {};
+                        return serializableProduct;
+                    }) : [];
+                    
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log('Сохранение продуктов в store:', {
+                            normalizedSupplierId,
+                            serializableProductsLength: serializableProducts.length,
+                            isArray: Array.isArray(serializableProducts),
+                            storedType: typeof state.supplierProducts[normalizedSupplierId]
+                        });
+                    }
+                    
+                    // Сохраняем продукты с нормализованным ID
+                    state.supplierProducts[normalizedSupplierId] = serializableProducts;
+                    
+                    if (!fromCache) {
+                        state.lastFetchTime[`products_${normalizedSupplierId}`] = Date.now();
+                    }
+
+                    state.currentSupplierId = normalizedSupplierId;
+
+                    // Обновление в списке, если есть
+                    const existingIndex = state.list.findIndex(item => item.id === normalizedSupplierId || item.id === supplierId);
+                    if (existingIndex !== -1) {
+                        state.list[existingIndex] = serializable;
+                    }
                 }
             })
             .addCase(fetchSupplierWithProducts.rejected, setRejected)

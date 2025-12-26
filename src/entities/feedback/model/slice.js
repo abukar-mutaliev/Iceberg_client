@@ -47,27 +47,37 @@ export const fetchProductFeedbacks = createAsyncThunk(
 
 export const fetchSupplierFeedbacks = createAsyncThunk(
     'feedback/fetchSupplierFeedbacks',
-    async (supplierId, { rejectWithValue, getState, dispatch }) => {
+    async (supplierId, { rejectWithValue }) => {
         try {
-            const state = getState();
-            const supplierProducts = state.suppliers.supplierProducts[supplierId] || [];
-
-            if (!supplierProducts.length) {
-                console.log('Нет продуктов для загрузки отзывов');
-                return { supplierId, feedbacks: [] };
+            console.log(`🔄 Загрузка всех отзывов для поставщика ${supplierId} напрямую с сервера`);
+            
+            // Загружаем ВСЕ отзывы поставщика одним запросом с сервера
+            const response = await feedbackApi.getSupplierFeedbacks(supplierId);
+            
+            if (response && response.status === 'success' && Array.isArray(response.data)) {
+                console.log(`✅ Получено ${response.data.length} отзывов для поставщика ${supplierId}`);
+                
+                // Группируем отзывы по productId для сохранения в store
+                const feedbacksByProduct = {};
+                response.data.forEach(feedback => {
+                    const productId = feedback.productId;
+                    if (!feedbacksByProduct[productId]) {
+                        feedbacksByProduct[productId] = [];
+                    }
+                    feedbacksByProduct[productId].push(feedback);
+                });
+                
+                return { 
+                    supplierId, 
+                    feedbacks: response.data,
+                    feedbacksByProduct 
+                };
             }
 
-            console.log(`Загрузка отзывов для ${supplierProducts.length} продуктов поставщика`);
-
-            const feedbackPromises = supplierProducts.map(product =>
-                dispatch(fetchProductFeedbacks(product.id))
-            );
-
-            await Promise.all(feedbackPromises);
-
-            return { supplierId, success: true };
+            console.log('⚠️ Нет отзывов для поставщика');
+            return { supplierId, feedbacks: [], feedbacksByProduct: {} };
         } catch (error) {
-            console.error('Ошибка при загрузке отзывов поставщика:', error);
+            console.error('❌ Ошибка при загрузке отзывов поставщика:', error);
             return rejectWithValue(error.message || 'Не удалось загрузить отзывы поставщика');
         }
     }
@@ -309,11 +319,26 @@ const feedbackSlice = createSlice({
             })
             .addCase(fetchSupplierFeedbacks.fulfilled, (state, action) => {
                 state.supplierLoading = false;
+                const { supplierId, feedbacksByProduct } = action.payload;
+                
+                // Сохраняем отзывы по продуктам в items
+                if (feedbacksByProduct) {
+                    Object.keys(feedbacksByProduct).forEach(productId => {
+                        state.items[productId] = feedbacksByProduct[productId];
+                        state.cacheTimestamps[productId] = Date.now();
+                        if (!state.loadedProductIds.includes(parseInt(productId))) {
+                            state.loadedProductIds.push(parseInt(productId));
+                        }
+                    });
+                }
+                
+                // Отмечаем что отзывы поставщика загружены
                 state.supplierLoadedIds = state.supplierLoadedIds || [];
-                const supplierId = action.meta.arg;
                 if (!state.supplierLoadedIds.includes(supplierId)) {
                     state.supplierLoadedIds.push(supplierId);
                 }
+                
+                console.log(`✅ Отзывы поставщика ${supplierId} сохранены в Redux store`);
             })
             .addCase(fetchSupplierFeedbacks.rejected, (state, action) => {
                 state.supplierLoading = false;

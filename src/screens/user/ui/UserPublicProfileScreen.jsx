@@ -201,6 +201,20 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
         }
     };
 
+    // Получаем текст для отображения под именем (должность для сотрудников, роль для остальных)
+    const getRoleOrPositionText = (userData) => {
+        if (!userData) return null;
+        
+        // Для сотрудников показываем должность
+        if (userData.role === 'EMPLOYEE') {
+            const position = userData.employee?.position || userData.profile?.position;
+            return position || 'Сотрудник';
+        }
+        
+        // Для остальных показываем роль
+        return getRoleText(userData.role);
+    };
+
     const getPhoneNumber = (userData) => {
         if (!userData) return null;
         return userData.client?.phone ||
@@ -323,7 +337,7 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
     if (loading) {
         return (
             <SafeAreaView style={styles.loadingContainer}>
-                <StatusBar backgroundColor="#075E54" barStyle="light-content" />
+                <StatusBar backgroundColor="#FFFFFF" barStyle="dark-content" />
                 <ActivityIndicator size="large" color="#25D366" />
                 <Text style={styles.loadingText}>Загрузка профиля...</Text>
             </SafeAreaView>
@@ -333,7 +347,7 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
     if (error) {
         return (
             <SafeAreaView style={styles.container}>
-                <StatusBar backgroundColor="#075E54" barStyle="light-content" />
+                <StatusBar backgroundColor="#FFFFFF" barStyle="dark-content" />
                 <View style={styles.header}>
                     <TouchableOpacity
                         style={styles.backButton}
@@ -342,7 +356,6 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                     >
                         <Text style={styles.backIcon}>←</Text>
                     </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Контакт</Text>
                 </View>
                 <View style={styles.center}>
                     <Text style={styles.error}>{error}</Text>
@@ -356,7 +369,7 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
 
     return (
         <View style={styles.container}>
-            <StatusBar backgroundColor="#075E54" barStyle="light-content" />
+            <StatusBar backgroundColor="#FFFFFF" barStyle="dark-content" />
 
             <View style={styles.header}>
                 <TouchableOpacity
@@ -366,7 +379,6 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                 >
                     <Text style={styles.backIcon}>←</Text>
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>{displayName}</Text>
                 <View style={styles.headerActions}>
                 </View>
             </View>
@@ -387,6 +399,12 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                             </View>
                         )}
                     </TouchableOpacity>
+                    {displayName ? (
+                        <Text style={styles.avatarName}>{displayName}</Text>
+                    ) : null}
+                    {user?.role ? (
+                        <Text style={styles.avatarRole}>{getRoleOrPositionText(user)}</Text>
+                    ) : null}
                 </View>
 
                 {/* Phone Section - показываем только если есть права доступа */}
@@ -589,7 +607,7 @@ const styles = StyleSheet.create({
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#075E54',
+        backgroundColor: '#FFFFFF',
         paddingTop: 8,
         paddingBottom: 12,
         paddingHorizontal: 16,
@@ -605,13 +623,13 @@ const styles = StyleSheet.create({
     },
     backIcon: {
         fontSize: 24,
-        color: '#FFFFFF',
+        color: '#000000',
         fontWeight: '400',
     },
     headerTitle: {
         fontSize: 20,
         fontWeight: '500',
-        color: '#FFFFFF',
+        color: '#000000',
         flex: 1,
     },
     headerActions: {
@@ -622,7 +640,7 @@ const styles = StyleSheet.create({
     },
     headerActionIcon: {
         fontSize: 20,
-        color: '#FFFFFF',
+        color: '#000000',
         fontWeight: '600',
     },
 
@@ -633,13 +651,13 @@ const styles = StyleSheet.create({
 
     // Avatar Section
     avatarSection: {
-        backgroundColor: '#075E54',
+        backgroundColor: '#FFFFFF',
         alignItems: 'center',
-        paddingVertical: 32,
         paddingBottom: 24,
     },
     avatarContainer: {
         position: 'relative',
+        marginBottom: 16,
     },
     avatar: {
         width: 200,
@@ -661,6 +679,19 @@ const styles = StyleSheet.create({
     avatarPlaceholderText: {
         fontSize: 80,
         opacity: 0.7,
+    },
+    avatarName: {
+        fontSize: 24,
+        fontWeight: '500',
+        color: '#000000',
+        textAlign: 'center',
+        marginBottom: 4,
+    },
+    avatarRole: {
+        fontSize: 16,
+        color: '#666666',
+        fontWeight: '400',
+        textAlign: 'center',
     },
 
     // Name Section

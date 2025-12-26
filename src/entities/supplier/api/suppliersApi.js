@@ -57,8 +57,26 @@ export const suppliersApi = {
 
 
     getSupplierProducts: async (supplierId) => {
-        // Публичный эндпоинт - не требует авторизации
-        return await createPublicRequest('get', `/api/products/supplier/${supplierId}`);
+        try {
+            // Публичный эндпоинт - не требует авторизации
+            const response = await createPublicRequest('get', `/api/products/supplier/${supplierId}`);
+            
+            if (process.env.NODE_ENV === 'development') {
+                console.log('getSupplierProducts - Ответ API:', {
+                    supplierId,
+                    responseType: typeof response,
+                    hasStatus: !!response?.status,
+                    hasData: !!response?.data,
+                    dataType: Array.isArray(response?.data) ? 'array' : typeof response?.data,
+                    dataLength: Array.isArray(response?.data) ? response.data.length : 'not array'
+                });
+            }
+            
+            return response;
+        } catch (error) {
+            console.error(`Ошибка в getSupplierProducts для ${supplierId}:`, error);
+            throw error;
+        }
     },
 
     createSupplierProduct: async (productData) => {

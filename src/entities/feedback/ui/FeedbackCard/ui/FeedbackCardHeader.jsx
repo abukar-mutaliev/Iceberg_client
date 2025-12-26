@@ -23,19 +23,23 @@ export const FeedbackCardHeader = ({ feedback, currentUser }) => {
         avatar,
     } = feedback;
 
-    // Определение имени клиента
+    // Определение имени клиента - проверяем все возможные источники
     let clientName = 'Анонимный клиент';
 
-    if (client && client.name) {
+    // Проверяем разные источники имени клиента
+    if (feedback.userName) {
+        clientName = feedback.userName;
+    } else if (client && client.name) {
         clientName = client.name;
-    }
-    else if (clientId && currentUser && currentUser.profile && currentUser.profile.id === clientId) {
+    } else if (feedback.clientName) {
+        clientName = feedback.clientName;
+    } else if (clientId && currentUser && currentUser.profile && currentUser.profile.id === clientId) {
         clientName = 'Вы';
     }
 
     const formattedDate = formatFeedbackDate(createdAt);
 
-    const rawAvatarUrl = avatar || (client && client.user ? client.user.avatar : null);
+    const rawAvatarUrl = avatar || (client && client.user ? client.user.avatar : null) || feedback.avatar;
     const fixedAvatarUrl = rawAvatarUrl ? fixAvatarUrl(rawAvatarUrl) : null;
 
     const hasValidAvatarUrl = !!fixedAvatarUrl;
@@ -49,7 +53,16 @@ export const FeedbackCardHeader = ({ feedback, currentUser }) => {
                         source={{ uri: fixedAvatarUrl }}
                         style={styles.avatarImage}
                         resizeMode="cover"
-                        onError={(e) => console.log('Ошибка загрузки аватара:', e.nativeEvent.error)}
+                        onError={(e) => {
+                            // Тихая обработка ошибок загрузки аватара (404 - нормальное поведение)
+                            // Ошибка логируется только если это не 404
+                            const error = e.nativeEvent.error;
+                            if (error && !error.message?.includes('404') && !error.message?.includes('Not Found')) {
+                                if (process.env.NODE_ENV === 'development') {
+                                    console.log('Ошибка загрузки аватара:', error);
+                                }
+                            }
+                        }}
                     />
                 ) : (
                     <AvatarPlaceholder width={40} height={40} color="#BEBEBE" />
@@ -58,7 +71,7 @@ export const FeedbackCardHeader = ({ feedback, currentUser }) => {
 
             {/* Информация о пользователе */}
             <View style={styles.userInfo}>
-                <Text style={[styles.userName, { color: colors.text }]}>
+                <Text style={styles.userName}>
                     {clientName}
                 </Text>
                 <Text style={styles.dateText}>
@@ -88,6 +101,8 @@ const styles = StyleSheet.create({
         paddingTop: 16,
         paddingHorizontal: 16,
         height: 56,
+        position: 'relative',
+        zIndex: 1,
     },
     avatarContainer: {
         width: 40,
@@ -107,11 +122,15 @@ const styles = StyleSheet.create({
         marginLeft: 12,
         justifyContent: 'center',
         flex: 1,
+        position: 'relative',
+        zIndex: 2,
     },
     userName: {
-        fontSize: 13,
+        fontSize: 14,
         fontFamily: FontFamily.sFProText,
-        fontWeight: '500',
+        fontWeight: '600',
+        color: '#000000', // Черный цвет для максимального контраста
+        backgroundColor: 'transparent',
     },
     dateText: {
         fontSize: 11,

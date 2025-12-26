@@ -1,5 +1,5 @@
 // Альтернативное решение с использованием SVG иконок для лучшего выравнивания
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
     View,
     Modal,
@@ -11,7 +11,9 @@ import {
     FlatList,
     StatusBar,
     Platform,
+    Animated,
 } from 'react-native';
+import { PanGestureHandler, State, GestureHandlerRootView, FlatList as GestureFlatList } from 'react-native-gesture-handler';
 import Svg, { Path } from 'react-native-svg';
 
 const { width: WINDOW_WIDTH, height: WINDOW_HEIGHT } = Dimensions.get('window');
@@ -51,10 +53,24 @@ export const FeedbackPhotoViewerModal = ({
 
     // FlatList ref для прокрутки к начальному индексу
     const flatListRef = React.useRef(null);
+    
+    // Ref для PanGestureHandler для координации жестов
+    const panGestureRef = React.useRef(null);
+
+    // Анимация для свайпа вниз
+    const translateY = useRef(new Animated.Value(0)).current;
+    const opacity = useRef(new Animated.Value(1)).current;
+    const lastGestureY = useRef(0);
+    const isScrolling = useRef(false);
 
     // При изменении видимости модального окна
     React.useEffect(() => {
         if (visible) {
+            // Сбрасываем анимацию при открытии
+            translateY.setValue(0);
+            opacity.setValue(1);
+            lastGestureY.current = 0;
+
             // Прокручиваем к начальному индексу при открытии
             setTimeout(() => {
                 if (flatListRef.current) {
@@ -75,7 +91,7 @@ export const FeedbackPhotoViewerModal = ({
                 setStatusBarHidden(false);
             }
         }
-    }, [visible, initialIndex]);
+    }, [visible, initialIndex, translateY, opacity]);
 
     // Обработчик изменения видимого фото при прокрутке
     const handleScroll = (event) => {
@@ -84,6 +100,18 @@ export const FeedbackPhotoViewerModal = ({
         const roundIndex = Math.round(event.nativeEvent.contentOffset.x / slideSize);
 
         setCurrentIndex(roundIndex);
+    };
+
+    // Отслеживаем начало прокрутки
+    const handleScrollBeginDrag = () => {
+        isScrolling.current = true;
+    };
+
+    // Отслеживаем окончание прокрутки
+    const handleScrollEndDrag = () => {
+        setTimeout(() => {
+            isScrolling.current = false;
+        }, 100);
     };
 
     // Обработка ошибки при прокрутке к индексу, если он выходит за границы
@@ -120,6 +148,73 @@ export const FeedbackPhotoViewerModal = ({
         }
     };
 
+    // Обработчик свайпа вниз
+    const handleGestureEvent = Animated.event(
+        [{ nativeEvent: { translationY: translateY } }],
+        { useNativeDriver: true }
+    );
+
+    const handleGestureStateChange = (event) => {
+        const { translationY, state, velocityY, translationX } = event.nativeEvent;
+
+        // Игнорируем жест если идет горизонтальная прокрутка (на Android это важно)
+        if (isScrolling.current && state === State.BEGAN) {
+            return;
+        }
+
+        // На Android проверяем, не горизонтальный ли это жест
+        if (Platform.OS === 'android' && state === State.BEGAN) {
+            if (Math.abs(translationX) > Math.abs(translationY)) {
+                // Это горизонтальный жест, игнорируем
+                return;
+            }
+        }
+
+        if (state === State.ACTIVE) {
+            // Обновляем непрозрачность в зависимости от расстояния свайпа
+            const opacityValue = Math.max(0, 1 - Math.abs(translationY) / 400);
+            opacity.setValue(opacityValue);
+            lastGestureY.current = translationY;
+        } else if (state === State.END || state === State.CANCELLED || state === State.FAILED) {
+            // Для Android также проверяем CANCELLED и FAILED
+            const shouldClose = Math.abs(translationY) > 100 || Math.abs(velocityY) > 500;
+
+            if (shouldClose && translationY > 0) {
+                // Закрываем модалку свайпом вниз
+                Animated.parallel([
+                    Animated.timing(translateY, {
+                        toValue: WINDOW_HEIGHT,
+                        duration: 200,
+                        useNativeDriver: true,
+                    }),
+                    Animated.timing(opacity, {
+                        toValue: 0,
+                        duration: 200,
+                        useNativeDriver: true,
+                    }),
+                ]).start(() => {
+                    onClose();
+                });
+            } else {
+                // Возвращаем на место
+                Animated.parallel([
+                    Animated.spring(translateY, {
+                        toValue: 0,
+                        useNativeDriver: true,
+                        tension: 50,
+                        friction: 7,
+                    }),
+                    Animated.spring(opacity, {
+                        toValue: 1,
+                        useNativeDriver: true,
+                        tension: 50,
+                        friction: 7,
+                    }),
+                ]).start();
+            }
+        }
+    };
+
     return (
         <Modal
             animationType="fade"
@@ -130,6 +225,27 @@ export const FeedbackPhotoViewerModal = ({
             <StatusBar hidden={statusBarHidden} />
 
             <View style={styles.container}>
+                <PanGestureHandler
+                    ref={panGestureRef}
+                    onGestureEvent={handleGestureEvent}
+                    onHandlerStateChange={handleGestureStateChange}
+                    activeOffsetY={Platform.OS === 'android' ? 3 : 10}
+                    failOffsetX={Platform.OS === 'android' ? [-15, 15] : [-50, 50]}
+                    failOffsetY={Platform.OS === 'android' ? [-3, 3] : undefined}
+                    minPointers={1}
+                    maxPointers={1}
+                    enabled={true}
+                    shouldCancelWhenOutside={false}
+                >
+                    <Animated.View
+                        style={[
+                            styles.animatedContainer,
+                            {
+                                transform: [{ translateY }],
+                                opacity,
+                            },
+                        ]}
+                    >
                 {/* Кнопка закрытия */}
                 <TouchableOpacity
                     style={styles.closeButton}
@@ -147,32 +263,73 @@ export const FeedbackPhotoViewerModal = ({
                 </View>
 
                 {/* Галерея фотографий */}
-                <FlatList
-                    ref={flatListRef}
-                    data={photos}
-                    horizontal
-                    pagingEnabled
-                    bounces={false}
-                    showsHorizontalScrollIndicator={false}
-                    onScroll={handleScroll}
-                    scrollEventThrottle={16}
-                    onScrollToIndexFailed={handleScrollToIndexFailed}
-                    keyExtractor={(item, index) => `photo-viewer-${index}`}
-                    renderItem={({ item }) => (
-                        <View style={styles.slide}>
-                            <Image
-                                source={{ uri: item }}
-                                style={styles.image}
-                                resizeMode="contain"
-                            />
-                        </View>
-                    )}
-                    getItemLayout={(data, index) => ({
-                        length: WINDOW_WIDTH,
-                        offset: WINDOW_WIDTH * index,
-                        index,
-                    })}
-                />
+                {Platform.OS === 'android' ? (
+                    <GestureFlatList
+                        ref={flatListRef}
+                        data={photos}
+                        horizontal
+                        pagingEnabled
+                        bounces={false}
+                        showsHorizontalScrollIndicator={false}
+                        onScroll={handleScroll}
+                        onScrollBeginDrag={handleScrollBeginDrag}
+                        onScrollEndDrag={handleScrollEndDrag}
+                        onMomentumScrollEnd={handleScrollEndDrag}
+                        scrollEventThrottle={16}
+                        onScrollToIndexFailed={handleScrollToIndexFailed}
+                        keyExtractor={(item, index) => `photo-viewer-${index}`}
+                        renderItem={({ item }) => (
+                            <View style={styles.slide}>
+                                <Image
+                                    source={{ uri: item }}
+                                    style={styles.image}
+                                    resizeMode="contain"
+                                />
+                            </View>
+                        )}
+                        getItemLayout={(data, index) => ({
+                            length: WINDOW_WIDTH,
+                            offset: WINDOW_WIDTH * index,
+                            index,
+                        })}
+                        scrollEnabled={true}
+                        nestedScrollEnabled={false}
+                        removeClippedSubviews={false}
+                    />
+                ) : (
+                    <FlatList
+                        ref={flatListRef}
+                        data={photos}
+                        horizontal
+                        pagingEnabled
+                        bounces={false}
+                        showsHorizontalScrollIndicator={false}
+                        onScroll={handleScroll}
+                        onScrollBeginDrag={handleScrollBeginDrag}
+                        onScrollEndDrag={handleScrollEndDrag}
+                        onMomentumScrollEnd={handleScrollEndDrag}
+                        scrollEventThrottle={16}
+                        onScrollToIndexFailed={handleScrollToIndexFailed}
+                        keyExtractor={(item, index) => `photo-viewer-${index}`}
+                        renderItem={({ item }) => (
+                            <View style={styles.slide}>
+                                <Image
+                                    source={{ uri: item }}
+                                    style={styles.image}
+                                    resizeMode="contain"
+                                />
+                            </View>
+                        )}
+                        getItemLayout={(data, index) => ({
+                            length: WINDOW_WIDTH,
+                            offset: WINDOW_WIDTH * index,
+                            index,
+                        })}
+                        scrollEnabled={true}
+                        nestedScrollEnabled={false}
+                        removeClippedSubviews={false}
+                    />
+                )}
 
                 {/* Кнопки навигации (только если фотографий больше одной) */}
                 {photos.length > 1 && (
@@ -198,8 +355,10 @@ export const FeedbackPhotoViewerModal = ({
                                 <RightArrow />
                             </TouchableOpacity>
                         )}
-                    </>
+                    </> 
                 )}
+                    </Animated.View>
+                </PanGestureHandler>
             </View>
         </Modal>
     );
@@ -209,6 +368,9 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    },
+    animatedContainer: {
+        flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
     },

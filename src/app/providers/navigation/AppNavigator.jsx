@@ -1290,6 +1290,13 @@ export const AppNavigator = () => {
                         component={ProductDetailScreen}
                         options={createScreenOptions({ ...cardStackTransition })}
                     />
+                    {/* SupplierScreen в AppStack нужен для переходов из ChatRoom.
+                       Тогда экран поставщика ложится поверх ChatRoom и back возвращает обратно в комнату. */}
+                    <Stack.Screen
+                        name="SupplierScreen"
+                        component={SupplierScreen}
+                        options={createScreenOptions()}
+                    />
 
                     {/* Экраны доступные после авторизации */}
                     {isAuthenticated && (

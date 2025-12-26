@@ -3,9 +3,10 @@ import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet, SafeAreaView } from 'react-native';
 import { SupplierContent } from '@screens/supplier/ui/SupplierContent';
 import { ErrorState } from '@shared/ui/states/ErrorState';
-import { LoadingState } from '@shared/ui/states/LoadingState';
+import { Loader } from '@shared/ui/Loader/ui/Loader';
 import { StaticBackgroundGradient } from '@shared/ui/BackgroundGradient';
 import { useSupplierData } from '@entities/supplier';
+import { Color } from '@app/styles/GlobalStyles';
 
 /**
  * Оптимизированный контейнер экрана поставщика с минимизацией рендеров
@@ -26,6 +27,7 @@ const SupplierScreenContainer = React.memo(({ supplierId, navigation, route }) =
         supplier,
         supplierProducts,
         allFeedbacks,
+        isLoading,
         isInitialLoading,
         isRefreshing,
         suppliersError,
@@ -38,14 +40,19 @@ const SupplierScreenContainer = React.memo(({ supplierId, navigation, route }) =
     useEffect(() => {
         if (process.env.NODE_ENV === 'development') {
             renderCount.current += 1;
-            console.log('SupplierScreenContainer - Параметры навигации:', {
+            console.log('SupplierScreenContainer - Данные:', {
                 supplierId: validSupplierId,
                 fromScreen,
                 previousProductId,
-                renderCount: renderCount.current
+                renderCount: renderCount.current,
+                hasSupplier: !!supplier,
+                supplierProductsType: typeof supplierProducts,
+                supplierProductsIsArray: Array.isArray(supplierProducts),
+                supplierProductsLength: supplierProducts?.length || 0,
+                allFeedbacksLength: allFeedbacks?.length || 0
             });
         }
-    }, [validSupplierId, fromScreen, previousProductId]);
+    }, [validSupplierId, fromScreen, previousProductId, supplier, supplierProducts, allFeedbacks]);
 
     // Отображаем ошибку если ID не указан
     if (!validSupplierId) {
@@ -61,12 +68,18 @@ const SupplierScreenContainer = React.memo(({ supplierId, navigation, route }) =
         );
     }
 
-    // Показываем загрузку только при первой загрузке
-    if (isInitialLoading) {
+    // Показываем загрузку при первой загрузке или во время загрузки данных
+    if (isInitialLoading || isLoading) {
         return (
             <View style={styles.container}>
                 <StaticBackgroundGradient />
-                <LoadingState />
+                <View style={styles.loaderContainer}>
+                    <Loader 
+                        type="youtube" 
+                        color={Color.purpleSoft}
+                        text="Загружаем данные поставщика..."
+                    />
+                </View>
             </View>
         );
     }
@@ -104,7 +117,13 @@ const SupplierScreenContainer = React.memo(({ supplierId, navigation, route }) =
         return (
             <View style={styles.container}>
                 <StaticBackgroundGradient />
-                <LoadingState />
+                <View style={styles.loaderContainer}>
+                    <Loader 
+                        type="youtube" 
+                        color={Color.purpleSoft}
+                        text="Загружаем информацию о поставщике..."
+                    />
+                </View>
             </View>
         );
     }
@@ -134,6 +153,11 @@ const styles = StyleSheet.create({
     safeArea: {
         flex: 1,
         width: '100%',
+    },
+    loaderContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
 });
 

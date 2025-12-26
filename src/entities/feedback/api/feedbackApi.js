@@ -150,6 +150,27 @@ export const feedbackApi = {
         }
     },
 
+    getSupplierFeedbacks: async (supplierId, userData) => {
+        try {
+            // Публичный эндпоинт - получаем все отзывы поставщика одним запросом
+            const response = await createPublicRequest('get', `/api/feedbacks/supplier/${supplierId}`);
+
+            if (response && response.status === 'success' && Array.isArray(response.data)) {
+                // Форматируем все отзывы
+                const formattedFeedbacks = formatFeedbacks(response.data, userData);
+                return {
+                    ...response,
+                    data: formattedFeedbacks
+                };
+            }
+
+            return response;
+        } catch (error) {
+            console.error(`Ошибка при получении отзывов поставщика ${supplierId}:`, error);
+            throw error;
+        }
+    },
+
     createFeedback: async (feedbackData, userData) => {
         try {
             const response = await createProtectedRequest('post', '/api/feedbacks', feedbackData);
