@@ -45,8 +45,9 @@ export const CategoriesBar = ({ hideLoader = true }) => {
     const error = useSelector(selectCategoriesError);
     const navigation = useNavigation();
 
-    // Показываем скелетон загрузки
-    if (isLoading && !hideLoader && categories.length === 0) {
+    // Показываем скелетон загрузки если категорий нет и не скрыт лоадер
+    // Показываем скелетон либо при загрузке, либо если категорий нет (первая загрузка)
+    if (!hideLoader && categories.length === 0 && (isLoading || !error)) {
         return (
             <ScrollView
                 horizontal
@@ -184,10 +185,9 @@ const getButtonStyle = (iconType) => {
 
 const styles = StyleSheet.create({
     scrollContainer: {
-        marginTop: normalize(10),
-        paddingVertical: Padding.p_9xs,
+        marginTop: normalize(4),
+        paddingTop: Padding.p_9xs,
         paddingHorizontal: 6,
-        paddingBottom: Padding.p_3xs,
     },
     loaderContainer: {
         height: 57,

@@ -12,7 +12,8 @@ import {
     Animated, 
     Clipboard, 
     KeyboardAvoidingView, 
-    Keyboard
+    Keyboard,
+    AppState
 } from 'react-native';
 import * as Device from 'expo-device';
 import * as Haptics from 'expo-haptics';
@@ -110,6 +111,7 @@ export const DirectChatScreen = ({route, navigation}) => {
     const flatListRef = useRef(null);
     const isMountedRef = useRef(true);
     const paddingTopAnim = useRef(new Animated.Value(0)).current;
+    const appStateRef = useRef(AppState.currentState);
     
     // Hooks
     const dispatch = useDispatch();
@@ -180,10 +182,13 @@ export const DirectChatScreen = ({route, navigation}) => {
         if (Platform.OS !== 'android' || !keyboardState.visible) {
             return 0;
         }
-        // ВАЖНО: Только для Samsung S25 Ultra нужен дополнительный gap
-        // На других Android устройствах это вызывает дергание
+        // Для Samsung S25 Ultra нужен большой дополнительный gap
         const gap = getChatKeyboardGapPx({ keyboardHeight: keyboardState.height });
-        return gap; // Вернет 0 для не-Samsung или 90+ для S25 Ultra
+        if (gap > 0) {
+            return gap; 
+        }
+        // Для обычных Android устройств добавляем 10px чтобы поле ввода не заходило за клавиатуру
+        return 10;
     }, [keyboardState.visible, keyboardState.height]);
     
     // Динамический стиль для контента списка
@@ -331,6 +336,65 @@ export const DirectChatScreen = ({route, navigation}) => {
             hideSubscription.remove();
         };
     }, []);
+    
+    // Закрытие клавиатуры системным свайпом назад или кнопкой (Android)
+    useEffect(() => {
+        if (Platform.OS !== 'android') return;
+        
+        const handleBackPress = () => {
+            if (keyboardState.visible) {
+                Keyboard.dismiss();
+                return true; // Предотвращаем выход из экрана
+            }
+            return false; // Разрешаем стандартное поведение
+        };
+        
+        const backHandler = BackHandler.addEventListener('hardwareBackPress', handleBackPress);
+        
+        return () => {
+            backHandler.remove();
+        };
+    }, [keyboardState.visible]);
+    
+    // КРИТИЧНО: Синхронизация сообщений при возврате из фона
+    useEffect(() => {
+        const subscription = AppState.addEventListener('change', (nextAppState) => {
+            // При переходе в фон - закрываем клавиатуру и сбрасываем состояние
+            if (nextAppState.match(/inactive|background/) && appStateRef.current === 'active') {
+                Keyboard.dismiss();
+                setKeyboardState({
+                    visible: false,
+                    height: 0,
+                    duration: 250,
+                });
+            }
+            
+            if (
+                appStateRef.current.match(/inactive|background/) &&
+                nextAppState === 'active' &&
+                roomId &&
+                !isRoomDeletedRef.current
+            ) {
+                console.log('📱 DirectChat: App returned from background, syncing messages for room:', roomId);
+                // Принудительно синхронизируем сообщения с сервера
+                dispatch(fetchMessages({ roomId, limit: 100 }));
+                
+                // Сбрасываем состояние клавиатуры при возврате из фона
+                // чтобы избежать смещения поля ввода
+                setKeyboardState({
+                    visible: false,
+                    height: 0,
+                    duration: 250,
+                });
+                Keyboard.dismiss();
+            }
+            appStateRef.current = nextAppState;
+        });
+        
+        return () => {
+            subscription?.remove();
+        };
+    }, [roomId, dispatch]);
     
     // Анимация padding для индикатора печати
     useEffect(() => {

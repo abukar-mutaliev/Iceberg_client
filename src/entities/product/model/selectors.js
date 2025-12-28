@@ -17,14 +17,24 @@ export const selectProductsTotalPages = (state) => state.products?.totalPages ||
 export const selectProductsTotalItems = (state) => state.products?.totalItems || 0;
 
 export const selectProductById = createSelector(
-    [selectProducts, (state, productId) => productId],
-    (products, productId) => {
-        if (!productId || !Array.isArray(products)) return null;
+    [selectProductsById, selectProducts, (state, productId) => productId],
+    (byId, products, productId) => {
+        if (!productId) return null;
 
         const numericId = parseInt(productId, 10);
         if (isNaN(numericId)) return null;
 
-        return products.find(product => product && product.id === numericId) || null;
+        // Сначала проверяем byId словарь - это быстрее чем поиск в массиве
+        if (byId && typeof byId === 'object' && byId[numericId]) {
+            return byId[numericId];
+        }
+
+        // Fallback: ищем в массиве products
+        if (Array.isArray(products)) {
+            return products.find(product => product && product.id === numericId) || null;
+        }
+
+        return null;
     }
 );
 

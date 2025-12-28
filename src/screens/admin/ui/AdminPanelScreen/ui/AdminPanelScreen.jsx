@@ -16,6 +16,7 @@ import CustomButton from '@shared/ui/Button/CustomButton';
 import { useAuth } from "@entities/auth/hooks/useAuth";
 import { AdminHeader } from "@widgets/admin/AdminHeader";
 import { AdminMenuItem } from "@widgets/admin/AdminMenuItem";
+import { navigationRef } from "@shared/utils/NavigationRef";
 import IconCategory from "@shared/ui/Icon/CategoriesManagement/IconCategory";
 import IconProducts from "@shared/ui/Icon/Profile/IconProducts";
 import IconDelivery from "@shared/ui/Icon/Profile/IconDelivery";
@@ -93,8 +94,47 @@ export const AdminPanelScreen = () => {
     }, [navigation]);
 
     const handleAddStopPress = useCallback(() => {
-        // Переходим к AddStop в корневом стеке
-        navigation.getParent()?.navigate('AddStop') || navigation.navigate('AddStop');
+        console.log('AdminPanel: Navigating to AddStop');
+        // Переходим к AddStop в корневом стеке через navigationRef
+        try {
+            if (navigationRef.isReady()) {
+                console.log('AdminPanel: Using navigationRef to navigate to AddStop');
+                navigationRef.navigate('AddStop', {
+                    fromScreen: 'AdminPanel'
+                });
+            } else {
+                console.warn('AdminPanel: navigationRef is not ready, trying fallback navigation');
+                // Fallback через обычную навигацию - поднимаемся на уровень выше
+                const parent = navigation.getParent();
+                if (parent) {
+                    console.log('AdminPanel: Using parent navigator');
+                    parent.navigate('AddStop', {
+                        fromScreen: 'AdminPanel'
+                    });
+                } else {
+                    console.log('AdminPanel: No parent navigator, trying direct navigation');
+                    navigation.navigate('AddStop', {
+                        fromScreen: 'AdminPanel'
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('AdminPanel: Error navigating to AddStop:', error);
+            // Последняя попытка через CommonActions
+            try {
+                const { CommonActions } = require('@react-navigation/native');
+                navigation.dispatch(
+                    CommonActions.navigate({
+                        name: 'AddStop',
+                        params: {
+                            fromScreen: 'AdminPanel'
+                        }
+                    })
+                );
+            } catch (dispatchError) {
+                console.error('AdminPanel: CommonActions navigation also failed:', dispatchError);
+            }
+        }
     }, [navigation]);
 
     const handleUsersManagementPress = useCallback(() => {

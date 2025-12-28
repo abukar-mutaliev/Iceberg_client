@@ -156,37 +156,51 @@ const enrichMessageWithSender = (message, room) => {
 };
 
 // Обновленная функция кэширования с использованием ChatCacheService
-// Важно: делаем глубокую копию для избежания ошибки "Proxy handler is null"
+// Важно: делаем глубокую копию СРАЗУ для избежания ошибки "Proxy handler is null"
 // Debounce для предотвращения частых записей
 let cacheUpdateTimers = {};
+let pendingCacheUpdates = {}; // Хранит готовые к сохранению данные
 
-const updateMessageCache = async (roomId, bucket) => {
+const updateMessageCache = (roomId, bucket) => {
+  // КРИТИЧНО: Создаем копию данных СРАЗУ, пока Proxy еще валиден
+  // Не делаем это внутри setTimeout, так как к тому времени Proxy может быть уже null
+  try {
+    const messagesToCache = bucket.ids.map(id => {
+      const msg = bucket.byId[id];
+      if (!msg) return null;
+      // Делаем копию через JSON для полного отделения от Proxy
+      try {
+        return JSON.parse(JSON.stringify(msg));
+      } catch {
+        return null;
+      }
+    }).filter(Boolean);
+    
+    if (messagesToCache.length === 0) return;
+    
+    // Сохраняем данные для последующей записи
+    pendingCacheUpdates[roomId] = messagesToCache;
+  } catch (e) {
+    // Ошибка создания копии - игнорируем
+    console.warn('updateMessageCache: Failed to create copy:', e?.message);
+    return;
+  }
+  
   // Отменяем предыдущий таймер для этой комнаты
   if (cacheUpdateTimers[roomId]) {
     clearTimeout(cacheUpdateTimers[roomId]);
   }
   
-  // Debounce - обновляем кэш через 500ms после последнего изменения
+  // Debounce - обновляем кэш через 300ms после последнего изменения (уменьшили с 500ms)
   cacheUpdateTimers[roomId] = setTimeout(async () => {
     try {
-      // Сохраняем ВСЕ сообщения (не ограничиваем 100)
-      const messagesToCache = bucket.ids.map(id => {
-        const msg = bucket.byId[id];
-        if (!msg) return null;
-        // Делаем копию через JSON для полного отделения от Proxy
-        try {
-          return JSON.parse(JSON.stringify(msg));
-        } catch {
-          return null;
-        }
-      }).filter(Boolean);
+      const messagesToSave = pendingCacheUpdates[roomId];
+      if (!messagesToSave || messagesToSave.length === 0) return;
       
-      if (messagesToCache.length === 0) return;
-      
-      await chatCacheService.saveMessages(roomId, messagesToCache);
+      await chatCacheService.saveMessages(roomId, messagesToSave);
       
       // Фоновое кэширование медиа-файлов (только первые 20)
-      const recentMessages = messagesToCache.slice(0, 20);
+      const recentMessages = messagesToSave.slice(0, 20);
       recentMessages.forEach(msg => {
         if (msg.attachments?.length > 0) {
           msg.attachments.forEach(att => {
@@ -202,9 +216,11 @@ const updateMessageCache = async (roomId, bucket) => {
       });
     } catch (e) {
       // Ошибка обновления кэша сообщений - игнорируем
+      console.warn('updateMessageCache: Failed to save:', e?.message);
     }
     delete cacheUpdateTimers[roomId];
-  }, 500);
+    delete pendingCacheUpdates[roomId];
+  }, 300);
 };
 
 const CACHE_KEYS = {

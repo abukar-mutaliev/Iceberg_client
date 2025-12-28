@@ -127,11 +127,11 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 visitedProductIdsRef.current.delete(firstId);
             }
             
-            // Сбрасываем только при переходе ВПЕРЕД на новый продукт
-            // При возврате назад не сбрасываем, чтобы сохранить возможность восстановления из кэша
+            // НЕ сбрасываем currentProduct здесь - useProductDetail сам управляет кэшем
+            // Это позволяет эффективно использовать кэш при повторном открытии продуктов
+            // Сбрасываем только optimisticProduct при переходе вперед
             const isMovingForward = previousProductIdRef.current && productId && !isReturningBack;
             if (isMovingForward) {
-                dispatch(resetCurrentProduct());
                 setOptimisticProduct(null);
             }
 

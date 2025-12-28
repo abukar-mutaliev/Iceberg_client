@@ -104,12 +104,7 @@ export const MainScreen = ({ navigation, route }) => {
             ? [...previousProductsIdsRef.current][0] 
             : null;
         
-        // Проверяем, является ли это обновлением (refresh) или подгрузкой (load more)
-        // Refresh происходит только если:
-        // 1. Это первая загрузка (previousLength === 0)
-        // 2. Текущая страница = 1 И длина не увеличилась (значит это refresh, а не подгрузка)
-        // 3. Первый продукт изменился (значит список обновился)
-        // 4. Длина уменьшилась или осталась той же, но набор ID изменился (refresh)
+        
         const isRefresh = previousLength === 0 || 
                          (currentPage === 1 && currentLength <= previousLength) ||
                          (firstProductId && previousFirstId && firstProductId !== previousFirstId) ||
@@ -162,8 +157,11 @@ export const MainScreen = ({ navigation, route }) => {
         const categoriesReady = categories?.length > 0;
         const dataReady = productsReady && bannersReady && categoriesReady;
         
-        // Если данные уже есть и кэш свежий, не загружаем
-        if (!forceRefresh && dataReady && !shouldRefreshCache()) {
+        // При первой инициализации всегда загружаем данные, даже если кэш свежий
+        const isFirstLoad = !isInitializedRef.current;
+        
+        // Если данные уже есть и кэш свежий, и это не первая загрузка, не загружаем
+        if (!forceRefresh && !isFirstLoad && dataReady && !shouldRefreshCache()) {
             return;
         }
 
@@ -179,20 +177,22 @@ export const MainScreen = ({ navigation, route }) => {
         setError(null);
 
         try {
+            // При первой загрузке или принудительном обновлении используем refresh: true
+            const shouldRefresh = forceRefresh || isFirstLoad;
             
             await Promise.all([
                 dispatch(fetchProducts({ 
                     page: 1, 
                     limit: PRODUCTS_PER_PAGE, 
-                    refresh: forceRefresh 
+                    refresh: shouldRefresh 
                 })).unwrap(),
                 dispatch(fetchBanners({ 
                     type: 'MAIN', 
                     active: true, 
-                    refresh: forceRefresh 
+                    refresh: shouldRefresh 
                 })).unwrap(),
                 dispatch(fetchCategories({ 
-                    refresh: forceRefresh 
+                    refresh: shouldRefresh 
                 })).unwrap()
             ]);
 

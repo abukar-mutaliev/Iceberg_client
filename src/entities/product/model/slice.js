@@ -275,6 +275,13 @@ const productsSlice = createSlice({
         },
         setCurrentProductFromCache: (state, action) => {
             const productId = action.payload;
+            // Сначала проверяем byId (быстрее)
+            const cachedById = state.byId?.[productId];
+            if (cachedById) {
+                state.currentProduct = { ...cachedById };
+                return;
+            }
+            // Fallback: ищем в items
             const cachedProduct = state.items.find(p => p?.id === productId);
             if (cachedProduct) {
                 state.currentProduct = { ...cachedProduct };

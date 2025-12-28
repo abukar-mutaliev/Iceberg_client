@@ -242,7 +242,8 @@ export const useCachedMessages = (roomId) => {
         // на локальных данных и не видеть последние сообщения.
         //
         // Берём throttle по sync-state, чтобы не дергать сервер слишком часто.
-        const shouldSync = await chatCacheService.needsSync(roomId, 15_000);
+        // Уменьшили throttle с 15 секунд до 5 секунд для более быстрой синхронизации
+        const shouldSync = await chatCacheService.needsSync(roomId, 5_000);
         if (!shouldSync || cancelled) return;
 
         // Небольшая задержка, чтобы сначала отрисовать кэш (мгновенный UI)
@@ -296,9 +297,13 @@ export const useCachedMessages = (roomId) => {
 /**
  * Хук для автоматической синхронизации при восстановлении приложения из фона
  */
-export const useChatBackgroundSync = () => {
+export const useChatBackgroundSync = (activeRoomId = null) => {
   const dispatch = useDispatch();
   const appState = useRef(AppState.currentState);
+  const activeRoomIdFromRedux = useSelector((s) => s.chat?.activeRoomId);
+  
+  // Используем переданный activeRoomId или из Redux
+  const currentActiveRoomId = activeRoomId || activeRoomIdFromRedux;
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', async (nextAppState) => {
@@ -307,10 +312,24 @@ export const useChatBackgroundSync = () => {
         appState.current.match(/inactive|background/) && 
         nextAppState === 'active'
       ) {
-        console.log('📱 App returned from background, syncing chat...');
+        console.log('📱 App returned from background, syncing chat...', {
+          activeRoomId: currentActiveRoomId
+        });
         
         // Синхронизируем комнаты
         dispatch(fetchRooms({ page: 1, limit: 20, forceRefresh: true }));
+        
+        // КРИТИЧНО: Синхронизируем сообщения активной комнаты если она открыта
+        if (currentActiveRoomId) {
+          console.log('📱 Syncing messages for active room:', currentActiveRoomId);
+          // Небольшая задержка чтобы не перегружать сервер
+          setTimeout(() => {
+            dispatch(fetchMessages({ 
+              roomId: currentActiveRoomId, 
+              limit: 100 
+            }));
+          }, 500);
+        }
       }
       
       appState.current = nextAppState;
@@ -319,7 +338,7 @@ export const useChatBackgroundSync = () => {
     return () => {
       subscription?.remove();
     };
-  }, [dispatch]);
+  }, [dispatch, currentActiveRoomId]);
 };
 
 /**

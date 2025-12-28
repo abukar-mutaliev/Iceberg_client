@@ -146,19 +146,42 @@ class PushNotificationService {
     shouldSuppressChatNotification(data) {
         try {
             const type = data?.type || data?.notificationType;
-            const roomId = data?.roomId;
-            const senderId = data?.senderId;
-            if (String(type || '').toUpperCase() !== 'CHAT_MESSAGE' || !roomId) return false;
+            const roomId = data?.roomId || data?.room_id;
+            const senderId = data?.senderId || data?.sender_id;
+            
+            // Только для уведомлений типа CHAT_MESSAGE с roomId
+            const normalizedType = String(type || '').toUpperCase();
+            if (normalizedType !== 'CHAT_MESSAGE' || !roomId) {
+                return false;
+            }
+            
             // 1) Если открыт именно этот roomId — всегда подавляем
             if (this.activeChatRoomId && String(this.activeChatRoomId) === String(roomId)) {
+                if (__DEV__) {
+                    console.log('[PushNotification] 🔇 Подавление уведомления: чат уже открыт', {
+                        activeRoomId: this.activeChatRoomId,
+                        notificationRoomId: roomId
+                    });
+                }
                 return true;
             }
+            
             // 2) Если открыт direct-чат с этим пользователем — подавляем пуши от него (даже если room другой)
             if (this.activeChatPeerUserId && senderId && String(this.activeChatPeerUserId) === String(senderId)) {
+                if (__DEV__) {
+                    console.log('[PushNotification] 🔇 Подавление уведомления: чат с пользователем уже открыт', {
+                        activePeerUserId: this.activeChatPeerUserId,
+                        notificationSenderId: senderId
+                    });
+                }
                 return true;
             }
+            
             return false;
-        } catch (_) {
+        } catch (error) {
+            if (__DEV__) {
+                console.warn('[PushNotification] Ошибка в shouldSuppressChatNotification:', error?.message);
+            }
             return false;
         }
     }

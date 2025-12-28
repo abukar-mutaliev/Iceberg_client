@@ -123,8 +123,8 @@ export default {
         },
         android: {
             package: 'com.abuingush.iceberg',
-            versionCode: 16,
-            versionName: '1.1.4',
+            versionCode: 31,
+            versionName: '1.3.1',
             icon: './assets/icon.png',
             adaptiveIcon: {
                 foregroundImage: './assets/icon.png',
@@ -150,7 +150,6 @@ export default {
                 'ACCESS_NETWORK_STATE',
                 'SYSTEM_ALERT_WINDOW',
                 'FOREGROUND_SERVICE',
-                'com.android.vending.BILLING',
                 'com.google.android.gms.permission.AD_ID',
                 'android.permission.RECEIVE_BOOT_COMPLETED',
                 'android.permission.VIBRATE',

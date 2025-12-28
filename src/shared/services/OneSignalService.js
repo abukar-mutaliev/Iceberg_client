@@ -201,11 +201,14 @@ class OneSignalService {
 
                     // Если сейчас открыт этот же чат — не показываем уведомление в foreground
                     try {
+                        // Извлекаем data из всех возможных мест (разные версии SDK)
                         const additionalData =
                             notification?.additionalData ||
                             notification?.additional_data ||
                             event?.notification?.additionalData ||
                             event?.notification?.additional_data ||
+                            event?.additionalData ||
+                            event?.additional_data ||
                             null;
 
                         const data = additionalData || {};
@@ -213,12 +216,19 @@ class OneSignalService {
                         const pushNotificationService = PushNotificationService.default || PushNotificationService;
 
                         if (pushNotificationService?.shouldSuppressChatNotification?.(data)) {
+                            // КРИТИЧНО: Сначала предотвращаем показ уведомления
                             if (event?.preventDefault && typeof event.preventDefault === 'function') {
                                 event.preventDefault();
                             }
+                            // НЕ вызываем display() - уведомление должно быть подавлено
                             return; // ✅ suppress
                         }
-                    } catch (_) {}
+                    } catch (suppressError) {
+                        // Логируем ошибку, но продолжаем показывать уведомление
+                        if (__DEV__) {
+                            console.warn('[OneSignal] Ошибка при проверке подавления:', suppressError?.message);
+                        }
+                    }
 
                     // Показываем уведомление через OneSignal SDK
                     // НЕ вызываем preventDefault - пусть OneSignal покажет уведомление стандартным способом
@@ -229,6 +239,9 @@ class OneSignalService {
                     }
                 } catch (e) {
                     // Не ломаем приложение из-за ошибок в SDK/событиях
+                    if (__DEV__) {
+                        console.warn('[OneSignal] Ошибка в foregroundWillDisplay:', e?.message);
+                    }
                 }
             });
 
@@ -296,6 +309,12 @@ class OneSignalService {
                 console.log('[OneSignal] ✅ Вызываем optIn() для подписки');
                 await oneSignal.User.pushSubscription.optIn();
             }
+
+            // ⚠️ КРИТИЧЕСКИ ВАЖНО: Даем время OneSignal синхронизировать login с серверами
+            // Без этой задержки subscription_id может быть получен до того как login синхронизируется,
+            // что приводит к ошибке "invalid_player_ids" на сервере
+            console.log('[OneSignal] ⏳ Ожидаем синхронизацию login с серверами OneSignal...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
 
             // Получаем subscription ID
             const subscriptionId = await this.getSubscriptionId();

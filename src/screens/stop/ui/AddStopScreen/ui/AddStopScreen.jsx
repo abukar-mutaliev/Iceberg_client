@@ -134,7 +134,9 @@ export const AddStopScreen = ({ navigation, route }) => {
             isProcessingRouteParams.current = false;
 
         }, 300);
-    }, [route.params, handleLocationUpdate, navigation, addressFromMap, locationData.mapLocation]);
+        // Убрали addressFromMap и locationData.mapLocation из зависимостей,
+        // так как они устанавливаются внутри эффекта и вызывают бесконечный цикл
+    }, [route.params, handleLocationUpdate, navigation]);
 
     useEffect(() => {
         if (isInitialized.current) return;
@@ -200,11 +202,32 @@ export const AddStopScreen = ({ navigation, route }) => {
         setMapModalVisible(false);
     }, []);
 
-    if ((isLoading || isDistrictLoading) && !formSubmitted && districts.length === 0) {
-        return <LoadingState />;
-    }
+    const handleScrollToInput = useCallback((yOffset) => {
+        if (scrollViewRef.current) {
+            setTimeout(() => {
+                scrollViewRef.current?.scrollTo({
+                    y: Math.max(0, yOffset),
+                    animated: true
+                });
+            }, 100);
+        }
+    }, []);
 
-    const MapContent = React.memo(() => (
+    const handleScrollToEnd = useCallback(() => {
+        if (scrollViewRef.current) {
+            setTimeout(() => {
+                scrollViewRef.current?.scrollToEnd({ animated: true });
+            }, 300);
+        }
+    }, []);
+
+    // MapContent компонент вынесен за пределы условного return для соблюдения правил хуков
+    const MapContent = React.memo(({ 
+        locationData, 
+        setLocationData, 
+        handleMapCancel, 
+        handleLocationConfirm 
+    }) => (
         <View style={mapStyles.container}>
             <MapView
                 style={mapStyles.map}
@@ -252,24 +275,10 @@ export const AddStopScreen = ({ navigation, route }) => {
         </View>
     ));
 
-    const handleScrollToInput = useCallback((yOffset) => {
-        if (scrollViewRef.current) {
-            setTimeout(() => {
-                scrollViewRef.current?.scrollTo({
-                    y: Math.max(0, yOffset),
-                    animated: true
-                });
-            }, 100);
-        }
-    }, []);
-
-    const handleScrollToEnd = useCallback(() => {
-        if (scrollViewRef.current) {
-            setTimeout(() => {
-                scrollViewRef.current?.scrollToEnd({ animated: true });
-            }, 300);
-        }
-    }, []);
+    // Условный return должен быть после ВСЕХ хуков
+    if ((isLoading || isDistrictLoading) && !formSubmitted && districts.length === 0) {
+        return <LoadingState />;
+    }
 
     return (
         <SafeAreaView style={styles.container}>
@@ -318,7 +327,12 @@ export const AddStopScreen = ({ navigation, route }) => {
                 height={80}
                 additionalStyles={mapStyles.modalContainer}
             >
-                <MapContent />
+                <MapContent 
+                    locationData={locationData}
+                    setLocationData={setLocationData}
+                    handleMapCancel={handleMapCancel}
+                    handleLocationConfirm={handleLocationConfirm}
+                />
             </ReusableModal>
         </SafeAreaView>
     );
