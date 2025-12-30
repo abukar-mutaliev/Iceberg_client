@@ -37,11 +37,52 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
         }
     }, [visible]);
 
-    // При открытии модального окна сбрасываем выбранную роль
+    // Функция для извлечения существующих данных пользователя
+    const getUserExistingData = () => {
+        if (!user) return { name: '', phone: '' };
+        
+        // Пытаемся получить имя и телефон из разных источников в зависимости от роли
+        let existingName = '';
+        let existingPhone = '';
+        
+        // Проверяем разные возможные источники данных
+        if (user.profile?.name) {
+            existingName = user.profile.name;
+        } else if (user.client?.name) {
+            existingName = user.client.name;
+        } else if (user.employee?.name) {
+            existingName = user.employee.name;
+        } else if (user.admin?.name) {
+            existingName = user.admin.name;
+        } else if (user.driver?.name) {
+            existingName = user.driver.name;
+        }
+        
+        if (user.profile?.phone) {
+            existingPhone = user.profile.phone;
+        } else if (user.client?.phone) {
+            existingPhone = user.client.phone || '';
+        } else if (user.employee?.phone) {
+            existingPhone = user.employee.phone || '';
+        } else if (user.admin?.phone) {
+            existingPhone = user.admin.phone || '';
+        } else if (user.driver?.phone) {
+            existingPhone = user.driver.phone || '';
+        } else if (user.supplier?.phone) {
+            existingPhone = user.supplier.phone || '';
+        } else if (user.phone) {
+            existingPhone = user.phone;
+        }
+        
+        return { name: existingName, phone: existingPhone };
+    };
+
+    // При открытии модального окна сбрасываем выбранную роль и инициализируем данные
     useEffect(() => {
         if (visible && user) {
             setSelectedRole('');
-            setUserData({});
+            const existingData = getUserExistingData();
+            setUserData(existingData);
             setSelectedWarehouse(null);
             setSelectedEmployeeDistricts([]);
             setSelectedDriverWarehouse(null);
@@ -85,42 +126,70 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
 
     // Отображаем дополнительные поля в зависимости от выбранной роли
     const renderRoleFields = () => {
+        const hasExistingName = !!userData.name;
+        const hasExistingPhone = !!userData.phone;
+        
         switch (selectedRole) {
             case 'ADMIN':
                 return (
                     <>
-                        <Text style={styles.modalLabel}>Имя администратора:</Text>
-                        <TextInput
-                            style={styles.modalInput}
-                            value={userData.name || ''}
-                            onChangeText={(text) => handleUserDataChange('name', text)}
-                            placeholder="Введите имя администратора"
-                        />
+                        {!hasExistingPhone && (
+                            <>
+                                <Text style={styles.modalLabel}>Телефон:</Text>
+                                <TextInput
+                                    style={styles.modalInput}
+                                    value={userData.phone || ''}
+                                    onChangeText={(text) => handleUserDataChange('phone', text)}
+                                    placeholder="Введите телефон (необязательно)"
+                                    keyboardType="phone-pad"
+                                />
+                            </>
+                        )}
                     </>
                 );
             case 'CLIENT':
                 return (
                     <>
-                        <Text style={styles.modalLabel}>Имя клиента:</Text>
-                        <TextInput
-                            style={styles.modalInput}
-                            value={userData.name || ''}
-                            onChangeText={(text) => handleUserDataChange('name', text)}
-                            placeholder="Введите имя клиента"
-                        />
+                        {!hasExistingName && (
+                            <>
+                                <Text style={styles.modalLabel}>Имя клиента:</Text>
+                                <TextInput
+                                    style={styles.modalInput}
+                                    value={userData.name || ''}
+                                    onChangeText={(text) => handleUserDataChange('name', text)}
+                                    placeholder="Введите имя клиента"
+                                />
+                            </>
+                        )}
+                        {!hasExistingPhone && (
+                            <>
+                                <Text style={styles.modalLabel}>Телефон:</Text>
+                                <TextInput
+                                    style={styles.modalInput}
+                                    value={userData.phone || ''}
+                                    onChangeText={(text) => handleUserDataChange('phone', text)}
+                                    placeholder="Введите телефон (необязательно)"
+                                    keyboardType="phone-pad"
+                                />
+                            </>
+                        )}
                     </>
                 );
             case 'EMPLOYEE':
                 return (
                     <>
-                        <Text style={styles.modalLabel}>Телефон:</Text>
-                        <TextInput
-                            style={styles.modalInput}
-                            value={userData.phone || ''}
-                            onChangeText={(text) => handleUserDataChange('phone', text)}
-                            placeholder="Введите телефон (необязательно)"
-                            keyboardType="phone-pad"
-                        />
+                        {!hasExistingPhone && (
+                            <>
+                                <Text style={styles.modalLabel}>Телефон:</Text>
+                                <TextInput
+                                    style={styles.modalInput}
+                                    value={userData.phone || ''}
+                                    onChangeText={(text) => handleUserDataChange('phone', text)}
+                                    placeholder="Введите телефон (необязательно)"
+                                    keyboardType="phone-pad"
+                                />
+                            </>
+                        )}
 
                         <Text style={styles.modalLabel}>Адрес:</Text>
                         <TextInput
@@ -170,27 +239,47 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                             onChangeText={(text) => handleUserDataChange('contactPerson', text)}
                             placeholder="Введите контактное лицо"
                         />
+                        {!hasExistingPhone && (
+                            <>
+                                <Text style={styles.modalLabel}>Телефон:</Text>
+                                <TextInput
+                                    style={styles.modalInput}
+                                    value={userData.phone || ''}
+                                    onChangeText={(text) => handleUserDataChange('phone', text)}
+                                    placeholder="Введите телефон (необязательно)"
+                                    keyboardType="phone-pad"
+                                />
+                            </>
+                        )}
                     </>
                 );
             case 'DRIVER':
                 return (
                     <>
-                        <Text style={styles.modalLabel}>Имя водителя:</Text>
-                        <TextInput
-                            style={styles.modalInput}
-                            value={userData.name || ''}
-                            onChangeText={(text) => handleUserDataChange('name', text)}
-                            placeholder="Введите имя водителя"
-                        />
+                        {!hasExistingName && (
+                            <>
+                                <Text style={styles.modalLabel}>Имя водителя:</Text>
+                                <TextInput
+                                    style={styles.modalInput}
+                                    value={userData.name || ''}
+                                    onChangeText={(text) => handleUserDataChange('name', text)}
+                                    placeholder="Введите имя водителя"
+                                />
+                            </>
+                        )}
 
-                        <Text style={styles.modalLabel}>Телефон:</Text>
-                        <TextInput
-                            style={styles.modalInput}
-                            value={userData.phone || ''}
-                            onChangeText={(text) => handleUserDataChange('phone', text)}
-                            placeholder="Введите телефон (необязательно)"
-                            keyboardType="phone-pad"
-                        />
+                        {!hasExistingPhone && (
+                            <>
+                                <Text style={styles.modalLabel}>Телефон:</Text>
+                                <TextInput
+                                    style={styles.modalInput}
+                                    value={userData.phone || ''}
+                                    onChangeText={(text) => handleUserDataChange('phone', text)}
+                                    placeholder="Введите телефон (необязательно)"
+                                    keyboardType="phone-pad"
+                                />
+                            </>
+                        )}
 
                         {/* Компонент выбора склада для водителя */}
                         <WarehousePicker
@@ -224,12 +313,19 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
     const isFormValid = () => {
         if (!selectedRole) return false;
 
+        // Проверяем наличие имени в данных (либо существующее, либо введенное)
+        const hasName = !!userData.name && userData.name.trim().length > 0;
+
         switch (selectedRole) {
             case 'ADMIN':
+                // Для ADMIN имя обязательно - должно быть указано при регистрации
+                return hasName;
             case 'CLIENT':
-                return !!userData.name;
+                // Имя обязательно - либо уже есть у пользователя, либо должно быть введено
+                return hasName;
             case 'DRIVER':
-                return !!userData.name && selectedDriverDistricts.length > 0;
+                // Имя обязательно, районы обязательны всегда
+                return hasName && selectedDriverDistricts.length > 0;
             case 'EMPLOYEE':
                 return !!selectedWarehouse && selectedEmployeeDistricts.length > 0;
             case 'SUPPLIER':
@@ -241,7 +337,18 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
 
     // Подготовка данных для отправки
     const prepareSubmitData = () => {
-        const data = { ...userData };
+        const data = {};
+        
+        // Всегда передаем имя, если оно есть (из существующих данных или введенное)
+        // Имя должно быть указано при регистрации, поэтому оно должно быть в userData
+        if (userData.name && userData.name.trim()) {
+            data.name = userData.name.trim();
+        }
+        
+        // Передаем телефон только если он не пустой
+        if (userData.phone && userData.phone.trim()) {
+            data.phone = userData.phone.trim();
+        }
         
         if (selectedRole === 'EMPLOYEE') {
             data.warehouseId = selectedWarehouse;
@@ -293,7 +400,23 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                         ))}
                     </View>
 
-                    {selectedRole && renderRoleFields()}
+                    {selectedRole && (
+                        <>
+                            {(userData.name || userData.phone) && (
+                                <View style={styles.infoContainer}>
+                                    <Text style={styles.infoText}>
+                                        {userData.name && `Имя: ${userData.name}`}
+                                        {userData.name && userData.phone && '\n'}
+                                        {userData.phone && `Телефон: ${userData.phone}`}
+                                    </Text>
+                                    <Text style={styles.infoSubtext}>
+                                        Существующие данные будут сохранены
+                                    </Text>
+                                </View>
+                            )}
+                            {renderRoleFields()}
+                        </>
+                    )}
 
                     <View style={styles.modalActions}>
                         <CustomButton
@@ -403,6 +526,27 @@ const styles = StyleSheet.create({
         marginBottom: normalize(16),
         borderWidth: 1,
         borderColor: Color.border,
+    },
+    infoContainer: {
+        backgroundColor: Color.blue2 + '15', // Полупрозрачный синий фон
+        borderRadius: Border.radius.small,
+        padding: normalize(12),
+        marginBottom: normalize(16),
+        borderWidth: 1,
+        borderColor: Color.blue2 + '30',
+    },
+    infoText: {
+        fontSize: normalizeFont(FontSize.size_sm),
+        fontFamily: FontFamily.sFProText,
+        fontWeight: '500',
+        color: Color.textPrimary,
+        marginBottom: normalize(4),
+    },
+    infoSubtext: {
+        fontSize: normalizeFont(FontSize.size_xs),
+        fontFamily: FontFamily.sFProText,
+        color: Color.textSecondary,
+        fontStyle: 'italic',
     },
     modalActions: {
         flexDirection: 'row',

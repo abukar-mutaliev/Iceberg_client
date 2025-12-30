@@ -8,7 +8,9 @@ import {
     TextInput,
     ScrollView,
     ActivityIndicator,
-    SafeAreaView
+    SafeAreaView,
+    KeyboardAvoidingView,
+    Platform,
 } from 'react-native';
 import { useDispatch } from 'react-redux';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
@@ -16,13 +18,13 @@ import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalS
 import IconClose from '@shared/ui/Icon/Profile/CloseIcon';
 import IconWarehouse from '@shared/ui/Icon/Warehouse/IconWarehouse';
 import { MapPinIcon } from '@shared/ui/Icon/DistrictManagement/MapPinIcon';
-import { Picker } from '@react-native-picker/picker';
 import { fetchAllDistricts } from '@entities/district';
 import MapView, { Marker } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { ReusableModal } from '@shared/ui/Modal';
 import { Ionicons } from '@expo/vector-icons';
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
+import { FlatList } from 'react-native';
 
 export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSubmitting }) => {
     const dispatch = useDispatch();
@@ -43,6 +45,9 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
     const [errors, setErrors] = useState({});
     const [mapModalVisible, setMapModalVisible] = useState(false);
     const [isGeocoding, setIsGeocoding] = useState(false);
+    const [districtPickerVisible, setDistrictPickerVisible] = useState(false);
+    const [districtSearchText, setDistrictSearchText] = useState('');
+    const [filteredDistricts, setFilteredDistricts] = useState([]);
     const [mapRegion, setMapRegion] = useState({
         latitude: 43.3, // Примерные координаты Ингушетии
         longitude: 45.0,
@@ -98,12 +103,38 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
             
             console.log('Загружены районы для склада:', districts.length);
             setDistricts(districts);
+            setFilteredDistricts(districts);
         } catch (error) {
             console.error('Ошибка загрузки районов:', error);
             showError('Ошибка', 'Не удалось загрузить список районов', [{ text: 'OK', style: 'default' }]);
         } finally {
             setIsLoadingDistricts(false);
         }
+    };
+
+    // Фильтрация районов по поисковому запросу
+    useEffect(() => {
+        if (!districtSearchText.trim()) {
+            setFilteredDistricts(districts);
+            return;
+        }
+
+        const filtered = districts.filter(district =>
+            district.name.toLowerCase().includes(districtSearchText.toLowerCase())
+        );
+        setFilteredDistricts(filtered);
+    }, [districtSearchText, districts]);
+
+    // Получение названия выбранного района
+    const selectedDistrictName = formData.districtId
+        ? districts.find(d => d.id === formData.districtId)?.name || 'Выберите район'
+        : 'Выберите район';
+
+    // Обработчик выбора района
+    const handleSelectDistrict = (districtId) => {
+        handleFieldChange('districtId', districtId);
+        setDistrictPickerVisible(false);
+        setDistrictSearchText('');
     };
 
     // Геокодирование через OpenStreetMap Nominatim (лучше знает российские адреса)
@@ -476,7 +507,17 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                 </View>
 
                 {/* Форма */}
-                <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+                <KeyboardAvoidingView
+                    style={styles.keyboardAvoidingView}
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+                >
+                    <ScrollView 
+                        style={styles.content} 
+                        contentContainerStyle={styles.scrollContentContainer}
+                        showsVerticalScrollIndicator={false}
+                        keyboardShouldPersistTaps="handled"
+                    >
                     {/* Название склада */}
                     <View style={styles.fieldContainer}>
                         <Text style={styles.label}>Название склада *</Text>
@@ -526,23 +567,19 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                                 <Text style={styles.loadingText}>Загрузка районов...</Text>
                             </View>
                         ) : (
-                            <View style={[styles.pickerContainer, errors.districtId && styles.inputError]}>
-                                <Picker
-                                    selectedValue={formData.districtId}
-                                    onValueChange={(value) => handleFieldChange('districtId', value === 'null' ? null : parseInt(value, 10))}
-                                    style={styles.picker}
-                                    mode="dropdown"
-                                >
-                                    <Picker.Item label="Выберите район" value="null" />
-                                    {districts.map((district) => (
-                                        <Picker.Item
-                                            key={district.id}
-                                            label={district.name}
-                                            value={district.id}
-                                        />
-                                    ))}
-                                </Picker>
-                            </View>
+                            <TouchableOpacity
+                                style={[styles.districtPickerButton, errors.districtId && styles.inputError]}
+                                onPress={() => setDistrictPickerVisible(true)}
+                                disabled={isSubmitting}
+                            >
+                                <Text style={[
+                                    styles.districtPickerText,
+                                    formData.districtId ? styles.districtPickerTextSelected : styles.districtPickerTextPlaceholder
+                                ]}>
+                                    {selectedDistrictName}
+                                </Text>
+                                <Ionicons name="chevron-down" size={20} color={Color.textSecondary} />
+                            </TouchableOpacity>
                         )}
                         {errors.districtId && <Text style={styles.errorText}>{errors.districtId}</Text>}
                         {formData.districtId && (
@@ -626,22 +663,44 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                     {/* Статус активности */}
                     <View style={styles.fieldContainer}>
                         <Text style={styles.label}>Статус</Text>
-                        <View style={styles.pickerContainer}>
-                            <Picker
-                                selectedValue={formData.isActive}
-                                onValueChange={(value) => handleFieldChange('isActive', value)}
-                                style={styles.picker}
-                                mode="dropdown"
+                        <View style={styles.statusContainer}>
+                            <TouchableOpacity
+                                style={[
+                                    styles.statusButton,
+                                    formData.isActive && styles.statusButtonActive
+                                ]}
+                                onPress={() => handleFieldChange('isActive', true)}
+                                disabled={isSubmitting}
                             >
-                                <Picker.Item label="Активен" value={true} />
-                                <Picker.Item label="Неактивен" value={false} />
-                            </Picker>
+                                <Text style={[
+                                    styles.statusButtonText,
+                                    formData.isActive && styles.statusButtonTextActive
+                                ]}>
+                                    Активен
+                                </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[
+                                    styles.statusButton,
+                                    !formData.isActive && styles.statusButtonInactive
+                                ]}
+                                onPress={() => handleFieldChange('isActive', false)}
+                                disabled={isSubmitting}
+                            >
+                                <Text style={[
+                                    styles.statusButtonText,
+                                    !formData.isActive && styles.statusButtonTextInactive
+                                ]}>
+                                    Неактивен
+                                </Text>
+                            </TouchableOpacity>
                         </View>
                         <Text style={styles.helperText}>
                             Текущий статус: {formData.isActive ? 'Активен' : 'Неактивен'}
                         </Text>
                     </View>
-                </ScrollView>
+                    </ScrollView>
+                </KeyboardAvoidingView>
 
                 {/* Кнопки действий */}
                 <View style={styles.footer}>
@@ -702,6 +761,83 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                     </View>
                 </View>
             </ReusableModal>
+
+            {/* Модальное окно выбора района */}
+            <Modal
+                visible={districtPickerVisible}
+                transparent={true}
+                animationType="slide"
+                onRequestClose={() => setDistrictPickerVisible(false)}
+            >
+                <View style={districtPickerStyles.modalBackdrop}>
+                    <TouchableOpacity
+                        style={districtPickerStyles.backdropTouchable}
+                        activeOpacity={1}
+                        onPress={() => setDistrictPickerVisible(false)}
+                    />
+                    <View style={districtPickerStyles.modalContent}>
+                        <View style={districtPickerStyles.header}>
+                            <Text style={districtPickerStyles.modalTitle}>Выберите район</Text>
+                            <TouchableOpacity
+                                style={districtPickerStyles.closeButton}
+                                onPress={() => setDistrictPickerVisible(false)}
+                            >
+                                <IconClose width={24} height={24} color={Color.textPrimary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <View style={districtPickerStyles.searchContainer}>
+                            <Ionicons name="search" size={20} color={Color.textSecondary} style={districtPickerStyles.searchIcon} />
+                            <TextInput
+                                style={districtPickerStyles.searchInput}
+                                placeholder="Поиск района..."
+                                value={districtSearchText}
+                                onChangeText={setDistrictSearchText}
+                                placeholderTextColor={Color.textSecondary}
+                            />
+                            {districtSearchText.length > 0 && (
+                                <TouchableOpacity
+                                    style={districtPickerStyles.clearSearchButton}
+                                    onPress={() => setDistrictSearchText('')}
+                                >
+                                    <Ionicons name="close-circle" size={20} color={Color.textSecondary} />
+                                </TouchableOpacity>
+                            )}
+                        </View>
+
+                        <FlatList
+                            data={filteredDistricts}
+                            keyExtractor={(item) => item.id.toString()}
+                            renderItem={({ item }) => (
+                                <TouchableOpacity
+                                    style={[
+                                        districtPickerStyles.districtItem,
+                                        formData.districtId === item.id && districtPickerStyles.selectedDistrictItem
+                                    ]}
+                                    onPress={() => handleSelectDistrict(item.id)}
+                                >
+                                    <Text style={[
+                                        districtPickerStyles.districtItemText,
+                                        formData.districtId === item.id && districtPickerStyles.selectedDistrictItemText
+                                    ]}>
+                                        {item.name}
+                                    </Text>
+                                    {formData.districtId === item.id && (
+                                        <Ionicons name="checkmark-circle" size={24} color={Color.colorLightMode} />
+                                    )}
+                                </TouchableOpacity>
+                            )}
+                            ListEmptyComponent={() => (
+                                <View style={districtPickerStyles.emptyContainer}>
+                                    <Text style={districtPickerStyles.emptyText}>
+                                        {districtSearchText ? 'Районы не найдены' : 'Список районов пуст'}
+                                    </Text>
+                                </View>
+                            )}
+                        />
+                    </View>
+                </View>
+            </Modal>
         </Modal>
     );
 };
@@ -733,9 +869,15 @@ const styles = StyleSheet.create({
     closeButton: {
         padding: normalize(8),
     },
+    keyboardAvoidingView: {
+        flex: 1,
+    },
     content: {
         flex: 1,
         paddingHorizontal: normalize(20),
+    },
+    scrollContentContainer: {
+        paddingBottom: normalize(100),
     },
     fieldContainer: {
         marginBottom: normalize(16),
@@ -775,11 +917,69 @@ const styles = StyleSheet.create({
         backgroundColor: Color.colorLightMode,
         overflow: 'hidden',
         minHeight: normalize(44),
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingVertical: normalize(12),
     },
-    picker: {
-        width: '100%',
-        height: normalize(44),
+    districtPickerButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderWidth: 1,
+        borderColor: Color.border,
+        borderRadius: Border.radius.small,
+        backgroundColor: Color.colorLightMode,
+        paddingHorizontal: normalize(12),
+        paddingVertical: normalize(12),
+        minHeight: normalize(44),
+    },
+    districtPickerText: {
+        fontSize: normalizeFont(FontSize.size_sm),
+        fontFamily: FontFamily.sFProText,
         color: Color.textPrimary,
+        flex: 1,
+    },
+    districtPickerTextSelected: {
+        color: Color.textPrimary,
+        fontWeight: '500',
+    },
+    districtPickerTextPlaceholder: {
+        color: Color.textSecondary,
+    },
+    statusContainer: {
+        flexDirection: 'row',
+        gap: normalize(12),
+    },
+    statusButton: {
+        flex: 1,
+        paddingVertical: normalize(12),
+        paddingHorizontal: normalize(16),
+        borderRadius: Border.radius.small,
+        borderWidth: 1,
+        borderColor: Color.border,
+        backgroundColor: Color.colorLightMode,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    statusButtonActive: {
+        backgroundColor: Color.blue2,
+        borderColor: Color.blue2,
+    },
+    statusButtonInactive: {
+        backgroundColor: Color.colorLightGray || '#f5f5f5',
+        borderColor: Color.border,
+    },
+    statusButtonText: {
+        fontSize: normalizeFont(FontSize.size_sm),
+        fontFamily: FontFamily.sFProText,
+        color: Color.textPrimary,
+        fontWeight: '500',
+    },
+    statusButtonTextActive: {
+        color: Color.colorLightMode,
+    },
+    statusButtonTextInactive: {
+        color: Color.textSecondary,
     },
     loadingText: {
         fontSize: normalizeFont(FontSize.size_sm),
@@ -905,6 +1105,101 @@ const mapStyles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
         fontSize: normalizeFont(FontSize.size_md),
+    },
+});
+
+const districtPickerStyles = StyleSheet.create({
+    modalBackdrop: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        justifyContent: 'flex-end',
+    },
+    backdropTouchable: {
+        flex: 1,
+    },
+    modalContent: {
+        backgroundColor: Color.colorLightMode,
+        borderTopLeftRadius: Border.radius.large,
+        borderTopRightRadius: Border.radius.large,
+        maxHeight: '80%',
+        paddingBottom: normalize(20),
+    },
+    header: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: normalize(20),
+        paddingVertical: normalize(16),
+        borderBottomWidth: 1,
+        borderBottomColor: Color.border,
+    },
+    modalTitle: {
+        fontSize: normalizeFont(FontSize.size_lg),
+        fontFamily: FontFamily.sFProDisplay,
+        fontWeight: '600',
+        color: Color.textPrimary,
+        flex: 1,
+    },
+    closeButton: {
+        padding: normalize(8),
+    },
+    searchContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginHorizontal: normalize(20),
+        marginTop: normalize(16),
+        marginBottom: normalize(12),
+        borderWidth: 1,
+        borderColor: Color.border,
+        borderRadius: Border.radius.small,
+        backgroundColor: Color.colorLightMode,
+        paddingHorizontal: normalize(12),
+    },
+    searchIcon: {
+        marginRight: normalize(8),
+    },
+    searchInput: {
+        flex: 1,
+        fontSize: normalizeFont(FontSize.size_sm),
+        fontFamily: FontFamily.sFProText,
+        color: Color.textPrimary,
+        paddingVertical: normalize(10),
+    },
+    clearSearchButton: {
+        padding: normalize(4),
+        marginLeft: normalize(8),
+    },
+    districtItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: normalize(16),
+        paddingHorizontal: normalize(20),
+        borderBottomWidth: 1,
+        borderBottomColor: Color.border,
+    },
+    selectedDistrictItem: {
+        backgroundColor: Color.blue2,
+    },
+    districtItemText: {
+        fontSize: normalizeFont(FontSize.size_md),
+        fontFamily: FontFamily.sFProText,
+        color: Color.textPrimary,
+        flex: 1,
+    },
+    selectedDistrictItemText: {
+        color: Color.colorLightMode,
+        fontWeight: '600',
+    },
+    emptyContainer: {
+        padding: normalize(40),
+        alignItems: 'center',
+    },
+    emptyText: {
+        fontSize: normalizeFont(FontSize.size_md),
+        fontFamily: FontFamily.sFProText,
+        color: Color.textSecondary,
+        textAlign: 'center',
     },
 });
 

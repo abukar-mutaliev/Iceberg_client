@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   Image,
-  Alert,
   ActivityIndicator,
   SafeAreaView,
   Platform,
@@ -19,10 +18,12 @@ import { getBaseUrl } from '@shared/api/api';
 import ChatApi from '@entities/chat/api/chatApi';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 
 export const EditGroupScreen = ({ route, navigation }) => {
   const { roomId } = route.params;
   const dispatch = useDispatch();
+  const { showError, showAlert } = useCustomAlert();
   const roomDataRaw = useSelector(state => state?.chat?.rooms?.byId?.[roomId]);
   const roomData = roomDataRaw?.room ? roomDataRaw.room : roomDataRaw;
   
@@ -56,7 +57,7 @@ export const EditGroupScreen = ({ route, navigation }) => {
     if (Platform.OS !== 'web') {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Ошибка', 'Для загрузки изображений необходимо разрешение на доступ к галерее');
+        showError('Ошибка', 'Для загрузки изображений необходимо разрешение на доступ к галерее');
         return false;
       }
     }
@@ -180,7 +181,7 @@ export const EditGroupScreen = ({ route, navigation }) => {
       }
     } catch (error) {
       console.error('Ошибка при выборе изображения:', error);
-      Alert.alert('Ошибка', 'Не удалось загрузить изображение');
+      showError('Ошибка', 'Не удалось загрузить изображение');
     }
   };
 
@@ -191,7 +192,7 @@ export const EditGroupScreen = ({ route, navigation }) => {
 
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Ошибка', 'Для съемки фото необходимо разрешение на доступ к камере');
+        showError('Ошибка', 'Для съемки фото необходимо разрешение на доступ к камере');
         return;
       }
 
@@ -217,21 +218,40 @@ export const EditGroupScreen = ({ route, navigation }) => {
       }
     } catch (error) {
       console.error('Ошибка при съемке фото:', error);
-      Alert.alert('Ошибка', 'Не удалось сделать фото');
+      showError('Ошибка', 'Не удалось сделать фото');
     }
   };
 
   const showImagePicker = () => {
-    Alert.alert(
-      'Изменить фото группы',
-      'Выберите способ загрузки нового аватара',
-      [
-        { text: 'Отмена', style: 'cancel' },
-        { text: 'Галерея', onPress: pickImageFromGallery },
-        { text: 'Камера', onPress: takePhoto },
-        { text: 'Удалить фото', onPress: removeAvatar, style: 'destructive' },
-      ]
-    );
+    showAlert({
+      type: 'info',
+      title: 'Изменить фото группы',
+      message: 'Выберите способ загрузки нового аватара',
+      buttons: [
+        {
+          text: 'Отмена',
+          style: 'cancel',
+        },
+        {
+          text: 'Галерея',
+          style: 'primary',
+          icon: 'photo-library',
+          onPress: pickImageFromGallery,
+        },
+        {
+          text: 'Камера',
+          style: 'primary',
+          icon: 'camera-alt',
+          onPress: takePhoto,
+        },
+        {
+          text: 'Удалить фото',
+          style: 'destructive',
+          icon: 'delete',
+          onPress: removeAvatar,
+        },
+      ],
+    });
   };
 
   const removeAvatar = () => {
@@ -297,7 +317,7 @@ export const EditGroupScreen = ({ route, navigation }) => {
 
   const handleSave = async () => {
     if (!groupName.trim()) {
-      Alert.alert('Ошибка', 'Введите название группы');
+      showError('Ошибка', 'Введите название группы');
       return;
     }
 
@@ -369,7 +389,7 @@ export const EditGroupScreen = ({ route, navigation }) => {
       }
     } catch (error) {
       console.error('Ошибка обновления группы:', error);
-      Alert.alert('Ошибка', error.message || 'Не удалось обновить группу');
+      showError('Ошибка', error.message || 'Не удалось обновить группу');
     } finally {
       setSaving(false);
     }

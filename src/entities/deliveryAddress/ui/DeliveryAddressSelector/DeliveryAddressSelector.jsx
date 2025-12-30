@@ -6,7 +6,6 @@ import {
     ScrollView,
     TouchableOpacity,
     ActivityIndicator,
-    Alert,
     Modal
 } from 'react-native';
 import { Color, FontFamily } from '@app/styles/GlobalStyles';
@@ -14,6 +13,7 @@ import { CustomTextInput } from '@shared/ui/CustomTextInput/CustomTextInput';
 import { Picker } from '@react-native-picker/picker';
 import {DeliveryAddressApi} from "@entities/deliveryAddress";
 import CustomButton from "@shared/ui/Button/CustomButton";
+import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 
 const normalize = (size) => size;
 
@@ -23,6 +23,7 @@ export const DeliveryAddressSelector = ({
     onClose,
     selectedAddressId = null 
 }) => {
+    const { showError, showConfirm } = useCustomAlert();
     const [loading, setLoading] = useState(false);
     const [addresses, setAddresses] = useState([]);
     const [districts, setDistricts] = useState([]);
@@ -80,7 +81,7 @@ export const DeliveryAddressSelector = ({
 
         } catch (error) {
             console.error('Ошибка при загрузке данных:', error);
-            Alert.alert('Ошибка', 'Не удалось загрузить данные адресов');
+            showError('Ошибка', 'Не удалось загрузить данные адресов');
         } finally {
             setLoading(false);
         }
@@ -129,7 +130,7 @@ export const DeliveryAddressSelector = ({
     const handleConfirm = async () => {
         if (mode === 'existing') {
             if (!selectedAddress) {
-                Alert.alert('Ошибка', 'Выберите адрес доставки');
+                showError('Ошибка', 'Выберите адрес доставки');
                 return;
             }
 
@@ -168,7 +169,7 @@ export const DeliveryAddressSelector = ({
 
             } catch (error) {
                 console.error('Ошибка при создании адреса:', error);
-                Alert.alert('Ошибка', 'Не удалось создать адрес');
+                showError('Ошибка', 'Не удалось создать адрес');
             } finally {
                 setLoading(false);
             }
@@ -178,33 +179,29 @@ export const DeliveryAddressSelector = ({
     };
 
     const handleDeleteAddress = async (addressId) => {
-        Alert.alert(
+        showConfirm(
             'Подтверждение',
             'Вы уверены, что хотите удалить этот адрес?',
-            [
-                { text: 'Отмена', style: 'cancel' },
-                {
-                    text: 'Удалить',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            setLoading(true);
-                            await DeliveryAddressApi.deleteAddress(addressId);
-                            await loadData();
-                            
-                            // Если удаленный адрес был выбран, сбрасываем выбор
-                            if (selectedAddress?.id === addressId) {
-                                setSelectedAddress(null);
-                            }
-                        } catch (error) {
-                            console.error('Ошибка при удалении адреса:', error);
-                            Alert.alert('Ошибка', 'Не удалось удалить адрес');
-                        } finally {
-                            setLoading(false);
-                        }
+            async () => {
+                try {
+                    setLoading(true);
+                    await DeliveryAddressApi.deleteAddress(addressId);
+                    await loadData();
+                    
+                    // Если удаленный адрес был выбран, сбрасываем выбор
+                    if (selectedAddress?.id === addressId) {
+                        setSelectedAddress(null);
                     }
+                } catch (error) {
+                    console.error('Ошибка при удалении адреса:', error);
+                    showError('Ошибка', 'Не удалось удалить адрес');
+                } finally {
+                    setLoading(false);
                 }
-            ]
+            },
+            () => {
+                // Отмена удаления - ничего не делаем
+            }
         );
     };
 

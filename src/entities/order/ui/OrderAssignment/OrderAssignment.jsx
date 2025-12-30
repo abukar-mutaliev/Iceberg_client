@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import {PROCESSING_ROLE_LABELS} from "@entities/order/lib/constants";
 import {useOrderProcessing} from "@entities/order/hooks/useOrderProcessing";
+import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 
 export const OrderAssignment = ({ orderId, stage, onAssignmentComplete }) => {
   const { assignOrder, accessRights, loadAvailableEmployees, availableEmployees, loadingEmployees } = useOrderProcessing();
+  const { showError, showSuccess } = useCustomAlert();
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -15,7 +17,7 @@ export const OrderAssignment = ({ orderId, stage, onAssignmentComplete }) => {
 
   const handleAssignOrder = async (employeeId) => {
     if (!accessRights.canAssignOrders) {
-      Alert.alert('Ошибка', 'У вас нет прав для назначения заказов');
+      showError('Ошибка', 'У вас нет прав для назначения заказов');
       return;
     }
 
@@ -23,13 +25,13 @@ export const OrderAssignment = ({ orderId, stage, onAssignmentComplete }) => {
       setLoading(true);
       const result = await assignOrder(orderId, stage, employeeId, 'MEDIUM');
       if (result.success) {
-        Alert.alert('Готово', 'Заказ успешно назначен');
+        showSuccess('Готово', 'Заказ успешно назначен');
         onAssignmentComplete?.(result.data);
       } else {
-        Alert.alert('Ошибка', result.error);
+        showError('Ошибка', result.error);
       }
     } catch (error) {
-      Alert.alert('Ошибка', 'Не удалось назначить заказ');
+      showError('Ошибка', 'Не удалось назначить заказ');
     } finally {
       setLoading(false);
     }

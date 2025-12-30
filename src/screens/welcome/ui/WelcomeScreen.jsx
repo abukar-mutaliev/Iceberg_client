@@ -33,10 +33,27 @@ export const WelcomeScreen = ({ navigation }) => {
 
     const borderRadius = adaptiveSize(220);
     const topMargin = adaptiveSize(isSmallDevice ? 170 : 220);
-    const buttonTop = adaptiveSize(isSmallDevice ? 350 : 385);
     const imageHeight = height * 0.7;
     const buttonWidth = Math.min(width * 0.8, adaptiveSize(314));
     const subtitleWidth = width * 0.8;
+    
+    // Позиция кнопки - используем адаптивные значения близкие к оригиналу
+    const buttonHeight = adaptiveSize(70);
+    const buttonTop = adaptiveSize(isSmallDevice ? 350 : 385);
+    
+    // Позиция текста - используем процент от полной высоты экрана
+    // Вычитаем topMargin чтобы получить позицию относительно контейнера
+    const textTopPercent = isSmallDevice ? 0.40 : 0.60; // Процент от полной высоты
+    const textTopFromScreen = height * textTopPercent;
+    const textTop = textTopFromScreen - topMargin - adaptiveSize(100); // Смещаем вверх
+    
+    // Проверяем, что текст не заходит под кнопку (минимальный отступ 25px)
+    const minSpacing = adaptiveSize(25);
+    const textBlockHeight = adaptiveSize(120); // Примерная высота текстового блока
+    const maxTextTop = buttonTop - textBlockHeight - minSpacing;
+    
+    // Используем минимальное значение для гарантии отступа
+    const finalTextTop = Math.min(textTop, maxTextTop);
 
     return (
         <View style={[styles.container, {
@@ -51,8 +68,7 @@ export const WelcomeScreen = ({ navigation }) => {
             />
 
             <View style={[styles.textContainer, {
-                top: isSmallDevice ? '45%' : '50%',
-                marginTop: adaptiveSize(-100),
+                top: finalTextTop,
             }]}>
                 <Text style={[styles.title, {
                     fontSize: adaptiveSize(26),
@@ -75,7 +91,7 @@ export const WelcomeScreen = ({ navigation }) => {
                 style={[styles.button, {
                     top: buttonTop,
                     width: buttonWidth,
-                    height: adaptiveSize(70),
+                    height: buttonHeight,
                     borderRadius: adaptiveSize(35),
                 }]}
                 onPress={handleStart}

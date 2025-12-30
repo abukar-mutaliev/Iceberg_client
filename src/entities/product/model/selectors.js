@@ -16,6 +16,18 @@ export const selectProductsCurrentPage = (state) => state.products?.currentPage 
 export const selectProductsTotalPages = (state) => state.products?.totalPages || 1;
 export const selectProductsTotalItems = (state) => state.products?.totalItems || 0;
 
+// Selector for deleted/unavailable product IDs
+export const selectDeletedProductIds = (state) => state.products?.deletedProductIds || EMPTY_ARRAY;
+
+// Check if a specific product is deleted
+export const selectIsProductDeleted = (state, productId) => {
+    if (!productId) return false;
+    const numericId = parseInt(productId, 10);
+    if (isNaN(numericId)) return false;
+    const deletedIds = state.products?.deletedProductIds || EMPTY_ARRAY;
+    return deletedIds.includes(numericId);
+};
+
 export const selectProductById = createSelector(
     [selectProductsById, selectProducts, (state, productId) => productId],
     (byId, products, productId) => {

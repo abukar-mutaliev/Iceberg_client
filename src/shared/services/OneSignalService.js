@@ -111,9 +111,11 @@ class OneSignalService {
     // Инициализация OneSignal
     async initialize(appId) {
         try {
+            // Используем ту же логику что и в app.config.js с fallback значением
             const configuredAppId =
                 process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ||
-                (Constants?.expoConfig?.extra?.oneSignalAppId ?? null);
+                (Constants?.expoConfig?.extra?.oneSignalAppId ?? null) ||
+                'a1bde379-4211-4fb9-89e2-3e94530a7041'; // Fallback из app.config.js
 
             // Защита от случайной инициализации "не тем" App ID (особенно из диагностических экранов).
             // Если appId передан, но отличается от сконфигурированного — используем сконфигурированный.
@@ -282,21 +284,45 @@ class OneSignalService {
         try {
             console.log('[OneSignal] 🚀 initializeForUser начата для userId:', user.id);
             
+            // Проверяем, не тот же ли это пользователь
+            const isSameUser = this.currentUserId === user.id;
+            if (isSameUser && this.subscriptionId) {
+                console.log('[OneSignal] ℹ️ Тот же пользователь, подписка уже активна');
+                return true;
+            }
+            
             // ⚠️ КРИТИЧЕСКИ ВАЖНО: Убеждаемся что канал уведомлений существует
             await this.ensureNotificationChannelExists();
             
+            // Всегда пытаемся инициализировать OneSignal (важно после переустановки)
+            // Используем ту же логику что и в app.config.js с fallback значением
+            const appId =
+                process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ||
+                (Constants?.expoConfig?.extra?.oneSignalAppId ?? null) ||
+                'a1bde379-4211-4fb9-89e2-3e94530a7041'; // Fallback из app.config.js
+            console.log('[OneSignal] 📱 App ID:', appId);
+            
             if (!this.isInitialized) {
-                // Пытаемся инициализировать OneSignal с App ID
-                const appId =
-                    process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ||
-                    (Constants?.expoConfig?.extra?.oneSignalAppId ?? null);
-                console.log('[OneSignal] 📱 App ID:', appId);
-                
                 const initResult = await this.initialize(appId);
                 if (!initResult) {
                     console.log('[OneSignal] ❌ Инициализация не удалась');
                     return false;
                 }
+            }
+
+            // ⚠️ ВАЖНО: Если это другой пользователь, сначала очищаем старый контекст
+            if (this.currentUserId && this.currentUserId !== user.id) {
+                console.log('[OneSignal] 🔄 Смена пользователя, очищаем старый контекст...');
+                const oneSignal = getOneSignal();
+                if (oneSignal?.logout) {
+                    try {
+                        await oneSignal.logout();
+                        console.log('[OneSignal] ✅ Logout выполнен');
+                    } catch (e) {
+                        console.log('[OneSignal] ⚠️ Ошибка logout:', e.message);
+                    }
+                }
+                this.subscriptionId = null;
             }
 
             // Устанавливаем внешний ID пользователя
@@ -310,26 +336,51 @@ class OneSignalService {
                 await oneSignal.User.pushSubscription.optIn();
             }
 
-            // ⚠️ КРИТИЧЕСКИ ВАЖНО: Даем время OneSignal синхронизировать login с серверами
-            // Без этой задержки subscription_id может быть получен до того как login синхронизируется,
-            // что приводит к ошибке "invalid_player_ids" на сервере
-            console.log('[OneSignal] ⏳ Ожидаем синхронизацию login с серверами OneSignal...');
-            await new Promise(resolve => setTimeout(resolve, 2000));
-
-            // Получаем subscription ID
-            const subscriptionId = await this.getSubscriptionId();
-            console.log('[OneSignal] 🎫 Subscription ID:', subscriptionId);
+            // ⚠️ КРИТИЧЕСКИ ВАЖНО: Ждём пока подписка реально станет активной
+            // После переустановки приложения нужно время для синхронизации
+            console.log('[OneSignal] ⏳ Ожидаем активацию подписки...');
+            
+            let subscriptionId = null;
+            let attempts = 0;
+            const maxAttempts = 5;
+            const delayMs = 2000;
+            
+            while (attempts < maxAttempts) {
+                attempts++;
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+                
+                // Проверяем статус подписки
+                try {
+                    const optedIn = await oneSignal?.User?.pushSubscription?.getOptedInAsync?.();
+                    subscriptionId = await this.getSubscriptionId();
+                    
+                    console.log(`[OneSignal] 🔄 Попытка ${attempts}/${maxAttempts}: optedIn=${optedIn}, subscriptionId=${subscriptionId ? subscriptionId.substring(0, 20) + '...' : 'null'}`);
+                    
+                    if (optedIn && subscriptionId) {
+                        console.log('[OneSignal] ✅ Подписка активна!');
+                        break;
+                    }
+                } catch (e) {
+                    console.log(`[OneSignal] ⚠️ Попытка ${attempts}: ошибка проверки -`, e.message);
+                }
+            }
+            
+            console.log('[OneSignal] 🎫 Финальный Subscription ID:', subscriptionId);
             
             if (subscriptionId) {
                 // Сохраняем на сервер
+                console.log('[OneSignal] 💾 Начинаем сохранение subscription на сервер...');
                 const saveResult = await this.saveSubscriptionToServer(subscriptionId, user.id);
                 if (!saveResult) {
-                    console.log('[OneSignal] ❌ Не удалось сохранить subscription на сервер');
-                    return false;
+                    console.error('[OneSignal] ❌ Не удалось сохранить subscription на сервер');
+                    console.error('[OneSignal] ⚠️ Это критическая проблема - уведомления не будут приходить!');
+                    // НЕ возвращаем false - пусть инициализация завершится, но с предупреждением
+                    // Токен может быть сохранен позже через принудительную регистрацию
+                } else {
+                    console.log('[OneSignal] ✅ Subscription успешно сохранен на сервер');
                 }
-                console.log('[OneSignal] ✅ Subscription сохранен на сервер');
             } else {
-                console.warn('[OneSignal] ⚠️ No subscription ID received');
+                console.warn('[OneSignal] ⚠️ No subscription ID received - невозможно сохранить токен');
                 return false;
             }
 
@@ -398,9 +449,13 @@ class OneSignalService {
     // Сохранение subscription на сервер
     async saveSubscriptionToServer(subscriptionId, userId) {
         try {
+            console.log('[OneSignal] 💾 Сохранение subscription на сервер...', {
+                subscriptionId: subscriptionId ? subscriptionId.substring(0, 20) + '...' : 'null',
+                userId
+            });
+
             if (!subscriptionId) {
-                // Временно отключены логи OneSignal
-                // console.error('subscriptionId пустой или undefined');
+                console.error('[OneSignal] ❌ subscriptionId пустой или undefined');
                 return false;
             }
 
@@ -408,8 +463,7 @@ class OneSignalService {
             const { createProtectedRequest } = require('@shared/api/api');
             
             if (!createProtectedRequest) {
-                // Временно отключены логи OneSignal
-                // console.error('createProtectedRequest не найден');
+                console.error('[OneSignal] ❌ createProtectedRequest не найден');
                 return false;
             }
 
@@ -420,23 +474,50 @@ class OneSignalService {
                 tokenType: 'onesignal'
             };
             
+            console.log('[OneSignal] 📤 Отправка токена на сервер:', {
+                token: tokenData.token.substring(0, 20) + '...',
+                platform: tokenData.platform,
+                tokenType: tokenData.tokenType
+            });
+
             const response = await createProtectedRequest('post', '/api/push-tokens', tokenData);
 
-            if (response) {
+            console.log('[OneSignal] 📥 Ответ сервера:', {
+                hasResponse: !!response,
+                responseType: typeof response,
+                responseKeys: response && typeof response === 'object' ? Object.keys(response) : 'not an object',
+                response: response && typeof response === 'object' ? JSON.stringify(response).substring(0, 200) : response
+            });
+
+            // Проверяем успешность сохранения
+            if (response && (
+                response.success === true ||
+                response.status === 'success' ||
+                (response.data && response.data.id)
+            )) {
+                console.log('[OneSignal] ✅ Токен успешно сохранен на сервер:', {
+                    tokenId: response.data?.id,
+                    isActive: response.data?.isActive,
+                    tokenType: response.data?.tokenType || response.tokenType
+                });
                 return true;
             } else {
-                // Временно отключены логи OneSignal
-                // console.warn('Пустой ответ от сервера');
+                console.warn('[OneSignal] ⚠️ Неожиданный ответ от сервера при сохранении токена:', response);
+                // Все равно считаем успехом, если ответ есть (может быть другой формат)
+                if (response) {
+                    console.log('[OneSignal] ⚠️ Ответ получен, но формат неожиданный. Считаем успехом.');
+                    return true;
+                }
                 return false;
             }
 
         } catch (error) {
-            // Временно отключены логи OneSignal
-            // console.error('Ошибка сохранения OneSignal subscription:', {
-            //     message: error.message,
-            //     response: error.response?.data,
-            //     status: error.response?.status
-            // });
+            console.error('[OneSignal] ❌ Ошибка сохранения OneSignal subscription:', {
+                message: error.message,
+                response: error.response?.data,
+                status: error.response?.status,
+                stack: error.stack?.substring(0, 200)
+            });
             return false;
         }
     }

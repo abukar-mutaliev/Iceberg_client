@@ -5,7 +5,7 @@ import {useDispatch, useSelector} from 'react-redux';
 import {fetchRooms, setActiveRoom, loadRoomsCache, fetchRoom, fetchMessages} from '@entities/chat/model/slice';
 import {fetchProductById} from '@entities/product/model/slice';
 import {selectRoomsList, selectIsRoomDeleted} from '@entities/chat/model/selectors';
-import {selectProductsById} from '@entities/product/model/selectors';
+import {selectProductsById, selectDeletedProductIds} from '@entities/product/model/selectors';
 
 import {getBaseUrl} from '@shared/api/api';
 import {IconDelivery} from '@shared/ui/Icon/Profile/IconDelivery';
@@ -64,6 +64,7 @@ export const ChatListScreen = ({navigation}) => {
     const currentUserId = currentUser?.id;
     const participantsById = useSelector((s) => s.chat?.participants?.byUserId || {});
     const productsById = useSelector(selectProductsById);
+    const deletedProductIds = useSelector(selectDeletedProductIds);
     const page = useSelector((s) => s.chat?.rooms?.page);
     const hasMore = useSelector((s) => s.chat?.rooms?.hasMore);
     const connection = useSelector((s) => s.chat?.connection);
@@ -135,10 +136,16 @@ export const ChatListScreen = ({navigation}) => {
 
         if (productRooms.length === 0) return;
 
-        const roomsToLoad = productRooms.filter(room =>
-            !productsById[room.productId] &&
-            !loadedProductsRef.current.has(room.productId)
-        );
+        const roomsToLoad = productRooms.filter(room => {
+            const productId = room.productId;
+            // Skip if product is already loaded
+            if (productsById[productId]) return false;
+            // Skip if we already tried to load it
+            if (loadedProductsRef.current.has(productId)) return false;
+            // Skip if product is known to be deleted/unavailable
+            if (deletedProductIds.includes(productId)) return false;
+            return true;
+        });
 
         if (roomsToLoad.length > 0) {
             roomsToLoad.forEach((room) => {
@@ -146,7 +153,7 @@ export const ChatListScreen = ({navigation}) => {
                 dispatch(fetchProductById(room.productId));
             });
         }
-    }, [memoizedRooms, productsById, dispatch]);
+    }, [memoizedRooms, productsById, deletedProductIds, dispatch]);
 
     useEffect(() => {
         loadedProductsRef.current.clear();
@@ -231,6 +238,11 @@ export const ChatListScreen = ({navigation}) => {
 
         // Для чатов с товарами показываем название товара в первую очередь
         if (room?.type === 'PRODUCT') {
+            // Check if product is deleted/unavailable
+            if (room?.productId && deletedProductIds.includes(room.productId)) {
+                return 'Товар удален';
+            }
+            
             // Приоритет 1: Название товара из объекта product
             if (room?.product?.name) {
                 return room.product.name;
@@ -347,7 +359,7 @@ export const ChatListScreen = ({navigation}) => {
         }
 
         return room?.id ? `Комната ${room.id}` : 'Чат';
-    }, [currentUserId, currentUser, productsById]);
+    }, [currentUserId, currentUser, productsById, deletedProductIds]);
 
     const toAbsoluteUri = useCallback((raw) => {
         if (!raw || typeof raw !== 'string') return null;
@@ -361,7 +373,7 @@ export const ChatListScreen = ({navigation}) => {
     const getRoomAvatar = useCallback((room) => {
         if (!room?.id) return null;
 
-        if (room.type === 'GROUP') {
+        if (room.type === 'GROUP' || room.type === 'BROADCAST') {
             if (room.avatar) {
                 return toAbsoluteUri(room.avatar);
             }

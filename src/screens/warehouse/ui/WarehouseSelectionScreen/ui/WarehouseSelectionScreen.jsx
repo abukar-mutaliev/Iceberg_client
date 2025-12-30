@@ -9,6 +9,8 @@ import {
     Switch,
     ScrollView,
     SafeAreaView,
+    KeyboardAvoidingView,
+    Platform,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
@@ -405,11 +407,17 @@ export const WarehouseSelectionScreen = () => {
                 <View style={styles.placeholder} />
             </View>
 
-            <ScrollView 
-                style={styles.scrollContent}
-                showsVerticalScrollIndicator={true}
-                keyboardShouldPersistTaps="handled"
+            <KeyboardAvoidingView
+                style={styles.keyboardAvoidingView}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
             >
+                <ScrollView 
+                    style={styles.scrollContent}
+                    contentContainerStyle={styles.scrollContentContainer}
+                    showsVerticalScrollIndicator={true}
+                    keyboardShouldPersistTaps="handled"
+                >
                 <View style={styles.searchContainer}>
                     <TextInput
                         style={styles.searchInput}
@@ -503,7 +511,8 @@ export const WarehouseSelectionScreen = () => {
 
                 {/* Отступ для кнопки */}
                 <View style={styles.bottomSpacer} />
-            </ScrollView>
+                </ScrollView>
+            </KeyboardAvoidingView>
 
             <View style={styles.footer}>
                 <TouchableOpacity
@@ -522,8 +531,14 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: Color.colorLightMode,
     },
+    keyboardAvoidingView: {
+        flex: 1,
+    },
     scrollContent: {
         flex: 1,
+    },
+    scrollContentContainer: {
+        paddingBottom: normalize(100),
     },
     header: {
         flexDirection: 'row',
@@ -715,7 +730,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(16),
     },
     bottomSpacer: {
-        height: normalize(20),
+        height: normalize(100),
     },
     quantityItem: {
         flexDirection: 'row',

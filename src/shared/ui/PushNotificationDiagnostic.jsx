@@ -194,10 +194,11 @@ export const PushNotificationDiagnostic = () => {
 
     // Инициализация OneSignal
     const getConfiguredOneSignalAppId = () => {
+        // Используем ту же логику что и в app.config.js с fallback значением
         const appId =
             process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ||
             Constants?.expoConfig?.extra?.oneSignalAppId ||
-            null;
+            'a1bde379-4211-4fb9-89e2-3e94530a7041'; // Fallback из app.config.js
 
         const clean = typeof appId === 'string' ? appId.trim() : null;
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -208,12 +209,24 @@ export const PushNotificationDiagnostic = () => {
         addLog('🚀 Инициализация OneSignal', 'info');
         
         try {
+            // Показываем источники App ID для диагностики
+            const envAppId = process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID;
+            const extraAppId = Constants?.expoConfig?.extra?.oneSignalAppId;
+            const fallbackAppId = 'a1bde379-4211-4fb9-89e2-3e94530a7041';
+            
+            addLog(`📋 Проверка источников App ID:`, 'info');
+            addLog(`  - EXPO_PUBLIC_ONESIGNAL_APP_ID: ${envAppId || 'не установлен'}`, envAppId ? 'success' : 'warning');
+            addLog(`  - Constants.expoConfig.extra.oneSignalAppId: ${extraAppId || 'не установлен'}`, extraAppId ? 'success' : 'warning');
+            addLog(`  - Fallback: ${fallbackAppId}`, 'info');
+            
             const appId = getConfiguredOneSignalAppId();
             if (!appId) {
-                addLog('❌ Не найден валидный EXPO_PUBLIC_ONESIGNAL_APP_ID (UUID). Проверь env/extra.', 'error');
-                Alert.alert('Ошибка', 'Не найден валидный OneSignal App ID в env. Проверьте EXPO_PUBLIC_ONESIGNAL_APP_ID.');
+                addLog('❌ Не найден валидный OneSignal App ID (UUID). Проверьте все источники.', 'error');
+                Alert.alert('Ошибка', 'Не найден валидный OneSignal App ID. Проверьте конфигурацию.');
                 return;
             }
+            
+            addLog(`✅ Используется App ID: ${appId}`, 'success');
             const result = await OneSignalService.initialize(appId);
             
             if (result) {
@@ -441,21 +454,81 @@ export const PushNotificationDiagnostic = () => {
                 return;
             }
 
+            // Получаем текущий Player ID
+            addLog('🎫 Получаем Player ID...', 'info');
+            const playerId = await OneSignalService.getSubscriptionId();
+            
+            if (!playerId) {
+                addLog('❌ Player ID не получен. Сначала инициализируйте OneSignal.', 'error');
+                Alert.alert('Ошибка', 'Player ID не получен. Сначала нажмите "🚀 Инициализация" или "👤 Для пользователя"');
+                return;
+            }
+            
+            addLog(`✅ Player ID получен: ${playerId.substring(0, 20)}...`, 'success');
+
             // Инициализируем Push Service для пользователя
+            addLog('📬 Инициализация Push Service...', 'info');
             const result = await PushNotificationService.initializeForUser(user);
             
             if (result) {
                 addLog('✅ Push Service инициализирован для пользователя', 'success');
                 
-                // Проверяем что токен сохранился на сервере
+                // Ждем немного и проверяем что токен сохранился на сервере
+                addLog('⏳ Ожидание сохранения токена на сервер (3 сек)...', 'info');
                 setTimeout(async () => {
                     await checkServerTokens();
-                }, 1000);
+                }, 3000);
             } else {
                 addLog('❌ Не удалось инициализировать Push Service', 'error');
             }
         } catch (error) {
             addLog(`❌ Ошибка принудительной регистрации: ${error.message}`, 'error');
+            console.error('Force token registration error:', error);
+        }
+    };
+
+    // Принудительное сохранение токена на сервер
+    const forceSaveTokenToServer = async () => {
+        addLog('💾 Принудительное сохранение токена на сервер', 'info');
+        
+        try {
+            if (!user) {
+                addLog('❌ Нет авторизованного пользователя', 'error');
+                Alert.alert('Ошибка', 'Войдите в систему');
+                return;
+            }
+
+            // Получаем Player ID
+            addLog('🎫 Получаем Player ID...', 'info');
+            const playerId = await OneSignalService.getSubscriptionId();
+            
+            if (!playerId) {
+                addLog('❌ Player ID не получен', 'error');
+                Alert.alert('Ошибка', 'Player ID не получен. Сначала инициализируйте OneSignal.');
+                return;
+            }
+            
+            addLog(`✅ Player ID: ${playerId.substring(0, 20)}...`, 'success');
+            
+            // Сохраняем напрямую через OneSignalService
+            addLog('📤 Отправка токена на сервер...', 'info');
+            const saveResult = await OneSignalService.saveSubscriptionToServer(playerId, user.id);
+            
+            if (saveResult) {
+                addLog('✅ Токен успешно сохранен на сервер!', 'success');
+                Alert.alert('Успех', 'Токен успешно сохранен на сервер');
+                
+                // Проверяем токены на сервере
+                setTimeout(async () => {
+                    await checkServerTokens();
+                }, 1000);
+            } else {
+                addLog('❌ Не удалось сохранить токен на сервер', 'error');
+                Alert.alert('Ошибка', 'Не удалось сохранить токен на сервер. Проверьте логи.');
+            }
+        } catch (error) {
+            addLog(`❌ Ошибка сохранения токена: ${error.message}`, 'error');
+            console.error('Force save token error:', error);
         }
     };
 
@@ -556,11 +629,21 @@ export const PushNotificationDiagnostic = () => {
 
             // 2. Проверка App ID
             addLog('2️⃣ Проверка App ID...', 'info');
+            // Используем ту же логику что и в app.config.js с fallback значением
             const appId =
                 process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ||
                 Constants?.expoConfig?.extra?.oneSignalAppId ||
-                null;
+                'a1bde379-4211-4fb9-89e2-3e94530a7041'; // Fallback из app.config.js
             addLog(`📱 App ID: ${appId}`, appId ? 'success' : 'error');
+            
+            // Показываем источник App ID
+            if (process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID) {
+                addLog(`  📍 Источник: EXPO_PUBLIC_ONESIGNAL_APP_ID (env)`, 'info');
+            } else if (Constants?.expoConfig?.extra?.oneSignalAppId) {
+                addLog(`  📍 Источник: Constants.expoConfig.extra.oneSignalAppId`, 'info');
+            } else {
+                addLog(`  📍 Источник: Fallback (из app.config.js)`, 'warning');
+            }
 
             // 3. Проверка разрешений
             addLog('3️⃣ Проверка разрешений уведомлений...', 'info');
@@ -1023,6 +1106,7 @@ export const PushNotificationDiagnostic = () => {
                     priority: Notifications.AndroidNotificationPriority.MAX,
                 },
                 trigger: {
+                    type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
                     seconds: 5,
                 },
             });
@@ -1259,6 +1343,65 @@ ${logs.map(log => `[${log.timestamp}] [${log.type.toUpperCase()}] ${log.message}
     useEffect(() => {
         runOneSignalDiagnostic();
         checkServerTokens();
+
+        // Перехватываем console.log для логов OneSignal
+        const originalConsoleLog = console.log;
+        const originalConsoleError = console.error;
+        const originalConsoleWarn = console.warn;
+
+        console.log = (...args) => {
+            originalConsoleLog(...args);
+            const message = args.map(arg => 
+                typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+            ).join(' ');
+            
+            // Перехватываем только логи OneSignal
+            if (message.includes('[OneSignal]')) {
+                const cleanMessage = message.replace(/\[OneSignal\]\s*/, '');
+                let logType = 'info';
+                
+                if (message.includes('✅') || message.includes('успешно') || message.includes('SUCCESS')) {
+                    logType = 'success';
+                } else if (message.includes('❌') || message.includes('ошибка') || message.includes('ERROR')) {
+                    logType = 'error';
+                } else if (message.includes('⚠️') || message.includes('WARNING')) {
+                    logType = 'warning';
+                }
+                
+                addLog(cleanMessage, logType);
+            }
+        };
+
+        console.error = (...args) => {
+            originalConsoleError(...args);
+            const message = args.map(arg => 
+                typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+            ).join(' ');
+            
+            if (message.includes('[OneSignal]')) {
+                const cleanMessage = message.replace(/\[OneSignal\]\s*/, '');
+                addLog(cleanMessage, 'error');
+            }
+        };
+
+        console.warn = (...args) => {
+            originalConsoleWarn(...args);
+            const message = args.map(arg => 
+                typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+            ).join(' ');
+            
+            if (message.includes('[OneSignal]')) {
+                const cleanMessage = message.replace(/\[OneSignal\]\s*/, '');
+                addLog(cleanMessage, 'warning');
+            }
+        };
+
+        // Восстанавливаем оригинальные функции при размонтировании
+        return () => {
+            console.log = originalConsoleLog;
+            console.error = originalConsoleError;
+            console.warn = originalConsoleWarn;
+        };
     }, []);
 
     return (
@@ -1305,6 +1448,10 @@ ${logs.map(log => `[${log.timestamp}] [${log.type.toUpperCase()}] ${log.message}
 
                 <TouchableOpacity style={[styles.button, { backgroundColor: '#F39C12' }]} onPress={checkServerTokens}>
                     <Text style={styles.buttonText}>📋 Токены сервера</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={[styles.button, { backgroundColor: '#16A085' }]} onPress={forceSaveTokenToServer}>
+                    <Text style={styles.buttonText}>💾 Сохранить токен</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity style={[styles.button, { backgroundColor: '#8E44AD' }]} onPress={testChatMessage}>

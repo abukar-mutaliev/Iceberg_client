@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Platform, Alert, Linking, ActivityIndicator, Clipboard } from 'react-native';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
 import MapView, { Marker } from 'react-native-maps';
@@ -15,6 +15,7 @@ import { ShareStopModal } from './ShareStopModal';
 import ChatApi from '@entities/chat/api/chatApi';
 import { selectRoomsList } from '@entities/chat/model/selectors';
 import { useToast } from '@shared/ui/Toast';
+import { deleteStop } from '@entities/stop';
 
 const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
 
@@ -195,9 +196,10 @@ const formatStopTime = (startTime, endTime) => {
 };
 
 export const StopDetailsContent = ({ stop, navigation }) => {
+    const dispatch = useDispatch();
     const user = useSelector(selectUser);
     const rooms = useSelector(selectRoomsList);
-    const { showSuccess } = useToast();
+    const { showSuccess, showError } = useToast();
     const defaultCoords = { latitude: 43.172837, longitude: 44.811913 };
     const [mapCoordinates, setMapCoordinates] = useState(defaultCoords);
     const [mapLoaded, setMapLoaded] = useState(false);
@@ -206,7 +208,9 @@ export const StopDetailsContent = ({ stop, navigation }) => {
     const [geocodingError, setGeocodingError] = useState(null);
     const [shareModalVisible, setShareModalVisible] = useState(false);
     const [isCreatingChat, setIsCreatingChat] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
     const canEdit = ['DRIVER', 'ADMIN', 'EMPLOYEE'].includes(user?.role);
+    const canDelete = ['DRIVER', 'ADMIN'].includes(user?.role);
     const isAuthenticated = !!user;
     
     // Определяем, запущено ли приложение в Expo Go
@@ -249,6 +253,46 @@ export const StopDetailsContent = ({ stop, navigation }) => {
 
     const handleEditPress = () => {
         navigation.navigate('EditStop', { stopId: stop.id });
+    };
+
+    const handleDeletePress = () => {
+        Alert.alert(
+            'Удаление остановки',
+            'Вы уверены, что хотите удалить эту остановку? Это действие нельзя отменить.',
+            [
+                {
+                    text: 'Отмена',
+                    style: 'cancel',
+                },
+                {
+                    text: 'Удалить',
+                    style: 'destructive',
+                    onPress: async () => {
+                        setIsDeleting(true);
+                        try {
+                            await dispatch(deleteStop(stop.id)).unwrap();
+                            showSuccess('Остановка успешно удалена', {
+                                duration: 2000,
+                                position: 'top'
+                            });
+                            // Возвращаемся назад после небольшой задержки для отображения уведомления
+                            setTimeout(() => {
+                                navigation.goBack();
+                            }, 500);
+                        } catch (error) {
+                            const errorMessage = error?.message || 'Не удалось удалить остановку';
+                            showError(errorMessage, {
+                                duration: 3000,
+                                position: 'top'
+                            });
+                        } finally {
+                            setIsDeleting(false);
+                        }
+                    },
+                },
+            ],
+            { cancelable: true }
+        );
     };
 
     const handleSharePress = () => {
@@ -826,13 +870,34 @@ export const StopDetailsContent = ({ stop, navigation }) => {
                     refreshKey={stop.updatedAt || stop.createdAt}
                 />
 
-                {canEdit && (
-                    <TouchableOpacity
-                        style={styles.editButton}
-                        onPress={handleEditPress}
-                    >
-                        <Text style={styles.editButtonText}>Редактировать</Text>
-                    </TouchableOpacity>
+                {(canEdit || canDelete) && (
+                    <View style={styles.actionButtonsContainer}>
+                        {canEdit && (
+                            <TouchableOpacity
+                                style={[styles.actionButton, styles.editButton]}
+                                onPress={handleEditPress}
+                                disabled={isDeleting}
+                            >
+                                <Text style={styles.editButtonText}>Редактировать</Text>
+                            </TouchableOpacity>
+                        )}
+                        {canDelete && (
+                            <TouchableOpacity
+                                style={[styles.actionButton, styles.deleteButton]}
+                                onPress={handleDeletePress}
+                                disabled={isDeleting}
+                            >
+                                {isDeleting ? (
+                                    <ActivityIndicator size="small" color="#fff" />
+                                ) : (
+                                    <>
+                                        <Icon name="delete" size={18} color="#fff" style={styles.deleteIcon} />
+                                        <Text style={styles.deleteButtonText}>Удалить</Text>
+                                    </>
+                                )}
+                            </TouchableOpacity>
+                        )}
+                    </View>
                 )}
             </View>
 
@@ -1137,20 +1202,41 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
-    editButton: {
-        backgroundColor: Color.blue2,
+    actionButtonsContainer: {
+        flexDirection: 'row',
+        gap: 12,
+        marginTop: 8,
+        marginBottom: 20,
+    },
+    actionButton: {
+        flex: 1,
         height: 40,
         borderRadius: Border.br_3xs,
         justifyContent: 'center',
         alignItems: 'center',
-        marginTop: 8,
-        marginBottom: 20,
+        flexDirection: 'row',
+    },
+    editButton: {
+        backgroundColor: Color.blue2,
     },
     editButtonText: {
         color: Color.colorLightMode,
         fontSize: FontSize.size_md,
         fontWeight: '500',
         fontFamily: FontFamily.sFProText,
+    },
+    deleteButton: {
+        backgroundColor: '#FF3B30',
+    },
+    deleteButtonText: {
+        color: Color.colorLightMode,
+        fontSize: FontSize.size_md,
+        fontWeight: '500',
+        fontFamily: FontFamily.sFProText,
+        marginLeft: 4,
+    },
+    deleteIcon: {
+        marginRight: 2,
     },
     mapLoadingContainer: {
         height: 250,

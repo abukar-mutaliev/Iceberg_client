@@ -1,6 +1,7 @@
 import React, {memo, useState, useCallback, useRef, useEffect} from 'react';
 import {View, Text, Image, TouchableOpacity, StyleSheet} from 'react-native';
 import {Ionicons} from '@expo/vector-icons';
+import {useSelector} from 'react-redux';
 import {ProductCard} from '@entities/product/ui/ProductCard';
 import {StopCard} from '@entities/stop/ui/StopCard';
 import {CachedVoice} from './CachedVoice';
@@ -10,6 +11,7 @@ import {MessageReactions} from './MessageReactions';
 import {getBaseUrl} from '@shared/api/api';
 import {CachedImage} from './CachedImage/CachedImage';
 import ChatApi from '@entities/chat/api/chatApi';
+import {selectIsProductDeleted} from '@entities/product/model/selectors';
 
 // ============= ВСПОМОГАТЕЛЬНЫЕ КОМПОНЕНТЫ =============
 
@@ -769,7 +771,7 @@ const ImageMessage = ({
     </>
 );
 
-const ProductMessage = ({
+const ProductMessage = memo(({
     product,
     productId,
     isOwn,
@@ -800,6 +802,69 @@ const ProductMessage = ({
     senderNameColor = '#667781',
     onSenderNamePress = null
 }) => {
+    // Проверяем, удален ли продукт
+    const isProductDeleted = useSelector((state) => selectIsProductDeleted(state, productId));
+
+    // Если продукт удален, показываем специальное сообщение
+    if (isProductDeleted) {
+        return (
+            <>
+                <BubbleContainer
+                    isOwn={isOwn}
+                    time={time}
+                    status={status}
+                    avatarUri={avatarUri}
+                    showAvatar={showAvatar}
+                    text={''}
+                    hasImage={false}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={isSelected}
+                    isPressed={isPressed}
+                    isContextMenuActive={isContextMenuActive}
+                    canDelete={canDelete}
+                    onToggleSelection={onToggleSelection}
+                    onLongPress={onLongPress}
+                    onPress={onPress}
+                    onAvatarPress={onAvatarPress}
+                    replyTo={replyTo}
+                    onReplyPress={onReplyPress}
+                    onReply={onReply}
+                    currentUserId={currentUserId}
+                    showSenderName={showSenderName}
+                    senderName={senderName}
+                    senderId={senderId}
+                    senderNameColor={senderNameColor}
+                    onSenderNamePress={onSenderNamePress}
+                >
+                    <View style={styles.deletedProductContainer}>
+                        <View style={styles.deletedProductIcon}>
+                            <Ionicons name="ban" size={24} color="#999" />
+                        </View>
+                        <Text style={styles.deletedProductText}>
+                            Товар удален
+                        </Text>
+                        {product?.name && (
+                            <Text style={styles.deletedProductName} numberOfLines={2}>
+                                {product.name}
+                            </Text>
+                        )}
+                    </View>
+                </BubbleContainer>
+                {message?.reactions && message.reactions.length > 0 && (
+                    <View style={[styles.reactionsWrapper, isOwn ? styles.reactionsWrapperOwn : styles.reactionsWrapperOther]}>
+                        <MessageReactions
+                            reactions={message.reactions}
+                            currentUserId={currentUserId}
+                            messageId={message.id}
+                            onReactionPress={onAddReaction}
+                            onReactionLongPress={onAddReaction}
+                        />
+                    </View>
+                )}
+            </>
+        );
+    }
+
     const transformedProduct = {
         id: product.productId || productId,
         name: product.name,
@@ -876,7 +941,7 @@ const ProductMessage = ({
             )}
         </>
     );
-};
+});
 
 const StopMessage = ({
     stop,
@@ -1359,7 +1424,7 @@ export const MessageBubble = memo(({
         }
 
         // Если данных о товаре нет, показываем сообщение об ошибке
-        if (!productData) {
+        if (!productData && !productId) {
             return (
                 <BubbleContainer
                     isOwn={isOwn}
@@ -1389,10 +1454,13 @@ export const MessageBubble = memo(({
             );
         }
 
+        // Используем productId из productData если он есть, иначе из message
+        const finalProductId = productId || productData?.productId || productData?.id;
+
         return (
             <ProductMessage
-                product={productData}
-                productId={productId}
+                product={productData || {}}
+                productId={finalProductId}
                 isOwn={isOwn}
                 time={time}
                 status={status}
@@ -2111,6 +2179,33 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         marginBottom: 2,
         marginTop: 0,
+    },
+    deletedProductContainer: {
+        width: 250,
+        padding: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#F5F5F5',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#E0E0E0',
+        borderStyle: 'dashed',
+    },
+    deletedProductIcon: {
+        marginBottom: 8,
+    },
+    deletedProductText: {
+        fontSize: 14,
+        fontWeight: '500',
+        color: '#999',
+        textAlign: 'center',
+        marginBottom: 4,
+    },
+    deletedProductName: {
+        fontSize: 12,
+        color: '#666',
+        textAlign: 'center',
+        fontStyle: 'italic',
     },
 });
 

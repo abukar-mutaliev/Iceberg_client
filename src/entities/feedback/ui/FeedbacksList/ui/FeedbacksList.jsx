@@ -7,8 +7,7 @@ import {
     TouchableOpacity,
     ActivityIndicator,
     RefreshControl,
-    ScrollView,
-    Alert
+    ScrollView
 } from 'react-native';
 import {useTheme} from '@app/providers/themeProvider/ThemeProvider';
 import {FontFamily} from '@app/styles/GlobalStyles';
@@ -18,6 +17,7 @@ import {deleteFeedback, selectHasUserLeftFeedbackSafe} from '@entities/feedback'
 import {FeedbackCard} from '@entities/feedback/ui/FeedbackCard';
 import {FeedbackAddModal} from '@features/feedback';
 import {useAuth} from "@entities/auth/hooks/useAuth";
+import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 
 export const FeedbacksList = React.memo(({
                                              productId,
@@ -32,6 +32,7 @@ export const FeedbacksList = React.memo(({
     const {colors} = useTheme();
     const dispatch = useDispatch();
     const { isAuthenticated } = useAuth();
+    const { showConfirm, showInfo } = useCustomAlert();
     const currentUser = useSelector(selectUser);
 
     // Проверяем, является ли пользователь клиентом
@@ -78,20 +79,13 @@ export const FeedbacksList = React.memo(({
     };
 
     const handleDeleteFeedback = (reviewId) => {
-        Alert.alert(
+        showConfirm(
             "Подтверждение",
             "Вы уверены, что хотите удалить этот отзыв?",
-            [
-                {
-                    text: "Отмена",
-                    style: "cancel",
-                },
-                {
-                    text: "Удалить",
-                    onPress: () => dispatch(deleteFeedback({id: reviewId, productId})),
-                    style: "destructive",
-                },
-            ]
+            () => dispatch(deleteFeedback({id: reviewId, productId})),
+            () => {
+                // Отмена удаления - ничего не делаем
+            }
         );
     };
 
@@ -107,10 +101,9 @@ export const FeedbacksList = React.memo(({
                 style={[styles.addButton, {backgroundColor: colors.primary}]}
                 onPress={() => {
                     if (hasLeftFeedback) {
-                        Alert.alert(
+                        showInfo(
                             "Уведомление",
-                            "Вы уже оставили отзыв к этому продукту.",
-                            [{text: "OK"}]
+                            "Вы уже оставили отзыв к этому продукту."
                         );
                     } else {
                         setShowAddForm(true);

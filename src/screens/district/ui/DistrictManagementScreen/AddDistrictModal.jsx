@@ -7,6 +7,7 @@ import {
     TouchableOpacity,
     ActivityIndicator,
     Alert,
+    ScrollView,
 } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
@@ -99,51 +100,64 @@ export const AddDistrictModal = ({ visible, onClose, onSubmit, district, isSubmi
             title={district ? "Редактирование района" : "Добавление района"}
             height={60}
         >
-            <View style={styles.container}>
-                <View style={styles.formGroup}>
-                    <Text style={styles.label}>Название района *</Text>
-                    <TextInput
-                        style={[styles.input, errors.name && styles.inputError]}
-                        value={formData.name}
-                        onChangeText={(text) => handleChange('name', text)}
-                        placeholder="Введите название"
-                        editable={!isProcessing}
-                    />
-                    {errors.name ? <Text style={styles.errorText}>{errors.name}</Text> : null}
-                </View>
+            <ScrollView 
+                style={styles.scrollView}
+                contentContainerStyle={styles.scrollContentContainer}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+            >
+                <View style={styles.container}>
+                    <View style={styles.formGroup}>
+                        <Text style={styles.label}>Название района *</Text>
+                        <TextInput
+                            style={[styles.input, errors.name && styles.inputError]}
+                            value={formData.name}
+                            onChangeText={(text) => handleChange('name', text)}
+                            placeholder="Введите название"
+                            editable={!isProcessing}
+                        />
+                        {errors.name ? <Text style={styles.errorText}>{errors.name}</Text> : null}
+                    </View>
 
-                <View style={styles.formGroup}>
-                    <Text style={styles.label}>Описание</Text>
-                    <TextInput
-                        style={[styles.input, styles.textArea]}
-                        value={formData.description}
-                        onChangeText={(text) => handleChange('description', text)}
-                        placeholder="Введите описание (необязательно)"
-                        multiline
-                        numberOfLines={3}
-                        editable={!isProcessing}
-                    />
-                </View>
+                    <View style={styles.formGroup}>
+                        <Text style={styles.label}>Описание</Text>
+                        <TextInput
+                            style={[styles.input, styles.textArea]}
+                            value={formData.description}
+                            onChangeText={(text) => handleChange('description', text)}
+                            placeholder="Введите описание (необязательно)"
+                            multiline
+                            numberOfLines={3}
+                            editable={!isProcessing}
+                        />
+                    </View>
 
-                <TouchableOpacity
-                    style={[styles.submitButton, isProcessing && styles.disabledButton]}
-                    onPress={handleSubmit}
-                    disabled={isProcessing}
-                >
-                    {isProcessing ? (
-                        <ActivityIndicator size="small" color={Color.colorLightMode} />
-                    ) : (
-                        <Text style={styles.submitButtonText}>
-                            {district ? 'Сохранить изменения' : 'Добавить район'}
-                        </Text>
-                    )}
-                </TouchableOpacity>
-            </View>
+                    <TouchableOpacity
+                        style={[styles.submitButton, isProcessing && styles.disabledButton]}
+                        onPress={handleSubmit}
+                        disabled={isProcessing}
+                    >
+                        {isProcessing ? (
+                            <ActivityIndicator size="small" color={Color.colorLightMode} />
+                        ) : (
+                            <Text style={styles.submitButtonText}>
+                                {district ? 'Сохранить изменения' : 'Добавить район'}
+                            </Text>
+                        )}
+                    </TouchableOpacity>
+                </View>
+            </ScrollView>
         </ReusableModal>
     );
 };
 
 const styles = StyleSheet.create({
+    scrollView: {
+        flex: 1,
+    },
+    scrollContentContainer: {
+        paddingBottom: normalize(100),
+    },
     container: {
         padding: normalize(16),
     },

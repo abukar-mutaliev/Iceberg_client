@@ -14,7 +14,9 @@ const initialState = {
     hasMore: true,
     currentPage: 1,
     totalPages: 1,
-    totalItems: 0
+    totalItems: 0,
+    // Tracks product IDs that returned 404 (deleted/unavailable) to avoid re-fetching
+    deletedProductIds: []
 };
 
 const CACHE_EXPIRY_TIME = 5 * 60 * 1000;
@@ -149,6 +151,15 @@ export const fetchProductById = createAsyncThunk(
 
             const state = getState();
 
+            // Skip fetching if product is known to be deleted/unavailable
+            if (!force && state.products.deletedProductIds?.includes(numericProductId)) {
+                return rejectWithValue({ 
+                    message: 'Продукт удален или недоступен', 
+                    isDeleted: true, 
+                    productId: numericProductId 
+                });
+            }
+
             if (!force) {
                 const cachedProduct = state.products.items.find(p => p?.id === numericProductId);
                 if (cachedProduct && !state.products.error) {
@@ -166,11 +177,32 @@ export const fetchProductById = createAsyncThunk(
             const product = response.data.status === 'success' ? response.data.data : response.data;
 
             if (!product?.id) {
-                return rejectWithValue('Продукт не найден');
+                return rejectWithValue({ 
+                    message: 'Продукт не найден', 
+                    isDeleted: true, 
+                    productId: numericProductId 
+                });
             }
 
             return { data: product, fromCache: false };
         } catch (error) {
+            // Check if it's a 404 error (product deleted/not found)
+            const is404 = error?.response?.status === 404 || 
+                         error?.code === 404 || 
+                         error?.message?.includes('404') ||
+                         error?.message?.includes('не найден') ||
+                         error?.message?.includes('недоступен');
+            
+            if (is404) {
+                // Return structured error for deleted products (no console.error - this is expected)
+                return rejectWithValue({ 
+                    message: 'Продукт удален или недоступен', 
+                    isDeleted: true, 
+                    productId: typeof productId === 'object' ? productId.productId : productId 
+                });
+            }
+            
+            // Only log unexpected errors, not 404s for deleted products
             console.error(`Ошибка запроса продукта ${productId}:`, error);
             return rejectWithValue(error.message || 'Ошибка при загрузке продукта');
         }
@@ -300,6 +332,15 @@ const productsSlice = createSlice({
                 state.currentProduct = { ...state.currentProduct, ...updatedProduct };
             }
         },
+        markProductAsDeleted: (state, action) => {
+            const productId = parseInt(action.payload, 10);
+            if (!isNaN(productId) && !state.deletedProductIds.includes(productId)) {
+                state.deletedProductIds.push(productId);
+            }
+        },
+        clearDeletedProductIds: (state) => {
+            state.deletedProductIds = [];
+        },
     },
     extraReducers: (builder) => {
         builder
@@ -393,7 +434,19 @@ const productsSlice = createSlice({
             })
             .addCase(fetchProductById.rejected, (state, action) => {
                 state.loading = false;
-                state.error = action.payload;
+                
+                // Check if this is a deleted/unavailable product error
+                const payload = action.payload;
+                if (payload?.isDeleted && payload?.productId) {
+                    const productId = parseInt(payload.productId, 10);
+                    if (!isNaN(productId) && !state.deletedProductIds.includes(productId)) {
+                        state.deletedProductIds.push(productId);
+                    }
+                    // Don't set global error for deleted products - it's expected
+                    return;
+                }
+                
+                state.error = typeof payload === 'object' ? payload.message : payload;
             })
 
             .addCase(createProductChunked.pending, (state) => {
@@ -519,6 +572,8 @@ export const {
     resetFetchCompleted,
     setCurrentProductFromCache,
     updateProductOptimistic,
-    setProducts
+    setProducts,
+    markProductAsDeleted,
+    clearDeletedProductIds
 } = productsSlice.actions;
 export default productsSlice.reducer;

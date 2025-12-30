@@ -89,9 +89,18 @@ export default {
                 'onesignal-expo-plugin',
                 {
                     mode: IS_DEV ? 'development' : 'production',
-                    // ВАЖНО: Не используем smallIcons здесь - иконка ic_stat_iceberg.png 
-                    // уже установлена вручную в android/app/src/main/res/drawable-*/
-                    // и используется через серверный код (small_icon: 'ic_stat_iceberg')
+                    // Иконки для Android автоматически копируются из src/assets/icons/push/
+                    // через app.plugin.js при каждой сборке
+                    // Поэтому указываем пути к уже скопированным иконкам в android проекте
+                    smallIcons: [
+                        './android/app/src/main/res/drawable-mdpi/ic_stat_iceberg.png',
+                        './android/app/src/main/res/drawable-hdpi/ic_stat_iceberg.png',
+                        './android/app/src/main/res/drawable-xhdpi/ic_stat_iceberg.png',
+                        './android/app/src/main/res/drawable-xxhdpi/ic_stat_iceberg.png',
+                        './android/app/src/main/res/drawable-xxxhdpi/ic_stat_iceberg.png',
+                    ],
+                    // Большая иконка для развернутого уведомления (опционально)
+                    // largeIcons: ['./android/app/src/main/res/drawable-xxxhdpi/ic_stat_iceberg.png'],
                 }
             ]
         ],
@@ -123,8 +132,8 @@ export default {
         },
         android: {
             package: 'com.abuingush.iceberg',
-            versionCode: 31,
-            versionName: '1.3.1',
+            versionCode: 32,
+            versionName: '1.3.2',
             icon: './assets/icon.png',
             adaptiveIcon: {
                 foregroundImage: './assets/icon.png',

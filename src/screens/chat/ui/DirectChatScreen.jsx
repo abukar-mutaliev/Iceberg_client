@@ -19,7 +19,7 @@ import * as Device from 'expo-device';
 import * as Haptics from 'expo-haptics';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useFocusEffect, CommonActions} from '@react-navigation/native';
-import {useDispatch, useSelector} from 'react-redux';
+import {useDispatch, useSelector, useStore} from 'react-redux';
 import {useTabBar} from '@widgets/navigation/context';
 import {
     fetchMessages,
@@ -36,6 +36,7 @@ import {
 } from '@entities/chat/model/slice';
 import {makeSelectRoomMessages, selectIsRoomDeleted} from '@entities/chat/model/selectors';
 import {fetchProductById} from '@entities/product/model/slice';
+import {selectIsProductDeleted} from '@entities/product/model/selectors';
 import {
     SwipeableMessageBubble, 
     ForwardMessageModal, 
@@ -115,6 +116,7 @@ export const DirectChatScreen = ({route, navigation}) => {
     
     // Hooks
     const dispatch = useDispatch();
+    const store = useStore();
     const { showError, showWarning, showConfirm } = useCustomAlert();
     const insets = useSafeAreaInsets();
     const { hideTabBar, showTabBar } = useTabBar();
@@ -144,6 +146,7 @@ export const DirectChatScreen = ({route, navigation}) => {
     const participantsById = useSelector((s) => s.chat?.participants?.byUserId || {});
     const isRoomDeleted = useSelector((s) => selectIsRoomDeleted(s, roomId));
     const rooms = useSelector(selectRoomsList);
+    
     
     // Кэш сообщений
     const { messages: cachedMessages, isLoading: isCacheLoading } = useCachedMessages(roomId);
@@ -1350,6 +1353,13 @@ export const DirectChatScreen = ({route, navigation}) => {
                 // Если режим выбора активен, выделяем сообщение вместо открытия товара
                 if (isSelectionMode) {
                     toggleMessageSelection(item.id);
+                    return;
+                }
+                
+                // Проверяем, не удален ли продукт
+                const state = store.getState();
+                if (selectIsProductDeleted(state, id)) {
+                    showWarning('Товар недоступен', 'Этот товар был удален');
                     return;
                 }
                 

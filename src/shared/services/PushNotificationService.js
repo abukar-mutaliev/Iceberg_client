@@ -5,9 +5,11 @@ import { navigationRef } from '@shared/utils/NavigationRef';
 
 class PushNotificationService {
     constructor() {
+        // Используем ту же логику что и в app.config.js с fallback значением
         this.oneSignalAppId =
             process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ||
-            (Constants?.expoConfig?.extra?.oneSignalAppId ?? null);
+            (Constants?.expoConfig?.extra?.oneSignalAppId ?? null) ||
+            'a1bde379-4211-4fb9-89e2-3e94530a7041'; // Fallback из app.config.js
         
         this.isInitialized = false;
         this.navigationReady = false;

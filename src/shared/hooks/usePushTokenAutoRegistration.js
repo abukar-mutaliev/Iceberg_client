@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux';
 import { Platform } from 'react-native';
 import PushNotificationService from '@shared/services/PushNotificationService';
 import { useNotificationOnboardingHint } from '@shared/hooks/useNotificationOnboardingHint';
-import { useHeadsUpNotificationPrompt } from '@shared/hooks/useHeadsUpNotificationPrompt';
+// import { useHeadsUpNotificationPrompt } from '@shared/hooks/useHeadsUpNotificationPrompt';
 
 export const usePushTokenAutoRegistration = () => {
   const user = useSelector((s) => s.auth?.user);
@@ -14,7 +14,8 @@ export const usePushTokenAutoRegistration = () => {
   useNotificationOnboardingHint({ isAuthenticated, userId: user?.id });
   
   // 2️⃣ Подсказка про всплывающие уведомления при первом получении push
-  useHeadsUpNotificationPrompt({ isAuthenticated });
+  // ОТКЛЮЧЕНО: всплывающие уведомления работают
+  // useHeadsUpNotificationPrompt({ isAuthenticated });
 
   useEffect(() => {
     const register = async () => {

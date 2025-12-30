@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useMemo } from 'react';
-import { View, Text, Image, StyleSheet, Pressable, Alert, Dimensions } from 'react-native';
+import { View, Text, Image, StyleSheet, Pressable, Dimensions } from 'react-native';
 import { Color, Border, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { useProductCard } from "@entities/product";
 import { useToast } from '@shared/ui/Toast';

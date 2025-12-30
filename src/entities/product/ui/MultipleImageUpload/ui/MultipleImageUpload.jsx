@@ -6,18 +6,20 @@ import {
     TouchableOpacity,
     Image,
     ScrollView,
-    Alert,
     Dimensions
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { Entypo } from "@expo/vector-icons";
+import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 
 const { width } = Dimensions.get('window');
 
 export const MultipleImageUpload = ({ photos, setPhotos, error, maxImages = 5 }) => {
+    const { showWarning, showError } = useCustomAlert();
+
     const pickImage = async () => {
         if (photos && photos.length >= maxImages) {
-            Alert.alert("Лимит изображений", `Вы можете добавить максимум ${maxImages} изображений`);
+            showWarning("Лимит изображений", `Вы можете добавить максимум ${maxImages} изображений`);
             return;
         }
 
@@ -36,7 +38,7 @@ export const MultipleImageUpload = ({ photos, setPhotos, error, maxImages = 5 })
             }
         } catch (error) {
             console.error('Ошибка при выборе изображения:', error);
-            Alert.alert("Ошибка", "Не удалось выбрать изображение");
+            showError("Ошибка", "Не удалось выбрать изображение");
         }
     };
 

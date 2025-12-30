@@ -19,7 +19,7 @@ import * as Device from 'expo-device';
 import * as Haptics from 'expo-haptics';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useFocusEffect} from '@react-navigation/native';
-import {useDispatch, useSelector} from 'react-redux';
+import {useDispatch, useSelector, useStore} from 'react-redux';
 import {useTabBar} from '@widgets/navigation/context';
 import {
     fetchMessages,
@@ -57,6 +57,7 @@ import ChatApi from '@entities/chat/api/chatApi';
 import {selectRoomsList} from '@entities/chat/model/selectors';
 import PushNotificationService from '@shared/services/PushNotificationService';
 import {getChatKeyboardGapPx} from '@shared/lib/device/chatKeyboardGap';
+import {selectIsProductDeleted} from '@entities/product/model/selectors';
 
 export const GroupChatScreen = ({route, navigation}) => {
     const {
@@ -107,6 +108,7 @@ export const GroupChatScreen = ({route, navigation}) => {
     
     // Hooks
     const dispatch = useDispatch();
+    const store = useStore();
     const { showError, showWarning, showConfirm } = useCustomAlert();
     const insets = useSafeAreaInsets();
     const { hideTabBar, showTabBar } = useTabBar();
@@ -140,16 +142,109 @@ export const GroupChatScreen = ({route, navigation}) => {
     // Кэш сообщений
     const { messages: cachedMessages, isLoading: isCacheLoading } = useCachedMessages(roomId);
     
-    // Объединяем кэшированные и Redux сообщения
-    const messages = useMemo(() => {
-        if (reduxMessages && Array.isArray(reduxMessages) && reduxMessages.length > 0) {
-            return reduxMessages;
+    // Получаем районы пользователя для фильтрации остановок
+    const userDistrictIds = useMemo(() => {
+        if (!currentUser) return [];
+        
+        // Для клиентов - один район
+        if (currentUser.role === 'CLIENT' && currentUser.client?.districtId) {
+            return [currentUser.client.districtId];
         }
-        if (cachedMessages && Array.isArray(cachedMessages) && cachedMessages.length > 0) {
-            return cachedMessages;
+        
+        // Для сотрудников - массив районов
+        if (currentUser.role === 'EMPLOYEE' && currentUser.employee?.districts) {
+            return currentUser.employee.districts
+                .map(d => d?.id || d)
+                .filter(id => id != null);
         }
+        
+        // Для водителей - массив районов
+        if (currentUser.role === 'DRIVER' && currentUser.driver?.districts) {
+            return currentUser.driver.districts
+                .map(d => d?.id || d)
+                .filter(id => id != null);
+        }
+        
+        // Для админов - возвращаем пустой массив (видят все остановки)
+        // Если у админа есть районы, можно добавить их здесь
         return [];
-    }, [reduxMessages, cachedMessages]);
+    }, [currentUser]);
+    
+    // Объединяем кэшированные и Redux сообщения с фильтрацией остановок
+    const messages = useMemo(() => {
+        let allMessages = [];
+        
+        if (reduxMessages && Array.isArray(reduxMessages) && reduxMessages.length > 0) {
+            allMessages = reduxMessages;
+        } else if (cachedMessages && Array.isArray(cachedMessages) && cachedMessages.length > 0) {
+            allMessages = cachedMessages;
+        }
+        
+        // Фильтруем только STOP сообщения по району пользователя
+        // Остальные типы сообщений (товары, акции, текст и т.д.) не фильтруются
+        if (allMessages.length === 0) return [];
+        
+        // Если у пользователя нет районов (например, админ без районов), показываем все остановки
+        const shouldFilterStops = userDistrictIds.length > 0;
+        
+        return allMessages.filter(message => {
+            // Фильтруем только STOP сообщения
+            if (message.type !== 'STOP') {
+                return true; // Пропускаем все не-STOP сообщения
+            }
+            
+            // Если фильтрация не нужна (админ без районов), показываем все остановки
+            if (!shouldFilterStops) {
+                return true;
+            }
+            
+            // Получаем districtId остановки
+            let stopDistrictId = null;
+            
+            try {
+                // Сначала пробуем получить из relation stop
+                if (message?.stop?.districtId != null) {
+                    stopDistrictId = message.stop.districtId;
+                }
+                // Если не получилось, пробуем из content (JSON строка)
+                else if (message?.content) {
+                    try {
+                        const stopData = JSON.parse(message.content);
+                        stopDistrictId = stopData?.districtId || null;
+                    } catch (e) {
+                        // Если не удалось распарсить, пропускаем сообщение
+                        console.warn('GroupChat: Failed to parse STOP message content:', e);
+                        return false;
+                    }
+                }
+                // Пробуем напрямую из message
+                else if (message?.districtId != null) {
+                    stopDistrictId = message.districtId;
+                }
+            } catch (error) {
+                console.warn('GroupChat: Error extracting districtId from STOP message:', error);
+                return false;
+            }
+            
+            // Если не удалось получить districtId, скрываем сообщение
+            if (stopDistrictId == null) {
+                return false;
+            }
+            
+            // Нормализуем ID для сравнения (строка vs число)
+            const normalizedStopDistrictId = typeof stopDistrictId === 'string' 
+                ? parseInt(stopDistrictId, 10) 
+                : stopDistrictId;
+            
+            // Проверяем, входит ли район остановки в районы пользователя
+            return userDistrictIds.some(userDistrictId => {
+                const normalizedUserDistrictId = typeof userDistrictId === 'string'
+                    ? parseInt(userDistrictId, 10)
+                    : userDistrictId;
+                return normalizedUserDistrictId === normalizedStopDistrictId;
+            });
+        });
+    }, [reduxMessages, cachedMessages, userDistrictIds]);
     
     // Фоновая предзагрузка медиа
     useMediaPreload(roomId, messages);
@@ -1225,6 +1320,13 @@ export const GroupChatScreen = ({route, navigation}) => {
                 // Если режим выбора активен, выделяем сообщение вместо открытия товара
                 if (isSelectionMode) {
                     toggleMessageSelection(item.id);
+                    return;
+                }
+                
+                // Проверяем, не удален ли продукт
+                const state = store.getState();
+                if (selectIsProductDeleted(state, id)) {
+                    showWarning('Товар недоступен', 'Этот товар был удален');
                     return;
                 }
                 
