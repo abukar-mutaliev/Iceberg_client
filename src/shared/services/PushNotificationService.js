@@ -2,6 +2,7 @@ import OneSignalService from '@shared/services/OneSignalService';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { navigationRef } from '@shared/utils/NavigationRef';
+import * as Notifications from 'expo-notifications';
 
 class PushNotificationService {
     constructor() {
@@ -154,6 +155,12 @@ class PushNotificationService {
             // Только для уведомлений типа CHAT_MESSAGE с roomId
             const normalizedType = String(type || '').toUpperCase();
             if (normalizedType !== 'CHAT_MESSAGE' || !roomId) {
+                if (__DEV__) {
+                    console.log('[PushNotification] ✅ Не подавляем: не CHAT_MESSAGE или нет roomId', {
+                        type: normalizedType,
+                        roomId
+                    });
+                }
                 return false;
             }
             
@@ -162,7 +169,8 @@ class PushNotificationService {
                 if (__DEV__) {
                     console.log('[PushNotification] 🔇 Подавление уведомления: чат уже открыт', {
                         activeRoomId: this.activeChatRoomId,
-                        notificationRoomId: roomId
+                        notificationRoomId: roomId,
+                        senderId
                     });
                 }
                 return true;
@@ -173,10 +181,20 @@ class PushNotificationService {
                 if (__DEV__) {
                     console.log('[PushNotification] 🔇 Подавление уведомления: чат с пользователем уже открыт', {
                         activePeerUserId: this.activeChatPeerUserId,
-                        notificationSenderId: senderId
+                        notificationSenderId: senderId,
+                        notificationRoomId: roomId
                     });
                 }
                 return true;
+            }
+            
+            if (__DEV__) {
+                console.log('[PushNotification] ✅ Не подавляем уведомление', {
+                    activeRoomId: this.activeChatRoomId,
+                    notificationRoomId: roomId,
+                    activePeerUserId: this.activeChatPeerUserId,
+                    notificationSenderId: senderId
+                });
             }
             
             return false;
@@ -205,13 +223,127 @@ class PushNotificationService {
     }
 
     async clearChatNotifications(roomId) {
-        // OneSignal не предоставляет API для удаления конкретных уведомлений
-        // Это нормально - уведомления автоматически исчезают при открытии чата
+        try {
+            if (!roomId) return;
+
+            if (__DEV__) {
+                console.log('[PushNotification] 🗑️ Очистка уведомлений для чата', { roomId });
+            }
+
+            // Получаем все активные уведомления
+            const notifications = await Notifications.getPresentedNotificationsAsync();
+            
+            if (!notifications || notifications.length === 0) {
+                if (__DEV__) {
+                    console.log('[PushNotification] ✅ Нет активных уведомлений для очистки');
+                }
+                return;
+            }
+
+            // Фильтруем уведомления для этого чата по roomId в data
+            const chatNotifications = notifications.filter(notification => {
+                const data = notification.request.content.data || {};
+                const notificationRoomId = data.roomId || data.room_id;
+                return notificationRoomId && String(notificationRoomId) === String(roomId);
+            });
+
+            if (chatNotifications.length === 0) {
+                if (__DEV__) {
+                    console.log('[PushNotification] ✅ Нет уведомлений для этого чата');
+                }
+                return;
+            }
+
+            // Удаляем каждое уведомление
+            for (const notification of chatNotifications) {
+                try {
+                    await Notifications.dismissNotificationAsync(notification.request.identifier);
+                    if (__DEV__) {
+                        console.log('[PushNotification] ✅ Удалено уведомление', {
+                            identifier: notification.request.identifier,
+                            roomId
+                        });
+                    }
+                } catch (error) {
+                    if (__DEV__) {
+                        console.warn('[PushNotification] ⚠️ Ошибка при удалении уведомления:', error?.message);
+                    }
+                }
+            }
+
+            if (__DEV__) {
+                console.log('[PushNotification] ✅ Очищено уведомлений для чата', {
+                    roomId,
+                    count: chatNotifications.length
+                });
+            }
+        } catch (error) {
+            if (__DEV__) {
+                console.warn('[PushNotification] ⚠️ Ошибка при очистке уведомлений:', error?.message);
+            }
+        }
     }
 
     async clearChatNotificationsForPeerUser(userId) {
-        // OneSignal не предоставляет API для удаления конкретных уведомлений
-        // Это нормально - уведомления автоматически исчезают при открытии чата
+        try {
+            if (!userId) return;
+
+            if (__DEV__) {
+                console.log('[PushNotification] 🗑️ Очистка уведомлений для пользователя', { userId });
+            }
+
+            // Получаем все активные уведомления
+            const notifications = await Notifications.getPresentedNotificationsAsync();
+            
+            if (!notifications || notifications.length === 0) {
+                if (__DEV__) {
+                    console.log('[PushNotification] ✅ Нет активных уведомлений для очистки');
+                }
+                return;
+            }
+
+            // Фильтруем уведомления от этого пользователя по senderId в data
+            const userNotifications = notifications.filter(notification => {
+                const data = notification.request.content.data || {};
+                const notificationSenderId = data.senderId || data.sender_id;
+                return notificationSenderId && String(notificationSenderId) === String(userId);
+            });
+
+            if (userNotifications.length === 0) {
+                if (__DEV__) {
+                    console.log('[PushNotification] ✅ Нет уведомлений от этого пользователя');
+                }
+                return;
+            }
+
+            // Удаляем каждое уведомление
+            for (const notification of userNotifications) {
+                try {
+                    await Notifications.dismissNotificationAsync(notification.request.identifier);
+                    if (__DEV__) {
+                        console.log('[PushNotification] ✅ Удалено уведомление', {
+                            identifier: notification.request.identifier,
+                            senderId: userId
+                        });
+                    }
+                } catch (error) {
+                    if (__DEV__) {
+                        console.warn('[PushNotification] ⚠️ Ошибка при удалении уведомления:', error?.message);
+                    }
+                }
+            }
+
+            if (__DEV__) {
+                console.log('[PushNotification] ✅ Очищено уведомлений от пользователя', {
+                    userId,
+                    count: userNotifications.length
+                });
+            }
+        } catch (error) {
+            if (__DEV__) {
+                console.warn('[PushNotification] ⚠️ Ошибка при очистке уведомлений:', error?.message);
+            }
+        }
     }
 
     // Установка функций навигации

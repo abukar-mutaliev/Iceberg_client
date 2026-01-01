@@ -167,91 +167,201 @@ class OneSignalService {
     }
 
     // Настройка обработчиков уведомлений
-    setupNotificationHandlers(oneSignal) {
-        try {
-            if (!oneSignal) {
-                // Временно отключены логи OneSignal
-                // console.warn('OneSignal не доступен для настройки обработчиков');
-                return;
+    // В OneSignalService.js замените метод setupNotificationHandlers
+
+setupNotificationHandlers(oneSignal) {
+    try {
+        if (!oneSignal) {
+            if (__DEV__) {
+                console.warn('[OneSignal] ⚠️ setupNotificationHandlers: oneSignal недоступен');
             }
+            return;
+        }
 
-            // Обработчик нажатий на уведомления
-            oneSignal.Notifications.addEventListener('click', (event) => {
-                try {
-                    const n = event?.notification || {};
-                    const data =
-                        n.additionalData ||
-                        n.additional_data ||
-                        n?.payload?.additionalData ||
-                        n?.payload?.additional_data ||
-                        null;
+        if (__DEV__) {
+            console.log('[OneSignal] 🔧 Настройка обработчиков уведомлений');
+        }
 
-                    if (data) {
-                        this.handleNotificationNavigation(data);
+        // Обработчик получения уведомлений в foreground
+        oneSignal.Notifications.addEventListener('foregroundWillDisplay', (event) => {
+            try {
+                const notification = event?.getNotification?.() || event?.notification;
+                
+                // Извлекаем data из всех возможных мест
+                const additionalData =
+                    notification?.additionalData ||
+                    notification?.additional_data ||
+                    event?.notification?.additionalData ||
+                    event?.notification?.additional_data ||
+                    event?.additionalData ||
+                    event?.additional_data ||
+                    null;
+                
+                const data = additionalData || {};
+                
+                // Получаем PushNotificationService для проверки подавления
+                const PushNotificationService = require('@shared/services/PushNotificationService');
+                const pushNotificationService = PushNotificationService.default || PushNotificationService;
+                
+                // Логируем получение уведомления
+                if (__DEV__) {
+                    console.log('[OneSignal] 📬 Получено уведомление в foreground', {
+                        notificationId: notification?.notificationId,
+                        title: notification?.title,
+                        body: notification?.body?.substring(0, 50),
+                        roomId: data?.roomId || data?.room_id,
+                        senderId: data?.senderId || data?.sender_id,
+                        type: data?.type,
+                        messageCount: data?.messageCount,
+                        activeRoomId: pushNotificationService?.getActiveChatRoomId?.(),
+                        activePeerUserId: pushNotificationService?.getActiveChatPeerUserId?.()
+                    });
+                }
+                
+                // Подавление для открытого чата
+                if (pushNotificationService?.shouldSuppressChatNotification?.(data)) {
+                    if (event?.preventDefault && typeof event.preventDefault === 'function') {
+                        event.preventDefault();
                     }
-                } catch (_) {}
-            });
-
-            // Обработчик получения уведомлений в foreground
-            oneSignal.Notifications.addEventListener('foregroundWillDisplay', (event) => {
-                try {
-                    // ВАЖНО:
-                    // В некоторых версиях OneSignal RN SDK уведомления в foreground НЕ показываются,
-                    // пока мы явно не вызовем display(). Для WhatsApp-поведения (heads-up даже в foreground)
-                    // пытаемся безопасно показать системное уведомление.
-                    const notification = event?.getNotification?.() || event?.notification;
-
-                    // Если сейчас открыт этот же чат — не показываем уведомление в foreground
-                    try {
-                        // Извлекаем data из всех возможных мест (разные версии SDK)
-                        const additionalData =
-                            notification?.additionalData ||
-                            notification?.additional_data ||
-                            event?.notification?.additionalData ||
-                            event?.notification?.additional_data ||
-                            event?.additionalData ||
-                            event?.additional_data ||
-                            null;
-
-                        const data = additionalData || {};
-                        const PushNotificationService = require('@shared/services/PushNotificationService');
-                        const pushNotificationService = PushNotificationService.default || PushNotificationService;
-
-                        if (pushNotificationService?.shouldSuppressChatNotification?.(data)) {
-                            // КРИТИЧНО: Сначала предотвращаем показ уведомления
-                            if (event?.preventDefault && typeof event.preventDefault === 'function') {
-                                event.preventDefault();
-                            }
-                            // НЕ вызываем display() - уведомление должно быть подавлено
-                            return; // ✅ suppress
-                        }
-                    } catch (suppressError) {
-                        // Логируем ошибку, но продолжаем показывать уведомление
-                        if (__DEV__) {
-                            console.warn('[OneSignal] Ошибка при проверке подавления:', suppressError?.message);
-                        }
+                    if (__DEV__) {
+                        console.log('[OneSignal] 🔇 Уведомление подавлено: чат открыт', {
+                            roomId: data?.roomId || data?.room_id,
+                            senderId: data?.senderId || data?.sender_id
+                        });
                     }
+                    return;
+                }
 
-                    // Показываем уведомление через OneSignal SDK
-                    // НЕ вызываем preventDefault - пусть OneSignal покажет уведомление стандартным способом
-                    // Это должно гарантировать что уведомление появится
+        // ===== INBOX-STYLE ДЛЯ МНОЖЕСТВЕННЫХ СООБЩЕНИЙ =====
+        if (data.type === 'CHAT_MESSAGE' && data.messageCount) {
+            const messageCount = parseInt(data.messageCount || '1');
+            
+            if (messageCount > 1 && data.messages) {
+                try {
+                    const messages = JSON.parse(data.messages);
                     
-                    if (notification?.display && typeof notification.display === 'function') {
-                        notification.display();
+                    if (Array.isArray(messages) && messages.length > 1) {
+                        // Берём последние 8 сообщений
+                        const recentMessages = messages.slice(-8);
+                        
+                        // Формируем строки
+                        const lines = recentMessages.map(msg => {
+                            if (msg.type === 'TEXT' && msg.content) {
+                                return msg.content.substring(0, 100);
+                            }
+                            const labels = {
+                                IMAGE: '📷 Изображение',
+                                PRODUCT: '🛍️ Товар',
+                                VOICE: '🎤 Голосовое',
+                                STOP: '🚚 Остановка'
+                            };
+                            return labels[msg.type] || 'Сообщение';
+                        });
+                        
+                        // Формируем текст
+                        let finalText = lines.join('\n');
+                        if (messages.length > 8) {
+                            finalText += `\n\n+${messages.length - 8} ещё`;
+                        }
+                        
+                        // Обновляем тело уведомления
+                        notification?.setBody?.(finalText);
+                        
+                        if (__DEV__) {
+                            console.log('[OneSignal] 📬 Inbox уведомление:', {
+                                count: messageCount,
+                                shown: lines.length,
+                                preview: finalText.substring(0, 100)
+                            });
+                        }
                     }
                 } catch (e) {
-                    // Не ломаем приложение из-за ошибок в SDK/событиях
                     if (__DEV__) {
-                        console.warn('[OneSignal] Ошибка в foregroundWillDisplay:', e?.message);
+                        console.warn('[OneSignal] Ошибка парсинга:', e?.message);
                     }
                 }
-            });
+            }
+        }
 
-        } catch (error) {
-            // Временно отключены логи OneSignal
-            // console.error('Ошибка настройки OneSignal обработчиков:', error);
+                // Показываем уведомление
+                if (notification?.display && typeof notification.display === 'function') {
+                    notification.display();
+                    if (__DEV__) {
+                        console.log('[OneSignal] ✅ Уведомление отображено в foreground', {
+                            notificationId: notification?.notificationId
+                        });
+                    }
+                } else {
+                    if (__DEV__) {
+                        console.warn('[OneSignal] ⚠️ notification.display() недоступен', {
+                            hasNotification: !!notification,
+                            hasDisplay: !!(notification?.display)
+                        });
+                    }
+                }
+            } catch (e) {
+                if (__DEV__) {
+                    console.warn('[OneSignal] Ошибка обработчика foregroundWillDisplay:', e?.message);
+                }
+            }
+        });
+
+        // Обработчик получения уведомлений в background
+        oneSignal.Notifications.addEventListener('received', (event) => {
+            try {
+                const notification = event?.notification || {};
+                const data = notification?.additionalData || notification?.additional_data || {};
+                
+                if (__DEV__) {
+                    console.log('[OneSignal] 📬 Получено уведомление в background', {
+                        notificationId: notification?.notificationId,
+                        title: notification?.title,
+                        body: notification?.body?.substring(0, 50),
+                        roomId: data?.roomId || data?.room_id,
+                        senderId: data?.senderId || data?.sender_id,
+                        type: data?.type,
+                        messageCount: data?.messageCount
+                    });
+                }
+            } catch (e) {
+                if (__DEV__) {
+                    console.warn('[OneSignal] Ошибка обработчика received:', e?.message);
+                }
+            }
+        });
+
+        // Обработчик нажатий
+        oneSignal.Notifications.addEventListener('click', (event) => {
+            try {
+                const n = event?.notification || {};
+                const data =
+                    n.additionalData ||
+                    n.additional_data ||
+                    n?.payload?.additionalData ||
+                    n?.payload?.additional_data ||
+                    null;
+
+                if (__DEV__) {
+                    console.log('[OneSignal] 👆 Нажатие на уведомление', {
+                        notificationId: n?.notificationId,
+                        roomId: data?.roomId || data?.room_id,
+                        senderId: data?.senderId || data?.sender_id,
+                        type: data?.type
+                    });
+                }
+
+                if (data) {
+                    this.handleNotificationNavigation(data);
+                }
+            } catch (_) {}
+        });
+
+    } catch (error) {
+        if (__DEV__) {
+            console.warn('[OneSignal] Ошибка настройки обработчиков:', error?.message);
         }
     }
+}
 
     // Обработка навигации из уведомлений
     handleNotificationNavigation(data) {
