@@ -1,19 +1,40 @@
-import React, { memo, useCallback, useMemo } from 'react';
-import { View, Text, Image, StyleSheet, Pressable, Dimensions } from 'react-native';
+// Ключевые изменения для работы на Android и iOS:
+// 1. Добавлен collapsable={false} для PagerView и всех View внутри
+// 2. PagerView не обернут в Pressable - область изображений свободна для свайпов
+// 3. Только область контента (текст, цены) обернута в Pressable для обработки нажатий
+// 4. Добавлены необходимые пропсы в PagerView для корректной работы
+
+import React, { memo, useCallback, useMemo, useRef, useState, useEffect } from 'react';
+import { View, Text, Image, StyleSheet, Pressable, Dimensions, Platform } from 'react-native';
+import PagerView from "react-native-pager-view";
 import { Color, Border, FontFamily, FontSize } from '@app/styles/GlobalStyles';
-// Импортируем напрямую из хука, чтобы избежать циклической зависимости
 import { useProductCard } from "../../../hooks/useProductCard";
 import { useToast } from '@shared/ui/Toast';
 import {AddToCartButton} from "@shared/ui/Cart/ui/AddToCartButton";
+import {CustomSliderIndicator} from "@shared/ui/CustomSliderIndicator";
+import { getBaseUrl } from '@shared/api/api';
 import * as navigation from "@shared/utils/NavigationRef";
 
 const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
 
+const getImageBaseUrl = () => {
+    const baseUrl = getBaseUrl();
+    return baseUrl ? `${baseUrl}/uploads/` : 'http://212.67.11.134:5000/uploads/';
+};
+
+const formatImageUrl = (imagePath) => {
+    if (!imagePath) return null;
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+        return imagePath;
+    }
+    return `${getImageBaseUrl()}${imagePath}`;
+};
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const isSmallScreen = SCREEN_WIDTH < 360; // Очень маленькие экраны (iPhone SE 1st gen и меньше)
-const isMediumScreen = SCREEN_WIDTH >= 360 && SCREEN_WIDTH < 414; // Стандартные смартфоны
-const isLargePhone = SCREEN_WIDTH >= 414 && SCREEN_WIDTH < 768; // Большие смартфоны (iPhone 12 Pro Max, Plus модели)
-const isTablet = SCREEN_WIDTH >= 768; // Планшеты
+const isSmallScreen = SCREEN_WIDTH < 360;
+const isMediumScreen = SCREEN_WIDTH >= 360 && SCREEN_WIDTH < 414;
+const isLargePhone = SCREEN_WIDTH >= 414 && SCREEN_WIDTH < 768;
+const isTablet = SCREEN_WIDTH >= 768;
 
 const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = false }) => {
     const { showError, showWarning } = useToast();
@@ -24,6 +45,18 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
         isLoading,
         status
     } = useProductCard(product);
+
+    const [activeImageIndex, setActiveImageIndex] = useState(0);
+    const [loadingError, setLoadingError] = useState({});
+    const [isScrolling, setIsScrolling] = useState(false);
+    const pagerRef = useRef(null);
+    const compactPagerRef = useRef(null);
+    const touchStartX = useRef(0);
+    const touchStartY = useRef(0);
+    const touchStartTime = useRef(0);
+    const hasMovedRef = useRef(false);
+    const isSwipingRef = useRef(false);
+    const scrollTimeoutRef = useRef(null);
 
     if (!product || !productId) {
         return null;
@@ -38,8 +71,7 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
 
     const handleAddToCartPress = useCallback(async () => {
         try {
-            await handleAddToCart(1); // Добавляем 1 коробку
-            // Можно добавить уведомление об успешном добавлении
+            await handleAddToCart(1);
         } catch (error) {
             console.error('ProductCard: Error adding to cart:', error);
             if (error.message && error.message.includes('403')) {
@@ -60,12 +92,10 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
         navigation.navigate('Cart');
     }, []);
 
-    // Адаптивные размеры
     const adaptiveStyles = useMemo(() => {
         let imageWidth, contentMarginLeft, paddingRight, fontSize;
         
         if (isTablet) {
-            // Планшеты
             imageWidth = 170;
             contentMarginLeft = 190;
             paddingRight = 40;
@@ -77,7 +107,6 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                 priceUnit: 11,
             };
         } else if (isLargePhone) {
-            // Большие смартфоны (iPhone 14 Plus, Pro Max и т.д.)
             imageWidth = 145;
             contentMarginLeft = 165;
             paddingRight = 30;
@@ -89,7 +118,6 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                 priceUnit: 10,
             };
         } else if (isMediumScreen) {
-            // Средние смартфоны (iPhone 12/13/14/15 стандартные)
             imageWidth = 135;
             contentMarginLeft = 155;
             paddingRight = 25;
@@ -101,7 +129,6 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                 priceUnit: 9,
             };
         } else {
-            // Очень маленькие экраны (iPhone SE 1st gen)
             imageWidth = 105;
             contentMarginLeft = 115;
             paddingRight = 15;
@@ -124,18 +151,209 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
 
     const containerStyle = width ? [styles.container, { width }] : styles.container;
 
-    // Получаем priceInfo из product или originalData
     const priceInfo = useMemo(() => {
         return product?.priceInfo || product?.originalData?.priceInfo || null;
     }, [product]);
+
+    const imageArray = useMemo(() => {
+        let images = [];
+        
+        if (product?.images && Array.isArray(product.images) && product.images.length > 0) {
+            images = product.images.filter(item => {
+                if (!item) return false;
+                if (typeof item === 'string') return item.trim() !== '';
+                if (item.uri || item.url || item.path || item.src) return true;
+                return false;
+            });
+        }
+        else if (product?.originalData?.images && Array.isArray(product.originalData.images) && product.originalData.images.length > 0) {
+            images = product.originalData.images.filter(item => {
+                if (!item) return false;
+                if (typeof item === 'string') return item.trim() !== '';
+                if (item.uri || item.url || item.path || item.src) return true;
+                return false;
+            });
+        }
+        else if (productData?.image) {
+            images = [productData.image];
+        }
+        else if (product?.image) {
+            images = [product.image];
+        }
+        
+        return images.length > 0 ? images : [];
+    }, [product?.images, product?.originalData?.images, product?.image, productData?.image]);
+
+    const extendedImageArray = useMemo(() => {
+        if (imageArray.length <= 1) return imageArray;
+        return [imageArray[imageArray.length - 1], ...imageArray, imageArray[0]];
+    }, [imageArray]);
     
-    // Используем данные из productData (коробочная логика)
+    const realImageIndex = useMemo(() => {
+        if (imageArray.length <= 1) return activeImageIndex;
+        if (activeImageIndex === 0) return imageArray.length - 1;
+        if (activeImageIndex === extendedImageArray.length - 1) return 0;
+        return activeImageIndex - 1;
+    }, [activeImageIndex, imageArray.length, extendedImageArray.length]);
+
+    const handlePageSelected = useCallback((event) => {
+        const newIndex = event.nativeEvent.position;
+        setActiveImageIndex(newIndex);
+        
+        if (imageArray.length > 1 && pagerRef.current) {
+            if (newIndex === 0) {
+                setTimeout(() => {
+                    pagerRef.current?.setPageWithoutAnimation(imageArray.length);
+                }, 50);
+            }
+            else if (newIndex === extendedImageArray.length - 1) {
+                setTimeout(() => {
+                    pagerRef.current?.setPageWithoutAnimation(1);
+                }, 50);
+            }
+        }
+    }, [imageArray.length, extendedImageArray.length]);
+
+    const handleCompactPageSelected = useCallback((event) => {
+        const newIndex = event.nativeEvent.position;
+        setActiveImageIndex(newIndex);
+        
+        if (imageArray.length > 1 && compactPagerRef.current) {
+            if (newIndex === 0) {
+                setTimeout(() => {
+                    compactPagerRef.current?.setPageWithoutAnimation(imageArray.length);
+                }, 50);
+            }
+            else if (newIndex === extendedImageArray.length - 1) {
+                setTimeout(() => {
+                    compactPagerRef.current?.setPageWithoutAnimation(1);
+                }, 50);
+            }
+        }
+    }, [imageArray.length, extendedImageArray.length]);
+
+    // Обработчик изменения состояния прокрутки
+    const handlePageScrollStateChanged = useCallback((event) => {
+        const state = event.nativeEvent.pageScrollState;
+        if (state === 'dragging') {
+            setIsScrolling(true);
+            isSwipingRef.current = true;
+            hasMovedRef.current = true;
+            if (scrollTimeoutRef.current) {
+                clearTimeout(scrollTimeoutRef.current);
+            }
+        } else if (state === 'idle') {
+            scrollTimeoutRef.current = setTimeout(() => {
+                setIsScrolling(false);
+                isSwipingRef.current = false;
+                hasMovedRef.current = false;
+            }, 150);
+        }
+    }, []);
+
+    // Обработчик изменения состояния прокрутки для compact версии
+    const handleCompactPageScrollStateChanged = useCallback((event) => {
+        const state = event.nativeEvent.pageScrollState;
+        if (state === 'dragging') {
+            setIsScrolling(true);
+            isSwipingRef.current = true;
+            hasMovedRef.current = true;
+            if (scrollTimeoutRef.current) {
+                clearTimeout(scrollTimeoutRef.current);
+            }
+        } else if (state === 'idle') {
+            scrollTimeoutRef.current = setTimeout(() => {
+                setIsScrolling(false);
+                isSwipingRef.current = false;
+                hasMovedRef.current = false;
+            }, 150);
+        }
+    }, []);
+
+    // Обработчик начала касания для различения тапа и свайпа
+    const handleTouchStart = useCallback((event) => {
+        const touch = event.nativeEvent.touches[0];
+        if (touch) {
+            touchStartX.current = touch.pageX;
+            touchStartY.current = touch.pageY;
+            touchStartTime.current = Date.now();
+            hasMovedRef.current = false;
+        }
+    }, []);
+
+    // Обработчик движения для определения свайпа
+    const handleTouchMove = useCallback((event) => {
+        const touch = event.nativeEvent.touches[0];
+        if (touch) {
+            const deltaX = Math.abs(touch.pageX - touchStartX.current);
+            const deltaY = Math.abs(touch.pageY - touchStartY.current);
+            // Если движение больше 10px, считаем это свайпом
+            if (deltaX > 10 || deltaY > 10) {
+                hasMovedRef.current = true;
+            }
+        }
+    }, []);
+
+    // Обработчик окончания касания для обработки тапа
+    const handleTouchEnd = useCallback((event) => {
+        const touchTime = Date.now() - touchStartTime.current;
+        const touch = event.nativeEvent.changedTouches[0];
+        
+        if (touch) {
+            const deltaX = Math.abs(touch.pageX - touchStartX.current);
+            const deltaY = Math.abs(touch.pageY - touchStartY.current);
+            
+            // Если движение было минимальным (< 10px) и время касания короткое (< 300ms), это тап
+            if (!hasMovedRef.current && deltaX < 10 && deltaY < 10 && touchTime < 300) {
+                // Небольшая задержка, чтобы убедиться, что PagerView не обработал это как свайп
+                setTimeout(() => {
+                    if (!isSwipingRef.current && !isScrolling) {
+                        handlePress();
+                    }
+                }, 100);
+            }
+        }
+        
+        // Сбрасываем флаги
+        hasMovedRef.current = false;
+    }, [handlePress]);
+
+    const handleImageError = useCallback((index) => {
+        setLoadingError(prev => ({...prev, [index]: true}));
+    }, []);
+
+    // Очистка timeout при размонтировании
+    useEffect(() => {
+        return () => {
+            if (scrollTimeoutRef.current) {
+                clearTimeout(scrollTimeoutRef.current);
+            }
+        };
+    }, []);
+
+    const getImageSource = useCallback((item) => {
+        if (typeof item === 'string') {
+            const url = formatImageUrl(item);
+            return url ? { uri: url } : placeholderImage;
+        } else if (item && typeof item === 'object') {
+            if (item.uri) {
+                const url = formatImageUrl(item.uri);
+                return url ? { uri: url } : placeholderImage;
+            }
+            const imageUrl = item.url || item.uri || item.path || item.src;
+            if (imageUrl) {
+                const url = formatImageUrl(imageUrl);
+                return url ? { uri: url } : placeholderImage;
+            }
+        }
+        return placeholderImage;
+    }, []);
+    
     const isActive = productData.isActive !== false;
     const availableBoxes = productData.availableBoxes || 0;
     const itemsPerBox = productData.itemsPerBox || 1;
     const pricePerItem = productData.pricePerItem || product.price || 0;
     
-    // Используем effectivePrice из priceInfo, если доступен, иначе используем boxPrice
     const boxPrice = useMemo(() => {
         if (priceInfo?.effectivePrice) {
             return priceInfo.effectivePrice;
@@ -163,28 +381,81 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
         return null;
     };
 
-    // Компактный режим для чата
     if (compact) {
         return (
-            <Pressable
-                style={[styles.compactContainer, width && { width }]}
-                onPress={handlePress}
-                disabled={isLoading}
-            >
-                {/* Изображение товара сверху */}
-                <View style={styles.compactImageContainer}>
-                    <Image
-                        style={styles.compactProductImage}
-                        resizeMode="cover"
-                        source={productData.image || placeholderImage}
-                        defaultSource={placeholderImage}
-                    />
-                    {/* Статус-бейдж */}
+            <View style={[styles.compactContainer, width && { width }]}>
+                <View 
+                    style={styles.compactImageContainer}
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                >
+                    {imageArray.length > 1 ? (
+                        <PagerView
+                            ref={compactPagerRef}
+                            style={styles.compactPagerView}
+                            initialPage={1}
+                            onPageSelected={handleCompactPageSelected}
+                            onPageScrollStateChanged={handleCompactPageScrollStateChanged}
+                            scrollEnabled={true}
+                            collapsable={false}
+                            orientation="horizontal"
+                            overScrollMode="never"
+                            overdrag={false}
+                            nestedScrollEnabled={true}
+                            keyboardDismissMode="on-drag"
+                        >
+                            {extendedImageArray.map((item, index) => {
+                                const imageSource = getImageSource(item);
+                                return (
+                                    <View 
+                                        key={`compact-image-${index}`} 
+                                        style={styles.compactSlide}
+                                        collapsable={false}
+                                    >
+                                        {loadingError[index % imageArray.length] ? (
+                                            <Image
+                                                source={placeholderImage}
+                                                style={styles.compactProductImage}
+                                                resizeMode="cover"
+                                            />
+                                        ) : (
+                                            <Image
+                                                source={imageSource}
+                                                style={styles.compactProductImage}
+                                                resizeMode="cover"
+                                                defaultSource={placeholderImage}
+                                                onError={() => handleImageError(index % imageArray.length)}
+                                            />
+                                        )}
+                                    </View>
+                                );
+                            })}
+                        </PagerView>
+                    ) : (
+                        <Image
+                            style={styles.compactProductImage}
+                            resizeMode="cover"
+                            source={imageArray.length > 0 ? getImageSource(imageArray[0]) : (productData.image || placeholderImage)}
+                            defaultSource={placeholderImage}
+                        />
+                    )}
+                    {imageArray.length > 1 && (
+                        <View style={styles.compactIndicatorContainer} pointerEvents="none">
+                            <CustomSliderIndicator
+                                totalItems={imageArray.length}
+                                activeIndex={realImageIndex}
+                            />
+                        </View>
+                    )}
                     {getStatusBadge()}
                 </View>
 
-                {/* Контент снизу */}
-                <View style={styles.compactContentContainer}>
+                <Pressable
+                    style={styles.compactContentContainer}
+                    onPress={handlePress}
+                    disabled={isLoading}
+                >
                     <Text style={styles.compactTitle} numberOfLines={2} ellipsizeMode="tail">
                         {productData.name}
                     </Text>
@@ -202,42 +473,94 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                         </Text>
                     )}
                     
-                    {/* Компактная информация о ценах */}
                     {priceInfo && priceInfo.effectivePrice && Math.abs(priceInfo.effectivePrice - boxPrice) > 0.01 && (
                         <Text style={styles.compactPriceInfo}>
                             Эффективная: {parseFloat(priceInfo.effectivePrice).toFixed(0)} ₽
                         </Text>
                     )}
-                </View>
-            </Pressable>
+                </Pressable>
+            </View>
         );
     }
 
-    // Обычный режим
     return (
-        <Pressable
-            style={[
-                containerStyle,
-            ]}
-            onPress={handlePress}
-            disabled={isLoading}
-        >
-            {/* Изображение товара */}
-            <Image
-                style={[styles.productImage, { width: adaptiveStyles.imageWidth }]}
-                resizeMode="cover"
-                source={productData.image || placeholderImage}
-                defaultSource={placeholderImage}
-            />
+        <View style={containerStyle}>
+            <View 
+                style={[styles.imageContainer, { width: adaptiveStyles.imageWidth }]}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+            >
+                {imageArray.length > 1 ? (
+                    <PagerView
+                        ref={pagerRef}
+                        style={[styles.pagerView, { width: adaptiveStyles.imageWidth }]}
+                        initialPage={1}
+                        onPageSelected={handlePageSelected}
+                        onPageScrollStateChanged={handlePageScrollStateChanged}
+                        scrollEnabled={true}
+                        collapsable={false}
+                        orientation="horizontal"
+                        overScrollMode="never"
+                        overdrag={false}
+                        nestedScrollEnabled={true}
+                        keyboardDismissMode="on-drag"
+                    >
+                        {extendedImageArray.map((item, index) => {
+                            const imageSource = getImageSource(item);
+                            return (
+                                <View 
+                                    key={`image-${index}`} 
+                                    style={styles.slide}
+                                    collapsable={false}
+                                >
+                                    {loadingError[index % imageArray.length] ? (
+                                        <Image
+                                            source={placeholderImage}
+                                            style={styles.productImage}
+                                            resizeMode="cover"
+                                        />
+                                    ) : (
+                                        <Image
+                                            source={imageSource}
+                                            style={styles.productImage}
+                                            resizeMode="cover"
+                                            defaultSource={placeholderImage}
+                                            onError={() => handleImageError(index % imageArray.length)}
+                                        />
+                                    )}
+                                </View>
+                            );
+                        })}
+                    </PagerView>
+                ) : (
+                    <Image
+                        style={[styles.productImage, { width: adaptiveStyles.imageWidth }]}
+                        resizeMode="cover"
+                        source={imageArray.length > 0 ? getImageSource(imageArray[0]) : (productData.image || placeholderImage)}
+                        defaultSource={placeholderImage}
+                    />
+                )}
+                {imageArray.length > 1 && (
+                    <View style={styles.indicatorContainer} pointerEvents="none">
+                        <CustomSliderIndicator
+                            totalItems={imageArray.length}
+                            activeIndex={realImageIndex}
+                        />
+                    </View>
+                )}
+            </View>
 
-            {/* Статус-бейдж только для критических случаев */}
             {getStatusBadge()}
 
-            {/* Контент */}
-            <View style={[styles.contentContainer, { 
-                marginLeft: adaptiveStyles.contentMarginLeft,
-                paddingRight: adaptiveStyles.paddingRight 
-            }]}>
+            <Pressable
+                style={[styles.contentContainer, { 
+                    marginLeft: adaptiveStyles.contentMarginLeft,
+                    paddingRight: adaptiveStyles.paddingRight 
+                }]}
+                onPress={handlePress}
+                disabled={isLoading}
+            >
                 <View style={styles.titleContainer}>
                     <Text style={[styles.title, { fontSize: adaptiveStyles.fontSize.title }]} numberOfLines={1} ellipsizeMode="tail">
                         {productData.name}
@@ -251,7 +574,6 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                 </View>
 
                 <View style={styles.priceContainer}>
-                    {/* Цена за штуку */}
                     <View style={styles.priceWrapper}>
                         <Text style={[styles.price, { fontSize: adaptiveStyles.fontSize.price }]}>
                             {pricePerItem.toFixed(0)} ₽
@@ -261,7 +583,6 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                         </Text>
                     </View>
 
-                    {/* Цена за коробку (если товар продается коробками) */}
                     {itemsPerBox > 1 && (
                         <View style={styles.priceWrapper}>
                             <Text style={[styles.boxPrice, { fontSize: adaptiveStyles.fontSize.boxPrice }]}>
@@ -273,11 +594,8 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                         </View>
                     )}
                     
-                    {/* Информация о многоуровневых ценах */}
                     {priceInfo && (
                         <View style={styles.priceInfoContainer}>
-                            
-                            {/* Цена фургона (stopPrice) */}
                             {priceInfo.stopPrice !== null && priceInfo.stopPrice !== undefined && (
                                 <View style={styles.priceInfoRow}>
                                     <Text style={styles.priceInfoLabel}>Цена фургона:</Text>
@@ -287,7 +605,6 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                                 </View>
                             )}
                             
-                            {/* Цена склада (warehousePrice) */}
                             {priceInfo.warehousePrice !== null && priceInfo.warehousePrice !== undefined && (
                                 <View style={styles.priceInfoRow}>
                                     <Text style={styles.priceInfoLabel}>Цена склада:</Text>
@@ -297,7 +614,6 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                                 </View>
                             )}
                             
-                            {/* Наценка (markup) */}
                             {priceInfo.markup && priceInfo.markup > 0 && (
                                 <View style={styles.priceInfoRow}>
                                     <Text style={styles.priceInfoLabel}>Наценка:</Text>
@@ -307,7 +623,6 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                                 </View>
                             )}
                             
-                            {/* Скидка (discount) */}
                             {priceInfo.discount && priceInfo.discount > 0 && (
                                 <View style={styles.priceInfoRow}>
                                     <Text style={styles.priceInfoLabel}>Скидка:</Text>
@@ -317,7 +632,6 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                                 </View>
                             )}
                             
-                            {/* Базовая цена (если отличается от эффективной) */}
                             {priceInfo.basePrice && Math.abs(priceInfo.basePrice - (priceInfo.effectivePrice || boxPrice)) > 0.01 && (
                                 <View style={styles.priceInfoRow}>
                                     <Text style={styles.priceInfoLabel}>Базовая цена:</Text>
@@ -329,9 +643,8 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                         </View>
                     )}
                 </View>
-            </View>
+            </Pressable>
 
-            {/* Кнопка добавления в корзину с переходом */}
             <AddToCartButton
                 style={[styles.addButton, isSmallScreen && styles.addButtonSmall]}
                 product={product}
@@ -340,15 +653,13 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                 isWhite={false}
                 onGoToCart={handleGoToCart}
             />
-        </Pressable>
+        </View>
     );
 };
 
 const arePropsEqual = (prevProps, nextProps) => {
-    // Быстрая проверка на идентичность пропсов
     if (prevProps === nextProps) return true;
 
-    // Проверяем примитивные пропсы
     if (prevProps.width !== nextProps.width) return false;
     if (prevProps.compact !== nextProps.compact) return false;
     if (prevProps.onPress !== nextProps.onPress) return false;
@@ -357,13 +668,10 @@ const arePropsEqual = (prevProps, nextProps) => {
     const prevProduct = prevProps.product;
     const nextProduct = nextProps.product;
 
-    // Проверяем на идентичность объектов
     if (prevProduct === nextProduct) return true;
 
-    // Проверяем на отсутствие данных
     if (!prevProduct || !nextProduct) return false;
 
-    // Проверяем основные поля продукта для оптимизации перерендеринга
     const essentialFieldsEqual = (
         prevProduct.id === nextProduct.id &&
         prevProduct.name === nextProduct.name &&
@@ -374,14 +682,12 @@ const arePropsEqual = (prevProps, nextProps) => {
 
     if (!essentialFieldsEqual) return false;
 
-    // Проверяем изображения только если они действительно изменились
     if (prevProduct.images !== nextProduct.images) {
         if (!prevProduct.images || !nextProduct.images ||
             prevProduct.images.length !== nextProduct.images.length) {
             return false;
         }
 
-        // Проверяем первые несколько изображений
         const imagesToCheck = Math.min(3, prevProduct.images.length);
         for (let i = 0; i < imagesToCheck; i++) {
             if (prevProduct.images[i] !== nextProduct.images[i]) {
@@ -408,7 +714,7 @@ const styles = StyleSheet.create({
         marginBottom: isTablet ? 25 : (isSmallScreen ? 15 : 20),
         marginHorizontal: isTablet ? 12 : (isSmallScreen ? 4 : 8),
     },
-    productImage: {
+    imageContainer: {
         width: 130,
         height: '100%',
         left: 0,
@@ -416,6 +722,28 @@ const styles = StyleSheet.create({
         top: 0,
         position: 'absolute',
         borderRadius: Border.br_xl,
+        overflow: 'hidden',
+    },
+    pagerView: {
+        width: 130,
+        height: '100%',
+    },
+    slide: {
+        flex: 1,
+        width: 130,
+        height: '100%',
+    },
+    productImage: {
+        width: 130,
+        height: '100%',
+        borderRadius: Border.br_xl,
+    },
+    indicatorContainer: {
+        position: 'absolute',
+        bottom: 8,
+        width: '100%',
+        alignItems: 'center',
+        zIndex: 10,
     },
     contentContainer: {
         marginLeft: 150,
@@ -486,18 +814,6 @@ const styles = StyleSheet.create({
         marginLeft: 4,
         marginBottom: 2,
     },
-    weight: {
-        fontFamily: FontFamily.sFProText,
-        fontSize: FontSize.size_xs,
-        color: Color.textSecondary,
-        marginBottom: 2,
-    },
-    supplier: {
-        fontFamily: FontFamily.sFProText,
-        fontSize: FontSize.size_xs,
-        color: Color.textSecondary,
-        fontStyle: 'italic',
-    },
     addButton: {
         position: 'absolute',
         right: 0,
@@ -548,7 +864,6 @@ const styles = StyleSheet.create({
     statusTextCompact: {
         fontSize: 9,
     },
-    // Компактный режим для чата
     compactContainer: {
         width: 220,
         borderWidth: 0.5,
@@ -562,10 +877,27 @@ const styles = StyleSheet.create({
         height: 140,
         position: 'relative',
         backgroundColor: '#F9F9F9',
+        overflow: 'hidden',
+    },
+    compactPagerView: {
+        width: '100%',
+        height: '100%',
+    },
+    compactSlide: {
+        flex: 1,
+        width: '100%',
+        height: '100%',
     },
     compactProductImage: {
         width: '100%',
         height: '100%',
+    },
+    compactIndicatorContainer: {
+        position: 'absolute',
+        bottom: 8,
+        width: '100%',
+        alignItems: 'center',
+        zIndex: 10,
     },
     compactContentContainer: {
         padding: 10,

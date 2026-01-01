@@ -59,6 +59,13 @@ export const ProductsList = ({
                 image: product.images && Array.isArray(product.images) && product.images.length > 0
                     ? { uri: product.images[0] }
                     : defaultProductImage,
+                // Сохраняем массив images для листания изображений
+                // Передаем массив images, если он есть, иначе undefined (ProductCard будет искать в originalData.images)
+                images: product.images && Array.isArray(product.images) && product.images.length > 0 
+                    ? product.images 
+                    : (product.originalData?.images && Array.isArray(product.originalData.images) && product.originalData.images.length > 0
+                        ? product.originalData.images
+                        : undefined),
                 originalData: product
             }));
     }, [products?.length, products]); // Добавляем products.length для лучшего контроля зависимостей
@@ -193,10 +200,11 @@ export const ProductsList = ({
                 windowSize={5}
                 maxToRenderPerBatch={10}
                 updateCellsBatchingPeriod={50}
-                removeClippedSubviews={true}
+                removeClippedSubviews={false}
                 initialNumToRender={10}
                 showsVerticalScrollIndicator={false}
                 scrollEnabled={true}
+                nestedScrollEnabled={true}
                 ListHeaderComponent={ListHeaderComponent}
                 ListFooterComponent={renderListFooter}
                 scrollEventThrottle={16}

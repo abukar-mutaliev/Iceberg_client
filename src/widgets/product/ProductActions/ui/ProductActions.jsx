@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { StyleSheet, View, TouchableOpacity, ActivityIndicator, InteractionManager } from 'react-native';
+import { StyleSheet, View, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
-import { useNavigation, CommonActions } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import {deleteProduct, fetchProductById, resetCurrentProduct, updateProductOptimistic} from '@entities/product';
 import { fetchCategories } from '@entities/category';
 import { fetchProfile } from '@entities/profile';
@@ -258,19 +258,17 @@ export const ProductActions = React.memo(({
                     dispatch(resetCurrentProduct());
 
                     await dispatch(deleteProduct(product.id)).unwrap();
+                    
+                    // Показываем алерт успеха сразу
                     GlobalAlert.showSuccess('', 'Товар успешно удален');
 
-                    // Используем InteractionManager для безопасной навигации после удаления
-                    // Полностью сбрасываем стек навигации к Main, что размонтирует все дочерние экраны
-                    // включая ProductDetail, что предотвратит попытки загрузки удаленного продукта
-                    InteractionManager.runAfterInteractions(() => {
-                        navigation.dispatch(
-                            CommonActions.reset({
-                                index: 0,
-                                routes: [{ name: 'Main' }]
-                            })
-                        );
-                    });
+                    // Возвращаемся назад к списку продуктов (без задержки)
+                    if (navigation.canGoBack()) {
+                        navigation.goBack();
+                    } else {
+                        // Если нельзя вернуться назад, возвращаемся к главному экрану
+                        navigation.navigate('Main');
+                    }
                 } catch (error) {
                     GlobalAlert.showError('Ошибка', error.toString());
                 }

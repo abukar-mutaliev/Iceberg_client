@@ -194,3 +194,4 @@ if (validLocationX < 3 && playbackPosition > 5) return;
 - `mobile/src/screens/chat/ui/DirectChatScreen.jsx` - экран личного чата
 - `mobile/src/screens/chat/ui/GroupChatScreen.jsx` - экран группового чата
 
+
