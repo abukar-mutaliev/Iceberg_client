@@ -33,10 +33,11 @@ const withAndroidWindowSoftInputMode = (config) => {
     // Обновляем windowSoftInputMode для всех активностей
     activities.forEach((activity) => {
       if (activity.$) {
-        // Устанавливаем adjustPan|stateHidden для чатов
-        // adjustPan - сдвигает экран вверх без изменения размеров
+        // Устанавливаем adjustResize|stateHidden для корректной работы клавиатуры
+        // adjustResize - изменяет размер окна, правильно компенсируя клавиатуру
         // stateHidden - скрывает клавиатуру при переходе между экранами
-        activity.$['android:windowSoftInputMode'] = 'adjustPan|stateHidden';
+        // Примечание: для фиксации хедера используется keyboardHandlingEnabled: false и абсолютная позиция
+        activity.$['android:windowSoftInputMode'] = 'adjustResize|stateHidden';
       }
     });
 

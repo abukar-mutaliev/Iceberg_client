@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useMemo, useState, useRef} from 'react';
+import React, {useCallback, useEffect, useLayoutEffect, useMemo, useState, useRef} from 'react';
 import {
     View, 
     FlatList, 
@@ -13,12 +13,12 @@ import {
     Clipboard, 
     KeyboardAvoidingView, 
     Keyboard,
-    AppState
+    AppState,
+    TouchableWithoutFeedback
 } from 'react-native';
-import * as Device from 'expo-device';
 import * as Haptics from 'expo-haptics';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {useFocusEffect, CommonActions} from '@react-navigation/native';
+import {useFocusEffect} from '@react-navigation/native';
 import {useDispatch, useSelector, useStore} from 'react-redux';
 import {useTabBar} from '@widgets/navigation/context';
 import {
@@ -32,7 +32,6 @@ import {
     sendVoice,
     sendImages,
     cancelFailedMessage,
-    updateMessageReactions,
 } from '@entities/chat/model/slice';
 import {makeSelectRoomMessages, selectIsRoomDeleted} from '@entities/chat/model/selectors';
 import {fetchProductById} from '@entities/product/model/slice';
@@ -51,18 +50,17 @@ import {useChatSocketActions} from '@entities/chat/hooks/useChatSocketActions';
 import {ChatHeader} from '@entities/chat/ui/ChatHeader';
 import {ChatSelectionHeader} from '@entities/chat/ui/ChatSelectionHeader';
 import {useCachedMessages, useMediaPreload} from '@entities/chat/hooks/useChatCache';
-
-import {getBaseUrl} from '@shared/api/api';
 import {ImageViewerModal} from '@shared/ui/ImageViewerModal/ui/ImageViewerModal';
-import {IconDelete} from '@shared/ui/Icon/ProductManagement/IconDelete';
-import ArrowBackIcon from '@shared/ui/Icon/Common/ArrowBackIcon';
 import {useCustomAlert} from '@shared/ui/CustomAlert/CustomAlertProvider';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import {Ionicons} from '@expo/vector-icons';
+import {getBaseUrl} from '@shared/api/api';
 import ChatApi from '@entities/chat/api/chatApi';
 import {selectRoomsList} from '@entities/chat/model/selectors';
 import PushNotificationService from '@shared/services/PushNotificationService';
-import {getChatKeyboardGapPx} from '@shared/lib/device/chatKeyboardGap';
+
+// Константы
+const HEADER_OFFSET = 64;
+const MESSAGES_LOAD_LIMIT = 50;
+const LOAD_MORE_THRESHOLD = 2000;
 
 
 export const DirectChatScreen = ({route, navigation}) => {
@@ -71,16 +69,26 @@ export const DirectChatScreen = ({route, navigation}) => {
         productId: shareProductId,
         productInfo,
         autoSendProduct,
-        groupRoomId,
         userId,
-    } = route.params;
+    } = route.params || {};
     
-    // Проверка устройства для специальной обработки Samsung
-    const isSamsung = useMemo(() => {
-        const brand = String(Device.brand || '').toLowerCase();
-        return brand.includes('samsung');
-    }, []);
+    // ============ HOOKS ============
+    const dispatch = useDispatch();
+    const store = useStore();
+    const { showError, showWarning, showConfirm } = useCustomAlert();
+    const insets = useSafeAreaInsets();
+    const { hideTabBar, showTabBar } = useTabBar();
+    const { emitActiveRoom, emitMarkRead, emitToggleReaction } = useChatSocketActions();
     
+    // ============ REFS ============
+    const isRoomDeletedRef = useRef(false);
+    const isLoadingMoreRef = useRef(false);
+    const flatListRef = useRef(null);
+    const isMountedRef = useRef(true);
+    const paddingTopAnim = useRef(new Animated.Value(0)).current;
+    const appStateRef = useRef(AppState.currentState);
+    
+    // ============ STATE ============
     // UI State
     const [imageViewerVisible, setImageViewerVisible] = useState(false);
     const [selectedImageUri, setSelectedImageUri] = useState(null);
@@ -90,50 +98,27 @@ export const DirectChatScreen = ({route, navigation}) => {
     const [retryingMessages, setRetryingMessages] = useState(new Set());
     const [pressedMessageId, setPressedMessageId] = useState(null);
     
-    // Reply and Forward State
+    // Reply and Forward
     const [replyTo, setReplyTo] = useState(null);
     const [highlightedMessageId, setHighlightedMessageId] = useState(null);
     const [forwardModalVisible, setForwardModalVisible] = useState(false);
     const [messageToForward, setMessageToForward] = useState(null);
     
-    // Reaction State
+    // Reactions
     const [reactionPickerVisible, setReactionPickerVisible] = useState(false);
     const [reactionPickerMessageId, setReactionPickerMessageId] = useState(null);
     const [reactionPickerPosition, setReactionPickerPosition] = useState(null);
     const [fullEmojiPickerVisible, setFullEmojiPickerVisible] = useState(false);
     
-    // Delete Message State
+    // Delete
     const [deleteMessageModalVisible, setDeleteMessageModalVisible] = useState(false);
     const [messagesToDelete, setMessagesToDelete] = useState([]);
     
-    // Refs
-    const isRoomDeletedRef = useRef(false);
-    const isLoadingMoreRef = useRef(false);
-    const flatListRef = useRef(null);
-    const isMountedRef = useRef(true);
-    const paddingTopAnim = useRef(new Animated.Value(0)).current;
-    const appStateRef = useRef(AppState.currentState);
-    
-    // Hooks
-    const dispatch = useDispatch();
-    const store = useStore();
-    const { showError, showWarning, showConfirm } = useCustomAlert();
-    const insets = useSafeAreaInsets();
-    const { hideTabBar, showTabBar } = useTabBar();
-    
-    // Улучшенное управление клавиатурой
-    const [keyboardState, setKeyboardState] = useState({
-        visible: false,
-        height: 0,
-        duration: 250,
-    });
-    
+    // Keyboard state
+    const [keyboardVisible, setKeyboardVisible] = useState(false);
     const [animatedPaddingTop, setAnimatedPaddingTop] = useState(0);
     
-    // Constants
-    const headerOffset = 64;
-    
-    // Selectors
+    // ============ SELECTORS ============
     const selectRoomMessages = useMemo(() => makeSelectRoomMessages(), []);
     const reduxMessages = useSelector((s) => selectRoomMessages(s, roomId));
     const loading = useSelector((s) => s.chat?.messages?.[roomId]?.loading);
@@ -142,105 +127,48 @@ export const DirectChatScreen = ({route, navigation}) => {
     const currentUserId = useSelector((s) => s.auth?.user?.id);
     const currentUser = useSelector((s) => s.auth?.user);
     const roomDataRaw = useSelector((s) => s.chat?.rooms?.byId?.[roomId]);
-    const roomData = roomDataRaw?.room ? roomDataRaw.room : roomDataRaw;
+    const roomData = useMemo(() => roomDataRaw?.room || roomDataRaw, [roomDataRaw]);
     const participantsById = useSelector((s) => s.chat?.participants?.byUserId || {});
     const isRoomDeleted = useSelector((s) => selectIsRoomDeleted(s, roomId));
     const rooms = useSelector(selectRoomsList);
     
-    
     // Кэш сообщений
-    const { messages: cachedMessages, isLoading: isCacheLoading } = useCachedMessages(roomId);
+    const { messages: cachedMessages } = useCachedMessages(roomId);
     
-    // Объединяем кэшированные и Redux сообщения
+    // Объединяем кэшированные и Redux сообщения с дедупликацией
     const messages = useMemo(() => {
-        if (reduxMessages && Array.isArray(reduxMessages) && reduxMessages.length > 0) {
-            return reduxMessages;
-        }
-        if (cachedMessages && Array.isArray(cachedMessages) && cachedMessages.length > 0) {
-            return cachedMessages;
-        }
-        return [];
+        const sourceMessages = reduxMessages?.length > 0 ? reduxMessages : (cachedMessages || []);
+        if (!sourceMessages?.length) return [];
+        
+        // Дедупликация по ID для предотвращения дубликатов
+        const seenIds = new Set();
+        const uniqueMessages = sourceMessages.filter(msg => {
+            const msgId = msg?.id || msg?.temporaryId;
+            if (!msgId || seenIds.has(msgId)) return false;
+            seenIds.add(msgId);
+            return true;
+        });
+        
+        return uniqueMessages;
     }, [reduxMessages, cachedMessages]);
     
-    // Фоновая предзагрузка медиа
+    // Предзагрузка медиа
     useMediaPreload(roomId, messages);
-    
-    // WebSocket функции
-    const { emitActiveRoom, emitMarkRead, emitToggleReaction } = useChatSocketActions();
     
     // Высота индикатора печати
     const typingIndicatorHeight = useTypingIndicatorHeight(roomId);
     
-    // Вычисляем offset для KeyboardAvoidingView
-    const keyboardVerticalOffset = useMemo(() => {
-        if (Platform.OS === 'ios') {
-            return insets.top + headerOffset;
-        }
-        // Для Android добавляем 20px для Samsung клавиатуры
-        return headerOffset + 20;
-    }, [insets.top]);
+    // ============ COMPUTED VALUES ============
     
-    // Дополнительный отступ для Android
-    const androidKeyboardGap = useMemo(() => {
-        if (Platform.OS !== 'android' || !keyboardState.visible) {
-            return 0;
-        }
-        // Для Samsung S25 Ultra нужен большой дополнительный gap
-        const gap = getChatKeyboardGapPx({ keyboardHeight: keyboardState.height });
-        if (gap > 0) {
-            return gap; 
-        }
-        // Для обычных Android устройств добавляем 10px чтобы поле ввода не заходило за клавиатуру
-        return 10;
-    }, [keyboardState.visible, keyboardState.height]);
-    
-    // Динамический стиль для контента списка
-    const listContentStyle = useMemo(() => [
-        styles.listContent,
-        { 
-            paddingTop: animatedPaddingTop, 
-            paddingBottom: 0 + headerOffset 
-        }
-    ], [animatedPaddingTop, headerOffset]);
-    
-    // Динамический стиль для контейнера чата
-    const chatContentStyle = useMemo(() => [
-        styles.chatContent
-    ], []);
-    
-    // Стиль для белой панели системных кнопок
-    const systemBarStyle = useMemo(() => ({
-        height: insets.bottom,
-        backgroundColor: '#ffffff',
-        width: '100%',
-    }), [insets.bottom]);
-    
-    // Стиль для Composer контейнера (БЕЗ белого фона)
-    const composerContainerStyle = useMemo(() => {
-        const baseStyle = {
-            position: 'relative',
-        };
-        
-        if (Platform.OS === 'android' && androidKeyboardGap > 0) {
-            return [baseStyle, { marginBottom: androidKeyboardGap }];
-        }
-        
-        return baseStyle;
-    }, [androidKeyboardGap]);
-    
-    // Проверка прав
+    // Права доступа
     const isSuperAdmin = useMemo(() => {
         return currentUser?.role === 'ADMIN' && 
                (currentUser?.admin?.isSuperAdmin || currentUser?.profile?.isSuperAdmin || currentUser?.isSuperAdmin);
     }, [currentUser]);
 
     const canDeleteMessage = useCallback((message) => {
-        if (!message) return false;
-        if (isSuperAdmin) return true;
-        // Нормализуем ID для корректного сравнения (строка vs число)
-        const messageSenderId = message.senderId ? Number(message.senderId) : null;
-        const normalizedCurrentUserId = currentUserId ? Number(currentUserId) : null;
-        return messageSenderId === normalizedCurrentUserId;
+        if (!message || isSuperAdmin) return isSuperAdmin;
+        return Number(message.senderId) === Number(currentUserId);
     }, [isSuperAdmin, currentUserId]);
 
     // Данные собеседника
@@ -275,12 +203,39 @@ export const DirectChatScreen = ({route, navigation}) => {
 
     const canSendMessages = true;
 
+    // ============ STYLES ============
+    
+    const keyboardVerticalOffset = useMemo(() => {
+        return Platform.OS === 'ios' ? insets.top + HEADER_OFFSET : 0;
+    }, [insets.top]);
+    
+    const listContentStyle = useMemo(() => [
+        styles.listContent,
+        { 
+            paddingTop: animatedPaddingTop, 
+            paddingBottom: HEADER_OFFSET 
+        }
+    ], [animatedPaddingTop]);
+    
+    const systemBarStyle = useMemo(() => ({
+        height: insets.bottom,
+        backgroundColor: '#ffffff',
+        width: '100%',
+    }), [insets.bottom]);
+    
+    // Best practice: простой отступ при открытой клавиатуре
+    const composerContainerStyle = useMemo(() => {
+        if (keyboardVisible) {
+            return [styles.composerContainer, { marginBottom: 85 }];
+        }
+        return styles.composerContainer;
+    }, [keyboardVisible]);
+
     // ============ EFFECTS ============
     
-    // Отслеживаем размонтирование
+    // Монтирование/размонтирование
     useEffect(() => {
         isMountedRef.current = true;
-        // Немедленно скрываем таббар при монтировании
         hideTabBar();
         
         return () => {
@@ -288,115 +243,76 @@ export const DirectChatScreen = ({route, navigation}) => {
         };
     }, [hideTabBar]);
     
-    // Скрываем таббар при входе на экран чата (в дополнение к useEffect выше)
+    // TabBar visibility
     useFocusEffect(
         useCallback(() => {
             hideTabBar();
-            
             return () => {
-                // Показываем таббар только если компонент все еще смонтирован
-                if (isMountedRef.current) {
-                    showTabBar();
-                }
+                if (isMountedRef.current) showTabBar();
             };
         }, [hideTabBar, showTabBar])
     );
     
-    // Подписка на события клавиатуры
+    // Упрощенная логика клавиатуры
     useEffect(() => {
         const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
         const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
         
-        const handleKeyboardShow = (event) => {
+        const handleShow = () => {
             if (!isMountedRef.current) return;
-            
-            const {height, duration} = event.endCoordinates || {};
-            
-            setKeyboardState({
-                visible: true,
-                height: height || 0,
-                duration: duration || 250,
-            });
+            setKeyboardVisible(true);
         };
         
-        const handleKeyboardHide = (event) => {
+        const handleHide = () => {
             if (!isMountedRef.current) return;
-            
-            const {duration} = event.endCoordinates || {};
-            
-            setKeyboardState({
-                visible: false,
-                height: 0,
-                duration: duration || 250,
-            });
+            setKeyboardVisible(false);
         };
         
-        const showSubscription = Keyboard.addListener(showEvent, handleKeyboardShow);
-        const hideSubscription = Keyboard.addListener(hideEvent, handleKeyboardHide);
+        const showSub = Keyboard.addListener(showEvent, handleShow);
+        const hideSub = Keyboard.addListener(hideEvent, handleHide);
         
         return () => {
-            showSubscription.remove();
-            hideSubscription.remove();
+            showSub.remove();
+            hideSub.remove();
         };
     }, []);
     
-    // Закрытие клавиатуры системным свайпом назад или кнопкой (Android)
+    // Android back button для закрытия клавиатуры
     useEffect(() => {
         if (Platform.OS !== 'android') return;
         
         const handleBackPress = () => {
-            if (keyboardState.visible) {
+            if (keyboardVisible) {
                 Keyboard.dismiss();
-                return true; // Предотвращаем выход из экрана
+                return true;
             }
-            return false; // Разрешаем стандартное поведение
+            return false;
         };
         
         const backHandler = BackHandler.addEventListener('hardwareBackPress', handleBackPress);
-        
-        return () => {
-            backHandler.remove();
-        };
-    }, [keyboardState.visible]);
+        return () => backHandler.remove();
+    }, [keyboardVisible]);
     
-    // КРИТИЧНО: Синхронизация сообщений при возврате из фона
+    // AppState - синхронизация при возврате из фона
     useEffect(() => {
         const subscription = AppState.addEventListener('change', (nextAppState) => {
-            // При переходе в фон - закрываем клавиатуру и сбрасываем состояние
-            if (nextAppState.match(/inactive|background/) && appStateRef.current === 'active') {
+            if (nextAppState.match(/inactive|background/)) {
                 Keyboard.dismiss();
-                setKeyboardState({
-                    visible: false,
-                    height: 0,
-                    duration: 250,
-                });
+                setKeyboardVisible(false);
             }
             
-            if (
-                appStateRef.current.match(/inactive|background/) &&
-                nextAppState === 'active' &&
-                roomId &&
-                !isRoomDeletedRef.current
-            ) {
-                console.log('📱 DirectChat: App returned from background, syncing messages for room:', roomId);
-                // Принудительно синхронизируем сообщения с сервера
+            if (appStateRef.current.match(/inactive|background/) && 
+                nextAppState === 'active' && 
+                roomId && 
+                !isRoomDeletedRef.current) {
                 dispatch(fetchMessages({ roomId, limit: 100 }));
-                
-                // Сбрасываем состояние клавиатуры при возврате из фона
-                // чтобы избежать смещения поля ввода
-                setKeyboardState({
-                    visible: false,
-                    height: 0,
-                    duration: 250,
-                });
                 Keyboard.dismiss();
             }
+            
             appStateRef.current = nextAppState;
         });
         
-        return () => {
-            subscription?.remove();
-        };
+        return () => subscription?.remove();
     }, [roomId, dispatch]);
     
     // Анимация padding для индикатора печати
@@ -426,83 +342,41 @@ export const DirectChatScreen = ({route, navigation}) => {
         }
     }, [selectedMessages.size, isSelectionMode]);
     
-    // Навигация beforeRemove
-    useEffect(() => {
-        const sub = navigation.addListener('beforeRemove', (e) => {
-            const actionType = e?.data?.action?.type;
-            const targetRouteName = e?.data?.action?.payload?.name;
-            
-            if (isRoomDeletedRef.current) {
-                dispatch(setActiveRoom(null));
-                if (targetRouteName === 'ChatMain' || actionType === 'RESET') {
-                    return;
-                }
-                return;
-            }
-
-            const productId = route.params?.productId || route.params?.productInfo?.id;
-            const fromScreen = route.params?.fromScreen;
-
-            dispatch(setActiveRoom(null));
-
-            // Если возвращаемся к ProductDetail из ChatRoom, и оба в AppStack,
-            // просто разрешаем обычный back - не перехватываем навигацию
-            // ProductDetail и ChatRoom оба находятся в AppStack, поэтому обычный back должен работать
-            if (productId && fromScreen === 'ProductDetail' && (actionType === 'POP' || actionType === 'GO_BACK' || !actionType)) {
-                // Не перехватываем навигацию - разрешаем обычный back
-                // React Navigation автоматически вернет к предыдущему экрану (ProductDetail) в стеке
-                return;
-            }
-        });
-        return sub;
-    }, [navigation, route.params, dispatch]);
-    
     // Проверка удаления комнаты
     useEffect(() => {
         if ((!roomData || isRoomDeleted) && roomId) {
             isRoomDeletedRef.current = true;
-            
             dispatch(setActiveRoom(null));
-            if (emitActiveRoom) {
-                emitActiveRoom(null);
-            }
+            emitActiveRoom?.(null);
             
-            try {
-                const parent = navigation.getParent();
-                if (parent) {
-                    parent.navigate('ChatMain');
-                } else if (navigation.canGoBack()) {
-                    navigation.goBack();
-                } else {
-                    navigation.navigate('ChatMain');
-                }
-            } catch (error) {
+            const navigateAway = () => {
                 try {
-                    if (navigation.canGoBack()) {
+                    const parent = navigation.getParent();
+                    if (parent) {
+                        parent.navigate('ChatMain');
+                    } else if (navigation.canGoBack()) {
                         navigation.goBack();
+                    } else {
+                        navigation.navigate('ChatMain');
                     }
-                } catch (backError) {
-                    // Ignore
+                } catch (error) {
+                    navigation.canGoBack() && navigation.goBack();
                 }
-            }
+            };
+            
+            navigateAway();
         }
     }, [roomData, roomId, isRoomDeleted, dispatch, navigation, emitActiveRoom]);
     
-    // Установка активной комнаты
+    // Активная комната и уведомления
     useEffect(() => {
-        if (isRoomDeletedRef.current || isRoomDeleted || !roomId) {
-            return;
-        }
+        if (isRoomDeletedRef.current || isRoomDeleted || !roomId) return;
 
         PushNotificationService.setActiveChatRoomId(roomId);
         PushNotificationService.setActiveChatPeerUserId(userId);
         
         dispatch(setActiveRoom(roomId));
-        
-        if (emitActiveRoom) {
-            emitActiveRoom(roomId);
-        }
-        
+        emitActiveRoom?.(roomId);
         dispatch(fetchRoom(roomId));
 
         let markAsReadTimeout;
@@ -519,21 +393,17 @@ export const DirectChatScreen = ({route, navigation}) => {
         
         return () => {
             unsubscribe();
-            if (markAsReadTimeout) {
-                clearTimeout(markAsReadTimeout);
-            }
+            clearTimeout(markAsReadTimeout);
             dispatch(setActiveRoom(null));
             PushNotificationService.setActiveChatRoomId(null);
             PushNotificationService.setActiveChatPeerUserId(null);
-            if (emitActiveRoom) {
-                emitActiveRoom(null);
-            }
+            emitActiveRoom?.(null);
         };
     }, [dispatch, roomId, navigation, currentUserId, emitActiveRoom, isRoomDeleted, userId]);
     
-    // Отметка непрочитанных сообщений
+    // Отметка непрочитанных
     useEffect(() => {
-        if (!messages || !Array.isArray(messages) || !currentUserId) return;
+        if (!messages?.length || !currentUserId) return;
 
         const unreadMessages = messages.filter(msg =>
             msg.senderId !== currentUserId &&
@@ -597,16 +467,16 @@ export const DirectChatScreen = ({route, navigation}) => {
         }
     }, [autoSendProduct, productInfo, roomId, dispatch, messages]);
     
-    // Настройка навигации в зависимости от режима
-    useEffect(() => {
+    // Настройка навигации - используем useLayoutEffect для применения до рендера
+    useLayoutEffect(() => {
         if (isSelectionMode) {
             const canReply = canSendMessages && selectedMessages.size === 1;
-            const selectedMessagesArray = Array.from(selectedMessages);
-            // canDeleteAll = true только если есть выбранные сообщения И все они могут быть удалены
-            const canDeleteAll = selectedMessagesArray.length > 0 && selectedMessagesArray.every(msgId => {
-                const msg = messages.find(m => m.id === msgId);
-                return msg && canDeleteMessage(msg);
-            });
+            const selectedArray = Array.from(selectedMessages);
+            const canDeleteAll = selectedArray.length > 0 && 
+                selectedArray.every(msgId => {
+                    const msg = messages.find(m => m.id === msgId);
+                    return msg && canDeleteMessage(msg);
+                });
             
             navigation.setOptions({
                 headerShown: true,
@@ -623,36 +493,49 @@ export const DirectChatScreen = ({route, navigation}) => {
                     />
                 ),
                 gestureEnabled: false,
+                keyboardHandlingEnabled: false,
             });
             
-            const backHandler = () => {
-                if (isSelectionMode) {
-                    clearSelection();
-                    return true;
-                }
-                return false;
-            };
-            
             if (Platform.OS === 'android') {
-                const backHandlerSubscription = BackHandler.addEventListener('hardwareBackPress', backHandler);
-                
-                return () => {
-                    if (backHandlerSubscription && typeof backHandlerSubscription.remove === 'function') {
-                        backHandlerSubscription.remove();
+                const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+                    if (isSelectionMode) {
+                        clearSelection();
+                        return true;
                     }
-                };
+                    return false;
+                });
+                
+                return () => backHandler.remove();
             }
         } else {
             navigation.setOptions({
                 headerShown: true,
                 header: () => <ChatHeader route={route} navigation={navigation} />,
                 gestureEnabled: true,
+                headerTransparent: false,
+                headerStatusBarHeight: 0,
+                keyboardHandlingEnabled: false,
+                headerStyle: {
+                    backgroundColor: '#FFFFFF',
+                    height: 64,
+                    elevation: 0,
+                    shadowOpacity: 0,
+                    borderBottomWidth: 0,
+                },
             });
         }
-    }, [navigation, route, isSelectionMode, selectedMessages.size, deleteSelectedMessages, clearSelection, handleReplyToSelected, handleCopySelectedMessages, handleForwardSelectedMessages, canSendMessages, canDeleteMessage, messages]);
+    }, [navigation, route, isSelectionMode, selectedMessages, messages, canSendMessages, canDeleteMessage]);
 
     // ============ CALLBACKS ============
     
+    const clearSelection = useCallback(() => {
+        setSelectedMessages(new Set());
+        setIsSelectionMode(false);
+        setReactionPickerVisible(false);
+        setReactionPickerMessageId(null);
+        setReactionPickerPosition(null);
+    }, []);
+
     const toggleMessageSelection = useCallback((messageId) => {
         setSelectedMessages(prev => {
             const updated = new Set(prev);
@@ -662,8 +545,6 @@ export const DirectChatScreen = ({route, navigation}) => {
                 updated.delete(messageId);
             } else {
                 updated.add(messageId);
-                // На iOS используем Haptics для короткой тактильной обратной связи
-                // На Android используем короткую вибрацию с параметром
                 if (Platform.OS === 'ios') {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 } else {
@@ -674,19 +555,8 @@ export const DirectChatScreen = ({route, navigation}) => {
             return updated;
         });
         
-        setIsSelectionMode(prev => {
-            if (!prev) return true;
-            return prev;
-        });
-    }, []);
-
-    const clearSelection = useCallback(() => {
-        setSelectedMessages(new Set());
-        setIsSelectionMode(false);
-        setReactionPickerVisible(false);
-        setReactionPickerMessageId(null);
-        setReactionPickerPosition(null);
-    }, []);
+        if (!isSelectionMode) setIsSelectionMode(true);
+    }, [isSelectionMode]);
 
     const handleForwardSelectedMessages = useCallback(() => {
         if (selectedMessages.size > 0) {
@@ -743,49 +613,31 @@ export const DirectChatScreen = ({route, navigation}) => {
     const handleCopySelectedMessages = useCallback(() => {
         if (selectedMessages.size === 0) return;
 
-        const messageIds = Array.from(selectedMessages);
-        const selectedMessagesData = messageIds
+        const selectedArray = Array.from(selectedMessages)
             .map(id => messages.find(m => m.id === id))
             .filter(Boolean)
-            .sort((a, b) => {
-                const timeA = new Date(a.createdAt).getTime();
-                const timeB = new Date(b.createdAt).getTime();
-                return timeA - timeB;
-            });
+            .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 
-        const textParts = selectedMessagesData.map(message => {
-            switch (message.type) {
-                case 'TEXT':
-                    return message.content || '';
-                case 'IMAGE':
-                    const caption = message.content || message.text || message.caption;
-                    if (caption) return caption;
-                    const imageCaption = message.attachments?.find(att => att.caption || att.description || att.text);
-                    if (imageCaption) {
-                        return imageCaption.caption || imageCaption.description || imageCaption.text;
-                    }
-                    return '[Изображение]';
-                case 'VOICE':
-                    return '[Голосовое сообщение]';
+        const textParts = selectedArray.map(msg => {
+            switch (msg.type) {
+                case 'TEXT': return msg.content || '';
+                case 'IMAGE': 
+                    return msg.content || msg.text || msg.caption || 
+                           msg.attachments?.find(a => a.caption)?.caption || '[Изображение]';
+                case 'VOICE': return '[Голосовое сообщение]';
                 case 'PRODUCT':
                     try {
-                        const productData = message.product || (message.content ? JSON.parse(message.content) : null);
-                        if (productData?.name) return productData.name;
-                    } catch (e) {}
-                    return '[Товар]';
+                        const data = msg.product || JSON.parse(msg.content);
+                        return data?.name || '[Товар]';
+                    } catch { return '[Товар]'; }
                 case 'STOP':
                     try {
-                        const stopData = message.stop || (message.content ? JSON.parse(message.content) : null);
-                        if (stopData?.address) return stopData.address;
-                    } catch (e) {}
-                    return '[Остановка]';
-                case 'POLL':
-                    if (message.poll?.question) return message.poll.question;
-                    return '[Опрос]';
-                case 'SYSTEM':
-                    return message.content || '';
-                default:
-                    return message.content || '[Сообщение]';
+                        const data = msg.stop || JSON.parse(msg.content);
+                        return data?.address || '[Остановка]';
+                    } catch { return '[Остановка]'; }
+                case 'POLL': return msg.poll?.question || '[Опрос]';
+                case 'SYSTEM': return msg.content || '';
+                default: return msg.content || '[Сообщение]';
             }
         }).filter(Boolean);
 
@@ -794,10 +646,7 @@ export const DirectChatScreen = ({route, navigation}) => {
             return;
         }
 
-        const textToCopy = textParts.join('\n');
-        Clipboard.setString(textToCopy);
-        // На iOS используем Haptics для короткой тактильной обратной связи
-        // На Android используем короткую вибрацию с параметром
+        Clipboard.setString(textParts.join('\n'));
         if (Platform.OS === 'ios') {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         } else {
@@ -898,12 +747,7 @@ export const DirectChatScreen = ({route, navigation}) => {
         if (!message || !flatListRef.current) return;
         
         const messageIndex = messages.findIndex(m => m.id === message.id);
-        if (messageIndex === -1) {
-            if (__DEV__) {
-                console.log('handleReplyPress: Сообщение не найдено в списке', { messageId: message.id });
-            }
-            return;
-        }
+        if (messageIndex === -1) return;
         
         setTimeout(() => {
             try {
@@ -915,16 +759,10 @@ export const DirectChatScreen = ({route, navigation}) => {
                 
                 setTimeout(() => {
                     setHighlightedMessageId(message.id);
-                    
-                    setTimeout(() => {
-                        setHighlightedMessageId(null);
-                    }, 2000);
+                    setTimeout(() => setHighlightedMessageId(null), 2000);
                 }, 400);
-                
             } catch (error) {
-                if (__DEV__) {
-                    console.log('handleReplyPress: scrollToIndex failed', error);
-                }
+                console.log('scrollToIndex failed:', error);
             }
         }, 100);
     }, [messages]);
@@ -1019,78 +857,15 @@ export const DirectChatScreen = ({route, navigation}) => {
         setDeleteMessageModalVisible(true);
     }, [selectedMessages, messages, canDeleteMessage, showWarning]);
 
-    const handleDeleteMessages = useCallback(async (messageIds) => {
-        if (!Array.isArray(messageIds) || messageIds.length === 0) return;
-
-        try {
-            const deletePromises = messageIds.map(async (messageId) => {
-                const message = messages.find(m => m.id === messageId);
-                if (!message) {
-                    console.warn('DirectChat: Message not found for deletion:', messageId);
-                    return;
-                }
-                
-                const isAuthor = message.senderId === currentUserId;
-                
-                const MESSAGE_DELETE_WINDOW_HOURS = 48;
-                const messageAge = Date.now() - new Date(message.createdAt).getTime();
-                const withinWindow = messageAge <= (MESSAGE_DELETE_WINDOW_HOURS * 3600 * 1000);
-                
-                let forAll = false;
-                if (isSuperAdmin || currentUser?.role === 'ADMIN') {
-                    forAll = true;
-                } else if (isAuthor && withinWindow) {
-                    forAll = true;
-                }
-
-                const result = await dispatch(deleteMessage({
-                    messageId,
-                    forAll,
-                    currentUserId
-                }));
-                
-                if (result.type.endsWith('/rejected')) {
-                    console.error('DirectChat: Delete message failed:', result.payload);
-                }
-                
-                return result;
-            });
-
-            const results = await Promise.allSettled(deletePromises);
-            
-            const successCount = results.filter(r => r.status === 'fulfilled' && r.value?.type?.endsWith('/fulfilled')).length;
-            const failCount = results.filter(r => r.status === 'rejected' || r.value?.type?.endsWith('/rejected')).length;
-
-            setTimeout(() => {
-                dispatch(fetchMessages({roomId, limit: 100}));
-            }, 100);
-            
-            if (failCount > 0) {
-                showWarning(
-                    'Частичное удаление',
-                    `Удалено: ${successCount}, не удалось удалить: ${failCount}`
-                );
-            }
-        } catch (error) {
-            console.error('Ошибка при удалении сообщений:', error);
-            showError('Ошибка', 'Не удалось удалить некоторые сообщения');
-        }
-    }, [isSuperAdmin, currentUser?.role, currentUserId, dispatch, roomId, messages, showWarning, showError]);
-
     const handleDeleteSelectedMessages = useCallback(async (forAll) => {
         if (messagesToDelete.length === 0) return;
 
         try {
             setDeleteMessageModalVisible(false);
             
-            // Дополнительная проверка: если удаляем у всех, проверяем права
             if (forAll) {
                 const canDeleteForAll = isSuperAdmin || 
-                    messagesToDelete.every(msg => {
-                        const messageSenderId = msg.senderId ? Number(msg.senderId) : null;
-                        const normalizedCurrentUserId = currentUserId ? Number(currentUserId) : null;
-                        return messageSenderId === normalizedCurrentUserId;
-                    });
+                    messagesToDelete.every(msg => Number(msg.senderId) === Number(currentUserId));
                 
                 if (!canDeleteForAll) {
                     showError('Ошибка', 'Недостаточно прав для удаления этих сообщений у всех');
@@ -1098,57 +873,38 @@ export const DirectChatScreen = ({route, navigation}) => {
                 }
             }
             
-            const messageIds = messagesToDelete.map(m => m.id);
-            const deletePromises = messageIds.map(async (messageId) => {
-                const result = await dispatch(deleteMessage({
-                    messageId,
-                    forAll,
-                    currentUserId
-                }));
-                
-                if (result.type.endsWith('/rejected')) {
-                    console.error('DirectChat: Delete message failed:', result.payload);
-                }
-                
-                return result;
-            });
-
-            const results = await Promise.allSettled(deletePromises);
+            const results = await Promise.allSettled(
+                messagesToDelete.map(msg => 
+                    dispatch(deleteMessage({ messageId: msg.id, forAll, currentUserId }))
+                )
+            );
             
-            const successCount = results.filter(r => r.status === 'fulfilled' && r.value?.type?.endsWith('/fulfilled')).length;
-            const failCount = results.filter(r => r.status === 'rejected' || r.value?.type?.endsWith('/rejected')).length;
+            const successCount = results.filter(r => 
+                r.status === 'fulfilled' && r.value?.type?.endsWith('/fulfilled')
+            ).length;
+            const failCount = results.length - successCount;
 
             clearSelection();
             setMessagesToDelete([]);
 
-            setTimeout(() => {
-                dispatch(fetchMessages({roomId, limit: 100}));
-            }, 100);
+            setTimeout(() => dispatch(fetchMessages({roomId, limit: 100})), 100);
             
             if (failCount > 0) {
-                showWarning(
-                    'Частичное удаление',
-                    `Удалено: ${successCount}, не удалось удалить: ${failCount}`
-                );
+                showWarning('Частичное удаление', `Удалено: ${successCount}, не удалось: ${failCount}`);
             }
         } catch (error) {
-            console.error('Ошибка при удалении сообщений:', error);
+            console.error('Ошибка при удалении:', error);
             clearSelection();
             setMessagesToDelete([]);
             showError('Ошибка', 'Не удалось удалить сообщения');
         }
     }, [messagesToDelete, dispatch, currentUserId, roomId, clearSelection, showWarning, showError, isSuperAdmin]);
 
-    const handleAddReaction = useCallback(async (emoji) => {
-        console.log('👍 handleAddReaction called with emoji:', emoji);
-    }, []);
-
     const handleToggleReaction = useCallback(async (messageId, emoji) => {
         try {
-            console.log('🔄 Toggling reaction:', { messageId, emoji });
             await emitToggleReaction(messageId, emoji);
         } catch (error) {
-            console.error('❌ Error toggling reaction:', error);
+            console.error('Error toggling reaction:', error);
             showError('Ошибка', 'Не удалось изменить реакцию');
         }
     }, [emitToggleReaction, showError]);
@@ -1182,10 +938,9 @@ export const DirectChatScreen = ({route, navigation}) => {
     }, [reactionPickerMessageId, handleToggleReaction, handleCloseReactionPicker]);
     
     const handleShowFullEmojiPicker = useCallback(() => {
-        console.log('🎨 Opening FullEmojiPicker for message:', reactionPickerMessageId);
         setReactionPickerVisible(false);
         setFullEmojiPickerVisible(true);
-    }, [reactionPickerMessageId]);
+    }, []);
     
     const handleCloseFullEmojiPicker = useCallback(() => {
         setFullEmojiPickerVisible(false);
@@ -1194,22 +949,16 @@ export const DirectChatScreen = ({route, navigation}) => {
     }, []);
     
     const handleFullEmojiSelect = useCallback(async (emoji) => {
-        console.log('🎨 FullEmojiSelect:', { emoji, messageId: reactionPickerMessageId });
         if (reactionPickerMessageId) {
             await handleToggleReaction(reactionPickerMessageId, emoji);
-        } else {
-            console.warn('⚠️ No messageId for reaction!');
-        }
-        setReactionPickerVisible(false);
-        setFullEmojiPickerVisible(false);
-        const messageIdToRemove = reactionPickerMessageId;
-        if (messageIdToRemove) {
             setSelectedMessages(prev => {
                 const updated = new Set(prev);
-                updated.delete(messageIdToRemove);
+                updated.delete(reactionPickerMessageId);
                 return updated;
             });
         }
+        setReactionPickerVisible(false);
+        setFullEmojiPickerVisible(false);
         setReactionPickerMessageId(null);
         setReactionPickerPosition(null);
     }, [reactionPickerMessageId, handleToggleReaction]);
@@ -1230,35 +979,19 @@ export const DirectChatScreen = ({route, navigation}) => {
             async () => {
                 try {
                     isRoomDeletedRef.current = true;
-                    
                     dispatch(setActiveRoom(null));
-                    if (emitActiveRoom) {
-                        emitActiveRoom(null);
-                    }
+                    emitActiveRoom?.(null);
                     
                     const result = await dispatch(deleteRoom({roomId}));
+                    if (result.error) throw new Error(result.error);
 
-                    if (result.error) {
-                        throw new Error(result.error);
-                    }
-
-                    try {
-                        const parent = navigation.getParent();
-                        if (parent) {
-                            parent.navigate('ChatMain');
-                        } else if (navigation.canGoBack()) {
-                            navigation.goBack();
-                        } else {
-                            navigation.navigate('ChatMain');
-                        }
-                    } catch (error) {
-                        try {
-                            if (navigation.canGoBack()) {
-                                navigation.goBack();
-                            }
-                        } catch (backError) {
-                            // Ignore
-                        }
+                    const parent = navigation.getParent();
+                    if (parent) {
+                        parent.navigate('ChatMain');
+                    } else if (navigation.canGoBack()) {
+                        navigation.goBack();
+                    } else {
+                        navigation.navigate('ChatMain');
                     }
                 } catch (error) {
                     console.error('Ошибка при удалении чата:', error);
@@ -1270,19 +1003,11 @@ export const DirectChatScreen = ({route, navigation}) => {
     }, [roomId, navigation, closeMenuModal, dispatch, showConfirm, showError, emitActiveRoom]);
 
     const loadMoreMessages = useCallback(() => {
-        if (isLoadingMoreRef.current || !hasMore || !roomId || isRoomDeleted) {
-            return;
-        }
+        if (isLoadingMoreRef.current || !hasMore || !roomId || isRoomDeleted) return;
         
         isLoadingMoreRef.current = true;
-        dispatch(fetchMessages({
-            roomId,
-            limit: 50,
-            cursorId,
-            direction: 'backward'
-        })).finally(() => {
-            isLoadingMoreRef.current = false;
-        });
+        dispatch(fetchMessages({ roomId, limit: MESSAGES_LOAD_LIMIT, cursorId, direction: 'backward' }))
+            .finally(() => { isLoadingMoreRef.current = false; });
     }, [hasMore, cursorId, roomId, isRoomDeleted, dispatch]);
 
     const checkAndLoadMore = useCallback((event) => {
@@ -1290,25 +1015,10 @@ export const DirectChatScreen = ({route, navigation}) => {
         const maxOffset = contentSize.height - layoutMeasurement.height;
         const distanceToTop = maxOffset - contentOffset.y;
         
-        if (distanceToTop < 2000 && hasMore && !isLoadingMoreRef.current) {
+        if (distanceToTop < LOAD_MORE_THRESHOLD && hasMore && !isLoadingMoreRef.current) {
             loadMoreMessages();
         }
     }, [hasMore, loadMoreMessages]);
-
-    const handleScroll = useCallback((event) => {
-        checkAndLoadMore(event);
-    }, [checkAndLoadMore]);
-
-    const handleScrollEndDrag = useCallback((event) => {
-        checkAndLoadMore(event);
-    }, [checkAndLoadMore]);
-
-    const handleMomentumScrollEnd = useCallback((event) => {
-        checkAndLoadMore(event);
-    }, [checkAndLoadMore]);
-
-    const onTyping = useCallback((isTyping) => {
-    }, []);
 
     const handleImagePress = useCallback((imageUri) => {
         setSelectedImageUri(imageUri);
@@ -1336,13 +1046,9 @@ export const DirectChatScreen = ({route, navigation}) => {
     }, [currentUserId, navigation, roomId]);
 
     const handleMessagePress = useCallback((messageId) => {
-        if (isSelectionMode) return; // Не обрабатываем нажатия в режиме выбора
-        
+        if (isSelectionMode) return;
         setPressedMessageId(messageId);
-        // Сбрасываем состояние через 150мс для визуальной обратной связи
-        setTimeout(() => {
-            setPressedMessageId(null);
-        }, 150);
+        setTimeout(() => setPressedMessageId(null), 150);
     }, [isSelectionMode]);
 
     const renderItem = useCallback(({item}) => (
@@ -1350,34 +1056,20 @@ export const DirectChatScreen = ({route, navigation}) => {
             message={item}
             currentUserId={currentUserId}
             onOpenProduct={(id) => {
-                // Если режим выбора активен, выделяем сообщение вместо открытия товара
                 if (isSelectionMode) {
                     toggleMessageSelection(item.id);
                     return;
                 }
                 
-                // Проверяем, не удален ли продукт
-                const state = store.getState();
-                if (selectIsProductDeleted(state, id)) {
+                if (selectIsProductDeleted(store.getState(), id)) {
                     showWarning('Товар недоступен', 'Этот товар был удален');
                     return;
                 }
                 
-                // Открываем товар в корневом AppStack (там же где ChatRoom),
-                // чтобы back возвращал обратно в комнату чата.
-                const rootNavigation =
-                    navigation?.getParent?.('AppStack') ||
-                    navigation?.getParent?.() ||
-                    navigation;
-                
-                (rootNavigation || navigation).navigate('ProductDetail', {
-                    productId: id,
-                    fromScreen: 'ChatRoom',
-                    roomId,
-                });
+                const rootNav = navigation?.getParent?.('AppStack') || navigation?.getParent?.() || navigation;
+                rootNav.navigate('ProductDetail', { productId: id, fromScreen: 'ChatRoom', roomId });
             }}
             onOpenStop={(id) => {
-                // Если режим выбора активен, выделяем сообщение вместо открытия остановки
                 if (isSelectionMode) {
                     toggleMessageSelection(item.id);
                     return;
@@ -1394,20 +1086,14 @@ export const DirectChatScreen = ({route, navigation}) => {
             hasContextMenu={false}
             canDelete={canDeleteMessage(item)}
             onToggleSelection={() => {
-                if (!isSelectionMode) {
-                    setIsSelectionMode(true);
-                }
+                if (!isSelectionMode) setIsSelectionMode(true);
                 toggleMessageSelection(item.id);
             }}
             onPress={() => handleMessagePress(item.id)}
             onLongPress={(position) => {
-                if (!isSelectionMode) {
-                    setIsSelectionMode(true);
-                }
+                if (!isSelectionMode) setIsSelectionMode(true);
                 toggleMessageSelection(item.id);
-                if (position) {
-                    handleShowReactionPicker(item.id, position);
-                }
+                if (position) handleShowReactionPicker(item.id, position);
             }}
             onRetryMessage={handleRetryMessage}
             onCancelMessage={handleCancelMessage}
@@ -1422,30 +1108,33 @@ export const DirectChatScreen = ({route, navigation}) => {
             participants={roomData?.participants}
             onSenderNamePress={handleSenderNamePress}
         />
-    ), [currentUserId, partnerAvatar, isSelectionMode, selectedMessages, pressedMessageId, canDeleteMessage, toggleMessageSelection, handleRetryMessage, handleCancelMessage, retryingMessages, handleImagePress, handleAvatarPress, handleContactDriver, handleReply, handleReplyPress, navigation, highlightedMessageId, handleToggleReaction, handleShowReactionPicker, roomData?.type, roomData?.participants, handleSenderNamePress, handleMessagePress]);
+    ), [
+        currentUserId, isSelectionMode, selectedMessages, pressedMessageId, canDeleteMessage,
+        toggleMessageSelection, handleRetryMessage, handleCancelMessage, retryingMessages,
+        handleImagePress, handleReply, handleReplyPress, navigation, highlightedMessageId,
+        handleToggleReaction, handleShowReactionPicker, roomData?.type, roomData?.participants,
+        handleSenderNamePress, handleMessagePress, store, showWarning, roomId, partnerAvatar,
+        handleAvatarPress, handleContactDriver
+    ]);
 
-    const keyExtractor = useCallback((item) => {
-        if (item.temporaryId) {
-            return `temp_${item.temporaryId}`;
-        }
-        return `msg_${item.id}`;
-    }, []);
+    const keyExtractor = useCallback((item) => 
+        item.temporaryId ? `temp_${item.temporaryId}` : `msg_${item.id}`,
+    []);
 
     // ============ RENDER ============
     
     return (
         <View style={styles.container}>
             <ChatBackground>
-                <View style={chatContentStyle}>
-                    <View style={styles.messagesContainer}>
-                        {!loading && (!messages || messages.length === 0) && (
-                            <View style={styles.emptyStateContainer}>
-                                <Text style={styles.emptyStateText}>
-                                    Начните общение
-                                </Text>
-                            </View>
-                        )}
-                        <FlatList
+                <View style={styles.chatContent}>
+                    <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+                        <View style={styles.messagesContainer}>
+                            {!loading && (!messages || messages.length === 0) && (
+                                <View style={styles.emptyState}>
+                                    <Text style={styles.emptyStateText}>Начните общение</Text>
+                                </View>
+                            )}
+                            <FlatList
                             ref={flatListRef}
                             data={messages}
                             extraData={{
@@ -1459,9 +1148,10 @@ export const DirectChatScreen = ({route, navigation}) => {
                             renderItem={renderItem}
                             onEndReachedThreshold={0.8}
                             onEndReached={loadMoreMessages}
-                            onScroll={handleScroll}
-                            onScrollEndDrag={handleScrollEndDrag}
-                            onMomentumScrollEnd={handleMomentumScrollEnd}
+                            onScroll={checkAndLoadMore}
+                            onScrollBeginDrag={() => Keyboard.dismiss()}
+                            onScrollEndDrag={checkAndLoadMore}
+                            onMomentumScrollEnd={checkAndLoadMore}
                             scrollEventThrottle={200}
                             contentContainerStyle={listContentStyle}
                             initialNumToRender={10}
@@ -1470,55 +1160,59 @@ export const DirectChatScreen = ({route, navigation}) => {
                             updateCellsBatchingPeriod={100}
                             legacyImplementation={false}
                             removeClippedSubviews={false}
+                            keyboardShouldPersistTaps="handled"
+                            keyboardDismissMode="on-drag"
                             onScrollToIndexFailed={(info) => {
-                                const wait = new Promise(resolve => setTimeout(resolve, 100));
-                                wait.then(() => {
+                                setTimeout(() => {
                                     flatListRef.current?.scrollToIndex({
                                         index: info.index,
                                         animated: true,
                                         viewPosition: 0.5,
                                     });
-                                });
+                                }, 100);
                             }}
-                        />
-                        <Modal
+                            />
+                        </View>
+                    </TouchableWithoutFeedback>
+                    
+                    {/* Menu Modal */}
+                    <Modal
                             visible={menuModalVisible}
-                            transparent={true}
+                            transparent
                             animationType="fade"
                             onRequestClose={closeMenuModal}
                         >
                             <TouchableOpacity
-                                style={styles.menuModalOverlay}
+                                style={styles.modalOverlay}
                                 activeOpacity={1}
                                 onPress={closeMenuModal}
                             >
-                                <View style={styles.menuModalContainer}>
-                                    <View style={styles.menuModal}>
+                                <View style={styles.modalContainer}>
+                                    <View style={styles.modal}>
                                         <TouchableOpacity
                                             style={styles.menuItem}
                                             onPress={handleDeleteChat}
                                             activeOpacity={0.7}
                                         >
-                                            <Text style={[styles.menuItemText, styles.destructiveText]}>
+                                            <Text style={[styles.menuText, styles.destructive]}>
                                                 Удалить чат
                                             </Text>
                                         </TouchableOpacity>
                                     </View>
                                 </View>
                             </TouchableOpacity>
-                        </Modal>
-                    </View>
+                    </Modal>
                     
                     <KeyboardAvoidingView
-                        behavior={Platform.OS === 'ios' ? 'padding' : (isSamsung ? 'padding' : 'height')}
-                        keyboardVerticalOffset={Platform.OS === 'ios' ? keyboardVerticalOffset : (isSamsung ? keyboardVerticalOffset : 0)}
-                        style={styles.keyboardAvoidingView}
+                        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+                        keyboardVerticalOffset={keyboardVerticalOffset}
+                        style={styles.keyboardAvoid}
                         enabled={true}
                     >
                         <View style={composerContainerStyle}>
                             <Composer
                                 roomId={roomId}
-                                onTyping={onTyping}
+                                onTyping={() => {}}
                                 shareProductId={shareProductId}
                                 onMenuPress={handleMenuPress}
                                 replyTo={replyTo}
@@ -1558,9 +1252,10 @@ export const DirectChatScreen = ({route, navigation}) => {
                 onEmojiSelect={handleFullEmojiSelect}
             />
 
+            {/* Delete Modal */}
             <Modal
                 visible={deleteMessageModalVisible}
-                transparent={true}
+                transparent
                 animationType="fade"
                 onRequestClose={() => {
                     setDeleteMessageModalVisible(false);
@@ -1568,34 +1263,27 @@ export const DirectChatScreen = ({route, navigation}) => {
                 }}
             >
                 <TouchableOpacity
-                    style={styles.menuModalOverlay}
+                    style={styles.modalOverlay}
                     activeOpacity={1}
                     onPress={() => {
                         setDeleteMessageModalVisible(false);
                         setMessagesToDelete([]);
                     }}
                 >
-                    <View style={styles.menuModalContainer}>
-                        <View style={styles.menuModal}>
+                    <View style={styles.modalContainer}>
+                        <View style={styles.modal}>
                             <TouchableOpacity
                                 style={styles.menuItem}
                                 onPress={() => handleDeleteSelectedMessages(false)}
                                 activeOpacity={0.7}
                             >
-                                <Text style={styles.menuItemText}>
-                                    Удалить у меня
-                                </Text>
+                                <Text style={styles.menuText}>Удалить у меня</Text>
                             </TouchableOpacity>
                             {(() => {
-                                // Проверяем, можно ли удалять у всех
-                                // Админы могут удалять любые сообщения
-                                // Обычные пользователи могут удалять у всех только свои сообщения
                                 const canDeleteForAll = isSuperAdmin || 
-                                    (messagesToDelete.length > 0 && messagesToDelete.every(msg => {
-                                        const messageSenderId = msg.senderId ? Number(msg.senderId) : null;
-                                        const normalizedCurrentUserId = currentUserId ? Number(currentUserId) : null;
-                                        return messageSenderId === normalizedCurrentUserId;
-                                    }));
+                                    (messagesToDelete.length > 0 && messagesToDelete.every(msg => 
+                                        Number(msg.senderId) === Number(currentUserId)
+                                    ));
                                 
                                 if (!canDeleteForAll) return null;
                                 
@@ -1607,7 +1295,7 @@ export const DirectChatScreen = ({route, navigation}) => {
                                             onPress={() => handleDeleteSelectedMessages(true)}
                                             activeOpacity={0.7}
                                         >
-                                            <Text style={[styles.menuItemText, styles.destructiveText]}>
+                                            <Text style={[styles.menuText, styles.destructive]}>
                                                 Удалить у всех
                                             </Text>
                                         </TouchableOpacity>
@@ -1632,14 +1320,15 @@ const styles = StyleSheet.create({
     messagesContainer: {
         flex: 1,
     },
-    keyboardAvoidingView: {
-        // Не используем flex для корректной работы KeyboardAvoidingView
+    keyboardAvoid: {},
+    composerContainer: {
+        position: 'relative',
     },
     listContent: {
         paddingHorizontal: 8,
         paddingTop: 5,
     },
-    emptyStateContainer: {
+    emptyState: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
@@ -1648,15 +1337,15 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: '#999',
     },
-    menuModalOverlay: {
+    modalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(0, 0, 0, 0.5)',
         justifyContent: 'flex-end',
     },
-    menuModalContainer: {
+    modalContainer: {
         padding: 16,
     },
-    menuModal: {
+    modal: {
         backgroundColor: '#fff',
         borderRadius: 12,
         overflow: 'hidden',
@@ -1667,7 +1356,7 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: '#f0f0f0',
     },
-    menuItemText: {
+    menuText: {
         fontSize: 16,
         color: '#333',
     },
@@ -1675,29 +1364,7 @@ const styles = StyleSheet.create({
         height: 1,
         backgroundColor: '#E5E5EA',
     },
-    destructiveText: {
+    destructive: {
         color: '#ff3b30',
-    },
-    headerButtons: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginRight: 16,
-    },
-    headerButton: {
-        padding: 8,
-    },
-    headerLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginLeft: 8,
-    },
-    backButton: {
-        padding: 8,
-    },
-    selectedCountText: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#007AFF',
-        marginLeft: 12,
     },
 });

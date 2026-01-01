@@ -265,6 +265,17 @@ class PushNotificationService {
             return;
         }
 
+        // Логирование для отладки
+        if (__DEV__) {
+            console.log('📱 handleNotificationNavigation:', {
+                type: data?.type,
+                productId: data?.productId || data?.product_id,
+                warehouseId: data?.warehouseId || data?.warehouse_id,
+                orderId: data?.orderId,
+                roomId: data?.roomId
+            });
+        }
+
         // Обработка навигации
         if (data.stopId || data.type === 'STOP_NOTIFICATION' || data.type === 'STOP_UPDATE' || data.type === 'STOP_CANCEL') {
             this.navigateToStop(data);
@@ -272,7 +283,7 @@ class PushNotificationService {
             this.navigateToOrderChoice(data);
         } else if (data.orderId || data.type === 'ORDER_STATUS') {
             this.navigateToOrder(data);
-        } else if (data.productId || data.type === 'PRODUCT_NOTIFICATION' || data.type === 'PROMOTION') {
+        } else if (data.productId || data.type === 'PRODUCT_NOTIFICATION' || data.type === 'PROMOTION' || data.type === 'STOCK_ALERT') {
             this.navigateToProduct(data);
         } else if (data.type === 'CHAT_MESSAGE' && data.roomId) {
             // Если пользователь не авторизован — сначала ведём на экран Auth, а навигацию в чат оставляем в очереди
@@ -323,7 +334,92 @@ class PushNotificationService {
 
     // Навигация к продуктам
     navigateToProduct(data) {
-        // Реализация навигации к продукту
+        try {
+            // OneSignal конвертирует все значения в строки, поэтому извлекаем и парсим
+            const productId = data?.productId || data?.product_id || data?.productId?.toString();
+            const warehouseId = data?.warehouseId || data?.warehouse_id || data?.warehouseId?.toString();
+            
+            if (!productId) {
+                console.warn('⚠️ navigateToProduct: отсутствует productId в данных уведомления', { data });
+                return;
+            }
+
+            // Если навигация ещё не готова — сохраняем и выйдем (flushPendingNavigations добьёт позже)
+            if (!navigationRef.isReady()) {
+                this.pendingNavigations.push(data);
+                return;
+            }
+
+            // Определяем, какой экран использовать
+            // Для уведомлений об остатках (STOCK_ALERT) используем AdminProductDetail
+            // Для обычных уведомлений о продуктах тоже используем AdminProductDetail для админов/сотрудников
+            const notificationType = data?.type || '';
+            const isStockAlert = notificationType === 'STOCK_ALERT';
+            
+            // Для STOCK_ALERT используем AdminProductDetail из AdminStack (как в StockAlertsScreen)
+            if (isStockAlert) {
+                const params = {
+                    productId: parseInt(String(productId), 10),
+                    fromScreen: 'StockAlerts'
+                };
+                
+                // Добавляем warehouseId если он есть
+                if (warehouseId) {
+                    params.warehouseId = parseInt(String(warehouseId), 10);
+                }
+                
+                console.log('📦 Навигация к AdminProductDetail (AdminStack) из уведомления об остатках:', params);
+                
+                try {
+                    // Используем вложенную навигацию через AdminStack к AdminProductDetail
+                    if (this.canNavigateToRoute('Admin')) {
+                        navigationRef.navigate('Admin', {
+                            screen: 'AdminProductDetail',
+                            params: params
+                        });
+                    } else {
+                        // Fallback: пробуем прямую навигацию к AdminProductDetail
+                        console.log('⚠️ Admin не найден, пробуем прямую навигацию к AdminProductDetail');
+                        if (this.canNavigateToRoute('AdminProductDetail')) {
+                            navigationRef.navigate('AdminProductDetail', params);
+                        } else {
+                            // Последний fallback: ProductDetail
+                            navigationRef.navigate('ProductDetail', {
+                                productId: parseInt(String(productId), 10),
+                                fromScreen: 'Notification'
+                            });
+                        }
+                    }
+                } catch (error) {
+                    console.error('❌ Ошибка навигации к AdminProductDetail (AdminStack):', error);
+                    // Fallback на обычный ProductDetail
+                    try {
+                        navigationRef.navigate('ProductDetail', {
+                            productId: parseInt(String(productId), 10),
+                            fromScreen: 'Notification'
+                        });
+                    } catch (fallbackError) {
+                        console.error('❌ Ошибка fallback навигации:', fallbackError);
+                    }
+                }
+            } else {
+                // Для обычных уведомлений о продуктах используем ProductDetail
+                console.log('📦 Навигация к ProductDetail из уведомления о продукте:', {
+                    productId: parseInt(String(productId), 10)
+                });
+                
+                if (this.canNavigateToRoute('ProductDetail')) {
+                    navigationRef.navigate('ProductDetail', {
+                        productId: parseInt(String(productId), 10),
+                        fromScreen: 'Notification'
+                    });
+                } else {
+                    console.warn('⚠️ ProductDetail не найден в навигации');
+                }
+            }
+        } catch (error) {
+            console.error('❌ Ошибка навигации к продукту:', error);
+        }
     }
 
     // Навигация к чату

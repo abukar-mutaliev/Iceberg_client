@@ -1,15 +1,18 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+// Импортируем напрямую из файлов, чтобы избежать циклической зависимости
 import {
     fetchProducts,
     fetchProductById,
-    selectProducts,
-    selectProductsLoading,
-    selectProductsError,
     clearProductsCache,
     setCurrentProductFromCache,
     updateProductOptimistic
-} from '@entities/product';
+} from '../model/slice';
+import {
+    selectProducts,
+    selectProductsLoading,
+    selectProductsError
+} from '../model/selectors';
 import {
     fetchProfile,
     selectProfile,

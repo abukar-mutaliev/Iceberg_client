@@ -11,7 +11,8 @@ import {
 import { Color, FontFamily } from '@app/styles/GlobalStyles';
 import { CustomTextInput } from '@shared/ui/CustomTextInput/CustomTextInput';
 import { Picker } from '@react-native-picker/picker';
-import {DeliveryAddressApi} from "@entities/deliveryAddress";
+// Импортируем напрямую из API, чтобы избежать циклической зависимости
+import { DeliveryAddressApi } from '../../api/deliveryAddressApi';
 import CustomButton from "@shared/ui/Button/CustomButton";
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 

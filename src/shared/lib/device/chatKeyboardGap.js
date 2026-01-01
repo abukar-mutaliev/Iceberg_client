@@ -19,8 +19,8 @@ export function getChatKeyboardGapPx({ keyboardHeight } = {}) {
     // Some firmwares misreport IME insets; we add an extra margin above the keyboard.
     // Use a minimum value + optional proportional component from actual keyboard height.
     const h = Number(keyboardHeight) || 0;
-    const dynamic = h > 0 ? Math.round(h * 0.12) : 0; // ~12% of keyboard height
-    return Math.max(90, dynamic);
+    const dynamic = h > 0 ? Math.round(h * 0.08) : 0; // ~8% of keyboard height (reduced from 12%)
+    return Math.max(40, dynamic); // Reduced minimum from 90 to 40
   }
 
   return 0;

@@ -1,7 +1,8 @@
 import React, { memo, useCallback, useMemo } from 'react';
 import { View, Text, Image, StyleSheet, Pressable, Dimensions } from 'react-native';
 import { Color, Border, FontFamily, FontSize } from '@app/styles/GlobalStyles';
-import { useProductCard } from "@entities/product";
+// Импортируем напрямую из хука, чтобы избежать циклической зависимости
+import { useProductCard } from "../../../hooks/useProductCard";
 import { useToast } from '@shared/ui/Toast';
 import {AddToCartButton} from "@shared/ui/Cart/ui/AddToCartButton";
 import * as navigation from "@shared/utils/NavigationRef";

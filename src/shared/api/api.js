@@ -69,11 +69,11 @@ const processQueue = (error, token = null) => {
 export const getBaseUrl = () => {
     let baseUrl;
     
-    // if (__DEV__) {
-    //         baseUrl = 'http://192.168.1.226:5000';
-    // } else {
+    if (__DEV__) {
+            baseUrl = 'http://192.168.1.226:5000';
+    } else {
         baseUrl = 'http://212.67.11.134:5000';
-    // }
+    }
     
 
     return baseUrl;

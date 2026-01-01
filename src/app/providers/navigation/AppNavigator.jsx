@@ -28,6 +28,7 @@ import { MainScreen } from "@screens/main/ui/MainScreen";
 import { ProfileScreen } from "@/screens/profile";
 import { ProfileEdit } from "@features/profile/ui/ProfileEdit";
 import { ChangePasswordScreen, SettingsScreen, NotificationSettings } from "@features/profile";
+import { HelpCenterScreen } from "@features/help";
 import PushNotificationDiagnostic from "@shared/ui/PushNotificationDiagnostic";
 import { ProductListScreen } from "@screens/product/ProductListScreen/ProductListScreen";
 import { ProductDetailScreen } from "@screens/product/ProductDetailScreen";
@@ -624,6 +625,11 @@ const ProfileStackScreen = () => (
             component={PushNotificationDiagnostic}
             options={createScreenOptions()}
         />
+        <ProfileStack.Screen
+            name="HelpCenter"
+            component={HelpCenterScreen}
+            options={createScreenOptions({ title: 'Центр помощи' })}
+        />
     </ProfileStack.Navigator>
 );
 
@@ -1190,15 +1196,20 @@ export const AppNavigator = () => {
         PushNotificationService.setAuthState?.(isAuthenticated);
     }, [isAuthenticated]);
 
-    if (isAuthenticated === undefined) {
-        return (
-            <NavigationContainer
-                ref={navigationRef}
-                linking={linkingConfig}
-                onReady={() => PushNotificationService.setNavigationReady()}
-            >
-                <StatusBar backgroundColor="#ffffff" barStyle="dark-content" />
-                <NavigationWrapper>
+    // Выносим NavigationContainer наружу, чтобы он был только один
+    // Это устраняет ошибку "configured linking in multiple places"
+    return (
+        <NavigationContainer
+            ref={navigationRef}
+            linking={linkingConfig}
+            onReady={() => PushNotificationService.setNavigationReady()}
+        >
+            <StatusBar barStyle="dark-content" translucent={true} />
+            <NavigationWrapper>
+                {isAuthenticated && <DeepLinkHandler />}
+
+                {isAuthenticated === undefined ? (
+                    // Показываем только Splash экран пока проверяется авторизация
                     <Stack.Navigator
                         id="AppStack"
                         screenOptions={defaultScreenOptions}
@@ -1210,35 +1221,22 @@ export const AppNavigator = () => {
                             options={{ ...fadeIn, gestureEnabled: false }}
                         />
                     </Stack.Navigator>
-                </NavigationWrapper>
-            </NavigationContainer>
-        );
-    }
-
-    return (
-        <NavigationContainer
-            ref={navigationRef}
-            linking={linkingConfig}
-            onReady={() => PushNotificationService.setNavigationReady()}
-        >
-            <StatusBar backgroundColor="#ffffff" barStyle="dark-content" />
-            <NavigationWrapper>
-                {isAuthenticated && <DeepLinkHandler />}
-
-                <Stack.Navigator
-                    id="AppStack"
-                    screenOptions={{
-                        ...defaultScreenOptions,
-                        cardOverlayEnabled: true,
-                        detachPreviousScreen: false,
-                    }}
-                    initialRouteName="Splash"
-                >
-                    <Stack.Screen
-                        name="Splash"
-                        component={SplashScreen}
-                        options={{ ...fadeIn, gestureEnabled: false }}
-                    />
+                ) : (
+                    // Полный навигатор после проверки авторизации
+                    <Stack.Navigator
+                        id="AppStack"
+                        screenOptions={{
+                            ...defaultScreenOptions,
+                            cardOverlayEnabled: true,
+                            detachPreviousScreen: false,
+                        }}
+                        initialRouteName="Splash"
+                    >
+                        <Stack.Screen
+                            name="Splash"
+                            component={SplashScreen}
+                            options={{ ...fadeIn, gestureEnabled: false }}
+                        />
                     <Stack.Screen
                         name="Welcome"
                         component={WelcomeScreen}
@@ -1485,6 +1483,16 @@ export const AppNavigator = () => {
                                                 headerShown: true,
                                                 title: roomTitle,
                                                 headerBackTitle: '',
+                                                headerTransparent: false,
+                                                headerStatusBarHeight: 0,
+                                                keyboardHandlingEnabled: false,
+                                                headerStyle: {
+                                                    backgroundColor: '#FFFFFF',
+                                                    height: 64,
+                                                    elevation: 0,
+                                                    shadowOpacity: 0,
+                                                    borderBottomWidth: 0,
+                                                },
                                                 headerLeft: () => (
                                                     <TouchableOpacity
                                                         onPress={() => {
@@ -1542,9 +1550,15 @@ export const AppNavigator = () => {
                                                 ),
                                                 gestureEnabled: true,
                                                 cardStyle: { backgroundColor: '#ffffff' },
+                                                headerTransparent: false,
+                                                headerStatusBarHeight: 0,
+                                                keyboardHandlingEnabled: false,
                                                 headerStyle: {
                                                     backgroundColor: '#FFFFFF',
-                                                    height: 56,
+                                                    height: 64,
+                                                    elevation: 0,
+                                                    shadowOpacity: 0,
+                                                    borderBottomWidth: 0,
                                                 },
                                                 headerTintColor: '#000000',
                                                 headerBackTitleVisible: false,
@@ -1643,7 +1657,8 @@ export const AppNavigator = () => {
                             )}
                         </>
                     )}
-                </Stack.Navigator>
+                    </Stack.Navigator>
+                )}
             </NavigationWrapper>
         </NavigationContainer>
     );

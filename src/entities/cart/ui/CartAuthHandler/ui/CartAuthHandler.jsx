@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
-import { useCartAuth } from "@entities/cart";
+// Импортируем напрямую из хука, чтобы избежать циклической зависимости
+import { useCartAuth } from "../../../hooks/useCartAuth";
 
 /**
  * Компонент для отслеживания изменений авторизации и автоматического объединения корзин

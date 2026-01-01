@@ -57,11 +57,27 @@ export const useAuth = () => {
         return dispatch(logout());
     }, [dispatch]);
 
-    const refreshTokens = useCallback(() => {
+    const refreshTokens = useCallback(async () => {
+        // Сначала проверяем Redux store
         if (tokens?.refreshToken) {
             return dispatch(refreshToken());
-        } else {
-            console.log('No refresh token available');
+        }
+        
+        // Если в Redux store нет токена, проверяем AsyncStorage напрямую
+        // Это решает проблему несинхронизированности между AsyncStorage и Redux
+        try {
+            const { authService } = await import('@shared/api/api');
+            const storedTokens = await authService.getStoredTokens();
+            
+            if (storedTokens?.refreshToken) {
+                // Если токен есть в AsyncStorage, используем его для обновления
+                return dispatch(refreshToken());
+            } else {
+                console.log('No refresh token available');
+                return Promise.resolve(null);
+            }
+        } catch (error) {
+            console.error('Error checking stored tokens:', error);
             return Promise.resolve(null);
         }
     }, [dispatch, tokens]);

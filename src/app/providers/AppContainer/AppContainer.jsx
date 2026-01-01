@@ -202,9 +202,8 @@ export const AppContainer = ({ children, onNavigateToAuth }) => {
                     edges={['top', 'right', 'left']}
                 >
                     <StatusBar
-                        backgroundColor="#ffffff"
                         barStyle="dark-content"
-                        translucent={false}
+                        translucent={true}
                     />
 
                     {children}

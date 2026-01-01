@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
-import { OrderApi } from '@entities/order';
+// Импортируем напрямую из API, чтобы избежать циклической зависимости
+import { OrderApi } from '../api/orderApi';
 
 export const useSplitOrders = () => {
     const [splitOrders, setSplitOrders] = useState([]);

@@ -6,7 +6,7 @@ export default {
     expo: {
         name: IS_DEV ? 'Iceberg (Dev)' : 'Iceberg',
         slug: 'iceberg',
-        version: '1.0.8',
+        version: '1.3.3',
         scheme: 'iceberg',
         icon: './assets/notification-icon.png',
         splash: {
@@ -89,18 +89,10 @@ export default {
                 'onesignal-expo-plugin',
                 {
                     mode: IS_DEV ? 'development' : 'production',
-                    // Иконки для Android автоматически копируются из src/assets/icons/push/
-                    // через app.plugin.js при каждой сборке
-                    // Поэтому указываем пути к уже скопированным иконкам в android проекте
-                    smallIcons: [
-                        './android/app/src/main/res/drawable-mdpi/ic_stat_iceberg.png',
-                        './android/app/src/main/res/drawable-hdpi/ic_stat_iceberg.png',
-                        './android/app/src/main/res/drawable-xhdpi/ic_stat_iceberg.png',
-                        './android/app/src/main/res/drawable-xxhdpi/ic_stat_iceberg.png',
-                        './android/app/src/main/res/drawable-xxxhdpi/ic_stat_iceberg.png',
-                    ],
-                    // Большая иконка для развернутого уведомления (опционально)
-                    // largeIcons: ['./android/app/src/main/res/drawable-xxxhdpi/ic_stat_iceberg.png'],
+                    // Иконки для Android автоматически копируются через app.plugin.js
+                    // в android/app/src/main/res/drawable-*/ic_stat_iceberg.png
+                    // OneSignal будет использовать их через серверный параметр small_icon: 'ic_stat_iceberg'
+                    // Не указываем smallIcons здесь, чтобы избежать конфликтов при prebuild
                 }
             ]
         ],
@@ -132,8 +124,8 @@ export default {
         },
         android: {
             package: 'com.abuingush.iceberg',
-            versionCode: 32,
-            versionName: '1.3.2',
+            versionCode: 38,
+            versionName: '1.3.8',
             icon: './assets/icon.png',
             adaptiveIcon: {
                 foregroundImage: './assets/icon.png',

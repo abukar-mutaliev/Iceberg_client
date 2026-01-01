@@ -14,5 +14,3 @@ export { TypingIndicator } from './TypingIndicator';
 
 
 
-
-

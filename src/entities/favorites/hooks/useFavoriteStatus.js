@@ -1,11 +1,12 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+// Импортируем напрямую из slice, чтобы избежать циклической зависимости
 import {
     checkIsFavorite,
     addToFavorites,
     removeFromFavorites,
     toggleFavoriteOptimistic
-} from '@entities/favorites';
+} from '../model/slice';
 import {
     selectIsFavorite,
     selectProductStatus

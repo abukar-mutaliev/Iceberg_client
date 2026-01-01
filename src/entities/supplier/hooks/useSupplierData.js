@@ -1,12 +1,15 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+// Импортируем напрямую из файлов, чтобы избежать циклической зависимости
 import {
     fetchSupplierWithProducts,
-    fetchSupplierRating,
+    fetchSupplierRating
+} from '../model/slice';
+import {
     selectSupplierById,
     selectSuppliersLoading,
     selectSuppliersError
-} from '@entities/supplier';
+} from '../model/selectors';
 import { fetchSupplierFeedbacks } from '@entities/feedback/model/slice';
 import { 
     selectAllSupplierFeedbacks,

@@ -1,7 +1,8 @@
 import { useCallback, useRef } from 'react';
 import { useDispatch } from 'react-redux';
 import { useWebSocket } from '@shared/hooks/useWebSocket';
-import { fetchStaffOrders, fetchOrderCounts } from '@entities/order';
+// Импортируем напрямую из slice, чтобы избежать циклической зависимости
+import { fetchStaffOrders, fetchOrderCounts } from '../model/slice';
 
 export const useRealtimeOrders = () => {
     const dispatch = useDispatch();

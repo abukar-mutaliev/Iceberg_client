@@ -12,7 +12,8 @@ import {
 import { useSelector, useDispatch } from 'react-redux';
 import { Color } from '@app/styles/GlobalStyles';
 import { CustomTextInput } from '@shared/ui/CustomTextInput/CustomTextInput';
-import {DeliveryAddressApi} from "@entities/deliveryAddress";
+// Импортируем напрямую из API, чтобы избежать циклической зависимости
+import { DeliveryAddressApi } from '../../api/deliveryAddressApi';
 import { profileApi } from '@entities/profile/api/profileApi';
 import { selectProfile, fetchProfile } from '@entities/profile';
 import CustomButton from "@shared/ui/Button/CustomButton";

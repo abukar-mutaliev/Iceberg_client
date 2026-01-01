@@ -5,7 +5,8 @@ import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import RatingStarSvg from '@shared/ui/Icon/SupplierScreenIcons/RatingStarSvg';
 import { FontFamily, Color } from '@app/styles/GlobalStyles';
 import { selectSupplierRating, selectSupplierTotalFeedbacks } from '@entities/supplier/model/selectors';
-import { fetchSupplierRating } from '@entities/supplier';
+// Импортируем напрямую из slice, чтобы избежать циклической зависимости
+import { fetchSupplierRating } from '../../../model/slice';
 
 export const SupplierRatingFromRedux = React.memo(({
                                                 supplierId,

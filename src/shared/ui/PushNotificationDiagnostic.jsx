@@ -1097,6 +1097,7 @@ export const PushNotificationDiagnostic = () => {
         if (!Notifications) return;
         
         try {
+            // Правильный формат для expo-notifications: просто объект с seconds
             const notificationId = await Notifications.scheduleNotificationAsync({
                 content: {
                     title: '⏱️ Отложенный тест',
@@ -1106,7 +1107,6 @@ export const PushNotificationDiagnostic = () => {
                     priority: Notifications.AndroidNotificationPriority.MAX,
                 },
                 trigger: {
-                    type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
                     seconds: 5,
                 },
             });

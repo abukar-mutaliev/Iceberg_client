@@ -1,12 +1,15 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { InteractionManager } from 'react-native';
+// Импортируем напрямую из файлов, чтобы избежать циклической зависимости
 import {
     fetchProductById,
+    resetCurrentProduct
+} from '../model/slice';
+import {
     selectCurrentProduct,
-    resetCurrentProduct,
     selectProductById
-} from '@entities/product';
+} from '../model/selectors';
 import {
     fetchProductFeedbacks,
     selectIsFeedbacksLoadedSafe

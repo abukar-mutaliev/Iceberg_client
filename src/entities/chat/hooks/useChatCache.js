@@ -171,7 +171,8 @@ export const useCachedMessages = (roomId) => {
           // Устанавливаем сообщения из кэша
           setMessages(cached.messages);
           
-          // Также гидратируем Redux store данными из кэша
+          // Гидратируем Redux store данными из кэша только если Redux пустой
+          // hydrateRoomMessages теперь сама проверяет наличие сообщений
           dispatch(hydrateRoomMessages({ 
             roomId, 
             messages: cached.messages 

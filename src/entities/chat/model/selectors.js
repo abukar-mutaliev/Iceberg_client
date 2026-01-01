@@ -184,7 +184,15 @@ export const makeSelectRoomMessages = () => createSelector(
         if (!bucket || !bucketIds) return EMPTY_ARRAY;
         const participants = room?.participants || EMPTY_ARRAY;
 
-        const result = bucketIds
+        // Дедупликация по ID для предотвращения дубликатов
+        const seenIds = new Set();
+        const uniqueIds = bucketIds.filter(id => {
+            if (seenIds.has(id)) return false;
+            seenIds.add(id);
+            return true;
+        });
+
+        const result = uniqueIds
             .map((id) => bucket.byId[id])
             .filter(Boolean)
             .filter((msg) => {
@@ -231,9 +239,16 @@ export const makeSelectRoomMessages = () => createSelector(
                 return enriched;
             });
         
-
+        // Дополнительная дедупликация на случай если в result все еще есть дубликаты
+        const finalSeenIds = new Set();
+        const finalResult = result.filter(msg => {
+            const msgId = msg?.id || msg?.temporaryId;
+            if (!msgId || finalSeenIds.has(msgId)) return false;
+            finalSeenIds.add(msgId);
+            return true;
+        });
         
-        return result;
+        return finalResult;
     }
 );
 

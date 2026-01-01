@@ -12,7 +12,8 @@ import DeleteIcon from '@shared/ui/Icon/Profile/IconDelete';
 import RightArrowIcon from '@shared/ui/Icon/Common/IconRight';
 import DeleteAccountModal from './DeleteAccountModal';
 import {clearError, selectIsProfileDeleting, selectProfileError} from "@entities/profile";
-import { NotificationSettings } from "@features/profile";
+// Импортируем напрямую из компонента, чтобы избежать циклической зависимости
+import { NotificationSettings } from "../../NotificationSettings/ui/NotificationSettings";
 import PushNotificationIcon from '@shared/ui/Icon/Profile/IconNotification';
 
 export const SettingsScreen = () => {

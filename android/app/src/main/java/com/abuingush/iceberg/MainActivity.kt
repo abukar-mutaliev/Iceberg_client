@@ -2,6 +2,8 @@ package com.abuingush.iceberg
 
 import android.os.Build
 import android.os.Bundle
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsControllerCompat
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
@@ -17,6 +19,17 @@ class MainActivity : ReactActivity() {
     // This is required for expo-splash-screen.
     setTheme(R.style.AppTheme);
     super.onCreate(null)
+    
+    // Configure edge-to-edge for Android 15+ compatibility without using deprecated APIs
+    // Use WindowInsetsControllerCompat instead of deprecated Window.getStatusBarColor/setStatusBarColor
+    window?.let { window ->
+      WindowCompat.setDecorFitsSystemWindows(window, false)
+      val insetsController = WindowInsetsControllerCompat(window, window.decorView)
+      // Use WindowInsetsControllerCompat instead of deprecated Window APIs
+      // This prevents using getStatusBarColor, setStatusBarColor, setNavigationBarColor
+      insetsController.isAppearanceLightStatusBars = true
+      insetsController.isAppearanceLightNavigationBars = true
+    }
   }
 
   /**

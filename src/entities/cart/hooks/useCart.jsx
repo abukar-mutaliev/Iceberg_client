@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+// Импортируем напрямую из файлов, чтобы избежать циклической зависимости
 import {
     fetchCart,
     fetchCartStats,
@@ -25,7 +26,7 @@ import {
     addNotification,
     removeNotification,
     clearNotifications
-} from '@entities/cart';
+} from '../model/slice';
 
 import {
     selectCartItems,
@@ -47,7 +48,7 @@ import {
     selectRecommendedProducts,
     selectCartState,
     selectCartProductIds
-} from '@entities/cart';
+} from '../model/selectors';
 
 const GUEST_CART_KEY = 'guest_cart';
 

@@ -228,16 +228,13 @@ const AppInitializer = ({children}) => {
 
                 if (!accessTokenValid && refreshTokenValid) {
                     try {
-                        if (!auth?.refreshToken || typeof auth.refreshToken !== 'function') {
-                            console.warn('⚠️ App: refreshToken not available');
-                            return;
-                        }
-                        
-                        const result = await auth.refreshToken();
-                        if (result && !result.error) {
+                        // Используем authService.refreshAccessToken напрямую, так как он работает с AsyncStorage
+                        // Это избегает проблемы несинхронизированности Redux store с AsyncStorage
+                        const refreshed = await authService.refreshAccessToken();
+                        if (refreshed?.accessToken) {
                             console.log('✅ App: Token refreshed successfully on initialization');
                         } else {
-                            console.warn('⚠️ App: Token refresh returned error:', result?.error || result);
+                            console.warn('⚠️ App: Token refresh failed - no new tokens received');
                             await authService.clearTokens();
                             return;
                         }

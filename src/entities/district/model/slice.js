@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { logData } from '@shared/lib/logger';
-import { districtApi } from "@entities/district";
+// Импортируем напрямую из API, чтобы избежать циклической зависимости
+import { districtApi } from "../api/districtsApi";
 
 const initialState = {
     districts: [],

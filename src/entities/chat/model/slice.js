@@ -94,7 +94,24 @@ const ensureRoomBucket = (state, roomId) => {
 };
 
 const upsertMessagesDesc = (bucket, messages) => {
+  if (!messages || !Array.isArray(messages)) return;
+  
+  // Дедупликация входных сообщений по ID (только реальные ID, не temporaryId)
+  const uniqueMessages = [];
+  const seenIds = new Set();
   for (const msg of messages) {
+    // Используем только реальный ID, игнорируем временные сообщения без ID
+    const msgId = msg?.id;
+    if (!msgId) {
+      // Пропускаем сообщения без ID (только с temporaryId)
+      continue;
+    }
+    if (seenIds.has(msgId)) continue;
+    seenIds.add(msgId);
+    uniqueMessages.push(msg);
+  }
+  
+  for (const msg of uniqueMessages) {
     // Убеждаемся, что у сообщения есть createdAt
     if (!msg.createdAt) {
       msg.createdAt = new Date().toISOString();
@@ -103,9 +120,30 @@ const upsertMessagesDesc = (bucket, messages) => {
     if (!msg.reactions) {
       msg.reactions = [];
     }
+    
+    // Если это сообщение с реальным ID заменяет временное, удаляем временное
+    if (msg.temporaryId && bucket.byId[msg.temporaryId]) {
+      delete bucket.byId[msg.temporaryId];
+      const tempIndex = bucket.ids.indexOf(msg.temporaryId);
+      if (tempIndex >= 0) {
+        bucket.ids.splice(tempIndex, 1);
+      }
+    }
+    
+    // Обновляем сообщение (слияние с существующим если есть)
     bucket.byId[msg.id] = { ...(bucket.byId[msg.id] || {}), ...msg };
     if (!bucket.ids.includes(msg.id)) bucket.ids.push(msg.id);
   }
+
+  // Дедупликация bucket.ids перед сортировкой
+  const uniqueIds = [...new Set(bucket.ids)];
+  bucket.ids = uniqueIds;
+  
+  // Удаляем ID которые ссылаются на временные сообщения без ID
+  bucket.ids = bucket.ids.filter(id => {
+    const msg = bucket.byId[id];
+    return msg && msg.id === id; // Оставляем только если ключ совпадает с msg.id
+  });
 
   bucket.ids.sort((a, b) => {
     const ma = bucket.byId[a];
@@ -168,6 +206,23 @@ const updateMessageCache = (roomId, bucket) => {
     const messagesToCache = bucket.ids.map(id => {
       const msg = bucket.byId[id];
       if (!msg) return null;
+      
+      // Пропускаем временные сообщения
+      // Временные сообщения имеют temporaryId в качестве ключа или ID в виде строки "temp_..."
+      const msgId = msg.id;
+      if (!msgId) {
+        // Нет ID - временное сообщение
+        return null;
+      }
+      if (typeof msgId === 'string' && msgId.startsWith('temp_')) {
+        // ID начинается с "temp_" - временное сообщение
+        return null;
+      }
+      if (msgId === id && typeof id === 'string' && id.startsWith('temp_')) {
+        // Ключ - временный ID - временное сообщение
+        return null;
+      }
+      
       // Делаем копию через JSON для полного отделения от Proxy
       try {
         return JSON.parse(JSON.stringify(msg));
@@ -538,8 +593,16 @@ export const fetchMessages = createAsyncThunk(
         });
 
         if (!cursorId) {
-          try { 
-            await chatCacheService.saveMessages(roomId, messages);
+          try {
+            // Фильтруем временные сообщения перед сохранением в кэш
+            const messagesToCache = messages.filter(msg => {
+              // Сохраняем только сообщения с реальным ID (не temporaryId)
+              return msg.id && typeof msg.id === 'number' && !msg.temporaryId;
+            });
+            
+            if (messagesToCache.length > 0) {
+              await chatCacheService.saveMessages(roomId, messagesToCache);
+            }
             
             // Фоновое кэширование медиа-файлов
             messages.forEach(msg => {
@@ -2501,9 +2564,21 @@ const chatSlice = createSlice({
     },
     hydrateRoomMessages(state, action) {
       const { roomId, messages } = action.payload || {};
-      if (!roomId || !Array.isArray(messages)) return;
+      if (!roomId || !Array.isArray(messages) || messages.length === 0) return;
       ensureRoomBucket(state, roomId);
-      upsertMessagesDesc(state.messages[roomId], messages);
+      
+      // Если в Redux уже есть сообщения, добавляем только новые
+      const existingIds = new Set(state.messages[roomId].ids);
+      const newMessages = messages.filter(msg => {
+        const msgId = msg?.id || msg?.temporaryId;
+        return msgId && !existingIds.has(msgId);
+      });
+      
+      // Добавляем только новые сообщения
+      if (newMessages.length > 0) {
+        upsertMessagesDesc(state.messages[roomId], newMessages);
+      }
+      
       state.messages[roomId].cursorId = state.messages[roomId].ids.length
           ? state.messages[roomId].ids[state.messages[roomId].ids.length - 1]
           : null;
@@ -2663,6 +2738,37 @@ const chatSlice = createSlice({
         .addCase(fetchMessages.fulfilled, (state, action) => {
           const { roomId, messages, hasMore } = action.payload;
           ensureRoomBucket(state, roomId);
+          
+          // Удаляем временные сообщения (только с temporaryId, без реального ID)
+          // перед добавлением сообщений с сервера
+          if (messages && Array.isArray(messages) && messages.length > 0) {
+            const realMessageIds = new Set(messages.map(m => m.id).filter(Boolean));
+            const idsToRemove = [];
+            
+            state.messages[roomId].ids.forEach(id => {
+              const msg = state.messages[roomId].byId[id];
+              // Удаляем временные сообщения, которые теперь имеют реальные ID
+              if (msg && (!msg.id || msg.id !== id || msg.temporaryId)) {
+                // Если у временного сообщения теперь есть реальный ID в новых сообщениях
+                if (msg.temporaryId && realMessageIds.has(msg.id)) {
+                  idsToRemove.push(id);
+                }
+                // Также удаляем временные сообщения без ID
+                else if (!msg.id || msg.id !== id) {
+                  idsToRemove.push(id);
+                }
+              }
+            });
+            
+            // Удаляем найденные временные сообщения
+            idsToRemove.forEach(id => {
+              delete state.messages[roomId].byId[id];
+              const index = state.messages[roomId].ids.indexOf(id);
+              if (index >= 0) {
+                state.messages[roomId].ids.splice(index, 1);
+              }
+            });
+          }
           
           // Обновляем сообщения с новыми статусами
           if (messages && Array.isArray(messages)) {

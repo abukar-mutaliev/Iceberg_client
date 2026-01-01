@@ -14,7 +14,8 @@ import { useCartAvailability } from '@entities/cart';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { selectWaitingStockCountCombined, selectSupplierWaitingStockCount } from '@entities/order';
 // Важно: используем тот же экземпляр контекста, что и экраны (иначе hideTabBar() не влияет на CustomTabBar)
-import { useTabBar } from '@widgets/navigation';
+// Импортируем напрямую из контекста, чтобы избежать циклической зависимости
+import { useTabBar } from '../../context';
 
 const { width } = Dimensions.get('window');
 

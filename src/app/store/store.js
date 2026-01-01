@@ -7,6 +7,8 @@ import { profileReducer } from "@entities/profile";
 import { categoryReducer } from '@entities/category';
 import { bannerReducer } from '@entities/banner';
 import { feedbackReducer } from '@entities/feedback';
+import { appFeedbackSliceReducer } from '@entities/appFeedback';
+import { supportTicketSliceReducer } from '@entities/supportTicket';
 import { userReducer } from "@entities/user";
 import { suppliersReducer } from "@entities/supplier";
 import { searchHistoryReducer } from "@entities/search";
@@ -46,6 +48,8 @@ const appReducer = combineReducers({
     category: categoryReducer,
     banner: bannerReducer,
     feedback: feedbackReducer,
+    appFeedback: appFeedbackSliceReducer,
+    supportTicket: supportTicketSliceReducer,
     user: userReducer,
     suppliers: suppliersReducer,
     searchHistory: searchHistoryReducer,

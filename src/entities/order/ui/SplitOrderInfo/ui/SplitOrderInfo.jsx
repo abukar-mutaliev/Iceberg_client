@@ -11,7 +11,8 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { Color, FontFamily } from '@app/styles/GlobalStyles';
-import { OrderApi } from '@entities/order';
+// Импортируем напрямую из API, чтобы избежать циклической зависимости
+import { OrderApi } from '../../../api/orderApi';
 
 const { width: screenWidth } = Dimensions.get('window');
 

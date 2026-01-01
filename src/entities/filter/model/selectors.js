@@ -1,6 +1,7 @@
 import { createSelector } from '@reduxjs/toolkit';
-import { selectProducts } from '@entities/product';
-import {applyFiltersToProducts} from "@entities/filter";
+// Импортируем напрямую из файлов, чтобы избежать циклической зависимости
+import { selectProducts } from '@entities/product/model/selectors';
+import { applyFiltersToProducts } from "../lib/applyFiltersToProducts";
 
 export const selectFilterCriteria = (state) => {
     return state.filter?.criteria;

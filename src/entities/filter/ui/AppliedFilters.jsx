@@ -13,13 +13,15 @@ import { useNavigation } from '@react-navigation/native';
 import { X } from 'lucide-react-native';
 import { FontFamily } from '@app/styles/GlobalStyles';
 
-// Импорт действий и селекторов
+// Импорт действий и селекторов напрямую, чтобы избежать циклической зависимости
 import {
     selectFilterCriteria,
-    selectAppliedFilters,
+    selectAppliedFilters
+} from '../model/selectors';
+import {
     setFilterCriteria,
     clearFilterCriteria
-} from '@entities/filter';
+} from '../model/slice';
 
 // Адаптивные размеры
 const { width: SCREEN_WIDTH } = Dimensions.get('window');

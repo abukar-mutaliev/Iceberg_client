@@ -47,8 +47,11 @@ export const employeeApiMethods = {
     updateEmployeeDistricts: (employeeId, districts) => 
         employeeApi.put(`/${employeeId}/districts`, { districts }),
 
-    // Получение сотрудников по району
+    // Получение сотрудников по району (только для ADMIN, EMPLOYEE)
     getEmployeesByDistrict: (districtId) => employeeApi.get(`/district/${districtId}`),
+
+    // Получение менеджера района (для клиентов)
+    getDistrictManager: (districtId) => employeeApi.get(`/district/${districtId}/manager`),
 
     // Получение статистики по районам
     getDistrictStats: () => employeeApi.get('/stats/districts'),
