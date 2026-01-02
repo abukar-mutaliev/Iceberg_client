@@ -9,7 +9,7 @@
  */
 
 import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing, Pressable, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing, Pressable, Platform, AppState } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -1127,19 +1127,144 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
                 }
               }
             } else {
+              // Проверяем, что приложение в foreground перед воспроизведением
+              const appState = AppState.currentState;
+              if (appState !== 'active') {
+                if (__DEV__) {
+                  console.warn('⚠️ Приложение в фоне, откладываем воспроизведение голосового сообщения', {
+                    appState,
+                    messageId
+                  });
+                }
+                setError('Приложение в фоне. Откройте приложение для воспроизведения.');
+                setIsPlaying(false);
+                return;
+              }
+              
               setIsPlaying(true);
               // ВАЖНО: Регистрируем звук в audioManager ДО запуска воспроизведения
               // Это остановит предыдущее воспроизводящееся аудио
               await audioManager.registerSound(messageIdRef.current, soundRef.current);
+              
+              // Настраиваем Audio режим для получения аудио-фокуса
+              try {
+                await Audio.setAudioModeAsync({
+                  playsInSilentModeIOS: true,
+                  staysActiveInBackground: false,
+                  shouldDuckAndroid: true,
+                  playThroughEarpieceAndroid: false,
+                });
+              } catch (audioModeErr) {
+                if (__DEV__) {
+                  console.warn('⚠️ Ошибка настройки Audio режима:', audioModeErr.message);
+                }
+                // Продолжаем попытку воспроизведения даже если не удалось настроить режим
+              }
+              
               // Применяем текущую скорость воспроизведения
               try {
-                await soundRef.current.setRateAsync(playbackRate, true);
-                await soundRef.current.playAsync();
-                devLog('🎧 after playAsync status', {
-                  messageId,
-                  isLoaded: (await soundRef.current.getStatusAsync())?.isLoaded,
-                  isPlaying: (await soundRef.current.getStatusAsync())?.isPlaying,
-                });
+                // Проверяем AppState перед вызовом setRateAsync
+                const currentAppState = AppState.currentState;
+                if (currentAppState !== 'active') {
+                  if (__DEV__) {
+                    console.warn('⚠️ Приложение в фоне, откладываем воспроизведение голосового сообщения', {
+                      appState: currentAppState,
+                      messageId
+                    });
+                  }
+                  setError('Приложение в фоне. Откройте приложение для воспроизведения.');
+                  setIsPlaying(false);
+                  return;
+                }
+                
+                try {
+                  await soundRef.current.setRateAsync(playbackRate, true);
+                } catch (rateErr) {
+                  // Если setRateAsync не удался из-за AudioFocusNotAcquiredException, обрабатываем
+                  if (rateErr.message && rateErr.message.includes('AudioFocusNotAcquiredException')) {
+                    if (__DEV__) {
+                      console.warn('⚠️ Error applying playback rate:', rateErr);
+                    }
+                    setError('Не удалось получить аудио-фокус. Попробуйте еще раз.');
+                    setIsPlaying(false);
+                    return;
+                  }
+                  throw rateErr;
+                }
+                
+                // Пытаемся воспроизвести с повторной попыткой при ошибке AudioFocusNotAcquiredException
+                let playAttempts = 0;
+                const maxPlayAttempts = 2;
+                let lastError = null;
+                
+                while (playAttempts < maxPlayAttempts) {
+                  try {
+                    // Проверяем AppState перед каждой попыткой
+                    const checkAppState = AppState.currentState;
+                    if (checkAppState !== 'active') {
+                      throw new Error('App is in background');
+                    }
+                    
+                    await soundRef.current.playAsync();
+                    devLog('🎧 after playAsync status', {
+                      messageId,
+                      isLoaded: (await soundRef.current.getStatusAsync())?.isLoaded,
+                      isPlaying: (await soundRef.current.getStatusAsync())?.isPlaying,
+                    });
+                    break; // Успешно воспроизвели, выходим из цикла
+                  } catch (playErr) {
+                    lastError = playErr;
+                    playAttempts++;
+                    
+                    // Если приложение в фоне, не пытаемся повторно
+                    if (playErr.message && playErr.message.includes('background')) {
+                      setError('Приложение в фоне. Откройте приложение для воспроизведения.');
+                      setIsPlaying(false);
+                      return;
+                    }
+                    
+                    // Если это AudioFocusNotAcquiredException и есть еще попытки, ждем и пробуем снова
+                    if (playErr.message && playErr.message.includes('AudioFocusNotAcquiredException') && playAttempts < maxPlayAttempts) {
+                      if (__DEV__) {
+                        console.warn(`⚠️ Не удалось получить аудио-фокус, попытка ${playAttempts}/${maxPlayAttempts}, повтор через 300мс`, {
+                          messageId,
+                          appState: AppState.currentState
+                        });
+                      }
+                      // Небольшая задержка перед повторной попыткой
+                      await new Promise(resolve => setTimeout(resolve, 300));
+                      
+                      // Проверяем AppState после задержки
+                      const checkAppStateAfterDelay = AppState.currentState;
+                      if (checkAppStateAfterDelay !== 'active') {
+                        setError('Приложение в фоне. Откройте приложение для воспроизведения.');
+                        setIsPlaying(false);
+                        return;
+                      }
+                      
+                      // Повторно настраиваем Audio режим
+                      try {
+                        await Audio.setAudioModeAsync({
+                          playsInSilentModeIOS: true,
+                          staysActiveInBackground: false,
+                          shouldDuckAndroid: true,
+                          playThroughEarpieceAndroid: false,
+                        });
+                      } catch (audioModeErr) {
+                        // Игнорируем ошибку настройки режима
+                      }
+                      continue; // Пробуем снова
+                    } else {
+                      // Другая ошибка или закончились попытки - выбрасываем ошибку
+                      throw playErr;
+                    }
+                  }
+                }
+                
+                // Если все попытки не удались
+                if (playAttempts >= maxPlayAttempts && lastError) {
+                  throw lastError;
+                }
               } catch (playErr) {
                 // Если не удалось воспроизвести, сбрасываем состояние
                 if (playErr.message && playErr.message.includes('not loaded')) {
@@ -1147,6 +1272,17 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
                   soundRef.current = null;
                   setIsPlaying(false);
                   // Продолжаем загрузку нового звука
+                } else if (playErr.message && (playErr.message.includes('AudioFocusNotAcquiredException') || playErr.message.includes('background'))) {
+                  // Обрабатываем ошибку AudioFocusNotAcquiredException или background
+                  setError('Приложение в фоне. Откройте приложение для воспроизведения.');
+                  setIsPlaying(false);
+                  if (__DEV__) {
+                    console.warn('⚠️ Не удалось получить аудио-фокус после всех попыток', {
+                      messageId,
+                      appState: AppState.currentState,
+                      error: playErr.message
+                    });
+                  }
                 } else {
                   throw playErr;
                 }
@@ -1182,17 +1318,157 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
       });
       // Применяем текущую скорость воспроизведения перед запуском
       try {
-        await newSound.setRateAsync(playbackRate, true);
-        await newSound.playAsync();
-        setIsPlaying(true);
-        devLog('🎧 newSound after playAsync status', {
-          messageId,
-          isLoaded: (await newSound.getStatusAsync())?.isLoaded,
-          isPlaying: (await newSound.getStatusAsync())?.isPlaying,
-        });
+        // Проверяем, что приложение в foreground перед воспроизведением
+        const appState = AppState.currentState;
+        if (appState !== 'active') {
+          if (__DEV__) {
+            console.warn('⚠️ Приложение в фоне, откладываем воспроизведение голосового сообщения', {
+              appState,
+              messageId
+            });
+          }
+          setError('Приложение в фоне. Откройте приложение для воспроизведения.');
+          setIsPlaying(false);
+          return;
+        }
+        
+        // Настраиваем Audio режим для получения аудио-фокуса
+        try {
+          await Audio.setAudioModeAsync({
+            playsInSilentModeIOS: true,
+            staysActiveInBackground: false,
+            shouldDuckAndroid: true,
+            playThroughEarpieceAndroid: false,
+          });
+        } catch (audioModeErr) {
+          if (__DEV__) {
+            console.warn('⚠️ Ошибка настройки Audio режима:', audioModeErr.message);
+          }
+          // Продолжаем попытку воспроизведения даже если не удалось настроить режим
+        }
+        
+        // Проверяем AppState перед вызовом setRateAsync
+        const currentAppState = AppState.currentState;
+        if (currentAppState !== 'active') {
+          if (__DEV__) {
+            console.warn('⚠️ Приложение в фоне, откладываем воспроизведение голосового сообщения', {
+              appState: currentAppState,
+              messageId
+            });
+          }
+          setError('Приложение в фоне. Откройте приложение для воспроизведения.');
+          setIsPlaying(false);
+          return;
+        }
+        
+        try {
+          await newSound.setRateAsync(playbackRate, true);
+        } catch (rateErr) {
+          // Если setRateAsync не удался из-за AudioFocusNotAcquiredException, обрабатываем
+          if (rateErr.message && rateErr.message.includes('AudioFocusNotAcquiredException')) {
+            if (__DEV__) {
+              console.warn('⚠️ Error applying playback rate:', rateErr);
+            }
+            setError('Не удалось получить аудио-фокус. Попробуйте еще раз.');
+            setIsPlaying(false);
+            return;
+          }
+          throw rateErr;
+        }
+        
+        // Пытаемся воспроизвести с повторной попыткой при ошибке AudioFocusNotAcquiredException
+        let playAttempts = 0;
+        const maxPlayAttempts = 2;
+        let lastError = null;
+        
+        while (playAttempts < maxPlayAttempts) {
+          try {
+            // Проверяем AppState перед каждой попыткой
+            const checkAppState = AppState.currentState;
+            if (checkAppState !== 'active') {
+              throw new Error('App is in background');
+            }
+            
+            await newSound.playAsync();
+            setIsPlaying(true);
+            devLog('🎧 newSound after playAsync status', {
+              messageId,
+              isLoaded: (await newSound.getStatusAsync())?.isLoaded,
+              isPlaying: (await newSound.getStatusAsync())?.isPlaying,
+            });
+            break; // Успешно воспроизвели, выходим из цикла
+          } catch (playErr) {
+            lastError = playErr;
+            playAttempts++;
+            
+            // Если приложение в фоне, не пытаемся повторно
+            if (playErr.message && playErr.message.includes('background')) {
+              setError('Приложение в фоне. Откройте приложение для воспроизведения.');
+              setIsPlaying(false);
+              return;
+            }
+            
+            // Если это AudioFocusNotAcquiredException и есть еще попытки, ждем и пробуем снова
+            if (playErr.message && playErr.message.includes('AudioFocusNotAcquiredException') && playAttempts < maxPlayAttempts) {
+              if (__DEV__) {
+                console.warn(`⚠️ Не удалось получить аудио-фокус, попытка ${playAttempts}/${maxPlayAttempts}, повтор через 300мс`, {
+                  messageId,
+                  appState: AppState.currentState
+                });
+              }
+              // Небольшая задержка перед повторной попыткой
+              await new Promise(resolve => setTimeout(resolve, 300));
+              
+              // Проверяем AppState после задержки
+              const checkAppStateAfterDelay = AppState.currentState;
+              if (checkAppStateAfterDelay !== 'active') {
+                setError('Приложение в фоне. Откройте приложение для воспроизведения.');
+                setIsPlaying(false);
+                return;
+              }
+              
+              // Повторно настраиваем Audio режим
+              try {
+                await Audio.setAudioModeAsync({
+                  playsInSilentModeIOS: true,
+                  staysActiveInBackground: false,
+                  shouldDuckAndroid: true,
+                  playThroughEarpieceAndroid: false,
+                });
+              } catch (audioModeErr) {
+                // Игнорируем ошибку настройки режима
+              }
+              continue; // Пробуем снова
+            } else {
+              // Другая ошибка или закончились попытки - выбрасываем ошибку
+              throw playErr;
+            }
+          }
+        }
+        
+        // Если все попытки не удались
+        if (playAttempts >= maxPlayAttempts && lastError) {
+          throw lastError;
+        }
       } catch (playErr) {
         console.error('Ошибка при воспроизведении загруженного звука:', playErr);
-        setError('Не удалось воспроизвести');
+        
+        // Обрабатываем ошибку AudioFocusNotAcquiredException
+        if (playErr.message && (playErr.message.includes('AudioFocusNotAcquiredException') || playErr.message.includes('background'))) {
+          setError('Приложение в фоне. Откройте приложение для воспроизведения.');
+          if (__DEV__) {
+            console.warn('⚠️ Не удалось получить аудио-фокус после всех попыток', {
+              messageId,
+              appState: AppState.currentState,
+              error: playErr.message
+            });
+          }
+          // Очищаем звук, чтобы можно было попробовать снова
+          setSound(null);
+          soundRef.current = null;
+        } else {
+          setError('Не удалось воспроизвести');
+        }
         setIsPlaying(false);
       }
 

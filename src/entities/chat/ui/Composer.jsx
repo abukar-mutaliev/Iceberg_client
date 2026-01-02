@@ -23,7 +23,8 @@ export const Composer = ({
   onCancelReply,
   disabled = false,
   participantsById,
-  participants
+  participants,
+  autoFocus = false
 }) => {
   const dispatch = useDispatch();
   const currentUserId = useSelector(state => state.auth?.user?.id);
@@ -87,6 +88,17 @@ export const Composer = ({
       keyboardWillHide.remove();
     };
   }, []);
+
+  // Автоматический фокус на поле ввода при монтировании (для быстрого ответа из уведомления)
+  useEffect(() => {
+    if (autoFocus && textInputRef.current) {
+      // Небольшая задержка для гарантии, что экран полностью смонтирован
+      const timer = setTimeout(() => {
+        textInputRef.current?.focus();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [autoFocus]);
 
   const pickImages = async () => {
     if (disabled) return;

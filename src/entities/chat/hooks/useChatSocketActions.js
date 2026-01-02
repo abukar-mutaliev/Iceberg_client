@@ -125,6 +125,10 @@ export const useChatSocketActions = () => {
       return;
     }
 
+    if (__DEV__) {
+      console.log(`[useChatSocketActions] 🔄 emitActiveRoom вызван`, { roomId, socketConnected: socket?.connected });
+    }
+
     socket.emit('chat:room:active', { roomId }, (response) => {
       if (response?.ok) {
         console.log(`✅ Active room set successfully: ${roomId}`);

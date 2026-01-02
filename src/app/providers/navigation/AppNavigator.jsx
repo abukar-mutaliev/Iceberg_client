@@ -327,17 +327,99 @@ const createNavigationFunctions = (navigation) => {
     const navigateToChat = (data) => {
         try {
             if (!data.roomId) {
-                console.warn('No roomId provided for chat navigation');
+                if (__DEV__) {
+                    console.warn('[AppNavigator] ⚠️ No roomId provided for chat navigation', data);
+                }
                 return;
             }
-            // ✅ ChatRoom теперь в корневом Stack (AppStack), чтобы таббар физически не мог появляться в комнате.
-            navigation.navigate('ChatRoom', {
-                roomId: parseInt(data.roomId),
-                fromNotification: true,
-                messageId: data.messageId || null,
-            });
+
+            const roomId = parseInt(data.roomId || data.room_id);
+            if (__DEV__) {
+                console.log('[AppNavigator] 🔄 navigateToChat вызван', {
+                    roomId,
+                    autoFocusInput: data.autoFocusInput,
+                    messageId: data.messageId
+                });
+            }
+
+            // При холодном запуске навигация может быть перезаписана WelcomeScreen
+            // Используем requestAnimationFrame и InteractionManager для гарантии, что навигация выполнится после инициализации
+            const { InteractionManager } = require('react-native');
+            const { CommonActions } = require('@react-navigation/native');
+            
+            // Увеличенная задержка для гарантии, что WelcomeScreen завершил свою работу и Main экран загружен
+            setTimeout(() => {
+                requestAnimationFrame(() => {
+                    InteractionManager.runAfterInteractions(() => {
+                        try {
+                            // Проверяем, что навигация все еще доступна
+                            if (!navigation || typeof navigation.navigate !== 'function') {
+                                if (__DEV__) {
+                                    console.warn('[AppNavigator] ⚠️ Navigation недоступна, откладываем навигацию');
+                                }
+                                // Повторная попытка через небольшую задержку
+                                setTimeout(() => {
+                                    if (navigation && typeof navigation.navigate === 'function') {
+                                        // Используем reset для замены стека навигации
+                                        navigation.dispatch(
+                                            CommonActions.reset({
+                                                index: 1,
+                                                routes: [
+                                                    { name: 'Main' },
+                                                    { 
+                                                        name: 'ChatRoom',
+                                                        params: {
+                                                            roomId,
+                                                            fromNotification: true,
+                                                            messageId: data.messageId || null,
+                                                            autoFocusInput: data.autoFocusInput || false,
+                                                        }
+                                                    }
+                                                ]
+                                            })
+                                        );
+                                        if (__DEV__) {
+                                            console.log('[AppNavigator] ✅ Навигация к чату выполнена (повторная попытка, reset)', { roomId });
+                                        }
+                                    }
+                                }, 500);
+                                return;
+                            }
+
+                            // Используем reset для замены стека навигации, чтобы при нажатии "назад" вернуться на Main
+                            navigation.dispatch(
+                                CommonActions.reset({
+                                    index: 1,
+                                    routes: [
+                                        { name: 'Main' }, // Список чатов в качестве базового экрана
+                                        { 
+                                            name: 'ChatRoom',
+                                            params: {
+                                                roomId,
+                                                fromNotification: true,
+                                                messageId: data.messageId || null,
+                                                autoFocusInput: data.autoFocusInput || false,
+                                            }
+                                        }
+                                    ]
+                                })
+                            );
+
+                            if (__DEV__) {
+                                console.log('[AppNavigator] ✅ Навигация к чату выполнена (reset stack)', { roomId });
+                            }
+                        } catch (error) {
+                            if (__DEV__) {
+                                console.error('[AppNavigator] ❌ Navigation error to chat:', error?.message, error?.stack);
+                            }
+                        }
+                    });
+                });
+            }, 2000); // Увеличенная задержка 2 секунды для гарантии, что WelcomeScreen завершил работу и Main экран загружен
         } catch (error) {
-            console.error('Navigation error to chat:', error);
+            if (__DEV__) {
+                console.error('[AppNavigator] ❌ Navigation error to chat:', error?.message, error?.stack);
+            }
         }
     };
 

@@ -126,11 +126,28 @@ const getStoredTokens = async () => {
 
 const saveTokens = async (tokens) => {
     try {
-
+        if (!tokens || !tokens.accessToken || !tokens.refreshToken) {
+            console.error('❌ [API] Попытка сохранить неполные токены:', {
+                hasAccessToken: !!tokens?.accessToken,
+                hasRefreshToken: !!tokens?.refreshToken
+            });
+            return;
+        }
 
         await AsyncStorage.setItem(STORAGE_KEYS.TOKENS, JSON.stringify(tokens));
         api.defaults.headers.common['Authorization'] = `Bearer ${tokens.accessToken}`;
-
+        
+        // Логируем успешное сохранение токенов (только в dev режиме)
+        if (__DEV__) {
+            const decoded = decodeToken(tokens.accessToken);
+            const currentTime = Math.floor(Date.now() / 1000);
+            const expiresIn = decoded?.exp ? decoded.exp - currentTime : null;
+            console.log('✅ [API] Токены сохранены:', {
+                hasAccessToken: !!tokens.accessToken,
+                hasRefreshToken: !!tokens.refreshToken,
+                expiresIn: expiresIn ? `${expiresIn}s` : 'unknown'
+            });
+        }
     } catch (error) {
         console.error('❌ [API] Ошибка сохранения токенов:', error);
     }
@@ -221,7 +238,15 @@ export const setAuthorizationHeader = async (forceRefresh = false) => {
                         }
                     }
                 } catch (err) {
-                    console.error('Ошибка обновления токена:', err.message);
+                    const errorMessage = err.response?.data?.message || err.message || 'Unknown error';
+                    const errorStatus = err.response?.status;
+                    console.error('Ошибка обновления токена:', {
+                        message: errorMessage,
+                        status: errorStatus,
+                        hasRefreshToken: !!tokens.refreshToken,
+                        error: err
+                    });
+                    // Не пробрасываем ошибку дальше, чтобы не блокировать работу приложения
                 }
             }
 
@@ -270,7 +295,7 @@ const handleRefreshToken = async (error, originalRequest) => {
             throw new Error('Отсутствуют сохраненные токены');
         }
 
-        const decoded = authService.decodeToken(tokens.refreshToken);
+        const decoded = decodeToken(tokens.refreshToken);
         const currentTime = Math.floor(Date.now() / 1000);
         if (!decoded || !decoded.exp || decoded.exp < currentTime) {
             console.warn('⚠️ handleRefreshToken: Refresh token истек - требуется повторный вход', {
@@ -380,7 +405,7 @@ api.interceptors.request.use(async (config) => {
             
             if (tokens?.accessToken && tokens?.refreshToken) {
                 // Проверяем истечение access token ДО отправки запроса
-                const decoded = authService.decodeToken(tokens.accessToken);
+                const decoded = decodeToken(tokens.accessToken);
                 const currentTime = Math.floor(Date.now() / 1000);
                 const isExpired = !decoded || !decoded.exp || decoded.exp <= currentTime;
 
@@ -388,7 +413,7 @@ api.interceptors.request.use(async (config) => {
                     // console.log('⏰ [API REQUEST] Access token expired, refreshing before request:', config.url);
                     
                     // Проверяем refresh token
-                    const decodedRefresh = authService.decodeToken(tokens.refreshToken);
+                    const decodedRefresh = decodeToken(tokens.refreshToken);
                     const refreshExpired = !decodedRefresh || !decodedRefresh.exp || decodedRefresh.exp <= currentTime;
 
                     if (refreshExpired) {

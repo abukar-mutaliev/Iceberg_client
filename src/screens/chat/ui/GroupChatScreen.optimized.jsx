@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useRef, useState, useCallback, useMemo } from 'react';
 import { View, StyleSheet, KeyboardAvoidingView, Platform, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from 'react-redux';
@@ -19,7 +19,6 @@ import { useChatReactions } from '../hooks/useChatReactions';
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 import { selectIsProductDeleted } from '@entities/product/model/selectors';
 import { useChatSocketActions } from '@entities/chat/hooks/useChatSocketActions';
-import PushNotificationService from '@shared/services/PushNotificationService';
 
 export const GroupChatScreen = ({ route, navigation }) => {
   const {
@@ -170,42 +169,6 @@ export const GroupChatScreen = ({ route, navigation }) => {
     onForward: handleForwardSelectedMessages,
     onDelete: deleteSelectedMessages,
   });
-  
-  // ============ NOTIFICATION MANAGEMENT ============
-  
-  // Очистка push-уведомлений при открытии группового чата
-  useEffect(() => {
-    const clearNotifications = async () => {
-      try {
-        if (!roomId) return;
-        
-        // Устанавливаем активный чат для подавления будущих уведомлений
-        PushNotificationService.setActiveChatRoomId(roomId);
-        
-        // Очищаем существующие уведомления для этого чата
-        await PushNotificationService.clearChatNotifications(roomId);
-        
-        if (__DEV__) {
-          console.log('[GroupChatScreen] ✅ Уведомления очищены', { roomId });
-        }
-      } catch (error) {
-        if (__DEV__) {
-          console.warn('[GroupChatScreen] ⚠️ Ошибка при очистке уведомлений:', error?.message);
-        }
-      }
-    };
-    
-    clearNotifications();
-    
-    // Очищаем активный чат при размонтировании
-    return () => {
-      PushNotificationService.setActiveChatRoomId(null);
-      
-      if (__DEV__) {
-        console.log('[GroupChatScreen] 🔄 Сброшен активный чат', { roomId });
-      }
-    };
-  }, [roomId]);
   
   // ============ CALLBACKS ============
   

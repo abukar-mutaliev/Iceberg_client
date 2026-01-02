@@ -9,6 +9,7 @@ import {
   ScrollView,
   Switch,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -84,68 +85,75 @@ export const PollCreationModal = ({ visible, onClose, onSubmit }) => {
             <View style={styles.placeholder} />
           </View>
 
-          <ScrollView 
-            style={styles.content} 
-            contentContainerStyle={styles.contentContainer}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.keyboardAvoidingView}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
           >
-            {/* Вопрос */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Вопрос</Text>
-              <TextInput
-                style={styles.questionInput}
-                placeholder="Задайте вопрос"
-                value={question}
-                onChangeText={setQuestion}
-                multiline
-                maxLength={200}
-                placeholderTextColor="#999"
-                editable={true}
-                selectTextOnFocus={false}
-              />
-            </View>
-
-            {/* Варианты ответа */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Варианты</Text>
-              {options.map((option, index) => (
-                <View key={`option-${index}`} style={styles.optionRow}>
-                  <TextInput
-                    style={styles.optionInput}
-                    placeholder={`Вариант ${index + 1}`}
-                    value={option}
-                    onChangeText={(value) => handleOptionChange(index, value)}
-                    maxLength={100}
-                    placeholderTextColor="#999"
-                    editable={true}
-                    selectTextOnFocus={false}
-                  />
-                  {options.length > 2 && (
-                    <TouchableOpacity
-                      onPress={() => handleRemoveOption(index)}
-                      style={styles.removeButton}
-                    >
-                      <Ionicons name="close-circle" size={24} color="#ff3b30" />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              ))}
-            </View>
-
-            {/* Разрешить несколько ответов */}
-            <View style={styles.section}>
-              <View style={styles.switchRow}>
-                <Text style={styles.switchLabel}>Разрешить несколько ответов</Text>
-                <Switch
-                  value={allowMultiple}
-                  onValueChange={setAllowMultiple}
-                  trackColor={{ false: '#E0E0E0', true: '#075E54' }}
-                  thumbColor={allowMultiple ? '#fff' : '#f4f3f4'}
+            <ScrollView 
+              style={styles.content} 
+              contentContainerStyle={styles.contentContainer}
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled={true}
+            >
+              {/* Вопрос */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Вопрос</Text>
+                <TextInput
+                  style={styles.questionInput}
+                  placeholder="Задайте вопрос"
+                  value={question}
+                  onChangeText={setQuestion}
+                  multiline
+                  maxLength={200}
+                  placeholderTextColor="#999"
+                  editable={true}
+                  selectTextOnFocus={false}
                 />
               </View>
-            </View>
-          </ScrollView>
+
+              {/* Варианты ответа */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Варианты</Text>
+                {options.map((option, index) => (
+                  <View key={`option-${index}`} style={styles.optionRow}>
+                    <TextInput
+                      style={styles.optionInput}
+                      placeholder={`Вариант ${index + 1}`}
+                      value={option}
+                      onChangeText={(value) => handleOptionChange(index, value)}
+                      maxLength={100}
+                      placeholderTextColor="#999"
+                      editable={true}
+                      selectTextOnFocus={false}
+                    />
+                    {options.length > 2 && (
+                      <TouchableOpacity
+                        onPress={() => handleRemoveOption(index)}
+                        style={styles.removeButton}
+                      >
+                        <Ionicons name="close-circle" size={24} color="#ff3b30" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+              </View>
+
+              {/* Разрешить несколько ответов */}
+              <View style={styles.section}>
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>Разрешить несколько ответов</Text>
+                  <Switch
+                    value={allowMultiple}
+                    onValueChange={setAllowMultiple}
+                    trackColor={{ false: '#E0E0E0', true: '#075E54' }}
+                    thumbColor={allowMultiple ? '#fff' : '#f4f3f4'}
+                  />
+                </View>
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
 
           {/* Кнопка отправки */}
           <View style={styles.footer}>
@@ -176,6 +184,10 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     height: '90%',
     maxHeight: '90%',
+    flexDirection: 'column',
+  },
+  keyboardAvoidingView: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',

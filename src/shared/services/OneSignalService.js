@@ -111,6 +111,11 @@ class OneSignalService {
     // Инициализация OneSignal
     async initialize(appId) {
         try {
+            console.log('[OneSignal] 🚀 initialize вызван', { 
+                appId: appId ? appId.substring(0, 8) + '...' : 'null',
+                isInitialized: this.isInitialized 
+            });
+
             // Используем ту же логику что и в app.config.js с fallback значением
             const configuredAppId =
                 process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ||
@@ -122,6 +127,7 @@ class OneSignalService {
             const effectiveAppId = configuredAppId || appId;
 
             if (this.isInitialized) {
+                console.log('[OneSignal] ℹ️ Уже инициализирован, пропускаем');
                 // Но все равно проверяем каналы - на случай если они были удалены пользователем
                 await this.ensureNotificationChannelExists();
                 return true;
@@ -151,17 +157,27 @@ class OneSignalService {
             if (oneSignal.User?.pushSubscription?.optIn) {
                 try {
                     await oneSignal.User.pushSubscription.optIn();
-                } catch (_) {}
+                    console.log('[OneSignal] ✅ optIn выполнен');
+                } catch (e) {
+                    console.warn('[OneSignal] ⚠️ optIn ошибка:', e?.message);
+                }
             }
 
             // Настройка обработчиков
+            console.log('[OneSignal] 🔧 Вызываем setupNotificationHandlers...');
             this.setupNotificationHandlers(oneSignal);
+            console.log('[OneSignal] ✅ setupNotificationHandlers завершен');
 
             this.isInitialized = true;
+            console.log('[OneSignal] ✅ Инициализация завершена успешно');
             
             return true;
 
         } catch (error) {
+            console.error('[OneSignal] ❌ Ошибка инициализации:', {
+                error: error?.message,
+                stack: error?.stack
+            });
             return false;
         }
     }
@@ -171,16 +187,23 @@ class OneSignalService {
 
 setupNotificationHandlers(oneSignal) {
     try {
+        console.log('[OneSignal] 🔧 setupNotificationHandlers вызван', {
+            hasOneSignal: !!oneSignal,
+            hasNotifications: !!(oneSignal?.Notifications),
+            hasAddEventListener: !!(oneSignal?.Notifications?.addEventListener)
+        });
+
         if (!oneSignal) {
-            if (__DEV__) {
-                console.warn('[OneSignal] ⚠️ setupNotificationHandlers: oneSignal недоступен');
-            }
+            console.warn('[OneSignal] ⚠️ setupNotificationHandlers: oneSignal недоступен');
             return;
         }
 
-        if (__DEV__) {
-            console.log('[OneSignal] 🔧 Настройка обработчиков уведомлений');
+        if (!oneSignal.Notifications) {
+            console.warn('[OneSignal] ⚠️ oneSignal.Notifications недоступен');
+            return;
         }
+
+        console.log('[OneSignal] 🔧 Начинаем регистрацию обработчиков уведомлений');
 
         // Обработчик получения уведомлений в foreground
         oneSignal.Notifications.addEventListener('foregroundWillDisplay', (event) => {
@@ -312,6 +335,10 @@ setupNotificationHandlers(oneSignal) {
                 const notification = event?.notification || {};
                 const data = notification?.additionalData || notification?.additional_data || {};
                 
+                // Получаем PushNotificationService для проверки подавления
+                const PushNotificationService = require('@shared/services/PushNotificationService');
+                const pushNotificationService = PushNotificationService.default || PushNotificationService;
+                
                 if (__DEV__) {
                     console.log('[OneSignal] 📬 Получено уведомление в background', {
                         notificationId: notification?.notificationId,
@@ -320,8 +347,24 @@ setupNotificationHandlers(oneSignal) {
                         roomId: data?.roomId || data?.room_id,
                         senderId: data?.senderId || data?.sender_id,
                         type: data?.type,
-                        messageCount: data?.messageCount
+                        messageCount: data?.messageCount,
+                        activeRoomId: pushNotificationService?.getActiveChatRoomId?.(),
+                        activePeerUserId: pushNotificationService?.getActiveChatPeerUserId?.()
                     });
+                }
+                
+                // Подавление для открытого чата (для background тоже нужно проверить)
+                // В background мы не можем предотвратить показ, но можем отметить для логирования
+                if (pushNotificationService?.shouldSuppressChatNotification?.(data)) {
+                    if (__DEV__) {
+                        console.log('[OneSignal] 🔇 Уведомление в background должно быть подавлено: чат открыт', {
+                            roomId: data?.roomId || data?.room_id,
+                            senderId: data?.senderId || data?.sender_id
+                        });
+                    }
+                    // В background мы не можем предотвратить показ уведомления через OneSignal API
+                    // Но можем очистить его после получения, если чат открыт
+                    // Это будет обработано при открытии чата через clearChatNotifications
                 }
             } catch (e) {
                 if (__DEV__) {
@@ -330,10 +373,28 @@ setupNotificationHandlers(oneSignal) {
             }
         });
 
-        // Обработчик нажатий
+        // Обработчик нажатий (включая кнопки действий)
+        console.log('[OneSignal] 📝 Регистрация обработчика click');
+        
         oneSignal.Notifications.addEventListener('click', (event) => {
+            // ВСЕГДА логируем нажатие, даже если произошла ошибка
+            console.log('[OneSignal] 🔔🔔🔔 CLICK EVENT FIRED 🔔🔔🔔', {
+                hasEvent: !!event,
+                eventType: typeof event,
+                timestamp: new Date().toISOString()
+            });
+
             try {
                 const n = event?.notification || {};
+                const result = event?.result || {};
+                
+                console.log('[OneSignal] 📋 Парсинг данных уведомления', {
+                    hasNotification: !!n,
+                    hasResult: !!result,
+                    notificationKeys: Object.keys(n || {}),
+                    resultKeys: Object.keys(result || {})
+                });
+
                 const data =
                     n.additionalData ||
                     n.additional_data ||
@@ -341,45 +402,274 @@ setupNotificationHandlers(oneSignal) {
                     n?.payload?.additional_data ||
                     null;
 
+                console.log('[OneSignal] 📦 Извлеченные данные', {
+                    hasData: !!data,
+                    dataKeys: data ? Object.keys(data) : [],
+                    dataPreview: data ? JSON.stringify(data).substring(0, 200) : 'null'
+                });
+
+                // Проверяем, была ли нажата кнопка действия
+                const actionId = result?.actionId || result?.actionID || null;
+
+                console.log('[OneSignal] 👆 Полные данные нажатия', {
+                    notificationId: n?.notificationId,
+                    roomId: data?.roomId || data?.room_id,
+                    messageId: data?.messageId || data?.message_id,
+                    senderId: data?.senderId || data?.sender_id,
+                    type: data?.type,
+                    actionId: actionId,
+                    hasData: !!data
+                });
+
+                // Проверяем наличие данных
+                if (!data) {
+                    if (__DEV__) {
+                        console.warn('[OneSignal] ⚠️ Данные уведомления отсутствуют', {
+                            notification: n,
+                            result: result,
+                            event: event
+                        });
+                    }
+                    return;
+                }
+
+                // Нормализуем данные (OneSignal может передавать snake_case)
+                const normalizedData = {
+                    ...data,
+                    roomId: data.roomId || data.room_id,
+                    messageId: data.messageId || data.message_id,
+                    senderId: data.senderId || data.sender_id,
+                    type: data.type || 'CHAT_MESSAGE'
+                };
+
                 if (__DEV__) {
-                    console.log('[OneSignal] 👆 Нажатие на уведомление', {
-                        notificationId: n?.notificationId,
-                        roomId: data?.roomId || data?.room_id,
-                        senderId: data?.senderId || data?.sender_id,
-                        type: data?.type
+                    console.log('[OneSignal] 📋 Нормализованные данные', {
+                        roomId: normalizedData.roomId,
+                        messageId: normalizedData.messageId,
+                        type: normalizedData.type,
+                        autoFocusInput: normalizedData.autoFocusInput
                     });
                 }
 
-                if (data) {
-                    this.handleNotificationNavigation(data);
+                // Если нажата кнопка действия
+                if (actionId) {
+                    console.log('[OneSignal] 🔘 Обработка действия кнопки:', actionId);
+                    console.log('[OneSignal] 🔘 Вызываем handleNotificationAction с данными:', {
+                        roomId: normalizedData.roomId,
+                        actionId,
+                        autoFocusInput: normalizedData.autoFocusInput
+                    });
+                    this.handleNotificationAction(actionId, normalizedData);
+                    console.log('[OneSignal] ✅ handleNotificationAction завершен');
+                } else {
+                    // Обычное нажатие на уведомление
+                    console.log('[OneSignal] 📱 Обычное нажатие на уведомление, открываем чат');
+                    console.log('[OneSignal] 📱 Вызываем handleNotificationNavigation с данными:', {
+                        roomId: normalizedData.roomId,
+                        messageId: normalizedData.messageId,
+                        type: normalizedData.type
+                    });
+                    this.handleNotificationNavigation(normalizedData);
+                    console.log('[OneSignal] ✅ handleNotificationNavigation завершен');
                 }
-            } catch (_) {}
+            } catch (e) {
+                console.error('[OneSignal] ❌ КРИТИЧЕСКАЯ ОШИБКА в обработчике click:', {
+                    error: e?.message,
+                    stack: e?.stack,
+                    name: e?.name
+                });
+            }
         });
 
+        console.log('[OneSignal] ✅ Обработчик click успешно зарегистрирован');
+
     } catch (error) {
-        if (__DEV__) {
-            console.warn('[OneSignal] Ошибка настройки обработчиков:', error?.message);
-        }
+        console.error('[OneSignal] ❌ КРИТИЧЕСКАЯ ОШИБКА настройки обработчиков:', {
+            error: error?.message,
+            stack: error?.stack,
+            name: error?.name
+        });
     }
+    
+    console.log('[OneSignal] ✅ setupNotificationHandlers завершен успешно');
 }
 
     // Обработка навигации из уведомлений
     handleNotificationNavigation(data) {
         try {
+            if (__DEV__) {
+                console.log('[OneSignal] 🚀 handleNotificationNavigation вызван', {
+                    type: data?.type,
+                    roomId: data?.roomId || data?.room_id,
+                    messageId: data?.messageId || data?.message_id,
+                    autoFocusInput: data?.autoFocusInput,
+                    dataKeys: data ? Object.keys(data) : []
+                });
+            }
+
             // Используем PushNotificationService для обработки навигации
             const PushNotificationService = require('@shared/services/PushNotificationService');
             const pushNotificationService = PushNotificationService.default || PushNotificationService;
             
             if (pushNotificationService && pushNotificationService.handleNotificationNavigation) {
+                if (__DEV__) {
+                    console.log('[OneSignal] ✅ Передаем управление PushNotificationService');
+                }
                 pushNotificationService.handleNotificationNavigation(data);
             } else {
+                if (__DEV__) {
+                    console.warn('[OneSignal] ⚠️ PushNotificationService недоступен, используем fallback');
+                }
                 // Fallback логика если PushNotificationService недоступен
                 this.fallbackNavigation(data);
             }
         } catch (error) {
-            // Временно отключены логи OneSignal
-            // console.error('Ошибка при обработке навигации OneSignal:', error);
+            if (__DEV__) {
+                console.error('[OneSignal] ❌ Ошибка при обработке навигации:', error?.message, error?.stack);
+            }
             this.fallbackNavigation(data);
+        }
+    }
+
+    // Обработка нажатий на кнопки действий в уведомлениях
+    handleNotificationAction(actionId, data) {
+        try {
+            if (__DEV__) {
+                console.log('[OneSignal] 🔘 Обработка действия кнопки', {
+                    actionId,
+                    roomId: data?.roomId || data?.room_id,
+                    type: data?.type
+                });
+            }
+
+            const roomId = data?.roomId || data?.room_id;
+            if (!roomId) {
+                if (__DEV__) {
+                    console.warn('[OneSignal] ⚠️ roomId отсутствует в данных уведомления');
+                }
+                return;
+            }
+
+            // Используем PushNotificationService для обработки действий
+            const PushNotificationService = require('@shared/services/PushNotificationService');
+            const pushNotificationService = PushNotificationService.default || PushNotificationService;
+
+            if (actionId === 'dismiss' || actionId === 'read') {
+                // Кнопка "Скрыть" (или старая "Прочитано") - ТОЛЬКО очищаем уведомление
+                // ⚠️ ВАЖНО: НЕ вызываем API, потому что это ВСЕГДА открывает приложение на Android
+                // Сообщения будут автоматически помечены как прочитанные при открытии чата
+                if (__DEV__) {
+                    console.log('[OneSignal] 🔕 Кнопка "Скрыть/Прочитано" - только очищаем уведомление', { 
+                        roomId,
+                        actionId 
+                    });
+                }
+                
+                // ТОЛЬКО очищаем уведомление из системного трея
+                // Это единственный способ не открывать приложение
+                if (pushNotificationService && pushNotificationService.clearChatNotifications) {
+                    pushNotificationService.clearChatNotifications(roomId).catch(err => {
+                        if (__DEV__) {
+                            console.warn('[OneSignal] ⚠️ Ошибка очистки уведомления:', err?.message);
+                        }
+                    });
+                }
+                
+                // НЕ вызываем API - любой вызов API активирует приложение
+                // Логика: когда пользователь откроет чат, сообщения будут автоматически
+                // помечены как прочитанные через useChatLifecycle (строки 131, 271)
+                
+                // Возвращаемся сразу, без каких-либо дополнительных действий
+                return;
+            } else if (actionId === 'reply') {
+                // Кнопка "Ответить" - открываем чат и автоматически фокусируем input
+                if (__DEV__) {
+                    console.log('[OneSignal] 🔘 Кнопка "Ответить" нажата', {
+                        roomId: data?.roomId || data?.room_id,
+                        hasPushService: !!pushNotificationService
+                    });
+                }
+                
+                // Важно: добавляем параметр autoFocusInput для автоматического открытия клавиатуры
+                const dataWithKeyboard = { 
+                    ...data, 
+                    autoFocusInput: true 
+                };
+                
+                if (__DEV__) {
+                    console.log('[OneSignal] 🔄 Открываем чат с автофокусом на input', {
+                        roomId: dataWithKeyboard?.roomId || dataWithKeyboard?.room_id,
+                        autoFocusInput: dataWithKeyboard.autoFocusInput
+                    });
+                }
+                
+                // Используем улучшенную навигацию
+                if (pushNotificationService && pushNotificationService.handleNotificationNavigation) {
+                    pushNotificationService.handleNotificationNavigation(dataWithKeyboard);
+                } else {
+                    // Fallback
+                    if (__DEV__) {
+                        console.warn('[OneSignal] ⚠️ PushNotificationService недоступен, используем fallback');
+                    }
+                    this.handleNotificationNavigation(dataWithKeyboard);
+                }
+            }
+        } catch (error) {
+            if (__DEV__) {
+                console.warn('[OneSignal] Ошибка обработки действия кнопки:', error?.message);
+            }
+        }
+    }
+
+    // Отметка комнаты как прочитанной (устаревший метод)
+    async markRoomAsRead(roomId) {
+        return this.markRoomAsReadInBackground(roomId);
+    }
+
+    // Отметка комнаты как прочитанной в фоновом режиме
+    // Этот метод вызывает API без открытия UI приложения
+    async markRoomAsReadInBackground(roomId) {
+        try {
+            if (__DEV__) {
+                console.log('[OneSignal] 📤 Помечаем комнату как прочитанную в фоне', { roomId });
+            }
+
+            if (!roomId) {
+                throw new Error('roomId is required');
+            }
+
+            // Импортируем ChatApi для отметки комнаты как прочитанной
+            const ChatApi = require('@entities/chat/api/chatApi').default;
+            if (!ChatApi || !ChatApi.markAsRead) {
+                if (__DEV__) {
+                    console.warn('[OneSignal] ⚠️ ChatApi.markAsRead недоступен');
+                }
+                throw new Error('ChatApi.markAsRead недоступен');
+            }
+
+            // Вызываем API для отметки комнаты как прочитанной
+            // Это обновит статус сообщений на сервере и отправит WebSocket уведомление
+            // чтобы у отправителя галочки стали синими
+            const response = await ChatApi.markAsRead(roomId);
+            
+            if (__DEV__) {
+                console.log('[OneSignal] ✅ Комната помечена как прочитанная в фоне', { 
+                    roomId,
+                    response: response?.data || response
+                });
+            }
+            
+            return true;
+        } catch (error) {
+            if (__DEV__) {
+                console.warn('[OneSignal] ❌ Ошибка отметки комнаты как прочитанной:', {
+                    roomId,
+                    error: error?.message,
+                    status: error?.response?.status,
+                    details: error?.response?.data
+                });
+            }
+            throw error;
         }
     }
 
@@ -739,6 +1029,54 @@ setupNotificationHandlers(oneSignal) {
         // OneSignal автоматически управляет каналами
         // Для изменения каналов используйте OneSignal Dashboard
         return false;
+    }
+
+    /**
+     * Очистка уведомлений для конкретного чата
+     * Делегирует вызов к PushNotificationService
+     */
+    async clearChatNotifications(roomId) {
+        try {
+            if (__DEV__) {
+                console.log('[OneSignal] 🗑️ Очистка уведомлений для чата', { roomId });
+            }
+            
+            // Импортируем PushNotificationService для очистки уведомлений
+            const PushNotificationService = require('@shared/services/PushNotificationService');
+            const pushNotificationService = PushNotificationService.default || PushNotificationService;
+            
+            if (pushNotificationService && pushNotificationService.clearChatNotifications) {
+                await pushNotificationService.clearChatNotifications(roomId);
+            }
+        } catch (error) {
+            if (__DEV__) {
+                console.warn('[OneSignal] ⚠️ Ошибка при очистке уведомлений чата:', error?.message);
+            }
+        }
+    }
+
+    /**
+     * Очистка уведомлений для конкретного пользователя
+     * Делегирует вызов к PushNotificationService
+     */
+    async clearChatNotificationsForPeerUser(userId) {
+        try {
+            if (__DEV__) {
+                console.log('[OneSignal] 🗑️ Очистка уведомлений для пользователя', { userId });
+            }
+            
+            // Импортируем PushNotificationService для очистки уведомлений
+            const PushNotificationService = require('@shared/services/PushNotificationService');
+            const pushNotificationService = PushNotificationService.default || PushNotificationService;
+            
+            if (pushNotificationService && pushNotificationService.clearChatNotificationsForPeerUser) {
+                await pushNotificationService.clearChatNotificationsForPeerUser(userId);
+            }
+        } catch (error) {
+            if (__DEV__) {
+                console.warn('[OneSignal] ⚠️ Ошибка при очистке уведомлений пользователя:', error?.message);
+            }
+        }
     }
 }
 

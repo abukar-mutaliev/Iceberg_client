@@ -17,6 +17,7 @@ class PushNotificationService {
         this.pendingNavigations = [];
         this.authResolved = false; // isAuthenticated !== undefined
         this.isAuthenticated = null;
+        this.hasPendingNotificationNavigation = false; // Флаг для предотвращения перезаписи навигации SplashScreen
         
         // Функции навигации
         this.navigateToStopsFunc = null;
@@ -132,6 +133,12 @@ class PushNotificationService {
     // =============================
     setActiveChatRoomId(roomId) {
         this.activeChatRoomId = roomId ? String(roomId) : null;
+        if (__DEV__) {
+            console.log('[PushNotification] 🔄 setActiveChatRoomId вызван', {
+                roomId,
+                activeChatRoomId: this.activeChatRoomId
+            });
+        }
     }
 
     getActiveChatRoomId() {
@@ -140,6 +147,12 @@ class PushNotificationService {
 
     setActiveChatPeerUserId(userId) {
         this.activeChatPeerUserId = userId ? String(userId) : null;
+        if (__DEV__) {
+            console.log('[PushNotification] 🔄 setActiveChatPeerUserId вызван', {
+                userId,
+                activeChatPeerUserId: this.activeChatPeerUserId
+            });
+        }
     }
 
     getActiveChatPeerUserId() {
@@ -164,25 +177,43 @@ class PushNotificationService {
                 return false;
             }
             
+            // Нормализуем значения для сравнения (убираем пробелы и приводим к строке)
+            const normalizedActiveRoomId = this.activeChatRoomId ? String(this.activeChatRoomId).trim() : null;
+            const normalizedNotificationRoomId = roomId ? String(roomId).trim() : null;
+            const normalizedActivePeerUserId = this.activeChatPeerUserId ? String(this.activeChatPeerUserId).trim() : null;
+            const normalizedNotificationSenderId = senderId ? String(senderId).trim() : null;
+            
+            // Логируем состояние для диагностики
+            if (__DEV__) {
+                console.log('[PushNotification] 🔍 Проверка подавления уведомления', {
+                    activeRoomId: normalizedActiveRoomId,
+                    notificationRoomId: normalizedNotificationRoomId,
+                    activePeerUserId: normalizedActivePeerUserId,
+                    notificationSenderId: normalizedNotificationSenderId,
+                    roomIdMatch: normalizedActiveRoomId && normalizedActiveRoomId === normalizedNotificationRoomId,
+                    userIdMatch: normalizedActivePeerUserId && normalizedNotificationSenderId && normalizedActivePeerUserId === normalizedNotificationSenderId
+                });
+            }
+            
             // 1) Если открыт именно этот roomId — всегда подавляем
-            if (this.activeChatRoomId && String(this.activeChatRoomId) === String(roomId)) {
+            if (normalizedActiveRoomId && normalizedNotificationRoomId && normalizedActiveRoomId === normalizedNotificationRoomId) {
                 if (__DEV__) {
                     console.log('[PushNotification] 🔇 Подавление уведомления: чат уже открыт', {
-                        activeRoomId: this.activeChatRoomId,
-                        notificationRoomId: roomId,
-                        senderId
+                        activeRoomId: normalizedActiveRoomId,
+                        notificationRoomId: normalizedNotificationRoomId,
+                        senderId: normalizedNotificationSenderId
                     });
                 }
                 return true;
             }
             
             // 2) Если открыт direct-чат с этим пользователем — подавляем пуши от него (даже если room другой)
-            if (this.activeChatPeerUserId && senderId && String(this.activeChatPeerUserId) === String(senderId)) {
+            if (normalizedActivePeerUserId && normalizedNotificationSenderId && normalizedActivePeerUserId === normalizedNotificationSenderId) {
                 if (__DEV__) {
                     console.log('[PushNotification] 🔇 Подавление уведомления: чат с пользователем уже открыт', {
-                        activePeerUserId: this.activeChatPeerUserId,
-                        notificationSenderId: senderId,
-                        notificationRoomId: roomId
+                        activePeerUserId: normalizedActivePeerUserId,
+                        notificationSenderId: normalizedNotificationSenderId,
+                        notificationRoomId: normalizedNotificationRoomId
                     });
                 }
                 return true;
@@ -190,10 +221,10 @@ class PushNotificationService {
             
             if (__DEV__) {
                 console.log('[PushNotification] ✅ Не подавляем уведомление', {
-                    activeRoomId: this.activeChatRoomId,
-                    notificationRoomId: roomId,
-                    activePeerUserId: this.activeChatPeerUserId,
-                    notificationSenderId: senderId
+                    activeRoomId: normalizedActiveRoomId,
+                    notificationRoomId: normalizedNotificationRoomId,
+                    activePeerUserId: normalizedActivePeerUserId,
+                    notificationSenderId: normalizedNotificationSenderId
                 });
             }
             
@@ -361,50 +392,195 @@ class PushNotificationService {
     setNavigationReady() {
         this.navigationReady = true;
 
-        if (this.pendingNavigations.length > 0) {
-            this.flushPendingNavigations();
+        if (__DEV__) {
+            console.log('[PushNotification] ✅ Навигация готова', {
+                authResolved: this.authResolved,
+                isAuthenticated: this.isAuthenticated,
+                pendingNavigationsCount: this.pendingNavigations.length
+            });
         }
+
+        // Небольшая задержка для гарантии, что WelcomeScreen завершил работу
+        setTimeout(() => {
+            if (__DEV__) {
+                console.log('[PushNotification] 🔄 Проверка отложенных навигаций после готовности', {
+                    count: this.pendingNavigations.length,
+                    authResolved: this.authResolved
+                });
+            }
+            
+            if (this.pendingNavigations.length > 0) {
+                if (__DEV__) {
+                    console.log('[PushNotification] 🔄 Обработка отложенных навигаций');
+                }
+                this.flushPendingNavigations();
+            }
+        }, 1500); // Задержка 1.5 секунды для гарантии, что WelcomeScreen завершил работу
     }
 
     setAuthState(isAuthenticated) {
         // isAuthenticated can be true/false/undefined
+        const wasAuthResolved = this.authResolved;
         this.authResolved = isAuthenticated !== undefined;
         this.isAuthenticated = isAuthenticated === undefined ? null : !!isAuthenticated;
-        this.flushPendingNavigations();
+        
+        if (__DEV__) {
+            console.log('[PushNotification] 🔐 setAuthState вызван', {
+                isAuthenticated: this.isAuthenticated,
+                authResolved: this.authResolved,
+                wasAuthResolved,
+                navigationReady: this.navigationReady,
+                pendingNavigationsCount: this.pendingNavigations.length
+            });
+        }
+        
+        // Если auth только что разрешился и есть pending navigations, пытаемся обработать
+        if (!wasAuthResolved && this.authResolved && this.pendingNavigations.length > 0) {
+            if (__DEV__) {
+                console.log('[PushNotification] 🔄 Auth разрешен, пытаемся обработать отложенные навигации');
+            }
+            
+            // Даем небольшую задержку для стабилизации
+            setTimeout(() => {
+                this.flushPendingNavigations();
+            }, 500);
+        } else {
+            this.flushPendingNavigations();
+        }
     }
 
     flushPendingNavigations() {
-        if (!this.navigationReady) return;
-        if (!this.authResolved) return;
-        if (this.pendingNavigations.length === 0) return;
+        if (!this.navigationReady) {
+            if (__DEV__) {
+                console.log('[PushNotification] ⏳ flushPendingNavigations: навигация не готова', {
+                    pendingCount: this.pendingNavigations.length
+                });
+            }
+            return;
+        }
+        if (!this.authResolved) {
+            if (__DEV__) {
+                console.log('[PushNotification] ⏳ flushPendingNavigations: auth не разрешен', {
+                    pendingCount: this.pendingNavigations.length
+                });
+            }
+            return;
+        }
+        if (this.pendingNavigations.length === 0) {
+            if (__DEV__) {
+                console.log('[PushNotification] ✅ flushPendingNavigations: нет ожидающих навигаций');
+            }
+            return;
+        }
+
+        if (__DEV__) {
+            console.log('[PushNotification] 🔄 Выполняем отложенные навигации', {
+                count: this.pendingNavigations.length,
+                navigations: this.pendingNavigations.map(n => ({
+                    type: n.type,
+                    roomId: n.roomId,
+                    autoFocusInput: n.autoFocusInput
+                }))
+            });
+        }
 
         const queue = [...this.pendingNavigations];
         this.pendingNavigations = [];
 
-        queue.forEach((data) => {
+        queue.forEach((data, index) => {
             try {
-                this.handleNotificationNavigation(data);
-            } catch (_) {}
+                if (__DEV__) {
+                    console.log(`[PushNotification] 🔄 Обрабатываем отложенную навигацию ${index + 1}/${queue.length}`, {
+                        type: data.type,
+                        roomId: data.roomId,
+                        autoFocusInput: data.autoFocusInput
+                    });
+                }
+
+                // Для CHAT_MESSAGE используем navigateToChat напрямую
+                if (data.type === 'CHAT_MESSAGE' && data.roomId) {
+                    this.navigateToChat(data);
+                } else {
+                    this.handleNotificationNavigation(data);
+                }
+            } catch (error) {
+                if (__DEV__) {
+                    console.warn('[PushNotification] ⚠️ Ошибка при выполнении отложенной навигации:', error?.message);
+                }
+            }
         });
+        
+        // Сбрасываем флаг с задержкой после выполнения всех навигаций
+        setTimeout(() => {
+            this.hasPendingNotificationNavigation = false;
+            if (__DEV__) {
+                console.log('[PushNotification] ✅ Все отложенные навигации выполнены, hasPendingNotificationNavigation сброшен (с задержкой)');
+            }
+        }, 4000);
     }
 
     // Обработка навигации (упрощенная)
     handleNotificationNavigation(data) {
+        if (__DEV__) {
+            console.log('[PushNotification] 📱 handleNotificationNavigation вызван', {
+                type: data?.type,
+                roomId: data?.roomId || data?.room_id,
+                messageId: data?.messageId || data?.message_id,
+                autoFocusInput: data?.autoFocusInput,
+                productId: data?.productId || data?.product_id,
+                orderId: data?.orderId,
+                navigationReady: this.navigationReady,
+                authResolved: this.authResolved,
+                isAuthenticated: this.isAuthenticated,
+                pendingCount: this.pendingNavigations.length
+            });
+        }
+
+        // Устанавливаем флаг для предотвращения редиректа на Welcome из SplashScreen
+        // Делаем это ВСЕГДА при навигации из уведомления, не только при добавлении в очередь
+        this.hasPendingNotificationNavigation = true;
+        if (__DEV__) {
+            console.log('[PushNotification] 🚩 Установлен флаг hasPendingNotificationNavigation для блокировки Welcome');
+        }
+
         // На cold start auth может ещё не быть восстановлен, и навигация "перетрётся" Welcome/Auth.
         // Поэтому ждём пока isAuthenticated станет true/false (authResolved).
         if (!this.navigationReady || !this.authResolved) {
-            this.pendingNavigations.push(data);
+            if (__DEV__) {
+                console.log('[PushNotification] ⏳ Навигация/Auth не готовы, добавляем в очередь', {
+                    navigationReady: this.navigationReady,
+                    authResolved: this.authResolved,
+                    type: data?.type,
+                    roomId: data?.roomId
+                });
+            }
+            
+            // Проверяем, не дублируется ли уже это уведомление в очереди
+            const isDuplicate = this.pendingNavigations.some(pending => 
+                pending.roomId === data.roomId && 
+                pending.type === data.type &&
+                pending.messageId === data.messageId
+            );
+            
+            if (!isDuplicate) {
+                this.pendingNavigations.push(data);
+                if (__DEV__) {
+                    console.log('[PushNotification] ➕ Добавлено в очередь, всего:', this.pendingNavigations.length);
+                }
+            } else {
+                if (__DEV__) {
+                    console.log('[PushNotification] ⚠️ Дубликат уведомления, пропускаем');
+                }
+            }
             return;
         }
 
         // Логирование для отладки
         if (__DEV__) {
-            console.log('📱 handleNotificationNavigation:', {
+            console.log('[PushNotification] ✅ Навигация готова, обрабатываем уведомление', {
                 type: data?.type,
-                productId: data?.productId || data?.product_id,
-                warehouseId: data?.warehouseId || data?.warehouse_id,
-                orderId: data?.orderId,
-                roomId: data?.roomId
+                roomId: data?.roomId || data?.room_id,
+                isAuthenticated: this.isAuthenticated
             });
         }
 
@@ -441,6 +617,13 @@ class PushNotificationService {
     navigateToStop(data) {
         if (this.navigateToStopsFunc && typeof this.navigateToStopsFunc === 'function') {
             this.navigateToStopsFunc(data);
+            // Сбрасываем флаг с задержкой
+            setTimeout(() => {
+                this.hasPendingNotificationNavigation = false;
+                if (__DEV__) {
+                    console.log('[PushNotification] 🏁 Сброшен флаг hasPendingNotificationNavigation после navigateToStop');
+                }
+            }, 4000);
         }
     }
 
@@ -448,6 +631,13 @@ class PushNotificationService {
     navigateToOrder(data) {
         if (this.navigateToOrderFunc && typeof this.navigateToOrderFunc === 'function') {
             this.navigateToOrderFunc(data);
+            // Сбрасываем флаг с задержкой
+            setTimeout(() => {
+                this.hasPendingNotificationNavigation = false;
+                if (__DEV__) {
+                    console.log('[PushNotification] 🏁 Сброшен флаг hasPendingNotificationNavigation после navigateToOrder');
+                }
+            }, 4000);
         } else {
             console.warn('⚠️ navigateToOrderFunc не установлена');
         }
@@ -457,6 +647,13 @@ class PushNotificationService {
     navigateToOrderChoice(data) {
         if (this.navigateToOrderChoiceFunc && typeof this.navigateToOrderChoiceFunc === 'function') {
             this.navigateToOrderChoiceFunc(data);
+            // Сбрасываем флаг с задержкой
+            setTimeout(() => {
+                this.hasPendingNotificationNavigation = false;
+                if (__DEV__) {
+                    console.log('[PushNotification] 🏁 Сброшен флаг hasPendingNotificationNavigation после navigateToOrderChoice');
+                }
+            }, 4000);
         } else {
             if (data.orderId) {
                 this.navigateToOrder({ orderId: data.orderId });
@@ -549,6 +746,14 @@ class PushNotificationService {
                     console.warn('⚠️ ProductDetail не найден в навигации');
                 }
             }
+            
+            // Сбрасываем флаг с задержкой
+            setTimeout(() => {
+                this.hasPendingNotificationNavigation = false;
+                if (__DEV__) {
+                    console.log('[PushNotification] 🏁 Сброшен флаг hasPendingNotificationNavigation после navigateToProduct');
+                }
+            }, 4000);
         } catch (error) {
             console.error('❌ Ошибка навигации к продукту:', error);
         }
@@ -556,46 +761,234 @@ class PushNotificationService {
 
     // Навигация к чату
     navigateToChat(data) {
-        // Сначала пробуем установленную функцию навигации
-        if (this.navigateToChatFunc && typeof this.navigateToChatFunc === 'function') {
-            this.navigateToChatFunc(data);
+        if (__DEV__) {
+            console.log('[PushNotification] 📞 navigateToChat вызван', {
+                roomId: data?.roomId || data?.room_id,
+                hasNavigateToChatFunc: !!this.navigateToChatFunc,
+                type: typeof this.navigateToChatFunc,
+                navigationReady: this.navigationReady,
+                authResolved: this.authResolved,
+                isNavigationRefReady: navigationRef.isReady()
+            });
+        }
+
+        const roomId = data?.roomId ? parseInt(String(data.roomId), 10) : null;
+        if (!roomId) {
+            if (__DEV__) {
+                console.warn('[PushNotification] ⚠️ roomId отсутствует в данных', data);
+            }
             return;
         }
 
-        // Fallback через глобальный navigationRef (работает из любого места, включая cold start)
+        // ВСЕГДА используем универсальный метод через navigationRef для надежности
+        // Это работает как при холодном, так и при горячем старте
+        this._performChatNavigationWithRetry(data);
+
+    }
+
+    // Новый метод с улучшенной логикой повторных попыток
+    _performChatNavigationWithRetry(data, attemptNumber = 1) {
+        const maxAttempts = 15; // Увеличено количество попыток
+        const roomId = data?.roomId ? parseInt(String(data.roomId), 10) : null;
+
+        if (__DEV__) {
+            console.log(`[PushNotification] 🔄 Попытка навигации к чату #${attemptNumber}/${maxAttempts}`, {
+                roomId,
+                navigationReady: this.navigationReady,
+                authResolved: this.authResolved,
+                isNavigationRefReady: navigationRef.isReady(),
+                canNavigateToRoute: this.canNavigateToRoute('ChatRoom')
+            });
+        }
+
+        // Проверяем все условия готовности
+        const isReady = this.navigationReady && 
+                       this.authResolved && 
+                       navigationRef.isReady() && 
+                       this.canNavigateToRoute('ChatRoom');
+
+        if (isReady) {
+            // Все готово - выполняем навигацию
+            if (__DEV__) {
+                console.log('[PushNotification] ✅ Условия выполнены, выполняем навигацию');
+            }
+            this._performChatNavigation(data);
+            return;
+        }
+
+        // Если пользователь не авторизован - отправляем на экран авторизации
+        if (this.authResolved && !this.isAuthenticated) {
+            if (__DEV__) {
+                console.log('[PushNotification] 🔒 Пользователь не авторизован, перенаправляем на Auth');
+            }
+            this.pendingNavigations.push(data);
+            try {
+                if (navigationRef.isReady()) {
+                    navigationRef.navigate('Auth', { initialScreen: 'login', fromNotification: true });
+                }
+            } catch (error) {
+                if (__DEV__) {
+                    console.warn('[PushNotification] ⚠️ Ошибка навигации к Auth:', error?.message);
+                }
+            }
+            return;
+        }
+
+        // Не все готово - делаем повторную попытку
+        if (attemptNumber < maxAttempts) {
+            // Прогрессивная задержка: первые попытки быстрые, затем медленнее
+            const delay = attemptNumber <= 5 ? 300 : attemptNumber <= 10 ? 500 : 1000;
+            
+            if (__DEV__) {
+                console.log(`[PushNotification] ⏳ Ожидание ${delay}мс перед следующей попыткой`);
+            }
+            
+            setTimeout(() => {
+                this._performChatNavigationWithRetry(data, attemptNumber + 1);
+            }, delay);
+        } else {
+            // Исчерпаны все попытки
+            if (__DEV__) {
+                console.warn('[PushNotification] ❌ Превышено максимальное количество попыток навигации', {
+                    navigationReady: this.navigationReady,
+                    authResolved: this.authResolved,
+                    isNavigationRefReady: navigationRef.isReady(),
+                    canNavigateToRoute: this.canNavigateToRoute('ChatRoom')
+                });
+            }
+            
+            // Сохраняем в очередь как последняя попытка
+            this.pendingNavigations.push(data);
+        }
+    }
+
+    // Вспомогательный метод для выполнения навигации к чату
+    _performChatNavigation(data) {
         try {
             const roomId = data?.roomId ? parseInt(String(data.roomId), 10) : null;
-            if (!roomId) return;
-
-            // Если навигация ещё не готова — сохраняем и выйдем (flushPendingNavigations добьёт позже)
-            if (!navigationRef.isReady()) {
-                this.pendingNavigations.push(data);
+            if (!roomId) {
+                if (__DEV__) {
+                    console.warn('[PushNotification] ⚠️ _performChatNavigation: roomId отсутствует', data);
+                }
                 return;
             }
 
-            // Если ChatRoom ещё не зарегистрирован (например, пока открыт только Splash) — подождём.
-            if (!this.canNavigateToRoute('ChatRoom')) {
-                this.pendingNavigations.push(data);
-                // небольшой отложенный повтор (на случай, если setAuthState уже true, а роуты ещё не смонтированы)
+            if (__DEV__) {
+                console.log('[PushNotification] 🚀 _performChatNavigation: начинаем навигацию', {
+                    roomId,
+                    messageId: data?.messageId,
+                    autoFocusInput: data?.autoFocusInput,
+                    isNavigationRefReady: navigationRef.isReady(),
+                    canNavigateToRoute: this.canNavigateToRoute('ChatRoom')
+                });
+            }
+
+            const { InteractionManager } = require('react-native');
+            const { CommonActions } = require('@react-navigation/native');
+            
+            // Используем двойную проверку готовности для максимальной надежности
+            const executeNavigation = () => {
+                try {
+                    if (!navigationRef.isReady()) {
+                        if (__DEV__) {
+                            console.warn('[PushNotification] ⚠️ navigationRef не готов');
+                        }
+                        return false;
+                    }
+
+                    if (!this.canNavigateToRoute('ChatRoom')) {
+                        if (__DEV__) {
+                            console.warn('[PushNotification] ⚠️ ChatRoom не зарегистрирован');
+                        }
+                        return false;
+                    }
+
+                    const params = {
+                        roomId,
+                        fromNotification: true,
+                        messageId: data?.messageId ? parseInt(String(data.messageId), 10) : null,
+                        autoFocusInput: data?.autoFocusInput || false,
+                    };
+
+                    if (__DEV__) {
+                        console.log('[PushNotification] 🎯 Выполняем navigationRef.dispatch (reset stack)', {
+                            route: 'ChatRoom',
+                            params,
+                            stack: ['Main', 'ChatRoom']
+                        });
+                    }
+
+                    // Используем reset для замены стека навигации
+                    // Чтобы при нажатии "назад" из чата переход был на Main (список чатов), а не на SplashScreen
+                    navigationRef.dispatch(
+                        CommonActions.reset({
+                            index: 1,
+                            routes: [
+                                { name: 'Main' }, // Список чатов в качестве базового экрана
+                                { 
+                                    name: 'ChatRoom',
+                                    params
+                                }
+                            ]
+                        })
+                    );
+                    
+                    if (__DEV__) {
+                        console.log('[PushNotification] ✅ Навигация к чату выполнена успешно (reset stack)', { roomId });
+                    }
+                    
+                    // Сбрасываем флаг с задержкой, чтобы SplashScreen успел его проверить
+                    setTimeout(() => {
+                        this.hasPendingNotificationNavigation = false;
+                        if (__DEV__) {
+                            console.log('[PushNotification] 🏁 Сброшен флаг hasPendingNotificationNavigation после успешной навигации (с задержкой)');
+                        }
+                    }, 4000); // 4 секунды - достаточно для проверки SplashScreen (3 сек)
+                    
+                    return true;
+                } catch (error) {
+                    if (__DEV__) {
+                        console.warn('[PushNotification] ⚠️ Ошибка при выполнении навигации:', error?.message);
+                    }
+                    return false;
+                }
+            };
+
+            // Используем InteractionManager для выполнения после завершения анимаций
+            InteractionManager.runAfterInteractions(() => {
+                // Добавляем небольшую задержку для стабильности
                 setTimeout(() => {
-                    try { this.flushPendingNavigations(); } catch (_) {}
-                }, 350);
-                return;
-            }
-
-            // ✅ ChatRoom теперь в корневом Stack (AppStack), поэтому навигируем напрямую.
-            navigationRef.navigate('ChatRoom', {
-                roomId,
-                fromNotification: true,
-                messageId: data?.messageId || null,
+                    const success = executeNavigation();
+                    
+                    // Если не удалось - пробуем еще раз через короткую задержку
+                    if (!success) {
+                        if (__DEV__) {
+                            console.log('[PushNotification] 🔄 Повторная попытка навигации через 500мс');
+                        }
+                        setTimeout(() => {
+                            executeNavigation();
+                        }, 500);
+                    }
+                }, 100);
             });
-        } catch (_) {}
+        } catch (error) {
+            if (__DEV__) {
+                console.warn('[PushNotification] ⚠️ Критическая ошибка в _performChatNavigation:', error?.message, error?.stack);
+            }
+        }
     }
 
     // Навигация по URL
     navigateToUrl(url) {
         if (this.navigateToUrlFunc && typeof this.navigateToUrlFunc === 'function') {
             this.navigateToUrlFunc(url);
+            // Сбрасываем флаг с задержкой
+            setTimeout(() => {
+                this.hasPendingNotificationNavigation = false;
+                if (__DEV__) {
+                    console.log('[PushNotification] 🏁 Сброшен флаг hasPendingNotificationNavigation после navigateToUrl');
+                }
+            }, 4000);
         }
     }
 

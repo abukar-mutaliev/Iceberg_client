@@ -3,6 +3,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Animated, View, Dimensions, Image } from 'react-native';
 import Text from '@shared/ui/Text/Text';
 import { SafeFonts } from '@shared/lib/fontUtils';
+import PushNotificationService from '@shared/services/PushNotificationService';
 
 export const SplashScreen = () => {
     const navigation = useNavigation();
@@ -12,7 +13,7 @@ export const SplashScreen = () => {
     const [textOpacity] = useState(new Animated.Value(0));
     const [textPosition] = useState(new Animated.Value(50));
 
-    const { height } = Dimensions.get('window');
+    const { height, width } = Dimensions.get('window');
 
     const RenderLogo = () => {
         try {
@@ -89,11 +90,72 @@ export const SplashScreen = () => {
             }),
         ]).start();
 
-        const timer = setTimeout(() => {
+        let checkInterval = null;
+        let safetyTimeout = null;
+        let hasNavigated = false;
+
+        const performNavigation = () => {
+            if (hasNavigated) return;
+            hasNavigated = true;
+            
+            if (__DEV__) {
+                console.log('[SplashScreen] 🏠 Редирект на Welcome');
+            }
             navigation.replace('Welcome');
+        };
+
+        const timer = setTimeout(() => {
+            // Проверяем, есть ли pending навигация из уведомления
+            const hasPending = PushNotificationService.hasPendingNotificationNavigation;
+            
+            if (__DEV__) {
+                console.log('[SplashScreen] 🔍 Проверка флага hasPendingNotificationNavigation:', hasPending);
+            }
+            
+            if (hasPending) {
+                if (__DEV__) {
+                    console.log('[SplashScreen] ⏳ Пропускаем редирект на Welcome - есть pending навигация из уведомления');
+                }
+                
+                // Мониторим флаг каждые 500мс
+                checkInterval = setInterval(() => {
+                    const stillPending = PushNotificationService.hasPendingNotificationNavigation;
+                    if (__DEV__) {
+                        console.log('[SplashScreen] 🔄 Мониторинг флага:', stillPending);
+                    }
+                    
+                    if (!stillPending) {
+                        // Навигация выполнена, очищаем интервал и не делаем редирект
+                        if (__DEV__) {
+                            console.log('[SplashScreen] ✅ Навигация из уведомления выполнена, останавливаем мониторинг');
+                        }
+                        if (checkInterval) clearInterval(checkInterval);
+                        if (safetyTimeout) clearTimeout(safetyTimeout);
+                    }
+                }, 500);
+                
+                // Timeout безопасности: если за 10 секунд флаг не сбросился - делаем редирект как fallback
+                safetyTimeout = setTimeout(() => {
+                    if (__DEV__) {
+                        console.warn('[SplashScreen] ⚠️ Timeout безопасности - принудительный редирект на Welcome');
+                    }
+                    if (checkInterval) clearInterval(checkInterval);
+                    performNavigation();
+                }, 10000);
+            } else {
+                // Нет pending навигации - обычный редирект
+                if (__DEV__) {
+                    console.log('[SplashScreen] ℹ️ Нет pending навигации, выполняем обычный редирект');
+                }
+                performNavigation();
+            }
         }, 3000);
 
-        return () => clearTimeout(timer);
+        return () => {
+            clearTimeout(timer);
+            if (checkInterval) clearInterval(checkInterval);
+            if (safetyTimeout) clearTimeout(safetyTimeout);
+        };
     }, [navigation, logoScale, logoPosition, textOpacity, textPosition, height]);
 
     return (
@@ -118,27 +180,36 @@ export const SplashScreen = () => {
             </Animated.View>
 
             {/* Анимированный текст */}
-            <Animated.Text
+            <Animated.View
                 style={{
                     opacity: textOpacity,
                     transform: [{ translateY: textPosition }],
-                    fontSize: 26,
-                    fontWeight: '600',
-                    color: '#3339B0',
-                    textAlign: 'center',
-                    fontFamily: SafeFonts.BezierSans,
                     marginTop: 100,
-                    letterSpacing: 0.5,
-                    lineHeight: 34,
-                    shadowColor: '#3339B0',
-                    shadowOffset: { width: 0, height: 2 },
-                    shadowOpacity: 0.1,
-                    shadowRadius: 4,
-                    elevation: 2,
+                    width: width - 100,
+                    paddingHorizontal: 20,
+                    alignItems: 'center',
+                    justifyContent: 'center',
                 }}
             >
-                Добро пожаловать{'\n'}в Айсберг
-            </Animated.Text>
+                <Text
+                    style={{
+                        fontSize: 26,
+                        fontWeight: '600',
+                        color: '#3339B0',
+                        textAlign: 'center',
+                        fontFamily: SafeFonts.BezierSans,
+                        letterSpacing: 0.5,
+                        lineHeight: 34,
+                        shadowColor: '#3339B0',
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: 0.1,
+                        shadowRadius: 4,
+                        elevation: 2,
+                    }}
+                >
+                    Добро пожаловать{'\n'}в Айсберг
+                </Text>
+            </Animated.View>
         </View>
     );
 };

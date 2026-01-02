@@ -631,11 +631,48 @@ export const fetchMessages = createAsyncThunk(
 // Отправка голосового сообщения
 // Вспомогательная функция для проверки сетевой ошибки
 const isNetworkError = (error) => {
-  return error.message === 'Network Error' || 
-         error.message?.includes('Network') ||
-         error.message?.includes('сетевым подключением') ||
-         error.code === 'ECONNABORTED' ||
-         error.code === 'ERR_NETWORK';
+  if (!error) return false;
+  
+  const errorMessage = (error.message || '').toLowerCase();
+  const errorCode = error.code || error.response?.status;
+  
+  // Проверка по коду ошибки
+  if (errorCode === 'ECONNABORTED' || 
+      errorCode === 'ERR_NETWORK' ||
+      errorCode === 'ERR_INTERNET_DISCONNECTED' ||
+      errorCode === 'ETIMEDOUT' ||
+      errorCode === 'ENOTFOUND' ||
+      errorCode === 'ECONNREFUSED') {
+    return true;
+  }
+  
+  // Проверка по статусу HTTP
+  if (errorCode === 0 || // Network error
+      errorCode === 408 || // Request Timeout
+      errorCode === 502 || // Bad Gateway
+      errorCode === 503 || // Service Unavailable
+      errorCode === 504) { // Gateway Timeout
+    return true;
+  }
+  
+  // Проверка по тексту сообщения
+  if (errorMessage.includes('network') ||
+      errorMessage.includes('network request failed') ||
+      errorMessage.includes('сетевым подключением') ||
+      errorMessage.includes('timeout') ||
+      errorMessage.includes('connection') ||
+      errorMessage.includes('failed to fetch') ||
+      errorMessage.includes('no internet') ||
+      errorMessage.includes('интернет')) {
+    return true;
+  }
+  
+  // Проверка отсутствия ответа от сервера
+  if (!error.response && errorMessage) {
+    return true;
+  }
+  
+  return false;
 };
 
 // Функция задержки для retry
@@ -773,7 +810,10 @@ async ({ roomId, voice, temporaryId, replyToId, retryCount = 0 }, { rejectWithVa
 
 export const sendText = createAsyncThunk(
     'chat/sendText',
-    async ({ roomId, content, temporaryId, replyToId }, { rejectWithValue, dispatch, getState }) => {
+    async ({ roomId, content, temporaryId, replyToId, retryCount = 0 }, { rejectWithValue, dispatch, getState }) => {
+      const MAX_RETRIES = 5;
+      const RETRY_DELAYS = [1000, 2000, 3000, 5000, 10000]; // Прогрессивная задержка
+      
       try {
         const form = new FormData();
         form.append('type', 'TEXT');
@@ -781,34 +821,108 @@ export const sendText = createAsyncThunk(
         if (replyToId) {
           form.append('replyToId', replyToId.toString());
         }
+        
+        if (__DEV__) {
+          console.log('📤 sendText: Отправка текстового сообщения', {
+            roomId,
+            contentLength: content?.length,
+            hasTemporaryId: !!temporaryId,
+            attempt: retryCount + 1,
+            maxRetries: MAX_RETRIES
+          });
+        }
+        
+        // Обновляем счётчик попыток в UI
+        if (temporaryId && retryCount > 0) {
+          dispatch(updateMessageRetryCount({
+            temporaryId,
+            retryCount,
+            maxRetries: MAX_RETRIES
+          }));
+        }
+        
         const res = await ChatApi.sendMessage(roomId, form);
         const serverMessage = res?.data?.data?.message || res?.data?.message || res?.data?.data || res?.data;
         
+        if (!serverMessage || !serverMessage.id) {
+          throw new Error('Сервер не вернул сообщение');
+        }
+        
+        // Убеждаемся, что у сообщения есть createdAt
+        if (!serverMessage.createdAt) {
+          serverMessage.createdAt = new Date().toISOString();
+        }
+        
         if (__DEV__) {
-          console.log('🔍 sendText: Full server response:', {
-            hasRes: !!res,
-            hasData: !!res?.data,
-            dataKeys: res?.data ? Object.keys(res.data) : [],
+          console.log('✅ sendText.fulfilled:', {
+            serverMessage,
+            messageId: serverMessage?.id,
+            attemptNumber: retryCount + 1,
             messageHasReplyTo: !!serverMessage?.replyTo,
-            replyToId: serverMessage?.replyToId,
-            messageKeys: serverMessage ? Object.keys(serverMessage) : []
+            replyToId: serverMessage?.replyToId
           });
         }
         
         return { message: serverMessage, temporaryId };
-      } catch (e) {
-        // Если есть temporaryId, помечаем сообщение как неудачное
-        if (temporaryId) {
-          dispatch(markOptimisticMessageFailed({ temporaryId, error: e.message || 'Ошибка отправки сообщения' }));
+      } catch (error) {
+        if (__DEV__) {
+          console.error('❌ sendText error:', {
+            error: error.message,
+            attempt: retryCount + 1,
+            maxRetries: MAX_RETRIES,
+            isNetworkError: isNetworkError(error)
+          });
         }
-        return rejectWithValue(e.message || 'Ошибка отправки сообщения');
+        
+        // Проверяем, является ли это сетевой ошибкой и есть ли ещё попытки
+        if (isNetworkError(error) && retryCount < MAX_RETRIES - 1) {
+          const nextRetryCount = retryCount + 1;
+          const delayMs = RETRY_DELAYS[retryCount] || 10000;
+          
+          if (__DEV__) {
+            console.log(`🔄 Повторная попытка отправки текста ${nextRetryCount + 1}/${MAX_RETRIES} через ${delayMs}ms`);
+          }
+          
+          // Ждём перед повторной попыткой
+          await delay(delayMs);
+          
+          // Рекурсивно вызываем sendText с увеличенным счётчиком
+          return dispatch(sendText({ 
+            roomId, 
+            content, 
+            temporaryId, 
+            replyToId,
+            retryCount: nextRetryCount 
+          })).unwrap();
+        }
+        
+        // Если исчерпаны все попытки или это не сетевая ошибка
+        if (temporaryId) {
+          dispatch(markOptimisticMessageFailed({ 
+            temporaryId, 
+            error: error.message || 'Ошибка отправки сообщения',
+            retryCount,
+            isRetryable: isNetworkError(error)
+          }));
+        }
+        
+        return rejectWithValue({
+          message: error.response?.data?.message || 
+                   error.message || 
+                   'Ошибка отправки сообщения',
+          retryCount,
+          isRetryable: isNetworkError(error)
+        });
       }
     }
 );
 
 export const sendPoll = createAsyncThunk(
     'chat/sendPoll',
-    async ({ roomId, pollData, temporaryId, replyToId }, { rejectWithValue, dispatch, getState }) => {
+    async ({ roomId, pollData, temporaryId, replyToId, retryCount = 0 }, { rejectWithValue, dispatch, getState }) => {
+      const MAX_RETRIES = 5;
+      const RETRY_DELAYS = [1000, 2000, 3000, 5000, 10000]; // Прогрессивная задержка
+      
       try {
         const form = new FormData();
         form.append('type', 'POLL');
@@ -822,16 +936,96 @@ export const sendPoll = createAsyncThunk(
           form.append('replyToId', replyToId.toString());
         }
         
+        if (__DEV__) {
+          console.log('📤 sendPoll: Отправка опроса', {
+            roomId,
+            question: pollData.question,
+            optionsCount: pollData.options?.length || 0,
+            hasTemporaryId: !!temporaryId,
+            attempt: retryCount + 1,
+            maxRetries: MAX_RETRIES
+          });
+        }
+        
+        // Обновляем счётчик попыток в UI
+        if (temporaryId && retryCount > 0) {
+          dispatch(updateMessageRetryCount({
+            temporaryId,
+            retryCount,
+            maxRetries: MAX_RETRIES
+          }));
+        }
+        
         const res = await ChatApi.sendMessage(roomId, form);
         const serverMessage = res?.data?.data?.message || res?.data?.message || res?.data?.data || res?.data;
         
-        return { message: serverMessage, temporaryId };
-      } catch (e) {
-        // Если есть temporaryId, помечаем сообщение как неудачное
-        if (temporaryId) {
-          dispatch(markOptimisticMessageFailed({ temporaryId, error: e.message || 'Ошибка отправки опроса' }));
+        if (!serverMessage || !serverMessage.id) {
+          throw new Error('Сервер не вернул сообщение');
         }
-        return rejectWithValue(e.message || 'Ошибка отправки опроса');
+        
+        // Убеждаемся, что у сообщения есть createdAt
+        if (!serverMessage.createdAt) {
+          serverMessage.createdAt = new Date().toISOString();
+        }
+        
+        if (__DEV__) {
+          console.log('✅ sendPoll.fulfilled:', {
+            serverMessage,
+            messageId: serverMessage?.id,
+            attemptNumber: retryCount + 1
+          });
+        }
+        
+        return { message: serverMessage, temporaryId };
+      } catch (error) {
+        if (__DEV__) {
+          console.error('❌ sendPoll error:', {
+            error: error.message,
+            attempt: retryCount + 1,
+            maxRetries: MAX_RETRIES,
+            isNetworkError: isNetworkError(error)
+          });
+        }
+        
+        // Проверяем, является ли это сетевой ошибкой и есть ли ещё попытки
+        if (isNetworkError(error) && retryCount < MAX_RETRIES - 1) {
+          const nextRetryCount = retryCount + 1;
+          const delayMs = RETRY_DELAYS[retryCount] || 10000;
+          
+          if (__DEV__) {
+            console.log(`🔄 Повторная попытка отправки опроса ${nextRetryCount + 1}/${MAX_RETRIES} через ${delayMs}ms`);
+          }
+          
+          // Ждём перед повторной попыткой
+          await delay(delayMs);
+          
+          // Рекурсивно вызываем sendPoll с увеличенным счётчиком
+          return dispatch(sendPoll({ 
+            roomId, 
+            pollData, 
+            temporaryId, 
+            replyToId,
+            retryCount: nextRetryCount 
+          })).unwrap();
+        }
+        
+        // Если исчерпаны все попытки или это не сетевая ошибка
+        if (temporaryId) {
+          dispatch(markOptimisticMessageFailed({ 
+            temporaryId, 
+            error: error.message || 'Ошибка отправки опроса',
+            retryCount,
+            isRetryable: isNetworkError(error)
+          }));
+        }
+        
+        return rejectWithValue({
+          message: error.response?.data?.message || 
+                   error.message || 
+                   'Ошибка отправки опроса',
+          retryCount,
+          isRetryable: isNetworkError(error)
+        });
       }
     }
 );

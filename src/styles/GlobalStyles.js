@@ -1,16 +1,19 @@
+// В production всегда используем системные шрифты для избежания ошибок сборки
+const USE_SYSTEM_FONTS = !__DEV__ || process.env.FORCE_SYSTEM_FONTS === 'true';
+
 /* fonts */
 export const FontFamily = {
-    address: __DEV__ ? "Inter-Medium" : "System",
-    sFProText: __DEV__ ? "SF Pro Text" : "System",
-    robotoMedium: __DEV__ ? "Roboto-Medium" : "System",
-    sFPro: __DEV__ ? "SF Pro" : "System",
-    montserratMedium: __DEV__ ? "Montserrat-Medium" : "System",
-    montserratSemiBold: __DEV__ ? "Montserrat-SemiBold" : "System",
-    sFProDisplay: __DEV__ ? "SF Pro Display" : "System",
-    SFProDisplayMedium: __DEV__ ? "SFProDisplayMedium" : "System",
-    regular: __DEV__ ? "SFProText" : "System",
-    medium: __DEV__ ? "SFProDisplayMedium" : "System",
-    bold: __DEV__ ? "SF Pro Display" : "System",
+    address: USE_SYSTEM_FONTS ? "System" : "Inter-Medium",
+    sFProText: USE_SYSTEM_FONTS ? "System" : "SF Pro Text",
+    robotoMedium: USE_SYSTEM_FONTS ? "System" : "Roboto-Medium",
+    sFPro: USE_SYSTEM_FONTS ? "System" : "SF Pro",
+    montserratMedium: USE_SYSTEM_FONTS ? "System" : "Montserrat-Medium",
+    montserratSemiBold: USE_SYSTEM_FONTS ? "System" : "Montserrat-SemiBold",
+    sFProDisplay: USE_SYSTEM_FONTS ? "System" : "SF Pro Display",
+    SFProDisplayMedium: USE_SYSTEM_FONTS ? "System" : "SFProDisplayMedium",
+    regular: USE_SYSTEM_FONTS ? "System" : "SFProText",
+    medium: USE_SYSTEM_FONTS ? "System" : "SFProDisplayMedium",
+    bold: USE_SYSTEM_FONTS ? "System" : "SF Pro Display",
 };
 
 /* font sizes */
