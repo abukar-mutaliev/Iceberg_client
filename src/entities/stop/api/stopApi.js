@@ -49,21 +49,67 @@ export const stopApi = {
         }
     },
 
-    createStop: async (formData) => {
+    createStop: async (formData, onRetryCallback = null) => {
+        const { retryFileUpload } = await import('@shared/api/retryHelper');
+        
         try {
-            const response = await createProtectedRequest('post', '/api/stops', formData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data',
-                },
-            });
+            // Используем retryFileUpload для автоматических повторных попыток
+            const response = await retryFileUpload(
+                () => createProtectedRequest('post', '/api/stops', formData, {
+                    headers: {
+                        'Content-Type': 'multipart/form-data',
+                    },
+                    // Увеличенный timeout до 5 минут для медленных соединений
+                    timeout: 300000,
+                }),
+                {
+                    maxRetries: 5,
+                    onRetry: (attempt, error) => {
+                        console.log(`🔄 Повторная попытка загрузки остановки ${attempt}/5`, {
+                            error: error.message,
+                            code: error.code
+                        });
+                        
+                        // Вызываем callback если передан
+                        if (onRetryCallback) {
+                            onRetryCallback(attempt, error);
+                        }
+                    }
+                }
+            );
             return response;
         } catch (error) {
             console.error('Error in createStop API call:', error);
+            
+            // Улучшенное сообщение об ошибке для разных типов ошибок
+            if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
+                const enhancedError = new Error(
+                    'Проблема с сетевым подключением при загрузке файла. ' +
+                    'Пожалуйста, проверьте подключение к интернету и попробуйте снова.'
+                );
+                enhancedError.originalError = error;
+                throw enhancedError;
+            }
+            
+            // Обработка timeout ошибок
+            if (error.message?.includes('timeout') || error.code === 'ECONNABORTED') {
+                const enhancedError = new Error(
+                    'Превышено время ожидания загрузки. ' +
+                    'Возможно, ваше интернет-соединение слишком медленное. ' +
+                    'Попробуйте загрузить изображение меньшего размера или подключитесь к более быстрому Wi-Fi.'
+                );
+                enhancedError.originalError = error;
+                enhancedError.code = 'TIMEOUT';
+                throw enhancedError;
+            }
+            
             throw error; // Всегда пробрасываем ошибку
         }
     },
 
-    updateStop: async (stopId, formData) => {
+    updateStop: async (stopId, formData, onRetryCallback = null) => {
+        const { retryFileUpload } = await import('@shared/api/retryHelper');
+        
         try {
             // Проверяем и преобразуем координаты перед отправкой
             if (formData instanceof FormData) {

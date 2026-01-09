@@ -369,7 +369,6 @@ const rewardSlice = createSlice({
             })
             .addCase(fetchAllEmployeesStats.fulfilled, (state, action) => {
                 state.allEmployeesStatsLoading = false;
-                console.log('✅ fetchAllEmployeesStats.fulfilled - action.payload:', action.payload);
                 
                 if (!action.payload) {
                     console.error('❌ fetchAllEmployeesStats.fulfilled - payload is undefined or null');
@@ -394,11 +393,6 @@ const rewardSlice = createSlice({
                     state.allEmployeesStats = employees || [];
                     state.totalStats = totalStats;
                 }
-                
-                console.log('📊 fetchAllEmployeesStats.fulfilled - обработанные данные:', {
-                    employees: state.allEmployeesStats.length,
-                    totalStats: state.totalStats
-                });
             })
             .addCase(fetchAllEmployeesStats.rejected, (state, action) => {
                 state.allEmployeesStatsLoading = false;
@@ -414,7 +408,6 @@ const rewardSlice = createSlice({
             .addCase(processReward.fulfilled, (state, action) => {
                 state.processingReward = false;
                 
-                console.log('🎯 processReward.fulfilled - action.payload:', action.payload);
                 
                 // Находим индекс и сохраняем старое вознаграждение
                 const rewardIndex = state.employeeRewards.findIndex(r => r.id === action.payload.id);
@@ -425,14 +418,6 @@ const rewardSlice = createSlice({
                     oldReward = state.employeeRewards[rewardIndex];
                     statusChanged = oldReward.status !== action.payload.status;
                     
-                    console.log('🔄 Обновление вознаграждения:', {
-                        id: action.payload.id,
-                        oldStatus: oldReward.status,
-                        newStatus: action.payload.status,
-                        statusChanged,
-                        oldAmount: oldReward.amount,
-                        newAmount: action.payload.amount
-                    });
                     
                     // Безопасное обновление вознаграждения в списке
                     state.employeeRewards[rewardIndex] = {
@@ -460,12 +445,10 @@ const rewardSlice = createSlice({
                         processor: action.payload.processor ?? oldReward.processor
                     };
                     
-                    console.log('✅ Вознаграждение обновлено:', state.employeeRewards[rewardIndex]);
                 }
                 
                 // Обновляем статистику если статус изменился
                 if (statusChanged && state.employeeStatistics) {
-                    console.log('📊 Пересчитываем статистику из-за изменения статуса');
                     
                     // Простое обнуление статистики для пересчета
                     // В реальном приложении лучше пересчитать локально
@@ -475,12 +458,6 @@ const rewardSlice = createSlice({
                 // Обновляем pendingRewards если вознаграждение было обработано
                 const pendingRewardIndex = state.pendingRewards.findIndex(r => r.id === action.payload.id);
                 if (pendingRewardIndex !== -1) {
-                    console.log('🔄 Обновляем pending rewards после обработки:', {
-                        id: action.payload.id,
-                        newStatus: action.payload.status,
-                        willRemove: action.payload.status !== 'PENDING'
-                    });
-                    
                     if (action.payload.status === 'PENDING') {
                         // Если статус остался PENDING, обновляем данные
                         state.pendingRewards[pendingRewardIndex] = {
@@ -504,9 +481,7 @@ const rewardSlice = createSlice({
                 }
 
                 // Обновляем totalStats если есть и статус изменился с PENDING
-                if (statusChanged && state.totalStats && oldReward?.status === 'PENDING') {
-                    console.log('📊 Обновляем totalStats после изменения статуса с PENDING');
-                    
+                if (statusChanged && state.totalStats && oldReward?.status === 'PENDING') {                    
                     const amount = action.payload.amount || oldReward.amount || 0;
                     
                     // Уменьшаем pendingAmount
@@ -539,13 +514,11 @@ const rewardSlice = createSlice({
             .addCase(fetchAllPendingRewards.pending, (state) => {
                 state.pendingRewardsLoading = true;
                 state.pendingRewardsError = null;
-                // Очищаем старые данные при начале загрузки
                 state.pendingRewards = [];
             })
             .addCase(fetchAllPendingRewards.fulfilled, (state, action) => {
                 state.pendingRewardsLoading = false;
-                console.log('✅ fetchAllPendingRewards.fulfilled - action.payload:', action.payload);
-                
+            
                 if (!action.payload) {
                     console.error('❌ fetchAllPendingRewards.fulfilled - payload отсутствует');
                     state.pendingRewardsError = 'Получены некорректные данные от сервера';
@@ -580,7 +553,6 @@ const rewardSlice = createSlice({
             .addCase(batchProcessRewards.fulfilled, (state, action) => {
                 state.processingReward = false;
                 
-                console.log('✅ Массовая обработка завершена:', action.payload);
                 
                 // Обновляем статус всех вознаграждений сотрудника со статусами PENDING/APPROVED на новый статус
                 const { employeeId, newStatus, dateFrom, dateTo } = action.payload;
@@ -629,7 +601,6 @@ const rewardSlice = createSlice({
                     return !(matchesEmployee && matchesStatus && matchesDateFilter);
                 });
                 
-                console.log('✅ Списки обновлены после массовой обработки');
             })
             .addCase(batchProcessRewards.rejected, (state, action) => {
                 state.processingReward = false;

@@ -13,7 +13,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing, Pressable, 
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
-import { getBaseUrl } from '@shared/api/api';
+import { getBaseUrl, getImageUrl } from '@shared/api/api';
 import { audioManager } from '../../lib/audioManager';
 
 // ============================================================================
@@ -123,53 +123,60 @@ const useAudioUri = (attachment) => {
       return { audioUri: path, cachedPath: path, fallbackUrls: [] };
     }
     
-    // Формируем полный URL и fallback варианты для старых сообщений
-    let fullUrl = path;
+    // Формируем полный URL используя централизованную функцию с нормализацией
+    // Это нормализует URL, заменяя старый IP на текущий базовый URL
+    const normalizedUrl = getImageUrl(path);
+    let fullUrl = normalizedUrl || path;
     const fallbackUrls = [];
     const baseUrl = getBaseUrl();
     
+    // Если getImageUrl вернул null, используем оригинальный путь
+    if (!fullUrl) {
+      fullUrl = path;
+    }
+    
+    // Для относительных путей добавляем fallback варианты
     if (!path.startsWith('http://') && !path.startsWith('https://')) {
-      // Относительный путь
-      path = path.replace(/\\/g, '/');
-      if (!path.startsWith('/')) path = '/' + path;
+      // Относительный путь - getImageUrl уже обработал его
+      // Добавляем fallback варианты для старых сообщений
+      const normalizedPath = path.replace(/\\/g, '/');
+      const cleanPath = normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`;
       
-      // Основной URL с /uploads
-      fullUrl = `${baseUrl}/uploads${path}`;
-      
-      // Fallback варианты для старых сообщений
-      // Старый формат без /uploads
-      if (!path.includes('/uploads')) {
-        fallbackUrls.push(`${baseUrl}${path}`);
+      // Fallback: старый формат без /uploads
+      if (!cleanPath.includes('/uploads')) {
+        fallbackUrls.push(`${baseUrl}${cleanPath}`);
       }
-      // Вариант с прямым путем
-      if (path.startsWith('/uploads')) {
-        fallbackUrls.push(`${baseUrl}${path}`);
+      // Fallback: вариант с прямым путем /uploads
+      if (cleanPath.startsWith('/uploads')) {
+        fallbackUrls.push(`${baseUrl}${cleanPath}`);
       } else {
-        fallbackUrls.push(`${baseUrl}/uploads${path}`);
+        fallbackUrls.push(`${baseUrl}/uploads${cleanPath}`);
       }
     } else {
-      // Если уже полный URL, создаем fallback варианты
-      fullUrl = path;
+      // Если исходный path был полным URL, getImageUrl уже нормализовал его
+      // Но нужно также нормализовать fallback варианты, если они были созданы из старого URL
       
-      // Парсим URL для создания альтернативных вариантов
-      try {
-        const urlObj = new URL(path);
-        const urlPath = urlObj.pathname;
-        
-        // Пробуем вариант с другим протоколом (HTTPS -> HTTP)
-        // ВАЖНО: не добавляем HTTP->HTTPS, иначе на Android получаем SSLException
-        if (urlObj.protocol === 'https:') {
-          const httpUrl = path.replace('https://', 'http://');
-          if (httpUrl !== path) {
-            fallbackUrls.push(httpUrl);
+      // Если нормализованный URL отличается от исходного, значит был старый IP
+      // В этом случае не добавляем fallback с протоколом, так как URL уже нормализован
+      if (normalizedUrl && normalizedUrl !== path) {
+        // URL был нормализован (старый IP заменен), не добавляем fallback
+      } else {
+        // URL не был нормализован, добавляем fallback варианты
+        try {
+          const urlObj = new URL(fullUrl);
+          
+          // Пробуем вариант с другим протоколом (HTTPS -> HTTP)
+          // ВАЖНО: не добавляем HTTP->HTTPS, иначе на Android получаем SSLException
+          if (urlObj.protocol === 'https:') {
+            const httpUrl = fullUrl.replace('https://', 'http://');
+            if (httpUrl !== fullUrl) {
+              fallbackUrls.push(httpUrl);
+            }
           }
+        } catch (e) {
+          // Если не удалось распарсить URL, игнорируем
+          devWarn('Failed to parse URL for fallbacks:', fullUrl, e);
         }
-        
-        // НЕ добавляем варианты с /uploads - это создает битые URL
-        // Просто используем оригинальный путь
-      } catch (e) {
-        // Если не удалось распарсить URL, игнорируем
-        devWarn('Failed to parse URL for fallbacks:', path, e);
       }
     }
     

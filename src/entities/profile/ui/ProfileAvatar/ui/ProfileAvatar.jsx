@@ -20,9 +20,11 @@ export const ProfileAvatar = ({ profile, size = 118, centered = true, editable =
     } = useProfileAvatar(profile, currentUser, editable);
 
     useEffect(() => {
-
-        setKey(prevKey => prevKey + 1);
-    }, [loadAvatarUri, profile]);
+        // Принудительно обновляем компонент при изменении avatarUri
+        if (avatarUri) {
+            setKey(prevKey => prevKey + 1);
+        }
+    }, [avatarUri, loadAvatarUri, profile]);
 
     return (
         <ProfileAvatarView

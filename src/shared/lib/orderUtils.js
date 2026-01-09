@@ -1,20 +1,5 @@
-import { getBaseUrl } from '@shared/api/api';
-
-// Вспомогательная функция для форматирования URL изображений
-export const getImageBaseUrl = () => {
-    const baseUrl = getBaseUrl();
-    return baseUrl ? `${baseUrl}/uploads/` : 'http://212.67.11.134:5000/uploads/';
-};
-
-export const formatImageUrl = (imagePath) => {
-    if (!imagePath) return null;
-
-    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-        return imagePath;
-    }
-
-    return `${getImageBaseUrl()}${imagePath}`;
-};
+// Используем централизованные функции из api.js
+export { getImageUrl as formatImageUrl, getUploadsBaseUrl as getImageBaseUrl } from '@shared/api/api';
 
 // Функция для склонения слова "коробка"
 export const formatBoxesCount = (count) => {

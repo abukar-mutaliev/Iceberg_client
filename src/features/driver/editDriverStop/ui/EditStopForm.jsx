@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import { logData } from '@/shared/lib/logger';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { useRoute } from '@react-navigation/native';
 import { useNavigation } from "@react-navigation/native";
+import { getImageUrl } from '@shared/api/api';
 
 import { EditStopHeader } from './EditStopHeader';
 import { PhotoUpload } from './PhotoUpload';
@@ -37,6 +38,7 @@ export const EditStopForm = ({
   locationData: externalLocationData,
   setLocationData: externalSetLocationData,
   onMapOpen: externalOnMapOpen,
+  useModalMap = false,
   isLocationLoading: externalIsLocationLoading,
   setIsLocationLoading: externalSetIsLocationLoading,
   addressFromMap: externalAddressFromMap
@@ -46,7 +48,19 @@ export const EditStopForm = ({
   const processInitialPhoto = (photoData) => {
     if (!photoData) return null;
     if (typeof photoData === 'string') {
-      return { uri: photoData };
+      // Нормализуем URL через getImageUrl (включая замену старых IP-адресов)
+      const normalizedUri = getImageUrl(photoData);
+      return { uri: normalizedUri || photoData };
+    }
+    // Если это объект с uri, нормализуем uri
+    if (photoData.uri && typeof photoData.uri === 'string') {
+      // Если это локальный файл, оставляем как есть
+      if (photoData.uri.startsWith('file://') || photoData.uri.startsWith('content://')) {
+        return photoData;
+      }
+      // Нормализуем URL
+      const normalizedUri = getImageUrl(photoData.uri);
+      return { ...photoData, uri: normalizedUri || photoData.uri };
     }
     return photoData;
   };
@@ -106,16 +120,24 @@ export const EditStopForm = ({
     })) || []
   );
 
-  // Добавляем логирование при инициализации значения mapLocation
-  const initialMapLocation = normalizeMapLocation(stopData?.mapLocation) || '';
-  const normalizedInitialMapLocation = typeof initialMapLocation === 'string' ? initialMapLocation : String(initialMapLocation || '');
-  logData('EditStopForm: Инициализация начальных координат', {
-    original: stopData?.mapLocation,
-    normalized: normalizedInitialMapLocation
-  });
+  // Мемоизируем инициализацию mapLocation чтобы избежать бесконечного рендеринга
+  const initialMapLocation = useMemo(() => {
+    const normalized = normalizeMapLocation(stopData?.mapLocation) || '';
+    const result = typeof normalized === 'string' ? normalized : String(normalized || '');
+    
+    // Логируем только при изменении stopData.mapLocation
+    if (__DEV__) {
+      console.log('EditStopForm: Инициализация координат', {
+        original: stopData?.mapLocation,
+        normalized: result
+      });
+    }
+    
+    return result;
+  }, [stopData?.mapLocation]);
 
   const [internalLocationData, setInternalLocationData] = useState({
-    mapLocation: normalizedInitialMapLocation
+    mapLocation: initialMapLocation
   });
   
   // Используем внешние пропсы если они переданы, иначе внутренние состояния
@@ -329,11 +351,13 @@ export const EditStopForm = ({
   const handleMapOpen = useCallback((currentLocation) => {
     logData('Открытие карты из EditStopForm', {
       currentLocation,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      useModalMap,
+      renderAsScreen
     });
 
-    // Если передан внешний обработчик (для режима экрана), используем его
-    if (externalOnMapOpen && renderAsScreen) {
+    // Если useModalMap=true и передан внешний обработчик, используем модальное окно
+    if (useModalMap && externalOnMapOpen) {
       externalOnMapOpen(currentLocation);
       return;
     }
@@ -351,7 +375,7 @@ export const EditStopForm = ({
         timestamp // Добавляем метку времени для отслеживания
       });
     }, 50);
-  }, [navigation, route.name, externalOnMapOpen, renderAsScreen]);
+  }, [navigation, route.name, externalOnMapOpen, useModalMap, renderAsScreen]);
 
   const getFullStartDateTime = () => {
     const dateTime = new Date(startDate);

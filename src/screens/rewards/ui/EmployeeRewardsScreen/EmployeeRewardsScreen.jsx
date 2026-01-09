@@ -308,6 +308,7 @@ export const EmployeeRewardsScreen = React.memo(({ navigation }) => {
                         />
                     }
                     showsVerticalScrollIndicator={false}
+                    nestedScrollEnabled={true}
                 >
                     <HeaderWithBackButton
                         title={navigationHook.screenTitle}

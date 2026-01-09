@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, TouchableOpacity, Image, StyleSheet } from 'react-native';
+import { getImageUrl } from '@shared/api/api';
 
 /**
  * Компонент для отображения фотографий в отзыве
@@ -9,14 +10,20 @@ import { View, TouchableOpacity, Image, StyleSheet } from 'react-native';
  * @param {Function} props.onPhotoPress - Обработчик нажатия на фото
  */
 export const FeedbackCardPhotos = ({ photoUrls = [], onPhotoPress }) => {
-    if (!photoUrls || !Array.isArray(photoUrls) || photoUrls.length === 0) {
+    // Нормализуем URL фотографий (заменяем старый IP на текущий базовый URL)
+    const normalizedPhotoUrls = useMemo(() => {
+        if (!photoUrls || !Array.isArray(photoUrls)) return [];
+        return photoUrls.map(url => getImageUrl(url) || url).filter(Boolean);
+    }, [photoUrls]);
+
+    if (!normalizedPhotoUrls || normalizedPhotoUrls.length === 0) {
         return null;
     }
 
     return (
         <View style={styles.photosContainer}>
             <View style={styles.photosRow}>
-                {photoUrls.slice(0, 4).map((url, index) => (
+                {normalizedPhotoUrls.slice(0, 4).map((url, index) => (
                     <TouchableOpacity
                         key={`photo-${index}`}
                         style={styles.photoThumbnail}

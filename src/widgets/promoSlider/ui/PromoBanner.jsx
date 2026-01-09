@@ -57,7 +57,7 @@ export const PromoBanner = ({ hideLoader = true }) => {
                 source={{
                     uri: currentBanner.image.startsWith('http')
                         ? currentBanner.image
-                        : `${getBaseUrl()}${currentBanner.image}`
+                        : getImageUrl(currentBanner.image)
                 }}
                 defaultSource={require('@assets/promo-banner.png')}
             />

@@ -17,22 +17,9 @@ import { deleteProduct } from '@entities/product';
 import { useProductManagement } from '@entities/product/hooks/useProductManagement';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { CustomSliderIndicator } from '@shared/ui/CustomSliderIndicator';
-import { getBaseUrl } from '@shared/api/api';
+import { formatImageUrl } from '@shared/api/api';
 
 const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
-
-const getImageBaseUrl = () => {
-    const baseUrl = getBaseUrl();
-    return baseUrl ? `${baseUrl}/uploads/` : 'http://212.67.11.134:5000/uploads/';
-};
-
-const formatImageUrl = (imagePath) => {
-    if (!imagePath) return null;
-    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-        return imagePath;
-    }
-    return `${getImageBaseUrl()}${imagePath}`;
-};
 
 export const ProductListScreen = () => {
     const dispatch = useDispatch();

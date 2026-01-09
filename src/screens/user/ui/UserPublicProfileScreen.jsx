@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { SafeAreaView, View, Text, Image, StyleSheet, ActivityIndicator, TouchableOpacity, ScrollView, Modal, Dimensions, StatusBar, Linking, Alert } from 'react-native';
 import { userApi } from '@entities/user';
-import { getBaseUrl } from '@shared/api/api';
+import { getImageUrl } from '@shared/api/api';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import ChatApi from '@entities/chat/api/chatApi';
 import { useSelector } from 'react-redux';
@@ -143,8 +143,7 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
     const avatarUri = useMemo(() => {
         const raw = user?.avatar || user?.image;
         if (!raw) return null;
-        if (raw.startsWith('http')) return raw;
-        return `${getBaseUrl()}/uploads/${raw.replace(/^\\+/g, '').replace(/^\/+/, '').replace(/^uploads\/?/, '')}`;
+        return getImageUrl(raw);
     }, [user]);
 
     const displayName = useMemo(() => getDisplayName(user), [user]);
@@ -553,7 +552,7 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                 animationType="fade"
                 onRequestClose={() => setShowAvatarModal(false)}
             >
-                <View style={styles.modalBackground}>
+                <SafeAreaView style={styles.modalBackground}>
                     <View style={styles.modalHeader}>
                         <TouchableOpacity
                             style={styles.modalBackButton}
@@ -571,7 +570,7 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                             resizeMode="contain"
                         />
                     </View>
-                </View>
+                </SafeAreaView>
             </Modal>
         </View>
     );

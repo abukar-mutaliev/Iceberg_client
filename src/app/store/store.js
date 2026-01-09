@@ -35,8 +35,8 @@ import { stockAlertReducer } from '@entities/stockAlert';
 const persistConfig = {
     key: 'root',
     storage: AsyncStorage,
-    whitelist: ['favorites'],
-    version: 1, // Increment this to force state migration if needed
+    whitelist: ['auth', 'favorites'], // Добавлен auth для сохранения состояния авторизации
+    version: 2, // Increment this to force state migration if needed
 };
 
 

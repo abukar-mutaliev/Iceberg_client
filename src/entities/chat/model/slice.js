@@ -2572,8 +2572,17 @@ const chatSlice = createSlice({
         }
       }
       
-      // Обновляем кэш сообщений
+      // Обновляем кэш сообщений (удаляем удаленное сообщение из кэша)
       updateMessageCache(roomId, bucket);
+      
+      // Удаляем сообщение из кэша асинхронно
+      if (forAll && foundMessage?.id) {
+        chatCacheService.removeMessageFromCache(roomId, foundMessage.id).catch((error) => {
+          if (__DEV__) {
+            console.warn('⚠️ receiveMessageDeleted: Failed to remove message from cache', error);
+          }
+        });
+      }
       
       if (__DEV__) {
         console.log('✅ receiveMessageDeleted: Message deletion complete', {

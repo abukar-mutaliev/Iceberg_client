@@ -227,21 +227,36 @@ export const AddStopScreen = ({ navigation, route }) => {
         setLocationData, 
         handleMapCancel, 
         handleLocationConfirm 
-    }) => (
-        <View style={mapStyles.container}>
-            <MapView
-                style={mapStyles.map}
-                region={locationData.mapRegion}
-                onRegionChangeComplete={(region) => setLocationData(prev => ({ ...prev, mapRegion: region }))}
-                onPress={(e) => setLocationData(prev => ({
-                    ...prev,
-                    markerPosition: e.nativeEvent.coordinate
-                }))}
-            >
-                {locationData.markerPosition && (
-                    <Marker coordinate={locationData.markerPosition} />
-                )}
-            </MapView>
+    }) => {
+        const mapRef = useRef(null);
+        
+        return (
+            <View style={mapStyles.container}>
+                {/* Кнопка "Назад" в левом верхнем углу */}
+                <TouchableOpacity
+                    style={mapStyles.backButton}
+                    onPress={handleMapCancel}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                    <View style={mapStyles.backButtonCircle}>
+                        <Text style={mapStyles.backButtonText}>✕</Text>
+                    </View>
+                </TouchableOpacity>
+
+                <MapView
+                    ref={mapRef}
+                    style={mapStyles.map}
+                    initialRegion={locationData.mapRegion}
+                    onPress={(e) => setLocationData(prev => ({
+                        ...prev,
+                        markerPosition: e.nativeEvent.coordinate
+                    }))}
+                >
+                    {locationData.markerPosition && (
+                        <Marker coordinate={locationData.markerPosition} />
+                    )}
+                </MapView>
 
             <View style={mapStyles.buttonContainer}>
                 <TouchableOpacity
@@ -267,13 +282,14 @@ export const AddStopScreen = ({ navigation, route }) => {
                 </TouchableOpacity>
             </View>
 
-            {!locationData.markerPosition && (
-                <View style={mapStyles.hintContainer}>
-                    <Text style={mapStyles.hintText}>Нажмите на карту для выбора точки</Text>
-                </View>
-            )}
-        </View>
-    ));
+                {!locationData.markerPosition && (
+                    <View style={mapStyles.hintContainer}>
+                        <Text style={mapStyles.hintText}>Нажмите на карту для выбора точки</Text>
+                    </View>
+                )}
+            </View>
+        );
+    });
 
     // Условный return должен быть после ВСЕХ хуков
     if ((isLoading || isDistrictLoading) && !formSubmitted && districts.length === 0) {
@@ -316,6 +332,7 @@ export const AddStopScreen = ({ navigation, route }) => {
                         addressFromMap={addressFromMap}
                         scrollToInput={handleScrollToInput}
                         scrollToEnd={handleScrollToEnd}
+                        useModalMap={true}
                     />
                 </ScrollView>
             </KeyboardAvoidingView>
@@ -361,6 +378,33 @@ const mapStyles = StyleSheet.create({
     container: {
         flex: 1,
         position: 'relative',
+    },
+    backButton: {
+        position: 'absolute',
+        top: 20,
+        left: 20,
+        zIndex: 10,
+    },
+    backButtonCircle: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+        elevation: 5,
+    },
+    backButtonText: {
+        fontSize: 24,
+        color: '#333',
+        fontWeight: '600',
     },
     map: {
         width: '100%',
@@ -412,7 +456,7 @@ const mapStyles = StyleSheet.create({
     },
     hintContainer: {
         position: 'absolute',
-        top: 20,
+        top: 70,
         left: 20,
         right: 20,
         backgroundColor: 'rgba(0, 0, 0, 0.75)',

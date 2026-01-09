@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {View, Text, TouchableOpacity, StyleSheet, Image} from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { getImageUrl } from '@shared/api/api';
 
 /**
  * Компонент для отображения превью сообщения, на которое отвечаем
@@ -112,9 +113,44 @@ export const ReplyPreview = ({
     }
   };
 
-  const hasImage = replyTo.attachments && replyTo.attachments.length > 0 && 
-                   replyTo.attachments[0].type === 'IMAGE';
-  const imageUrl = hasImage ? replyTo.attachments[0].path : null;
+  // Проверяем наличие изображения в attachments (для IMAGE сообщений)
+  const hasImageAttachment = replyTo.attachments && replyTo.attachments.length > 0 && 
+                              replyTo.attachments[0].type === 'IMAGE';
+  
+  // Проверяем наличие изображения остановки (для STOP сообщений)
+  const hasStopPhoto = replyTo.type === 'STOP' && (
+    replyTo.stop?.photo || 
+    (replyTo.content && (() => {
+      try {
+        const stopData = JSON.parse(replyTo.content);
+        return stopData?.photo;
+      } catch {
+        return null;
+      }
+    })())
+  );
+  
+  const hasImage = hasImageAttachment || hasStopPhoto;
+  
+  // Нормализуем URL изображения через getImageUrl (включая замену старых IP-адресов)
+  const imageUrl = useMemo(() => {
+    if (hasImageAttachment && replyTo.attachments[0].path) {
+      return getImageUrl(replyTo.attachments[0].path);
+    }
+    if (hasStopPhoto) {
+      const stopPhoto = replyTo.stop?.photo || 
+                       (replyTo.content && (() => {
+                         try {
+                           const stopData = JSON.parse(replyTo.content);
+                           return stopData?.photo;
+                         } catch {
+                           return null;
+                         }
+                       })());
+      return stopPhoto ? getImageUrl(stopPhoto) : null;
+    }
+    return null;
+  }, [hasImageAttachment, hasStopPhoto, replyTo.attachments, replyTo.stop, replyTo.content]);
 
   return (
     <TouchableOpacity

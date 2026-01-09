@@ -29,6 +29,10 @@ export const usePushTokenAutoRegistration = () => {
           return;
         }
 
+        // Увеличиваем задержку до 3 секунд, чтобы дать время показать кастомный алерт
+        // и дождаться, пока пользователь нажмет "Разрешить" перед инициализацией OneSignal
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
         hasAttemptedRegistration.current = true;
 
         const success = await PushNotificationService.initializeForUser(user);
@@ -43,9 +47,7 @@ export const usePushTokenAutoRegistration = () => {
       }
     };
 
-    const timer = setTimeout(register, 1000);
-    
-    return () => clearTimeout(timer);
+    register();
   }, [isAuthenticated, user?.id]);
 
   useEffect(() => {

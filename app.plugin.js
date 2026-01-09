@@ -1,4 +1,4 @@
-const { withAndroidManifest, withDangerousMod } = require('@expo/config-plugins');
+const { withAndroidManifest, withDangerousMod, withGradleProperties } = require('@expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
@@ -38,6 +38,56 @@ const withAndroidWindowSoftInputMode = (config) => {
         // stateHidden - скрывает клавиатуру при переходе между экранами
         // Примечание: для фиксации хедера используется keyboardHandlingEnabled: false и абсолютная позиция
         activity.$['android:windowSoftInputMode'] = 'adjustResize|stateHidden';
+      }
+    });
+
+    return config;
+  });
+};
+
+/**
+ * Плагин для настройки edge-to-edge и совместимости с Android 15+
+ * Отключает использование deprecated Status Bar APIs через React Native
+ */
+const withAndroid15Compatibility = (config) => {
+  return withAndroidManifest(config, (config) => {
+    const androidManifest = config.modResults;
+    const { manifest } = androidManifest;
+
+    if (!manifest.application) {
+      return config;
+    }
+
+    const application = Array.isArray(manifest.application)
+      ? manifest.application[0]
+      : manifest.application;
+
+    // Убеждаемся, что application тег поддерживает большие экраны
+    // Это требование Android 16+ для складных телефонов и планшетов
+    if (application.$) {
+      // resizeableActivity = true позволяет приложению работать в split-screen и freeform режимах
+      application.$['android:resizeableActivity'] = 'true';
+    }
+
+    if (!application.activity) {
+      return config;
+    }
+
+    const activities = Array.isArray(application.activity)
+      ? application.activity
+      : [application.activity];
+
+    // Обновляем MainActivity для поддержки изменения размера
+    activities.forEach((activity) => {
+      if (activity.$ && activity.$['android:name'] === '.MainActivity') {
+        // Добавляем configChanges для правильной обработки изменений ориентации и размера
+        const currentConfigChanges = activity.$['android:configChanges'] || '';
+        const requiredChanges = ['screenSize', 'smallestScreenSize', 'screenLayout', 'orientation'];
+        
+        const configChangesSet = new Set(currentConfigChanges.split('|').filter(Boolean));
+        requiredChanges.forEach(change => configChangesSet.add(change));
+        
+        activity.$['android:configChanges'] = Array.from(configChangesSet).join('|');
       }
     });
 
@@ -103,6 +153,7 @@ const withNotificationIcons = (config) => {
 
 module.exports = (config) => {
   config = withAndroidWindowSoftInputMode(config);
+  config = withAndroid15Compatibility(config);
   config = withNotificationIcons(config);
   return config;
 };

@@ -41,7 +41,9 @@ export const StopForm = memo(({
                                   setIsLocationLoading,
                                   addressFromMap,
                                   scrollToInput,
-                                  scrollToEnd
+                                  scrollToEnd,
+                                  onMapOpen,
+                                  useModalMap = false
                               }) => {
     const dispatch = useDispatch();
     const navigation = useNavigation();
@@ -333,9 +335,17 @@ export const StopForm = memo(({
 
         logData('Открытие карты из StopForm', {
             currentLocation,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            useModalMap
         });
 
+        // Если передан prop onMapOpen (для модального окна), используем его
+        if (useModalMap && onMapOpen) {
+            onMapOpen(currentLocation);
+            return;
+        }
+
+        // Иначе используем навигацию (старый способ)
         isNavigatingRef.current = true;
         const timestamp = new Date().getTime();
 
@@ -350,7 +360,7 @@ export const StopForm = memo(({
                 isNavigatingRef.current = false;
             }, 500);
         }, 0);
-    }, [navigation, route.name, isLocationLoading]);
+    }, [navigation, route.name, isLocationLoading, useModalMap, onMapOpen]);
 
     const validateForm = useCallback(() => {
         let isFormValid = true;
@@ -564,120 +574,123 @@ export const StopForm = memo(({
             setUploadFailed(false);
             setRetryCount(0);
 
-            const retryRequest = async (currentRetry = 0, maxRetries = 5) => {
-                try {
-                    setRetryCount(currentRetry);
-                    const result = await dispatch(createStop(stopData)).unwrap();
-                    logData('Остановка успешно создана', result);
-                    
-                    if (result && result.data) {
-                        const photoUrl = result.data.photo;
-                        logData('Информация о созданной остановке', {
-                            stopId: result.data.id,
-                            photoUrl: photoUrl
-                        });
-                    }
-                    
-                    // Очищаем ошибки валидации цен и состояние retry при успешной отправке
-                    setPriceValidationErrors({});
-                    setUploadFailed(false);
-                    setLastSubmitData(null);
-                    setRetryCount(0);
-                    
-                    // Показываем краткое уведомление
-                    showInfo('✅ Остановка успешно добавлена');
-                    
-                    // Переходим к деталям созданной остановки
-                    const stopId = result?.data?.id || result?.id;
-                    logData('Навигация к остановке', { stopId, result });
-                    
-                    setTimeout(() => {
-                        if (stopId) {
-                            navigation.replace('StopDetails', { stopId });
-                        } else {
-                            logData('Не удалось получить ID остановки для навигации', result);
-                            navigation.goBack();
-                        }
-                    }, 300);
-                    
-                    return result;
-                } catch (error) {
-                    logData('Ошибка при создании остановки', error);
-                    
-                    let isNetworkError = false;
-                    try {
-                        const NetInfo = require('@react-native-community/netinfo');
-                        const networkState = await NetInfo.fetch();
-                        isNetworkError = !networkState.isConnected || error?.code === 'ERR_NETWORK';
-                        
-                        logData('Проверка сети при ошибке', {
-                            isConnected: networkState.isConnected,
-                            errorCode: error?.code,
-                            isNetworkError: isNetworkError
-                        });
-                    } catch (netInfoError) {
-                        logData('Ошибка при проверке сети после ошибки запроса', netInfoError);
-                    }
-                    
-                    // Автоматический retry при сетевой ошибке (до 5 попыток)
-                    if ((isNetworkError || error?.code === 'ERR_NETWORK' || error?.message?.includes('network') || error?.message?.includes('timeout')) && currentRetry < maxRetries) {
-                        const nextRetry = currentRetry + 1;
-                        logData(`Повторная попытка ${nextRetry}/${maxRetries}`, { error: error.message });
-                        showInfo(`📶 Повторная попытка ${nextRetry} из ${maxRetries}...`);
-                        setRetryCount(nextRetry);
-                        
-                        // Экспоненциальная задержка: 1с, 2с, 4с, 8с, 16с
-                        const waitTime = 1000 * Math.pow(2, currentRetry);
-                        await new Promise(resolve => setTimeout(resolve, waitTime));
-                        
-                        return retryRequest(nextRetry, maxRetries);
-                    }
-                    
-                    // Если исчерпаны все попытки при сетевой ошибке - показываем кнопки Повторить/Отмена
-                    if ((isNetworkError || error?.code === 'ERR_NETWORK' || error?.message?.includes('network') || error?.message?.includes('timeout')) && currentRetry >= maxRetries) {
-                        logData('Исчерпаны все попытки загрузки', { retries: maxRetries });
-                        setUploadFailed(true);
-                        setFormSubmitted(false);
-                        setIsSubmitting(false);
-                        showError('Не удалось отправить данные. Проверьте интернет-соединение.');
-                        return;
-                    }
-                    
-                    // Извлекаем ошибки из разных возможных мест (Redux thunk использует payload)
-                    // createProtectedRequest выбрасывает error.response?.data, который попадает в payload
-                    let errorData = error?.payload || error?.response?.data || error?.data || error;
-                    
-                    // Если errorData это строка, пытаемся найти объект в других местах
-                    if (typeof errorData === 'string') {
-                        // Пытаемся найти объект в других местах
-                        const alternativeData = error?.response?.data || error?.data;
-                        if (alternativeData && typeof alternativeData === 'object') {
-                            errorData = alternativeData;
-                        } else {
-                            errorData = { message: errorData };
-                        }
-                    }
-                    
-                    // Извлекаем массив ошибок и сообщение
-                    const errorsArray = errorData?.errors || error?.errors;
-                    const errorMessage = errorData?.message || errorData?.error || error?.message || (typeof errorData === 'string' ? errorData : String(error));
-                    
-                    logData('Подробная структура ошибки', {
-                        hasErrors: !!errorsArray,
-                        errorsIsArray: Array.isArray(errorsArray),
-                        errorKeys: error ? Object.keys(error) : null,
-                        errorPayload: error?.payload,
-                        errorResponseData: error?.response?.data,
-                        errorData: errorData,
-                        errorMessage: errorMessage,
-                        errorsArray: errorsArray
+            try {
+                // Callback для обновления UI во время retry
+                const onRetryCallback = (attempt, error) => {
+                    setRetryCount(attempt);
+                    showInfo(`📶 Повторная попытка ${attempt} из 5...`);
+                    logData(`Повторная попытка загрузки остановки ${attempt}/5`, {
+                        error: error.message,
+                        code: error.code
                     });
-                    
-                    // Проверяем, есть ли ошибка валидации цены в сообщении
-                    const hasPriceError = errorMessage?.includes('валидации цены') || errorMessage?.includes('цена') || errorMessage?.includes('не должна быть меньше');
-                    
-                    // Обработка ошибок валидации товаров (недостаток товара, цены и т.д.)
-                    if (errorsArray && Array.isArray(errorsArray)) {
+                };
+
+                // Добавляем onRetry callback в данные
+                const stopDataWithRetry = {
+                    ...stopData,
+                    onRetry: onRetryCallback
+                };
+
+                const result = await dispatch(createStop(stopDataWithRetry)).unwrap();
+                logData('Остановка успешно создана', result);
+                
+                if (result && result.data) {
+                    const photoUrl = result.data.photo;
+                    logData('Информация о созданной остановке', {
+                        stopId: result.data.id,
+                        photoUrl: photoUrl
+                    });
+                }
+                
+                // Очищаем ошибки валидации цен и состояние retry при успешной отправке
+                setPriceValidationErrors({});
+                setUploadFailed(false);
+                setLastSubmitData(null);
+                setRetryCount(0);
+                
+                // Показываем краткое уведомление
+                showInfo('✅ Остановка успешно добавлена');
+                
+                // Переходим к деталям созданной остановки
+                const stopId = result?.data?.id || result?.id;
+                logData('Навигация к остановке', { stopId, result });
+                
+                setTimeout(() => {
+                    if (stopId) {
+                        navigation.replace('StopDetails', { stopId });
+                    } else {
+                        logData('Не удалось получить ID остановки для навигации', result);
+                        navigation.goBack();
+                    }
+                }, 300);
+                
+            } catch (error) {
+                logData('Ошибка при создании остановки', error);
+                
+                // Проверяем, является ли это сетевой ошибкой или timeout
+                const isNetworkError = 
+                    error?.code === 'ERR_NETWORK' || 
+                    error?.code === 'TIMEOUT' ||
+                    error?.code === 'ECONNABORTED' ||
+                    error?.message?.includes('Network') ||
+                    error?.message?.includes('network') || 
+                    error?.message?.includes('timeout') ||
+                    error?.message?.includes('Превышено время') ||
+                    error?.originalError?.code === 'ERR_NETWORK' ||
+                    error?.originalError?.code === 'ECONNABORTED';
+                
+                logData('Проверка типа ошибки', {
+                    isNetworkError,
+                    errorCode: error?.code,
+                    errorMessage: error?.message
+                });
+                
+                // Если исчерпаны все попытки при сетевой ошибке - показываем кнопки Повторить/Отмена
+                if (isNetworkError) {
+                    logData('Исчерпаны все попытки загрузки (5 попыток)', { error: error.message });
+                    setUploadFailed(true);
+                    setFormSubmitted(false);
+                    setIsSubmitting(false);
+                    setRetryCount(0);
+                    showError('Не удалось отправить данные после 5 попыток. Проверьте интернет-соединение.');
+                    return;
+                }
+                
+                // Извлекаем ошибки из разных возможных мест (Redux thunk использует payload)
+                // createProtectedRequest выбрасывает error.response?.data, который попадает в payload
+                let errorData = error?.payload || error?.response?.data || error?.data || error;
+                
+                // Если errorData это строка, пытаемся найти объект в других местах
+                if (typeof errorData === 'string') {
+                    // Пытаемся найти объект в других местах
+                    const alternativeData = error?.response?.data || error?.data;
+                    if (alternativeData && typeof alternativeData === 'object') {
+                        errorData = alternativeData;
+                    } else {
+                        errorData = { message: errorData };
+                    }
+                }
+                
+                // Извлекаем массив ошибок и сообщение
+                const errorsArray = errorData?.errors || error?.errors;
+                const errorMessage = errorData?.message || errorData?.error || error?.message || (typeof errorData === 'string' ? errorData : String(error));
+                
+                logData('Подробная структура ошибки', {
+                    hasErrors: !!errorsArray,
+                    errorsIsArray: Array.isArray(errorsArray),
+                    errorKeys: error ? Object.keys(error) : null,
+                    errorPayload: error?.payload,
+                    errorResponseData: error?.response?.data,
+                    errorData: errorData,
+                    errorMessage: errorMessage,
+                    errorsArray: errorsArray
+                });
+                
+                // Проверяем, есть ли ошибка валидации цены в сообщении
+                const hasPriceError = errorMessage?.includes('валидации цены') || errorMessage?.includes('цена') || errorMessage?.includes('не должна быть меньше');
+                
+                // Обработка ошибок валидации товаров (недостаток товара, цены и т.д.)
+                if (errorsArray && Array.isArray(errorsArray)) {
                         const stockErrors = errorsArray.filter(err => err.type === 'INSUFFICIENT_STOCK');
                         const priceErrors = errorsArray.filter(err => err.type === 'PRICE_VALIDATION' || err.message?.includes('цена'));
                         const fieldErrors = {};
@@ -797,24 +810,21 @@ export const StopForm = memo(({
                         return;
                     }
                     
-                    // Если ошибка не была обработана выше, показываем общее сообщение
-                    if (!hasPriceError || (errorsArray && Array.isArray(errorsArray))) {
-                        const finalErrorMessage = errorMessage && errorMessage !== String(error) 
-                            ? errorMessage 
-                            : 'Произошла ошибка при создании остановки. Пожалуйста, попробуйте еще раз.';
-                        showError(finalErrorMessage);
-                        setIsSubmitting(false);
-                    }
-                    
-                    throw error;
+                // Если ошибка не была обработана выше, показываем общее сообщение
+                if (!hasPriceError || (errorsArray && Array.isArray(errorsArray))) {
+                    const finalErrorMessage = errorMessage && errorMessage !== String(error) 
+                        ? errorMessage 
+                        : 'Произошла ошибка при создании остановки. Пожалуйста, попробуйте еще раз.';
+                    showError(finalErrorMessage);
+                    setIsSubmitting(false);
                 }
-            };
-
-            await retryRequest();
-            
-            setIsSubmitting(false);
-            setFormSubmitted(false);
-            
+            } finally {
+                // Всегда сбрасываем флаг отправки в конце
+                if (!uploadFailed) {
+                    setIsSubmitting(false);
+                    setFormSubmitted(false);
+                }
+            }
         } catch (error) {
             logData('Ошибка при обработке формы', error);
             showError('Ошибка при обработке данных. Пожалуйста, попробуйте еще раз.');

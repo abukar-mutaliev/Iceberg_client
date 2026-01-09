@@ -1,6 +1,7 @@
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {Platform} from "react-native";
+import Constants from "expo-constants";
 
 const STORAGE_KEYS = {
     TOKENS: 'tokens',
@@ -66,17 +67,119 @@ const processQueue = (error, token = null) => {
     failedQueue = [];
 };
 
+// ============================================================================
+// ЕДИНАЯ ТОЧКА ПОДКЛЮЧЕНИЯ К СЕРВЕРУ
+// Используйте эти функции везде в приложении вместо прямых URL
+// ============================================================================
+
+/**
+ * Получить базовый URL сервера
+ * @returns {string} Базовый URL (например: http://85.192.33.223:5000)
+ */
 export const getBaseUrl = () => {
-    let baseUrl;
+    // Используем apiUrl из конфига Expo, если доступен
+    const configApiUrl = Constants?.expoConfig?.extra?.apiUrl || 
+                         Constants?.manifest?.extra?.apiUrl;
     
-    if (__DEV__) {
-            baseUrl = 'http://192.168.1.226:5000';
-    } else {
-        baseUrl = 'http://212.67.11.134:5000';
+    if (configApiUrl) {
+
+        return configApiUrl;
     }
     
+    // Fallback на захардкоженное значение
+    const fallbackUrl = 'http://85.192.33.223:5000';
+    if (__DEV__) {
+        console.warn('⚠️ [API] Using fallback API URL:', fallbackUrl);
+    }
+    return fallbackUrl;
+};
 
-    return baseUrl;
+/**
+ * Получить полный URL для API endpoint
+ * @param {string} endpoint - Путь к endpoint (например: '/api/products')
+ * @returns {string} Полный URL
+ */
+export const getApiUrl = (endpoint) => {
+    const baseUrl = getBaseUrl();
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    return `${baseUrl}${cleanEndpoint}`;
+};
+
+/**
+ * Получить URL для загрузки изображений
+ * @param {string} imagePath - Путь к изображению (например: 'products/image.jpg' или '/uploads/products/image.jpg')
+ * @returns {string|null} Полный URL к изображению или null
+ */
+export const getImageUrl = (imagePath) => {
+    if (!imagePath) return null;
+    
+    // Если уже полный URL, нормализуем его (заменяем старый IP на текущий базовый URL)
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+        const baseUrl = getBaseUrl();
+        // Извлекаем путь из полного URL (все что после домена)
+        try {
+            const url = new URL(imagePath);
+            const path = url.pathname;
+            // Если путь начинается с /uploads/, используем его, иначе добавляем /uploads/
+            if (path.startsWith('/uploads/')) {
+                return `${baseUrl}${path}`;
+            } else if (path.startsWith('/')) {
+                return `${baseUrl}/uploads${path}`;
+            } else {
+                return `${baseUrl}/uploads/${path}`;
+            }
+        } catch (e) {
+            // Если не удалось распарсить URL, возвращаем как есть
+            if (__DEV__) {
+                console.warn('⚠️ [API] Failed to parse image URL:', imagePath, e);
+            }
+            return imagePath;
+        }
+    }
+    
+    const baseUrl = getBaseUrl();
+    
+    // Если путь уже начинается с /uploads/, просто добавляем базовый URL
+    if (imagePath.startsWith('/uploads/')) {
+        return `${baseUrl}${imagePath}`;
+    }
+    
+    // Если путь начинается с uploads/ (без слеша), добавляем слеш
+    if (imagePath.startsWith('uploads/')) {
+        return `${baseUrl}/${imagePath}`;
+    }
+    
+    // Если путь начинается с /, но не с /uploads/, проверяем, может это уже полный путь
+    if (imagePath.startsWith('/')) {
+        // Если путь начинается с /api/, это API endpoint, не изображение
+        if (imagePath.startsWith('/api/')) {
+            return `${baseUrl}${imagePath}`;
+        }
+        // Иначе считаем, что это путь к файлу в uploads
+        return `${baseUrl}/uploads${imagePath}`;
+    }
+    
+    // Убираем лишние слеши в начале и добавляем /uploads/
+    const cleanPath = imagePath.replace(/^\/+/, '');
+    return `${baseUrl}/uploads/${cleanPath}`;
+};
+
+/**
+ * Получить базовый URL для папки uploads
+ * @returns {string} Базовый URL для uploads (например: http://85.192.33.223:5000/uploads/)
+ */
+export const getUploadsBaseUrl = () => {
+    const baseUrl = getBaseUrl();
+    return `${baseUrl}/uploads/`;
+};
+
+/**
+ * Форматировать URL изображения (совместимость со старым кодом)
+ * @param {string} imagePath - Путь к изображению
+ * @returns {string|null} Полный URL или null
+ */
+export const formatImageUrl = (imagePath) => {
+    return getImageUrl(imagePath);
 };
 
 
@@ -340,12 +443,15 @@ const handleRefreshToken = async (error, originalRequest) => {
 
         const newTokens = { accessToken, refreshToken };
         await saveTokens(newTokens);
+        
+        console.log('🔄 [API] handleRefreshToken: Tokens refreshed, updating Redux store');
         setTokensAndUser(newTokens);
 
         processQueue(null, newTokens.accessToken);
 
         originalRequest.headers['Authorization'] = `Bearer ${newTokens.accessToken}`;
 
+        console.log('✅ [API] handleRefreshToken: Successfully refreshed and retrying request');
         return api(originalRequest);
     } catch (refreshError) {
         console.error('Ошибка при обновлении токена:', refreshError.message);
@@ -468,7 +574,10 @@ api.interceptors.request.use(async (config) => {
                             if (newAccessToken && newRefreshToken) {
                                 const newTokens = { accessToken: newAccessToken, refreshToken: newRefreshToken };
                                 await saveTokens(newTokens);
+                                
+                                console.log('🔄 [API REQUEST] Updating Redux store with new tokens');
                                 setTokensAndUser(newTokens);
+                                
                                 config.headers.Authorization = `Bearer ${newAccessToken}`;
                                 console.log('✅ [API REQUEST] Token refreshed proactively before request');
                                 
@@ -552,12 +661,25 @@ api.interceptors.response.use(
         
         // Дополнительное логирование для сетевых ошибок
         if (error.code === 'ERR_NETWORK' || error.message?.includes('Network')) {
-            console.error('🌐 [API ERROR] Network connection error:', {
+            const detailedError = {
                 ...errorDetails,
                 fullError: error.message,
                 baseURL: api.defaults.baseURL,
+                fullUrl: `${api.defaults.baseURL}${originalRequest?.url}`,
+                errorCode: error.code,
+                errorName: error.name,
+                isExpoGo: Constants?.executionEnvironment === 'storeClient',
                 suggestion: 'Проверьте подключение к интернету и убедитесь что сервер доступен'
-            });
+            };
+            
+            console.error('🌐 [API ERROR] Network connection error:', detailedError);
+            
+            // Дополнительная диагностика для Expo Go
+            if (Constants?.executionEnvironment === 'storeClient') {
+                console.warn('⚠️ [API] Running in Expo Go - network_security_config.xml не применяется!');
+                console.warn('⚠️ [API] Для применения network_security_config.xml нужен development build');
+                console.warn('⚠️ [API] Выполните: npx expo prebuild && npx expo run:android');
+            }
         }
         
         // Не логируем 401 ошибки для корзины (корзина скрыта в первой версии приложения)
@@ -622,8 +744,17 @@ api.interceptors.response.use(
 
 // Остальной код остается без изменений...
 export const handleAuthTokens = (tokens) => {
+    console.log('🔑 [API] handleAuthTokens called', {
+        hasAccessToken: !!tokens?.accessToken,
+        hasRefreshToken: !!tokens?.refreshToken,
+        hasDispatchAction: !!dispatchAction
+    });
+    
     if (dispatchAction) {
         dispatchAction({ type: 'auth/setTokens', payload: tokens });
+        console.log('✅ [API] Tokens dispatched to Redux store');
+    } else {
+        console.warn('⚠️ [API] dispatchAction not available, tokens not synced with Redux');
     }
 };
 
@@ -742,9 +873,11 @@ export const authService = {
 
                     const newTokens = { accessToken, refreshToken };
                     await saveTokens(newTokens);
+                    
+                    console.log('🔄 refreshAccessToken: Updating Redux store with new tokens');
                     setTokensAndUser(newTokens);
 
-                    console.log('✅ refreshAccessToken: Token refreshed successfully');
+                    console.log('✅ refreshAccessToken: Token refreshed successfully and Redux updated');
                     return newTokens;
                 } finally {
                     // Сбрасываем промис после завершения (успешного или нет)
@@ -782,7 +915,8 @@ export const createProtectedRequest = async (method, url, data = null, config = 
         let finalUrl = url;
         if (isFileUpload) {
             config.transformRequest = [(data) => data];
-            config.timeout = config.timeout || 120000;
+            // Увеличиваем timeout до 5 минут для медленных соединений
+            config.timeout = config.timeout || 300000;
             const timestamp = Date.now();
             if (!finalUrl.includes('?')) {
                 finalUrl = `${finalUrl}?_t=${timestamp}`;
@@ -938,6 +1072,31 @@ export const validateTokensStatus = async () => {
 
 
 
+/**
+ * Выполнить fetch запрос к API (используйте вместо прямого fetch)
+ * @param {string} endpoint - Путь к endpoint (например: '/api/products')
+ * @param {RequestInit} options - Опции для fetch
+ * @returns {Promise<Response>} Promise с ответом
+ */
+export const apiFetch = async (endpoint, options = {}) => {
+    const url = getApiUrl(endpoint);
+    
+    const defaultOptions = {
+        headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            ...options.headers,
+        },
+        ...options,
+    };
+
+    return fetch(url, defaultOptions);
+};
+
+/**
+ * Тест подключения к серверу
+ * @returns {Promise<boolean>} true если подключение успешно
+ */
 export const testNetworkConnection = async () => {
     try {
         const baseUrl = getBaseUrl();
@@ -951,7 +1110,7 @@ export const testNetworkConnection = async () => {
                 reject(new Error('Request timeout'));
             }, 10000);
 
-            const testUrl = `${baseUrl}/api/health`;
+            const testUrl = getApiUrl('/api/health');
 
             fetch(testUrl, {
                 method: 'GET',

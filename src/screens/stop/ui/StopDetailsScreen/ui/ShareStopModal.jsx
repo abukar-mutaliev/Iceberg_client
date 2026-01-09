@@ -16,7 +16,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
 import { fetchRooms, sendStop, createRoom } from '@entities/chat/model/slice';
 import { selectRoomsList } from '@entities/chat/model/selectors';
-import { getBaseUrl } from '@shared/api/api';
+import { getImageUrl } from '@shared/api/api';
 import { useToast } from '@shared/ui/Toast';
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 import ChatApi from '@entities/chat/api/chatApi';
@@ -134,7 +134,7 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
                 if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
                     return avatar;
                 }
-                return `${getBaseUrl()}${avatar}`;
+                return getImageUrl(avatar);
             }
             return null;
         }
@@ -156,7 +156,7 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
                     if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
                         return avatar;
                     }
-                    return `${getBaseUrl()}${avatar}`;
+                    return getImageUrl(avatar);
                 }
             }
         }

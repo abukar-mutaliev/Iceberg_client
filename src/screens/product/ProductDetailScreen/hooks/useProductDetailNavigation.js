@@ -9,6 +9,7 @@ import { resetCurrentProduct } from '@entities/product';
 export const useProductDetailNavigation = (navigation, fromScreen, params) => {
     const dispatch = useDispatch();
     const isNavigatingRef = useRef(false);
+    const lastNavigationTimeRef = useRef(0);
     const navigationParamsRef = useRef(params);
 
     // Обновляем ссылку на параметры при их изменении
@@ -99,6 +100,22 @@ export const useProductDetailNavigation = (navigation, fromScreen, params) => {
     const handleSimilarProductPress = useCallback((similarProductId, currentProductId) => {
         if (!similarProductId) return;
         
+        // Защита от двойной навигации с использованием timestamp
+        const now = Date.now();
+        if (now - lastNavigationTimeRef.current < 500) {
+            console.log('ProductDetailScreen: Двойная навигация обнаружена, игнорируем');
+            return;
+        }
+        lastNavigationTimeRef.current = now;
+        
+        // Защита от множественных нажатий
+        if (isNavigatingRef.current) {
+            console.log('ProductDetailScreen: Навигация уже в процессе, игнорируем');
+            return;
+        }
+        
+        isNavigatingRef.current = true;
+        
         console.log('ProductDetailScreen: Navigating to similar product', {
             from: currentProductId,
             to: similarProductId,
@@ -114,6 +131,11 @@ export const useProductDetailNavigation = (navigation, fromScreen, params) => {
             previousProductId: currentProductId,
             originalFromScreen: fromScreen || 'MainTab'
         });
+        
+        // Сбрасываем флаг через задержку
+        setTimeout(() => {
+            isNavigatingRef.current = false;
+        }, 500);
     }, [navigation, fromScreen]);
 
     return {

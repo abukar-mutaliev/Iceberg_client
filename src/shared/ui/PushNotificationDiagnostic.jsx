@@ -13,6 +13,7 @@ import { selectUser, selectTokens } from '@entities/auth';
 import { Platform } from 'react-native';
 import { resetHeadsUpPrompt } from '@shared/hooks/useHeadsUpNotificationPrompt';
 import { InAppLogsViewer } from '@shared/ui/InAppLogsViewer';
+import { apiFetch } from '@shared/api/api';
 
 // Ленивая загрузка expo-notifications только когда нужно (не в Expo Go)
 const getNotifications = () => {
@@ -372,7 +373,7 @@ export const PushNotificationDiagnostic = () => {
 
             addLog(`📤 Отправляем запрос на сервер с Player ID: ${playerId}...`, 'info');
             
-            const response = await fetch('http://212.67.11.134:5000/api/push-tokens/test', {
+            const response = await apiFetch('/api/push-tokens/test', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -944,7 +945,7 @@ export const PushNotificationDiagnostic = () => {
             }
             
             // Отправляем через наш сервер
-            const response = await fetch('http://212.67.11.134:5000/api/notifications/test', {
+            const response = await apiFetch('/api/notifications/test', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

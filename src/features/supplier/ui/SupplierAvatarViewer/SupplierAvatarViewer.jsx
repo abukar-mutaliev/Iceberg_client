@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {ImageViewerModal} from "@shared/ui/ImageViewerModal";
+import { getImageUrl } from '@shared/api/api';
 
 /**
  * Компонент для просмотра аватара поставщика в модальном окне
@@ -14,11 +15,16 @@ export const SupplierAvatarViewer = ({
                                      }) => {
     if (!supplier) return null;
 
-    // Получаем URI аватара поставщика
-    const avatarUri = supplier.user?.avatar ||
-        supplier.avatar ||
-        supplier.supplier?.avatar ||
-        (supplier.images && supplier.images[0]);
+    // Получаем URI аватара поставщика с нормализацией URL
+    const avatarUri = useMemo(() => {
+        const rawAvatar = supplier.user?.avatar ||
+            supplier.avatar ||
+            supplier.supplier?.avatar ||
+            (supplier.images && supplier.images[0]);
+        
+        // Нормализуем URL через централизованную функцию
+        return rawAvatar ? getImageUrl(rawAvatar) : null;
+    }, [supplier]);
 
     // Формируем заголовок
     const supplierName = supplier.supplier && supplier.supplier.companyName

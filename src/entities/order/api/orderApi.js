@@ -1,4 +1,4 @@
-import { createProtectedRequest, createPublicRequest } from "@shared/api/api";
+import { createProtectedRequest, createPublicRequest, getBaseUrl } from "@shared/api/api";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
@@ -267,9 +267,7 @@ export const OrderApi = {
 
     // Альтернативный метод скачивания через fetch API
     downloadInvoiceDirect: async (orderId) => {
-        const baseUrl = process.env.NODE_ENV === 'development'
-            ? (Platform.OS === 'android' ? 'http://192.168.1.226:5000' : 'http://localhost:5000')
-            : 'http://212.67.11.134:5000';
+        const baseUrl = getBaseUrl();
 
         const url = `${baseUrl}/api/orders/${orderId}/invoice`;
 

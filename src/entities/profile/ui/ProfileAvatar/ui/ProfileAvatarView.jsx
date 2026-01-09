@@ -61,6 +61,7 @@ export const ProfileAvatarView = ({
                     ) : avatarUri ? (
                         // Аватар
                         <Image
+                            key={avatarUri?.uri || 'avatar'}
                             source={avatarUri}
                             style={[
                                 styles.avatarImage,

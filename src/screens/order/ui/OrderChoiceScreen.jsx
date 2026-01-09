@@ -24,7 +24,7 @@ import {
     ALTERNATIVE_TYPE_COLORS,
     CHOICE_TYPE_LABELS
 } from '@entities/order';
-import { getBaseUrl } from '@shared/api/api';
+import { getImageUrl } from '@shared/api/api';
 import { fetchCart } from '@entities/cart';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
 
@@ -179,13 +179,7 @@ export const OrderChoiceScreen = () => {
         // Нормализуем путь: заменяем обратные слеши на прямые
         const normalizedPath = imageUrl.replace(/\\/g, '/');
         
-        // Добавляем префикс uploads если его нет
-        let finalPath = normalizedPath;
-        if (!finalPath.startsWith('/uploads/')) {
-            finalPath = `/uploads/${finalPath}`;
-        }
-        
-        const fullUrl = `${getBaseUrl()}${finalPath}`;
+        const fullUrl = getImageUrl(normalizedPath);
         return { uri: fullUrl };
     }, []);
 

@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Feather } from '@expo/vector-icons';
 import { Color, FontFamily } from '@app/styles/GlobalStyles';
 import { logData } from '@shared/lib/logger';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
+import { getImageUrl } from '@shared/api/api';
 
 export const PhotoUpload = ({ photo, setPhoto, error }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -16,6 +17,19 @@ export const PhotoUpload = ({ photo, setPhoto, error }) => {
     photo.uri.startsWith('https://') || 
     photo.uri.startsWith('file://')
   );
+
+  // Нормализуем URL изображения через getImageUrl (включая замену старых IP-адресов)
+  const normalizedPhotoUri = useMemo(() => {
+    if (!photo || !photo.uri) return null;
+    
+    // Если это локальный файл (file://), возвращаем как есть
+    if (photo.uri.startsWith('file://') || photo.uri.startsWith('content://')) {
+      return photo.uri;
+    }
+    
+    // Для всех остальных URL используем getImageUrl для нормализации
+    return getImageUrl(photo.uri);
+  }, [photo?.uri]);
 
   useEffect(() => {
     setImageError(false);
@@ -39,7 +53,7 @@ export const PhotoUpload = ({ photo, setPhoto, error }) => {
       
       // Запускаем галерею для выбора изображения
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: 'images',
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
@@ -74,9 +88,9 @@ export const PhotoUpload = ({ photo, setPhoto, error }) => {
       >
         {isLoading ? (
           <ActivityIndicator size="small" color={Color.blue2} />
-        ) : photo && photo.uri && !imageError ? (
+        ) : normalizedPhotoUri && !imageError ? (
           <Image 
-            source={{ uri: photo.uri }} 
+            source={{ uri: normalizedPhotoUri }} 
             style={styles.selectedPhoto} 
             resizeMode="cover"
             onError={handleImageLoadError}

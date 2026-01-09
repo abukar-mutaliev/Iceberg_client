@@ -1,4 +1,4 @@
-import { createProtectedRequest, createPublicRequest } from '@shared/api/api';
+import { createProtectedRequest, createPublicRequest, getImageUrl } from '@shared/api/api';
 
 const formatFeedback = (feedback, userData) => {
     // Если в отзыве уже есть клиент с именем, возвращаем его как есть с проверкой на photoUrls
@@ -7,8 +7,8 @@ const formatFeedback = (feedback, userData) => {
         return {
             ...feedback,
             photoUrls: feedback.photoUrls || (feedback.photos ? feedback.photos.map(photo =>
-                `${process.env.REACT_APP_API_URL || ''}/uploads/${photo}`
-            ) : [])
+                getImageUrl(photo) || photo
+            ).filter(Boolean) : [])
         };
     }
 
@@ -21,8 +21,8 @@ const formatFeedback = (feedback, userData) => {
                 name: 'Вы'
             },
             photoUrls: feedback.photoUrls || (feedback.photos ? feedback.photos.map(photo =>
-                `${process.env.REACT_APP_API_URL || ''}/uploads/${photo}`
-            ) : [])
+                getImageUrl(photo) || photo
+            ).filter(Boolean) : [])
         };
     }
 
@@ -36,8 +36,8 @@ const formatFeedback = (feedback, userData) => {
                 name: feedback.client.name || `Пользователь ${feedback.clientId}`
             },
             photoUrls: feedback.photoUrls || (feedback.photos ? feedback.photos.map(photo =>
-                `${process.env.REACT_APP_API_URL || ''}/uploads/${photo}`
-            ) : [])
+                getImageUrl(photo) || photo
+            ).filter(Boolean) : [])
         };
     }
 
@@ -54,8 +54,8 @@ const formatFeedback = (feedback, userData) => {
                     name: feedback.clientName
                 },
                 photoUrls: feedback.photoUrls || (feedback.photos ? feedback.photos.map(photo =>
-                    `${process.env.REACT_APP_API_URL || ''}/uploads/${photo}`
-                ) : [])
+                    getImageUrl(photo) || photo
+                ).filter(Boolean) : [])
             };
         }
 
@@ -67,17 +67,17 @@ const formatFeedback = (feedback, userData) => {
                 name: `Клиент`
             },
             photoUrls: feedback.photoUrls || (feedback.photos ? feedback.photos.map(photo =>
-                `${process.env.REACT_APP_API_URL || ''}/uploads/${photo}`
-            ) : [])
+                getImageUrl(photo) || photo
+            ).filter(Boolean) : [])
         };
     }
 
     // Убедимся, что у отзыва есть поле photoUrls, даже если photos пустой
     return {
         ...feedback,
-        photoUrls: feedback.photoUrls || (feedback.photos ? feedback.photos.map(photo =>
-            `${process.env.REACT_APP_API_URL || ''}/uploads/${photo}`
-        ) : [])
+            photoUrls: feedback.photoUrls || (feedback.photos ? feedback.photos.map(photo =>
+                getImageUrl(photo) || photo
+            ).filter(Boolean) : [])
     };
 };
 

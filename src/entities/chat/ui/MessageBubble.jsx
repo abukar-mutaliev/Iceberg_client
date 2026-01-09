@@ -8,7 +8,7 @@ import {CachedVoice} from './CachedVoice';
 import {MessageErrorActions} from './MessageErrorActions';
 import {ReplyPreview} from './ReplyPreview';
 import {MessageReactions} from './MessageReactions';
-import {getBaseUrl} from '@shared/api/api';
+import {getImageUrl} from '@shared/api/api';
 import {CachedImage} from './CachedImage/CachedImage';
 import ChatApi from '@entities/chat/api/chatApi';
 import {selectIsProductDeleted} from '@entities/product/model/selectors';
@@ -123,7 +123,8 @@ const PollMessage = memo(({
     senderName = null,
     senderId = null,
     senderNameColor = '#667781',
-    onSenderNamePress = null
+    onSenderNamePress = null,
+    isForwarded = false
 }) => {
     const [poll, setPoll] = useState(message.poll || null);
     const [isVoting, setIsVoting] = useState(false);
@@ -227,6 +228,7 @@ const PollMessage = memo(({
                 replyTo={replyTo}
                 onReplyPress={onReplyPress}
                 onReply={onReply}
+                isForwarded={isForwarded}
             >
                 <Text style={styles.messageText}>Опрос недоступен</Text>
             </BubbleContainer>
@@ -265,6 +267,7 @@ const PollMessage = memo(({
                 senderId={senderId}
                 senderNameColor={senderNameColor}
                 onSenderNamePress={onSenderNamePress}
+                isForwarded={isForwarded}
             >
                 <View style={styles.pollContainer}>
                     <Text style={styles.pollQuestion}>{poll.question}</Text>
@@ -384,7 +387,8 @@ const BubbleContainer = ({
     senderName = null,
     senderId = null,
     senderNameColor = '#667781',
-    onSenderNamePress = null
+    onSenderNamePress = null,
+    isForwarded = false
 }) => {
     const containerRef = useRef(null);
     const [textWidth, setTextWidth] = useState(0);
@@ -488,6 +492,13 @@ const BubbleContainer = ({
                             </Text>
                         )}
                         
+                        {isForwarded && (
+                            <View style={styles.forwardedLabel}>
+                                <Ionicons name="arrow-redo" size={14} color="#8696A0" />
+                                <Text style={styles.forwardedLabelText}>Переслано</Text>
+                            </View>
+                        )}
+                        
                         {replyTo && (
                             <ReplyPreview
                                 replyTo={replyTo}
@@ -569,7 +580,8 @@ const TextMessage = ({
     senderName = null,
     senderId = null,
     senderNameColor = '#667781',
-    onSenderNamePress = null
+    onSenderNamePress = null,
+    isForwarded = false
 }) => {
     const MAX_TEXT_LENGTH = 1000;
     
@@ -653,6 +665,7 @@ const TextMessage = ({
                 senderId={senderId}
                 senderNameColor={senderNameColor}
                 onSenderNamePress={onSenderNamePress}
+                isForwarded={isForwarded}
             >
                 {renderTextContent()}
             </BubbleContainer>
@@ -703,7 +716,8 @@ const ImageMessage = ({
     senderName = null,
     senderId = null,
     senderNameColor = '#667781',
-    onSenderNamePress = null
+    onSenderNamePress = null,
+    isForwarded = false
 }) => (
     <>
         <BubbleContainer
@@ -734,6 +748,7 @@ const ImageMessage = ({
             senderId={senderId}
             senderNameColor={senderNameColor}
             onSenderNamePress={onSenderNamePress}
+            isForwarded={isForwarded}
         >
             <View style={styles.imageContainer}>
                 {attachments.map((attachment, index) => (
@@ -800,7 +815,8 @@ const ProductMessage = memo(({
     senderName = null,
     senderId = null,
     senderNameColor = '#667781',
-    onSenderNamePress = null
+    onSenderNamePress = null,
+    isForwarded = false
 }) => {
     // Проверяем, удален ли продукт
     const isProductDeleted = useSelector((state) => selectIsProductDeleted(state, productId));
@@ -835,6 +851,7 @@ const ProductMessage = memo(({
                     senderId={senderId}
                     senderNameColor={senderNameColor}
                     onSenderNamePress={onSenderNamePress}
+                    isForwarded={isForwarded}
                 >
                     <View style={styles.deletedProductContainer}>
                         <View style={styles.deletedProductIcon}>
@@ -872,7 +889,7 @@ const ProductMessage = memo(({
         price: product.price,
         images: product.images || [],
         image: product.images && product.images.length > 0
-            ? `${getBaseUrl()}/uploads/${product.images[0]}`
+            ? getImageUrl(product.images[0])
             : null,
         stockQuantity: 1,
         isActive: true,
@@ -910,6 +927,7 @@ const ProductMessage = memo(({
                 senderId={senderId}
                 senderNameColor={senderNameColor}
                 onSenderNamePress={onSenderNamePress}
+                isForwarded={isForwarded}
             >
                 <View style={styles.productCardContainer}>
                     <ProductCard
@@ -973,7 +991,8 @@ const StopMessage = ({
     senderName = null,
     senderId = null,
     senderNameColor = '#667781',
-    onSenderNamePress = null
+    onSenderNamePress = null,
+    isForwarded = false
 }) => {
     const transformedStop = {
         stopId: stop.stopId || stop.id || stopId,
@@ -1024,6 +1043,7 @@ const StopMessage = ({
                 senderId={senderId}
                 senderNameColor={senderNameColor}
                 onSenderNamePress={onSenderNamePress}
+                isForwarded={isForwarded}
             >
                 <View style={styles.stopCardContainer}>
                     <StopCard
@@ -1111,7 +1131,10 @@ export const MessageBubble = memo(({
         || message?.senderAvatar
         || message?.user?.avatar
         || message?.user?.image;
-    const avatarUri = avatarUriBase || (!isOwn ? incomingAvatarUri : null);
+    // Нормализуем URL аватара через getImageUrl (включая замену старых IP-адресов)
+    const normalizedAvatarUri = avatarUriBase ? getImageUrl(avatarUriBase) : null;
+    const normalizedIncomingAvatarUri = incomingAvatarUri ? getImageUrl(incomingAvatarUri) : null;
+    const avatarUri = normalizedAvatarUri || (!isOwn ? normalizedIncomingAvatarUri : null);
 
     // Функция для генерации цвета на основе ID пользователя (детерминированная)
     const getColorForUserId = (userId) => {
@@ -1201,6 +1224,7 @@ export const MessageBubble = memo(({
     const showSenderName = Boolean(senderName);
     const senderId = message?.senderId || message?.sender?.id;
     const senderNameColor = getColorForUserId(senderId);
+    const isForwarded = Boolean(message?.originalMessageId || message?.isForwarded || message?.forwardedFrom || message?.forwardedFromId);
 
     if (message.type === 'SYSTEM') {
         return (
@@ -1258,6 +1282,7 @@ export const MessageBubble = memo(({
                     senderId={senderId}
                     senderNameColor={senderNameColor}
                     onSenderNamePress={onSenderNamePress}
+                    isForwarded={isForwarded}
                 />
                 
                 {/* Показываем кнопки retry/cancel только для своих сообщений */}
@@ -1306,6 +1331,7 @@ export const MessageBubble = memo(({
                     senderId={senderId}
                     senderNameColor={senderNameColor}
                     onSenderNamePress={onSenderNamePress}
+                    isForwarded={isForwarded}
                 />
             );
         }
@@ -1341,6 +1367,7 @@ export const MessageBubble = memo(({
                     senderId={senderId}
                     senderNameColor={senderNameColor}
                     onSenderNamePress={onSenderNamePress}
+                    isForwarded={isForwarded}
                 >
                     <CachedVoice
                         messageId={message.id}
@@ -1489,6 +1516,7 @@ export const MessageBubble = memo(({
                 senderId={senderId}
                 senderNameColor={senderNameColor}
                 onSenderNamePress={onSenderNamePress}
+                isForwarded={isForwarded}
             />
         );
     }
@@ -1523,6 +1551,7 @@ export const MessageBubble = memo(({
                 senderId={senderId}
                 senderNameColor={senderNameColor}
                 onSenderNamePress={onSenderNamePress}
+                isForwarded={isForwarded}
             />
         );
     }
@@ -1638,6 +1667,7 @@ export const MessageBubble = memo(({
                 senderId={senderId}
                 senderNameColor={senderNameColor}
                 onSenderNamePress={onSenderNamePress}
+                isForwarded={isForwarded}
             />
         );
     }
@@ -1674,6 +1704,7 @@ export const MessageBubble = memo(({
             senderId={senderId}
             senderNameColor={senderNameColor}
             onSenderNamePress={onSenderNamePress}
+            isForwarded={isForwarded}
                 />
     );
 }, (prevProps, nextProps) => {
@@ -2179,6 +2210,18 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         marginBottom: 2,
         marginTop: 0,
+    },
+    forwardedLabel: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 4,
+        marginTop: 2,
+    },
+    forwardedLabelText: {
+        fontSize: 12.5,
+        color: '#8696A0',
+        marginLeft: 4,
+        fontWeight: '400',
     },
     deletedProductContainer: {
         width: 250,

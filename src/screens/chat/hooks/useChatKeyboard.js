@@ -31,17 +31,17 @@ export const useChatKeyboard = (insets) => {
   }, []);
   
   // Стабильные стили (мемоизированы)
+  // Уменьшаем offset, так как KeyboardAvoidingView сам управляет отступами
   const keyboardVerticalOffset = useMemo(() => {
-    const HEADER_OFFSET = 64;
-    return Platform.OS === 'ios' ? insets.top + HEADER_OFFSET : 0;
-  }, [insets.top]);
+    // Для iOS учитываем только safe area top, без дополнительного offset для хедера
+    // KeyboardAvoidingView сам правильно обработает клавиатуру
+    return Platform.OS === 'ios' ? 0 : 0;
+  }, []);
   
+  // Убираем дополнительный marginBottom, так как KeyboardAvoidingView сам управляет позицией
   const composerContainerStyle = useMemo(() => {
-    if (keyboardVisible) {
-      return { marginBottom: 85 };
-    }
     return {};
-  }, [keyboardVisible]);
+  }, []);
   
   return {
     keyboardVisible,

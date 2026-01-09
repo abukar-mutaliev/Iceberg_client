@@ -53,16 +53,29 @@ class PushNotificationService {
             if (this.isInitialized) {
                 return true;
             }
-            // Инициализируем OneSignal
-            const success = await OneSignalService.initialize(this.oneSignalAppId);
             
-            if (!success) {
+            // Проверяем разрешения перед инициализацией OneSignal
+            // чтобы избежать автоматического запроса разрешений при инициализации
+            const Notifications = require('expo-notifications');
+            const { status } = await Notifications.getPermissionsAsync();
+            
+            // Инициализируем OneSignal только если разрешение уже есть
+            // или если пользователь еще не видел алерт (в этом случае инициализация произойдет после нажатия "Разрешить")
+            if (status === 'granted') {
+                const success = await OneSignalService.initialize(this.oneSignalAppId);
+                
+                if (!success) {
+                    return false;
+                }
+
+                this.isInitialized = true;
+                return true;
+            } else {
+                // Если разрешения нет, не инициализируем OneSignal
+                // Инициализация произойдет после того, как пользователь нажмет "Разрешить" в алерте
+                console.log('[PushNotificationService] ⏸️ Отложена инициализация OneSignal: разрешения нет');
                 return false;
             }
-
-            this.isInitialized = true;
-            
-            return true;
 
         } catch (error) {
             return false;

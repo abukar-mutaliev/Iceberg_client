@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { FontFamily } from '@app/styles/GlobalStyles';
 import { RatingStarIcon, AvatarPlaceholder } from '@shared/ui/Icon/DetailScreenIcons';
-import { formatFeedbackDate, fixAvatarUrl } from '../../../model';
+import { formatFeedbackDate } from '../../../model';
+import { getImageUrl } from '@shared/api/api';
 
 /**
  * Компонент заголовка карточки отзыва
@@ -39,8 +40,14 @@ export const FeedbackCardHeader = ({ feedback, currentUser }) => {
 
     const formattedDate = formatFeedbackDate(createdAt);
 
+    // Получаем URL аватара из разных источников
     const rawAvatarUrl = avatar || (client && client.user ? client.user.avatar : null) || feedback.avatar;
-    const fixedAvatarUrl = rawAvatarUrl ? fixAvatarUrl(rawAvatarUrl) : null;
+    
+    // Нормализуем URL аватара через getImageUrl (включая замену старых IP-адресов)
+    const fixedAvatarUrl = useMemo(() => {
+        if (!rawAvatarUrl) return null;
+        return getImageUrl(rawAvatarUrl);
+    }, [rawAvatarUrl]);
 
     const hasValidAvatarUrl = !!fixedAvatarUrl;
 

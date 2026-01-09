@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Image, View, StyleSheet } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
-import { getBaseUrl } from '@shared/api/api';
+import { getImageUrl } from '@shared/api/api';
 
 // Глобальный кэш проверенных путей
 const verifiedPaths = new Map();
@@ -21,13 +21,9 @@ export function CachedImage({ source, style, resizeMode = 'cover', ...props }) {
       return { absoluteUri: imageUri, storagePath: imageUri, isLocalFile: true };
     }
 
-    // Формируем URL
-    let fullUrl = imageUri;
-    if (!imageUri.startsWith('http://') && !imageUri.startsWith('https://')) {
-      let path = imageUri.replace(/\\/g, '/');
-      if (!path.startsWith('/')) path = '/' + path;
-      fullUrl = `${getBaseUrl()}${path}`;
-    }
+    // Формируем URL используя централизованную функцию с нормализацией
+    // Это нормализует URL, заменяя старый IP на текущий базовый URL
+    const fullUrl = getImageUrl(imageUri) || imageUri;
 
     // Путь к хранилищу
     const urlParts = fullUrl.split('/');

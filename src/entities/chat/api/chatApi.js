@@ -42,6 +42,7 @@ const ChatApi = {
   leaveRoom: (roomId, payload = {}) => chatApiModule.post(`/rooms/${roomId}/leave`, payload),
 
   // Предзагрузка аватара группы
+  // Используем путь через chatApiModule для консистентности с остальными маршрутами
   preloadAvatar: (formData) => chatApiModule.post('/upload/avatar', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
 
   // Открыть/закрыть группу

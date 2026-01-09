@@ -31,6 +31,18 @@ const adaptiveSize = (baseSize) => {
     return baseSize;
 };
 
+// Функция для расчета ширины поля ввода кода
+const getCodeInputWidth = (codeLength) => {
+    const containerPadding = 24 * 2; // paddingHorizontal контейнера
+    const codeContainerPadding = adaptiveSize(4) * 2; // paddingHorizontal codeContainer
+    const gap = adaptiveSize(8) * (codeLength - 1); // промежутки между полями
+    const safetyMargin = 4; // небольшой запас для безопасности
+    const availableWidth = width - containerPadding - codeContainerPadding - gap - safetyMargin;
+    const inputWidth = availableWidth / codeLength;
+    // Ограничиваем минимальную и максимальную ширину
+    return Math.max(adaptiveSize(40), Math.min(adaptiveSize(60), inputWidth));
+};
+
 export const VerificationForm = ({ 
     tempToken, 
     registrationType = 'email', 
@@ -276,39 +288,43 @@ export const VerificationForm = ({
                                 { transform: [{ translateX: shakeAnimation }] }
                             ]}
                         >
-                            {code.map((digit, index) => (
-                                <View key={index} style={styles.inputWrapper}>
-                                    <TextInput
-                                        ref={inputRefs.current[index]}
-                                        style={[
-                                            styles.codeInput,
-                                            digit !== '' && styles.codeInputFilled,
-                                            focusedIndex === index && styles.codeInputFocused,
-                                            error && styles.codeInputError
-                                        ]}
-                                        value={digit}
-                                        onChangeText={(text) => handleCodeChange(text, index)}
-                                        onKeyPress={(e) => handleKeyPress(e, index)}
-                                        onPaste={() => handlePaste(index)}
-                                        onFocus={() => setFocusedIndex(index)}
-                                        onBlur={() => setFocusedIndex(-1)}
-                                        keyboardType="numeric"
-                                        maxLength={6}
-                                        autoFocus={index === 0}
-                                        textAlign="center"
-                                        blurOnSubmit={false}
-                                        autoCorrect={false}
-                                        underlineColorAndroid="transparent"
-                                        caretHidden={Platform.OS === 'android'}
-                                        contextMenuHidden={false}
-                                    />
-                                    {digit !== '' && (
-                                        <View style={styles.checkmarkBadge}>
-                                            <Text style={styles.checkmark}>✓</Text>
-                                        </View>
-                                    )}
-                                </View>
-                            ))}
+                            {code.map((digit, index) => {
+                                const inputWidth = getCodeInputWidth(codeLength);
+                                return (
+                                    <View key={index} style={styles.inputWrapper}>
+                                        <TextInput
+                                            ref={inputRefs.current[index]}
+                                            style={[
+                                                styles.codeInput,
+                                                { width: inputWidth },
+                                                digit !== '' && styles.codeInputFilled,
+                                                focusedIndex === index && styles.codeInputFocused,
+                                                error && styles.codeInputError
+                                            ]}
+                                            value={digit}
+                                            onChangeText={(text) => handleCodeChange(text, index)}
+                                            onKeyPress={(e) => handleKeyPress(e, index)}
+                                            onPaste={() => handlePaste(index)}
+                                            onFocus={() => setFocusedIndex(index)}
+                                            onBlur={() => setFocusedIndex(-1)}
+                                            keyboardType="numeric"
+                                            maxLength={6}
+                                            autoFocus={index === 0}
+                                            textAlign="center"
+                                            blurOnSubmit={false}
+                                            autoCorrect={false}
+                                            underlineColorAndroid="transparent"
+                                            caretHidden={Platform.OS === 'android'}
+                                            contextMenuHidden={false}
+                                        />
+                                        {digit !== '' && (
+                                            <View style={styles.checkmarkBadge}>
+                                                <Text style={styles.checkmark}>✓</Text>
+                                            </View>
+                                        )}
+                                    </View>
+                                );
+                            })}
                         </Animated.View>
                     </>
                 )}
@@ -457,15 +473,14 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'center',
         alignItems: 'center',
-        gap: adaptiveSize(12),
+        gap: adaptiveSize(8),
         marginBottom: adaptiveSize(24),
-        paddingHorizontal: adaptiveSize(8),
+        paddingHorizontal: adaptiveSize(4),
     },
     inputWrapper: {
         position: 'relative',
     },
     codeInput: {
-        width: adaptiveSize(52),
         height: adaptiveSize(64),
         borderRadius: adaptiveSize(12),
         backgroundColor: '#FFFFFF',

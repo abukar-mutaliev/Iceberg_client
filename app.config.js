@@ -100,7 +100,7 @@ export default {
             eas: {
                 projectId: '934456aa-74ef-4c35-844b-aa0c0c2899f3',
             },
-            apiUrl: 'http://212.67.11.134:5000',
+            apiUrl: 'http://85.192.33.223:5000',
             environment: IS_DEV ? 'development' : IS_PREVIEW ? 'preview' : 'production',
             googleMapsApiKey: 'AIzaSyDev-AMb24bvlQn3a-b4DGsItiYB6su6_E',
             yandexMapsApiKey: '17ee620d-aee1-482c-acc9-c7144fd46087',
@@ -124,8 +124,8 @@ export default {
         },
         android: {
             package: 'com.abuingush.iceberg',
-            versionCode: 38,
-            versionName: '1.3.8',
+            versionCode: 41,
+            versionName: '1.4.1',
             icon: './assets/icon.png',
             adaptiveIcon: {
                 foregroundImage: './assets/icon.png',

@@ -19,7 +19,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { OrderApi } from '@entities/order';
-import { getBaseUrl } from '@shared/api/api';
+import { getImageUrl } from '@shared/api/api';
 import { Loader } from "@shared/ui/Loader";
 import { getOrderProgress } from '@shared/lib/orderUtils';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
@@ -685,13 +685,7 @@ export const MyOrdersScreen = () => {
         // Нормализуем путь: заменяем обратные слеши на прямые
         const normalizedPath = imageUrl.replace(/\\/g, '/');
         
-        // Добавляем префикс uploads если его нет
-        let finalPath = normalizedPath;
-        if (!finalPath.startsWith('/uploads/')) {
-            finalPath = `/uploads/${finalPath}`;
-        }
-        
-        const fullUrl = `${getBaseUrl()}${finalPath}`;
+        const fullUrl = getImageUrl(normalizedPath);
         
         return { uri: fullUrl };
     }, []);

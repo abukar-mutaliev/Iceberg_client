@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, View, Image, Text, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
@@ -6,6 +6,7 @@ import ArrowIcons from '@shared/ui/Icon/DetailScreenIcons/ArrowIcon';
 import { FontFamily, FontSize, Color } from "@app/styles/GlobalStyles";
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import {SupplierRatingFromRedux} from "@entities/supplier";
+import { getImageUrl } from '@shared/api/api';
 
 export const BrandCard = ({ supplier, onSupplierPress }) => {
 
@@ -24,7 +25,7 @@ export const BrandCard = ({ supplier, onSupplierPress }) => {
         'Название компании';
 
     // Логика получения логотипа поставщика
-    const logo = supplier.user?.avatar ||
+    const rawLogo = supplier.user?.avatar ||
         supplier.avatar ||
         supplier.supplier?.avatar ||
         supplier.logo ||
@@ -32,6 +33,11 @@ export const BrandCard = ({ supplier, onSupplierPress }) => {
         (supplier.images && supplier.images[0]) ||
         (supplier.supplier?.images && supplier.supplier.images[0]);
 
+    // Нормализуем URL логотипа
+    const logo = useMemo(() => {
+        if (!rawLogo) return null;
+        return getImageUrl(rawLogo);
+    }, [rawLogo]);
 
     // Определяем, является ли изображение placeholder'ом
     const isPlaceholder = !logo;

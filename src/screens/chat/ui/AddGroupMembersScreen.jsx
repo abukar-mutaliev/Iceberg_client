@@ -13,7 +13,7 @@ import {
 import { useDispatch, useSelector } from 'react-redux';
 import { addMembers, fetchRoom } from '@entities/chat/model/slice';
 import ChatApi from '@entities/chat/api/chatApi';
-import { getBaseUrl } from '@shared/api/api';
+import { getImageUrl } from '@shared/api/api';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
 
 export const AddGroupMembersScreen = ({ route, navigation }) => {
@@ -186,7 +186,7 @@ export const AddGroupMembersScreen = ({ route, navigation }) => {
     if (raw.startsWith('http')) return raw;
     let path = raw.replace(/^\\+/g, '').replace(/^\/+/, '');
     path = path.replace(/^uploads\/?/, '');
-    return `${getBaseUrl()}/uploads/${path}`;
+    return getImageUrl(path);
   }, []);
 
   const getUserDisplayName = useCallback((user) => {

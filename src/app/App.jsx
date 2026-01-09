@@ -233,6 +233,16 @@ const AppInitializer = ({children}) => {
                         const refreshed = await authService.refreshAccessToken();
                         if (refreshed?.accessToken) {
                             console.log('✅ App: Token refreshed successfully on initialization');
+                            // Обновляем Redux store с новыми токенами
+                            if (dispatch && typeof dispatch === 'function') {
+                                dispatch({ 
+                                    type: 'auth/setTokens', 
+                                    payload: { 
+                                        accessToken: refreshed.accessToken, 
+                                        refreshToken: refreshed.refreshToken 
+                                    } 
+                                });
+                            }
                         } else {
                             console.warn('⚠️ App: Token refresh failed - no new tokens received');
                             await authService.clearTokens();
@@ -246,6 +256,18 @@ const AppInitializer = ({children}) => {
                             console.error('❌ App: Failed to clear tokens after refresh error:', clearError);
                         }
                         return;
+                    }
+                } else if (accessTokenValid) {
+                    // Если access token валиден, убеждаемся что Redux store синхронизирован
+                    if (dispatch && typeof dispatch === 'function') {
+                        console.log('✅ App: Syncing valid tokens with Redux store');
+                        dispatch({ 
+                            type: 'auth/setTokens', 
+                            payload: { 
+                                accessToken: tokens.accessToken, 
+                                refreshToken: tokens.refreshToken 
+                            } 
+                        });
                     }
                 }
 

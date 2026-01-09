@@ -16,25 +16,12 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { useDispatch } from "react-redux";
 import { AddToCartButton } from '@shared/ui/Cart/ui/AddToCartButton';
 import { CustomSliderIndicator } from '@shared/ui/CustomSliderIndicator';
-import { getBaseUrl } from '@shared/api/api';
+import { formatImageUrl } from '@shared/api/api';
 
 const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = SCREEN_WIDTH / 440;
-
-const getImageBaseUrl = () => {
-    const baseUrl = getBaseUrl();
-    return baseUrl ? `${baseUrl}/uploads/` : 'http://212.67.11.134:5000/uploads/';
-};
-
-const formatImageUrl = (imagePath) => {
-    if (!imagePath) return null;
-    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-        return imagePath;
-    }
-    return `${getImageBaseUrl()}${imagePath}`;
-};
 
 const normalize = (size) => {
     const newSize = size * scale;
@@ -92,6 +79,7 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
     const route = useRoute();
     const dispatch = useDispatch();
     const isNavigatingRef = useRef(false);
+    const lastPressTimeRef = useRef(0);
     
     // Состояния для листания изображений
     const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -390,6 +378,15 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
             if (isScrolling || isSwipingRef.current) {
                 return;
             }
+            
+            // Защита от множественных нажатий с использованием timestamp
+            const now = Date.now();
+            if (now - lastPressTimeRef.current < 500) {
+                console.log('ProductTile: Двойное нажатие обнаружено, игнорируем');
+                return;
+            }
+            lastPressTimeRef.current = now;
+            
             // Защита от множественных нажатий
             if (isNavigatingRef.current) {
                 console.log('ProductTile: Навигация уже в процессе, игнорируем нажатие');

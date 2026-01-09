@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux';
 import { makeSelectRoomMessages, selectIsRoomDeleted, selectRoomsList } from '@entities/chat/model/selectors';
 import { selectIsProductDeleted } from '@entities/product/model/selectors';
 import { useCachedMessages, useMediaPreload } from '@entities/chat/hooks/useChatCache';
-import { getBaseUrl } from '@shared/api/api';
+import { getImageUrl } from '@shared/api/api';
 
 /**
  * Хук для получения всех данных чата
@@ -100,10 +100,8 @@ export const useChatData = (roomId) => {
             chatPartner?.image;
     }
 
-    if (raw && !raw.startsWith('http')) {
-      return `${getBaseUrl()}${raw}`;
-    }
-    return raw;
+    // Всегда используем getImageUrl для нормализации URL (включая замену старых IP-адресов)
+    return raw ? getImageUrl(raw) : null;
   }, [chatPartner, participantsById]);
   
   return {

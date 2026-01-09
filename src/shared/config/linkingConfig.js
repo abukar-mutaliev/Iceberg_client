@@ -26,7 +26,7 @@ const getLinkingPrefixes = () => {
         prefixes.push(
             'iceberg://',
 
-            'http://212.67.11.134:5000/--/', // Ваш production API сервер
+            `${getBaseUrl()}/--/`, 
 
             'https://iceberg.app'
 

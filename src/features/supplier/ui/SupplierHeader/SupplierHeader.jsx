@@ -8,9 +8,11 @@ import { Color, FontFamily, FontSize } from "@app/styles/GlobalStyles";
 import { useImageViewer } from '@shared/lib/hooks/useImageViewer';
 import { SupplierAvatarViewer } from '@features/supplier/ui/SupplierAvatarViewer/SupplierAvatarViewer';
 import {BackButton} from "@shared/ui/Button/BackButton";
+import { getImageUrl } from '@shared/api/api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+// Сохраняем оригинальный размер аватара (уменьшен с 0.24 до 0.20 для сохранения пропорций)
 const AVATAR_WIDTH = SCREEN_WIDTH * 0.24;
 const AVATAR_HEIGHT = (AVATAR_WIDTH * 64) / 113;
 
@@ -52,13 +54,16 @@ export const SupplierHeader = React.memo(({
             : supplier.companyName || supplier.email || 'Неизвестный поставщик';
     }, [supplier]);
 
-    // Мемоизируем путь к аватару поставщика
+    // Мемоизируем путь к аватару поставщика с нормализацией URL
     const supplierAvatar = useMemo(() => {
         // Проверяем все возможные пути к аватару
-        return supplier.user?.avatar ||
+        const rawAvatar = supplier.user?.avatar ||
             supplier.avatar ||
             supplier.supplier?.avatar ||
             (supplier.images && supplier.images[0]);
+        
+        // Нормализуем URL через централизованную функцию
+        return rawAvatar ? getImageUrl(rawAvatar) : null;
     }, [supplier]);
 
     // Мемоизируем количество продуктов

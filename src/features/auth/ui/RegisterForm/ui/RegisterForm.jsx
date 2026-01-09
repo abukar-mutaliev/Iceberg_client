@@ -1031,11 +1031,10 @@ const styles = StyleSheet.create({
     },
     checkboxContainer: {
         flexDirection: 'row',
-        alignItems: 'flex-start',
+        alignItems: 'center',
     },
     checkboxWrapper: {
         marginRight: normalize(10),
-        marginTop: normalize(2),
     },
     checkbox: {
         width: normalize(24),
@@ -1058,6 +1057,7 @@ const styles = StyleSheet.create({
     },
     privacyTextContainer: {
         flex: 1,
+        paddingTop: normalize(2),
     },
     privacyText: {
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',

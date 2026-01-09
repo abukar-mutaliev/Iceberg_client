@@ -1,9 +1,8 @@
 import React from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
+import { getUploadsBaseUrl, getImageUrl } from '@shared/api/api';
 
 export const DebugProductCard = ({ product, onPress }) => {
-    // Базовый URL сервера
-    const BASE_SERVER_URL = 'http://212.67.11.134:5000/uploads/';
 
     // Анализируем структуру изображений
     const analyzeImages = () => {
@@ -28,17 +27,9 @@ export const DebugProductCard = ({ product, onPress }) => {
 
     // Пытаемся извлечь изображение
     const getImageSource = () => {
-        // Функция для формирования полного URL
+        // Используем централизованную функцию для формирования URL изображений
         const formatImageUrl = (imagePath) => {
-            if (!imagePath) return null;
-
-            // Если это уже полный URL, возвращаем как есть
-            if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-                return imagePath;
-            }
-
-            // Если это относительный путь, добавляем базовый URL
-            return `${BASE_SERVER_URL}${imagePath}`;
+            return getImageUrl(imagePath);
         };
 
         // Проверяем все возможные варианты

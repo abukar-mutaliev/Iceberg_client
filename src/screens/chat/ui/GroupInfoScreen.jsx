@@ -19,7 +19,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { useSelector, useDispatch } from 'react-redux';
 import { addMembers, fetchRoom, updateRoom, removeMembers } from '@entities/chat/model/slice';
 import ChatApi from '@entities/chat/api/chatApi';
-import { getBaseUrl } from '@shared/api/api';
+import { getImageUrl } from '@shared/api/api';
 import { AddUserIcon } from '@shared/ui/Icon/AddUserIcon';
 import { IconEdit } from '@shared/ui/Icon/Profile/IconEdit';
 import { ImageViewerModal } from '@shared/ui/ImageViewerModal/ui/ImageViewerModal';
@@ -192,7 +192,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
     if (raw.startsWith('http')) return raw;
     let path = raw.replace(/^\\+/g, '').replace(/^\/+/, '');
     path = path.replace(/^uploads\/?/, '');
-    return `${getBaseUrl()}/uploads/${path}`;
+    return getImageUrl(path);
   }, []);
 
   const getGroupAvatar = () => {
@@ -460,7 +460,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
       if (!hasPermission) return;
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: 'images',
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,

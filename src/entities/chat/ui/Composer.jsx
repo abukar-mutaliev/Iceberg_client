@@ -124,7 +124,7 @@ export const Composer = ({
 
       console.log('📸 Открываем галерею...');
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: 'images',
         allowsMultipleSelection: true,
         selectionLimit: 10,
         quality: 0.9,
@@ -173,7 +173,7 @@ export const Composer = ({
 
       console.log('📷 Открываем камеру...');
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: 'images',
         quality: 0.9,
       });
 

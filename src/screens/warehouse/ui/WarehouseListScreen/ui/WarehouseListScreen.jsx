@@ -13,7 +13,6 @@ import { useNavigation } from '@react-navigation/native';
 import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
 import WarehouseService from '@entities/warehouse/api/warehouseApi';
 import { AdminHeader } from '@widgets/admin/AdminHeader';
-import IconBack from '@shared/ui/Icon/BackArrowIcon/BackArrowIcon';
 import IconWarehouse from '@shared/ui/Icon/Warehouse/IconWarehouse';
 import { MapPinIcon } from '@shared/ui/Icon/DistrictManagement/MapPinIcon';
 
@@ -92,8 +91,9 @@ export const WarehouseListScreen = () => {
             <SafeAreaView style={styles.container}>
                 <AdminHeader
                     title="Выбор склада"
-                    icon={<IconBack width={24} height={24} color={Color.blue2} />}
-                    onBack={() => navigation.goBack()}
+                    icon={<IconWarehouse width={24} height={24} color={Color.blue2} />}
+                    onBackPress={() => navigation.goBack()}
+                    showBackButton={true}
                 />
                 <View style={styles.centered}>
                     <ActivityIndicator size="large" color={Color.blue2} />
@@ -108,8 +108,9 @@ export const WarehouseListScreen = () => {
             <SafeAreaView style={styles.container}>
                 <AdminHeader
                     title="Выбор склада"
-                    icon={<IconBack width={24} height={24} color={Color.blue2} />}
-                    onBack={() => navigation.goBack()}
+                    icon={<IconWarehouse width={24} height={24} color={Color.blue2} />}
+                    onBackPress={() => navigation.goBack()}
+                    showBackButton={true}
                 />
                 <View style={styles.centered}>
                     <Text style={styles.errorText}>Ошибка: {error}</Text>
@@ -125,8 +126,9 @@ export const WarehouseListScreen = () => {
         <SafeAreaView style={styles.container}>
             <AdminHeader
                 title="Выбор склада"
-                icon={<IconBack width={24} height={24} color={Color.blue2} />}
-                onBack={() => navigation.goBack()}
+                icon={<IconWarehouse width={24} height={24} color={Color.blue2} />}
+                onBackPress={() => navigation.goBack()}
+                showBackButton={true}
             />
 
             <FlatList

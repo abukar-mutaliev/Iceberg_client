@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Animated, View, StyleSheet } from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,10 +15,30 @@ export const SwipeableMessageBubble = ({
   onPress,
   onAddReaction,
   onRemoveReaction,
+  onSwipeStart,
+  onSwipeEnd,
+  shouldReset = false,
   ...props 
 }) => {
   const translateX = useRef(new Animated.Value(0)).current;
-  const lastOffset = useRef(0);
+  const currentTranslateX = useRef(0);
+  const isResetting = useRef(false);
+
+  // Сброс анимации при shouldReset
+  useEffect(() => {
+    if (shouldReset && currentTranslateX.current > 0 && !isResetting.current) {
+      isResetting.current = true;
+      Animated.spring(translateX, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 100,
+        friction: 10,
+      }).start(() => {
+        currentTranslateX.current = 0;
+        isResetting.current = false;
+      });
+    }
+  }, [shouldReset, translateX]);
 
   const onGestureEvent = Animated.event(
     [{ nativeEvent: { translationX: translateX } }],
@@ -26,38 +46,61 @@ export const SwipeableMessageBubble = ({
       useNativeDriver: true,
       listener: (event) => {
         const { translationX } = event.nativeEvent;
-        // Ограничиваем перемещение: только вправо и не более MAX_TRANSLATE
+        // Сохраняем текущее значение с ограничением для использования в onHandlerStateChange
         if (translationX < 0) {
-          translateX.setValue(0);
+          currentTranslateX.current = 0;
         } else if (translationX > MAX_TRANSLATE) {
-          translateX.setValue(MAX_TRANSLATE);
+          currentTranslateX.current = MAX_TRANSLATE;
+        } else {
+          currentTranslateX.current = translationX;
         }
       }
     }
   );
 
+  // Используем интерполяцию для ограничения диапазона визуального отображения
+  const clampedTranslateX = translateX.interpolate({
+    inputRange: [-100, 0, MAX_TRANSLATE, MAX_TRANSLATE + 100],
+    outputRange: [0, 0, MAX_TRANSLATE, MAX_TRANSLATE],
+    extrapolate: 'clamp',
+  });
+
   const onHandlerStateChange = ({ nativeEvent }) => {
+    if (nativeEvent.state === State.ACTIVE) {
+      // Уведомляем родительский компонент о начале свайпа
+      if (onSwipeStart) {
+        onSwipeStart(message.id);
+      }
+    }
+
     if (nativeEvent.state === State.END) {
-      const { translationX } = nativeEvent;
+      // Используем сохраненное значение вместо nativeEvent.translationX
+      const translationX = currentTranslateX.current;
 
       // Если свайп был достаточно длинным, вызываем onReply
       if (translationX >= SWIPE_THRESHOLD && onReply) {
         onReply(message);
       }
 
-      // Возвращаем в исходное положение
+      // Всегда возвращаем в исходное положение
+      isResetting.current = true;
       Animated.spring(translateX, {
         toValue: 0,
         useNativeDriver: true,
         tension: 100,
         friction: 10,
-      }).start();
-
-      lastOffset.current = 0;
+      }).start(() => {
+        currentTranslateX.current = 0;
+        isResetting.current = false;
+        // Уведомляем о завершении свайпа
+        if (onSwipeEnd) {
+          onSwipeEnd(message.id);
+        }
+      });
     }
   };
 
-  // Вычисляем opacity для иконки ответа
+  // Вычисляем opacity для иконки ответа (используем исходный translateX, так как clampedTranslateX уже ограничен)
   const iconOpacity = translateX.interpolate({
     inputRange: [0, SWIPE_THRESHOLD],
     outputRange: [0, 1],
@@ -94,7 +137,7 @@ export const SwipeableMessageBubble = ({
           style={[
             styles.messageWrapper,
             {
-              transform: [{ translateX }],
+              transform: [{ translateX: clampedTranslateX }],
             }
           ]}
         >

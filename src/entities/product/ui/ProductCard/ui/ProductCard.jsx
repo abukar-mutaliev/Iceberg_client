@@ -12,23 +12,10 @@ import { useProductCard } from "../../../hooks/useProductCard";
 import { useToast } from '@shared/ui/Toast';
 import {AddToCartButton} from "@shared/ui/Cart/ui/AddToCartButton";
 import {CustomSliderIndicator} from "@shared/ui/CustomSliderIndicator";
-import { getBaseUrl } from '@shared/api/api';
+import { formatImageUrl } from '@shared/api/api';
 import * as navigation from "@shared/utils/NavigationRef";
 
 const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
-
-const getImageBaseUrl = () => {
-    const baseUrl = getBaseUrl();
-    return baseUrl ? `${baseUrl}/uploads/` : 'http://212.67.11.134:5000/uploads/';
-};
-
-const formatImageUrl = (imagePath) => {
-    if (!imagePath) return null;
-    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-        return imagePath;
-    }
-    return `${getImageBaseUrl()}${imagePath}`;
-};
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const isSmallScreen = SCREEN_WIDTH < 360;

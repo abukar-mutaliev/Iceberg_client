@@ -3,7 +3,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { Alert, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import NetInfo from "@react-native-community/netinfo";
-import { getBaseUrl } from '@shared/api/api';
+import { getImageUrl } from '@shared/api/api';
 import { updateAvatar } from '@entities/profile/model/slice';
 import {
     selectAvatarUploading,
@@ -21,6 +21,7 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
     const [debugText, setDebugText] = useState('');
     const [selectedImage, setSelectedImage] = useState(null);
     const [retryCount, setRetryCount] = useState(0);
+    const [avatarUriState, setAvatarUriState] = useState(null);
     const avatarUriRef = useRef(null);
 
     const isUploading = useSelector(selectAvatarUploading);
@@ -32,16 +33,14 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
     }, [currentUser?.id]);
 
     const getFullAvatarUrl = useCallback((avatarPath) => {
-        if (!avatarPath) return null;
+        if (!avatarPath) {
+            return null;
+        }
 
         try {
-            if (avatarPath.startsWith('http')) {
-                return avatarPath;
-            } else {
-                const baseUrl = getBaseUrl();
-                const fullUrl = `${baseUrl}${avatarPath}`;
-                return fullUrl;
-            }
+            // Используем централизованную функцию для формирования URL
+            const fullUrl = getImageUrl(avatarPath);
+            return fullUrl;
         } catch (error) {
             console.error('Ошибка при формировании URL аватара:', error);
             return null;
@@ -50,7 +49,9 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
 
 
     useEffect(() => {
-        if (!profile && !currentUser) return;
+        if (!profile && !currentUser) {
+            return;
+        }
 
         let avatarUrl = null;
 
@@ -71,9 +72,12 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
         }
 
         if (avatarUrl) {
-            avatarUriRef.current = { uri: avatarUrl };
+            const newAvatarUri = { uri: avatarUrl };
+            avatarUriRef.current = newAvatarUri;
+            setAvatarUriState(newAvatarUri);
         } else {
             avatarUriRef.current = null;
+            setAvatarUriState(null);
         }
 
         setDebugText(prev => prev === 'update' ? 'updated' : 'update');
@@ -100,11 +104,15 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
         }
 
         if (avatarUrl) {
-            avatarUriRef.current = { uri: avatarUrl };
+            const newAvatarUri = { uri: avatarUrl };
+            avatarUriRef.current = newAvatarUri;
+            setAvatarUriState(newAvatarUri);
             setDebugText(prev => prev === 'update' ? 'updated' : 'update');
             return true;
         }
 
+        avatarUriRef.current = null;
+        setAvatarUriState(null);
         return false;
     }, [profile, currentUser, getFullAvatarUrl]);
 
@@ -173,7 +181,7 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
             }
 
             const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                mediaTypes: 'images',
                 allowsEditing: true,
                 aspect: [1, 1],
                 quality: 0.5,
@@ -253,8 +261,17 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
             setSelectedImage(null);
 
             if (response?.data?.avatar) {
-                avatarUriRef.current = { uri: response.data.avatar };
-                setDebugText(prev => `Аватар обновлен: ${response.data.avatar}`);
+                // Используем getFullAvatarUrl для правильного формирования URL
+                const avatarUrl = getFullAvatarUrl(response.data.avatar);
+                if (avatarUrl) {
+                    const newAvatarUri = { uri: avatarUrl };
+                    avatarUriRef.current = newAvatarUri;
+                    // Обновляем state для принудительного ре-рендера
+                    setAvatarUriState(newAvatarUri);
+                    setDebugText(prev => `Аватар обновлен: ${avatarUrl}`);
+                    // Принудительно обновляем компонент
+                    setDebugText(prev => prev === 'updated' ? 'update' : 'updated');
+                }
             }
 
         } catch (error) {
@@ -287,10 +304,18 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
                 ]
             );
         }
-    }, [dispatch, checkNetworkConnection]);
+    }, [dispatch, checkNetworkConnection, getFullAvatarUrl]);
+
+    // Синхронизируем ref с state для ре-рендера при изменении зависимостей
+    useEffect(() => {
+        const currentAvatarUri = avatarUriRef.current;
+        if (JSON.stringify(currentAvatarUri) !== JSON.stringify(avatarUriState)) {
+            setAvatarUriState(currentAvatarUri);
+        }
+    }, [debugText, profile, currentUser]);
 
     return {
-        avatarUri: avatarUriRef.current,
+        avatarUri: avatarUriState || avatarUriRef.current,
         isUploading,
         uploadProgress,
         modalVisible,

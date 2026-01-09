@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Modal, TouchableOpacity, View, Text, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ImageViewerModal } from '@shared/ui/ImageViewerModal/ui/ImageViewerModal';
 import { ForwardMessageModal } from '@entities/chat/ui/ForwardMessageModal';
 import { ReactionPicker } from '@entities/chat/ui/ReactionPicker';
@@ -46,6 +47,14 @@ export const ChatModals = ({
   onFullEmojiPickerClose,
   onFullEmojiSelect,
 }) => {
+  const insets = useSafeAreaInsets();
+  
+  const modalContainerStyle = useMemo(() => ({
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: Math.max(16, insets.bottom + 8),
+  }), [insets.bottom]);
+  
   return (
     <>
       {/* Image Viewer Modal */}
@@ -91,7 +100,7 @@ export const ChatModals = ({
           activeOpacity={1}
           onPress={onMenuModalClose}
         >
-          <View style={styles.modalContainer}>
+          <View style={[styles.modalContainer, modalContainerStyle]}>
             <View style={styles.modal}>
               {showLeaveGroup && onLeaveGroup && (
                 <TouchableOpacity
@@ -144,7 +153,7 @@ export const ChatModals = ({
           activeOpacity={1}
           onPress={onDeleteMessageClose}
         >
-          <View style={styles.modalContainer}>
+          <View style={[styles.modalContainer, modalContainerStyle]}>
             <View style={styles.modal}>
               <TouchableOpacity
                 style={styles.menuItem}

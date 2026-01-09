@@ -152,9 +152,7 @@ const useDeepLinking = () => {
             // Пропускаем служебные URL
             if (url.startsWith('exp://') ||
                 url.includes('expo-dev-client://') ||
-                url.startsWith(apiBaseUrl) ||
-                url.includes('192.168.1.226:5000') ||
-                url.includes('212.67.11.134:5000')) {
+                url.startsWith(apiBaseUrl)) {
                 return;
             }
 

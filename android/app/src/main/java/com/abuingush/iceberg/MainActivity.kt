@@ -22,13 +22,23 @@ class MainActivity : ReactActivity() {
     
     // Configure edge-to-edge for Android 15+ compatibility without using deprecated APIs
     // Use WindowInsetsControllerCompat instead of deprecated Window.getStatusBarColor/setStatusBarColor
+    // This approach is compatible with Android 15+ edge-to-edge requirements
     window?.let { window ->
+      // Включаем edge-to-edge отображение
       WindowCompat.setDecorFitsSystemWindows(window, false)
+      
+      // Используем WindowInsetsControllerCompat вместо deprecated Window APIs
+      // Это предотвращает использование getStatusBarColor, setStatusBarColor, setNavigationBarColor
       val insetsController = WindowInsetsControllerCompat(window, window.decorView)
-      // Use WindowInsetsControllerCompat instead of deprecated Window APIs
-      // This prevents using getStatusBarColor, setStatusBarColor, setNavigationBarColor
+      
+      // Устанавливаем светлые иконки status bar и navigation bar для светлого фона
+      // Приложение само управляет padding через React Native SafeAreaView
       insetsController.isAppearanceLightStatusBars = true
       insetsController.isAppearanceLightNavigationBars = true
+      
+      // Убеждаемся, что system bars прозрачны (устанавливается в styles.xml)
+      // НЕ используем window.statusBarColor или window.navigationBarColor напрямую
+      // так как эти API deprecated в Android 15+
     }
   }
 

@@ -169,7 +169,7 @@ export const FeedbackAddModal = ({
             }
 
             const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                mediaTypes: 'images',
                 allowsEditing: true,
                 aspect: [4, 3],
                 quality: 0.8,
@@ -335,18 +335,17 @@ export const FeedbackAddModal = ({
         >
             <View style={styles.centeredView}>
                 <KeyboardAvoidingView
-                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                     style={styles.keyboardAvoidingView}
-                    keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}
+                    keyboardVerticalOffset={0}
+                    enabled={Platform.OS === 'ios'}
                 >
                     <View
                         style={[
                             styles.modalView,
                             {
-                                backgroundColor: colors.background,
-                                maxHeight: keyboardVisible
-                                    ? SCREEN_HEIGHT * 0.7
-                                    : SCREEN_HEIGHT * 0.9
+                                backgroundColor: '#FFFFFF', // Всегда белый фон
+                                maxHeight: SCREEN_HEIGHT * 0.9
                             }
                         ]}
                     >
@@ -354,8 +353,12 @@ export const FeedbackAddModal = ({
                             contentContainerStyle={styles.scrollContent}
                             showsVerticalScrollIndicator={false}
                             keyboardShouldPersistTaps="handled"
+                            keyboardDismissMode="interactive"
+                            nestedScrollEnabled={true}
+                            bounces={false}
+                            automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
                         >
-                            <Text style={[styles.title, { color: colors.text }]}>
+                            <Text style={[styles.title, { color: '#000000' }]}>
                                 Оставить отзыв
                             </Text>
 
@@ -364,7 +367,7 @@ export const FeedbackAddModal = ({
                                 onRatingChange={handleRatingChange}
                             />
 
-                            <Text style={[styles.ratingText, { color: colors.primary }]}>
+                            <Text style={[styles.ratingText, { color: '#5E00FF' }]}>
                                 {rating > 0 ? `Ваша оценка: ${rating}` : 'Выберите оценку'}
                             </Text>
 
@@ -374,8 +377,8 @@ export const FeedbackAddModal = ({
 
                             {(isLoading || isPhotoUploading) && (
                                 <View style={styles.loadingContainer}>
-                                    <ActivityIndicator size="small" color={colors.primary} />
-                                    <Text style={[styles.loadingText, { color: colors.text }]}>
+                                    <ActivityIndicator size="small" color="#5E00FF" />
+                                    <Text style={[styles.loadingText, { color: '#000000' }]}>
                                         {isPhotoUploading ? 'Загрузка фотографий...' : 'Отправка отзыва...'}
                                     </Text>
                                 </View>
@@ -385,13 +388,13 @@ export const FeedbackAddModal = ({
                                 style={[
                                     styles.commentInput,
                                     {
-                                        backgroundColor: colors.card || '#F9F9F9',
+                                        backgroundColor: '#F9F9F9',
                                         color: '#000000',
-                                        borderColor: colors.border || '#E0E0E0',
+                                        borderColor: '#E0E0E0',
                                     },
                                 ]}
                                 placeholder="Напишите ваш отзыв"
-                                placeholderTextColor={colors.placeholder || '#999999'}
+                                placeholderTextColor="#999999"
                                 multiline
                                 value={comment}
                                 onChangeText={setComment}
@@ -399,7 +402,7 @@ export const FeedbackAddModal = ({
                             />
 
                             <View style={styles.photosSection}>
-                                <Text style={[styles.photosTitle, { color: colors.text }]}>
+                                <Text style={[styles.photosTitle, { color: '#000000' }]}>
                                     Фотографии: {photos.length}/{MAX_PHOTOS}
                                 </Text>
 
@@ -417,7 +420,7 @@ export const FeedbackAddModal = ({
                                                     style={styles.photoPreview}
                                                 />
                                                 <TouchableOpacity
-                                                    style={[styles.removePhotoButton, { backgroundColor: colors.error || '#FF3B30' }]}
+                                                    style={[styles.removePhotoButton, { backgroundColor: '#FF3B30' }]}
                                                     onPress={() => removePhoto(index)}
                                                     disabled={isLoading || isPhotoUploading}
                                                 >
@@ -428,19 +431,21 @@ export const FeedbackAddModal = ({
                                     />
                                 )}
 
-                                {photos.length < MAX_PHOTOS && !isLoading && !isPhotoUploading && (
+                                {photos.length < MAX_PHOTOS && (
                                     <View style={styles.photoButtonsContainer}>
                                         <TouchableOpacity
-                                            style={[styles.photoButton, { backgroundColor: colors.primary }]}
+                                            style={[styles.photoButton, { backgroundColor: '#5E00FF', opacity: (isLoading || isPhotoUploading) ? 0.5 : 1 }]}
                                             onPress={pickImages}
+                                            disabled={isLoading || isPhotoUploading}
                                         >
                                             <GalleryIcon />
                                             <Text style={styles.photoButtonText}>Галерея</Text>
                                         </TouchableOpacity>
 
                                         <TouchableOpacity
-                                            style={[styles.photoButton, { backgroundColor: colors.primary }]}
+                                            style={[styles.photoButton, { backgroundColor: '#5E00FF', opacity: (isLoading || isPhotoUploading) ? 0.5 : 1 }]}
                                             onPress={takePhoto}
+                                            disabled={isLoading || isPhotoUploading}
                                         >
                                             <CameraIcon />
                                             <Text style={styles.photoButtonText}>Камера</Text>
@@ -455,13 +460,13 @@ export const FeedbackAddModal = ({
                                         styles.button,
                                         styles.cancelButton,
                                         {
-                                            borderColor: colors.border || '#E0E0E0',
+                                            borderColor: '#E0E0E0',
                                             opacity: (isLoading || isPhotoUploading) ? 0.7 : 1
                                         }
                                     ]}
                                     onPress={handleClose}
                                 >
-                                    <Text style={[styles.buttonText, { color: colors.primary || '#5E00FF' }]}>
+                                    <Text style={[styles.buttonText, { color: '#5E00FF' }]}>
                                         Отмена
                                     </Text>
                                 </TouchableOpacity>
@@ -471,9 +476,7 @@ export const FeedbackAddModal = ({
                                         styles.button,
                                         styles.submitButton,
                                         {
-                                            backgroundColor: isSubmitDisabled
-                                                ? colors.disabled || '#A0A0A0'
-                                                : colors.primary || '#3498db',
+                                            backgroundColor: isSubmitDisabled ? '#A0A0A0' : '#5E00FF',
                                             opacity: isSubmitDisabled ? 0.7 : 1
                                         },
                                     ]}
@@ -521,7 +524,7 @@ const styles = StyleSheet.create({
     },
     scrollContent: {
         flexGrow: 1,
-        paddingBottom: 10,
+        paddingBottom: 20,
     },
     title: {
         fontSize: 20,

@@ -52,17 +52,15 @@ export const MonthSelector = React.memo(({ selectedMonth, selectedYear, onMonthC
     const isAllTimeSelected = selectedMonth === null && selectedYear === null;
 
     return (
-        <View style={styles.container} onStartShouldSetResponder={() => true}>
+        <View style={styles.container}>
             <Text style={styles.title}>Выберите период</Text>
             
             <ScrollView 
                 horizontal 
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.scrollContent}
+                style={styles.scrollView}
                 nestedScrollEnabled={true}
-                scrollEnabled={true}
-                removeClippedSubviews={false}
-                keyboardShouldPersistTaps="handled"
             >
                 {/* Кнопка "Все время" */}
                 <TouchableOpacity
@@ -71,6 +69,7 @@ export const MonthSelector = React.memo(({ selectedMonth, selectedYear, onMonthC
                         isAllTimeSelected && styles.monthButtonActive
                     ]}
                     onPress={handleSelectAll}
+                    activeOpacity={0.7}
                 >
                     <Text style={[
                         styles.monthText,
@@ -93,6 +92,7 @@ export const MonthSelector = React.memo(({ selectedMonth, selectedYear, onMonthC
                                 item.isCurrent && styles.monthButtonCurrent
                             ]}
                             onPress={() => handleSelectMonth(item.year, item.month)}
+                            activeOpacity={0.7}
                         >
                             <Text style={[
                                 styles.monthText,
@@ -117,7 +117,8 @@ const styles = StyleSheet.create({
     container: {
         marginVertical: 10,
         paddingLeft: 16,
-        maxHeight: 120, // Ограничиваем высоту чтобы не конфликтовать с основным скроллом
+        maxHeight: 120,
+        flexShrink: 0,
     },
     title: {
         fontSize: 16,
@@ -126,10 +127,12 @@ const styles = StyleSheet.create({
         marginBottom: 12,
         paddingRight: 16,
     },
+    scrollView: {
+        width: '100%',
+    },
     scrollContent: {
         paddingVertical: 4,
-        paddingRight: 32, // Увеличен отступ справа
-        flexGrow: 0, // Не растягиваем контент
+        paddingRight: 32,
     },
     monthButton: {
         paddingHorizontal: 16,

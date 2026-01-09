@@ -15,7 +15,6 @@ const normalize = (size) => {
 
 /**
  * Оптимизированный компонент для отображения похожих продуктов и остальных товаров
- * Убрана зависимость от useRoute, теперь currentProductId передается как проп
  */
 export const SimilarProducts = React.memo(({
                                                products,

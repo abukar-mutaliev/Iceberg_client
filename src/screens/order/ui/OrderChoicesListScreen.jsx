@@ -22,7 +22,7 @@ import {
     ALTERNATIVE_TYPE_COLORS,
     CHOICE_TYPE_LABELS
 } from '@entities/order';
-import { getBaseUrl } from '@shared/api/api';
+import { getImageUrl } from '@shared/api/api';
 
 const normalize = (size) => {
     const scale = 375 / 375;
@@ -287,12 +287,7 @@ export const OrderChoicesListScreen = () => {
         const normalizedPath = processedUrl.replace(/\\/g, '/');
         
         // Добавляем префикс uploads если его нет
-        let finalPath = normalizedPath;
-        if (!finalPath.startsWith('/uploads/')) {
-            finalPath = `/uploads/${finalPath}`;
-        }
-        
-        const fullUrl = `${getBaseUrl()}${finalPath}`;
+        const fullUrl = getImageUrl(normalizedPath);
         console.log('OrderChoicesListScreen: Сформированный URL:', fullUrl);
         
         return { uri: fullUrl };

@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Image, StyleSheet, Text } from 'react-native';
 import AvatarPlaceholder from "@shared/ui/Icon/DetailScreenIcons/AvatarPlaceholder";
 import {Color} from "@app/styles/GlobalStyles";
+import { getImageUrl } from '@shared/api/api';
 
 export const FeedbackAvatars = React.memo(({ feedbacks = [], maxAvatars = 3 }) => {
     if (!Array.isArray(feedbacks) || feedbacks.length === 0) {
@@ -14,15 +15,27 @@ export const FeedbackAvatars = React.memo(({ feedbacks = [], maxAvatars = 3 }) =
         if (!name) return '?';
         return name.split(' ').map(n => n[0]).join('').toUpperCase();
     };
+    
+    // Нормализуем URL аватаров для всех отзывов
+    const normalizedFeedbacks = useMemo(() => {
+        return displayFeedbacks.map(feedback => {
+            if (!feedback) return null;
+            const rawAvatar = feedback.avatar || feedback.client?.avatar;
+            const normalizedAvatarUrl = rawAvatar ? getImageUrl(rawAvatar) : null;
+            return {
+                ...feedback,
+                normalizedAvatarUrl
+            };
+        });
+    }, [displayFeedbacks]);
+    
     return (
         <View style={styles.container}>
-            {displayFeedbacks.map((feedback, index) => {
+            {normalizedFeedbacks.map((feedback, index) => {
                 if (!feedback) return null;
 
-                const hasAvatar = feedback.avatar || feedback.client?.avatar;
-                const avatarUrl = hasAvatar
-                    ? { uri: feedback.avatar || feedback.client?.avatar }
-                    : null;
+                const hasAvatar = !!feedback.normalizedAvatarUrl;
+                const avatarUrl = hasAvatar ? { uri: feedback.normalizedAvatarUrl } : null;
 
                 const userName = feedback.client?.name || '';
                 const initials = getInitials(userName);

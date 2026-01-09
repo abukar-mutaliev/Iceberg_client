@@ -7,7 +7,7 @@ import MapView, { Marker } from 'react-native-maps';
 import Constants from 'expo-constants';
 import { selectUser } from '@entities/auth/model/selectors';
 import { formatTimeRange, formatTime, formatDate } from "@shared/lib/dateFormatters";
-import { getBaseUrl } from '@shared/api/api';
+import { getImageUrl } from '@shared/api/api';
 import { logData } from '@shared/lib/logger';
 import {BackButton} from "@shared/ui/Button/BackButton";
 import { StopProductsList } from '@entities/stop/ui/StopProductsList';
@@ -26,16 +26,9 @@ const getPhotoUrl = (photoPath) => {
         return photoPath.uri;
     }
 
-    if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) {
-        const url = photoPath.replace('https://', 'http://');
-        return url;
-    }
-
-    const baseUrl = getBaseUrl();
-    // Убираем ведущий слеш если есть и добавляем /uploads/
-    const cleanPath = photoPath.replace(/^\/+/, '');
-    const fullUrl = `${baseUrl}/uploads/${cleanPath}`;
-    return fullUrl;
+    // Всегда используем getImageUrl для нормализации URL (включая замену старых IP-адресов)
+    // getImageUrl умеет обрабатывать как относительные, так и полные URL
+    return getImageUrl(photoPath);
 };
 
 // Функция для геокодирования адреса через Nominatim

@@ -20,7 +20,7 @@ import { fetchRooms, sendProduct, fetchRoom, hydrateRooms } from '@entities/chat
 import { selectRoomsList } from '@entities/chat/model/selectors';
 import { selectProductsById } from '@entities/product/model/selectors';
 import ChatApi from '@entities/chat/api/chatApi';
-import { getBaseUrl } from '@shared/api/api';
+import { getImageUrl } from '@shared/api/api';
 import { debounce } from 'lodash';
 
 export const RepostProductContent = ({ product, currentUser, onClose }) => {
@@ -574,11 +574,7 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
   // Функция для преобразования относительных путей в абсолютные URL
   const toAbsoluteUri = useCallback((raw) => {
     if (!raw || typeof raw !== 'string') return null;
-    if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
-    let path = raw.replace(/^\\+/g, '').replace(/^\/+/, '');
-    // убираем ведущий uploads/ если есть
-    path = path.replace(/^uploads\/?/, '');
-    return `${getBaseUrl()}/uploads/${path}`;
+    return getImageUrl(raw);
   }, []);
 
   // Получение аватара чата
@@ -757,11 +753,15 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
         onPress={() => handleSendToUser(item)}
         disabled={sending}
       >
-        <View style={[styles.avatarContainer, adaptiveStyles.avatarContainer]}>
+        <View style={[
+          styles.avatarContainer, 
+          adaptiveStyles.avatarContainer,
+          item.isProductSupplier && styles.supplierAvatarContainer
+        ]}>
           {avatarUri ? (
             <Image 
               source={{ uri: avatarUri }}
-              style={[styles.avatar, adaptiveStyles.avatar, item.isProductSupplier && styles.supplierAvatarBorder]}
+              style={[styles.avatar, adaptiveStyles.avatar]}
               resizeMode="cover"
             />
           ) : (
@@ -814,7 +814,7 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
       <View style={[styles.productInfo, adaptiveStyles.productInfo]}>
         {product?.images?.[0] && (
           <Image 
-            source={{ uri: product.images[0].startsWith('http') ? product.images[0] : `${getBaseUrl()}/uploads/${product.images[0]}` }}
+            source={{ uri: getImageUrl(product.images[0]) }}
             style={[styles.productImage, adaptiveStyles.productImage]}
             resizeMode="cover"
           />
@@ -1080,8 +1080,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  supplierAvatarBorder: {
-    borderWidth: 3,
+  supplierAvatarContainer: {
+    borderWidth: 0,
     borderColor: '#FF9800',
   },
   avatarPlaceholder: {

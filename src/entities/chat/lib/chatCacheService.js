@@ -10,7 +10,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
-import { getBaseUrl } from '@shared/api/api';
+import { getImageUrl } from '@shared/api/api';
 import { chatMessagesDb } from './chatMessagesDb';
 
 // Константы конфигурации
@@ -471,10 +471,7 @@ class ChatCacheService {
   async downloadMedia(url, localPath, type) {
     try {
       // Формируем абсолютный URL если нужно
-      let absoluteUrl = url;
-      if (!url.startsWith('http')) {
-        absoluteUrl = `${getBaseUrl()}${url.startsWith('/') ? '' : '/'}${url}`;
-      }
+      let absoluteUrl = getImageUrl(url);
       
       const downloadResult = await FileSystem.downloadAsync(absoluteUrl, localPath);
       

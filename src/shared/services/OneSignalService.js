@@ -149,19 +149,12 @@ class OneSignalService {
             // Инициализируем OneSignal
             oneSignal.initialize(effectiveAppId);
 
-            // Запрашиваем разрешения
-            await oneSignal.Notifications.requestPermission(true);
+            // НЕ запрашиваем разрешения здесь - они будут запрошены через кастомный алерт
+            // в useNotificationOnboardingHint после того, как пользователь нажмет "Разрешить"
+            // await oneSignal.Notifications.requestPermission(true);
 
-            // ВАЖНО: Принудительно подписываем. На Android requestPermission() может вернуть false,
-            // но подписка всё равно должна быть включена для получения пушей.
-            if (oneSignal.User?.pushSubscription?.optIn) {
-                try {
-                    await oneSignal.User.pushSubscription.optIn();
-                    console.log('[OneSignal] ✅ optIn выполнен');
-                } catch (e) {
-                    console.warn('[OneSignal] ⚠️ optIn ошибка:', e?.message);
-                }
-            }
+            // ВАЖНО: optIn также будет вызван после получения разрешения через кастомный алерт
+            // Не вызываем optIn здесь, так как разрешения еще не запрошены
 
             // Настройка обработчиков
             console.log('[OneSignal] 🔧 Вызываем setupNotificationHandlers...');

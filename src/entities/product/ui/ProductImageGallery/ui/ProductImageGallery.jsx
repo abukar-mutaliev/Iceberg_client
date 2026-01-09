@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Image, Text, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { View, Image, Text, StyleSheet, Dimensions, TouchableOpacity, Animated, PanResponder } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily } from '@app/styles/GlobalStyles';
 
@@ -7,23 +7,133 @@ const { width: screenWidth } = Dimensions.get('window');
 
 export const ProductImageGallery = ({ images = [] }) => {
     const [activeIndex, setActiveIndex] = useState(0);
+    const [preloadedImages, setPreloadedImages] = useState(new Set());
+    const opacity = useRef(new Animated.Value(1)).current;
 
     // Фильтруем валидные изображения
     const validImages = images.filter(Boolean);
+    const previousImagesLengthRef = useRef(validImages.length);
 
-    const goToNext = () => {
+    // Сброс индекса при изменении списка изображений
+    useEffect(() => {
+        if (activeIndex >= validImages.length) {
+            setActiveIndex(0);
+        }
+        
+        // Если список изображений полностью изменился (изменилась длина), сбрасываем кэш
+        if (previousImagesLengthRef.current !== validImages.length) {
+            previousImagesLengthRef.current = validImages.length;
+            // Не сбрасываем кэш полностью, так как некоторые изображения могут повторяться
+        }
+    }, [validImages.length, activeIndex]);
+    
+    // Убеждаемся, что изображение видимо при первой загрузке и при изменении индекса
+    useEffect(() => {
+        if (validImages.length > 0 && activeIndex < validImages.length) {
+            // Сбрасываем opacity в 1 при изменении изображения
+            opacity.setValue(1);
+        }
+    }, [validImages.length, activeIndex, opacity]);
+
+    // Предзагрузка изображений
+    useEffect(() => {
+        const preloadImage = async (uri) => {
+            if (!uri) return;
+            
+            try {
+                await Image.prefetch(uri);
+                setPreloadedImages(prev => {
+                    if (prev.has(uri)) return prev;
+                    return new Set([...prev, uri]);
+                });
+            } catch (error) {
+                console.warn('[ProductImageGallery] Ошибка предзагрузки изображения:', uri, error);
+            }
+        };
+
+        // Предзагружаем текущее изображение
+        if (validImages[activeIndex]) {
+            preloadImage(validImages[activeIndex]);
+        }
+
+        // Предзагружаем следующее изображение
+        if (activeIndex < validImages.length - 1 && validImages[activeIndex + 1]) {
+            preloadImage(validImages[activeIndex + 1]);
+        }
+
+        // Предзагружаем предыдущее изображение
+        if (activeIndex > 0 && validImages[activeIndex - 1]) {
+            preloadImage(validImages[activeIndex - 1]);
+        }
+    }, [activeIndex, validImages]);
+
+    const goToNext = useCallback(() => {
         if (activeIndex < validImages.length - 1) {
-            console.log('[ProductImageGallery] Переход к следующему изображению:', activeIndex + 1);
-            setActiveIndex(activeIndex + 1);
+            const nextIndex = activeIndex + 1;
+            console.log('[ProductImageGallery] Переход к следующему изображению:', nextIndex);
+            
+            // Сначала обновляем индекс
+            setActiveIndex(nextIndex);
+            
+            // Плавная анимация fade-in
+            opacity.setValue(0.5);
+            Animated.timing(opacity, {
+                toValue: 1,
+                duration: 200,
+                useNativeDriver: true,
+            }).start();
         }
-    };
+    }, [activeIndex, validImages.length, opacity]);
 
-    const goToPrevious = () => {
+    const goToPrevious = useCallback(() => {
         if (activeIndex > 0) {
-            console.log('[ProductImageGallery] Переход к предыдущему изображению:', activeIndex - 1);
-            setActiveIndex(activeIndex - 1);
+            const prevIndex = activeIndex - 1;
+            console.log('[ProductImageGallery] Переход к предыдущему изображению:', prevIndex);
+            
+            // Сначала обновляем индекс
+            setActiveIndex(prevIndex);
+            
+            // Плавная анимация fade-in
+            opacity.setValue(0.5);
+            Animated.timing(opacity, {
+                toValue: 1,
+                duration: 200,
+                useNativeDriver: true,
+            }).start();
         }
-    };
+    }, [activeIndex, opacity]);
+
+    // PanResponder для обработки свайпов
+    const panResponder = useMemo(() => {
+        return PanResponder.create({
+            onStartShouldSetPanResponder: () => false,
+            onMoveShouldSetPanResponder: (_, gestureState) => {
+                // Активируем только при явном горизонтальном движении
+                const isHorizontal = Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+                const hasEnoughMovement = Math.abs(gestureState.dx) > 15;
+                return isHorizontal && hasEnoughMovement;
+            },
+            onPanResponderTerminationRequest: () => false, // Не позволяем ScrollView перехватывать жест
+            onPanResponderRelease: (_, gestureState) => {
+                const { dx, vx } = gestureState;
+                const swipeThreshold = 50; // Порог для определения свайпа
+                const velocityThreshold = 0.5; // Порог скорости для быстрого свайпа
+
+                try {
+                    // Определяем направление свайпа
+                    if (dx < -swipeThreshold || vx < -velocityThreshold) {
+                        // Свайп влево - следующее изображение
+                        goToNext();
+                    } else if (dx > swipeThreshold || vx > velocityThreshold) {
+                        // Свайп вправо - предыдущее изображение
+                        goToPrevious();
+                    }
+                } catch (error) {
+                    console.warn('[ProductImageGallery] Ошибка обработки жеста:', error);
+                }
+            },
+        });
+    }, [goToNext, goToPrevious]);
     
     // console.log('[ProductImageGallery] Получены изображения:', {
     //     images,
@@ -47,20 +157,38 @@ export const ProductImageGallery = ({ images = [] }) => {
     }
 
     return (
-        <View style={styles.container}>
-            {/* Отображаем только активное изображение */}
-            <View style={styles.imageContainer}>
-                <Image
-                    source={{ uri: validImages[activeIndex] }}
-                    style={styles.productImage}
-                    resizeMode="cover"
-                    onError={(error) => {
-                        console.warn(`Ошибка загрузки изображения ${activeIndex}:`, error);
-                    }}
-                />
-                {/* Наложение для затемнения при загрузке */}
-                <View style={styles.imageOverlay} />
-            </View>
+        <View style={styles.container} {...panResponder.panHandlers}>
+                {/* Отображаем только активное изображение */}
+                <Animated.View 
+                    style={[
+                        styles.imageContainer,
+                        {
+                            opacity: opacity,
+                        },
+                    ]}
+                >
+                    {validImages[activeIndex] ? (
+                        <Image
+                            source={{ uri: validImages[activeIndex] }}
+                            style={styles.productImage}
+                            resizeMode="cover"
+                            onLoad={() => {
+                                console.log(`[ProductImageGallery] Изображение ${activeIndex} загружено:`, validImages[activeIndex]);
+                                // Убеждаемся, что изображение видимо после загрузки
+                                opacity.setValue(1);
+                            }}
+                            onLoadStart={() => {
+                                console.log(`[ProductImageGallery] Начало загрузки изображения ${activeIndex}`);
+                            }}
+                            onError={(error) => {
+                                console.warn(`[ProductImageGallery] Ошибка загрузки изображения ${activeIndex}:`, error, validImages[activeIndex]);
+                                opacity.setValue(1);
+                            }}
+                        />
+                    ) : (
+                        <View style={styles.productImage} />
+                    )}
+                </Animated.View>
 
             {/* Кнопки навигации */}
             {validImages.length > 1 && (

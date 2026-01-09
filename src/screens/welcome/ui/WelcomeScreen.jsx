@@ -39,7 +39,7 @@ export const WelcomeScreen = ({ navigation }) => {
     
     // Позиция кнопки - используем адаптивные значения близкие к оригиналу
     const buttonHeight = adaptiveSize(70);
-    const buttonTop = adaptiveSize(isSmallDevice ? 350 : 385);
+    const buttonTop = adaptiveSize(isSmallDevice ? 350 : 395);
     
     // Позиция текста - используем процент от полной высоты экрана
     // Вычитаем topMargin чтобы получить позицию относительно контейнера

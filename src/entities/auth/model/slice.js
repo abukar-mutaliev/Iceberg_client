@@ -631,6 +631,12 @@ const authSlice = createSlice({
             Object.assign(state, initialState);
         },
         setTokens: (state, action) => {
+            console.log('🔑 [REDUX] setTokens called', {
+                hasAccessToken: !!action.payload?.accessToken,
+                hasRefreshToken: !!action.payload?.refreshToken,
+                previouslyAuthenticated: state.isAuthenticated
+            });
+            
             state.tokens = action.payload;
             state.isAuthenticated = true;
             try {
@@ -641,9 +647,13 @@ const authSlice = createSlice({
                         role: decoded.role,
                         token: action.payload.accessToken,
                     };
+                    console.log('✅ [REDUX] User authenticated', {
+                        userId: decoded.userId,
+                        role: decoded.role
+                    });
                 }
             } catch (error) {
-                // Ошибка декодирования токена игнорируется
+                console.error('❌ [REDUX] Failed to decode token:', error);
             }
         },
         setUser: (state, action) => {
@@ -796,6 +806,12 @@ const authSlice = createSlice({
         builder
             .addCase(login.pending, setPending)
             .addCase(login.fulfilled, (state, action) => {
+                console.log('✅ [REDUX] login fulfilled', {
+                    requiresTwoFactor: action.payload.requiresTwoFactor,
+                    hasUser: !!action.payload.user,
+                    hasTokens: !!action.payload.tokens
+                });
+                
                 state.isLoading = false;
                 state.error = null;
                 if (action.payload.requiresTwoFactor) {
@@ -850,6 +866,11 @@ const authSlice = createSlice({
                 state.error = null;
             })
             .addCase(completeRegister.fulfilled, (state, action) => {
+                console.log('✅ [REDUX] completeRegister fulfilled', {
+                    hasUser: !!action.payload?.user,
+                    hasTokens: !!action.payload?.tokens
+                });
+                
                 state.isLoading = false;
                 state.error = null;
 
@@ -859,6 +880,7 @@ const authSlice = createSlice({
                     state.isAuthenticated = true;
                     state.tempToken = null;
                 } else {
+                    console.error('❌ [REDUX] completeRegister: insufficient data');
                     state.error = 'Ошибка авторизации: недостаточно данных';
                     state.isAuthenticated = false;
                 }
@@ -881,6 +903,11 @@ const authSlice = createSlice({
                 state.error = null;
             })
             .addCase(completePhoneRegister.fulfilled, (state, action) => {
+                console.log('✅ [REDUX] completePhoneRegister fulfilled', {
+                    hasUser: !!action.payload?.user,
+                    hasTokens: !!action.payload?.tokens
+                });
+                
                 state.isLoading = false;
                 state.error = null;
 
@@ -890,6 +917,7 @@ const authSlice = createSlice({
                     state.isAuthenticated = true;
                     state.tempToken = null;
                 } else {
+                    console.error('❌ [REDUX] completePhoneRegister: insufficient data');
                     state.error = 'Ошибка авторизации: недостаточно данных';
                     state.isAuthenticated = false;
                 }
@@ -900,9 +928,11 @@ const authSlice = createSlice({
                 state.isAuthenticated = false;
             })
             .addCase(logout.fulfilled, (state) => {
+                console.log('✅ [REDUX] logout fulfilled - resetting auth state');
                 Object.assign(state, initialState);
             })
             .addCase(logout.rejected, (state, action) => {
+                console.error('❌ [REDUX] logout rejected', { error: action.payload });
                 state.isLoading = false;
                 state.error = action.payload || 'Произошла ошибка при выходе';
                 state.isAuthenticated = false;
@@ -926,11 +956,21 @@ const authSlice = createSlice({
             })
             .addCase(refreshToken.pending, setPending)
             .addCase(refreshToken.fulfilled, (state, action) => {
+                console.log('✅ [REDUX] refreshToken fulfilled', {
+                    hasTokens: !!action.payload,
+                    hasAccessToken: !!action.payload?.accessToken,
+                    hasRefreshToken: !!action.payload?.refreshToken
+                });
                 state.isLoading = false;
                 state.tokens = action.payload;
                 state.isAuthenticated = true;
             })
-            .addCase(refreshToken.rejected, setRejected)
+            .addCase(refreshToken.rejected, (state, action) => {
+                console.error('❌ [REDUX] refreshToken rejected', {
+                    error: action.payload
+                });
+                setRejected(state, action);
+            })
             .addCase(loadUserProfile.fulfilled, (state, action) => {
                 // Профиль уже обновлен через updateUserWithProfile dispatch
             })

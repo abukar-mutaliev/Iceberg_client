@@ -1,29 +1,31 @@
 import React, { useRef, useState, useCallback, useMemo } from 'react';
-import { View, StyleSheet, KeyboardAvoidingView, Platform, Text } from 'react-native';
+import { View, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from 'react-redux';
 import { ChatBackground } from '@entities/chat/ui/ChatBackground';
 import { Composer } from '@entities/chat/ui/Composer';
 import { TypingIndicator } from '@entities/chat';
-import { Ionicons } from '@expo/vector-icons';
-import { MessageList } from '../components/MessageList';
-import { ChatModals } from '../components/ChatModals';
-import { useGroupChatData } from '../hooks/useGroupChatData';
-import { useGroupChatActions } from '../hooks/useGroupChatActions';
-import { useChatSelection } from '../hooks/useChatSelection';
-import { useChatKeyboard } from '../hooks/useChatKeyboard';
-import { useChatLifecycle } from '../hooks/useChatLifecycle';
-import { useChatNavigation } from '../hooks/useChatNavigation';
-import { useChatModals } from '../hooks/useChatModals';
-import { useChatReactions } from '../hooks/useChatReactions';
+import { MessageList } from './components/MessageList';
+import { ChatModals } from './components/ChatModals';
+import { useChatData } from './hooks/useChatData';
+import { useChatActions } from './hooks/useChatActions';
+import { useChatSelection } from './hooks/useChatSelection';
+import { useChatKeyboard } from './hooks/useChatKeyboard';
+import { useChatLifecycle } from './hooks/useChatLifecycle';
+import { useChatNavigation } from './hooks/useChatNavigation';
+import { useChatModals } from './hooks/useChatModals';
+import { useChatReactions } from './hooks/useChatReactions';
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 import { selectIsProductDeleted } from '@entities/product/model/selectors';
-import { useChatSocketActions } from '@entities/chat/hooks/useChatSocketActions';
+import ChatApi from '@entities/chat/api/chatApi';
 
-export const GroupChatScreen = ({ route, navigation }) => {
+export const DirectChatScreen = ({ route, navigation }) => {
   const {
     roomId,
     productId: shareProductId,
+    productInfo,
+    autoSendProduct,
+    userId,
     autoFocusInput = false,
   } = route.params || {};
   
@@ -31,23 +33,24 @@ export const GroupChatScreen = ({ route, navigation }) => {
   const store = useStore();
   const insets = useSafeAreaInsets();
   const { showError, showWarning, showConfirm } = useCustomAlert();
-  const { emitActiveRoom } = useChatSocketActions();
   
-  // Данные группового чата
-  const chatData = useGroupChatData(roomId);
+  // Данные чата
+  const chatData = useChatData(roomId);
   const {
     messages,
     loading,
     hasMore,
+    cursorId,
     currentUserId,
     currentUser,
+    chatPartner,
+    peerUserId,
+    partnerAvatar,
     roomData,
     isRoomDeleted,
     rooms,
     isSuperAdmin,
-    isAdmin,
     canSendMessages,
-    cursorId,
   } = chatData;
   
   // Управление клавиатурой
@@ -69,6 +72,18 @@ export const GroupChatScreen = ({ route, navigation }) => {
     toggleMessageSelection,
   } = selection;
   
+  // Действия
+  const actions = useChatActions({
+    roomId,
+    currentUserId,
+    messages,
+    isSuperAdmin,
+    showError,
+    showWarning,
+    showConfirm,
+    navigation,
+  });
+  
   // ============ REFS ============
   const flatListRef = useRef(null);
   const isRoomDeletedRef = useRef(false);
@@ -81,21 +96,6 @@ export const GroupChatScreen = ({ route, navigation }) => {
   const [highlightedMessageId, setHighlightedMessageId] = useState(null);
   const [replyTo, setReplyTo] = useState(null);
   const [animatedPaddingTop, setAnimatedPaddingTop] = useState(0);
-  
-  // Действия для групп
-  const actions = useGroupChatActions({
-    roomId,
-    currentUserId,
-    messages,
-    isSuperAdmin,
-    isAdmin,
-    showError,
-    showWarning,
-    showConfirm,
-    navigation,
-    isRoomDeletedRef,
-    emitActiveRoom,
-  });
   
   // Модальные окна
   const modals = useChatModals();
@@ -138,11 +138,11 @@ export const GroupChatScreen = ({ route, navigation }) => {
   // ============ LIFECYCLE ============
   const lifecycle = useChatLifecycle({
     roomId,
-    userId: null, // В групповых чатах нет конкретного userId
+    userId: peerUserId,
     isRoomDeleted,
     isRoomDeletedRef,
-    autoSendProduct: false,
-    productInfo: null,
+    autoSendProduct,
+    productInfo,
     messages,
     currentUserId,
     navigation,
@@ -242,8 +242,8 @@ export const GroupChatScreen = ({ route, navigation }) => {
   }, [messagesToDelete, actions, clearSelection, closeDeleteMessageModal]);
   
   const handleReply = useCallback((message) => {
-    if (canSendMessages) setReplyTo(message);
-  }, [canSendMessages]);
+    setReplyTo(message);
+  }, []);
   
   const handleCancelReply = useCallback(() => {
     setReplyTo(null);
@@ -288,7 +288,10 @@ export const GroupChatScreen = ({ route, navigation }) => {
   }, [isSelectionMode, setIsSelectionMode, toggleMessageSelection, handleShowReactionPicker]);
   
   const handleOpenProduct = useCallback((productId) => {
-    if (isSelectionMode) return;
+    if (isSelectionMode) {
+      // В режиме выбора просто выбираем сообщение
+      return;
+    }
     
     if (selectIsProductDeleted(store.getState(), productId)) {
       showWarning('Товар недоступен', 'Этот товар был удален');
@@ -308,34 +311,88 @@ export const GroupChatScreen = ({ route, navigation }) => {
     navigation.navigate('StopDetails', { stopId });
   }, [isSelectionMode, navigation]);
   
+  
+  const handleAvatarPress = useCallback(() => {
+    if (!chatPartner) return;
+    
+    const userId = chatPartner?.userId ?? chatPartner?.user?.id ?? chatPartner?.id;
+    if (!userId || userId === currentUserId) return;
+    
+    const rootNavigation = navigation?.getParent?.('AppStack') || navigation?.getParent?.() || navigation;
+    (rootNavigation || navigation).navigate('UserPublicProfile', {
+      userId,
+      fromScreen: 'ChatRoom',
+      roomId,
+    });
+  }, [chatPartner, currentUserId, navigation, roomId]);
+  
+  const handleContactDriver = useCallback(async (type, stopData) => {
+    if (!stopData) return;
+    
+    const driverUserId = stopData.driverUserId || stopData.driver?.userId;
+    const driverName = stopData.driverName || stopData.driver?.name || 'Водитель';
+    
+    if (!driverUserId) {
+      showError('Ошибка', 'Информация о водителе недоступна');
+      return;
+    }
+    
+    const existingChat = rooms.find(room => {
+      if (room.type !== 'DIRECT') return false;
+      return room.participants?.some(p => {
+        const pId = p?.userId ?? p?.user?.id ?? p?.id;
+        return pId === driverUserId;
+      });
+    });
+    
+    if (existingChat) {
+      navigation.navigate('ChatRoom', {
+        roomId: existingChat.id,
+        roomTitle: driverName,
+        roomData: existingChat,
+        userId: driverUserId,
+        fromScreen: 'DirectChat'
+      });
+    } else {
+      try {
+        const formData = new FormData();
+        formData.append('type', 'DIRECT');
+        formData.append('title', driverName);
+        formData.append('members', JSON.stringify([driverUserId]));
+        
+        const response = await ChatApi.createRoom(formData);
+        const room = response?.data?.room || response?.data;
+        
+        if (room?.id) {
+          navigation.navigate('ChatRoom', {
+            roomId: room.id,
+            roomTitle: driverName,
+            roomData: room,
+            userId: driverUserId,
+            fromScreen: 'DirectChat'
+          });
+        }
+      } catch (error) {
+        console.error('Error creating chat with driver:', error);
+        showError('Ошибка', 'Не удалось создать чат с водителем');
+      }
+    }
+  }, [rooms, navigation, showError]);
+  
   const handleSenderNamePress = useCallback((senderId) => {
     if (!senderId || senderId === currentUserId) return;
     
-    const rootNav = navigation?.getParent?.('AppStack') || navigation?.getParent?.() || navigation;
-    rootNav.navigate('UserPublicProfile', { 
-      userId: senderId, 
-      fromScreen: 'GroupChatRoom', 
-      roomId 
+    const rootNavigation = navigation?.getParent?.('AppStack') || navigation?.getParent?.() || navigation;
+    (rootNavigation || navigation).navigate('UserPublicProfile', {
+      userId: senderId,
+      fromScreen: 'DirectChatRoom',
+      roomId,
     });
   }, [currentUserId, navigation, roomId]);
   
-  const handleLeaveGroup = useCallback(() => {
-    closeMenuModal();
-    showConfirm(
-      'Покинуть группу',
-      'Вы уверены, что хотите покинуть эту группу?',
-      () => actions.handleLeaveGroup()
-    );
-  }, [actions, showConfirm, closeMenuModal]);
-
-  const handleDeleteGroup = useCallback(() => {
-    closeMenuModal();
-    showConfirm(
-      'Удалить группу',
-      'Все сообщения будут удалены безвозвратно.',
-      () => actions.handleDeleteGroup()
-    );
-  }, [actions, showConfirm, closeMenuModal]);
+  const handleLoadMore = useCallback(() => {
+    loadMoreMessages();
+  }, [loadMoreMessages]);
   
   const handleScrollToIndexFailed = useCallback((info) => {
     setTimeout(() => {
@@ -346,6 +403,30 @@ export const GroupChatScreen = ({ route, navigation }) => {
       });
     }, 100);
   }, []);
+  
+  const handleDeleteChat = useCallback(() => {
+    closeMenuModal();
+    showConfirm(
+      'Удалить чат',
+      'Вы уверены, что хотите удалить этот чат? Все сообщения будут удалены безвозвратно.',
+      async () => {
+        isRoomDeletedRef.current = true;
+        const success = await actions.handleDeleteChat();
+        if (success) {
+          const parent = navigation.getParent();
+          if (parent) {
+            parent.navigate('ChatMain');
+          } else if (navigation.canGoBack()) {
+            navigation.goBack();
+          } else {
+            navigation.navigate('ChatMain');
+          }
+        } else {
+          isRoomDeletedRef.current = false;
+        }
+      }
+    );
+  }, [navigation, showConfirm, actions, closeMenuModal]);
   
   // ============ COMPUTED ============
   
@@ -372,11 +453,11 @@ export const GroupChatScreen = ({ route, navigation }) => {
             pressedMessageId={pressedMessageId}
             retryingMessages={retryingMessages}
             canDeleteMessage={actions.canDeleteMessage}
-            partnerAvatar={null}
+            partnerAvatar={partnerAvatar}
             roomType={roomData?.type}
             participants={roomData?.participants}
             animatedPaddingTop={animatedPaddingTop}
-            onLoadMore={loadMoreMessages}
+            onLoadMore={handleLoadMore}
             onScrollToIndexFailed={handleScrollToIndexFailed}
             onPress={handleMessagePress}
             onLongPress={handleMessageLongPress}
@@ -384,8 +465,8 @@ export const GroupChatScreen = ({ route, navigation }) => {
             onOpenProduct={handleOpenProduct}
             onOpenStop={handleOpenStop}
             onImagePress={handleImagePress}
-            onAvatarPress={() => {}} // В групповых чатах аватар не кликабелен
-            onContactDriver={() => {}} // Не используется в групповых чатах
+            onAvatarPress={handleAvatarPress}
+            onContactDriver={handleContactDriver}
             onReply={handleReply}
             onReplyPress={handleReplyPress}
             onAddReaction={actions.handleToggleReaction}
@@ -403,31 +484,18 @@ export const GroupChatScreen = ({ route, navigation }) => {
             style={styles.keyboardAvoid}
             enabled={true}
           >
-            {canSendMessages ? (
-              <View style={[styles.composerContainer, composerContainerStyle]}>
-                <Composer
-                  roomId={roomId}
-                  onTyping={() => {}}
-                  shareProductId={shareProductId}
-                  onMenuPress={handleMenuPress}
-                  replyTo={replyTo}
-                  onCancelReply={handleCancelReply}
-                  autoFocus={autoFocusInput}
-                />
-                <TypingIndicator roomId={roomId} />
-              </View>
-            ) : (
-              <View style={styles.lockedChat}>
-                <View style={styles.lockedMessage}>
-                  <Ionicons name="lock-closed" size={20} color="#999" />
-                  <Text style={styles.lockedText}>
-                    {roomData?.type === 'BROADCAST' 
-                      ? 'Только администраторы могут отправлять сообщения.'
-                      : 'Только администраторы могут отправлять сообщения.'}
-                  </Text>
-                </View>
-              </View>
-            )}
+            <View style={[styles.composerContainer, composerContainerStyle]}>
+              <Composer
+                roomId={roomId}
+                onTyping={() => {}}
+                shareProductId={shareProductId}
+                onMenuPress={handleMenuPress}
+                replyTo={replyTo}
+                onCancelReply={handleCancelReply}
+                autoFocus={autoFocusInput}
+              />
+              <TypingIndicator roomId={roomId} />
+            </View>
           </KeyboardAvoidingView>
           
           {insets.bottom > 0 && <View style={systemBarStyle} />}
@@ -440,10 +508,7 @@ export const GroupChatScreen = ({ route, navigation }) => {
         onImageViewerClose={handleImageViewerClose}
         menuModalVisible={menuModalVisible}
         onMenuModalClose={closeMenuModal}
-        onDeleteChat={handleDeleteGroup}
-        onLeaveGroup={!isAdmin ? handleLeaveGroup : undefined}
-        showLeaveGroup={!isAdmin}
-        showDeleteGroup={isAdmin || isSuperAdmin}
+        onDeleteChat={handleDeleteChat}
         deleteMessageModalVisible={deleteMessageModalVisible}
         messagesToDelete={messagesToDelete}
         onDeleteMessageClose={closeDeleteMessageModal}
@@ -478,24 +543,4 @@ const styles = StyleSheet.create({
   composerContainer: {
     position: 'relative',
   },
-  lockedChat: {
-    backgroundColor: '#f5f5f5',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-  },
-  lockedMessage: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  lockedText: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    flex: 1,
-  },
 });
-

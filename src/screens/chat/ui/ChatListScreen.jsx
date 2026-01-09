@@ -7,7 +7,7 @@ import {fetchProductById} from '@entities/product/model/slice';
 import {selectRoomsList, selectIsRoomDeleted} from '@entities/chat/model/selectors';
 import {selectProductsById, selectDeletedProductIds} from '@entities/product/model/selectors';
 
-import {getBaseUrl} from '@shared/api/api';
+import {getImageUrl} from '@shared/api/api';
 import {IconDelivery} from '@shared/ui/Icon/Profile/IconDelivery';
 import {Ionicons} from '@expo/vector-icons';
 
@@ -363,11 +363,7 @@ export const ChatListScreen = ({navigation}) => {
 
     const toAbsoluteUri = useCallback((raw) => {
         if (!raw || typeof raw !== 'string') return null;
-        if (raw.startsWith('http')) return raw;
-        let path = raw.replace(/^\\+/g, '').replace(/^\/+/, '');
-        // убираем ведущий uploads/ если есть
-        path = path.replace(/^uploads\/?/, '');
-        return `${getBaseUrl()}/uploads/${path}`;
+        return getImageUrl(raw);
     }, []);
 
     const getRoomAvatar = useCallback((room) => {

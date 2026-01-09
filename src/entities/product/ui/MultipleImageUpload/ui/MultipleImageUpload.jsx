@@ -25,7 +25,7 @@ export const MultipleImageUpload = ({ photos, setPhotos, error, maxImages = 5 })
 
         try {
             const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                mediaTypes: 'images',
                 allowsEditing: false,
                 aspect: [1, 1],
                 quality: 0.8,

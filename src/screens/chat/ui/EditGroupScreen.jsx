@@ -12,9 +12,10 @@ import {
   KeyboardAvoidingView,
   ScrollView,
 } from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useDispatch, useSelector } from 'react-redux';
 import { updateRoom, fetchRoom } from '@entities/chat/model/slice';
-import { getBaseUrl } from '@shared/api/api';
+import { getImageUrl } from '@shared/api/api';
 import ChatApi from '@entities/chat/api/chatApi';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -40,16 +41,18 @@ export const EditGroupScreen = ({ route, navigation }) => {
     if (roomData) {
       setGroupName(roomData.title || '');
       setGroupDescription(roomData.description || '');
-      setCurrentAvatarUri(roomData.avatar ? toAbsoluteUri(roomData.avatar) : null);
+      // Обновляем аватар из данных сервера
+      const newAvatarUri = roomData.avatar ? toAbsoluteUri(roomData.avatar) : null;
+      // Обновляем только если нет локального выбранного изображения или если это удаление
+      if (!groupAvatar || groupAvatar.remove) {
+        setCurrentAvatarUri(newAvatarUri);
+      }
     }
   }, [roomData]);
 
   const toAbsoluteUri = useCallback((raw) => {
     if (!raw || typeof raw !== 'string') return null;
-    if (raw.startsWith('http')) return raw;
-    let path = raw.replace(/^\\+/g, '').replace(/^\/+/, '');
-    path = path.replace(/^uploads\/?/, '');
-    return `${getBaseUrl()}/uploads/${path}`;
+    return getImageUrl(raw);
   }, []);
 
   // Функции для работы с изображениями
@@ -159,7 +162,7 @@ export const EditGroupScreen = ({ route, navigation }) => {
       if (!hasPermission) return;
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: 'images',
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.9, // Высокое качество - умное сжатие обработает размер
@@ -380,7 +383,29 @@ export const EditGroupScreen = ({ route, navigation }) => {
 
       if (result.type.endsWith('/fulfilled')) {
         // Обновляем данные группы
-        await dispatch(fetchRoom(roomId));
+        const fetchResult = await dispatch(fetchRoom(roomId));
+        
+        // Обновляем currentAvatarUri из обновленных данных
+        if (fetchResult.type.endsWith('/fulfilled')) {
+          const updatedRoom = fetchResult.payload?.room;
+          if (updatedRoom?.avatar) {
+            const newAvatarUri = toAbsoluteUri(updatedRoom.avatar);
+            setCurrentAvatarUri(newAvatarUri);
+            // Сбрасываем локальное состояние аватара, так как он уже сохранен на сервере
+            setGroupAvatar(null);
+            setAvatarPreloadStatus(null);
+            setPreloadedAvatarPath(null);
+          } else if (groupAvatar?.remove) {
+            // Если аватар был удален
+            setCurrentAvatarUri(null);
+            setGroupAvatar(null);
+            setAvatarPreloadStatus(null);
+            setPreloadedAvatarPath(null);
+          }
+        }
+        
+        // Небольшая задержка для обновления UI перед возвратом
+        await new Promise(resolve => setTimeout(resolve, 100));
         
         // Возвращаемся назад без алерта для лучшего UX
         navigation.goBack();
@@ -429,39 +454,49 @@ export const EditGroupScreen = ({ route, navigation }) => {
         >
           {/* Avatar Section */}
           <View style={styles.avatarSection}>
-            <TouchableOpacity
-              style={styles.avatarButton}
-              onPress={showImagePicker}
-              activeOpacity={0.7}
-            >
-              {currentAvatarUri ? (
-                <View style={styles.avatarImageContainer}>
-                  <Image source={{ uri: currentAvatarUri }} style={styles.avatarImage} />
-                  {/* Индикаторы статуса предзагрузки */}
-                  {avatarPreloadStatus === 'uploading' && (
-                    <View style={styles.uploadingOverlay}>
-                      <ActivityIndicator size="small" color="#FFFFFF" />
-                      <Text style={styles.uploadingText}>Загрузка...</Text>
-                    </View>
-                  )}
-                  {avatarPreloadStatus === 'success' && (
-                    <View style={styles.successOverlay}>
-                      <Text style={styles.successText}>✓</Text>
-                    </View>
-                  )}
-                  {avatarPreloadStatus === 'error' && (
-                    <View style={styles.errorOverlay}>
-                      <Text style={styles.errorText}>⚠</Text>
-                    </View>
-                  )}
-                </View>
-              ) : (
-                <View style={styles.avatarPlaceholder}>
-                  <Text style={styles.avatarPlaceholderText}>👥</Text>
-                  <Text style={styles.avatarPlaceholderSubtext}>Нажмите для изменения</Text>
-                </View>
-              )}
-            </TouchableOpacity>
+            <View style={styles.avatarWrapper}>
+              <TouchableOpacity
+                style={styles.avatarButton}
+                onPress={showImagePicker}
+                activeOpacity={0.7}
+              >
+                {currentAvatarUri ? (
+                  <View style={styles.avatarImageContainer}>
+                    <Image 
+                      key={currentAvatarUri} 
+                      source={{ uri: currentAvatarUri }} 
+                      style={styles.avatarImage}
+                      onError={() => {
+                        console.warn('Ошибка загрузки аватара:', currentAvatarUri);
+                        setCurrentAvatarUri(null);
+                      }}
+                    />
+                    {/* Индикаторы статуса предзагрузки */}
+                    {avatarPreloadStatus === 'uploading' && (
+                      <View style={styles.uploadingOverlay}>
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                        <Text style={styles.uploadingText}>Загрузка...</Text>
+                      </View>
+                    )}
+                    {avatarPreloadStatus === 'success' && (
+                      <View style={styles.successOverlay}>
+                        <Text style={styles.successText}>✓</Text>
+                      </View>
+                    )}
+                    {avatarPreloadStatus === 'error' && (
+                      <View style={styles.errorOverlay}>
+                        <Text style={styles.errorText}>⚠</Text>
+                      </View>
+                    )}
+                  </View>
+                ) : (
+                  <View style={styles.avatarPlaceholder}>
+                    <Text style={styles.avatarPlaceholderText}>👥</Text>
+                    <Text style={styles.avatarPlaceholderSubtext}>Нажмите для изменения</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Group Info */}
@@ -595,8 +630,8 @@ const styles = StyleSheet.create({
   },
   successOverlay: {
     position: 'absolute',
-    top: 5,
-    right: 5,
+    top: 15,
+    right: 15,
     width: 24,
     height: 24,
     backgroundColor: '#4CAF50',

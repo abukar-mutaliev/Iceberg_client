@@ -19,7 +19,7 @@ import {X, MoreVertical, Download} from 'lucide-react-native';
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import {getBaseUrl} from '@shared/api/api';
+import {getImageUrl} from '@shared/api/api';
 import {useCustomAlert} from '@shared/ui/CustomAlert';
 
 const {width: SCREEN_WIDTH, height: SCREEN_HEIGHT} = Dimensions.get('window');
@@ -239,7 +239,7 @@ export const ImageViewerModal = ({
                 if (!path.startsWith('/')) {
                     path = '/' + path;
                 }
-                const absoluteUrl = `${getBaseUrl()}${path}`;
+                const absoluteUrl = getImageUrl(path);
                 const fileName = `iceberg_image_${Date.now()}.jpg`;
                 finalFileUri = FileSystem.documentDirectory + fileName;
                 console.log('Преобразуем относительный путь в URL:', absoluteUrl);

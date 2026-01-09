@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useMemo, memo } from 'react';
+import React, { useCallback, useRef, useMemo, memo, useState } from 'react';
 import { FlatList, View, Text, StyleSheet, TouchableWithoutFeedback } from 'react-native';
 import { SwipeableMessageBubble } from '@entities/chat';
 
@@ -37,7 +37,12 @@ const MessageItem = memo(({
   onCancelMessage,
   isRetrying,
   onSenderNamePress,
+  activeSwipeId,
+  onSwipeStart,
+  onSwipeEnd,
 }) => {
+  const shouldReset = activeSwipeId !== null && activeSwipeId !== item.id;
+
   return (
     <SwipeableMessageBubble
       message={item}
@@ -68,6 +73,9 @@ const MessageItem = memo(({
       roomType={roomType}
       participants={participants}
       onSenderNamePress={onSenderNamePress}
+      onSwipeStart={onSwipeStart}
+      onSwipeEnd={onSwipeEnd}
+      shouldReset={shouldReset}
     />
   );
 }, (prevProps, nextProps) => {
@@ -81,7 +89,8 @@ const MessageItem = memo(({
     prevProps.highlightedMessageId === nextProps.highlightedMessageId &&
     prevProps.pressedMessageId === nextProps.pressedMessageId &&
     prevProps.isRetrying === nextProps.isRetrying &&
-    prevProps.item.status === nextProps.item.status
+    prevProps.item.status === nextProps.item.status &&
+    prevProps.activeSwipeId === nextProps.activeSwipeId
   );
 });
 
@@ -127,6 +136,20 @@ export const MessageList = memo(({
   flatListRef,
 }) => {
   const isLoadingMoreRef = useRef(false);
+  const [activeSwipeId, setActiveSwipeId] = useState(null);
+
+  // Обработчик начала свайпа
+  const handleSwipeStart = useCallback((messageId) => {
+    setActiveSwipeId(messageId);
+  }, []);
+
+  // Обработчик завершения свайпа
+  const handleSwipeEnd = useCallback((messageId) => {
+    setActiveSwipeId((currentId) => {
+      // Сбрасываем только если это тот же элемент
+      return currentId === messageId ? null : currentId;
+    });
+  }, []);
   
   // Стабильный стиль контента списка
   const listContentStyle = useMemo(() => [
@@ -184,6 +207,9 @@ export const MessageList = memo(({
         onCancelMessage={() => onCancelMessage?.(item)}
         isRetrying={isRetrying}
         onSenderNamePress={onSenderNamePress}
+        activeSwipeId={activeSwipeId}
+        onSwipeStart={handleSwipeStart}
+        onSwipeEnd={handleSwipeEnd}
       />
     );
   }, [
@@ -212,6 +238,9 @@ export const MessageList = memo(({
     onRetryMessage,
     onCancelMessage,
     onSenderNamePress,
+    activeSwipeId,
+    handleSwipeStart,
+    handleSwipeEnd,
   ]);
   
   // Стабильный keyExtractor
@@ -225,6 +254,7 @@ export const MessageList = memo(({
     selectedSize: selectedMessages.size,
     highlightedId: highlightedMessageId,
     pressedId: pressedMessageId,
+    activeSwipeId,
     // Хэш реакций для обнаружения изменений
     reactionsHash: messages.map(m => `${m.id}:${m._reactionsUpdated || 0}`).join(',')
   }), [
@@ -232,6 +262,7 @@ export const MessageList = memo(({
     selectedMessages.size,
     highlightedMessageId,
     pressedMessageId,
+    activeSwipeId,
     messages
   ]);
   

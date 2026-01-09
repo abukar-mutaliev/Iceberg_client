@@ -16,7 +16,7 @@ const getDevelopmentPrefix = () => {
 export const linkingConfig = {
     prefixes: [
         'iceberg://',
-        'http://212.67.11.134:5000',
+        getBaseUrl(),
         ...__DEV__ ? [getDevelopmentPrefix()].filter(Boolean) : [],
     ],
     config: {

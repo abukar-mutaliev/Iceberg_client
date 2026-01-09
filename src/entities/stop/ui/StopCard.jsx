@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useMemo, useState } from 'react';
 import { View, Text, Image, StyleSheet, Pressable, TouchableOpacity, Modal, Linking, Platform, ActivityIndicator } from 'react-native';
 import { Color, Border, FontFamily, FontSize } from '@app/styles/GlobalStyles';
-import { getBaseUrl } from '@shared/api/api';
+import { getImageUrl } from '@shared/api/api';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
 const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
@@ -93,15 +93,9 @@ const formatFriendlyTime = (startTime, endTime) => {
 const getPhotoUrl = (photoPath) => {
     if (!photoPath) return null;
     if (typeof photoPath !== 'string') return photoPath.uri;
-    // Если URL уже полный, возвращаем его как есть
-    if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) {
-        // Возвращаем URL как есть, без замены https на http
-        return photoPath;
-    }
-    const baseUrl = getBaseUrl();
-    // Убираем ведущий слеш если есть и добавляем /uploads/
-    const cleanPath = photoPath.replace(/^\/+/, '');
-    return `${baseUrl}/uploads/${cleanPath}`;
+    // Всегда используем getImageUrl для нормализации URL (включая замену старых IP-адресов)
+    // getImageUrl умеет обрабатывать как относительные, так и полные URL
+    return getImageUrl(photoPath);
 };
 
 // Модальное окно выбора способа связи

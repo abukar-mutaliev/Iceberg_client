@@ -5,7 +5,7 @@
 
 import { createSelector } from '@reduxjs/toolkit';
 import { ProductReturnStatus, UrgencyLevel } from '../lib/constants';
-import { getBaseUrl } from '@shared/api/api';
+import { getImageUrl } from '@shared/api/api';
 
 // ==================== БАЗОВЫЕ СЕЛЕКТОРЫ ====================
 
@@ -288,14 +288,7 @@ export const selectSelectedReturnIds = (state) =>
 const formatImageUrl = (imagePath) => {
   if (!imagePath) return null;
   
-  // Если уже полный URL
-  if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-    return imagePath;
-  }
-  
-  // Используем базовый URL из конфигурации API
-  const baseUrl = getBaseUrl();
-  return `${baseUrl}/uploads/${imagePath}`;
+  return getImageUrl(imagePath);
 };
 
 /**

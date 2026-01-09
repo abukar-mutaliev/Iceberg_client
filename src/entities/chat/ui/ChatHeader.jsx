@@ -2,7 +2,7 @@ import React, {useState} from 'react';
 import {View, Text, TouchableOpacity, Image, Modal, Dimensions, StyleSheet} from 'react-native';
 import {useSelector, useDispatch} from 'react-redux';
 import {CommonActions} from '@react-navigation/native';
-import {getBaseUrl} from '@shared/api/api';
+import {getImageUrl} from '@shared/api/api';
 import {formatLastSeen, isUserOnline} from '@shared/utils/dateUtils';
 import {MenuDotsIcon} from '@shared/ui/Icon/MenuDotsIcon';
 import {deleteRoom, leaveRoom} from '@entities/chat/model/slice';
@@ -357,15 +357,8 @@ export const ChatHeader = ({route, navigation}) => {
     const getAvatarUri = () => {
         if (!chatPartnerAvatar || typeof chatPartnerAvatar !== 'string') return null;
 
-        if (chatPartnerAvatar.startsWith('http')) {
-            return chatPartnerAvatar;
-        }
-
-        const cleaned = String(chatPartnerAvatar)
-            .replace(/^\\+/g, '')
-            .replace(/^\/+/, '')
-            .replace(/^uploads\/?/, '');
-        return `${getBaseUrl()}/uploads/${cleaned}`;
+        // Используем централизованную функцию с нормализацией URL
+        return getImageUrl(chatPartnerAvatar);
     };
 
     const avatarUri = getAvatarUri();

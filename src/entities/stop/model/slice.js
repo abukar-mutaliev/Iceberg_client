@@ -121,12 +121,17 @@ export const fetchDriverStops = createAsyncThunk(
 
 export const createStop = createAsyncThunk(
     'stop/createStop',
-    async (stopData, { rejectWithValue }) => {
+    async (stopData, { rejectWithValue, dispatch }) => {
         try {
             const formData = new FormData();
+            
+            // Извлекаем onRetry callback если есть
+            const onRetryCallback = stopData.onRetry;
+            const actualStopData = { ...stopData };
+            delete actualStopData.onRetry;
 
             // Добавляем данные остановки в FormData
-            for (const [key, value] of Object.entries(stopData)) {
+            for (const [key, value] of Object.entries(actualStopData)) {
                 if (key !== 'photo' && value !== null && value !== undefined) {
                     // Если это массив products, преобразуем в JSON строку
                     if (key === 'products' && Array.isArray(value)) {
@@ -138,11 +143,11 @@ export const createStop = createAsyncThunk(
             }
 
             // Если есть фото, добавляем его
-            if (stopData.photo instanceof Object && stopData.photo !== null) {
-                formData.append('photo', stopData.photo);
+            if (actualStopData.photo instanceof Object && actualStopData.photo !== null) {
+                formData.append('photo', actualStopData.photo);
             }
 
-            const response = await stopApi.createStop(formData);
+            const response = await stopApi.createStop(formData, onRetryCallback);
             return response.data.status === 'success' ? response.data.data : response.data;
         } catch (error) {
             console.error('Ошибка создания остановки:', error);

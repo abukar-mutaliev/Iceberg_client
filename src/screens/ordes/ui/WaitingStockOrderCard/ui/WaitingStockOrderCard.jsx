@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { formatAmount, formatOrderNumber, getStatusLabel } from "@entities/order/lib/utils";
-import { getBaseUrl } from "@shared/api/api";
+import { getImageUrl } from "@shared/api/api";
 
 const { width } = Dimensions.get('window');
 
@@ -92,7 +92,7 @@ export const WaitingStockOrderCard = ({
                 </View>
                 {items.slice(0, 3).map((item, index) => {
                     const imageUrl = item.product?.images?.[0] 
-                        ? `${getBaseUrl()}/uploads/${item.product.images[0].replace(/\\/g, '/')}`
+                        ? getImageUrl(item.product.images[0])
                         : null;
                     
                     return (

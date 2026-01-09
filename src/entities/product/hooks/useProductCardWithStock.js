@@ -1,16 +1,13 @@
 import { useCallback, useMemo } from 'react';
 import { useCartProduct } from '@entities/cart';
 import { useProductStock } from '@entities/warehouse';
-import { getBaseUrl } from '@shared/api/api';
+import { getUploadsBaseUrl } from '@shared/api/api';
 
 // Дефолтное изображение
 const DEFAULT_PRODUCT_IMAGE = null;
 
-// Базовый URL сервера для изображений
-const getImageBaseUrl = () => {
-    const baseUrl = getBaseUrl();
-    return baseUrl ? `${baseUrl}/uploads/` : 'http://212.67.11.134:5000/uploads/';
-};
+// Базовый URL сервера для изображений (используем централизованную функцию)
+const getImageBaseUrl = getUploadsBaseUrl;
 
 /**
  * Расширенный хук для карточки продукта с поддержкой складов

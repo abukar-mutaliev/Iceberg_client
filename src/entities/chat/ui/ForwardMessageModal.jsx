@@ -11,9 +11,10 @@ import {
     Image,
 } from 'react-native';
 import { useSelector } from 'react-redux';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import ChatApi from '@entities/chat/api/chatApi';
-import { getBaseUrl } from '@shared/api/api';
+import { getImageUrl } from '@shared/api/api';
 import { selectRoomsList } from '@entities/chat/model/selectors';
 
 export const ForwardMessageModal = ({ visible, onClose, onForward, message }) => {
@@ -23,11 +24,20 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
     const [searchedUsers, setSearchedUsers] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
 
+    const insets = useSafeAreaInsets();
     const rooms = useSelector(selectRoomsList);
     const currentUserId = useSelector((state) => state.auth?.user?.id);
     const currentUserRole = useSelector((state) => state.auth?.user?.role);
     const currentUser = useSelector((state) => state.auth?.user);
     const participantsById = useSelector((s) => s.chat?.participants?.byUserId || {});
+    
+    const footerStyle = useMemo(() => ({
+        paddingHorizontal: 16,
+        paddingTop: 12,
+        paddingBottom: Math.max(12, insets.bottom + 8),
+        borderTopWidth: 1,
+        borderTopColor: '#E0E0E0',
+    }), [insets.bottom]);
 
     // Функция для преобразования пути в абсолютный URL
     const toAbsoluteUri = (raw) => {
@@ -35,7 +45,7 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
         if (raw.startsWith('http')) return raw;
         let path = raw.replace(/^\\+/g, '').replace(/^\/+/, '');
         path = path.replace(/^uploads\/?/, '');
-        return `${getBaseUrl()}/uploads/${path}`;
+        return getImageUrl(path);
     };
 
     // Функция для получения аватара комнаты (аналогично ChatListScreen)
@@ -560,7 +570,7 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
                     />
 
                     {/* Кнопка отправки */}
-                    <View style={styles.footer}>
+                    <View style={[styles.footer, footerStyle]}>
                         <TouchableOpacity
                             style={[
                                 styles.forwardButton,

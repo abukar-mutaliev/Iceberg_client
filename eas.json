@@ -18,7 +18,7 @@
         "developmentClient": false
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://212.67.11.134:5000",
+        "EXPO_PUBLIC_API_URL": "http://85.192.33.223:5000",
         "NODE_ENV": "production",
         "EXPO_PUBLIC_BUILD_TYPE": "standalone",
         "EXPO_DEBUG": "false",
@@ -47,7 +47,7 @@
       },
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://212.67.11.134:5000",
+        "EXPO_PUBLIC_API_URL": "http://85.192.33.223:5000",
         "NODE_ENV": "development",
         "EXPO_DEBUG": "true",
         "FORCE_SYSTEM_FONTS": "true",
@@ -68,7 +68,7 @@
         "developmentClient": false
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://212.67.11.134:5000",
+        "EXPO_PUBLIC_API_URL": "http://85.192.33.223:5000",
         "NODE_ENV": "production",
         "EXPO_USE_CLEARTEXT_TRAFFIC": "true",
         "EXPO_PUBLIC_BUILD_TYPE": "preview",
@@ -97,7 +97,7 @@
         "developmentClient": false
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://212.67.11.134:5000",
+        "EXPO_PUBLIC_API_URL": "http://85.192.33.223:5000",
         "NODE_ENV": "production",
         "EXPO_USE_CLEARTEXT_TRAFFIC": "true",
         "EXPO_PUBLIC_BUILD_TYPE": "preview-debug",
@@ -122,7 +122,7 @@
         "developmentClient": false
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://212.67.11.134:5000",
+        "EXPO_PUBLIC_API_URL": "http://85.192.33.223:5000",
         "NODE_ENV": "production",
         "EXPO_PUBLIC_BUILD_TYPE": "production",
         "EXPO_PUSH_TOKEN_ENABLED": "true",
@@ -148,7 +148,7 @@
         "developmentClient": false
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://212.67.11.134:5000",
+        "EXPO_PUBLIC_API_URL": "http://85.192.33.223:5000",
         "NODE_ENV": "production",
         "EXPO_PUBLIC_BUILD_TYPE": "internal-testing",
         "EXPO_PUSH_TOKEN_ENABLED": "true",

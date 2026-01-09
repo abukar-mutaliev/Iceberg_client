@@ -1,5 +1,6 @@
 // Альтернативное решение с использованием SVG иконок для лучшего выравнивания
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
+import { getImageUrl } from '@shared/api/api';
 import {
     View,
     Modal,
@@ -48,6 +49,12 @@ export const FeedbackPhotoViewerModal = ({
                                              visible = false,
                                              onClose,
                                          }) => {
+    // Нормализуем URL фотографий (заменяем старый IP на текущий базовый URL)
+    const normalizedPhotos = useMemo(() => {
+        if (!photos || !Array.isArray(photos)) return [];
+        return photos.map(photo => getImageUrl(photo) || photo).filter(Boolean);
+    }, [photos]);
+
     const [currentIndex, setCurrentIndex] = useState(initialIndex);
     const [statusBarHidden, setStatusBarHidden] = useState(false);
 
@@ -130,7 +137,7 @@ export const FeedbackPhotoViewerModal = ({
 
     // Переход к следующему фото
     const nextPhoto = () => {
-        if (currentIndex < photos.length - 1) {
+        if (currentIndex < normalizedPhotos.length - 1) {
             flatListRef.current?.scrollToIndex({
                 index: currentIndex + 1,
                 animated: true,
@@ -258,7 +265,7 @@ export const FeedbackPhotoViewerModal = ({
                 {/* Счетчик фотографий */}
                 <View style={styles.counterContainer}>
                     <Text style={styles.counterText}>
-                        {currentIndex + 1} / {photos.length}
+                        {currentIndex + 1} / {normalizedPhotos.length}
                     </Text>
                 </View>
 
@@ -266,7 +273,7 @@ export const FeedbackPhotoViewerModal = ({
                 {Platform.OS === 'android' ? (
                     <GestureFlatList
                         ref={flatListRef}
-                        data={photos}
+                        data={normalizedPhotos}
                         horizontal
                         pagingEnabled
                         bounces={false}
@@ -299,7 +306,7 @@ export const FeedbackPhotoViewerModal = ({
                 ) : (
                     <FlatList
                         ref={flatListRef}
-                        data={photos}
+                        data={normalizedPhotos}
                         horizontal
                         pagingEnabled
                         bounces={false}
@@ -332,7 +339,7 @@ export const FeedbackPhotoViewerModal = ({
                 )}
 
                 {/* Кнопки навигации (только если фотографий больше одной) */}
-                {photos.length > 1 && (
+                {normalizedPhotos.length > 1 && (
                     <>
                         {/* Кнопка "Назад" с SVG иконкой */}
                         {currentIndex > 0 && (
