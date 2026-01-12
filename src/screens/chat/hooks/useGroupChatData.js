@@ -108,13 +108,49 @@ export const useGroupChatData = (roomId) => {
     return currentParticipant?.role === 'ADMIN' || currentParticipant?.role === 'OWNER';
   }, [currentParticipant]);
 
+  // Проверка, является ли пользователь менеджером
+  const isManager = useMemo(() => {
+    if (!currentUser || currentUser.role !== 'EMPLOYEE') return false;
+    const processingRole = currentUser?.employee?.processingRole || currentUser?.profile?.processingRole;
+    const isManagerResult = processingRole === 'MANAGER';
+    
+    if (__DEV__ && currentUser.role === 'EMPLOYEE') {
+      console.log('[useGroupChatData] Manager check:', {
+        role: currentUser.role,
+        employee: !!currentUser.employee,
+        processingRole,
+        isManager: isManagerResult,
+        employeeData: currentUser.employee
+      });
+    }
+    
+    return isManagerResult;
+  }, [currentUser]);
+
   const canSendMessages = useMemo(() => {
     if (!roomData) return true;
     const type = String(roomData.type || '').toUpperCase().trim();
-    if (type === 'BROADCAST') return isSuperAdmin || isAdmin;
-    if (type === 'GROUP' && roomData.isLocked === true) return isAdmin;
-    return true;
-  }, [roomData, isSuperAdmin, isAdmin]);
+    
+    let result = true;
+    if (type === 'BROADCAST') {
+      result = isSuperAdmin || isAdmin || isManager;
+    } else if (type === 'GROUP' && roomData.isLocked === true) {
+      result = isAdmin || isManager;
+    }
+    
+    if (__DEV__) {
+      console.log('[useGroupChatData] canSendMessages check:', {
+        type,
+        isLocked: roomData.isLocked,
+        isSuperAdmin,
+        isAdmin,
+        isManager,
+        result
+      });
+    }
+    
+    return result;
+  }, [roomData, isSuperAdmin, isAdmin, isManager]);
 
   return {
     messages,

@@ -1,5 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" 
-          xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
   <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
   <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
@@ -28,14 +27,14 @@
   </queries>
   <application android:name=".MainApplication" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="true" android:theme="@style/AppTheme" android:supportsRtl="true" android:enableOnBackInvokedCallback="false" android:requestLegacyExternalStorage="true" android:usesCleartextTraffic="true" android:resizeableActivity="true">
     <!-- 
-      Override ML Kit Barcode Scanner orientation restriction for Android 16+ compatibility 
+      Android 16+ compatibility: Override ML Kit Barcode Scanner orientation restriction
       Google Play требует удаления ограничений на изменение размера и ориентации
       для устройств с большим экраном (складные телефоны, планшеты)
     -->
     <activity
         android:name="com.google.mlkit.vision.codescanner.internal.GmsBarcodeScanningDelegateActivity"
         tools:node="merge"
-        tools:replace="android:screenOrientation"
+        tools:replace="android:screenOrientation,android:resizeableActivity"
         android:screenOrientation="unspecified"
         android:resizeableActivity="true"
         android:exported="false" />
@@ -49,7 +48,7 @@
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATE_URL" android:value="https://u.expo.dev/934456aa-74ef-4c35-844b-aa0c0c2899f3"/>
-    <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode|smallestScreenSize" android:launchMode="singleTask" android:windowSoftInputMode="adjustPan|stateHidden" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:resizeableActivity="true">
+    <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode|smallestScreenSize" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize|stateHidden" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:resizeableActivity="true">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>
         <category android:name="android.intent.category.LAUNCHER"/>

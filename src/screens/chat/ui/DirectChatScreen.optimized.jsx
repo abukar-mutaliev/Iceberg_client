@@ -3,7 +3,7 @@ import { View, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from 'react-redux';
 import { ChatBackground } from '@entities/chat/ui/ChatBackground';
-import { Composer } from '@entities/chat/ui/Composer';
+import { Composer } from '@/entities/chat/ui/Composer/Composer';
 import { TypingIndicator } from '@entities/chat';
 import { MessageList } from './components/MessageList';
 import { ChatModals } from './components/ChatModals';

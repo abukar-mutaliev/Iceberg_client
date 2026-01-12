@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, ScrollView, SafeAreaView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Text, ScrollView, SafeAreaView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useFocusEffect } from '@react-navigation/native';
+import * as Location from 'expo-location';
+import { Ionicons } from '@expo/vector-icons';
 
 import { Color, FontFamily } from '@app/styles/GlobalStyles';
 import {
@@ -44,10 +46,11 @@ export const AddStopScreen = ({ navigation, route }) => {
     const [formSubmitted, setFormSubmitted] = useState(false);
     const [mapModalVisible, setMapModalVisible] = useState(false);
     const [isLocationLoading, setIsLocationLoading] = useState(false);
+    const [isGettingCurrentLocation, setIsGettingCurrentLocation] = useState(false);
     const [locationData, setLocationData] = useState({
         mapRegion: {
-            latitude: 55.751244,
-            longitude: 37.618423,
+            latitude: 43.12,
+            longitude: 45.0,
             latitudeDelta: 0.01,
             longitudeDelta: 0.01,
         },
@@ -221,14 +224,65 @@ export const AddStopScreen = ({ navigation, route }) => {
         }
     }, []);
 
+    const handleGetCurrentLocation = useCallback(async () => {
+        if (isGettingCurrentLocation) return;
+
+        try {
+            setIsGettingCurrentLocation(true);
+
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert(
+                    'Требуется разрешение',
+                    'Для определения текущего местоположения необходим доступ к геолокации'
+                );
+                return;
+            }
+
+            const location = await Location.getCurrentPositionAsync({
+                accuracy: Location.Accuracy.Balanced
+            });
+
+            const { latitude, longitude } = location.coords;
+            const coordinates = `${latitude},${longitude}`;
+
+            setLocationData(prev => ({
+                ...prev,
+                mapLocation: coordinates,
+                markerPosition: { latitude, longitude },
+                mapRegion: {
+                    ...prev.mapRegion,
+                    latitude,
+                    longitude
+                }
+            }));
+
+            handleLocationUpdate(coordinates);
+
+        } catch (error) {
+            Alert.alert('Ошибка', 'Не удалось определить текущее местоположение');
+        } finally {
+            setIsGettingCurrentLocation(false);
+        }
+    }, [isGettingCurrentLocation, handleLocationUpdate]);
+
     // MapContent компонент вынесен за пределы условного return для соблюдения правил хуков
     const MapContent = React.memo(({ 
         locationData, 
         setLocationData, 
         handleMapCancel, 
-        handleLocationConfirm 
+        handleLocationConfirm,
+        onGetCurrentLocation,
+        isGettingCurrentLocation
     }) => {
         const mapRef = useRef(null);
+        
+        // Анимируем карту к новому региону при изменении
+        useEffect(() => {
+            if (mapRef.current && locationData.mapRegion) {
+                mapRef.current.animateToRegion(locationData.mapRegion, 500);
+            }
+        }, [locationData.mapRegion]);
         
         return (
             <View style={mapStyles.container}>
@@ -244,10 +298,28 @@ export const AddStopScreen = ({ navigation, route }) => {
                     </View>
                 </TouchableOpacity>
 
+                {/* Кнопка определения текущего местоположения */}
+                <TouchableOpacity
+                    style={mapStyles.locationButton}
+                    onPress={onGetCurrentLocation}
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    disabled={isGettingCurrentLocation}
+                >
+                    <View style={mapStyles.locationButtonCircle}>
+                        {isGettingCurrentLocation ? (
+                            <ActivityIndicator size="small" color={Color.primary || '#3B43A2'} />
+                        ) : (
+                            <Ionicons name="locate" size={24} color={Color.primary || '#3B43A2'} />
+                        )}
+                    </View>
+                </TouchableOpacity>
+
                 <MapView
                     ref={mapRef}
                     style={mapStyles.map}
                     initialRegion={locationData.mapRegion}
+                    region={locationData.mapRegion}
                     onPress={(e) => setLocationData(prev => ({
                         ...prev,
                         markerPosition: e.nativeEvent.coordinate
@@ -349,6 +421,8 @@ export const AddStopScreen = ({ navigation, route }) => {
                     setLocationData={setLocationData}
                     handleMapCancel={handleMapCancel}
                     handleLocationConfirm={handleLocationConfirm}
+                    onGetCurrentLocation={handleGetCurrentLocation}
+                    isGettingCurrentLocation={isGettingCurrentLocation}
                 />
             </ReusableModal>
         </SafeAreaView>
@@ -405,6 +479,28 @@ const mapStyles = StyleSheet.create({
         fontSize: 24,
         color: '#333',
         fontWeight: '600',
+    },
+    locationButton: {
+        position: 'absolute',
+        top: 20,
+        right: 20,
+        zIndex: 10,
+    },
+    locationButtonCircle: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+        elevation: 5,
     },
     map: {
         width: '100%',

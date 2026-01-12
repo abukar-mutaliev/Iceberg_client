@@ -1,0 +1,2 @@
+export { ProcessingRoleAssignment } from './ProcessingRoleAssignment';
+

@@ -161,7 +161,9 @@ export const UsersManagementScreen = () => {
 
     // Обработчик отправки формы изменения роли
     const handleRoleSubmit = (userId, newRole, userData) => {
-        updateUserRole(userId, { newRole, ...userData })
+        const submitData = { newRole, ...userData };
+        console.log('[UsersManagementScreen] Отправка данных изменения роли:', { userId, newRole, userData, submitData });
+        updateUserRole(userId, submitData)
             .then(() => {
                 setRoleModalVisible(false);
                 setSelectedUser(null);

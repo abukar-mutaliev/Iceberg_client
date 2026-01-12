@@ -53,11 +53,24 @@ export const ChatSelectionHeader = ({
           <Icon name="share" size={22} color="#333" />
         </TouchableOpacity>
 
-        {canDelete && (
-          <TouchableOpacity style={styles.iconBtn} onPress={onDelete} disabled={!canDelete}>
+        {canDelete && onDelete ? (
+          <TouchableOpacity 
+            style={styles.iconBtn} 
+            onPress={() => {
+              if (__DEV__) {
+                console.log('[ChatSelectionHeader] Delete button pressed', {
+                  canDelete,
+                  hasOnDelete: !!onDelete,
+                });
+              }
+              onDelete();
+            }}
+            disabled={false}
+            activeOpacity={0.6}
+          >
             <IconDelete width={22} height={22} color="#333" />
           </TouchableOpacity>
-        )}
+        ) : null}
       </View>
     </View>
   );

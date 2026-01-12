@@ -127,37 +127,39 @@ export const SettingsScreen = () => {
                     />
                 </TouchableOpacity>
 
-                {/* Диагностика Push-уведомлений */}
-                <TouchableOpacity
-                    style={[
-                        styles.menuItem,
-                        isPushDiagnosticPressed && styles.blueMenuItem,
-                        isDeleting && styles.disabledMenuItem
-                    ]}
-                    onPress={handlePushDiagnostic}
-                    activeOpacity={isDeleting ? 1 : 0.7}
-                    disabled={isDeleting}
-                >
-                    <View style={styles.iconContainer}>
-                        <NotificationIcon
-                            width={20}
-                            height={20}
-                            color={isPushDiagnosticPressed ? "#fff" : "#FF6B35"}
+                {/* Диагностика Push-уведомлений - только в dev режиме */}
+                {__DEV__ && (
+                    <TouchableOpacity
+                        style={[
+                            styles.menuItem,
+                            isPushDiagnosticPressed && styles.blueMenuItem,
+                            isDeleting && styles.disabledMenuItem
+                        ]}
+                        onPress={handlePushDiagnostic}
+                        activeOpacity={isDeleting ? 1 : 0.7}
+                        disabled={isDeleting}
+                    >
+                        <View style={styles.iconContainer}>
+                            <NotificationIcon
+                                width={20}
+                                height={20}
+                                color={isPushDiagnosticPressed ? "#fff" : "#FF6B35"}
+                            />
+                        </View>
+                        <Text style={[
+                            styles.menuItemText,
+                            isPushDiagnosticPressed && styles.whiteText
+                        ]}>
+                            Диагностика Push-уведомлений
+                        </Text>
+                        <RightArrowIcon
+                            style={styles.rightIcon}
+                            width={8}
+                            height={15}
+                            color={isPushDiagnosticPressed ? "#fff" : "#333"}
                         />
-                    </View>
-                    <Text style={[
-                        styles.menuItemText,
-                        isPushDiagnosticPressed && styles.whiteText
-                    ]}>
-                        Диагностика Push-уведомлений
-                    </Text>
-                    <RightArrowIcon
-                        style={styles.rightIcon}
-                        width={8}
-                        height={15}
-                        color={isPushDiagnosticPressed ? "#fff" : "#333"}
-                    />
-                </TouchableOpacity>
+                    </TouchableOpacity>
+                )}
 
                 {/* Мой пароль */}
                 <TouchableOpacity

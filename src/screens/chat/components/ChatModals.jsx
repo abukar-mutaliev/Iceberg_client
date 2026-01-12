@@ -1,27 +1,25 @@
-import React, { useMemo } from 'react';
-import { Modal, TouchableOpacity, View, Text, StyleSheet } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import React from 'react';
+import { View, Modal, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { ImageViewerModal } from '@shared/ui/ImageViewerModal/ui/ImageViewerModal';
-import { ForwardMessageModal } from '@entities/chat/ui/ForwardMessageModal';
-import { ReactionPicker } from '@entities/chat/ui/ReactionPicker';
-import { FullEmojiPicker } from '@entities/chat/ui/FullEmojiPicker';
+import { ForwardMessageModal, ReactionPicker, FullEmojiPicker } from '@entities/chat';
 
-/**
- * Компонент, объединяющий все модальные окна чата
- */
 export const ChatModals = ({
   // Image Viewer
   imageViewerVisible,
   selectedImageUri,
+  imageList = [],
+  currentImageIndex = 0,
   onImageViewerClose,
+  onImageIndexChange,
   
   // Menu Modal
   menuModalVisible,
   onMenuModalClose,
   onDeleteChat,
-  onLeaveGroup, // Для групповых чатов
-  showLeaveGroup = false, // Показать опцию выхода из группы
-  showDeleteGroup = false, // Показать опцию удаления группы
+  onLeaveGroup,
+  showLeaveGroup = false,
+  showDeleteGroup = false,
+  roomType, // 'GROUP', 'BROADCAST', или undefined для прямых чатов
   
   // Delete Message Modal
   deleteMessageModalVisible,
@@ -37,31 +35,48 @@ export const ChatModals = ({
   messageToForward,
   onForwardMessage,
   
-  // Reactions
+  // Reaction Picker
   reactionPickerVisible,
   reactionPickerPosition,
   onReactionPickerClose,
   onEmojiSelect,
   onShowFullEmojiPicker,
+  
+  // Full Emoji Picker
   fullEmojiPickerVisible,
   onFullEmojiPickerClose,
   onFullEmojiSelect,
 }) => {
-  const insets = useSafeAreaInsets();
-  
-  const modalContainerStyle = useMemo(() => ({
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: Math.max(16, insets.bottom + 8),
-  }), [insets.bottom]);
-  
+  // Проверяем, можно ли удалять у всех
+  const canDeleteForAll = isSuperAdmin || 
+    (messagesToDelete && messagesToDelete.length > 0 && messagesToDelete.every(msg => {
+      const messageSenderId = msg.senderId ? Number(msg.senderId) : null;
+      const normalizedCurrentUserId = currentUserId ? Number(currentUserId) : null;
+      return messageSenderId === normalizedCurrentUserId;
+    }));
+
+  // Определяем тексты для меню в зависимости от типа комнаты
+  const getLeaveText = () => {
+    if (roomType === 'BROADCAST') return 'Покинуть канал';
+    return 'Покинуть группу';
+  };
+
+  const getDeleteText = () => {
+    if (roomType === 'BROADCAST') return 'Удалить канал';
+    if (roomType === 'GROUP') return 'Удалить группу';
+    return 'Удалить чат';
+  };
+
   return (
     <>
-      {/* Image Viewer Modal */}
+      {/* Image Viewer */}
       <ImageViewerModal
         visible={imageViewerVisible}
         imageUri={selectedImageUri}
+        imageList={imageList}
+        initialIndex={currentImageIndex}
         onClose={onImageViewerClose}
+        onIndexChange={onImageIndexChange}
       />
 
       {/* Forward Message Modal */}
@@ -80,7 +95,7 @@ export const ChatModals = ({
         onShowMoreEmojis={onShowFullEmojiPicker}
         position={reactionPickerPosition}
       />
-      
+
       {/* Full Emoji Picker */}
       <FullEmojiPicker
         visible={fullEmojiPickerVisible}
@@ -91,36 +106,38 @@ export const ChatModals = ({
       {/* Menu Modal */}
       <Modal
         visible={menuModalVisible}
-        transparent
+        transparent={true}
         animationType="fade"
         onRequestClose={onMenuModalClose}
       >
         <TouchableOpacity
-          style={styles.modalOverlay}
+          style={styles.menuModalOverlay}
           activeOpacity={1}
           onPress={onMenuModalClose}
         >
-          <View style={[styles.modalContainer, modalContainerStyle]}>
-            <View style={styles.modal}>
+          <View style={styles.menuModalContainer}>
+            <View style={styles.menuModal}>
               {showLeaveGroup && onLeaveGroup && (
                 <TouchableOpacity
                   style={styles.menuItem}
                   onPress={onLeaveGroup}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.menuText}>Покинуть группу</Text>
+                  <Text style={styles.menuItemText}>
+                    {getLeaveText()}
+                  </Text>
                 </TouchableOpacity>
               )}
               {showDeleteGroup && onDeleteChat && (
                 <>
-                  {showLeaveGroup && <View style={styles.menuDivider} />}
+                  {showLeaveGroup && onLeaveGroup && <View style={styles.menuDivider} />}
                   <TouchableOpacity
                     style={styles.menuItem}
                     onPress={onDeleteChat}
                     activeOpacity={0.7}
                   >
-                    <Text style={[styles.menuText, styles.destructive]}>
-                      Удалить {showLeaveGroup ? 'группу' : 'чат'}
+                    <Text style={[styles.menuItemText, styles.destructiveText]}>
+                      {getDeleteText()}
                     </Text>
                   </TouchableOpacity>
                 </>
@@ -131,8 +148,8 @@ export const ChatModals = ({
                   onPress={onDeleteChat}
                   activeOpacity={0.7}
                 >
-                  <Text style={[styles.menuText, styles.destructive]}>
-                    Удалить чат
+                  <Text style={[styles.menuItemText, styles.destructiveText]}>
+                    {getDeleteText()}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -144,47 +161,40 @@ export const ChatModals = ({
       {/* Delete Message Modal */}
       <Modal
         visible={deleteMessageModalVisible}
-        transparent
+        transparent={true}
         animationType="fade"
         onRequestClose={onDeleteMessageClose}
       >
         <TouchableOpacity
-          style={styles.modalOverlay}
+          style={styles.menuModalOverlay}
           activeOpacity={1}
           onPress={onDeleteMessageClose}
         >
-          <View style={[styles.modalContainer, modalContainerStyle]}>
-            <View style={styles.modal}>
+          <View style={styles.menuModalContainer}>
+            <View style={styles.menuModal}>
               <TouchableOpacity
                 style={styles.menuItem}
-                onPress={() => onDeleteMessage(false)}
+                onPress={() => onDeleteMessage && onDeleteMessage(false)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.menuText}>Удалить у меня</Text>
+                <Text style={styles.menuItemText}>
+                  Удалить у меня
+                </Text>
               </TouchableOpacity>
-              {(() => {
-                const canDeleteForAll = isSuperAdmin || 
-                  (messagesToDelete.length > 0 && messagesToDelete.every(msg => 
-                    Number(msg.senderId) === Number(currentUserId)
-                  ));
-                
-                if (!canDeleteForAll) return null;
-                
-                return (
-                  <>
-                    <View style={styles.menuDivider} />
-                    <TouchableOpacity
-                      style={styles.menuItem}
-                      onPress={() => onDeleteMessage(true)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.menuText, styles.destructive]}>
-                        Удалить у всех
-                      </Text>
-                    </TouchableOpacity>
-                  </>
-                );
-              })()}
+              {canDeleteForAll && (
+                <>
+                  <View style={styles.menuDivider} />
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={() => onDeleteMessage && onDeleteMessage(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.menuItemText, styles.destructiveText]}>
+                      Удалить у всех
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
           </View>
         </TouchableOpacity>
@@ -194,15 +204,15 @@ export const ChatModals = ({
 };
 
 const styles = StyleSheet.create({
-  modalOverlay: {
+  menuModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
   },
-  modalContainer: {
+  menuModalContainer: {
     padding: 16,
   },
-  modal: {
+  menuModal: {
     backgroundColor: '#fff',
     borderRadius: 12,
     overflow: 'hidden',
@@ -213,7 +223,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
-  menuText: {
+  menuItemText: {
     fontSize: 16,
     color: '#333',
   },
@@ -221,7 +231,7 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#E5E5EA',
   },
-  destructive: {
+  destructiveText: {
     color: '#ff3b30',
   },
 });

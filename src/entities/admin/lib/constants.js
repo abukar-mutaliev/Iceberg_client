@@ -4,7 +4,8 @@ export const PROCESSING_ROLES = {
   PACKER: 'PACKER',
   QUALITY_CHECKER: 'QUALITY_CHECKER',
   COURIER: 'COURIER',
-  SUPERVISOR: 'SUPERVISOR'
+  SUPERVISOR: 'SUPERVISOR',
+  MANAGER: 'MANAGER'
 };
 
 // Лейблы для должностей
@@ -13,7 +14,8 @@ export const PROCESSING_ROLE_LABELS = {
   [PROCESSING_ROLES.PACKER]: 'Упаковщик',
   [PROCESSING_ROLES.QUALITY_CHECKER]: 'Контролер качества',
   [PROCESSING_ROLES.COURIER]: 'Курьер',
-  [PROCESSING_ROLES.SUPERVISOR]: 'Начальник смены'
+  [PROCESSING_ROLES.SUPERVISOR]: 'Начальник смены',
+  [PROCESSING_ROLES.MANAGER]: 'Менеджер'
 };
 
 // Цвета для должностей
@@ -22,7 +24,8 @@ export const PROCESSING_ROLE_COLORS = {
   [PROCESSING_ROLES.PACKER]: '#28a745',
   [PROCESSING_ROLES.QUALITY_CHECKER]: '#dc3545',
   [PROCESSING_ROLES.COURIER]: '#fd7e14',
-  [PROCESSING_ROLES.SUPERVISOR]: '#6f42c1'
+  [PROCESSING_ROLES.SUPERVISOR]: '#6f42c1',
+  [PROCESSING_ROLES.MANAGER]: '#007bff'
 };
 
 // Иконки для должностей
@@ -31,7 +34,8 @@ export const PROCESSING_ROLE_ICONS = {
   [PROCESSING_ROLES.PACKER]: '📋',
   [PROCESSING_ROLES.QUALITY_CHECKER]: '✅',
   [PROCESSING_ROLES.COURIER]: '🚚',
-  [PROCESSING_ROLES.SUPERVISOR]: '👨‍💼'
+  [PROCESSING_ROLES.SUPERVISOR]: '👨‍💼',
+  [PROCESSING_ROLES.MANAGER]: '💼'
 };
 
 // Описания должностей
@@ -40,5 +44,6 @@ export const PROCESSING_ROLE_DESCRIPTIONS = {
   [PROCESSING_ROLES.PACKER]: 'Упаковывает собранные товары',
   [PROCESSING_ROLES.QUALITY_CHECKER]: 'Проверяет качество упаковки',
   [PROCESSING_ROLES.COURIER]: 'Доставляет заказы клиентам',
-  [PROCESSING_ROLES.SUPERVISOR]: 'Управляет процессом обработки заказов'
+  [PROCESSING_ROLES.SUPERVISOR]: 'Управляет процессом обработки заказов',
+  [PROCESSING_ROLES.MANAGER]: 'Управляет складом и районом'
 }; 

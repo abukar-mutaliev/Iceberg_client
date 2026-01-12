@@ -47,7 +47,9 @@ const withAndroidWindowSoftInputMode = (config) => {
 
 /**
  * Плагин для настройки edge-to-edge и совместимости с Android 15+
- * Отключает использование deprecated Status Bar APIs через React Native
+ * Решает проблемы Google Play:
+ * 1. Deprecated Status Bar APIs (через ProGuard rules)
+ * 2. Ограничения ориентации ML Kit barcode scanner для Android 16+
  */
 const withAndroid15Compatibility = (config) => {
   return withAndroidManifest(config, (config) => {
@@ -70,14 +72,40 @@ const withAndroid15Compatibility = (config) => {
     }
 
     if (!application.activity) {
-      return config;
+      // Создаем массив активностей, если его нет
+      application.activity = [];
     }
 
     const activities = Array.isArray(application.activity)
       ? application.activity
       : [application.activity];
 
-    // Обновляем MainActivity для поддержки изменения размера
+    // ИСПРАВЛЕНИЕ 1: Override ML Kit barcode scanner для поддержки больших экранов
+    // Убираем ограничение screenOrientation="PORTRAIT"
+    const mlKitActivityName = 'com.google.mlkit.vision.codescanner.internal.GmsBarcodeScanningDelegateActivity';
+    const mlKitActivity = activities.find(
+      (activity) => activity.$?.['android:name'] === mlKitActivityName
+    );
+
+    if (!mlKitActivity) {
+      // Добавляем override для ML Kit activity
+      application.activity.push({
+        $: {
+          'android:name': mlKitActivityName,
+          'android:screenOrientation': 'unspecified',
+          'android:resizeableActivity': 'true',
+          'android:exported': 'false',
+        },
+      });
+      console.log('✅ [Android 15/16 Plugin] Добавлен override для ML Kit barcode scanner');
+    } else {
+      // Обновляем существующий
+      mlKitActivity.$['android:screenOrientation'] = 'unspecified';
+      mlKitActivity.$['android:resizeableActivity'] = 'true';
+      console.log('✅ [Android 15/16 Plugin] Обновлен ML Kit barcode scanner');
+    }
+
+    // ИСПРАВЛЕНИЕ 2: Обновляем MainActivity для поддержки изменения размера
     activities.forEach((activity) => {
       if (activity.$ && activity.$['android:name'] === '.MainActivity') {
         // Добавляем configChanges для правильной обработки изменений ориентации и размера
@@ -88,6 +116,9 @@ const withAndroid15Compatibility = (config) => {
         requiredChanges.forEach(change => configChangesSet.add(change));
         
         activity.$['android:configChanges'] = Array.from(configChangesSet).join('|');
+        
+        // Добавляем поддержку изменения размера
+        activity.$['android:resizeableActivity'] = 'true';
       }
     });
 

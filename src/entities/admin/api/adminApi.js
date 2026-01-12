@@ -101,6 +101,38 @@ export const adminApi = {
   // Удаление пользователя
   async deleteUser(userId) {
     return createProtectedRequest('delete', `/api/admin/staff/${userId}`);
+  },
+
+  // ===== МЕТОДЫ ДЛЯ РАБОТЫ С ЗАЯВКАМИ НА ПРИСОЕДИНЕНИЕ =====
+
+  // Получение списка заявок
+  async getStaffApplications(options = {}) {
+    const { page = 1, limit = 20, status, desiredRole, search } = options;
+    const params = new URLSearchParams({
+      page: page.toString(),
+      limit: limit.toString()
+    });
+    
+    if (status) params.append('status', status);
+    if (desiredRole) params.append('desiredRole', desiredRole);
+    if (search) params.append('search', search);
+    
+    return createProtectedRequest('get', `/api/admin/staff-applications?${params}`);
+  },
+
+  // Получение статистики по заявкам
+  async getStaffApplicationsStatistics() {
+    return createProtectedRequest('get', '/api/admin/staff-applications/statistics');
+  },
+
+  // Одобрение заявки
+  async approveStaffApplication(applicationId, data) {
+    return createProtectedRequest('post', `/api/admin/staff-applications/${applicationId}/approve`, data);
+  },
+
+  // Отклонение заявки
+  async rejectStaffApplication(applicationId, data) {
+    return createProtectedRequest('post', `/api/admin/staff-applications/${applicationId}/reject`, data);
   }
 };
 

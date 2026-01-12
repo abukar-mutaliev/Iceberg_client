@@ -7,7 +7,7 @@ import {StopCard} from '@entities/stop/ui/StopCard';
 import {CachedVoice} from './CachedVoice';
 import {MessageErrorActions} from './MessageErrorActions';
 import {ReplyPreview} from './ReplyPreview';
-import {MessageReactions} from './MessageReactions';
+import {MessageReactions} from './ReactionPicker/MessageReactions';
 import {getImageUrl} from '@shared/api/api';
 import {CachedImage} from './CachedImage/CachedImage';
 import ChatApi from '@entities/chat/api/chatApi';

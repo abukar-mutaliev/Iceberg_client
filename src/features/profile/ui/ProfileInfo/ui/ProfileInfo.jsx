@@ -294,7 +294,7 @@ export const ProfileInfo = ({ onProductPress }) => {
                     />
                     <CustomButton
                         title="Управление остановками"
-                        onPress={() => navigation.navigate('StopsList')}
+                        onPress={() => navigation.navigate('StopsListScreen')}
                         outlined={true}
                         color={Color.blue2}
                     />

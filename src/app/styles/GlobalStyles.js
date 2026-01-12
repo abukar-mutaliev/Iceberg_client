@@ -57,6 +57,7 @@ export const Color = {
     secondary: "#F2F2F7",
     error: "#FF3B30",
     success: "#34C759",
+    green: "#34C759",
     warning: "#FFCC00",
     orange: "#fd7e14",
     textPrimary: "#000000",

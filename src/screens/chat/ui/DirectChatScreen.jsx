@@ -43,11 +43,11 @@ import {
     TypingIndicator, 
     useTypingIndicatorHeight
 } from '@entities/chat';
-import {Composer} from '@entities/chat/ui/Composer';
+import {Composer} from '@entities/chat/ui/Composer/Composer';
 import {ChatBackground} from '@entities/chat/ui/ChatBackground';
 import {useChatSocketActions} from '@entities/chat/hooks/useChatSocketActions';
-import {ChatHeader} from '@entities/chat/ui/ChatHeader';
-import {ChatSelectionHeader} from '@entities/chat/ui/ChatSelectionHeader';
+import {ChatHeader} from '@entities/chat/ui/Header/ChatHeader/ChatHeader';
+import {ChatSelectionHeader} from '@entities/chat/ui/Header/ChatSelectionHeader';
 import {useCachedMessages, useMediaPreload} from '@entities/chat/hooks/useChatCache';
 
 import {getBaseUrl} from '@shared/api/api';
@@ -82,6 +82,8 @@ export const DirectChatScreen = ({route, navigation}) => {
     // UI State
     const [imageViewerVisible, setImageViewerVisible] = useState(false);
     const [selectedImageUri, setSelectedImageUri] = useState(null);
+    const [imageList, setImageList] = useState([]);
+    const [currentImageIndex, setCurrentImageIndex] = useState(0);
     const [menuModalVisible, setMenuModalVisible] = useState(false);
     const [isSelectionMode, setIsSelectionMode] = useState(false);
     const [selectedMessages, setSelectedMessages] = useState(new Set());
@@ -1244,14 +1246,49 @@ export const DirectChatScreen = ({route, navigation}) => {
     }, []);
 
     const handleImagePress = useCallback((imageUri) => {
-        setSelectedImageUri(imageUri);
+        // Собираем все изображения из всех сообщений
+        const allImages = [];
+        
+        if (messages && Array.isArray(messages)) {
+            messages.forEach((message) => {
+                if (message.type === 'IMAGE' && message.attachments && Array.isArray(message.attachments)) {
+                    message.attachments.forEach((attachment) => {
+                        if (attachment.type === 'IMAGE' && attachment.path) {
+                            allImages.push(attachment.path);
+                        }
+                    });
+                }
+            });
+        }
+        
+        // Если массив пуст, используем переданный imageUri
+        if (allImages.length === 0 && imageUri) {
+            allImages.push(imageUri);
+        }
+        
+        // Находим индекс текущего изображения
+        const index = allImages.findIndex(uri => uri === imageUri);
+        const currentIndex = index >= 0 ? index : 0;
+        
+        setImageList(allImages);
+        setCurrentImageIndex(currentIndex);
+        setSelectedImageUri(imageUri || allImages[currentIndex] || null);
         setImageViewerVisible(true);
-    }, []);
+    }, [messages]);
 
     const handleImageViewerClose = useCallback(() => {
         setImageViewerVisible(false);
         setSelectedImageUri(null);
+        setImageList([]);
+        setCurrentImageIndex(0);
     }, []);
+    
+    const handleImageIndexChange = useCallback((index) => {
+        if (imageList[index]) {
+            setCurrentImageIndex(index);
+            setSelectedImageUri(imageList[index]);
+        }
+    }, [imageList]);
 
     const handleSenderNamePress = useCallback((senderId) => {
         if (!senderId || senderId === currentUserId) return;
@@ -1460,7 +1497,10 @@ export const DirectChatScreen = ({route, navigation}) => {
             <ImageViewerModal
                 visible={imageViewerVisible}
                 imageUri={selectedImageUri}
+                imageList={imageList}
+                initialIndex={currentImageIndex}
                 onClose={handleImageViewerClose}
+                onIndexChange={handleImageIndexChange}
             />
 
             <ForwardMessageModal

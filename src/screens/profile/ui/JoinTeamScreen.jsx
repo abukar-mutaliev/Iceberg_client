@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -8,7 +8,11 @@ import {
     SafeAreaView,
     Modal,
     FlatList,
-    ActivityIndicator
+    ActivityIndicator,
+    KeyboardAvoidingView,
+    Platform,
+    Keyboard,
+    TouchableWithoutFeedback
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
@@ -39,11 +43,16 @@ export const JoinTeamScreen = () => {
     
     const { districts, isLoading: districtsLoading } = useSelector(state => state.district);
 
+    const scrollViewRef = useRef(null);
+
     const [selectedRole, setSelectedRole] = useState('');
     const [selectedDistricts, setSelectedDistricts] = useState([]);
     const [showRoleModal, setShowRoleModal] = useState(false);
     const [showDistrictsModal, setShowDistrictsModal] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [keyboardVisible, setKeyboardVisible] = useState(false);
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
+    const [focusedField, setFocusedField] = useState(null);
     const [applicationData, setApplicationData] = useState({
         reason: '',
         experience: '',
@@ -56,6 +65,60 @@ export const JoinTeamScreen = () => {
             dispatch(fetchAllDistricts());
         }
     }, [dispatch, districts.length]);
+
+    // Отслеживаем состояние клавиатуры
+    useEffect(() => {
+        const keyboardDidShowListener = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+            (event) => {
+                const height = event.endCoordinates.height;
+                setKeyboardHeight(height);
+                setKeyboardVisible(true);
+            }
+        );
+        
+        const keyboardDidHideListener = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+            () => {
+                setKeyboardVisible(false);
+                setKeyboardHeight(0);
+            }
+        );
+
+        return () => {
+            keyboardDidShowListener.remove();
+            keyboardDidHideListener.remove();
+        };
+    }, []);
+
+    // Храним позиции полей ввода
+    const inputPositions = useRef({});
+
+    // Функция для сохранения позиции поля
+    const handleInputLayout = (fieldName) => (event) => {
+        const { y } = event.nativeEvent.layout;
+        inputPositions.current[fieldName] = y;
+    };
+
+    // Функция для обработки фокуса на поле
+    const handleInputFocus = (fieldName) => (event) => {
+        setFocusedField(fieldName);
+        
+        // Для Android: прокручиваем к полю после появления клавиатуры
+        if (Platform.OS === 'android') {
+            setTimeout(() => {
+                if (scrollViewRef.current && keyboardVisible) {
+                    // Прокручиваем к концу формы, чтобы нижние поля были видны
+                    scrollViewRef.current.scrollToEnd({ animated: true });
+                }
+            }, 350);
+        }
+    };
+
+    // Обработчик потери фокуса
+    const handleInputBlur = () => {
+        setFocusedField(null);
+    };
 
     // Обработчик выбора роли
     const handleRoleSelect = (roleValue) => {
@@ -210,83 +273,162 @@ export const JoinTeamScreen = () => {
                 <View style={styles.headerRight} />
             </View>
 
-            <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-                <View style={styles.formContainer}>
-                    <Text style={styles.sectionTitle}>Выберите желаемую роль</Text>
-                    <Text style={styles.sectionDescription}>
-                        Выберите роль, на которую хотите подать заявку
-                    </Text>
-
-                    {/* Селектор роли */}
-                    <TouchableOpacity
-                        style={styles.selector}
-                        onPress={() => setShowRoleModal(true)}
-                    >
-                        <Text style={[styles.selectorText, !selectedRole && styles.placeholderText]}>
-                            {getSelectedRoleLabel()}
-                        </Text>
-                        <Text style={styles.selectorIcon}>▼</Text>
-                    </TouchableOpacity>
-
-                    {/* Селектор районов (показывается для водителей и сотрудников) */}
-                    {shouldShowDistrictsSelection && (
-                        <>
-                            <Text style={[styles.sectionTitle, styles.marginTop]}>Районы работы</Text>
+            <KeyboardAvoidingView
+                style={styles.keyboardAvoidingView}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                enabled={Platform.OS === 'ios'}
+                keyboardVerticalOffset={0}
+            >
+                <ScrollView
+                    ref={scrollViewRef}
+                    style={styles.content}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode={Platform.OS === 'android' ? 'none' : 'on-drag'}
+                    contentContainerStyle={[
+                        styles.scrollViewContent,
+                        { 
+                            paddingBottom: keyboardVisible 
+                                ? (Platform.OS === 'android' 
+                                    ? (keyboardHeight > 0 ? keyboardHeight + normalize(150) : normalize(400))
+                                    : normalize(200))
+                                : normalize(100) 
+                        }
+                    ]}
+                    bounces={true}
+                    scrollEnabled={true}
+                    nestedScrollEnabled={true}
+                >
+                    <View style={styles.formContainer}>
+                            <Text style={styles.sectionTitle}>Выберите желаемую роль</Text>
                             <Text style={styles.sectionDescription}>
-                                Выберите районы, в которых готовы работать
+                                Выберите роль, на которую хотите подать заявку
                             </Text>
 
+                            {/* Селектор роли */}
                             <TouchableOpacity
                                 style={styles.selector}
-                                onPress={() => setShowDistrictsModal(true)}
+                                onPress={() => setShowRoleModal(true)}
                             >
-                                <View style={styles.selectorContent}>
-                                    <MapPinIcon size={20} color={Color.textSecondary} />
-                                    <Text style={[
-                                        styles.selectorText,
-                                        styles.selectorTextWithIcon,
-                                        selectedDistricts.length === 0 && styles.placeholderText
-                                    ]}>
-                                        {getSelectedDistrictsText()}
-                                    </Text>
-                                </View>
+                                <Text style={[styles.selectorText, !selectedRole && styles.placeholderText]}>
+                                    {getSelectedRoleLabel()}
+                                </Text>
                                 <Text style={styles.selectorIcon}>▼</Text>
                             </TouchableOpacity>
 
-                            {selectedDistricts.length > 0 && (
-                                <Text style={styles.selectedCount}>
-                                    Выбрано районов: {selectedDistricts.length}
-                                </Text>
+                            {/* Селектор районов (показывается для водителей и сотрудников) */}
+                            {shouldShowDistrictsSelection && (
+                                <>
+                                    <Text style={[styles.sectionTitle, styles.marginTop]}>Районы работы</Text>
+                                    <Text style={styles.sectionDescription}>
+                                        Выберите районы, в которых готовы работать
+                                    </Text>
+
+                                    <TouchableOpacity
+                                        style={styles.selector}
+                                        onPress={() => setShowDistrictsModal(true)}
+                                    >
+                                        <View style={styles.selectorContent}>
+                                            <MapPinIcon size={20} color={Color.textSecondary} />
+                                            <Text style={[
+                                                styles.selectorText,
+                                                styles.selectorTextWithIcon,
+                                                selectedDistricts.length === 0 && styles.placeholderText
+                                            ]}>
+                                                {getSelectedDistrictsText()}
+                                            </Text>
+                                        </View>
+                                        <Text style={styles.selectorIcon}>▼</Text>
+                                    </TouchableOpacity>
+
+                                    {selectedDistricts.length > 0 && (
+                                        <Text style={styles.selectedCount}>
+                                            Выбрано районов: {selectedDistricts.length}
+                                        </Text>
+                                    )}
+                                </>
                             )}
-                        </>
-                    )}
 
-                    {/* Дополнительные поля */}
-                    <Text style={[styles.sectionTitle, styles.marginTop]}>Дополнительная информация</Text>
-                    
-                    <View style={styles.inputContainer}>
-                        <Text style={styles.inputLabel}>Причина желания работать с нами</Text>
-                        <CustomTextInput
-                            style={styles.textArea}
-                            value={applicationData.reason}
-                            onChangeText={(text) => setApplicationData(prev => ({ ...prev, reason: text }))}
-                            placeholder="Расскажите, почему хотите работать в нашей команде"
-                            multiline
-                            numberOfLines={3}
-                        />
+                            {/* Дополнительные поля */}
+                            <Text style={[styles.sectionTitle, styles.marginTop]}>Дополнительная информация</Text>
+                            
+                            <View 
+                                style={styles.inputContainer}
+                                onLayout={handleInputLayout('reason')}
+                            >
+                                <Text style={styles.inputLabel}>Причина желания работать с нами</Text>
+                                <CustomTextInput
+                                    style={[
+                                        styles.textArea,
+                                        focusedField === 'reason' && styles.textAreaFocused
+                                    ]}
+                                    value={applicationData.reason}
+                                    onChangeText={(text) => setApplicationData(prev => ({ ...prev, reason: text }))}
+                                    onFocus={handleInputFocus('reason')}
+                                    onBlur={handleInputBlur}
+                                    placeholder="Расскажите, почему хотите работать в нашей команде"
+                                    multiline
+                                    numberOfLines={3}
+                                />
+                            </View>
+
+                            <View 
+                                style={styles.inputContainer}
+                                onLayout={handleInputLayout('experience')}
+                            >
+                                <Text style={styles.inputLabel}>Опыт работы (необязательно)</Text>
+                                <CustomTextInput
+                                    style={[
+                                        styles.textArea,
+                                        focusedField === 'experience' && styles.textAreaFocused
+                                    ]}
+                                    value={applicationData.experience}
+                                    onChangeText={(text) => setApplicationData(prev => ({ ...prev, experience: text }))}
+                                    onFocus={handleInputFocus('experience')}
+                                    onBlur={handleInputBlur}
+                                    placeholder="Опишите ваш опыт работы в данной сфере"
+                                    multiline
+                                    numberOfLines={3}
+                                />
+                            </View>
+
+                            <View 
+                                style={styles.inputContainer}
+                                onLayout={handleInputLayout('additionalInfo')}
+                            >
+                                <Text style={styles.inputLabel}>Дополнительная информация (необязательно)</Text>
+                                <CustomTextInput
+                                    style={[
+                                        styles.textArea,
+                                        focusedField === 'additionalInfo' && styles.textAreaFocused
+                                    ]}
+                                    value={applicationData.additionalInfo}
+                                    onChangeText={(text) => setApplicationData(prev => ({ ...prev, additionalInfo: text }))}
+                                    onFocus={handleInputFocus('additionalInfo')}
+                                    onBlur={handleInputBlur}
+                                    placeholder="Любая дополнительная информация о себе"
+                                    multiline
+                                    numberOfLines={3}
+                                />
+                            </View>
+                            
+                            {/* Дополнительный отступ внизу для Android при открытой клавиатуре */}
+                            {Platform.OS === 'android' && keyboardVisible && (
+                                <View style={styles.androidKeyboardSpacer} />
+                            )}
                     </View>
-                </View>
-            </ScrollView>
+                </ScrollView>
 
-            <View style={styles.footer}>
-                <CustomButton
-                    title={isSubmitting ? "Отправка..." : "Отправить заявку"}
-                    onPress={handleSubmit}
-                    disabled={isSubmitting || !selectedRole}
-                    color={Color.blue2}
-                    activeColor="#FFFFFF"
-                />
-            </View>
+                <View style={styles.footer}>
+                    <CustomButton
+                        title={isSubmitting ? "Отправка..." : "Отправить заявку"}
+                        onPress={handleSubmit}
+                        disabled={isSubmitting || !selectedRole}
+                        color={Color.blue2}
+                        activeColor="#FFFFFF"
+                    />
+                </View>
+            </KeyboardAvoidingView>
 
             {/* Модальное окно выбора роли */}
             <Modal
@@ -383,6 +525,9 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#FFFFFF',
     },
+    keyboardAvoidingView: {
+        flex: 1,
+    },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -403,6 +548,9 @@ const styles = StyleSheet.create({
     },
     content: {
         flex: 1,
+    },
+    scrollViewContent: {
+        flexGrow: 1,
     },
     formContainer: {
         padding: normalize(20),
@@ -476,6 +624,36 @@ const styles = StyleSheet.create({
         minHeight: normalize(80),
         textAlignVertical: 'top',
         paddingTop: normalize(12),
+        paddingHorizontal: normalize(12),
+        paddingBottom: normalize(12),
+        borderWidth: 1.5,
+        borderColor: '#E5E5E5',
+        borderRadius: normalize(12),
+        backgroundColor: '#FAFAFA',
+        fontSize: normalizeFont(16),
+        color: Color.dark,
+        fontFamily: FontFamily.sFProText,
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 1,
+        },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+        elevation: 2,
+    },
+    textAreaFocused: {
+        borderColor: Color.blue2,
+        borderWidth: 2,
+        backgroundColor: '#FFFFFF',
+        shadowColor: Color.blue2,
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.15,
+        shadowRadius: 4,
+        elevation: 4,
     },
     footer: {
         padding: normalize(20),
@@ -631,5 +809,13 @@ const styles = StyleSheet.create({
     checkedCheckbox: {
         backgroundColor: Color.blue2,
         borderColor: Color.blue2,
+    },
+    keyboardSpacer: {
+        height: normalize(200),
+        minHeight: normalize(200),
+    },
+    androidKeyboardSpacer: {
+        height: normalize(250),
+        minHeight: normalize(250),
     },
 }); 

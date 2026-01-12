@@ -3,7 +3,7 @@ import { View, StyleSheet, KeyboardAvoidingView, Platform, Text } from 'react-na
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from 'react-redux';
 import { ChatBackground } from '@entities/chat/ui/ChatBackground';
-import { Composer } from '@entities/chat/ui/Composer';
+import { Composer } from '@entities/chat/ui/Composer/Composer';
 import { TypingIndicator } from '@entities/chat';
 import { Ionicons } from '@expo/vector-icons';
 import { MessageList } from '../components/MessageList';
@@ -103,8 +103,11 @@ export const GroupChatScreen = ({ route, navigation }) => {
   const {
     imageViewerVisible,
     selectedImageUri,
+    imageList,
+    currentImageIndex,
     handleImagePress,
     handleImageViewerClose,
+    handleImageIndexChange,
     menuModalVisible,
     handleMenuPress,
     closeMenuModal,
@@ -420,7 +423,7 @@ export const GroupChatScreen = ({ route, navigation }) => {
             onToggleSelection={toggleMessageSelection}
             onOpenProduct={handleOpenProduct}
             onOpenStop={handleOpenStop}
-            onImagePress={handleImagePress}
+            onImagePress={(imageUri) => handleImagePress(imageUri, messages)}
             onAvatarPress={() => {}} // В групповых чатах аватар не кликабелен
             onContactDriver={() => {}} // Не используется в групповых чатах
             onReply={handleReply}
@@ -474,13 +477,17 @@ export const GroupChatScreen = ({ route, navigation }) => {
       <ChatModals
         imageViewerVisible={imageViewerVisible}
         selectedImageUri={selectedImageUri}
+        imageList={imageList}
+        currentImageIndex={currentImageIndex}
         onImageViewerClose={handleImageViewerClose}
+        onImageIndexChange={handleImageIndexChange}
         menuModalVisible={menuModalVisible}
         onMenuModalClose={closeMenuModal}
         onDeleteChat={handleDeleteGroup}
         onLeaveGroup={!isAdmin ? handleLeaveGroup : undefined}
         showLeaveGroup={!isAdmin}
         showDeleteGroup={isAdmin || isSuperAdmin}
+        roomType={roomData?.type}
         deleteMessageModalVisible={deleteMessageModalVisible}
         messagesToDelete={messagesToDelete}
         onDeleteMessageClose={closeDeleteMessageModal}

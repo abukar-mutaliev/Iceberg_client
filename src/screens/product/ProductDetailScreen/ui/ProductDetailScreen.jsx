@@ -22,6 +22,7 @@ import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
 import { ReusableModal } from '@shared/ui/Modal/ui/ReusableModal';
 import { RepostProductContent } from '@widgets/product/ProductContent/ui/RepostProductContent';
+import { ImageViewerModal } from '@shared/ui/ImageViewerModal/ui/ImageViewerModal';
 
 import {
     StaticBackgroundGradient,
@@ -54,6 +55,9 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     const { showError, showWarning } = useToast();
     const { showError: showCustomError, showInfo } = useCustomAlert();
     const [isRepostModalVisible, setIsRepostModalVisible] = useState(false);
+    const [isImageViewerVisible, setIsImageViewerVisible] = useState(false);
+    const [imageViewerImages, setImageViewerImages] = useState([]);
+    const [imageViewerInitialIndex, setImageViewerInitialIndex] = useState(0);
     const rooms = useSelector(selectRoomsList) || [];
     const loadMoreCalledRef = useRef(false);
 
@@ -289,6 +293,32 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         }
     }, [enrichedProduct, productId, selectedQuantity, isInCart, addToCart, updateQuantity, showError, showWarning]);
 
+    // Обработчик открытия изображения на весь экран
+    const handleImagePress = useCallback((images, initialIndex = 0) => {
+        if (images && images.length > 0) {
+            // Нормализуем массив изображений (преобразуем в строки URI)
+            const normalizedImages = images.map(img => {
+                if (typeof img === 'string') {
+                    return img;
+                } else if (img && img.uri) {
+                    return img.uri;
+                }
+                return null;
+            }).filter(Boolean);
+            
+            if (normalizedImages.length > 0) {
+                setImageViewerImages(normalizedImages);
+                setImageViewerInitialIndex(Math.min(initialIndex, normalizedImages.length - 1));
+                setIsImageViewerVisible(true);
+            }
+        }
+    }, []);
+
+    // Обработчик закрытия просмотра изображений
+    const handleImageViewerClose = useCallback(() => {
+        setIsImageViewerVisible(false);
+    }, []);
+
     // Обработчик репоста товара
     const handleSharePress = useCallback(() => {
         if (!isAuthenticated) {
@@ -472,9 +502,10 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 onGoBack={handleGoBack}
                 onSharePress={handleSharePress}
                 isAuthenticated={isAuthenticated}
+                onImagePress={handleImagePress}
             />
         );
-    }, [displayProduct, productImages, scrollY, handleGoBack, handleSharePress, isAuthenticated]);
+    }, [displayProduct, productImages, scrollY, handleGoBack, handleSharePress, isAuthenticated, handleImagePress]);
 
     const productContentComponent = useMemo(() => {
         if (!displayProduct?.id) return null;
@@ -734,6 +765,15 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                     />
                 </ReusableModal>
             )}
+
+            {/* Модальное окно просмотра изображений */}
+            <ImageViewerModal
+                visible={isImageViewerVisible}
+                imageList={imageViewerImages}
+                initialIndex={imageViewerInitialIndex}
+                onClose={handleImageViewerClose}
+                title={displayProduct?.name || ''}
+            />
         </View>
     );
 };

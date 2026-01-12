@@ -124,8 +124,8 @@ export default {
         },
         android: {
             package: 'com.abuingush.iceberg',
-            versionCode: 41,
-            versionName: '1.4.1',
+            versionCode: 42,
+            versionName: '1.4.2',
             icon: './assets/icon.png',
             adaptiveIcon: {
                 foregroundImage: './assets/icon.png',

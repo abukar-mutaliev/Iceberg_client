@@ -159,7 +159,8 @@ export const StopForm = memo(({
         const requiredFields = [
             address,
             selectedDistrict,
-            warehouseId,
+            // TODO: Временно убран для первой версии. Раскомментировать когда понадобится функционал выбора склада
+            // warehouseId,
             photo,
             locationData.mapLocation,
             truckModel,
@@ -183,7 +184,8 @@ export const StopForm = memo(({
     }, [
         address, 
         selectedDistrict, 
-        warehouseId, 
+        // TODO: Временно убран для первой версии
+        // warehouseId, 
         photo, 
         locationData.mapLocation, 
         truckModel, 
@@ -392,10 +394,11 @@ export const StopForm = memo(({
             isFormValid = false;
         }
 
-        if (!warehouseId) {
-            newErrors.warehouse = 'Необходимо выбрать склад';
-            isFormValid = false;
-        }
+        // TODO: Временно отключена валидация склада для первой версии. Раскомментировать когда понадобится функционал
+        // if (!warehouseId) {
+        //     newErrors.warehouse = 'Необходимо выбрать склад';
+        //     isFormValid = false;
+        // }
 
         if (!photo) {
             newErrors.photo = 'Необходимо прикрепить фотографию';
@@ -437,7 +440,8 @@ export const StopForm = memo(({
         selectedDriver,
         address,
         selectedDistrict,
-        warehouseId,
+        // TODO: Временно убран для первой версии
+        // warehouseId,
         photo,
         locationData.mapLocation,
         truckModel,
@@ -940,7 +944,8 @@ export const StopForm = memo(({
                         />
                     </FormField>
 
-                    {selectedDistrict && (
+                    {/* TODO: Временно скрыто для первой версии. Раскомментировать когда понадобится функционал выбора склада и товаров */}
+                    {false && selectedDistrict && (
                         <FormField
                             label="Склад и товары"
                             required

@@ -3,7 +3,6 @@ package com.abuingush.iceberg
 import android.os.Build
 import android.os.Bundle
 import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsControllerCompat
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
@@ -20,25 +19,13 @@ class MainActivity : ReactActivity() {
     setTheme(R.style.AppTheme);
     super.onCreate(null)
     
-    // Configure edge-to-edge for Android 15+ compatibility without using deprecated APIs
-    // Use WindowInsetsControllerCompat instead of deprecated Window.getStatusBarColor/setStatusBarColor
-    // This approach is compatible with Android 15+ edge-to-edge requirements
+    // Android 15+ Edge-to-Edge Compatibility
+    // Используем WindowCompat вместо deprecated Window.setStatusBarColor/setNavigationBarColor
+    // Это решает проблему Google Play о использовании неподдерживаемых APIs
     window?.let { window ->
-      // Включаем edge-to-edge отображение
+      // Включаем edge-to-edge режим
+      // DecorFitsSystemWindows = false означает, что контент будет рисоваться под system bars
       WindowCompat.setDecorFitsSystemWindows(window, false)
-      
-      // Используем WindowInsetsControllerCompat вместо deprecated Window APIs
-      // Это предотвращает использование getStatusBarColor, setStatusBarColor, setNavigationBarColor
-      val insetsController = WindowInsetsControllerCompat(window, window.decorView)
-      
-      // Устанавливаем светлые иконки status bar и navigation bar для светлого фона
-      // Приложение само управляет padding через React Native SafeAreaView
-      insetsController.isAppearanceLightStatusBars = true
-      insetsController.isAppearanceLightNavigationBars = true
-      
-      // Убеждаемся, что system bars прозрачны (устанавливается в styles.xml)
-      // НЕ используем window.statusBarColor или window.navigationBarColor напрямую
-      // так как эти API deprecated в Android 15+
     }
   }
 

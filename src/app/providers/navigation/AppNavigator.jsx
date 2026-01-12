@@ -51,6 +51,8 @@ import { AdminPanelScreen } from "@screens/admin/ui/AdminPanelScreen";
 import { AdminProductDetailScreen } from "@screens/admin/ui/AdminProductDetailScreen/ui/AdminProductDetailScreen";
 import { EmployeeManagementScreen } from "@screens/admin/ui/EmployeeManagementScreen";
 import { DriverManagementScreen } from "@screens/admin/ui/DriverManagementScreen";
+import { StaffApplicationsScreen } from "@screens/admin/ui/StaffApplicationsScreen";
+import { ProcessingRolesScreen } from "@screens/admin/ui/ProcessingRolesScreen";
 import { UsersManagementScreen } from "@screens/user/ui/UsersManagementScreen";
 import { UserAddScreen } from "@screens/user/ui/UserAddScreen";
 import { DistrictsManagementScreen } from "@screens/district";
@@ -700,15 +702,28 @@ const ProfileStackScreen = () => (
             component={NotificationSettings}
             options={createScreenOptions()}
         />
-        <ProfileStack.Screen
-            name="PushNotificationDiagnostic"
-            component={PushNotificationDiagnostic}
-            options={createScreenOptions()}
-        />
+        {/* Диагностический экран - только в dev режиме */}
+        {__DEV__ && (
+            <ProfileStack.Screen
+                name="PushNotificationDiagnostic"
+                component={PushNotificationDiagnostic}
+                options={createScreenOptions()}
+            />
+        )}
         <ProfileStack.Screen
             name="HelpCenter"
             component={HelpCenterScreen}
             options={createScreenOptions({ title: 'Центр помощи' })}
+        />
+        <ProfileStack.Screen
+            name="StopsListScreen"
+            component={StopsListScreen}
+            options={createScreenOptions()}
+        />
+        <ProfileStack.Screen
+            name="AddStop"
+            component={AddStopScreen}
+            options={createScreenOptions()}
         />
     </ProfileStack.Navigator>
 );
@@ -914,6 +929,16 @@ const AdminStackScreen = () => (
         <AdminStack.Screen
             name="DriverManagement"
             component={DriverManagementScreen}
+            options={createScreenOptions()}
+        />
+        <AdminStack.Screen
+            name="StaffApplications"
+            component={StaffApplicationsScreen}
+            options={createScreenOptions()}
+        />
+        <AdminStack.Screen
+            name="ProcessingRolesScreen"
+            component={ProcessingRolesScreen}
             options={createScreenOptions()}
         />
         <AdminStack.Screen

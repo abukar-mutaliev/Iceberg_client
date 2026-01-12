@@ -214,18 +214,9 @@ export const ProcessingRolesScreen = () => {
     </View>
   );
 
-  if (!accessRights.canViewProcessingRoles) {
-    return (
-      <View style={styles.accessDeniedContainer}>
-        <Text style={styles.accessDeniedText}>
-          У вас нет прав для просмотра должностей сотрудников
-        </Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.container}>
+  // Рендер заголовка списка
+  const renderListHeader = () => (
+    <>
       {/* Заголовок */}
       <View style={styles.header}>
         <Text style={styles.title}>Должности сотрудников</Text>
@@ -254,7 +245,21 @@ export const ProcessingRolesScreen = () => {
 
       {/* Статистика */}
       {renderStatistics()}
+    </>
+  );
 
+  if (!accessRights.canViewProcessingRoles) {
+    return (
+      <View style={styles.accessDeniedContainer}>
+        <Text style={styles.accessDeniedText}>
+          У вас нет прав для просмотра должностей сотрудников
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
       {/* Список сотрудников */}
       <FlatList
         data={employees}
@@ -264,6 +269,7 @@ export const ProcessingRolesScreen = () => {
         refreshControl={
           <RefreshControl refreshing={loading} onRefresh={handleRefresh} />
         }
+        ListHeaderComponent={renderListHeader}
         ListEmptyComponent={renderEmptyComponent}
         showsVerticalScrollIndicator={false}
       />
@@ -289,7 +295,8 @@ const styles = StyleSheet.create({
     padding: 20,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef'
+    borderBottomColor: '#e9ecef',
+    marginBottom: 0
   },
   title: {
     fontSize: 24,
@@ -307,7 +314,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e9ecef',
     flexDirection: 'row',
-    alignItems: 'center'
+    alignItems: 'center',
+    marginBottom: 0
   },
   searchInput: {
     flex: 1,
@@ -372,7 +380,8 @@ const styles = StyleSheet.create({
     color: '#333'
   },
   listContainer: {
-    padding: 16
+    padding: 16,
+    paddingTop: 0
   },
   employeeCard: {
     backgroundColor: '#fff',

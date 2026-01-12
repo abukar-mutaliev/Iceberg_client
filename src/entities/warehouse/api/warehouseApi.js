@@ -1,101 +1,70 @@
-import { createApiModule } from "@shared/services/ApiClient";
-
-const warehouseApi = createApiModule('/api/warehouses');
+import { createProtectedRequest } from '@shared/api/api';
 
 const WarehouseService = {
-    // Получить все склады
-    getWarehouses: (params = {}) =>
-        warehouseApi.get('', params),
+  // Получение всех складов (с фильтрацией и пагинацией)
+  async getWarehouses(params = {}) {
+    const queryString = new URLSearchParams(params).toString();
+    const url = queryString ? `/api/warehouses?${queryString}` : '/api/warehouses';
+    return createProtectedRequest('get', url);
+  },
 
-    // Получить склад по ID
-    getWarehouseById: (warehouseId) =>
-        warehouseApi.get(`/${warehouseId}`),
+  // Получение склада по ID
+  async getWarehouseById(warehouseId) {
+    return createProtectedRequest('get', `/api/warehouses/${warehouseId}`);
+  },
 
-    // Получить склады по району
-    getWarehousesByDistrict: (districtId) =>
-        warehouseApi.get(`/district/${districtId}`),
+  // Получение складов по району
+  async getWarehousesByDistrict(districtId) {
+    return createProtectedRequest('get', `/api/warehouses/district/${districtId}`);
+  },
 
-    // Получить товары на складе
-    getWarehouseProducts: (warehouseId, params = {}) =>
-        warehouseApi.get(`/${warehouseId}/products`, params),
+  // Получение товаров на складе
+  async getWarehouseProducts(warehouseId, params = {}) {
+    const queryString = new URLSearchParams(params).toString();
+    const url = queryString 
+      ? `/api/warehouses/${warehouseId}/products?${queryString}` 
+      : `/api/warehouses/${warehouseId}/products`;
+    return createProtectedRequest('get', url);
+  },
 
-    // Получить остатки товара по всем складам
-    getProductStock: (productId) =>
-        warehouseApi.get(`/product-stock/${productId}`),
+  // Получение остатков товара на всех складах
+  async getProductStock(productId) {
+    return createProtectedRequest('get', `/api/warehouses/product-stock/${productId}`);
+  },
 
-    // Создать склад (для админов)
-    createWarehouse: (data) =>
-        warehouseApi.post('', data),
+  // Поиск складов с товаром
+  async findWarehousesWithProduct(productId, params = {}) {
+    const queryString = new URLSearchParams(params).toString();
+    const url = queryString 
+      ? `/api/warehouses/find-with-product/${productId}?${queryString}` 
+      : `/api/warehouses/find-with-product/${productId}`;
+    return createProtectedRequest('get', url);
+  },
 
-    // Обновить склад (для админов)
-    updateWarehouse: (warehouseId, data) =>
-        warehouseApi.put(`/${warehouseId}`, data),
+  // Создание склада
+  async createWarehouse(data) {
+    return createProtectedRequest('post', '/api/warehouses', data);
+  },
 
-    // Удалить склад (для админов)
-    deleteWarehouse: (warehouseId) =>
-        warehouseApi.delete(`/${warehouseId}`),
+  // Обновление склада
+  async updateWarehouse(warehouseId, data) {
+    return createProtectedRequest('put', `/api/warehouses/${warehouseId}`, data);
+  },
 
-    // Добавить товар на склад
-    addProductToWarehouse: (warehouseId, data) =>
-        warehouseApi.post(`/${warehouseId}/products`, data),
+  // Удаление склада
+  async deleteWarehouse(warehouseId) {
+    return createProtectedRequest('delete', `/api/warehouses/${warehouseId}`);
+  },
 
-    // Обновить остатки товара на складе
-    updateProductStock: (warehouseId, productId, data) =>
-        warehouseApi.put(`/${warehouseId}/products/${productId}`, data),
-    
-    // Обновить остатки товара на складе по ID записи ProductStock
-    updateProductStockById: (productStockId, data) =>
-        warehouseApi.put(`/products/${productStockId}`, data),
+  // Получение складов для выбора (admin)
+  async getWarehousesForSelection() {
+    return createProtectedRequest('get', '/api/admin/warehouses/selection');
+  },
 
-    // Массовое обновление остатков
-    bulkUpdateStock: (warehouseId, products) =>
-        warehouseApi.put(`/${warehouseId}/products/bulk`, { products }),
-
-    // Получить статистику склада
-    getWarehouseStats: (warehouseId) =>
-        warehouseApi.get(`/${warehouseId}/stats`),
-
-    // Поиск складов с товаром
-    findWarehousesWithProduct: (productId, params = {}) => {
-        console.log('[WarehouseService] Вызываем findWarehousesWithProduct для товара:', productId);
-        console.log('[WarehouseService] URL:', `/find-with-product/${productId}`);
-        console.log('[WarehouseService] Params:', params);
-        return warehouseApi.get(`/find-with-product/${productId}`, params);
-    },
-
-    // ==================== Warehouse Sales & Statistics ====================
-    
-    // Получить продажи склада
-    getWarehouseSales: (warehouseId, params = {}) =>
-        warehouseApi.get(`/${warehouseId}/sales`, params),
-
-    // Создать прямую продажу
-    createDirectSale: (warehouseId, data) =>
-        warehouseApi.post(`/${warehouseId}/direct-sales`, data),
-
-    // Получить общую статистику склада
-    getWarehouseStatistics: (warehouseId, params = {}) =>
-        warehouseApi.get(`/${warehouseId}/statistics`, params),
-
-    // Получить статистику продаж склада
-    getSalesStatistics: (warehouseId, params = {}) =>
-        warehouseApi.get(`/${warehouseId}/sales/statistics`, params),
-
-    // Получить сравнительную статистику складов (только для админов)
-    getComparisonStatistics: (params = {}) =>
-        warehouseApi.get('/statistics/comparison', params),
-
-    // Обновить цену товара на складе
-    updateProductPrice: (warehouseId, productId, data) =>
-        warehouseApi.put(`/${warehouseId}/products/${productId}/price`, data),
-
-    // Массовое обновление цен товаров на складе
-    bulkUpdatePrices: (warehouseId, data) =>
-        warehouseApi.put(`/${warehouseId}/products/prices`, data),
-    
-    // Получить товары по оборачиваемости
-    getProductsByTurnover: (warehouseId, type, params = {}) =>
-        warehouseApi.get(`/${warehouseId}/products/turnover/${type}`, params)
+  // Получение информации о складе (admin)
+  async getWarehouseInfo(warehouseId) {
+    return createProtectedRequest('get', `/api/admin/warehouses/${warehouseId}/info`);
+  }
 };
 
-export default WarehouseService; 
+export default WarehouseService;

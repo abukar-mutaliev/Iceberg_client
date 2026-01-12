@@ -46,11 +46,11 @@ import {
     TypingIndicator, 
     useTypingIndicatorHeight
 } from '@entities/chat';
-import {Composer} from '@entities/chat/ui/Composer';
+import {Composer} from '@/entities/chat/ui/Composer/Composer';
 import {ChatBackground} from '@entities/chat/ui/ChatBackground';
 import {useChatSocketActions} from '@entities/chat/hooks/useChatSocketActions';
-import {ChatHeader} from '@entities/chat/ui/ChatHeader';
-import {ChatSelectionHeader} from '@entities/chat/ui/ChatSelectionHeader';
+import {ChatHeader} from '@/entities/chat/ui/Header/ChatHeader/ChatHeader';
+import {ChatSelectionHeader} from '@/entities/chat/ui/Header/ChatSelectionHeader';
 import {useCachedMessages, useMediaPreload} from '@entities/chat/hooks/useChatCache';
 import {ImageViewerModal} from '@shared/ui/ImageViewerModal/ui/ImageViewerModal';
 import {useCustomAlert} from '@shared/ui/CustomAlert/CustomAlertProvider';

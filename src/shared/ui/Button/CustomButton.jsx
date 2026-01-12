@@ -42,10 +42,11 @@ export const CustomButton = ({
             borderWidth: 0.5,
             borderColor: color,
         } : {
-            backgroundColor: isActive ? Color.blue2 : color,
+            backgroundColor: isActive ? color : color, // Используем переданный цвет
+            opacity: isActive ? 0.8 : 1, // Немного затемняем при нажатии
         },
         disabled && styles.disabledButton,
-        style,
+        style, // style prop применяется последним, перекрывая width: '100%' при необходимости
     ];
 
     const textStyles = [

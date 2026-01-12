@@ -11,6 +11,45 @@
 -keep class com.swmansion.reanimated.** { *; }
 -keep class com.facebook.react.turbomodule.** { *; }
 
+# Add any project specific keep options here:
+
+# ============================================================================
+# Android 15+ Edge-to-Edge Compatibility
+# ============================================================================
+# Решает проблему Google Play: "Используются неподдерживаемые API edge-to-edge"
+# Удаляем вызовы deprecated Status Bar APIs из React Native
+
+# Удаляем deprecated Window APIs для status/navigation bar
+# Эти методы deprecated в Android 15+ и вызывают предупреждения в Google Play
+-assumenosideeffects class android.view.Window {
+    public int getStatusBarColor() return 0;
+    public void setStatusBarColor(int);
+    public void setNavigationBarColor(int);
+}
+
+# Сохраняем современные WindowInsetsController APIs (правильный подход для Android 15+)
+-keep class androidx.core.view.WindowInsetsControllerCompat { *; }
+-keep class androidx.core.view.WindowCompat { *; }
+-keep class android.view.WindowInsetsController { *; }
+
+# Удаляем проблемные вызовы из React Native StatusBarModule
+# MainActivity использует WindowInsetsControllerCompat вместо deprecated APIs
+-assumenosideeffects class com.facebook.react.modules.statusbar.StatusBarModule {
+    *** setColor(...);
+    *** setTranslucent(...);
+}
+
+# ============================================================================
+# Google ML Kit Barcode Scanner
+# ============================================================================
+# Сохраняем ML Kit для правильной работы сканера
+-keep class com.google.mlkit.** { *; }
+-keep class com.google.android.gms.internal.mlkit** { *; }
+-dontwarn com.google.mlkit.**
+
+# ============================================================================
+# React Native и связанные библиотеки
+# ============================================================================
 # OneSignal - правила для работы с включенной минификацией
 -keep class com.onesignal.** { *; }
 -keepclassmembers class com.onesignal.** { *; }
@@ -20,28 +59,3 @@
 # React Native OneSignal
 -keep class com.geektime.rnonesignalandroid.** { *; }
 -keepclassmembers class com.geektime.rnonesignalandroid.** { *; }
-
-# Add any project specific keep options here:
-
-# Android 15+ Edge-to-Edge Compatibility
-# Удаляем вызовы deprecated Status Bar APIs из React Native StatusBar модуля
-# Это решает проблему с Google Play о использовании deprecated APIs в Android 15+
--assumenosideeffects class android.view.Window {
-    public int getStatusBarColor();
-    public void setStatusBarColor(int);
-    public void setNavigationBarColor(int);
-}
-
-# Сохраняем WindowInsetsControllerCompat - это правильный API для Android 15+
--keep class androidx.core.view.WindowInsetsControllerCompat { *; }
--keep class androidx.core.view.WindowCompat { *; }
-
-# Удаляем неиспользуемые методы из React Native StatusBar модуля
-# Наш кастомный EdgeToEdgeStatusBarModule заменяет функциональность
--assumenosideeffects class com.facebook.react.modules.statusbar.StatusBarModule {
-    *** getTypedExportedConstants(...);
-}
-
-# Google ML Kit - сохраняем для правильной работы barcode scanner
--keep class com.google.mlkit.** { *; }
--dontwarn com.google.mlkit.**

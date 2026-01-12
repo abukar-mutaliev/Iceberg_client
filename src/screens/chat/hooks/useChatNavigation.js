@@ -1,7 +1,7 @@
 import { useLayoutEffect, useEffect, useCallback } from 'react';
 import { Platform, BackHandler } from 'react-native';
-import { ChatHeader } from '@entities/chat/ui/ChatHeader';
-import { ChatSelectionHeader } from '@entities/chat/ui/ChatSelectionHeader';
+import { ChatHeader } from '@/entities/chat/ui/Header/ChatHeader/ChatHeader';
+import { ChatSelectionHeader } from '@/entities/chat/ui/Header/ChatSelectionHeader';
 
 /**
  * Хук для управления навигацией и header чата
@@ -30,6 +30,16 @@ export const useChatNavigation = ({
           const msg = messages.find(m => m.id === msgId);
           return msg && canDeleteMessage(msg);
         });
+      
+      if (__DEV__) {
+        console.log('[useChatNavigation] Selection mode active', {
+          selectedCount: selectedMessages.size,
+          canReply,
+          canDelete: canDeleteAll,
+          hasOnDelete: !!onDelete,
+          selectedMessages: Array.from(selectedMessages),
+        });
+      }
       
       navigation.setOptions({
         headerShown: true,

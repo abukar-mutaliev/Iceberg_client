@@ -212,6 +212,15 @@ export const AdminPanelScreen = () => {
 
     const isAdmin = currentUser?.role === 'ADMIN';
     const isEmployee = currentUser?.role === 'EMPLOYEE';
+    const isSuperAdmin = currentUser?.admin?.isSuperAdmin || false;
+
+    // Отладка для проверки структуры currentUser
+    console.log('AdminPanel currentUser:', {
+        role: currentUser?.role,
+        hasAdmin: !!currentUser?.admin,
+        isSuperAdmin: currentUser?.admin?.isSuperAdmin,
+        hasProfile: !!currentUser?.profile
+    });
 
     const panelTitle = isAdmin
         ? "Панель Администратора"
@@ -324,8 +333,16 @@ export const AdminPanelScreen = () => {
                             title="Районы и склады водителей"
                             onPress={handleDriverManagementPress}
                         />
+                        {/* Управление заявками на присоединение - только для суперадминов */}
+                        {isSuperAdmin && (
+                            <AdminMenuItem
+                                icon={<IconUser color={Color.orange} />}
+                                title="Заявки на присоединение"
+                                onPress={() => navigation.navigate('StaffApplications')}
+                            />
+                        )}
                         {/* Управление должностями - только для суперадминов */}
-                        {currentUser?.profile?.isSuperAdmin && (
+                        {isSuperAdmin && (
                             <AdminMenuItem
                                 icon={<IconSettings color={Color.orange} />}
                                 title="Должности сотрудников"

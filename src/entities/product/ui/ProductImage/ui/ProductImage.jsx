@@ -1,5 +1,5 @@
 import React, {useRef, useState, useEffect} from "react";
-import {Dimensions, Image, StyleSheet, View, Text} from "react-native";
+import {Dimensions, Image, StyleSheet, View, Text, TouchableOpacity} from "react-native";
 import PagerView from "react-native-pager-view";
 import {CustomSliderIndicator} from "@shared/ui/CustomSliderIndicator";
 
@@ -8,7 +8,7 @@ const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-export const ProductImage = ({ images, style }) => {
+export const ProductImage = ({ images, style, onImagePress }) => {
     // Улучшена обработка изображений
     const [loadingError, setLoadingError] = useState({});
     const [activeIndex, setActiveIndex] = useState(0);
@@ -37,6 +37,12 @@ export const ProductImage = ({ images, style }) => {
         setLoadingError(prev => ({...prev, [index]: true}));
     };
 
+    const handleImagePress = (index) => {
+        if (onImagePress && imageArray.length > 0) {
+            onImagePress(imageArray, index);
+        }
+    };
+
     const renderImages = () => {
         return imageArray.map((item, index) => {
             const imageSource = typeof item === 'string'
@@ -45,23 +51,29 @@ export const ProductImage = ({ images, style }) => {
                 
             return (
                 <View key={`image-${index}`} style={styles.slide}>
-                    {loadingError[index] ? (
-                        <View style={styles.errorContainer}>
+                    <TouchableOpacity
+                        style={styles.imageTouchable}
+                        activeOpacity={0.9}
+                        onPress={() => handleImagePress(index)}
+                    >
+                        {loadingError[index] ? (
+                            <View style={styles.errorContainer}>
+                                <Image
+                                    source={placeholderImage}
+                                    style={styles.placeholderImage}
+                                    resizeMode="contain"
+                                />
+                            </View>
+                        ) : (
                             <Image
-                                source={placeholderImage}
-                                style={styles.placeholderImage}
-                                resizeMode="contain"
+                                source={imageSource}
+                                style={styles.fullImage}
+                                resizeMode="cover"
+                                defaultSource={placeholderImage}
+                                onError={() => handleImageError(index)}
                             />
-                        </View>
-                    ) : (
-                        <Image
-                            source={imageSource}
-                            style={styles.fullImage}
-                            resizeMode="cover"
-                            defaultSource={placeholderImage}
-                            onError={() => handleImageError(index)}
-                        />
-                    )}
+                        )}
+                    </TouchableOpacity>
                 </View>
             );
         });
@@ -93,7 +105,7 @@ export const ProductImage = ({ images, style }) => {
             </PagerView>
 
             {imageArray.length > 1 && (
-                <View style={styles.indicatorContainer}>
+                <View style={styles.indicatorContainer} pointerEvents="none">
                     <CustomSliderIndicator
                         totalItems={imageArray.length}
                         activeIndex={activeIndex}
@@ -126,6 +138,11 @@ const styles = StyleSheet.create({
         height: 350,
         margin: 0,
         padding: 0,
+    },
+    imageTouchable: {
+        flex: 1,
+        width: '100%',
+        height: '100%',
     },
     fullImage: {
         position: 'absolute',
