@@ -30,6 +30,8 @@ export const useWarehouseDetail = (warehouseId, {
 } = {}) => {
     const dispatch = useDispatch();
     const isMountedRef = useRef(true);
+    const hasLoadedProductsRef = useRef(false);
+    const hasLoadedWarehouseRef = useRef(false);
 
     // Валидация ID
     const validWarehouseId = warehouseId ? parseInt(warehouseId, 10) : null;
@@ -113,32 +115,41 @@ export const useWarehouseDetail = (warehouseId, {
 
     // Автоматическая загрузка при монтировании
     useEffect(() => {
-        if (autoLoad && validWarehouseId) {
-            const shouldLoadWarehouse = !warehouse || 
-                (warehouse.id !== validWarehouseId);
-            
-            const shouldLoadProducts = loadProducts && 
-                !warehouseProducts.length && 
-                !warehouseProductsLoading;
+        if (!autoLoad || !validWarehouseId) return;
 
-            if (shouldLoadWarehouse) {
-                loadWarehouse();
-            }
-
-            if (shouldLoadProducts && warehouse) {
-                loadWarehouseProducts();
-            }
+        const shouldLoadWarehouse = !warehouse || 
+            (warehouse.id !== validWarehouseId);
+        
+        if (shouldLoadWarehouse && !hasLoadedWarehouseRef.current && !currentWarehouseLoading) {
+            hasLoadedWarehouseRef.current = true;
+            loadWarehouse().catch(() => {
+                // При ошибке сбрасываем флаг для возможности повторной попытки
+                hasLoadedWarehouseRef.current = false;
+            });
         }
-    }, [
-        autoLoad,
-        validWarehouseId,
-        warehouse,
-        warehouseProducts.length,
-        warehouseProductsLoading,
-        loadProducts,
-        loadWarehouse,
-        loadWarehouseProducts
-    ]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoLoad, validWarehouseId, currentWarehouseLoading]);
+
+    // Загрузка товаров после загрузки склада
+    useEffect(() => {
+        if (!loadProducts || !validWarehouseId || !warehouse || warehouse.id !== validWarehouseId) return;
+        if (hasLoadedProductsRef.current || warehouseProductsLoading || warehouseProducts.length > 0) return;
+        
+        hasLoadedProductsRef.current = true;
+        loadWarehouseProducts().catch((error) => {
+            // При ошибке 429 не сбрасываем флаг, чтобы не повторять запросы
+            if (error?.response?.status !== 429) {
+                hasLoadedProductsRef.current = false;
+            }
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [warehouse?.id, loadProducts, validWarehouseId, warehouseProductsLoading, warehouseProducts.length]);
+
+    // Сброс флагов при изменении warehouseId
+    useEffect(() => {
+        hasLoadedWarehouseRef.current = false;
+        hasLoadedProductsRef.current = false;
+    }, [validWarehouseId]);
 
     // Определяем состояние загрузки
     const isLoading = currentWarehouseLoading && !warehouse;

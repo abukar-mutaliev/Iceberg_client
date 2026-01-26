@@ -269,7 +269,7 @@ export const FavouritesScreen = ({ navigation }) => {
                                 description="Добавляйте товары в избранное, чтобы они отображались здесь"
                                 icon="heart-outline"
                                 buttonText="Перейти к каталогу"
-                                onButtonPress={() => navigation.navigate('Catalog')}
+                                onButtonPress={() => navigation.navigate('CatalogModal', { fromScreen: 'Favourites' })}
                                 titleStyle={{ color: '#000000' }} // или { color: 'black' }
                             />
                         )

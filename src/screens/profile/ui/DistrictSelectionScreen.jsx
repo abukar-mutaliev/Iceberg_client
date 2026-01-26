@@ -5,9 +5,9 @@ import {
     StyleSheet,
     FlatList,
     TouchableOpacity,
-    SafeAreaView,
     ActivityIndicator
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import { normalize, normalizeFont } from '@shared/lib/normalize';

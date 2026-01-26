@@ -5,11 +5,12 @@ import {
     StyleSheet,
     ActivityIndicator,
     FlatList,
-    SafeAreaView,
-    Pressable
+    Pressable,
+    BackHandler
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
-import { useRoute } from '@react-navigation/native';
+import { useRoute, useFocusEffect } from '@react-navigation/native';
 import {fetchProducts, resetCurrentProduct} from '@entities/product/model/slice';
 import {
     selectProducts,
@@ -26,6 +27,7 @@ const defaultProductImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg
 
 export const CatalogScreen = ({ navigation }) => {
     const dispatch = useDispatch();
+    const route = useRoute();
     const products = useSelector(selectProducts);
     const isLoading = useSelector(selectProductsLoading);
     const error = useSelector(selectProductsError);
@@ -35,6 +37,45 @@ export const CatalogScreen = ({ navigation }) => {
     useEffect(() => {
         dispatch(fetchProducts());
     }, [dispatch]);
+
+    const fromScreen = route?.params?.fromScreen;
+
+    const handleBackPress = React.useCallback(() => {
+        if (navigation.canGoBack()) {
+            navigation.goBack();
+            return;
+        }
+
+        if (fromScreen === 'Favourites') {
+            navigation.navigate('Main', {
+                screen: 'ProfileTab',
+                params: { screen: 'Favourites' }
+            });
+            return;
+        }
+
+        navigation.navigate('Main', {
+            screen: 'MainTab',
+            params: { screen: 'Main' }
+        });
+    }, [fromScreen, navigation]);
+
+    useFocusEffect(
+        React.useCallback(() => {
+            const onBackPress = () => {
+                handleBackPress();
+                return true;
+            };
+
+            const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+
+            return () => {
+                if (backHandler && typeof backHandler.remove === 'function') {
+                    backHandler.remove();
+                }
+            };
+        }, [handleBackPress])
+    );
 
     useEffect(() => {
         if (products && products.length > 0) {
@@ -87,10 +128,6 @@ export const CatalogScreen = ({ navigation }) => {
         });
     };
 
-    const handleBackPress = () => {
-        navigation.navigate('MainTab');
-    };
-
     const renderProduct = ({ item }) => {
         const adaptedProduct = adaptProduct(item);
         return (
@@ -118,9 +155,9 @@ export const CatalogScreen = ({ navigation }) => {
     }
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
             <View style={styles.header}>
-                    <BackButton />
+                <BackButton onPress={handleBackPress} />
                 <Text style={styles.title}>Каталог</Text>
             </View>
 
@@ -153,7 +190,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 16,
-        paddingTop: 22,
+        paddingTop: 0,
         paddingBottom: 5,
     },
     backButton: {

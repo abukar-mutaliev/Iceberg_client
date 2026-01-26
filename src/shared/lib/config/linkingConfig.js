@@ -5,8 +5,11 @@ import { getBaseUrl } from '@shared/api/api';
 
 const getDevelopmentPrefix = () => {
     if (__DEV__) {
+        // Для Expo dev server используем динамическое определение IP
+        // но для deep linking API URL всегда используем production сервер
         if (Platform.OS === 'android') {
-            return 'exp://192.168.1.226:8081';
+            // Используем localhost для Android, так как Expo Go сам определяет IP
+            return 'exp://localhost:8081';
         }
         return 'exp://localhost:8081';
     }
@@ -16,7 +19,7 @@ const getDevelopmentPrefix = () => {
 export const linkingConfig = {
     prefixes: [
         'iceberg://',
-        getBaseUrl(),
+        'http://85.192.33.223:5000',
         ...__DEV__ ? [getDevelopmentPrefix()].filter(Boolean) : [],
     ],
     config: {

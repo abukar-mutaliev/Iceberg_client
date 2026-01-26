@@ -14,13 +14,21 @@ export const selectRoomsList = createSelector(
     (state) => state.chat?.messages, // Добавляем сообщения для отслеживания статуса
     (state) => state.auth?.user?.id,
     (state) => state.products?.byId || {}, // Добавляем товары для PRODUCT чатов
+    (state) => state.chat?.deletedRoomIds || [], // Добавляем список удаленных комнат
   ],
-  (roomIds, roomsById, unreadByRoomId, participantsById, messages, currentUserId, productsById) => {
+  (roomIds, roomsById, unreadByRoomId, participantsById, messages, currentUserId, productsById, deletedRoomIds) => {
     if (!roomIds || !roomsById) return EMPTY_ARRAY;
 
     return roomIds.map((id) => {
       // Защита от undefined/null ID
       if (!id) return null;
+      
+      // КРИТИЧНО: Фильтруем удаленные комнаты из списка
+      // Это предотвращает показ чатов, удаленных другим участником
+      if (deletedRoomIds.includes(id)) {
+        return null;
+      }
+      
       const room = roomsById[id];
       if (!room) return null;
       

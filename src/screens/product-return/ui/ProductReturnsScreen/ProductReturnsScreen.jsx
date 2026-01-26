@@ -6,9 +6,8 @@ import {
   FlatList,
   ActivityIndicator,
   RefreshControl,
-  Pressable,
-  SafeAreaView,
-} from 'react-native';
+  Pressable} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Color, FontFamily, FontSize, Border, Shadow, Padding } from '@app/styles/GlobalStyles';
 import { normalize } from '@shared/lib/normalize';

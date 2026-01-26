@@ -16,6 +16,8 @@ const ProfileFormComponent = ({
                                   onScroll,
                                   editableFields = {},
                                   toggleFieldEditable,
+                                  bottomInset = 0,
+                                  registerSaveHandler,
                               }) => {
     const fieldsConfig = useMemo(() =>
             roleFieldsConfig[userType] || roleFieldsConfig.client,
@@ -163,6 +165,16 @@ const ProfileFormComponent = ({
         }
     }, [validateForm, formValues, onSave, userType]);
 
+    useEffect(() => {
+        if (!registerSaveHandler) {
+            return undefined;
+        }
+
+        registerSaveHandler(handleSave);
+
+        return () => registerSaveHandler(null);
+    }, [registerSaveHandler, handleSave]);
+
     const sortedFields = useMemo(() => {
         return Object.keys(fieldsConfig)
             .map(key => ({ id: key, ...fieldsConfig[key] }))
@@ -173,12 +185,22 @@ const ProfileFormComponent = ({
         return extraData[fieldId] || [];
     }, [extraData]);
 
+    const baseContentStyle = useMemo(() => ({
+        paddingBottom: normalize(90) + bottomInset
+    }), [bottomInset]);
+
+    const expandedContentStyle = useMemo(() => ({
+        paddingBottom: normalize(300) + bottomInset
+    }), [bottomInset]);
+
     return (
         <ScrollView
             ref={scrollViewRef}
             contentContainerStyle={[
                 styles.contentContainer,
-                hasOpenDropdown && styles.contentContainerExpanded
+                baseContentStyle,
+                hasOpenDropdown && styles.contentContainerExpanded,
+                hasOpenDropdown && expandedContentStyle
             ]}
             keyboardShouldPersistTaps="handled"
             onScroll={handleOptimizedScroll}
@@ -221,6 +243,7 @@ const ProfileForm = React.memo(ProfileFormComponent, (prevProps, nextProps) => {
         prevProps.onScroll === nextProps.onScroll &&
         prevProps.toggleFieldEditable === nextProps.toggleFieldEditable &&
         prevProps.scrollViewRef === nextProps.scrollViewRef &&
+        prevProps.registerSaveHandler === nextProps.registerSaveHandler &&
         JSON.stringify(prevProps.initialValues) === JSON.stringify(nextProps.initialValues) &&
         JSON.stringify(prevProps.editableFields) === JSON.stringify(nextProps.editableFields) &&
         JSON.stringify(prevProps.extraData) === JSON.stringify(nextProps.extraData)
@@ -229,10 +252,8 @@ const ProfileForm = React.memo(ProfileFormComponent, (prevProps, nextProps) => {
 
 const styles = StyleSheet.create({
     contentContainer: {
-        paddingBottom: normalize(90),
     },
     contentContainerExpanded: {
-        paddingBottom: normalize(300),
     },
     formContainer: {
         marginTop: normalize(20),

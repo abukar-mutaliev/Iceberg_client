@@ -30,6 +30,10 @@ class PushNotificationService {
         this.activeChatRoomId = null;
         // Текущий собеседник в direct-чате (для подавления уведомлений "от этого пользователя")
         this.activeChatPeerUserId = null;
+
+        // Защита от параллельной регистрации токена для одного пользователя
+        this.initializeForUserPromise = null;
+        this.initializeForUserUserId = null;
     }
 
     // Проверяем, что нужный роут реально зарегистрирован в текущем root navigator.
@@ -85,23 +89,39 @@ class PushNotificationService {
     // Инициализация для пользователя
     async initializeForUser(user) {
         try {
-
-            // Инициализируем базовый сервис
-            const baseInitResult = await this.initialize();
-            if (!baseInitResult) {
+            if (!user?.id) {
                 return false;
             }
 
-            // Настраиваем OneSignal для пользователя
-            const userInitResult = await OneSignalService.initializeForUser(user);
-            if (!userInitResult) {
-                return false;
+            if (this.initializeForUserPromise && this.initializeForUserUserId === user.id) {
+                return await this.initializeForUserPromise;
             }
 
-            return true;
+            this.initializeForUserUserId = user.id;
+            this.initializeForUserPromise = (async () => {
+                // Инициализируем базовый сервис
+                const baseInitResult = await this.initialize();
+                if (!baseInitResult) {
+                    return false;
+                }
 
+                // Настраиваем OneSignal для пользователя
+                const userInitResult = await OneSignalService.initializeForUser(user);
+                if (!userInitResult) {
+                    return false;
+                }
+
+                return true;
+            })();
+
+            return await this.initializeForUserPromise;
         } catch (error) {
             return false;
+        } finally {
+            if (this.initializeForUserUserId === user?.id) {
+                this.initializeForUserPromise = null;
+                this.initializeForUserUserId = null;
+            }
         }
     }
 

@@ -3,7 +3,6 @@ import {
     View,
     Text,
     StyleSheet,
-    SafeAreaView,
     TouchableOpacity,
     ScrollView,
     Dimensions,
@@ -11,6 +10,7 @@ import {
     StatusBar,
     Platform
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation, useRoute } from '@react-navigation/native';
 
@@ -50,6 +50,7 @@ export const FilterScreen = () => {
     const navigation = useNavigation();
     const route = useRoute();
     const dispatch = useDispatch();
+    const insets = useSafeAreaInsets();
 
     const [contentHeight, setContentHeight] = useState(0);
 
@@ -86,10 +87,14 @@ export const FilterScreen = () => {
                 suppliers: [],
             };
             setLocalFilterCriteria(defaultFilters);
+
+            if (route?.params?.resetFilters) {
+                navigation.setParams({ resetFilters: false });
+            }
         } else if (filterCriteria) {
-            setLocalFilterCriteria({...filterCriteria});
+            setLocalFilterCriteria({ ...filterCriteria });
         }
-    }, [resetFilters]);
+    }, [resetFilters, filterCriteria, navigation, route?.params?.resetFilters]);
 
     const handleFilterChange = (filterName, value) => {
         setLocalFilterCriteria(prev => {
@@ -146,7 +151,7 @@ export const FilterScreen = () => {
                 showOverlayGradient={false}
             />
 
-            <SafeAreaView style={styles.safeArea}>
+            <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
                 <View style={styles.header}>
                     <TouchableOpacity
                         style={styles.headerButton}
@@ -168,6 +173,7 @@ export const FilterScreen = () => {
                 <View style={styles.whiteContainer}>
                     <ScrollView
                         style={styles.content}
+                        contentContainerStyle={styles.contentContainer}
                         showsVerticalScrollIndicator={false}
                         onContentSizeChange={onContentSizeChange}
                     >
@@ -230,7 +236,7 @@ export const FilterScreen = () => {
 
             {/* Кнопка применения фильтров */}
             <TouchableOpacity
-                style={styles.applyButton}
+                style={[styles.applyButton, { bottom: normalize(100) + insets.bottom }]}
                 onPress={handleApplyFilters}
             >
                 <Text style={styles.applyButtonText}>ПРИМЕНИТЬ</Text>
@@ -285,6 +291,9 @@ const styles = StyleSheet.create({
     content: {
         flex: 1,
     },
+    contentContainer: {
+        paddingBottom: normalize(120),
+    },
     separator: {
         height: 0.5,
         width: '100%',
@@ -293,8 +302,10 @@ const styles = StyleSheet.create({
     applyButton: {
         backgroundColor: '#5500ff',
         borderRadius: normalize(30),
+        position: 'absolute',
+        left: normalize(20),
+        right: normalize(20),
         marginHorizontal: normalize(20),
-        marginBottom: normalize(25),
         alignItems: 'center',
         justifyContent: 'center',
         height: normalize(59),

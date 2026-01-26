@@ -8,9 +8,9 @@ import {
     Dimensions,
     StatusBar,
     ScrollView,
-    SafeAreaView,
     BackHandler
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
 const { width, height } = Dimensions.get('window');

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
     StyleSheet,
     Text,
@@ -6,9 +6,13 @@ import {
     TouchableOpacity,
     Image,
     ScrollView,
-    Dimensions
+    Dimensions,
+    Modal,
+    ActivityIndicator
 } from "react-native";
+import Slider from '@react-native-community/slider';
 import * as ImagePicker from "expo-image-picker";
+import * as ImageManipulator from "expo-image-manipulator";
 import { Entypo } from "@expo/vector-icons";
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 
@@ -16,6 +20,12 @@ const { width } = Dimensions.get('window');
 
 export const MultipleImageUpload = ({ photos, setPhotos, error, maxImages = 5 }) => {
     const { showWarning, showError } = useCustomAlert();
+    const [editorVisible, setEditorVisible] = useState(false);
+    const [pendingImage, setPendingImage] = useState(null);
+    const [selectedScale, setSelectedScale] = useState(1);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const minScale = 0.6;
+    const maxScale = 1.4;
 
     const pickImage = async () => {
         if (photos && photos.length >= maxImages) {
@@ -24,21 +34,46 @@ export const MultipleImageUpload = ({ photos, setPhotos, error, maxImages = 5 })
         }
 
         try {
+            // Запрашиваем разрешение на доступ к галерее
+            const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+            if (!permissionResult.granted) {
+                showError("Ошибка", "Необходимо предоставить доступ к галерее");
+                return;
+            }
+
             const result = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: 'images',
                 allowsEditing: false,
-                aspect: [1, 1],
-                quality: 0.8,
+                quality: 0.5,
             });
 
             if (!result.canceled && result.assets && result.assets.length > 0) {
-                const newImage = result.assets[0].uri;
-                console.log('Выбрано изображение:', newImage);
-                setPhotos(photos ? [...photos, newImage] : [newImage]);
+                const asset = result.assets[0];
+                const newImage = {
+                    uri: asset.uri,
+                    width: asset.width,
+                    height: asset.height,
+                    fileSize: asset.fileSize,
+                    mimeType: asset.mimeType
+                };
+                
+                // Предупреждаем о большом размере файла
+                if (newImage.fileSize && newImage.fileSize > 5 * 1024 * 1024) {
+                    showWarning(
+                        "Большой файл",
+                        "Это изображение имеет большой размер. Загрузка может занять некоторое время."
+                    );
+                }
+
+                console.log('Выбрано изображение:', newImage.uri);
+                setPendingImage(newImage);
+                setSelectedScale(0.9);
+                setEditorVisible(true);
             }
         } catch (error) {
             console.error('Ошибка при выборе изображения:', error);
-            showError("Ошибка", "Не удалось выбрать изображение");
+            showError("Ошибка", "Не удалось выбрать изображение: " + (error.message || error));
         }
     };
 
@@ -46,6 +81,68 @@ export const MultipleImageUpload = ({ photos, setPhotos, error, maxImages = 5 })
         const newPhotos = [...photos];
         newPhotos.splice(index, 1);
         setPhotos(newPhotos);
+    };
+
+    const closeEditor = () => {
+        setEditorVisible(false);
+        setPendingImage(null);
+        setSelectedScale(1);
+        setIsProcessing(false);
+    };
+
+    const applyImage = async () => {
+        if (!pendingImage?.uri) {
+            closeEditor();
+            return;
+        }
+
+        try {
+            setIsProcessing(true);
+
+            const width = pendingImage.width || 0;
+            const height = pendingImage.height || 0;
+            const shouldResize = width > 0 && height > 0 && selectedScale < 1;
+            const uriLower = (pendingImage.uri || "").toLowerCase();
+            const isPng = pendingImage.mimeType === 'image/png' || uriLower.endsWith('.png');
+
+            let finalUri = pendingImage.uri;
+
+            if (shouldResize) {
+                const targetWidth = Math.max(1, Math.round(width * selectedScale));
+                const targetHeight = Math.max(1, Math.round(height * selectedScale));
+
+                const resized = await ImageManipulator.manipulateAsync(
+                    pendingImage.uri,
+                    [{ resize: { width: targetWidth, height: targetHeight } }],
+                    {
+                        compress: isPng ? 1 : 0.8,
+                        format: isPng ? ImageManipulator.SaveFormat.PNG : ImageManipulator.SaveFormat.JPEG
+                    }
+                );
+                finalUri = resized.uri;
+            }
+
+            setPhotos(photos ? [...photos, finalUri] : [finalUri]);
+            closeEditor();
+        } catch (error) {
+            console.error('Ошибка при обработке изображения:', error);
+            showError("Ошибка", "Не удалось обработать изображение: " + (error.message || error));
+            closeEditor();
+        }
+    };
+
+    const keepOriginal = () => {
+        if (pendingImage?.uri) {
+            setPhotos(photos ? [...photos, pendingImage.uri] : [pendingImage.uri]);
+        }
+        closeEditor();
+    };
+
+    const getSizeLabel = () => {
+        if (!pendingImage?.width || !pendingImage?.height) return "";
+        const w = Math.max(1, Math.round(pendingImage.width * selectedScale));
+        const h = Math.max(1, Math.round(pendingImage.height * selectedScale));
+        return `${w}×${h}px`;
     };
 
     const hasImages = photos && photos.length > 0;
@@ -109,6 +206,79 @@ export const MultipleImageUpload = ({ photos, setPhotos, error, maxImages = 5 })
             <Text style={styles.helperText}>
                 {photos ? `${photos.length}/${maxImages} фото` : `0/${maxImages} фото`}
             </Text>
+
+            <Modal
+                visible={editorVisible}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={closeEditor}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Настройка изображения</Text>
+                        {pendingImage?.uri ? (
+                            <View style={styles.previewWrapper}>
+                                <Image
+                                    source={{ uri: pendingImage.uri }}
+                                    style={styles.previewBackground}
+                                    blurRadius={20}
+                                />
+                                <Image
+                                    source={{ uri: pendingImage.uri }}
+                                    style={[
+                                        styles.previewForeground,
+                                        { transform: [{ scale: selectedScale }] }
+                                    ]}
+                                    resizeMode="contain"
+                                />
+                            </View>
+                        ) : null}
+
+                        <Text style={styles.sizeLabel}>
+                            Размер: {getSizeLabel() || "неизвестен"}
+                        </Text>
+
+                        <View style={styles.scaleRow}>
+                            <Text style={styles.scaleLabel}>
+                                Масштаб: {Math.round(selectedScale * 100)}%
+                            </Text>
+                            <Slider
+                                style={styles.scaleSlider}
+                                minimumValue={minScale}
+                                maximumValue={maxScale}
+                                step={0.05}
+                                value={selectedScale}
+                                onValueChange={setSelectedScale}
+                                minimumTrackTintColor="#3B43A2"
+                                maximumTrackTintColor="#E5E7EB"
+                                thumbTintColor="#3B43A2"
+                                disabled={isProcessing}
+                            />
+                        </View>
+
+                        <View style={styles.modalActions}>
+                            <TouchableOpacity
+                                style={[styles.actionButton, styles.actionSecondary]}
+                                onPress={keepOriginal}
+                                disabled={isProcessing}
+                            >
+                                <Text style={styles.actionSecondaryText}>Оставить как есть</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.actionButton, styles.actionPrimary]}
+                                onPress={applyImage}
+                                disabled={isProcessing}
+                            >
+                                {isProcessing ? (
+                                    <ActivityIndicator size="small" color="#FFFFFF" />
+                                ) : (
+                                    <Text style={styles.actionPrimaryText}>Применить</Text>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 };
@@ -200,5 +370,96 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: "#888",
         marginTop: 4,
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: "rgba(0, 0, 0, 0.6)",
+        justifyContent: "center",
+        alignItems: "center",
+        padding: 20,
+    },
+    modalContent: {
+        width: "100%",
+        maxWidth: 420,
+        backgroundColor: "#FFFFFF",
+        borderRadius: 16,
+        padding: 16,
+    },
+    modalTitle: {
+        fontSize: 16,
+        fontWeight: "700",
+        color: "#1A1A1A",
+        marginBottom: 12,
+    },
+    previewWrapper: {
+        width: "100%",
+        height: 220,
+        borderRadius: 12,
+        backgroundColor: "#F2F2F2",
+        overflow: "hidden",
+        marginBottom: 12,
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    previewBackground: {
+        position: "absolute",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: "100%",
+        height: "100%",
+        resizeMode: "cover",
+        opacity: 0.9,
+    },
+    previewForeground: {
+        width: "100%",
+        height: "100%",
+    },
+    sizeLabel: {
+        fontSize: 13,
+        color: "#666",
+        marginBottom: 12,
+        textAlign: "center",
+    },
+    scaleRow: {
+        marginBottom: 16,
+    },
+    scaleLabel: {
+        fontSize: 13,
+        color: "#374151",
+        fontWeight: "600",
+        marginBottom: 6,
+    },
+    scaleSlider: {
+        width: "100%",
+        height: 40,
+    },
+    modalActions: {
+        flexDirection: "row",
+        gap: 10,
+    },
+    actionButton: {
+        flex: 1,
+        paddingVertical: 12,
+        borderRadius: 12,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    actionSecondary: {
+        backgroundColor: "#F3F4F6",
+    },
+    actionPrimary: {
+        backgroundColor: "#3B43A2",
+    },
+    actionSecondaryText: {
+        color: "#374151",
+        fontSize: 14,
+        fontWeight: "600",
+    },
+    actionPrimaryText: {
+        color: "#FFFFFF",
+        fontSize: 14,
+        fontWeight: "600",
     },
 });

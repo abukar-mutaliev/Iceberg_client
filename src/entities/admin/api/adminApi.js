@@ -64,7 +64,7 @@ export const adminApi = {
 
   // Получение складов для выбора
   async getWarehousesForSelection() {
-    return createProtectedRequest('get', '/api/admin/warehouses/selection');
+    return createProtectedRequest('get', '/api/admin/warehouses/selection?includeInactive=true');
   },
 
   // Получение районов для выбора

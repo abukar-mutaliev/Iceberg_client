@@ -6,11 +6,10 @@ import {
   ScrollView,
   ActivityIndicator,
   Pressable,
-  SafeAreaView,
   TextInput,
   Modal,
-  Image,
-} from 'react-native';
+  Image} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useDispatch } from 'react-redux';
 import { Color, FontFamily, FontSize, Border, Shadow, Padding } from '@app/styles/GlobalStyles';

@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Switch, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Switch } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { normalize } from '@shared/lib/normalize';
 import ArrowBackIcon from '@shared/ui/Icon/Common/ArrowBackIcon';
 
 export const NotificationSettingsScreen = () => {
     const navigation = useNavigation();
+    const insets = useSafeAreaInsets();
     const [pushEnabled, setPushEnabled] = useState(true);
     const [emailEnabled, setEmailEnabled] = useState(true);
     const [smsEnabled, setSmsEnabled] = useState(false);
@@ -18,7 +20,7 @@ export const NotificationSettingsScreen = () => {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={[styles.container, { paddingBottom: insets.bottom + normalize(12) }]}>
             <View style={styles.header}>
                 <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
                     <ArrowBackIcon width={24} height={24} color="#000" />

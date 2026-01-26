@@ -1,5 +1,5 @@
 // FeedbacksList.jsx
-import React, {useState, useEffect, useCallback, useRef} from 'react';
+import React, {useState, useEffect, useCallback, useRef, useMemo} from 'react';
 import {
     View,
     StyleSheet,
@@ -13,7 +13,8 @@ import {useTheme} from '@app/providers/themeProvider/ThemeProvider';
 import {FontFamily} from '@app/styles/GlobalStyles';
 import {useSelector, useDispatch} from 'react-redux';
 import {selectIsAuthenticated, selectUser} from '@entities/auth';
-import {deleteFeedback, selectHasUserLeftFeedbackSafe} from '@entities/feedback';
+import {deleteFeedback} from '@entities/feedback';
+import { selectFeedbacksByProductId } from '@entities/feedback/model/selectors';
 import {FeedbackCard} from '@entities/feedback/ui/FeedbackCard';
 import {FeedbackAddModal} from '@features/feedback';
 import {useAuth} from "@entities/auth/hooks/useAuth";
@@ -40,8 +41,6 @@ export const FeedbacksList = React.memo(({
 
     const [showAddForm, setShowAddForm] = useState(initialShowForm);
     const [refreshing, setRefreshing] = useState(false);
-
-    const hasLeftFeedback = useSelector(selectHasUserLeftFeedbackSafe(currentUser?.profile?.id));
 
     useEffect(() => {
         setShowAddForm(initialShowForm);
@@ -117,8 +116,44 @@ export const FeedbacksList = React.memo(({
         );
     };
 
-    // Обеспечиваем, что feedbacks всегда массив
     const safeFeedbacks = Array.isArray(feedbacks) ? feedbacks : [];
+    const feedbacksFromStore = useSelector((state) => selectFeedbacksByProductId(state, productId));
+    const currentClientId = currentUser?.profile?.id;
+    const combinedFeedbacks = useMemo(() => {
+        if (!Array.isArray(feedbacksFromStore) || feedbacksFromStore.length === 0) {
+            return safeFeedbacks;
+        }
+        return [...safeFeedbacks, ...feedbacksFromStore];
+    }, [safeFeedbacks, feedbacksFromStore]);
+    const normalizeId = (value) => {
+        if (value === null || value === undefined) return null;
+        const numeric = Number(value);
+        return Number.isNaN(numeric) ? String(value) : numeric;
+    };
+    const normalizedCurrentClientId = normalizeId(currentClientId);
+    const normalizedCurrentUserId = normalizeId(currentUser?.id);
+    const currentUserEmail = currentUser?.email?.toLowerCase?.() || null;
+    const normalizedProductId = normalizeId(productId);
+    const hasLeftFeedback = combinedFeedbacks.some((feedback) => {
+        const feedbackClientId = normalizeId(
+            feedback?.clientId ??
+            feedback?.client?.id ??
+            feedback?.client?.user?.id
+        );
+        const feedbackUserId = normalizeId(feedback?.client?.user?.id);
+        const feedbackEmail = feedback?.client?.user?.email?.toLowerCase?.() || null;
+        const feedbackProductId = normalizeId(feedback?.productId);
+
+        const matchesClientId =
+            (normalizedCurrentClientId !== null && feedbackClientId === normalizedCurrentClientId) ||
+            (normalizedCurrentUserId !== null && feedbackClientId === normalizedCurrentUserId) ||
+            (normalizedCurrentUserId !== null && feedbackUserId === normalizedCurrentUserId) ||
+            (currentUserEmail && feedbackEmail && feedbackEmail === currentUserEmail);
+        if (!matchesClientId) return false;
+
+        if (!normalizedProductId) return true;
+        return feedbackProductId === normalizedProductId;
+    });
 
     if (isLoading && !refreshing && !isDataLoaded) {
         return (

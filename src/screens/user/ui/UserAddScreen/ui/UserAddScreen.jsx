@@ -8,9 +8,9 @@ import {
     TextInput,
     TouchableOpacity,
     Alert,
-    SafeAreaView,
     Switch
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
@@ -747,7 +747,7 @@ export const UserAddScreen = () => {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
             <AdminHeader
                 title="Добавление пользователя"
                 icon={<IconPersona width={24} height={24} color={Color.blue2} />}

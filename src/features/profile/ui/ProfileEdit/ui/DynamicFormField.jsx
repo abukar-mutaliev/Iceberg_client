@@ -28,6 +28,8 @@ export const DynamicFormField = ({
     const [rotateAnimation] = useState(new Animated.Value(0));
     const [fieldValue, setFieldValue] = useState(value);
     const fieldContainerRef = useRef(null);
+    const textInputRef = useRef(null);
+    const lastActivatePressRef = useRef(0);
 
     // Форматирование телефона: +7 (XXX) XXX-XX-XX
     const formatPhoneNumber = useCallback((text) => {
@@ -167,6 +169,26 @@ export const DynamicFormField = ({
         setEditable(!editable);
     };
 
+    const handleActivateEdit = () => {
+        if (editable) {
+            textInputRef.current?.focus();
+            return;
+        }
+
+        const now = Date.now();
+        const isDoubleTap = now - lastActivatePressRef.current < 450;
+        lastActivatePressRef.current = now;
+
+        if (!isDoubleTap) {
+            return;
+        }
+
+        setEditable(true);
+        setTimeout(() => {
+            textInputRef.current?.focus();
+        }, 0);
+    };
+
     const handleOptionSelect = (option) => {
         onChange(field.id, option.value);
         setShowDropdown(false);
@@ -195,6 +217,28 @@ export const DynamicFormField = ({
         switch (field.type) {
             case 'text':
             case 'phone':
+                const inputElement = (
+                    <TextInput
+                        ref={textInputRef}
+                        style={[
+                            styles.input,
+                            {
+                                color: editable ? '#000000' : '#A0A0A0',
+                            },
+                        ]}
+                        value={fieldValue}
+                        onChangeText={handleChangeText}
+                        onFocus={field.type === 'phone' ? handlePhoneFocus : undefined}
+                        placeholder={field.type === 'phone' ? '+7 (___) ___-__-__' : field.placeholder}
+                        placeholderTextColor="#A0A0A0"
+                        editable={editable}
+                        keyboardType={field.type === 'phone' ? 'phone-pad' : (field.keyboardType || 'default')}
+                        maxLength={field.type === 'phone' ? 18 : undefined}
+                        onSubmitEditing={handleEditToggle}
+                        pointerEvents={editable ? 'auto' : 'none'}
+                    />
+                );
+
                 return (
                     <View
                         style={[
@@ -206,23 +250,16 @@ export const DynamicFormField = ({
                             },
                         ]}
                     >
-                        <TextInput
-                            style={[
-                                styles.input,
-                                {
-                                    color: editable ? '#000000' : '#A0A0A0',
-                                },
-                            ]}
-                            value={fieldValue}
-                            onChangeText={handleChangeText}
-                            onFocus={field.type === 'phone' ? handlePhoneFocus : undefined}
-                            placeholder={field.type === 'phone' ? '+7 (___) ___-__-__' : field.placeholder}
-                            placeholderTextColor="#A0A0A0"
-                            editable={editable}
-                            keyboardType={field.type === 'phone' ? 'phone-pad' : (field.keyboardType || 'default')}
-                            maxLength={field.type === 'phone' ? 18 : undefined}
-                            onSubmitEditing={handleEditToggle}
-                        />
+                        {editable ? (
+                            inputElement
+                        ) : (
+                            <Pressable
+                                style={styles.inputPressable}
+                                onPress={handleActivateEdit}
+                            >
+                                {inputElement}
+                            </Pressable>
+                        )}
                         <TouchableOpacity
                             style={styles.editButtonContainer}
                             onPress={handleEditToggle}
@@ -426,6 +463,9 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(5),
         fontSize: normalizeFont(14),
         color: '#A0A0A0',
+    },
+    inputPressable: {
+        flex: 1,
     },
     editButtonContainer: {
         height: '100%',

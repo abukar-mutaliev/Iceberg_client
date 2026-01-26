@@ -1,4 +1,5 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+import { Platform } from 'react-native';
 import WarehouseService from '../api/warehouseApi';
 
 const initialState = {
@@ -85,13 +86,33 @@ export const fetchWarehouseById = createAsyncThunk(
 
             const state = getState();
             const cachedWarehouse = state.warehouse.warehouses.find(w => w?.id === numericId);
+            const hasWorkingHoursField = cachedWarehouse
+                ? Object.prototype.hasOwnProperty.call(cachedWarehouse, 'workingHours')
+                : false;
             
-            if (cachedWarehouse) {
+            if (cachedWarehouse && hasWorkingHoursField) {
                 return { data: cachedWarehouse, fromCache: true };
             }
 
             const response = await WarehouseService.getWarehouseById(numericId);
-            const warehouse = response.data.status === 'success' ? response.data.data : response.data;
+            
+            // Обрабатываем разные форматы ответа от сервера
+            let warehouse = null;
+            if (response.data?.status === 'success') {
+                // Формат: { status: 'success', data: { warehouse: {...} } }
+                warehouse = response.data.data?.warehouse || response.data.data;
+            } else if (response.data?.warehouse) {
+                // Формат: { warehouse: {...} }
+                warehouse = response.data.warehouse;
+            } else if (response.data?.data?.warehouse) {
+                // Формат: { data: { warehouse: {...} } }
+                warehouse = response.data.data.warehouse;
+            } else if (response.data?.id) {
+                // Прямой объект склада
+                warehouse = response.data;
+            } else {
+                warehouse = response.data;
+            }
 
             if (!warehouse?.id) {
                 return rejectWithValue('Склад не найден');
@@ -100,7 +121,21 @@ export const fetchWarehouseById = createAsyncThunk(
             return { data: warehouse, fromCache: false };
         } catch (error) {
             console.error(`Ошибка при загрузке склада ${warehouseId}:`, error);
-            return rejectWithValue(error.message || 'Ошибка при загрузке склада');
+            
+            // Обрабатываем разные форматы ошибок
+            let errorMessage = 'Ошибка при загрузке склада';
+            
+            if (error?.response?.status === 404) {
+                errorMessage = 'Склад не найден';
+            } else if (error?.message) {
+                errorMessage = error.message;
+            } else if (typeof error === 'string') {
+                errorMessage = error;
+            } else if (error?.data?.message) {
+                errorMessage = error.data.message;
+            }
+            
+            return rejectWithValue(errorMessage);
         }
     }
 );
@@ -143,7 +178,11 @@ export const fetchWarehouseProducts = createAsyncThunk(
             
             let products = [];
             if (response.data?.status === 'success') {
-                products = response.data.data || [];
+                // Формат: { status: 'success', data: { products: [...] } }
+                products = response.data.data?.products || response.data.data || [];
+            } else if (response.data?.products) {
+                // Формат: { products: [...] }
+                products = response.data.products;
             } else if (Array.isArray(response.data)) {
                 products = response.data;
             }
@@ -151,6 +190,13 @@ export const fetchWarehouseProducts = createAsyncThunk(
             return { warehouseId, products };
         } catch (error) {
             console.error(`Ошибка при загрузке товаров склада ${warehouseId}:`, error);
+            
+            // Обрабатываем ошибку 429 (слишком много запросов)
+            if (error.response?.status === 429) {
+                const errorMessage = error.response?.data?.message || error.message || 'Слишком много запросов. Пожалуйста, подождите.';
+                return rejectWithValue(errorMessage);
+            }
+            
             return rejectWithValue(error.message || 'Ошибка при загрузке товаров склада');
         }
     }
@@ -159,22 +205,50 @@ export const fetchWarehouseProducts = createAsyncThunk(
 // Получить остатки товара по всем складам
 export const fetchProductStock = createAsyncThunk(
     'warehouse/fetchProductStock',
-    async (productId, { rejectWithValue }) => {
+    async (productIdOrParams, { rejectWithValue }) => {
         try {
-            const response = await WarehouseService.getProductStock(productId);
+            const {
+                productId,
+                params
+            } = typeof productIdOrParams === 'object' && productIdOrParams !== null
+                ? productIdOrParams
+                : { productId: productIdOrParams, params: {} };
+            const response = await WarehouseService.getProductStock(productId, params);
+
+            console.log('[warehouse/fetchProductStock] raw response', {
+                productId,
+                hasData: !!response?.data,
+                status: response?.data?.status,
+                keys: response?.data ? Object.keys(response.data) : [],
+                dataKeys: response?.data?.data ? Object.keys(response.data.data) : null
+            });
             
             let stocks = [];
             if (response.data?.status === 'success') {
-                stocks = response.data.data || [];
+                const data = response.data.data;
+                if (Array.isArray(data)) {
+                    stocks = data;
+                } else if (Array.isArray(data?.stocks)) {
+                    stocks = data.stocks;
+                } else if (Array.isArray(response.data?.stocks)) {
+                    stocks = response.data.stocks;
+                } else {
+                    stocks = [];
+                }
             } else if (response.data?.stocks) {
                 // API возвращает данные в поле stocks
                 stocks = response.data.stocks || [];
             } else if (Array.isArray(response.data)) {
                 stocks = response.data;
             }
+            console.log('[warehouse/fetchProductStock] parsed stocks', {
+                productId,
+                length: stocks.length,
+                sample: stocks.slice(0, 3)
+            });
             return { productId, stocks };
         } catch (error) {
-            console.error(`Ошибка при загрузке остатков товара ${productId}:`, error);
+            console.error('Ошибка при загрузке остатков товара:', error);
             return rejectWithValue(error.message || 'Ошибка при загрузке остатков товара');
         }
     }
@@ -186,15 +260,37 @@ export const findWarehousesWithProduct = createAsyncThunk(
     async ({ productId, params = {} }, { rejectWithValue }) => {
         try {
             const response = await WarehouseService.findWarehousesWithProduct(productId, params);
+
+            console.log('[warehouse/findWarehousesWithProduct] raw response', {
+                productId,
+                hasData: !!response?.data,
+                status: response?.data?.status,
+                keys: response?.data ? Object.keys(response.data) : [],
+                dataKeys: response?.data?.data ? Object.keys(response.data.data) : null
+            });
             
             let warehouses = [];
             if (response.data?.status === 'success') {
-                warehouses = response.data.data || [];
+                const data = response.data.data;
+                if (Array.isArray(data)) {
+                    warehouses = data;
+                } else if (Array.isArray(data?.warehouses)) {
+                    warehouses = data.warehouses;
+                } else if (Array.isArray(response.data?.warehouses)) {
+                    warehouses = response.data.warehouses;
+                } else {
+                    warehouses = [];
+                }
             } else if (response.data?.warehouses) {
                 warehouses = response.data.warehouses || [];
             } else if (Array.isArray(response.data)) {
                 warehouses = response.data;
             }
+            console.log('[warehouse/findWarehousesWithProduct] parsed warehouses', {
+                productId,
+                length: warehouses.length,
+                sample: warehouses.slice(0, 3)
+            });
             return { productId, warehouses };
         } catch (error) {
             console.error(`Ошибка при поиске складов с товаром ${productId}:`, error);
@@ -209,7 +305,90 @@ export const createWarehouse = createAsyncThunk(
     async (warehouseData, { rejectWithValue }) => {
         try {
             console.log('Creating warehouse with data:', warehouseData);
-            const response = await WarehouseService.createWarehouse(warehouseData);
+            
+            // Всегда создаем FormData, если есть изображение (как в продуктах)
+            let dataToSend = warehouseData;
+            let hasImageToUpload = false;
+            
+            // Проверяем, есть ли новое изображение для загрузки
+            if (warehouseData.image) {
+                const imageUri = typeof warehouseData.image === 'string' 
+                    ? warehouseData.image 
+                    : (warehouseData.image.uri || null);
+                
+                // Если URI начинается с file:// или content://, это новый файл - нужно загрузить
+                if (imageUri && (imageUri.startsWith('file://') || imageUri.startsWith('content://'))) {
+                    hasImageToUpload = true;
+                }
+            }
+            
+            // Создаем FormData если есть новое изображение для загрузки
+            if (hasImageToUpload) {
+                const formData = new FormData();
+                
+                // Добавляем все поля кроме image
+                for (const [key, value] of Object.entries(warehouseData)) {
+                    if (key !== 'image' && value !== null && value !== undefined) {
+                        // Преобразуем булевы значения в строки для FormData
+                        if (typeof value === 'boolean') {
+                            formData.append(key, value ? 'true' : 'false');
+                            continue;
+                        }
+
+                        // Массивы/объекты передаем как JSON (например workingHours)
+                        if (typeof value === 'object') {
+                            formData.append(key, JSON.stringify(value));
+                            continue;
+                        }
+
+                        formData.append(key, value);
+                    }
+                }
+                
+                // Добавляем изображение
+                // В React Native FormData требует объект с полями uri, type, name
+                const imageUri = typeof warehouseData.image === 'string' 
+                    ? warehouseData.image 
+                    : warehouseData.image.uri;
+                
+                // Определяем тип файла на основе URI, если он не указан
+                let imageType = 'image/jpeg';
+                if (typeof warehouseData.image === 'object' && warehouseData.image.type) {
+                    imageType = warehouseData.image.type;
+                } else if (imageUri) {
+                    const uriLower = imageUri.toLowerCase();
+                    if (uriLower.includes('.png')) {
+                        imageType = 'image/png';
+                    } else if (uriLower.includes('.jpg') || uriLower.includes('.jpeg')) {
+                        imageType = 'image/jpeg';
+                    } else if (uriLower.includes('.webp')) {
+                        imageType = 'image/webp';
+                    }
+                }
+                
+                // Нормализуем URI для Android (как в чате)
+                const uriToProcess = Platform.OS === 'android'
+                    ? (imageUri?.startsWith('file://') ? imageUri : `file://${imageUri}`)
+                    : imageUri;
+                
+                const imageFile = {
+                    uri: uriToProcess,
+                    type: imageType,
+                    name: (typeof warehouseData.image === 'object' ? warehouseData.image.name : null) || `warehouse_${Date.now()}.jpg`,
+                };
+                
+                console.log('📤 Adding image to FormData:', {
+                    uri: imageFile.uri.substring(0, 50) + '...',
+                    type: imageFile.type,
+                    name: imageFile.name,
+                    platform: Platform.OS
+                });
+                
+                formData.append('image', imageFile);
+                dataToSend = formData;
+            }
+            
+            const response = await WarehouseService.createWarehouse(dataToSend);
             
             let warehouse = null;
             if (response.data?.status === 'success') {
@@ -236,7 +415,90 @@ export const updateWarehouse = createAsyncThunk(
     async ({ id, warehouseData }, { rejectWithValue }) => {
         try {
             console.log('Updating warehouse:', id, 'with data:', warehouseData);
-            const response = await WarehouseService.updateWarehouse(id, warehouseData);
+            
+            // Всегда создаем FormData, если есть изображение (как в продуктах)
+            let dataToSend = warehouseData;
+            let hasImageToUpload = false;
+            
+            // Проверяем, есть ли новое изображение для загрузки
+            if (warehouseData.image) {
+                const imageUri = typeof warehouseData.image === 'string' 
+                    ? warehouseData.image 
+                    : (warehouseData.image.uri || null);
+                
+                // Если URI начинается с file:// или content://, это новый файл - нужно загрузить
+                if (imageUri && (imageUri.startsWith('file://') || imageUri.startsWith('content://'))) {
+                    hasImageToUpload = true;
+                }
+            }
+            
+            // Создаем FormData если есть новое изображение для загрузки
+            if (hasImageToUpload) {
+                const formData = new FormData();
+                
+                // Добавляем все поля кроме image
+                for (const [key, value] of Object.entries(warehouseData)) {
+                    if (key !== 'image' && value !== null && value !== undefined) {
+                        // Преобразуем булевы значения в строки для FormData
+                        if (typeof value === 'boolean') {
+                            formData.append(key, value ? 'true' : 'false');
+                            continue;
+                        }
+
+                        // Массивы/объекты передаем как JSON (например workingHours)
+                        if (typeof value === 'object') {
+                            formData.append(key, JSON.stringify(value));
+                            continue;
+                        }
+
+                        formData.append(key, value);
+                    }
+                }
+                
+                // Добавляем изображение
+                // В React Native FormData требует объект с полями uri, type, name
+                const imageUri = typeof warehouseData.image === 'string' 
+                    ? warehouseData.image 
+                    : warehouseData.image.uri;
+                
+                // Определяем тип файла на основе URI, если он не указан
+                let imageType = 'image/jpeg';
+                if (typeof warehouseData.image === 'object' && warehouseData.image.type) {
+                    imageType = warehouseData.image.type;
+                } else if (imageUri) {
+                    const uriLower = imageUri.toLowerCase();
+                    if (uriLower.includes('.png')) {
+                        imageType = 'image/png';
+                    } else if (uriLower.includes('.jpg') || uriLower.includes('.jpeg')) {
+                        imageType = 'image/jpeg';
+                    } else if (uriLower.includes('.webp')) {
+                        imageType = 'image/webp';
+                    }
+                }
+                
+                // Нормализуем URI для Android (как в чате)
+                const uriToProcess = Platform.OS === 'android'
+                    ? (imageUri?.startsWith('file://') ? imageUri : `file://${imageUri}`)
+                    : imageUri;
+                
+                const imageFile = {
+                    uri: uriToProcess,
+                    type: imageType,
+                    name: (typeof warehouseData.image === 'object' ? warehouseData.image.name : null) || `warehouse_${Date.now()}.jpg`,
+                };
+                
+                console.log('📤 Adding image to FormData:', {
+                    uri: imageFile.uri.substring(0, 50) + '...',
+                    type: imageFile.type,
+                    name: imageFile.name,
+                    platform: Platform.OS
+                });
+                
+                formData.append('image', imageFile);
+                dataToSend = formData;
+            }
+            
+            const response = await WarehouseService.updateWarehouse(id, dataToSend);
             
             let warehouse = null;
             if (response.data?.status === 'success') {
@@ -385,7 +647,9 @@ const warehouseSlice = createSlice({
 
             // Загрузка остатков товара
             .addCase(fetchProductStock.pending, (state, action) => {
-                const productId = action.meta.arg;
+                const productId = typeof action.meta.arg === 'object'
+                    ? action.meta.arg.productId
+                    : action.meta.arg;
                 state.productStocksLoading[productId] = true;
                 state.productStocksError[productId] = null;
             })
@@ -393,9 +657,15 @@ const warehouseSlice = createSlice({
                 const { productId, stocks } = action.payload;
                 state.productStocksLoading[productId] = false;
                 state.productStocks[productId] = stocks;
+                console.log('[warehouse] productStocks stored', {
+                    productId,
+                    length: stocks?.length || 0
+                });
             })
             .addCase(fetchProductStock.rejected, (state, action) => {
-                const productId = action.meta.arg;
+                const productId = typeof action.meta.arg === 'object'
+                    ? action.meta.arg.productId
+                    : action.meta.arg;
                 state.productStocksLoading[productId] = false;
                 state.productStocksError[productId] = action.payload;
             })
@@ -410,6 +680,10 @@ const warehouseSlice = createSlice({
                 const { productId, warehouses } = action.payload;
                 state.warehousesWithProductLoading[productId] = false;
                 state.warehousesWithProduct[productId] = warehouses;
+                console.log('[warehouse] warehousesWithProduct stored', {
+                    productId,
+                    length: warehouses?.length || 0
+                });
             })
             .addCase(findWarehousesWithProduct.rejected, (state, action) => {
                 const productId = action.meta.arg.productId;

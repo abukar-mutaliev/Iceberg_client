@@ -6,7 +6,7 @@ export default {
     expo: {
         name: IS_DEV ? 'Iceberg (Dev)' : 'Iceberg',
         slug: 'iceberg',
-        version: '1.3.3',
+        version: '1.3.5',
         scheme: 'iceberg',
         icon: './assets/notification-icon.png',
         splash: {
@@ -20,13 +20,11 @@ export default {
             favicon: './assets/icon.png',
             bundler: 'metro',
         },
-        // Включаем developmentClient для preview и development сборок
         developmentClient: {
             silentLaunch: true,
         },
         plugins: [
             'expo-font',
-            // Требуется для корректной работы expo-sqlite в dev-client / production сборках
             'expo-sqlite',
             [
                 'expo-location',
@@ -41,12 +39,18 @@ export default {
                     cameraPermission: 'Приложению требуется доступ к камере для съемки фотографий в чате.',
                 },
             ],
-            // Добавляем expo-dev-client плагин для preview и dev сборок
+            [
+                'expo-media-library',
+                {
+                    photosPermission: 'Приложению требуется доступ к вашим фотографиям для сохранения изображений.',
+                    savePhotosPermission: 'Приложению требуется доступ к вашей галерее для сохранения изображений.',
+                    granularPermissions: ['photo'],
+                },
+            ],
             ...(IS_DEV || IS_PREVIEW ? ['expo-dev-client'] : []),
-            // Кастомный плагин для настройки windowSoftInputMode
             './app.plugin.js',
             [
-                'expo-build-properties',
+                'expo-build-properties',  // ← УБРАЛИ ЛИШНИЕ СКОБКИ
                 {
                     android: {
                         minSdkVersion: 24,
@@ -54,26 +58,21 @@ export default {
                         targetSdkVersion: 35,
                         usesCleartextTraffic: true,
                         networkSecurityConfig: './network_security_config.xml',
-                        // Включаем оптимизацию для уменьшения размера приложения
-                        // OneSignal работает корректно с включенной минификацией при наличии правильных ProGuard правил
                         enableProguardInReleaseBuilds: true,
                         enableShrinkResourcesInReleaseBuilds: true,
-                        // Дополнительные настройки для preview-debug
                         ...(IS_PREVIEW_DEBUG && {
                             enableHermes: true,
                             enableProfiling: true,
                         }),
                     },
                     ios: {
-                        // Включаем remote debugging для preview сборок
-                        ...(IS_PREVIEW && {
-                            useFrameworks: 'static',
-                        }),
-                        // Дополнительные настройки для preview-debug
-                        ...(IS_PREVIEW_DEBUG && {
-                            useFrameworks: 'static',
-                            deploymentTarget: '13.0',
-                        }),
+                        deploymentTarget: '15.1',
+                        // Временно отключаем useFrameworks для preview из-за проблем с react-native-maps
+                        // react-native-maps имеет проблемы совместимости с useFrameworks: 'static'
+                        // Для production можно включить обратно, если обновить react-native-maps
+                        // ...(IS_PREVIEW && {
+                        //     useFrameworks: 'static',
+                        // }),
                     },
                 },
             ],
@@ -89,10 +88,6 @@ export default {
                 'onesignal-expo-plugin',
                 {
                     mode: IS_DEV ? 'development' : 'production',
-                    // Иконки для Android автоматически копируются через app.plugin.js
-                    // в android/app/src/main/res/drawable-*/ic_stat_iceberg.png
-                    // OneSignal будет использовать их через серверный параметр small_icon: 'ic_stat_iceberg'
-                    // Не указываем smallIcons здесь, чтобы избежать конфликтов при prebuild
                 }
             ]
         ],
@@ -105,13 +100,9 @@ export default {
             googleMapsApiKey: 'AIzaSyDev-AMb24bvlQn3a-b4DGsItiYB6su6_E',
             yandexMapsApiKey: '17ee620d-aee1-482c-acc9-c7144fd46087',
             expoPushToken: true,
-            // OneSignal App ID (берем из env для EAS build). Fallback оставляем, чтобы dev/preview не ломались.
             oneSignalAppId:
                 process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ||
                 'a1bde379-4211-4fb9-89e2-3e94530a7041',
-            // OneSignal Android Notification Channel UUID (из OneSignal Dashboard).
-            // Если задан, приложение заранее создаст канал `OS_<uuid>` с MAX importance для heads-up.
-            // Удобно, когда сервер отправляет android_channel_id и OneSignal SDK создает `OS_<uuid>` канал на устройстве.
             oneSignalAndroidChannelUuid: process.env.EXPO_PUBLIC_ONESIGNAL_ANDROID_CHANNEL_UUID || "084a368f-9843-40cc-91a7-cdb835b445df",
         },
         owner: 'abuingush',
@@ -124,15 +115,13 @@ export default {
         },
         android: {
             package: 'com.abuingush.iceberg',
-            versionCode: 42,
-            versionName: '1.4.2',
+            versionCode: 46,
+            versionName: '1.4.6',
             icon: './assets/icon.png',
             adaptiveIcon: {
                 foregroundImage: './assets/icon.png',
                 backgroundColor: '#E3F2FD',
             },
-            // Важно: 'resize' не сдвигает весь экран (и stack header), а уменьшает высоту окна.
-            // Это предотвращает "уезжание" хедера вверх и перекрытие поля ввода клавиатурой.
             softwareKeyboardLayoutMode: 'resize',
             config: {
                 googleMaps: {
@@ -175,8 +164,10 @@ export default {
             ],
         },
         ios: {
+            deploymentTarget: '15.1',  // ← Минимальная версия iOS
             icon: './assets/icon.png',
             bundleIdentifier: 'com.abuingush.iceberg',
+            buildNumber: '5',
             config: {
                 googleMapsApiKey: 'AIzaSyDev-AMb24bvlQn3a-b4DGsItiYB6su6_E',
                 yandexMapsApiKey: '17ee620d-aee1-482c-acc9-c7144fd46087',
@@ -195,6 +186,9 @@ export default {
                 NSCameraUsageDescription: 'Приложению требуется доступ к камере для съемки фотографий в чате.',
                 NSPhotoLibraryUsageDescription: 'Приложению требуется доступ к вашим фотографиям для отправки изображений в чате.',
                 NSPhotoLibraryAddUsageDescription: 'Приложению требуется доступ для сохранения фотографий в вашу галерею.',
+                NSMicrophoneUsageDescription: 'Нужен доступ к микрофону для записи голосовых сообщений в чате и отправки их собеседнику.',
+                NSContactsUsageDescription: 'Нужен доступ к контактам, чтобы выбирать и отправлять контакты в чате и приглашать друзей.',
+                LSApplicationQueriesSchemes: ['whatsapp'],
             },
         },
     },

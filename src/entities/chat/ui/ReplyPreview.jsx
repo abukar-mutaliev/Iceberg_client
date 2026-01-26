@@ -25,8 +25,11 @@ export const ReplyPreview = ({
   if (!replyTo) return null;
 
   const getSenderName = () => {
+    const normalizedCurrentUserId = currentUserId != null ? Number(currentUserId) : null;
+    const normalizedSenderId = replyTo?.senderId != null ? Number(replyTo.senderId) : null;
+    
     // Если это свое сообщение, показываем "Вы"
-    if (currentUserId && replyTo.senderId === currentUserId) {
+    if (normalizedCurrentUserId != null && normalizedSenderId != null && normalizedSenderId === normalizedCurrentUserId) {
       return 'Вы';
     }
 
@@ -37,14 +40,15 @@ export const ReplyPreview = ({
                    sender.admin?.name ||
                    sender.employee?.name ||
                    sender.supplier?.contactPerson ||
-                   sender.email?.split('@')[0];
+                   sender.email?.split('@')[0] ||
+                   sender.name;
 
       if (name) return name;
     }
 
     // Ищем дополнительные данные в participantsById (для DirectChat)
-    if (participantsById && replyTo.senderId) {
-      const participantData = participantsById[replyTo.senderId];
+    if (participantsById && normalizedSenderId != null) {
+      const participantData = participantsById[normalizedSenderId] || participantsById[String(replyTo.senderId)];
       if (participantData) {
         const participant = participantData.user || participantData;
         const name = participant.client?.name ||
@@ -59,9 +63,9 @@ export const ReplyPreview = ({
     }
 
     // Ищем дополнительные данные в массиве participants (для GroupChat)
-    if (participants && Array.isArray(participants) && replyTo.senderId) {
+    if (participants && Array.isArray(participants) && normalizedSenderId != null) {
       const participant = participants.find(p =>
-        (p?.userId ?? p?.user?.id ?? p?.id) === replyTo.senderId
+        Number(p?.userId ?? p?.user?.id ?? p?.id) === normalizedSenderId
       );
 
       if (participant) {
@@ -106,6 +110,26 @@ export const ReplyPreview = ({
         }
       case 'STOP':
         return '📍 Остановка';
+      case 'CONTACT': {
+        try {
+          const contactData = JSON.parse(replyTo.content || '{}');
+          const contactName = contactData?.name ||
+            contactData?.user?.name ||
+            contactData?.userName;
+          return `👤 ${contactName || 'Контакт'}`;
+        } catch {
+          return '👤 Контакт';
+        }
+      }
+      case 'WAREHOUSE': {
+        try {
+          const warehouseData = replyTo.warehouse || JSON.parse(replyTo.content || '{}');
+          const warehouseName = warehouseData?.name || warehouseData?.title;
+          return `🏭 ${warehouseName || 'Склад'}`;
+        } catch {
+          return '🏭 Склад';
+        }
+      }
       case 'POLL':
         return '📊 Опрос';
       default:

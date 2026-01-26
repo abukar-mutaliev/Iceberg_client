@@ -11,12 +11,12 @@ import {
     InteractionManager,
     Platform,
 } from 'react-native';
-import { Color, FontFamily } from '@app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
 import { useSelector } from 'react-redux';
 import { MultipleImageUpload } from '@entities/product/ui/MultipleImageUpload';
 import { CategoryPicker } from "@shared/ui/Pickers/CategoryPicker/ui/CategoryPicker";
 import { SupplierPicker } from '@shared/ui/Pickers/SupplierPicker';
-import { WarehouseQuantityPicker } from '@shared/ui/Pickers/WarehousePicker';
+import { WarehouseSelectionInline } from '@screens/warehouse/ui/WarehouseSelectionScreen';
 import { selectUser } from '@entities/auth/model/selectors';
 import { updateProductWithImages, uploadProductWithImages } from '@shared/api/uploadHelpers';
 import { ReusableModal } from "@shared/ui/Modal/ui/ReusableModal";
@@ -69,288 +69,209 @@ const ProductFormContent = React.memo(({
     handleSubmit,
     user
 }) => {
-    // Добавляем состояния для хранения высоты текстовых полей
-    const [nameHeight, setNameHeight] = useState(30);
-    const [descriptionHeight, setDescriptionHeight] = useState(60);
+    const isFormEditable = !isSubmitting && !isInteracting;
 
-    // Обработчик изменения размера текста
-    const handleContentSizeChange = (field, event) => {
-        const { height } = event.nativeEvent.contentSize;
-        if (field === 'name') {
-            setNameHeight(Math.max(30, height));
-        } else if (field === 'description') {
-            setDescriptionHeight(Math.max(60, height));
-        }
+    const renderSection = (title, children, zIndex = 1) => (
+        <View style={[styles.section, { zIndex }]}>
+            <Text style={styles.sectionTitle}>{title}</Text>
+            <View style={styles.sectionContent}>
+                {children}
+            </View>
+        </View>
+    );
+
+    const renderInputCard = (label, value, onChangeText, placeholder, options = {}) => {
+        const {
+            keyboardType = 'default',
+            multiline = false,
+            error = null,
+            required = false,
+            editable = true
+        } = options;
+
+        return (
+            <View style={styles.inputCard}>
+                <Text style={styles.inputLabel}>
+                    {label} {required && <Text style={styles.requiredStar}>*</Text>}
+                </Text>
+                <TextInput
+                    style={[
+                        styles.cardInput,
+                        multiline && styles.cardInputMultiline,
+                        error && styles.cardInputError,
+                        !editable && styles.cardInputDisabled
+                    ]}
+                    value={value}
+                    onChangeText={onChangeText}
+                    placeholder={placeholder}
+                    placeholderTextColor="#999"
+                    keyboardType={keyboardType}
+                    multiline={multiline}
+                    editable={editable}
+                />
+                {error ? <Text style={styles.cardErrorText}>{error}</Text> : null}
+            </View>
+        );
     };
 
     return (
         <View style={styles.formContainer}>
-            {/* Блок загрузки фото и основной информации */}
-            <View style={styles.formHeader}>
-                <View style={styles.leftColumn}>
-                    {/* Загрузка фото - используем MultipleImageUpload */}
+            {renderSection("📸 Фотографии товара", (
+                <View style={styles.photoSection}>
                     <MultipleImageUpload
                         photos={formData.images}
                         setPhotos={handleImagesChange}
                         error={errors.images}
-                        maxImages={5}
+                        maxImages={10}
                     />
+                    {errors.images ? (
+                        <Text style={styles.sectionError}>{errors.images}</Text>
+                    ) : null}
                 </View>
+            ), 100)}
 
-                <View style={styles.rightColumn}>
-                    {/* Название товара - теперь адаптивное */}
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Название товара *</Text>
-                        <View style={{ overflow: "hidden" }}>
-                            <TextInput
-                                style={[
-                                    styles.input,
-                                    errors.name ? styles.inputError : null,
-                                    { height: Math.max(30, nameHeight) }
-                                ]}
-                                value={String(formData.name || '')}
-                                onChangeText={(text) => {
-                                    // Простое обновление без InteractionManager для текстовых полей
-                                    handleChange('name', text);
-                                }}
-                                onContentSizeChange={(e) => {
-                                    if (e?.nativeEvent?.contentSize?.height) {
-                                        handleContentSizeChange('name', e);
-                                    }
-                                }}
-                                onFocus={() => {
-                                    // Дополнительная защита от ViewState конфликтов при фокусе
-                                    if (isSubmitting || isInteracting) {
-                                        return false;
-                                    }
-                                }}
-                                placeholder="Введите название"
-                                multiline={true}
-                                maxLength={100}
-                                blurOnSubmit={true}
-                                returnKeyType="done"
-                                editable={!isSubmitting && !isInteracting}
-                                selectTextOnFocus={false}
-                                // Добавляем дополнительные настройки для стабильности
-                                caretHidden={isSubmitting || isInteracting}
-                                contextMenuHidden={true}
+            {renderSection("ℹ️ Основная информация", (
+                <>
+                    {renderInputCard(
+                        "Название товара",
+                        String(formData.name || ''),
+                        (text) => handleChange('name', text),
+                        "Введите название товара",
+                        { multiline: true, error: errors.name, required: true, editable: isFormEditable }
+                    )}
+
+                    <View style={styles.pickerCardCategory}>
+                        <CategoryPicker
+                            selectedCategories={formData.categories || []}
+                            onSelectCategories={handleCategoriesChange}
+                            error={errors.categories}
+                            allowMultiple={true}
+                        />
+                    </View>
+
+                    {canChangeSupplier && (
+                        <View style={styles.pickerCard}>
+                            <SupplierPicker
+                                selectedSupplier={formData.supplierId}
+                                onSelectSupplier={handleSupplierChange}
+                                error={errors.supplierId}
                             />
                         </View>
-                        <View style={[styles.inputUnderline, errors.name ? styles.underlineError : null]} />
-                        {errors.name ? <Text style={styles.errorText}>{errors.name}</Text> : null}
-                    </View>
+                    )}
 
-                    {/* Выпадающий список категорий */}
-                    <CategoryPicker
-                        selectedCategories={formData.categories || []}
-                        onSelectCategories={handleCategoriesChange}
-                        error={errors.categories}
-                        allowMultiple={true}
-                    />
+                    {renderInputCard(
+                        "Описание товара",
+                        String(formData.description || ''),
+                        (text) => handleChange('description', text),
+                        "Добавьте описание (опционально)",
+                        { multiline: true, error: errors.description, editable: isFormEditable }
+                    )}
+                </>
+            ), 99)}
 
-                    {/* Поле веса товара */}
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Вес товара (г)</Text>
-                        <View style={{ overflow: "hidden" }}>
-                                                    <TextInput
-                            style={[styles.input, errors.weight ? styles.inputError : null]}
-                            value={String(formData.weight || '')}
-                            onChangeText={(text) => handleChange('weight', text)}
-                            onFocus={() => {
-                                if (isSubmitting || isInteracting) {
-                                    return false;
-                                }
-                            }}
-                            placeholder="Введите вес"
-                            keyboardType="numeric"
-                            editable={!isSubmitting && !isInteracting}
-                            caretHidden={isSubmitting || isInteracting}
-                            contextMenuHidden={true}
-                        />
+            {renderSection("📏 Характеристики", (
+                <>
+                    {renderInputCard(
+                        "Вес",
+                        String(formData.weight || ''),
+                        (text) => handleChange('weight', text),
+                        "Вес в граммах",
+                        { keyboardType: "numeric", error: errors.weight, required: true, editable: isFormEditable }
+                    )}
+
+                    {renderInputCard(
+                        "Количество штук в коробке",
+                        String(formData.itemsPerBox || ''),
+                        (text) => handleChange('itemsPerBox', text),
+                        "Штук в одной коробке",
+                        { keyboardType: "numeric", error: errors.itemsPerBox, required: true, editable: isFormEditable }
+                    )}
+                </>
+            ), 98)}
+
+            {renderSection("💰 Ценообразование", (
+                <>
+                    <View style={styles.priceRow}>
+                        <View style={styles.priceColumn}>
+                            {renderInputCard(
+                                "Цена за штуку",
+                                String(formData.price || ''),
+                                (text) => handleChange('price', text),
+                                "₽",
+                                { keyboardType: "numeric", error: errors.price, required: true, editable: isFormEditable }
+                            )}
                         </View>
-                        <View style={[styles.inputUnderline, errors.weight ? styles.underlineError : null]} />
-                        {errors.weight ? <Text style={styles.errorText}>{errors.weight}</Text> : null}
+                        <View style={styles.priceColumn}>
+                            {renderInputCard(
+                                "Цена за коробку",
+                                String(formData.boxPrice || ''),
+                                (text) => handleChange('boxPrice', text),
+                                "Авто",
+                                { keyboardType: "numeric", error: errors.boxPrice, editable: isFormEditable }
+                            )}
+                        </View>
                     </View>
-                </View>
-            </View>
+                    {renderInputCard(
+                        "Скидка (%)",
+                        String(formData.discount || ''),
+                        (text) => handleChange('discount', text),
+                        "Скидка",
+                        { keyboardType: "numeric", error: errors.discount, editable: isFormEditable }
+                    )}
+                    <View style={styles.additionalPriceInfo}>
+                        <Text style={styles.additionalPriceNote}>
+                            💡 Цены для складов и фургонов указываются при выборе складов
+                        </Text>
+                    </View>
+                </>
+            ), 97)}
 
-            {/* Поле выбора поставщика (только для админов и сотрудников) */}
-            {canChangeSupplier && (
-                <View style={styles.inputGroup}>
-                    <SupplierPicker
-                        selectedSupplier={formData.supplierId}
-                        onSelectSupplier={handleSupplierChange}
-                        error={errors.supplierId}
-                    />
-                </View>
-            )}
-
-            {/* Выбор складов */}
-            <View style={styles.inputGroup}>
-                <WarehouseQuantityPicker
-                    selectedWarehouseQuantities={formData.warehouseQuantities}
-                    onSelectWarehouseQuantities={handleWarehouseQuantitiesChange}
-                    error={errors.warehouseQuantities}
-                    isWarning={errors.warehouseQuantities && errors.warehouseQuantities.includes("будет добавлен на все")}
-                    basePrice={formData.boxPrice ? parseFloat(formData.boxPrice) : null}
-                    isAdmin={user?.role === 'ADMIN'}
-                />
-            </View>
-
-            {/* Ряд для цены за штуку и количества штук в коробке */}
-            <View style={styles.inputsRow}>
-                <View style={styles.inputContainerHalf}>
-                    <Text style={styles.label}>Цена за штуку *</Text>
-                    <View style={{ overflow: "hidden" }}>
-                        <TextInput
-                            style={[styles.input, errors.price ? styles.inputError : null]}
-                            value={String(formData.price || '')}
-                            onChangeText={(text) => handleChange('price', text)}
-                            onFocus={() => {
-                                if (isSubmitting || isInteracting) {
-                                    return false;
-                                }
-                            }}
-                            placeholder="Цена за 1 шт"
-                            keyboardType="numeric"
-                            editable={!isSubmitting && !isInteracting}
-                            caretHidden={isSubmitting || isInteracting}
-                            contextMenuHidden={true}
+            {renderSection("📦 Складские запасы", (
+                <>
+                    <View style={styles.pickerCard}>
+                        <WarehouseSelectionInline
+                            selectedWarehouseQuantities={formData.warehouseQuantities}
+                            onSelectWarehouseQuantities={handleWarehouseQuantitiesChange}
+                            basePrice={formData.boxPrice ? parseFloat(formData.boxPrice) : null}
+                            isAdmin={user?.role === 'ADMIN'}
                         />
+                        {errors.warehouseQuantities ? (
+                            <Text style={styles.sectionError}>{errors.warehouseQuantities}</Text>
+                        ) : null}
                     </View>
-                    <View style={[styles.inputUnderline, errors.price ? styles.underlineError : null]} />
-                    {errors.price ? <Text style={styles.errorText}>{errors.price}</Text> : null}
-                </View>
-                <View style={styles.inputContainerHalf}>
-                    <Text style={styles.label}>Штук в коробке *</Text>
-                    <View style={{ overflow: "hidden" }}>
-                        <TextInput
-                            style={[styles.input, errors.itemsPerBox ? styles.inputError : null]}
-                            value={String(formData.itemsPerBox || '')}
-                            onChangeText={(text) => handleChange('itemsPerBox', text)}
-                            onFocus={() => {
-                                if (isSubmitting || isInteracting) {
-                                    return false;
-                                }
-                            }}
-                            placeholder="Количество штук"
-                            keyboardType="numeric"
-                            editable={!isSubmitting && !isInteracting}
-                            caretHidden={isSubmitting || isInteracting}
-                            contextMenuHidden={true}
-                        />
-                    </View>
-                    <View style={[styles.inputUnderline, errors.itemsPerBox ? styles.underlineError : null]} />
-                    {errors.itemsPerBox ? <Text style={styles.errorText}>{errors.itemsPerBox}</Text> : null}
-                </View>
-            </View>
 
-            {/* Ряд для цены за коробку и скидки */}
-            <View style={styles.inputsRow}>
-                <View style={styles.inputContainerHalf}>
-                    <Text style={styles.label}>Цена за коробку</Text>
-                    <View style={{ overflow: "hidden" }}>
-                        <TextInput
-                            style={[styles.input, errors.boxPrice ? styles.inputError : null]}
-                            value={String(formData.boxPrice || '')}
-                            onChangeText={(text) => handleChange('boxPrice', text)}
-                            onFocus={() => {
-                                if (isSubmitting || isInteracting) {
-                                    return false;
-                                }
-                            }}
-                            placeholder="Авто-расчет"
-                            keyboardType="numeric"
-                            editable={!isSubmitting && !isInteracting}
-                            caretHidden={isSubmitting || isInteracting}
-                            contextMenuHidden={true}
-                        />
-                    </View>
-                    <View style={[styles.inputUnderline, errors.boxPrice ? styles.underlineError : null]} />
-                    {errors.boxPrice ? <Text style={styles.errorText}>{errors.boxPrice}</Text> : null}
-                </View>
-                <View style={styles.inputContainerHalf}>
-                    <Text style={styles.label}>Скидка (%)</Text>
-                    <View style={{ overflow: "hidden" }}>
-                        <TextInput
-                            style={[styles.input, errors.discount ? styles.inputError : null]}
-                            value={String(formData.discount || '')}
-                            onChangeText={(text) => handleChange('discount', text)}
-                            onFocus={() => {
-                                if (isSubmitting || isInteracting) {
-                                    return false;
-                                }
-                            }}
-                            placeholder="Скидка"
-                            keyboardType="numeric"
-                            editable={!isSubmitting && !isInteracting}
-                            caretHidden={isSubmitting || isInteracting}
-                            contextMenuHidden={true}
-                        />
-                    </View>
-                    <View style={[styles.inputUnderline, errors.discount ? styles.underlineError : null]} />
-                    {errors.discount ? <Text style={styles.errorText}>{errors.discount}</Text> : null}
-                </View>
-            </View>
+                    {formData.warehouseQuantities?.length > 0 ? (
+                        <View style={styles.stockSummaryCard}>
+                            <View style={styles.stockSummaryRow}>
+                                <Text style={styles.stockSummaryLabel}>Общее количество коробок:</Text>
+                                <Text style={styles.stockSummaryValue}>
+                                    {formData.warehouseQuantities.reduce((sum, item) => sum + item.quantity, 0)}
+                                </Text>
+                            </View>
+                        </View>
+                    ) : (
+                        renderInputCard(
+                            "Количество коробок на складе",
+                            String(formData.stockQuantity || ''),
+                            (text) => handleChange('stockQuantity', text),
+                            "Количество коробок",
+                            { keyboardType: "numeric", error: errors.stockQuantity, required: true, editable: isFormEditable }
+                        )
+                    )}
+                </>
+            ), 96)}
 
-            {/* Количество коробок на складе */}
-            <View style={styles.inputGroup}>
-                <Text style={styles.label}>Количество коробок на складе *</Text>
-                <View style={{ overflow: "hidden" }}>
-                    <TextInput
-                        style={[styles.input, errors.stockQuantity ? styles.inputError : null]}
-                        value={String(formData.stockQuantity || '')}
-                        onChangeText={(text) => handleChange('stockQuantity', text)}
-                        onFocus={() => {
-                            if (isSubmitting || isInteracting) {
-                                return false;
-                            }
-                        }}
-                        placeholder="Количество коробок"
-                        keyboardType="numeric"
-                        editable={!isSubmitting && !isInteracting}
-                        caretHidden={isSubmitting || isInteracting}
-                        contextMenuHidden={true}
-                    />
-                </View>
-                <View style={[styles.inputUnderline, errors.stockQuantity ? styles.underlineError : null]} />
-                {errors.stockQuantity ? <Text style={styles.errorText}>{errors.stockQuantity}</Text> : null}
-            </View>
-
-            {/* Описание товара - теперь адаптивное */}
-            <View style={styles.inputGroup}>
-                <Text style={styles.label}>Описание товара</Text>
-                <View style={{ overflow: "hidden" }}>
-                    <TextInput
-                        style={[
-                            styles.input,
-                            styles.textArea,
-                            errors.description ? styles.inputError : null,
-                            { height: descriptionHeight }
-                        ]}
-                        value={String(formData.description || '')}
-                        onChangeText={(text) => handleChange('description', text)}
-                        onContentSizeChange={(e) => handleContentSizeChange('description', e)}
-                        placeholder="Введите описание"
-                        multiline={true}
-                        textAlignVertical="top"
-                        editable={!isSubmitting && !isInteracting}
-                        blurOnSubmit={true}
-                    />
-                </View>
-                <View style={[styles.inputUnderline, errors.description ? styles.underlineError : null]} />
-                {errors.description ? <Text style={styles.errorText}>{errors.description}</Text> : null}
-            </View>
-
-            {/* Кнопка сохранения */}
             <TouchableOpacity
-                style={[styles.submitButton, (isSubmitting || isInteracting) ? styles.disabledButton : null]}
+                style={[styles.submitButton, !isFormEditable && styles.disabledButton]}
                 onPress={handleSubmit}
                 activeOpacity={0.7}
-                disabled={isSubmitting || isInteracting}
+                disabled={!isFormEditable}
             >
                 {isSubmitting ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
+                    <View style={styles.submitButtonContent}>
+                        <ActivityIndicator size="small" color="#FFFFFF" style={styles.submitButtonLoader} />
+                        <Text style={styles.submitButtonText}>Сохранение...</Text>
+                    </View>
                 ) : (
                     <Text style={styles.submitButtonText}>
                         {product && product.id ? "Сохранить изменения" : "Добавить товар"}
@@ -378,6 +299,7 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
             user && (user.role === 'ADMIN' || user.role === 'EMPLOYEE'),
         [user?.role]
     );
+
 
     const [formData, setFormData] = useState({
         name: '',
@@ -799,6 +721,18 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
         setErrors(prev => ({ ...prev, warehouseQuantities: '' }));
     }, []);
 
+    useEffect(() => {
+        if (formData.warehouseQuantities && formData.warehouseQuantities.length > 0) {
+            const totalBoxes = formData.warehouseQuantities.reduce((sum, item) => sum + item.quantity, 0);
+            if (totalBoxes > 0 && (!formData.stockQuantity || formData.stockQuantity !== totalBoxes.toString())) {
+                setFormData(prev => ({
+                    ...prev,
+                    stockQuantity: totalBoxes.toString()
+                }));
+            }
+        }
+    }, [formData.warehouseQuantities]);
+
     // Обработчик изменения изображений
     const handleImagesChange = useCallback((newImages) => {
         console.log(`[EditProductModal] Изменение изображений:`, newImages?.length);
@@ -895,9 +829,11 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
             }
         }
 
-        if (!formData.stockQuantity) {
-            newErrors.stockQuantity = 'Введите количество коробок на складе';
-            isValid = false;
+        if (!formData.warehouseQuantities || formData.warehouseQuantities.length === 0) {
+            if (!formData.stockQuantity) {
+                newErrors.stockQuantity = 'Введите количество коробок на складе';
+                isValid = false;
+            }
         }
 
         if (formData.discount) {
@@ -963,6 +899,10 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
                 supplierId: canChangeSupplier ? formData.supplierId : undefined,
                 warehouses: formData.warehouseQuantities.length > 0 ? JSON.stringify(formData.warehouseQuantities) : "all",
             };
+
+            if (product && product.id && formData.warehouseQuantities.length > 0) {
+                productData.warehouseStocks = formData.warehouseQuantities;
+            }
 
             console.log('[EditProductModal] Данные для отправки:', {
                 ...productData,
@@ -1058,6 +998,7 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
     }
 
     return (
+        <>
         <ReusableModal
             visible={visible && isModalReady && isModalMounted}
             onClose={handleClose}
@@ -1076,6 +1017,7 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
                     removeClippedSubviews={false}
                     keyboardDismissMode="interactive"
                     showsVerticalScrollIndicator={false}
+                    nestedScrollEnabled={true}
                 >
                     <ProductFormContent
                         formData={formData}
@@ -1100,6 +1042,7 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
                 </View>
             )}
         </ReusableModal>
+        </>
     );
 });
 
@@ -1107,87 +1050,240 @@ const styles = StyleSheet.create({
     formContainer: {
         padding: 16,
     },
-    formHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 5,
+
+    // Section Styles
+    section: {
+        marginBottom: 24,
     },
-    leftColumn: {
-        width: '40%',
+    sectionTitle: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#1A1A1A',
+        fontFamily: FontFamily.sFProDisplay,
+        marginBottom: 12,
+        paddingLeft: 4,
     },
-    rightColumn: {
-        width: '47%',
+    sectionContent: {
+        gap: 12,
     },
-    inputGroup: {
-        marginBottom: 10,
-        position: 'relative',
-    },
-    label: {
-        fontSize: 15,
-        fontWeight: '600',
-        color: Color.dark,
-        opacity: 0.4,
-        marginBottom: 0,
-        fontFamily: FontFamily.sFProText,
-    },
-    input: {
-        minHeight: 30,
+    sectionError: {
+        color: '#FF3B30',
         fontSize: 13,
-        color: Color.dark,
-        paddingVertical: 5,
-        paddingLeft: 0,
+        marginTop: 8,
+        paddingLeft: 4,
         fontFamily: FontFamily.sFProText,
     },
-    inputError: {
+
+    // Photo Section
+    photoSection: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 16,
+        padding: 8,
+        maxHeight: 200,
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.06,
+                shadowRadius: 12,
+            },
+            android: {
+                elevation: 2,
+            },
+        }),
+    },
+
+    // Input Card Styles
+    inputCard: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 12,
+        padding: 16,
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.05,
+                shadowRadius: 8,
+            },
+            android: {
+                elevation: 1,
+            },
+        }),
+    },
+    inputLabel: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#666',
+        marginBottom: 8,
+        fontFamily: FontFamily.sFProText,
+    },
+    requiredStar: {
         color: '#FF3B30',
     },
-    textArea: {
-        minHeight: 60,
+    cardInput: {
+        fontSize: 16,
+        color: '#1A1A1A',
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        backgroundColor: '#F5F7FA',
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#E8ECF1',
+        fontFamily: FontFamily.sFProText,
+        minHeight: 44,
+    },
+    cardInputMultiline: {
+        minHeight: 80,
         textAlignVertical: 'top',
-        paddingTop: 5,
+        paddingTop: 12,
     },
-    inputUnderline: {
-        height: 1,
-        backgroundColor: '#000',
-        marginTop: 0,
+    cardInputError: {
+        borderColor: '#FF3B30',
+        backgroundColor: '#FFF5F5',
     },
-    underlineError: {
-        backgroundColor: '#FF3B30',
-        height: 1.5,
+    cardInputDisabled: {
+        backgroundColor: '#F5F7FA',
+        color: '#999',
     },
-    errorText: {
+    cardErrorText: {
         color: '#FF3B30',
         fontSize: 12,
-        marginTop: 5,
+        marginTop: 6,
+        paddingLeft: 4,
         fontFamily: FontFamily.sFProText,
     },
-    inputsRow: {
+
+    // Picker Card
+    pickerCard: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 12,
+        padding: 16,
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.05,
+                shadowRadius: 8,
+            },
+            android: {
+                elevation: 1,
+            },
+        }),
+    },
+    pickerCardCategory: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 12,
+        padding: 16,
+        zIndex: 1000,
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.05,
+                shadowRadius: 8,
+            },
+            android: {
+                elevation: 10,
+            },
+        }),
+    },
+
+    // Price Row
+    priceRow: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+    priceColumn: {
+        flex: 1,
+    },
+    additionalPriceInfo: {
+        backgroundColor: '#FFF9E6',
+        borderRadius: 12,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: '#FFE08A',
+        marginTop: 8,
+    },
+    additionalPriceNote: {
+        fontSize: 13,
+        color: '#856404',
+        fontFamily: FontFamily.sFProText,
+        lineHeight: 18,
+    },
+
+    // Stock Summary
+    stockSummaryCard: {
+        backgroundColor: '#F0F9FF',
+        borderRadius: 12,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: '#BAE6FD',
+    },
+    stockSummaryRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        marginBottom: 5,
-    },
-    inputContainerHalf: {
-        width: '48%',
-        marginBottom: 10,
-    },
-    submitButton: {
-        backgroundColor: '#3B43A2',
-        height: 40,
-        borderRadius: 8,
-        justifyContent: 'center',
         alignItems: 'center',
-        marginTop: 20,
-        marginBottom: 30,
     },
-    disabledButton: {
-        backgroundColor: '#a0a0a0',
-    },
-    submitButtonText: {
-        color: Color.colorLightMode,
-        fontSize: 16,
-        fontWeight: '500',
+    stockSummaryLabel: {
+        fontSize: 14,
+        color: '#0369A1',
+        fontWeight: '600',
         fontFamily: FontFamily.sFProText,
     },
+    stockSummaryValue: {
+        fontSize: 18,
+        color: '#0369A1',
+        fontWeight: '700',
+        fontFamily: FontFamily.sFProDisplay,
+    },
+
+    // Submit Button
+    submitButton: {
+        backgroundColor: '#3B43A2',
+        height: 56,
+        borderRadius: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginTop: 24,
+        marginBottom: 16,
+        ...Platform.select({
+            ios: {
+                shadowColor: '#3B43A2',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.3,
+                shadowRadius: 12,
+            },
+            android: {
+                elevation: 6,
+            },
+        }),
+    },
+    disabledButton: {
+        backgroundColor: '#C7C7CC',
+        ...Platform.select({
+            ios: {
+                shadowOpacity: 0.1,
+            },
+            android: {
+                elevation: 2,
+            },
+        }),
+    },
+    submitButtonContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    submitButtonLoader: {
+        marginRight: 10,
+    },
+    submitButtonText: {
+        color: '#FFFFFF',
+        fontSize: 17,
+        fontWeight: '600',
+        fontFamily: FontFamily.sFProDisplay,
+    },
+
+    // Loading State
     loadingContainer: {
         flex: 1,
         justifyContent: 'center',

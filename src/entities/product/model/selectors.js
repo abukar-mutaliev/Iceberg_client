@@ -2,8 +2,43 @@ import { createSelector } from "@reduxjs/toolkit";
 
 const EMPTY_ARRAY = [];
 
-export const selectProducts = (state) => state.products?.items || EMPTY_ARRAY;
-export const selectProductsById = (state) => state.products?.byId || {};
+// Selector for deleted/unavailable product IDs (определяем первым, чтобы использовать в других селекторах)
+export const selectDeletedProductIds = (state) => state.products?.deletedProductIds || EMPTY_ARRAY;
+
+// Базовый селектор продуктов с фильтрацией удаленных
+export const selectProducts = createSelector(
+    [(state) => state.products?.items || EMPTY_ARRAY, selectDeletedProductIds],
+    (items, deletedIds) => {
+        if (!Array.isArray(items) || items.length === 0) return EMPTY_ARRAY;
+        if (!Array.isArray(deletedIds) || deletedIds.length === 0) return items;
+        
+        // Фильтруем удаленные продукты
+        return items.filter(product => {
+            if (!product || !product.id) return false;
+            return !deletedIds.includes(product.id);
+        });
+    }
+);
+
+// Селектор продуктов по ID с фильтрацией удаленных
+export const selectProductsById = createSelector(
+    [(state) => state.products?.byId || {}, selectDeletedProductIds],
+    (byId, deletedIds) => {
+        if (!byId || typeof byId !== 'object') return {};
+        if (!Array.isArray(deletedIds) || deletedIds.length === 0) return byId;
+        
+        // Фильтруем удаленные продукты
+        const filtered = {};
+        for (const [id, product] of Object.entries(byId)) {
+            const productId = parseInt(id, 10);
+            if (!isNaN(productId) && !deletedIds.includes(productId) && product) {
+                filtered[id] = product;
+            }
+        }
+        return filtered;
+    }
+);
+
 export const selectCurrentProduct = (state) => state.products?.currentProduct || null;
 export const selectProductsLoading = (state) => state.products?.loading || false;
 export const selectProductsLoadingMore = (state) => state.products?.loadingMore || false;
@@ -15,9 +50,6 @@ export const selectProductsHasMore = (state) => state.products?.hasMore || false
 export const selectProductsCurrentPage = (state) => state.products?.currentPage || 1;
 export const selectProductsTotalPages = (state) => state.products?.totalPages || 1;
 export const selectProductsTotalItems = (state) => state.products?.totalItems || 0;
-
-// Selector for deleted/unavailable product IDs
-export const selectDeletedProductIds = (state) => state.products?.deletedProductIds || EMPTY_ARRAY;
 
 // Check if a specific product is deleted
 export const selectIsProductDeleted = (state, productId) => {

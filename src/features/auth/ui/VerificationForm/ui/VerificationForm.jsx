@@ -17,7 +17,6 @@ import {
 import { useDispatch, useSelector } from 'react-redux';
 import { completeRegister, completePhoneRegister, clearError } from '@entities/auth';
 import { normalize } from "@shared/lib/normalize";
-import { ReceiveCallCard } from '../../ReceiveCallCard';
 
 const { width, height } = Dimensions.get('window');
 const isSmallDevice = height < 700;
@@ -46,15 +45,15 @@ const getCodeInputWidth = (codeLength) => {
 export const VerificationForm = ({ 
     tempToken, 
     registrationType = 'email', 
-    receiveCall = null,
     onBack 
 }) => {
-    const codeLength = receiveCall ? 4 : 6;
+    const codeLength = 6;
     const initialCode = new Array(codeLength).fill('');
     
     const [code, setCode] = useState(initialCode);
     const [focusedIndex, setFocusedIndex] = useState(0);
     const [shakeAnimation] = useState(new Animated.Value(0));
+    const [resendTimer, setResendTimer] = useState(300);
     
     const dispatch = useDispatch();
     const isLoading = useSelector((state) => state.auth?.isLoading ?? false);
@@ -72,6 +71,16 @@ export const VerificationForm = ({
     }, [dispatch]);
 
     useEffect(() => {
+        if (resendTimer <= 0) return;
+
+        const intervalId = setInterval(() => {
+            setResendTimer((prev) => (prev > 0 ? prev - 1 : 0));
+        }, 1000);
+
+        return () => clearInterval(intervalId);
+    }, [resendTimer]);
+
+    useEffect(() => {
         if (error) {
             // Анимация тряски при ошибке
             Animated.sequence([
@@ -82,16 +91,6 @@ export const VerificationForm = ({
             ]).start();
         }
     }, [error]);
-
-    // Автоматическое заполнение кода для Receive Call
-    useEffect(() => {
-        if (receiveCall && receiveCall.code) {
-            const digits = receiveCall.code.split('');
-            if (digits.length === 4) {
-                setCode(digits);
-            }
-        }
-    }, [receiveCall]);
 
     const handleCodePaste = (pastedText, currentIndex) => {
         const cleanedText = pastedText.replace(/\D/g, '');
@@ -210,15 +209,9 @@ export const VerificationForm = ({
     };
 
     // Определяем текст в зависимости от контекста
-    const getTitle = () => {
-        if (receiveCall) return 'Подтверждение номера телефона';
-        return 'Код подтверждения';
-    };
+    const getTitle = () => 'Код подтверждения';
 
     const getSubtitle = () => {
-        if (receiveCall) {
-            return null; // Убираем дублирование текста для receiveCall
-        }
         if (registrationType === 'phone') {
             return 'Мы отправили SMS с кодом на ваш номер';
         }
@@ -226,11 +219,16 @@ export const VerificationForm = ({
     };
 
     const getHintText = () => {
-        if (receiveCall) return null;
         if (registrationType === 'email') {
             return '💡 Проверьте папку "Спам", если код не пришёл';
         }
         return '💡 SMS придёт в течение 1-2 минут';
+    };
+
+    const formatTimer = (seconds) => {
+        const minutes = Math.floor(seconds / 60);
+        const secs = String(seconds % 60).padStart(2, '0');
+        return `${minutes}:${secs}`;
     };
 
     return (
@@ -260,74 +258,58 @@ export const VerificationForm = ({
                     )}
                 </View>
 
-                {/* Карточка Receive Call или поля ввода кода */}
-                {receiveCall ? (
-                    <View style={styles.receiveCallContainer}>
-                        <ReceiveCallCard
-                            phoneToCall={receiveCall.phoneToCall}
-                            code={receiveCall.code}
-                            onCallPress={() => {
-                                console.log('Пользователь нажал кнопку "Позвонить"');
-                            }}
-                        />
-      
-                    </View>
-                ) : (
-                    <>
-                        {/* Индикатор прогресса ввода */}
-                        <View style={styles.inputProgressContainer}>
-                            <Text style={styles.inputProgressText}>
-                                {filledCount} из {codeLength}
-                            </Text>
-                        </View>
+                {/* Индикатор прогресса ввода */}
+                <View style={styles.inputProgressContainer}>
+                    <Text style={styles.inputProgressText}>
+                        {filledCount} из {codeLength}
+                    </Text>
+                </View>
 
-                        {/* Поля ввода кода */}
-                        <Animated.View 
-                            style={[
-                                styles.codeContainer,
-                                { transform: [{ translateX: shakeAnimation }] }
-                            ]}
-                        >
-                            {code.map((digit, index) => {
-                                const inputWidth = getCodeInputWidth(codeLength);
-                                return (
-                                    <View key={index} style={styles.inputWrapper}>
-                                        <TextInput
-                                            ref={inputRefs.current[index]}
-                                            style={[
-                                                styles.codeInput,
-                                                { width: inputWidth },
-                                                digit !== '' && styles.codeInputFilled,
-                                                focusedIndex === index && styles.codeInputFocused,
-                                                error && styles.codeInputError
-                                            ]}
-                                            value={digit}
-                                            onChangeText={(text) => handleCodeChange(text, index)}
-                                            onKeyPress={(e) => handleKeyPress(e, index)}
-                                            onPaste={() => handlePaste(index)}
-                                            onFocus={() => setFocusedIndex(index)}
-                                            onBlur={() => setFocusedIndex(-1)}
-                                            keyboardType="numeric"
-                                            maxLength={6}
-                                            autoFocus={index === 0}
-                                            textAlign="center"
-                                            blurOnSubmit={false}
-                                            autoCorrect={false}
-                                            underlineColorAndroid="transparent"
-                                            caretHidden={Platform.OS === 'android'}
-                                            contextMenuHidden={false}
-                                        />
-                                        {digit !== '' && (
-                                            <View style={styles.checkmarkBadge}>
-                                                <Text style={styles.checkmark}>✓</Text>
-                                            </View>
-                                        )}
+                {/* Поля ввода кода */}
+                <Animated.View 
+                    style={[
+                        styles.codeContainer,
+                        { transform: [{ translateX: shakeAnimation }] }
+                    ]}
+                >
+                    {code.map((digit, index) => {
+                        const inputWidth = getCodeInputWidth(codeLength);
+                        return (
+                            <View key={index} style={styles.inputWrapper}>
+                                <TextInput
+                                    ref={inputRefs.current[index]}
+                                    style={[
+                                        styles.codeInput,
+                                        { width: inputWidth },
+                                        digit !== '' && styles.codeInputFilled,
+                                        focusedIndex === index && styles.codeInputFocused,
+                                        error && styles.codeInputError
+                                    ]}
+                                    value={digit}
+                                    onChangeText={(text) => handleCodeChange(text, index)}
+                                    onKeyPress={(e) => handleKeyPress(e, index)}
+                                    onPaste={() => handlePaste(index)}
+                                    onFocus={() => setFocusedIndex(index)}
+                                    onBlur={() => setFocusedIndex(-1)}
+                                    keyboardType="numeric"
+                                    maxLength={1}
+                                    autoFocus={index === 0}
+                                    textAlign="center"
+                                    blurOnSubmit={false}
+                                    autoCorrect={false}
+                                    underlineColorAndroid="transparent"
+                                    caretHidden={Platform.OS === 'android'}
+                                    contextMenuHidden={false}
+                                />
+                                {digit !== '' && (
+                                    <View style={styles.checkmarkBadge}>
+                                        <Text style={styles.checkmark}>✓</Text>
                                     </View>
-                                );
-                            })}
-                        </Animated.View>
-                    </>
-                )}
+                                )}
+                            </View>
+                        );
+                    })}
+                </Animated.View>
 
                 {/* Сообщение об ошибке */}
                 {error && (
@@ -358,7 +340,7 @@ export const VerificationForm = ({
                     ) : (
                         <View style={styles.buttonContent}>
                             <Text style={styles.buttonText}>
-                                {receiveCall ? 'Я позвонил(а)' : 'Подтвердить'}
+                                Подтвердить
                             </Text>
                             {isCodeComplete && <Text style={styles.buttonIcon}>→</Text>}
                         </View>
@@ -371,14 +353,21 @@ export const VerificationForm = ({
                         <Text style={styles.actionButtonText}>← Назад</Text>
                     </TouchableOpacity>
                     
-                    {!receiveCall && (
-                        <TouchableOpacity 
-                            style={styles.actionButton}
-                            onPress={() => Alert.alert('Повторная отправка', 'Код будет отправлен повторно')}
-                        >
-                            <Text style={styles.actionButtonText}>Отправить снова</Text>
-                        </TouchableOpacity>
-                    )}
+                    <TouchableOpacity 
+                        style={styles.actionButton}
+                        onPress={() => {
+                            if (resendTimer > 0) return;
+                            Alert.alert('Повторная отправка', 'Код будет отправлен повторно');
+                            setResendTimer(300);
+                        }}
+                        disabled={resendTimer > 0}
+                    >
+                        <Text style={styles.actionButtonText}>
+                            {resendTimer > 0
+                                ? `Отправить снова через ${formatTimer(resendTimer)}`
+                                : 'Отправить снова'}
+                        </Text>
+                    </TouchableOpacity>
                 </View>
             </View>
         </ScrollView>
@@ -454,11 +443,6 @@ const styles = StyleSheet.create({
         color: '#856404',
         textAlign: 'center',
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
-    },
-    receiveCallContainer: {
-        width: '100%',
-        alignItems: 'center',
-        marginBottom: adaptiveSize(24),
     },
     inputProgressContainer: {
         alignItems: 'center',

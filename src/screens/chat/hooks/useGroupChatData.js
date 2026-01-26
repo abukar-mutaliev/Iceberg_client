@@ -44,10 +44,13 @@ export const useGroupChatData = (roomId) => {
     return [];
   }, [currentUser]);
   
-  // Фильтрация сообщений по району (только STOP) с дедупликацией
+  // Фильтрация сообщений по району (только STOP) и времени исчезновения с дедупликацией
   const messages = useMemo(() => {
     const sourceMessages = (reduxMessages?.length > 0 ? reduxMessages : cachedMessages) || [];
     if (!sourceMessages.length) return [];
+    
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     
     // Дедупликация по ID для предотвращения дубликатов
     const seenIds = new Set();
@@ -58,35 +61,83 @@ export const useGroupChatData = (roomId) => {
       return true;
     });
     
-    // Фильтрация по району (только для STOP сообщений)
-    if (!uniqueMessages.length || !userDistrictIds.length) return uniqueMessages;
-    
+    // Фильтрация сообщений
     return uniqueMessages.filter(msg => {
-      if (msg.type !== 'STOP') return true;
-      
-      let stopDistrictId = msg?.stop?.districtId;
-      
-      if (!stopDistrictId && msg?.content) {
-        try {
-          const stopData = JSON.parse(msg.content);
-          stopDistrictId = stopData?.districtId;
-        } catch (e) {
+      // Фильтрация STOP сообщений по району и времени остановки
+      if (msg.type === 'STOP') {
+        // Проверка времени остановки - сообщение исчезает после окончания остановки
+        let stopEndTime = null;
+        
+        // Пробуем получить endTime из связанного объекта stop
+        if (msg?.stop?.endTime) {
+          stopEndTime = new Date(msg.stop.endTime);
+        } else if (msg?.stop?.startTime) {
+          // Если endTime нет, используем startTime как время окончания
+          stopEndTime = new Date(msg.stop.startTime);
+        } else if (msg?.content) {
+          // Если нет связанного объекта, пытаемся парсить из content
+          try {
+            const stopData = JSON.parse(msg.content);
+            stopEndTime = stopData?.endTime ? new Date(stopData.endTime) : 
+                         (stopData?.startTime ? new Date(stopData.startTime) : null);
+          } catch (e) {
+            // Если не удалось распарсить, не фильтруем по времени
+          }
+        }
+        
+        // Если время остановки прошло, сообщение исчезает
+        if (stopEndTime && stopEndTime < now) {
           return false;
         }
+        
+        // Фильтрация по району (только для STOP сообщений)
+        if (!userDistrictIds.length) return true;
+        
+        let stopDistrictId = msg?.stop?.districtId;
+        
+        if (!stopDistrictId && msg?.content) {
+          try {
+            const stopData = JSON.parse(msg.content);
+            stopDistrictId = stopData?.districtId;
+          } catch (e) {
+            return false;
+          }
+        }
+        
+        if (!stopDistrictId) return false;
+        
+        const normalizedStopId = typeof stopDistrictId === 'string' 
+          ? parseInt(stopDistrictId, 10) 
+          : stopDistrictId;
+        
+        return userDistrictIds.some(userId => {
+          const normalizedUserId = typeof userId === 'string' 
+            ? parseInt(userId, 10) 
+            : userId;
+          return normalizedUserId === normalizedStopId;
+        });
       }
       
-      if (!stopDistrictId) return false;
+      // Фильтрация PRODUCT сообщений - исчезают через 7 дней
+      if (msg.type === 'PRODUCT') {
+        const messageCreatedAt = msg?.createdAt ? new Date(msg.createdAt) : null;
+        if (messageCreatedAt && messageCreatedAt < sevenDaysAgo) {
+          return false;
+        }
+        return true;
+      }
       
-      const normalizedStopId = typeof stopDistrictId === 'string' 
-        ? parseInt(stopDistrictId, 10) 
-        : stopDistrictId;
+      // Фильтрация WAREHOUSE сообщений - исчезают через 7 дней
+      if (msg.type === 'WAREHOUSE') {
+        const messageCreatedAt = msg?.createdAt ? new Date(msg.createdAt) : null;
+        if (messageCreatedAt && messageCreatedAt < sevenDaysAgo) {
+          return false;
+        }
+        return true;
+      }
       
-      return userDistrictIds.some(userId => {
-        const normalizedUserId = typeof userId === 'string' 
-          ? parseInt(userId, 10) 
-          : userId;
-        return normalizedUserId === normalizedStopId;
-      });
+      // Остальные типы сообщений проходят без фильтрации
+      return true;
     });
   }, [reduxMessages, cachedMessages, userDistrictIds]);
   
@@ -112,19 +163,7 @@ export const useGroupChatData = (roomId) => {
   const isManager = useMemo(() => {
     if (!currentUser || currentUser.role !== 'EMPLOYEE') return false;
     const processingRole = currentUser?.employee?.processingRole || currentUser?.profile?.processingRole;
-    const isManagerResult = processingRole === 'MANAGER';
-    
-    if (__DEV__ && currentUser.role === 'EMPLOYEE') {
-      console.log('[useGroupChatData] Manager check:', {
-        role: currentUser.role,
-        employee: !!currentUser.employee,
-        processingRole,
-        isManager: isManagerResult,
-        employeeData: currentUser.employee
-      });
-    }
-    
-    return isManagerResult;
+    return processingRole === 'MANAGER';
   }, [currentUser]);
 
   const canSendMessages = useMemo(() => {
@@ -136,17 +175,6 @@ export const useGroupChatData = (roomId) => {
       result = isSuperAdmin || isAdmin || isManager;
     } else if (type === 'GROUP' && roomData.isLocked === true) {
       result = isAdmin || isManager;
-    }
-    
-    if (__DEV__) {
-      console.log('[useGroupChatData] canSendMessages check:', {
-        type,
-        isLocked: roomData.isLocked,
-        isSuperAdmin,
-        isAdmin,
-        isManager,
-        result
-      });
     }
     
     return result;

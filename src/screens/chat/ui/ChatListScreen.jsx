@@ -1,14 +1,17 @@
 import React, {useCallback, useEffect, useMemo, useRef} from 'react';
-import {View, FlatList, TouchableOpacity, Text, StyleSheet, RefreshControl, Image, InteractionManager} from 'react-native';
+import {View, FlatList, TouchableOpacity, Text, StyleSheet, RefreshControl, Image, InteractionManager, Platform} from 'react-native';
 import {useFocusEffect, CommonActions} from '@react-navigation/native';
+import { useTabBar } from '@widgets/navigation/context';
 import {useDispatch, useSelector} from 'react-redux';
 import {fetchRooms, setActiveRoom, loadRoomsCache, fetchRoom, fetchMessages} from '@entities/chat/model/slice';
 import {fetchProductById} from '@entities/product/model/slice';
 import {selectRoomsList, selectIsRoomDeleted} from '@entities/chat/model/selectors';
 import {selectProductsById, selectDeletedProductIds} from '@entities/product/model/selectors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {getImageUrl} from '@shared/api/api';
 import {IconDelivery} from '@shared/ui/Icon/Profile/IconDelivery';
+import IconWarehouse from '@shared/ui/Icon/Warehouse/IconWarehouse';
 import {Ionicons} from '@expo/vector-icons';
 
 // Компонент для отображения иконки голосового сообщения
@@ -58,6 +61,9 @@ const StatusTicks = React.memo(({status}) => {
 
 export const ChatListScreen = ({navigation}) => {
     const dispatch = useDispatch();
+    const { showTabBar } = useTabBar();
+    const insets = useSafeAreaInsets();
+    const tabBarHeight = 80 + insets.bottom;
     const rooms = useSelector(selectRoomsList) || [];
     const loading = useSelector((s) => s.chat?.rooms?.loading);
     const currentUser = useSelector((s) => s.auth?.user);
@@ -107,7 +113,9 @@ export const ChatListScreen = ({navigation}) => {
         const maxToPrefetch = 5;
         const subset = memoizedRooms.slice(0, maxToPrefetch);
 
-        subset.forEach((room) => {
+        // КРИТИЧНО: Обрабатываем ошибку 404 при предзагрузке
+        // Если комната удалена другим участником, она будет удалена из списка через fetchRoom.rejected
+        const prefetchPromises = subset.map(async (room) => {
             if (!room?.id) return;
             
             // Проверяем, не удалена ли комната перед загрузкой
@@ -117,11 +125,26 @@ export const ChatListScreen = ({navigation}) => {
             
             const hasParticipants = Array.isArray(room?.participants) && room.participants.length > 0;
             if (!hasParticipants) {
-                dispatch(fetchRoom(room.id));
+                try {
+                    const result = await dispatch(fetchRoom(room.id));
+                    // Если результат отклонен с isNotFound, комната уже удалена через fetchRoom.rejected
+                    if (result.type.endsWith('/rejected')) {
+                        const payload = result.payload;
+                        if (payload?.isNotFound && payload?.roomId) {
+                            if (__DEV__) {
+                                console.log('⚠️ ChatListScreen: Room not found during prefetch, already removed from list', { roomId: room.id });
+                            }
+                        }
+                    }
+                } catch (error) {
+                    // Игнорируем ошибки - они обрабатываются в fetchRoom.rejected
+                }
             }
+        });
 
-            // Убираем автоматическую загрузку сообщений - это вызывает бесконечный ререндер
-            // Сообщения уже загружаются через селектор selectRoomsList
+        // Запускаем все запросы параллельно, но не ждем их завершения
+        Promise.allSettled(prefetchPromises).catch(() => {
+            // Игнорируем ошибки - они уже обработаны в fetchRoom.rejected
         });
     }, [memoizedRooms, dispatch, deletedRoomIds]);
 
@@ -162,9 +185,10 @@ export const ChatListScreen = ({navigation}) => {
     useFocusEffect(
         useCallback(() => {
             dispatch(setActiveRoom(null));
+            showTabBar();
             // Сбрасываем флаг навигации при возврате на экран
             isNavigatingRef.current = false;
-        }, [dispatch])
+        }, [dispatch, showTabBar])
     );
 
     // Перехватываем попытки возврата на WelcomeScreen и перенаправляем на Main
@@ -442,6 +466,15 @@ export const ChatListScreen = ({navigation}) => {
             return;
         }
         
+        // КРИТИЧНО: Проверяем, не удалена ли комната перед открытием
+        // Это предотвращает попытку открыть чат, удаленный другим участником
+        if (deletedRoomIds.includes(rid)) {
+            if (__DEV__) {
+                console.log('⚠️ ChatListScreen: Попытка открыть удаленную комнату, пропускаем', { roomId: rid });
+            }
+            return;
+        }
+        
         // Устанавливаем флаг навигации для предотвращения обновления списка
         isNavigatingRef.current = true;
         
@@ -545,6 +578,8 @@ export const ChatListScreen = ({navigation}) => {
         let preview = '';
         let isStopMessage = false;
         let isVoiceMessage = false;
+        let isWarehouseMessage = false;
+        let isContactMessage = false;
         let time = '';
 
         if (lastMessage) {
@@ -557,9 +592,30 @@ export const ChatListScreen = ({navigation}) => {
             } else if (lastMessage.type === 'STOP') {
                 isStopMessage = true;
                 messageContent = 'Остановка';
+            } else if (lastMessage.type === 'WAREHOUSE') {
+                isWarehouseMessage = true;
+                // Пытаемся получить название склада из данных
+                let warehouseName = 'Склад';
+                try {
+                    if (lastMessage.warehouse?.name) {
+                        warehouseName = lastMessage.warehouse.name;
+                    } else if (lastMessage.content) {
+                        const warehouseData = JSON.parse(lastMessage.content);
+                        if (warehouseData?.name) {
+                            warehouseName = warehouseData.name;
+                        }
+                    }
+                } catch (e) {
+                    // Если не удалось распарсить, используем дефолтное название
+                }
+                messageContent = warehouseName;
             } else if (lastMessage.type === 'VOICE') {
                 isVoiceMessage = true;
                 messageContent = 'Голосовое сообщение';
+            } else if (lastMessage.type === 'CONTACT') {
+                isContactMessage = true;
+                // Для контактов показываем "Контакт" вместо JSON
+                messageContent = 'Контакт';
             } else if (lastMessage.content && lastMessage.content.trim()) {
                 messageContent = lastMessage.content.trim();
             } else {
@@ -631,9 +687,25 @@ export const ChatListScreen = ({navigation}) => {
                                     lastMessage && isOwnMessage && styles.previewWithStatus
                                 ]} numberOfLines={1}>{preview}</Text>
                             </View>
+                        ) : isWarehouseMessage ? (
+                            <View style={styles.warehousePreviewContainer}>
+                                <IconWarehouse width={14} height={14} color="#8696A0" style={styles.warehouseIcon} />
+                                <Text style={[
+                                    styles.preview,
+                                    lastMessage && isOwnMessage && styles.previewWithStatus
+                                ]} numberOfLines={1}>{preview}</Text>
+                            </View>
                         ) : isVoiceMessage ? (
                             <View style={styles.voiceMessageContainer}>
                                 <VoiceMessageIcon />
+                                <Text style={[
+                                    styles.preview,
+                                    lastMessage && isOwnMessage && styles.previewWithStatus
+                                ]} numberOfLines={1}>{preview}</Text>
+                            </View>
+                        ) : isContactMessage ? (
+                            <View style={styles.contactMessageContainer}>
+                                <Ionicons name="person" size={16} color="#8696A0" style={styles.contactIcon} />
                                 <Text style={[
                                     styles.preview,
                                     lastMessage && isOwnMessage && styles.previewWithStatus
@@ -708,11 +780,12 @@ export const ChatListScreen = ({navigation}) => {
                         tintColor="#007AFF"
                     />
                 }
-                contentContainerStyle={styles.listContainer}
+                contentContainerStyle={[styles.listContainer, { paddingBottom: tabBarHeight }]}
+                scrollIndicatorInsets={{ bottom: tabBarHeight }}
                 initialNumToRender={10}
                 maxToRenderPerBatch={10}
                 windowSize={10}
-                removeClippedSubviews
+                removeClippedSubviews={Platform.OS === 'android'}
                 getItemLayout={getItemLayout}
                 ItemSeparatorComponent={SeparatorComponent}
                 ListEmptyComponent={EmptyComponent}
@@ -852,6 +925,14 @@ const styles = StyleSheet.create({
     stopIcon: {
         marginRight: 6,
     },
+    warehousePreviewContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+    },
+    warehouseIcon: {
+        marginRight: 6,
+    },
     statusContainerLeft: {
         marginRight: 6,
         alignSelf: 'center',
@@ -919,6 +1000,14 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         width: 16,
         height: 16,
+    },
+    contactMessageContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+    },
+    contactIcon: {
+        marginRight: 6,
     },
 });
 

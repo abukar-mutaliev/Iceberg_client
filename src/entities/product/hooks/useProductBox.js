@@ -118,6 +118,7 @@ export const useProductBox = (product) => {
             description: actualProduct.description || '',
             isActive,
             supplier: actualProduct.supplier,
+            category: actualProduct.category || null,
             categories: actualProduct.categories || [],
             images: actualProduct.images || [],
             weight: actualProduct.weight,

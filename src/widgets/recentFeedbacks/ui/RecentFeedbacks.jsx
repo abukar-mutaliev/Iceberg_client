@@ -75,8 +75,8 @@ export const RecentFeedbacks = ({
 
 const styles = StyleSheet.create({
     container: {
-        marginTop: 10,
-        paddingHorizontal: 16,
+        marginTop: 0,
+        paddingHorizontal: 5,
     },
     headerContainer: {
         flexDirection: 'row',
@@ -93,11 +93,11 @@ const styles = StyleSheet.create({
         fontWeight: '500',
     },
     firstCardContainer: {
-        marginBottom: 8,
+        marginBottom: 0,
     },
     cardContainer: {
-        marginTop: 8,
-        marginBottom: 8,
+        marginTop: 0,
+        marginBottom: 0,
     },
     loadingContainer: {
         alignItems: 'center',

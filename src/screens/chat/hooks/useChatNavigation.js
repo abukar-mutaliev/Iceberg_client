@@ -19,27 +19,30 @@ export const useChatNavigation = ({
   onCopy,
   onForward,
   onDelete,
+  isSuperAdmin, // Опционально: для прямого доступа к правам
+  isAdmin, // Опционально: для прямого доступа к правам
 }) => {
   // Настройка header в зависимости от режима выбора
   useLayoutEffect(() => {
     if (isSelectionMode) {
       const canReply = canSendMessages && selectedMessages.size === 1;
       const selectedArray = Array.from(selectedMessages);
-      const canDeleteAll = selectedArray.length > 0 && 
-        selectedArray.every(msgId => {
-          const msg = messages.find(m => m.id === msgId);
-          return msg && canDeleteMessage(msg);
-        });
       
-      if (__DEV__) {
-        console.log('[useChatNavigation] Selection mode active', {
-          selectedCount: selectedMessages.size,
-          canReply,
-          canDelete: canDeleteAll,
-          hasOnDelete: !!onDelete,
-          selectedMessages: Array.from(selectedMessages),
-        });
-      }
+      // Если суперадмин или админ, всегда разрешаем удаление
+      const isAdminOrSuperAdmin = isSuperAdmin || isAdmin;
+      
+      // Проверяем каждое выбранное сообщение
+      const canDeleteResults = selectedArray.map(msgId => {
+        const msg = messages.find(m => m.id === msgId);
+        // Если админ/суперадмин, всегда разрешаем удаление
+        if (isAdminOrSuperAdmin) {
+          return true;
+        }
+        const canDelete = msg && canDeleteMessage(msg);
+        return canDelete;
+      });
+      
+      const canDeleteAll = selectedArray.length > 0 && canDeleteResults.every(result => result === true);
       
       navigation.setOptions({
         headerShown: true,
@@ -88,6 +91,8 @@ export const useChatNavigation = ({
     onCopy,
     onForward,
     onDelete,
+    isSuperAdmin,
+    isAdmin,
   ]);
   
   // Android back button для режима выбора

@@ -168,23 +168,31 @@ export const ProductImageGallery = ({ images = [] }) => {
                     ]}
                 >
                     {validImages[activeIndex] ? (
-                        <Image
-                            source={{ uri: validImages[activeIndex] }}
-                            style={styles.productImage}
-                            resizeMode="cover"
-                            onLoad={() => {
-                                console.log(`[ProductImageGallery] Изображение ${activeIndex} загружено:`, validImages[activeIndex]);
-                                // Убеждаемся, что изображение видимо после загрузки
-                                opacity.setValue(1);
-                            }}
-                            onLoadStart={() => {
-                                console.log(`[ProductImageGallery] Начало загрузки изображения ${activeIndex}`);
-                            }}
-                            onError={(error) => {
-                                console.warn(`[ProductImageGallery] Ошибка загрузки изображения ${activeIndex}:`, error, validImages[activeIndex]);
-                                opacity.setValue(1);
-                            }}
-                        />
+                        <View style={styles.blurWrapper}>
+                            <Image
+                                source={{ uri: validImages[activeIndex] }}
+                                style={styles.blurBackground}
+                                resizeMode="cover"
+                                blurRadius={20}
+                            />
+                            <Image
+                                source={{ uri: validImages[activeIndex] }}
+                                style={styles.productImage}
+                                resizeMode="contain"
+                                onLoad={() => {
+                                    console.log(`[ProductImageGallery] Изображение ${activeIndex} загружено:`, validImages[activeIndex]);
+                                    // Убеждаемся, что изображение видимо после загрузки
+                                    opacity.setValue(1);
+                                }}
+                                onLoadStart={() => {
+                                    console.log(`[ProductImageGallery] Начало загрузки изображения ${activeIndex}`);
+                                }}
+                                onError={(error) => {
+                                    console.warn(`[ProductImageGallery] Ошибка загрузки изображения ${activeIndex}:`, error, validImages[activeIndex]);
+                                    opacity.setValue(1);
+                                }}
+                            />
+                        </View>
                     ) : (
                         <View style={styles.productImage} />
                     )}
@@ -248,6 +256,24 @@ const styles = StyleSheet.create({
         width: '100%',
         height: '100%',
         position: 'relative',
+    },
+    blurWrapper: {
+        width: '100%',
+        height: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
+        overflow: 'hidden',
+        backgroundColor: Color.lightGray,
+    },
+    blurBackground: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: '100%',
+        height: '100%',
+        opacity: 0.9,
     },
     productImage: {
         width: '100%',

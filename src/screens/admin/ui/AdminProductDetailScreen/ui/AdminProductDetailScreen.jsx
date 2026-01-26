@@ -3,10 +3,9 @@ import {
     View,
     StyleSheet,
     ScrollView,
-    SafeAreaView,
     Alert,
-    InteractionManager,
-} from 'react-native';
+    InteractionManager} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useSelector, useDispatch } from 'react-redux';
 
@@ -71,7 +70,8 @@ export const AdminProductDetailScreen = () => {
         stats: stockStats
     } = useProductStock(productId, {
         autoLoad: true,
-        findWarehouses: true
+        findWarehouses: true,
+        includeInactiveWarehouses: canEdit
     });
 
     // Хуки для админской функциональности
@@ -335,7 +335,7 @@ export const AdminProductDetailScreen = () => {
 
     if (!isInitialized || productLoading) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
                 <LoadingState
                     message={!isInitialized ? 'Инициализация...' : 'Загрузка продукта...'}
                 />
@@ -345,7 +345,7 @@ export const AdminProductDetailScreen = () => {
 
     if (productError || (!displayProduct && !productLoading)) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
                 <ErrorState
                     message={productError || "Продукт не найден"}
                     description="Возможно, продукт был удален или у вас нет прав доступа"
@@ -358,7 +358,7 @@ export const AdminProductDetailScreen = () => {
 
     if (!displayProduct || !displayData) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
                 <ErrorState
                     message="Ошибка загрузки продукта"
                     description="Не удалось получить информацию о продукте"
@@ -380,7 +380,7 @@ export const AdminProductDetailScreen = () => {
     // === Основной рендер ===
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
             {/* Заголовок с админскими действиями */}
             <AdminProductHeader
                 title={displayProduct.name}

@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { View, StyleSheet, FlatList, ActivityIndicator, Text, TouchableOpacity, InteractionManager } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { ProductManagementHeader } from './ProductManagementHeader';
@@ -257,7 +258,7 @@ export const ProductManagementScreen = ({ route }) => {
     }
 
     return (
-        <View style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
             <ProductManagementHeader
                 title={currentUser?.role === 'SUPPLIER' ? 'Мои продукты' : 'Управление продуктами'}
                 onBack={handleGoBack}
@@ -294,7 +295,7 @@ export const ProductManagementScreen = ({ route }) => {
                     />
                 )}
             </View>
-        </View>
+        </SafeAreaView>
     );
 };
 
@@ -305,7 +306,8 @@ const styles = StyleSheet.create({
     },
     content: {
         flex: 1,
-        padding: 16,
+        paddingHorizontal: 16,
+        paddingBottom: 16,
     },
     centered: {
         flex: 1,

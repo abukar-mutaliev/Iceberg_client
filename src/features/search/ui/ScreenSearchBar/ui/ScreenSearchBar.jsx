@@ -104,14 +104,14 @@ export const ScreenSearchBar = forwardRef(({
     };
 
     return (
-        <View style={styles.container}>
+            <View style={styles.container}>
             <View style={[
                 styles.searchBarWrapper,
-                { width: showFullWidth ? "100%" : 270 } // Исправлено с "75%" на числовое значение
+                showFullWidth ? styles.searchBarFullWidth : styles.searchBarDefault
             ]}>
                 {Platform.OS === 'android' ? (
                     <AndroidShadow
-                        style={{ width: '100%', height: 36 }}
+                        style={{ width: '100%', height: 44 }}
                         shadowColor="rgba(81, 90, 134, 0.2)"
                         shadowConfig={{
                             offsetX: 0,
@@ -122,7 +122,7 @@ export const ScreenSearchBar = forwardRef(({
                         }}
                         borderRadius={10}
                     >
-                        <View style={styles.inputContainer}>
+                        <View style={[styles.inputContainer, styles.iosInputContainer]}>
                             <TextInput
                                 ref={inputRef}
                                 style={styles.input}
@@ -158,7 +158,9 @@ export const ScreenSearchBar = forwardRef(({
                 ) : (
                     <Pressable
                         style={styles.iosSearchBar}
+                        onPressIn={handlePressInput}
                         onPress={handlePressInput}
+                        hitSlop={{ top: 16, bottom: 40, left: 8, right: 8 }}
                     >
                         <View style={styles.inputContainer}>
                             <TextInput
@@ -192,15 +194,7 @@ export const ScreenSearchBar = forwardRef(({
                 )}
             </View>
 
-            {!showFullWidth && !historyMode && (
-                <TouchableOpacity
-                    style={styles.cancelButton}
-                    onPress={onCancel}
-                    activeOpacity={0.7}
-                >
-                    <Text style={styles.cancelText}>Отмена</Text>
-                </TouchableOpacity>
-            )}
+            {/* Отмена скрыта по запросу */}
         </View>
     );
 });
@@ -210,17 +204,30 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        width: '95%',
-        height: 36,
+        flex: 1,
+        width: '100%',
+        minWidth: 0,
+        height: Platform.OS === 'ios' ? 64 : 44,
     },
     searchBarWrapper: {
-        height: 36,
+        height: Platform.OS === 'ios' ? 64 : 44,
         marginRight: 10,
     },
+    searchBarDefault: {
+        flex: 1,
+        minWidth: 0,
+    },
+    searchBarFullWidth: {
+        flex: 1,
+        marginRight: 0,
+        minWidth: 0,
+    },
     iosSearchBar: {
+        width: '100%',
         height: '100%',
         borderRadius: 10,
         backgroundColor: Color.colorLightMode,
+        paddingBottom: normalize(12),
         shadowColor: "rgba(81, 90, 134, 0.2)",
         shadowOffset: {
             width: 0,
@@ -228,6 +235,9 @@ const styles = StyleSheet.create({
         },
         shadowRadius: 4,
         shadowOpacity: 1,
+    },
+    iosInputContainer: {
+        height: 44,
     },
     inputContainer: {
         flexDirection: 'row',
@@ -238,12 +248,19 @@ const styles = StyleSheet.create({
     input: {
         fontFamily: FontFamily.sFPro,
         fontSize: normalizeFont(FontSize.size_sm),
-        lineHeight: normalize(22),
+        lineHeight: normalize(20),
         letterSpacing: 0,
         color: Color.dark,
         height: '100%',
         paddingHorizontal: normalize(24),
+        paddingVertical: Platform.OS === 'ios' ? normalize(6) : 0,
         flex: 1,
+        textAlignVertical: 'center',
+        ...Platform.select({
+            android: {
+                includeFontPadding: false,
+            },
+        }),
     },
     clearButton: {
         marginRight: normalize(8),
@@ -257,16 +274,5 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
-    cancelButton: {
-        paddingVertical: 7,
-        paddingHorizontal: 15,
-    },
-    cancelText: {
-        fontFamily: FontFamily.sFPro,
-        lineHeight: normalize(22),
-        letterSpacing: 0,
-        fontSize: normalizeFont(FontSize.size_sm),
-        color: Color.blue2,
-        textAlign: "center",
-    },
+    // cancelButton/cancelText removed
 });

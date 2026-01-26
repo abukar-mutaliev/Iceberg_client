@@ -24,6 +24,16 @@ export const ChatSelectionHeader = ({
     return `Выбрано сообщений: ${n}`;
   }, [selectedCount]);
 
+  if (__DEV__) {
+    console.log('[ChatSelectionHeader] Render', {
+      selectedCount,
+      canReply,
+      canDelete,
+      hasOnDelete: !!onDelete,
+      willShowDelete: canDelete && !!onDelete,
+    });
+  }
+
   return (
     <View style={styles.header}>
       <View style={styles.left}>

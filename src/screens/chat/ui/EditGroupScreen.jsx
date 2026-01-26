@@ -7,11 +7,10 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
-  SafeAreaView,
   Platform,
   KeyboardAvoidingView,
-  ScrollView,
-} from 'react-native';
+  ScrollView} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useDispatch, useSelector } from 'react-redux';
 import { updateRoom, fetchRoom } from '@entities/chat/model/slice';

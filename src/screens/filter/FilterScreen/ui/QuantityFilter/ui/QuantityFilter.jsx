@@ -5,12 +5,12 @@ import {
     StyleSheet,
     TouchableOpacity,
     Modal,
-    SafeAreaView,
     FlatList,
     Dimensions,
     PixelRatio,
     Platform
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronRight } from 'lucide-react-native';
 import { FontFamily } from '@app/styles/GlobalStyles';
 import { Checkbox } from '@shared/ui/Checkbox';

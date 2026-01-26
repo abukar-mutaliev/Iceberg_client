@@ -16,9 +16,12 @@ import {
     Keyboard,
     Dimensions,
 } from 'react-native';
+import Slider from '@react-native-community/slider';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { useDispatch, useSelector } from 'react-redux';
+import { PermissionInfoModal } from '@entities/chat/ui/Composer/components/PermissionInfoModal';
 import {
     createFeedback,
     selectFeedbackLoading,
@@ -30,6 +33,8 @@ import { selectUser } from '@entities/auth';
 
 const MAX_PHOTOS = 5;
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const MIN_SCALE = 0.6;
+const MAX_SCALE = 1.4;
 
 const StarRating = ({ rating, onRatingChange }) => {
     return (
@@ -96,6 +101,12 @@ export const FeedbackAddModal = ({
     const [photos, setPhotos] = useState([]);
     const [error, setError] = useState('');
     const [keyboardVisible, setKeyboardVisible] = useState(false);
+    const [permissionModalVisible, setPermissionModalVisible] = useState(false);
+    const [permissionType, setPermissionType] = useState('photos');
+    const [editorVisible, setEditorVisible] = useState(false);
+    const [pendingImage, setPendingImage] = useState(null);
+    const [selectedScale, setSelectedScale] = useState(1);
+    const [isProcessing, setIsProcessing] = useState(false);
 
     // Обработчики клавиатуры
     useEffect(() => {
@@ -137,6 +148,10 @@ export const FeedbackAddModal = ({
             setComment('');
             setPhotos([]);
             setError('');
+            setEditorVisible(false);
+            setPendingImage(null);
+            setSelectedScale(1);
+            setIsProcessing(false);
         }
     }, [visible, initialRating]);
 
@@ -154,6 +169,20 @@ export const FeedbackAddModal = ({
         }
     }, [error]);
 
+    const openEditorForAsset = useCallback((asset) => {
+        if (!asset?.uri) return;
+
+        setPendingImage({
+            uri: asset.uri,
+            width: asset.width,
+            height: asset.height,
+            fileSize: asset.fileSize,
+            mimeType: asset.mimeType
+        });
+        setSelectedScale(0.9);
+        setEditorVisible(true);
+    }, []);
+
     const pickImages = useCallback(async () => {
         if (photos.length >= MAX_PHOTOS) {
             Alert.alert('Ограничение', `Вы можете добавить максимум ${MAX_PHOTOS} фотографий`);
@@ -161,17 +190,35 @@ export const FeedbackAddModal = ({
         }
 
         try {
-            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (Platform.OS === 'android') {
+                // На Android: автоматический запрос разрешения (как раньше)
+                const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
+                
+                if (currentStatus !== 'granted') {
+                    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                    
+                    if (permissionResult.status !== 'granted') {
+                        return;
+                    }
+                }
+            } else {
+                // iOS: сначала запрашиваем разрешение, и только после отказа показываем экран настроек
+                const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
 
-            if (status !== 'granted') {
-                Alert.alert('Доступ запрещен', 'Для выбора фотографий необходимо разрешение на доступ к галерее.');
-                return;
+                if (currentStatus !== 'granted') {
+                    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+                    if (permissionResult.status !== 'granted') {
+                        setPermissionType('photos');
+                        setPermissionModalVisible(true);
+                        return;
+                    }
+                }
             }
 
             const result = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: 'images',
-                allowsEditing: true,
-                aspect: [4, 3],
+                allowsEditing: false,
                 quality: 0.8,
             });
 
@@ -183,13 +230,13 @@ export const FeedbackAddModal = ({
                     return;
                 }
 
-                setPhotos(prevPhotos => [...prevPhotos, selectedAsset]);
+                openEditorForAsset(selectedAsset);
             }
         } catch (error) {
             console.error('Ошибка при выборе изображения:', error);
             Alert.alert('Ошибка', 'Не удалось выбрать изображение');
         }
-    }, [photos.length]);
+    }, [photos.length, openEditorForAsset]);
 
     const takePhoto = useCallback(async () => {
         if (photos.length >= MAX_PHOTOS) {
@@ -198,16 +245,34 @@ export const FeedbackAddModal = ({
         }
 
         try {
-            const { status } = await ImagePicker.requestCameraPermissionsAsync();
+            if (Platform.OS === 'android') {
+                // На Android: автоматический запрос разрешения (как раньше)
+                const { status: currentStatus } = await ImagePicker.getCameraPermissionsAsync();
+                
+                if (currentStatus !== 'granted') {
+                    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+                    
+                    if (permissionResult.status !== 'granted') {
+                        return;
+                    }
+                }
+            } else {
+                // iOS: сначала запрашиваем разрешение, и только после отказа показываем экран настроек
+                const { status: currentStatus } = await ImagePicker.getCameraPermissionsAsync();
 
-            if (status !== 'granted') {
-                Alert.alert('Доступ запрещен', 'Для съемки фотографий необходимо разрешение на доступ к камере.');
-                return;
+                if (currentStatus !== 'granted') {
+                    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+
+                    if (permissionResult.status !== 'granted') {
+                        setPermissionType('camera');
+                        setPermissionModalVisible(true);
+                        return;
+                    }
+                }
             }
 
             const result = await ImagePicker.launchCameraAsync({
-                allowsEditing: true,
-                aspect: [4, 3],
+                allowsEditing: false,
                 quality: 0.8,
             });
 
@@ -219,13 +284,75 @@ export const FeedbackAddModal = ({
                     return;
                 }
 
-                setPhotos(prevPhotos => [...prevPhotos, selectedAsset]);
+                openEditorForAsset(selectedAsset);
             }
         } catch (error) {
             console.error('Ошибка при съемке фото:', error);
             Alert.alert('Ошибка', 'Не удалось сделать фото');
         }
-    }, [photos.length]);
+    }, [photos.length, openEditorForAsset]);
+
+    const closeEditor = useCallback(() => {
+        setEditorVisible(false);
+        setPendingImage(null);
+        setSelectedScale(1);
+        setIsProcessing(false);
+    }, []);
+
+    const applyImage = useCallback(async () => {
+        if (!pendingImage?.uri) {
+            closeEditor();
+            return;
+        }
+
+        try {
+            setIsProcessing(true);
+            const width = pendingImage.width || 0;
+            const height = pendingImage.height || 0;
+            const shouldResize = width > 0 && height > 0 && selectedScale < 1;
+            const uriLower = (pendingImage.uri || '').toLowerCase();
+            const isPng = pendingImage.mimeType === 'image/png' || uriLower.endsWith('.png');
+
+            let finalUri = pendingImage.uri;
+            if (shouldResize) {
+                const targetWidth = Math.max(1, Math.round(width * selectedScale));
+                const targetHeight = Math.max(1, Math.round(height * selectedScale));
+
+                const resized = await ImageManipulator.manipulateAsync(
+                    pendingImage.uri,
+                    [{ resize: { width: targetWidth, height: targetHeight } }],
+                    {
+                        compress: isPng ? 1 : 0.8,
+                        format: isPng ? ImageManipulator.SaveFormat.PNG : ImageManipulator.SaveFormat.JPEG
+                    }
+                );
+                finalUri = resized.uri;
+            }
+
+            setPhotos(prevPhotos => [...prevPhotos, { uri: finalUri }]);
+            closeEditor();
+        } catch (error) {
+            console.error('Ошибка при обработке изображения:', error);
+            Alert.alert('Ошибка', 'Не удалось обработать изображение');
+            closeEditor();
+        } finally {
+            setIsProcessing(false);
+        }
+    }, [pendingImage, selectedScale, closeEditor]);
+
+    const keepOriginal = useCallback(() => {
+        if (pendingImage?.uri) {
+            setPhotos(prevPhotos => [...prevPhotos, { uri: pendingImage.uri }]);
+        }
+        closeEditor();
+    }, [pendingImage, closeEditor]);
+
+    const getSizeLabel = useCallback(() => {
+        if (!pendingImage?.width || !pendingImage?.height) return '';
+        const w = Math.max(1, Math.round(pendingImage.width * selectedScale));
+        const h = Math.max(1, Math.round(pendingImage.height * selectedScale));
+        return `${w}×${h}px`;
+    }, [pendingImage, selectedScale]);
 
     const removePhoto = useCallback((index) => {
         setPhotos(prevPhotos => {
@@ -492,6 +619,86 @@ export const FeedbackAddModal = ({
                     </View>
                 </KeyboardAvoidingView>
             </View>
+
+            {/* Permission Info Modal */}
+            <PermissionInfoModal
+                visible={permissionModalVisible}
+                onClose={() => setPermissionModalVisible(false)}
+                type={permissionType}
+            />
+
+            <Modal
+                visible={editorVisible}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={closeEditor}
+            >
+                <View style={styles.editorOverlay}>
+                    <View style={styles.editorContent}>
+                        <Text style={styles.editorTitle}>Настройка изображения</Text>
+                        {pendingImage?.uri ? (
+                            <View style={styles.editorPreview}>
+                                <Image
+                                    source={{ uri: pendingImage.uri }}
+                                    style={styles.editorPreviewBackground}
+                                    blurRadius={20}
+                                />
+                                <Image
+                                    source={{ uri: pendingImage.uri }}
+                                    style={[
+                                        styles.editorPreviewForeground,
+                                        { transform: [{ scale: selectedScale }] }
+                                    ]}
+                                    resizeMode="contain"
+                                />
+                            </View>
+                        ) : null}
+
+                        <Text style={styles.editorSizeLabel}>
+                            Размер: {getSizeLabel() || 'неизвестен'}
+                        </Text>
+
+                        <View style={styles.editorScaleRow}>
+                            <Text style={styles.editorScaleLabel}>
+                                Масштаб: {Math.round(selectedScale * 100)}%
+                            </Text>
+                            <Slider
+                                style={styles.editorScaleSlider}
+                                minimumValue={MIN_SCALE}
+                                maximumValue={MAX_SCALE}
+                                step={0.05}
+                                value={selectedScale}
+                                onValueChange={setSelectedScale}
+                                minimumTrackTintColor="#3B43A2"
+                                maximumTrackTintColor="#E5E7EB"
+                                thumbTintColor="#3B43A2"
+                                disabled={isProcessing}
+                            />
+                        </View>
+
+                        <View style={styles.editorActions}>
+                            <TouchableOpacity
+                                style={[styles.editorButton, styles.editorSecondaryButton]}
+                                onPress={keepOriginal}
+                                disabled={isProcessing}
+                            >
+                                <Text style={styles.editorSecondaryText}>Оставить как есть</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.editorButton, styles.editorPrimaryButton]}
+                                onPress={applyImage}
+                                disabled={isProcessing}
+                            >
+                                {isProcessing ? (
+                                    <ActivityIndicator size="small" color="#FFFFFF" />
+                                ) : (
+                                    <Text style={styles.editorPrimaryText}>Применить</Text>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
         </Modal>
     );
 };
@@ -647,5 +854,97 @@ const styles = StyleSheet.create({
     buttonText: {
         fontSize: 16,
         fontWeight: '500',
+    },
+    editorOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    editorContent: {
+        width: '100%',
+        maxWidth: 420,
+        backgroundColor: '#FFFFFF',
+        borderRadius: 16,
+        padding: 16,
+    },
+    editorTitle: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#1A1A1A',
+        marginBottom: 12,
+        textAlign: 'center',
+    },
+    editorPreview: {
+        width: '100%',
+        height: 220,
+        borderRadius: 12,
+        backgroundColor: '#F2F2F2',
+        overflow: 'hidden',
+        marginBottom: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    editorPreviewBackground: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: '100%',
+        height: '100%',
+        resizeMode: 'cover',
+        opacity: 0.9,
+    },
+    editorPreviewForeground: {
+        width: '100%',
+        height: '100%',
+    },
+    editorSizeLabel: {
+        fontSize: 13,
+        color: '#666',
+        marginBottom: 12,
+        textAlign: 'center',
+    },
+    editorScaleRow: {
+        marginBottom: 16,
+    },
+    editorScaleLabel: {
+        fontSize: 13,
+        color: '#374151',
+        fontWeight: '600',
+        marginBottom: 6,
+    },
+    editorScaleSlider: {
+        width: '100%',
+        height: 40,
+    },
+    editorActions: {
+        flexDirection: 'row',
+        gap: 10,
+    },
+    editorButton: {
+        flex: 1,
+        paddingVertical: 12,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    editorSecondaryButton: {
+        backgroundColor: '#F3F4F6',
+    },
+    editorPrimaryButton: {
+        backgroundColor: '#3B43A2',
+    },
+    editorSecondaryText: {
+        color: '#374151',
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    editorPrimaryText: {
+        color: '#FFFFFF',
+        fontSize: 14,
+        fontWeight: '600',
     },
 });

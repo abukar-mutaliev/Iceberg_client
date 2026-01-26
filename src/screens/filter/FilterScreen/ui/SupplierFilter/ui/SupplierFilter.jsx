@@ -9,9 +9,9 @@ import {
     PixelRatio,
     Modal,
     TextInput,
-    SafeAreaView,
     Platform
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronRight } from 'lucide-react-native';
 import { FontFamily } from '@app/styles/GlobalStyles';
 import { Checkbox } from '@shared/ui/Checkbox';

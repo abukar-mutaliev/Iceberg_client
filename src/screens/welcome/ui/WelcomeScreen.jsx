@@ -17,15 +17,12 @@ const adaptiveSize = (baseSize) => {
 
 export const WelcomeScreen = ({ navigation }) => {
     const handleStart = () => {
-        console.log('🚀 WelcomeScreen: handleStart called');
-        console.log('🚀 Navigation object:', typeof navigation);
+
 
         try {
-            console.log('🚀 Attempting to replace Welcome with Main...');
             // Используем replace вместо navigate, чтобы удалить WelcomeScreen из стека навигации
             // Это предотвратит возможность вернуться назад на экран приветствия
             navigation.replace('Main');
-            console.log('🚀 Navigation call completed');
         } catch (error) {
             console.error('❌ Navigation error in WelcomeScreen:', error);
         }

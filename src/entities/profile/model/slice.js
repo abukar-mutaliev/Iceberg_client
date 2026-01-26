@@ -172,6 +172,30 @@ export const updateProfile = createAsyncThunk(
     }
 );
 
+export const initiateEmailBind = createAsyncThunk(
+    'profile/initiateEmailBind',
+    async (data, { rejectWithValue }) => {
+        try {
+            const response = await profileApi.initiateEmailBind(data);
+            return response;
+        } catch (error) {
+            return rejectWithValue(handleError(error));
+        }
+    }
+);
+
+export const confirmEmailBind = createAsyncThunk(
+    'profile/confirmEmailBind',
+    async (data, { rejectWithValue }) => {
+        try {
+            const response = await profileApi.confirmEmailBind(data);
+            return response;
+        } catch (error) {
+            return rejectWithValue(handleError(error));
+        }
+    }
+);
+
 
 export const updateAvatar = createAsyncThunk(
     'profile/updateAvatar',

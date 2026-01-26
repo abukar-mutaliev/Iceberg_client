@@ -7,9 +7,9 @@ import {
     StyleSheet,
     Alert,
     ActivityIndicator,
-    SafeAreaView,
     RefreshControl
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
@@ -245,7 +245,7 @@ export const DriverManagementScreen = () => {
     );
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
             <AdminHeader
                 title="Районы водителей"
                 icon={<IconDriver width={24} height={24} color={Color.blue2} />}

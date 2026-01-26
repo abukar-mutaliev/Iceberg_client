@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import {
     View,
     Image,
@@ -8,7 +8,9 @@ import {
     Text,
     Modal,
     TouchableWithoutFeedback,
-    Platform
+    Animated,
+    PanResponder,
+    Platform,
 } from 'react-native';
 import { AvatarPlaceholder } from '@shared/ui/Icon/DetailScreenIcons';
 import { normalize } from '@shared/lib/normalize';
@@ -27,19 +29,131 @@ export const ProfileAvatarView = ({
                                       onAvatarPress,
                                       modalVisible,
                                       setModalVisible,
+                                      onCloseModal,
+                                      onBeginClose,
                                   }) => {
     const route = useRoute();
     const isEditScreen = route.name === 'ProfileEdit';
+    const avatarLogRef = useRef({ lastUri: null, lastTs: 0 });
 
     const normalizedSize = normalize(size);
     const borderRadius = normalizedSize / 2;
+    const translateY = useRef(new Animated.Value(0)).current;
+    const contentLayoutRef = useRef(null);
+    const startedOutsideContentRef = useRef(false);
+
+    const overlayOpacity = useMemo(() => {
+        return translateY.interpolate({
+            inputRange: [0, SCREEN_HEIGHT * 0.6],
+            outputRange: [1, 0.3],
+            extrapolate: 'clamp',
+        });
+    }, [translateY]);
+
+    const closeModal = onCloseModal || (() => setModalVisible(false));
+
+    const closeModalAnimated = () => {
+        if (onBeginClose) {
+            onBeginClose();
+        }
+        Animated.timing(translateY, {
+            toValue: SCREEN_HEIGHT,
+            duration: 220,
+            useNativeDriver: true,
+        }).start(() => {
+            closeModal();
+        });
+    };
+
+    const panResponder = useMemo(() => {
+        return PanResponder.create({
+            onStartShouldSetPanResponder: () => true,
+            onStartShouldSetPanResponderCapture: () => true,
+            onMoveShouldSetPanResponder: (_, gestureState) => {
+                const { dy, dx } = gestureState;
+                return Math.abs(dy) > 4 && Math.abs(dy) > Math.abs(dx);
+            },
+            onMoveShouldSetPanResponderCapture: (_, gestureState) => {
+                const { dy, dx } = gestureState;
+                return Math.abs(dy) > 4 && Math.abs(dy) > Math.abs(dx);
+            },
+            onPanResponderGrant: (_, gestureState) => {
+                const layout = contentLayoutRef.current;
+                if (!layout) {
+                    startedOutsideContentRef.current = true;
+                    return;
+                }
+                const { x0, y0 } = gestureState;
+                const insideX = x0 >= layout.x && x0 <= layout.x + layout.width;
+                const insideY = y0 >= layout.y && y0 <= layout.y + layout.height;
+                startedOutsideContentRef.current = !(insideX && insideY);
+            },
+            onPanResponderMove: (_, gestureState) => {
+                const { dy } = gestureState;
+                if (dy > 0) {
+                    translateY.setValue(dy);
+                }
+            },
+            onPanResponderRelease: (_, gestureState) => {
+                const { dy, vy, dx } = gestureState;
+                const shouldClose = dy > SCREEN_HEIGHT * 0.15 || vy > 1.2;
+                const isTap = Math.abs(dy) < 10 && Math.abs(dx) < 10 && Math.abs(vy) < 0.6;
+
+                if (shouldClose) {
+                    closeModalAnimated();
+                    return;
+                }
+
+                if (isTap && startedOutsideContentRef.current) {
+                    if (onBeginClose) {
+                        onBeginClose();
+                    }
+                    closeModal();
+                    return;
+                }
+
+                Animated.spring(translateY, {
+                    toValue: 0,
+                    useNativeDriver: true,
+                    damping: 18,
+                    stiffness: 180,
+                    mass: 0.8,
+                }).start();
+            },
+            onPanResponderTerminate: () => {
+                Animated.spring(translateY, {
+                    toValue: 0,
+                    useNativeDriver: true,
+                    damping: 18,
+                    stiffness: 180,
+                    mass: 0.8,
+                }).start();
+            },
+            onPanResponderTerminationRequest: () => false,
+        });
+    }, [closeModalAnimated, translateY]);
+
+    useEffect(() => {
+        if (modalVisible) {
+            translateY.setValue(0);
+        }
+        if (!modalVisible) {
+            if (Platform.OS === 'ios') {
+                const timeoutId = setTimeout(() => {
+                    translateY.setValue(0);
+                }, 320);
+                return () => clearTimeout(timeoutId);
+            }
+            translateY.setValue(0);
+        }
+    }, [modalVisible, translateY]);
 
     return (
         <View style={[styles.container, centered && styles.centered]}>
             {/* Кнопка аватара */}
             <TouchableOpacity
                 onPress={onAvatarPress}
-                disabled={isUploading}
+                disabled={isUploading || modalVisible}
                 activeOpacity={0.7}
             >
                 <View style={[
@@ -72,6 +186,26 @@ export const ProfileAvatarView = ({
                                 }
                             ]}
                             resizeMode="cover"
+                            onLoadStart={() => {
+                                if (!__DEV__) return;
+                                const uri = avatarUri?.uri || null;
+                                const now = Date.now();
+                                if (uri && (avatarLogRef.current.lastUri !== uri || now - avatarLogRef.current.lastTs > 5000)) {
+                                    console.log('ProfileAvatar: image load start', { uri });
+                                    avatarLogRef.current = { lastUri: uri, lastTs: now };
+                                }
+                            }}
+                            onLoad={() => {
+                                if (!__DEV__) return;
+                                const uri = avatarUri?.uri || null;
+                                console.log('ProfileAvatar: image load success', { uri });
+                            }}
+                            onError={(event) => {
+                                if (!__DEV__) return;
+                                const uri = avatarUri?.uri || null;
+                                const error = event?.nativeEvent || {};
+                                console.log('ProfileAvatar: image load error', { uri, error });
+                            }}
                         />
                     ) : (
                         <View style={[
@@ -105,19 +239,36 @@ export const ProfileAvatarView = ({
                     animationType="fade"
                     transparent={true}
                     visible={modalVisible}
-                    onRequestClose={() => setModalVisible(false)}
+                    onRequestClose={() => {
+                        if (onBeginClose) {
+                            onBeginClose();
+                        }
+                        closeModal();
+                    }}
                 >
-                    <TouchableWithoutFeedback onPress={() => setModalVisible(false)}>
-                        <View style={styles.modalOverlay}>
-                            <View style={styles.modalContent}>
-                                <Image
-                                    source={avatarUri}
-                                    style={styles.modalImage}
-                                    resizeMode="contain"
-                                />
-                            </View>
-                        </View>
-                    </TouchableWithoutFeedback>
+                    <Animated.View
+                        style={[styles.modalOverlay, { opacity: overlayOpacity }]}
+                        {...panResponder.panHandlers}
+                    >
+                        <Animated.View
+                            style={[styles.modalContent, { transform: [{ translateY }] }]}
+                            onLayout={event => {
+                                contentLayoutRef.current = event.nativeEvent.layout;
+                            }}
+                        >
+                            <Image
+                                source={avatarUri}
+                                style={styles.modalImage}
+                                resizeMode="contain"
+                                onError={(event) => {
+                                    if (!__DEV__) return;
+                                    const uri = avatarUri?.uri || null;
+                                    const error = event?.nativeEvent || {};
+                                    console.log('ProfileAvatar: modal image load error', { uri, error });
+                                }}
+                            />
+                        </Animated.View>
+                    </Animated.View>
                 </Modal>
             )}
 

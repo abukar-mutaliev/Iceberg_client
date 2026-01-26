@@ -1,5 +1,7 @@
 import React from 'react';
-import { SafeAreaView, StyleSheet, ScrollView, View } from 'react-native';
+import { StyleSheet, ScrollView, View, BackHandler } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { normalize } from '@shared/lib/normalize';
 import { FAQSection } from '../../FAQSection';
 import { ContactSection } from '../../ContactSection';
@@ -9,8 +11,31 @@ import { AppFeedbackSection } from '../../AppFeedbackSection';
  * Главный экран Центра помощи
  */
 export const HelpCenterScreen = () => {
+    const navigation = useNavigation();
+
+    useFocusEffect(
+        React.useCallback(() => {
+            const onBackPress = () => {
+                if (navigation.canGoBack()) {
+                    navigation.goBack();
+                } else {
+                    navigation.navigate('ProfileMain');
+                }
+                return true;
+            };
+
+            const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+
+            return () => {
+                if (backHandler && typeof backHandler.remove === 'function') {
+                    backHandler.remove();
+                }
+            };
+        }, [navigation])
+    );
+
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right']}>
             <ScrollView
                 style={styles.scrollView}
                 contentContainerStyle={styles.scrollContent}
@@ -35,7 +60,7 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     scrollContent: {
-        paddingBottom: normalize(24),
+        paddingBottom: 0,
     },
     divider: {
         height: normalize(1),

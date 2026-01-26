@@ -3,6 +3,7 @@
 // ============================================================================
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { StatusBar, Platform, Linking, Animated, View, Text, TouchableOpacity, Image } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -60,6 +61,7 @@ import { WarehouseStatisticsScreen } from "@screens/warehouse/ui/WarehouseStatis
 import { WarehouseSalesScreen } from "@screens/warehouse/ui/WarehouseSalesScreen";
 import { WarehouseListScreen } from "@screens/warehouse/ui/WarehouseListScreen";
 import { WarehouseSelectionScreen } from "@screens/warehouse/ui/WarehouseSelectionScreen";
+import { WarehouseDetailsScreen } from "@screens/warehouse/ui/WarehouseDetailsScreen";
 import { TurnoverProductsScreen } from "@screens/warehouse/ui/TurnoverProductsScreen";
 import { AddProductScreen } from "@screens/product/AddProductScreen";
 import { CartScreen } from "@screens/cart/ui/CartScreen";
@@ -1119,6 +1121,16 @@ const MainStackScreen = () => (
             component={StopsListScreen}
             options={createScreenOptions()}
         />
+        <MainStack.Screen
+            name="WarehouseList"
+            component={WarehouseListScreen}
+            options={createScreenOptions()}
+        />
+        <MainStack.Screen
+            name="WarehouseDetails"
+            component={WarehouseDetailsScreen}
+            options={createScreenOptions()}
+        />
     </MainStack.Navigator>
 );
 
@@ -1216,6 +1228,8 @@ const SearchStackScreen = () => (
 );
 const MainTabNavigatorContent = () => {
     const { isTabBarVisible } = useTabBar();
+    const insets = useSafeAreaInsets();
+    const tabBarHeight = 80 + insets.bottom;
 
     const getLeafRouteName = React.useCallback((route) => {
         let r = route;
@@ -1232,21 +1246,33 @@ const MainTabNavigatorContent = () => {
     }, [isTabBarVisible]);
     
     const tabBarStyle = React.useMemo(() => {
-        const style = isTabBarVisible ? {
+        const baseStyle = {
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: '#ffffff',
+            zIndex: 100,
             elevation: 8,
+        };
+
+        const style = isTabBarVisible ? {
+            ...baseStyle,
             shadowOpacity: 0.1,
             shadowRadius: 6,
             shadowOffset: { width: 0, height: -2 },
+            height: tabBarHeight,
         } : {
-            display: 'none',
+            ...baseStyle,
             height: 0,
+            opacity: 0,
             overflow: 'hidden',
         };
         if (__DEV__) {
             console.log('📐 TabBar style:', style);
         }
         return style;
-    }, [isTabBarVisible]);
+    }, [isTabBarVisible, tabBarHeight]);
     
     return (
         <Tab.Navigator
@@ -1264,6 +1290,7 @@ const MainTabNavigatorContent = () => {
                     animationEnabled: false,
                 };
             }}
+            sceneContainerStyle={isTabBarVisible ? { paddingBottom: tabBarHeight } : undefined}
             detachInactiveScreens={true}
             tabBar={props => <CustomTabBar {...props} />}
             backBehavior="none"
@@ -1377,6 +1404,11 @@ export const AppNavigator = () => {
                         component={MapScreen}
                         options={createScreenOptions()}
                     />
+                    <Stack.Screen
+                        name="CatalogModal"
+                        component={CatalogScreen}
+                        options={createScreenOptions()}
+                    />
 
                     {/* Доступно всем (включая гостей) */}
                     <Stack.Screen
@@ -1398,6 +1430,13 @@ export const AppNavigator = () => {
                     <Stack.Screen
                         name="SupplierScreen"
                         component={SupplierScreen}
+                        options={createScreenOptions()}
+                    />
+                    {/* WarehouseDetails в AppStack нужен для переходов из ChatRoom.
+                       Тогда экран склада ложится поверх ChatRoom и back возвращает обратно в комнату. */}
+                    <Stack.Screen
+                        name="WarehouseDetails"
+                        component={WarehouseDetailsScreen}
                         options={createScreenOptions()}
                     />
 
@@ -1690,12 +1729,14 @@ export const AppNavigator = () => {
                                             },
                                             headerTitleAlign: 'center',
                                             headerLeftContainerStyle: {
-                                                left: 0,
-                                                alignItems: 'flex-start',
-                                                justifyContent: 'center',
-                                                paddingRight: 50,
+                                                paddingRight: 0,
+                                            },
+                                            headerRightContainerStyle: {
+                                                paddingLeft: 0,
                                             },
                                             headerTitleContainerStyle: {
+                                                left: 0,
+                                                right: 0,
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
                                             },

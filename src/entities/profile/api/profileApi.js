@@ -28,7 +28,11 @@ export const profileApiMethods = {
     changePassword: (data) => profileApi.put('/password', data),
 
     // Удаление профиля
-    deleteProfile: (passwordData) => profileApi.delete('', passwordData)
+    deleteProfile: (passwordData) => profileApi.delete('', passwordData),
+
+    // Привязка email
+    initiateEmailBind: (data) => profileApi.post('/email/bind/initiate', data),
+    confirmEmailBind: (data) => profileApi.post('/email/bind/confirm', data),
 };
 
 export { profileApiMethods as profileApi };

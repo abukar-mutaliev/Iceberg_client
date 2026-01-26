@@ -12,7 +12,7 @@ import { verifyResetCode, clearError } from '@entities/auth';
 import { CustomTextInput } from '@shared/ui/CustomTextInput/CustomTextInput';
 import { normalize, normalizeFont } from "@shared/lib/normalize";
 
-export const ResetPasswordCodeForm = ({ resetToken, receiveCall, onCodeVerified, onBack }) => {
+export const ResetPasswordCodeForm = ({ resetToken, onCodeVerified, onBack }) => {
     const dispatch = useDispatch();
     const isLoading = useSelector((state) => state.auth?.isLoading ?? false);
     const error = useSelector((state) => state.auth?.error);
@@ -20,6 +20,7 @@ export const ResetPasswordCodeForm = ({ resetToken, receiveCall, onCodeVerified,
     const [code, setCode] = useState('');
     const [codeError, setCodeError] = useState('');
     const [formError, setFormError] = useState('');
+    const [resendTimer, setResendTimer] = useState(300);
 
     useEffect(() => {
         if (error && !isLoading) {
@@ -29,6 +30,16 @@ export const ResetPasswordCodeForm = ({ resetToken, receiveCall, onCodeVerified,
             setFormError('');
         }
     }, [error, isLoading]);
+
+    useEffect(() => {
+        if (resendTimer <= 0) return;
+
+        const intervalId = setInterval(() => {
+            setResendTimer((prev) => (prev > 0 ? prev - 1 : 0));
+        }, 1000);
+
+        return () => clearInterval(intervalId);
+    }, [resendTimer]);
 
     const handleErrorDisplay = (errorMessage) => {
         if (!errorMessage) return;
@@ -105,14 +116,17 @@ export const ResetPasswordCodeForm = ({ resetToken, receiveCall, onCodeVerified,
         setFormError('');
     };
 
+    const formatTimer = (seconds) => {
+        const minutes = Math.floor(seconds / 60);
+        const secs = String(seconds % 60).padStart(2, '0');
+        return `${minutes}:${secs}`;
+    };
+
     return (
         <View style={styles.formContainer}>
             <Text style={styles.title}>Введите код подтверждения</Text>
             <Text style={styles.description}>
-                {receiveCall 
-                    ? `Позвоните на номер ${receiveCall.phoneToCall}. Последние 4 цифры входящего номера - это ваш код подтверждения.`
-                    : 'Мы отправили код подтверждения на вашу почту. Пожалуйста, введите его ниже.'
-                }
+                Мы отправили код подтверждения. Пожалуйста, введите его ниже.
             </Text>
 
             <View style={styles.inputsContainer}>
@@ -162,6 +176,22 @@ export const ResetPasswordCodeForm = ({ resetToken, receiveCall, onCodeVerified,
                 disabled={isLoading}
             >
                 <Text style={styles.backButtonText}>Назад</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+                style={[styles.backButton, resendTimer > 0 && styles.resendDisabled]}
+                onPress={() => {
+                    if (resendTimer > 0) return;
+                    // Здесь можно вызвать повторную отправку кода
+                    setResendTimer(300);
+                }}
+                disabled={isLoading || resendTimer > 0}
+            >
+                <Text style={styles.backButtonText}>
+                    {resendTimer > 0
+                        ? `Отправить снова через ${formatTimer(resendTimer)}`
+                        : 'Отправить снова'}
+                </Text>
             </TouchableOpacity>
         </View>
     );
@@ -273,6 +303,9 @@ const styles = StyleSheet.create({
     backButton: {
         marginTop: normalize(20),
         alignItems: 'center',
+    },
+    resendDisabled: {
+        opacity: 0.6,
     },
     backButtonText: {
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',

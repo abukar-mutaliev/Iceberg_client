@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily, Border, Shadow } from '@app/styles/GlobalStyles';
@@ -22,6 +22,23 @@ export const ProductWarehouseInfo = ({
                                          error
                                      }) => {
 
+    useEffect(() => {
+        const summary = {
+            type: Array.isArray(warehousesWithStock) ? 'array' : typeof warehousesWithStock,
+            length: Array.isArray(warehousesWithStock) ? warehousesWithStock.length : null,
+            keys: warehousesWithStock && typeof warehousesWithStock === 'object'
+                ? Object.keys(warehousesWithStock)
+                : null
+        };
+        console.log('[ProductWarehouseInfo] props snapshot', {
+            loading,
+            error,
+            totalStock,
+            availableStock,
+            warehousesWithStock: summary
+        });
+    }, [warehousesWithStock, totalStock, availableStock, loading, error]);
+
     const normalizedWarehouses = useMemo(() => {
         if (!warehousesWithStock) return [];
 
@@ -40,6 +57,13 @@ export const ProductWarehouseInfo = ({
 
         return [];
     }, [warehousesWithStock]);
+
+    useEffect(() => {
+        console.log('[ProductWarehouseInfo] normalizedWarehouses', {
+            length: normalizedWarehouses.length,
+            sample: normalizedWarehouses.slice(0, 3)
+        });
+    }, [normalizedWarehouses]);
 
     const renderContent = () => {
         if (loading) {

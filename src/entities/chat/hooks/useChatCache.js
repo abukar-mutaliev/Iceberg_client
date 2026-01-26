@@ -168,23 +168,42 @@ export const useCachedMessages = (roomId) => {
         const cached = await chatCacheService.loadRoomMessages(roomId);
         
         if (cached?.messages && Array.isArray(cached.messages) && cached.messages.length > 0) {
-          // Устанавливаем сообщения из кэша
-          setMessages(cached.messages);
-          
-          // Гидратируем Redux store данными из кэша только если Redux пустой
-          // hydrateRoomMessages теперь сама проверяет наличие сообщений
-          dispatch(hydrateRoomMessages({ 
-            roomId, 
-            messages: cached.messages 
-          }));
-          
-          setCacheInfo({
-            count: cached.messages.length,
-            cachedAt: cached.cachedAt,
-            isStale: cached.isStale,
+          // КРИТИЧНО: Фильтруем удаленные сообщения при загрузке из кэша
+          // Это предотвращает показ удаленных сообщений при повторном входе в чат
+          const validMessages = cached.messages.filter(msg => {
+            // Исключаем сообщения, удаленные для всех
+            if (msg.isDeletedForAll === true) {
+              return false;
+            }
+            return true;
           });
           
-          console.log(`✅ Loaded ${cached.messages.length} messages from cache for room ${roomId}`);
+          if (validMessages.length > 0) {
+            // Устанавливаем сообщения из кэша
+            setMessages(validMessages);
+            
+            // Гидратируем Redux store данными из кэша только если Redux пустой
+            // hydrateRoomMessages теперь сама проверяет наличие сообщений
+            dispatch(hydrateRoomMessages({ 
+              roomId, 
+              messages: validMessages 
+            }));
+            
+            setCacheInfo({
+              count: validMessages.length,
+              cachedAt: cached.cachedAt,
+              isStale: cached.isStale,
+            });
+            
+            if (__DEV__) {
+              console.log(`✅ Loaded ${validMessages.length} messages from cache for room ${roomId} (filtered ${cached.messages.length - validMessages.length} deleted)`);
+            }
+          } else {
+            // Если все сообщения были удалены, очищаем состояние
+            setMessages([]);
+            setIsLoadingFromCache(false);
+            return;
+          }
         }
       } catch (error) {
         console.warn('Failed to load messages from cache:', error);

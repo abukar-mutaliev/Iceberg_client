@@ -1,7 +1,7 @@
 import * as ImageManipulator from 'expo-image-manipulator';
 import NetInfo from "@react-native-community/netinfo";
 import {getBaseUrl} from "@shared/api/api";
-import {Platform} from 'react-native';
+import {Platform, Image} from 'react-native';
 import { authService} from "@shared/api/api";
 import {createApiModule} from "@shared/services/ApiClient";
 
@@ -30,6 +30,56 @@ const normalizeCategory = (categoryValue) => {
     return String(categoryValue);
 };
 
+const normalizeFileUri = (uri) => {
+    if (!uri || typeof uri !== 'string') return uri;
+
+    const lower = uri.toLowerCase();
+    if (
+        lower.startsWith('file://') ||
+        lower.startsWith('content://') ||
+        lower.startsWith('ph://') ||
+        lower.startsWith('assets-library://') ||
+        lower.startsWith('http://') ||
+        lower.startsWith('https://')
+    ) {
+        return uri;
+    }
+
+    if (Platform.OS === 'android') {
+        return `file://${uri}`;
+    }
+
+    return uri;
+};
+
+const getImageDimensions = (uri) => new Promise((resolve, reject) => {
+    Image.getSize(
+        uri,
+        (width, height) => resolve({ width, height }),
+        (error) => reject(error)
+    );
+});
+
+const getResizeAction = async (uri, maxSize) => {
+    try {
+        const { width, height } = await getImageDimensions(uri);
+        if (!width || !height) return null;
+
+        const scale = Math.min(maxSize / width, maxSize / height, 1);
+        if (scale >= 1) return null;
+
+        return {
+            resize: {
+                width: Math.max(1, Math.round(width * scale)),
+                height: Math.max(1, Math.round(height * scale))
+            }
+        };
+    } catch (error) {
+        console.warn('Не удалось определить размер изображения:', error?.message || error);
+        return null;
+    }
+};
+
 const prepareImageFile = async (img, index) => {
     try {
         if (typeof img === 'string') {
@@ -38,15 +88,14 @@ const prepareImageFile = async (img, index) => {
             }
 
             try {
-                const uriToProcess = Platform.OS === 'android'
-                    ? (img.startsWith('file://') ? img : `file://${img}`)
-                    : img;
+                const uriToProcess = normalizeFileUri(img);
 
                 console.log(`Сжатие изображения ${index+1}, URI: ${uriToProcess.substring(0, 30)}...`);
 
+                const resizeAction = await getResizeAction(uriToProcess, 800);
                 const result = await ImageManipulator.manipulateAsync(
                     uriToProcess,
-                    [{ resize: { width: 800, height: 800 } }],
+                    resizeAction ? [resizeAction] : [],
                     { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
                 );
 
@@ -65,22 +114,21 @@ const prepareImageFile = async (img, index) => {
                 const fileName = `image-${timestamp}-${index}.jpg`;
 
                 return {
-                    uri: img,
+                    uri: normalizeFileUri(img),
                     name: fileName,
                     type: 'image/jpeg'
                 };
             }
         } else if (img && img.uri) {
             try {
-                const uriToProcess = Platform.OS === 'android'
-                    ? (img.uri.startsWith('file://') ? img.uri : `file://${img.uri}`)
-                    : img.uri;
+                const uriToProcess = normalizeFileUri(img.uri);
 
                 console.log(`Сжатие объекта изображения ${index+1}, URI: ${uriToProcess.substring(0, 30)}...`);
 
+                const resizeAction = await getResizeAction(uriToProcess, 800);
                 const result = await ImageManipulator.manipulateAsync(
                     uriToProcess,
-                    [{ resize: { width: 800, height: 800 } }],
+                    resizeAction ? [resizeAction] : [],
                     { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
                 );
 
@@ -97,7 +145,7 @@ const prepareImageFile = async (img, index) => {
                 const fileName = img.name || `image-${Date.now()}-${index}.jpg`;
 
                 return {
-                    uri: img.uri,
+                    uri: normalizeFileUri(img.uri),
                     name: fileName,
                     type: img.type || 'image/jpeg'
                 };
@@ -202,16 +250,7 @@ const uploadSingleImage = async (productId, fileObj, accessToken, baseUrl) => {
             };
         }
 
-        let uri = fileObj.uri;
-        if (Platform.OS === 'android') {
-            if (!uri.startsWith('file://')) {
-                uri = `file://${uri}`;
-            }
-        } else if (Platform.OS === 'ios') {
-            if (uri.startsWith('file://')) {
-                uri = uri.substring(7);
-            }
-        }
+        let uri = normalizeFileUri(fileObj.uri);
 
         try {
             const formData = new FormData();
@@ -284,7 +323,7 @@ const uploadImageAsBase64 = async (productId, fileObj, accessToken, baseUrl) => 
             };
         }
 
-        const base64Data = await imageToBase64(fileObj.uri);
+        const base64Data = await imageToBase64(normalizeFileUri(fileObj.uri));
 
         if (!base64Data) {
             return {

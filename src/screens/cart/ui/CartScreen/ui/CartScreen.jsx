@@ -9,14 +9,13 @@ import {
     StyleSheet,
     FlatList,
     ActivityIndicator,
-    SafeAreaView,
     StatusBar,
     Dimensions,
     Modal,
     ScrollView,
     KeyboardAvoidingView,
-    Platform,
-} from "react-native";
+    Platform} from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
     Color,
     FontFamily

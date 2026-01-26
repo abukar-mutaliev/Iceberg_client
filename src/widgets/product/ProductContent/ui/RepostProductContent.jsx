@@ -13,6 +13,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '@entities/auth/hooks/useAuth';
@@ -254,6 +255,17 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
     setSearchQuery(text);
     searchUsersDebounced(text);
   };
+
+  const renderAvatarPlaceholder = useCallback((style, content) => (
+    <LinearGradient
+      colors={['#dfe7ff', '#cdd6ff', '#bfc7ff']}
+      style={[styles.avatarPlaceholderBase, style]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+    >
+      {content}
+    </LinearGradient>
+  ), []);
 
   // Отправка товара в существующий чат
   const handleSendToExistingChat = async (room) => {
@@ -700,15 +712,16 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
               resizeMode="cover"
             />
           ) : (
-            <View style={[styles.avatar, adaptiveStyles.avatar, styles.placeholderAvatar]}>
-              {item.type === 'BROADCAST' ? (
-                <Icon name="campaign" size={adaptiveStyles.iconSize} color="#8696A0" />
+            renderAvatarPlaceholder(
+              [styles.avatar, adaptiveStyles.avatar],
+              item.type === 'BROADCAST' ? (
+                <Icon name="campaign" size={adaptiveStyles.iconSize} color="rgba(255,255,255,0.95)" />
               ) : item.type === 'GROUP' ? (
-                <Icon name="group" size={adaptiveStyles.iconSize} color="#8696A0" />
+                <Icon name="group" size={adaptiveStyles.iconSize} color="rgba(255,255,255,0.95)" />
               ) : (
-                <Icon name="person" size={adaptiveStyles.iconSize} color="#8696A0" />
-              )}
-            </View>
+                <Icon name="person" size={adaptiveStyles.iconSize} color="rgba(255,255,255,0.95)" />
+              )
+            )
           )}
         </View>
         <View style={styles.chatInfo}>
@@ -765,11 +778,16 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
               resizeMode="cover"
             />
           ) : (
-            <View style={[styles.avatarPlaceholder, adaptiveStyles.avatarPlaceholder, item.isProductSupplier && styles.supplierAvatar]}>
+            renderAvatarPlaceholder(
+              [
+                styles.avatarPlaceholder,
+                adaptiveStyles.avatarPlaceholder,
+                item.isProductSupplier && styles.supplierAvatar
+              ],
               <Text style={[styles.avatarPlaceholderText, adaptiveStyles.avatarPlaceholderText]}>
                 {item.displayName ? item.displayName[0].toUpperCase() : '👤'}
               </Text>
-            </View>
+            )
           )}
         </View>
         
@@ -1074,6 +1092,10 @@ const styles = StyleSheet.create({
   avatar: {
     width: 40,
     height: 40,
+  },
+  avatarPlaceholderBase: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   placeholderAvatar: {
     backgroundColor: '#E8E8E8',

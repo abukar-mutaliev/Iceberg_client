@@ -67,7 +67,6 @@ const initialState = {
     // Восстановление пароля
     resetToken: null,
     confirmResetToken: null,
-    resetReceiveCall: null,
 };
 
 const handleError = (error) => {
@@ -546,8 +545,7 @@ export const initiatePasswordReset = createAsyncThunk(
 
             return {
                 resetToken: response.resetToken,
-                message: response.message,
-                receiveCall: response.receiveCall || null // Для телефонного сброса
+                message: response.message
             };
         } catch (error) {
             const errorData = {
@@ -764,7 +762,6 @@ const authSlice = createSlice({
         clearPasswordReset: (state) => {
             state.resetToken = null;
             state.confirmResetToken = null;
-            state.resetReceiveCall = null;
             state.error = null;
         },
     },
@@ -832,6 +829,14 @@ const authSlice = createSlice({
                             // Ошибка установки заголовка игнорируется
                         }
                     }
+                    
+                    // Загружаем полный профиль пользователя для получения admin.isSuperAdmin
+                    // Это делается асинхронно, чтобы не блокировать логин
+                    if (action.payload.user?.role === 'ADMIN') {
+                        setTimeout(() => {
+                            // loadUserProfile будет вызван через dispatch в компоненте или здесь
+                        }, 100);
+                    }
                 }
             })
             .addCase(login.rejected, (state, action) => {
@@ -852,6 +857,14 @@ const authSlice = createSlice({
                 state.isAuthenticated = true;
                 state.requiresTwoFactor = false;
                 state.tempToken = null;
+                
+                // Загружаем полный профиль пользователя для получения admin.isSuperAdmin
+                // Это делается асинхронно, чтобы не блокировать логин
+                if (action.payload.user?.role === 'ADMIN') {
+                    setTimeout(() => {
+                        // loadUserProfile будет вызван через dispatch в компоненте или здесь
+                    }, 100);
+                }
             })
             .addCase(verify2FALogin.rejected, setRejected)
             .addCase(initiateRegister.pending, setPending)
@@ -983,7 +996,6 @@ const authSlice = createSlice({
                 state.isLoading = false;
                 state.error = null;
                 state.resetToken = action.payload?.resetToken || null;
-                state.resetReceiveCall = action.payload?.receiveCall || null;
             })
             .addCase(initiatePasswordReset.rejected, setRejected)
             .addCase(verifyResetCode.pending, setPending)
@@ -1000,7 +1012,6 @@ const authSlice = createSlice({
                 // Очищаем токены после успешной смены пароля
                 state.resetToken = null;
                 state.confirmResetToken = null;
-                state.resetReceiveCall = null;
             })
             .addCase(completePasswordReset.rejected, setRejected)
     },

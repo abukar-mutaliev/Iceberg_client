@@ -1,41 +1,47 @@
 import * as React from "react";
-import {Text, StyleSheet, View} from "react-native";
+import {Text, StyleSheet, View, Dimensions} from "react-native";
 import {Color, FontFamily} from "@app/styles/GlobalStyles";
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const IS_SMALL_SCREEN = SCREEN_WIDTH < 375;
 
 const Instance = () => {
     return (
         <View style={styles.view}>
-            <Text style={styles.titleText}>Где будет мороженое?</Text>
-            <Text style={styles.subtitleText}>Остановки в твоем городе</Text>
+            {/* <Text style={styles.titleText}>Где будет мороженое?</Text> */}
+            <Text style={[styles.titleText, IS_SMALL_SCREEN && styles.titleTextSmall]} numberOfLines={2} ellipsizeMode="tail">Остановки{'\n'}в твоем городе</Text>
         </View>
     );
 };
 
 const styles = StyleSheet.create({
     titleText: {
-        fontSize: 19,
-        lineHeight: 22,
+        fontSize: 12,
+        lineHeight: 18,
         fontWeight: "600",
         fontFamily: FontFamily.sFProText,
         color: Color.colorLightMode,
         textAlign: "left",
-        width: "100%"
+        flexShrink: 1,
+    },
+    titleTextSmall: {
+        fontSize: 12,
+        lineHeight: 16,
     },
     subtitleText: {
-        fontSize: 14,
-        lineHeight: 18,
+        fontSize: 11,
+        lineHeight: 14,
         fontWeight: "400",
         fontFamily: FontFamily.sFProText,
         color: Color.colorLightMode,
         textAlign: "left",
-        marginTop: 4,
+        marginTop: 2,
         opacity: 0.9
     },
     view: {
         flex: 1,
-        height: 44,
-        width: "100%",
-        justifyContent: "center"
+        flexShrink: 1,
+        minWidth: 0,
     }
 });
 

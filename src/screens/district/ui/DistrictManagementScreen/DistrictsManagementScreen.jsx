@@ -256,11 +256,15 @@ export const DistrictsManagementScreen = () => {
         try {
             if (selectedWarehouse) {
                 // Обновление склада
-                await dispatch(updateWarehouse({
+                const updatedWarehouse = await dispatch(updateWarehouse({
                     id: selectedWarehouse.id,
                     warehouseData: formData
                 })).unwrap();
                 showSuccess('Склад успешно обновлен');
+                // Обновляем selectedWarehouse с актуальными данными (включая workingHours)
+                if (updatedWarehouse) {
+                    setSelectedWarehouse(updatedWarehouse);
+                }
             } else {
                 // Создание склада
                 await dispatch(createWarehouse(formData)).unwrap();

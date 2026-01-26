@@ -6,11 +6,10 @@ import {
     TouchableOpacity,
     Modal,
     ScrollView,
-    SafeAreaView,
     TextInput,
     TouchableWithoutFeedback,
-    Animated,
-} from 'react-native';
+    Animated} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {Color, FontFamily, FontSize} from '@app/styles/GlobalStyles';
 import {normalize, normalizeFont} from '@shared/lib/normalize';
 

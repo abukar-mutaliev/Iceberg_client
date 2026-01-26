@@ -4,13 +4,12 @@ import {
     Text,
     StyleSheet,
     TouchableOpacity,
-    SafeAreaView,
     StatusBar,
     ScrollView,
     ActivityIndicator,
     KeyboardAvoidingView,
-    Platform,
-} from 'react-native';
+    Platform} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { CommonActions } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import {

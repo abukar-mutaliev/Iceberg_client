@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Keyboard, Alert } from 'react-native';
-import { updateProfile, fetchProfile } from '@entities/profile';
+import { updateProfile, fetchProfile, initiateEmailBind, confirmEmailBind } from '@entities/profile';
 import { fetchAllDistricts } from '@entities/district';
 import { fetchAllWarehouses } from '@entities/warehouse';
-import { logData } from '@shared/lib/logger';
 
 export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
     const scrollViewRef = useRef(null);
@@ -11,6 +10,11 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
     const [currentScrollPosition, setCurrentScrollPosition] = useState(0);
     const [editableFields, setEditableFields] = useState({});
     const renderCountRef = useRef(0);
+    const [emailBindToken, setEmailBindToken] = useState(null);
+    const [emailBindEmail, setEmailBindEmail] = useState('');
+    const [isEmailBindModalVisible, setIsEmailBindModalVisible] = useState(false);
+    const [emailBindError, setEmailBindError] = useState(null);
+    const [isEmailBindLoading, setIsEmailBindLoading] = useState(false);
 
     const userTypeRef = useRef('client');
 
@@ -56,28 +60,10 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
         const newUserType = determineUserType();
         if (newUserType !== userTypeRef.current) {
             userTypeRef.current = newUserType;
-            console.log('useProfileEdit - определен тип пользователя:', newUserType);
-            console.log('useProfileEdit - profile для определения типа:', {
-                role: profile?.role,
-                hasSupplier: !!profile?.supplier,
-                hasCompanyName: !!profile?.companyName,
-                profileKeys: profile ? Object.keys(profile) : 'no profile'
-            });
         }
     }, [profile, currentUser]);
 
     const userType = userTypeRef.current;
-
-    useEffect(() => {
-        if (profile && renderCountRef.current <= 2) {
-
-
-            if (profile.driver) console.log('Поля driver:', Object.keys(profile.driver));
-            if (profile.client) console.log('Поля client:', Object.keys(profile.client));
-            if (profile.employee) console.log('Поля employee:', Object.keys(profile.employee));
-            if (profile.admin) console.log('Поля admin:', Object.keys(profile.admin));
-        }
-    }, [profile, userType]);
 
     const isDistrictsNeeded = useCallback(() => {
         return userType === 'driver' || userType === 'client' || userType === 'employee';
@@ -149,6 +135,10 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
     }, [profile, userType]);
 
     const toggleFieldEditable = useCallback((fieldId) => {
+        if (fieldId === 'email' && profile?.email) {
+            Alert.alert('Email уже привязан', 'Изменение email недоступно.');
+            return;
+        }
         setEditableFields(prev => ({
             ...prev,
             [fieldId]: !prev[fieldId]
@@ -200,15 +190,6 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
                     }
                 };
 
-                // Отладка для employee
-                console.log('useProfileEdit: employee data processing', {
-                    originalDistricts: formData.districts,
-                    processedDistricts,
-                    originalWarehouseId: formData.warehouseId,
-                    processedWarehouseId,
-                    districtsType: typeof formData.districts,
-                    warehouseIdType: typeof formData.warehouseId
-                });
                 break;
             case 'driver':
                 baseData = {
@@ -265,6 +246,10 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
                 break;
         }
 
+        if (typeof formData.email !== 'undefined') {
+            baseData.email = formData.email || null;
+        }
+
         return baseData;
     }, [userType]);
 
@@ -272,49 +257,24 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
         Keyboard.dismiss();
         try {
             setIsSaving(true);
-            console.log('useProfileEdit: handleSaveProfile called', {
-                formData,
-                gender: formData.gender,
-                formDataKeys: Object.keys(formData)
-            });
 
-            // Специальная отладка для employee
-            if (userType === 'employee') {
-                console.log('useProfileEdit: employee formData перед подготовкой', {
-                    districts: formData.districts,
-                    warehouseId: formData.warehouseId,
-                    districtsType: typeof formData.districts,
-                    warehouseIdType: typeof formData.warehouseId,
-                    isDistrictsArray: Array.isArray(formData.districts)
-                });
+            const trimmedEmail = (formData.email || '').trim().toLowerCase();
+            if (trimmedEmail && !profile?.email) {
+                const response = await dispatch(initiateEmailBind({ email: trimmedEmail })).unwrap();
+                const bindToken = response?.bindToken || response?.data?.bindToken;
+
+                if (bindToken) {
+                    setEmailBindToken(bindToken);
+                    setEmailBindEmail(trimmedEmail);
+                    setEmailBindError(null);
+                    setIsEmailBindModalVisible(true);
+                }
+
+                return;
             }
 
             const dataToSend = prepareDataForSubmission(formData);
-            console.log('useProfileEdit: dataToSend prepared', {
-                dataToSend,
-                gender: dataToSend.gender
-            });
-
-            // Специальная отладка для employee после подготовки
-            if (userType === 'employee') {
-                console.log('useProfileEdit: employee dataToSend после подготовки', {
-                    employeeDistricts: dataToSend.employee?.districts,
-                    employeeWarehouseId: dataToSend.employee?.warehouseId,
-                    districtsType: typeof dataToSend.employee?.districts,
-                    warehouseIdType: typeof dataToSend.employee?.warehouseId,
-                    isDistrictsArray: Array.isArray(dataToSend.employee?.districts)
-                });
-            }
-
-            console.log('useProfileEdit: dispatching updateProfile', {
-                dataToSend,
-                gender: dataToSend.gender
-            });
             const result = await dispatch(updateProfile(dataToSend)).unwrap();
-            console.log('useProfileEdit: updateProfile result', {
-                result,
-                resultGender: result?.gender
-            });
 
             await dispatch(fetchProfile()).unwrap();
 
@@ -336,7 +296,37 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
         } finally {
             setIsSaving(false);
         }
-    }, [dispatch, prepareDataForSubmission, navigation, userType, isDistrictsNeeded, loadDistricts]);
+    }, [dispatch, prepareDataForSubmission, navigation, userType, isDistrictsNeeded, loadDistricts, profile]);
+
+    const handleConfirmEmailBind = useCallback(async (verificationCode) => {
+        if (!emailBindToken) return;
+
+        try {
+            setIsEmailBindLoading(true);
+            setEmailBindError(null);
+
+            await dispatch(confirmEmailBind({
+                bindToken: emailBindToken,
+                verificationCode
+            })).unwrap();
+
+            await dispatch(fetchProfile()).unwrap();
+            setIsEmailBindModalVisible(false);
+            setEmailBindToken(null);
+            setEmailBindEmail('');
+        } catch (error) {
+            setEmailBindError(error?.message || 'Ошибка подтверждения email');
+        } finally {
+            setIsEmailBindLoading(false);
+        }
+    }, [dispatch, emailBindToken]);
+
+    const handleCancelEmailBind = useCallback(() => {
+        setIsEmailBindModalVisible(false);
+        setEmailBindToken(null);
+        setEmailBindEmail('');
+        setEmailBindError(null);
+    }, []);
 
     const getInitialFormValues = useCallback(() => {
         if (!profile) return {};
@@ -348,6 +338,7 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
                 commonValues = {
                     phone: profile.employee?.phone || profile.phone || '',
                     address: profile.employee?.address || profile.address || '',
+                    email: profile.email || '',
                     gender: profile.gender || 'MALE',
                 };
                 break;
@@ -355,6 +346,7 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
                 commonValues = {
                     phone: profile.driver?.phone || profile.phone || '',
                     address: profile.driver?.address || profile.address || '',
+                    email: profile.email || '',
                     gender: profile.gender || 'MALE',
                 };
                 break;
@@ -362,6 +354,7 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
                 commonValues = {
                     phone: profile.client?.phone || profile.phone || '',
                     address: profile.client?.address || profile.address || '',
+                    email: profile.email || '',
                     gender: profile.gender || 'MALE',
                 };
                 break;
@@ -369,6 +362,7 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
                 commonValues = {
                     phone: profile.admin?.phone || profile.phone || '',
                     address: profile.admin?.address || profile.address || '',
+                    email: profile.email || '',
                     gender: profile.gender || 'MALE',
                 };
                 break;
@@ -376,6 +370,7 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
                 commonValues = {
                     phone: profile.phone || '',
                     address: profile.address || '',
+                    email: profile.email || '',
                     gender: profile.gender || 'MALE',
                 };
                 break;
@@ -446,17 +441,6 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
             result.gender = 'MALE';
         }
 
-        console.log(`useProfileEdit: Финальные начальные значения для ${userType}:`, {
-            commonValues,
-            typeSpecificValues,
-            result,
-            profileKeys: profile ? Object.keys(profile) : 'no profile',
-            supplierKeys: profile?.supplier ? Object.keys(profile.supplier) : 'no supplier',
-            gender: profile?.gender,
-            supplierGender: profile?.supplier?.gender,
-            finalGender: result.gender
-        });
-
         return result;
     }, [profile, userType]);
 
@@ -476,6 +460,12 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
         loadDistricts,
         isWarehousesNeeded,
         loadWarehouses,
+        isEmailBindModalVisible,
+        emailBindEmail,
+        emailBindError,
+        isEmailBindLoading,
+        handleConfirmEmailBind,
+        handleCancelEmailBind,
     };
 };
 

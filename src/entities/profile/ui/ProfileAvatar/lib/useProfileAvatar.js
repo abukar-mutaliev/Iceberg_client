@@ -12,17 +12,27 @@ import {
 } from '@entities/profile/model/selectors';
 import { useRoute } from '@react-navigation/native';
 
-export const useProfileAvatar = (profile, currentUser, editable = false) => {
+export const useProfileAvatar = (
+    profile,
+    currentUser,
+    editable = false,
+    useCurrentUserFallback = true
+) => {
     const dispatch = useDispatch();
     const route = useRoute();
     const isEditScreen = route.name === 'ProfileEdit';
 
     const [modalVisible, setModalVisible] = useState(false);
+    const [permissionModalVisible, setPermissionModalVisible] = useState(false);
+    const [permissionType, setPermissionType] = useState('photos');
     const [debugText, setDebugText] = useState('');
     const [selectedImage, setSelectedImage] = useState(null);
     const [retryCount, setRetryCount] = useState(0);
     const [avatarUriState, setAvatarUriState] = useState(null);
     const avatarUriRef = useRef(null);
+    const suppressOpenUntilRef = useRef(0);
+    const openTimeoutRef = useRef(null);
+    const avatarCacheKeyRef = useRef(Date.now());
 
     const isUploading = useSelector(selectAvatarUploading);
     const uploadProgress = useSelector(selectAvatarUploadProgress);
@@ -47,6 +57,24 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
         }
     }, []);
 
+    const buildAvatarSource = useCallback((avatarUrl) => {
+        if (!avatarUrl) {
+            return null;
+        }
+
+        const shouldBustCache = Platform.OS === 'ios';
+        if (!shouldBustCache) {
+            return { uri: avatarUrl };
+        }
+
+        const cacheKey = avatarCacheKeyRef.current;
+        const separator = avatarUrl.includes('?') ? '&' : '?';
+        return {
+            uri: `${avatarUrl}${separator}_t=${cacheKey}`,
+            cache: 'reload'
+        };
+    }, []);
+
 
     useEffect(() => {
         if (!profile && !currentUser) {
@@ -61,18 +89,20 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
         else if (profile?.avatar) {
             avatarUrl = getFullAvatarUrl(profile.avatar);
         }
-        else if (currentUser?.avatar) {
-            avatarUrl = getFullAvatarUrl(currentUser.avatar);
-        }
-        else if (currentUser?.role && profile) {
-            const role = currentUser.role.toLowerCase();
-            if (profile[role]?.avatar) {
-                avatarUrl = getFullAvatarUrl(profile[role].avatar);
+        else if (useCurrentUserFallback) {
+            if (currentUser?.avatar) {
+                avatarUrl = getFullAvatarUrl(currentUser.avatar);
+            }
+            else if (currentUser?.role && profile) {
+                const role = currentUser.role.toLowerCase();
+                if (profile[role]?.avatar) {
+                    avatarUrl = getFullAvatarUrl(profile[role].avatar);
+                }
             }
         }
 
         if (avatarUrl) {
-            const newAvatarUri = { uri: avatarUrl };
+            const newAvatarUri = buildAvatarSource(avatarUrl);
             avatarUriRef.current = newAvatarUri;
             setAvatarUriState(newAvatarUri);
         } else {
@@ -81,7 +111,7 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
         }
 
         setDebugText(prev => prev === 'update' ? 'updated' : 'update');
-    }, [profile, currentUser, getFullAvatarUrl]);
+    }, [profile, currentUser, getFullAvatarUrl, buildAvatarSource]);
 
     const loadAvatarUri = useCallback(() => {
 
@@ -93,18 +123,20 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
         else if (profile?.avatar) {
             avatarUrl = getFullAvatarUrl(profile.avatar);
         }
-        else if (currentUser?.avatar) {
-            avatarUrl = getFullAvatarUrl(currentUser.avatar);
-        }
-        else if (currentUser?.role && profile) {
-            const role = currentUser.role.toLowerCase();
-            if (profile[role]?.avatar) {
-                avatarUrl = getFullAvatarUrl(profile[role].avatar);
+        else if (useCurrentUserFallback) {
+            if (currentUser?.avatar) {
+                avatarUrl = getFullAvatarUrl(currentUser.avatar);
+            }
+            else if (currentUser?.role && profile) {
+                const role = currentUser.role.toLowerCase();
+                if (profile[role]?.avatar) {
+                    avatarUrl = getFullAvatarUrl(profile[role].avatar);
+                }
             }
         }
 
         if (avatarUrl) {
-            const newAvatarUri = { uri: avatarUrl };
+            const newAvatarUri = buildAvatarSource(avatarUrl);
             avatarUriRef.current = newAvatarUri;
             setAvatarUriState(newAvatarUri);
             setDebugText(prev => prev === 'update' ? 'updated' : 'update');
@@ -114,7 +146,7 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
         avatarUriRef.current = null;
         setAvatarUriState(null);
         return false;
-    }, [profile, currentUser, getFullAvatarUrl]);
+    }, [profile, currentUser, getFullAvatarUrl, buildAvatarSource]);
 
     useEffect(() => {
         if (avatarError) {
@@ -147,17 +179,48 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
     const checkNetworkConnection = useCallback(async () => {
         try {
             const state = await NetInfo.fetch();
-            return state.isConnected && state.isInternetReachable;
+            const reachable = state.isInternetReachable;
+            // On iOS, isInternetReachable can be null on first fetch; treat as connected.
+            if (reachable === null || typeof reachable === 'undefined') {
+                return !!state.isConnected;
+            }
+            return state.isConnected && reachable;
         } catch (error) {
             return true;
         }
     }, []);
 
-    const handleAvatarPress = useCallback(() => {
-        if (avatarUriRef.current) {
-            setModalVisible(true);
-        }
+    const beginCloseAvatarModal = useCallback(() => {
+        suppressOpenUntilRef.current = Date.now() + 350;
     }, []);
+
+    const handleAvatarPress = useCallback(() => {
+        const now = Date.now();
+        const open = () => {
+            if (avatarUriRef.current) {
+                setModalVisible(true);
+            }
+        };
+
+        if (now < suppressOpenUntilRef.current) {
+            const delay = suppressOpenUntilRef.current - now;
+            if (openTimeoutRef.current) {
+                clearTimeout(openTimeoutRef.current);
+            }
+            openTimeoutRef.current = setTimeout(() => {
+                openTimeoutRef.current = null;
+                open();
+            }, delay);
+            return;
+        }
+
+        open();
+    }, []);
+
+    const closeAvatarModal = useCallback(() => {
+        beginCloseAvatarModal();
+        setModalVisible(false);
+    }, [beginCloseAvatarModal]);
 
     const handleChoosePhoto = useCallback(async () => {
         setDebugText('Запуск выбора изображения с expo-image-picker');
@@ -172,12 +235,32 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
                 return;
             }
 
-            const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (Platform.OS === 'android') {
+                // На Android: автоматический запрос разрешения (как раньше)
+                const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
+                
+                if (currentStatus !== 'granted') {
+                    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                    
+                    if (!permissionResult.granted) {
+                        setDebugText('Доступ к галерее не предоставлен');
+                        return;
+                    }
+                }
+            } else {
+                // iOS: сначала запрашиваем разрешение, и только после отказа показываем экран настроек
+                const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
 
-            if (!permissionResult.granted) {
-                setDebugText('Доступ к галерее не предоставлен');
-                Alert.alert('Ошибка', 'Необходимо предоставить доступ к галерее');
-                return;
+                if (currentStatus !== 'granted') {
+                    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+                    if (!permissionResult.granted) {
+                        setDebugText('Доступ к галерее не предоставлен');
+                        setPermissionType('photos');
+                        setPermissionModalVisible(true);
+                        return;
+                    }
+                }
             }
 
             const result = await ImagePicker.launchImageLibraryAsync({
@@ -264,7 +347,8 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
                 // Используем getFullAvatarUrl для правильного формирования URL
                 const avatarUrl = getFullAvatarUrl(response.data.avatar);
                 if (avatarUrl) {
-                    const newAvatarUri = { uri: avatarUrl };
+                    avatarCacheKeyRef.current = Date.now();
+                    const newAvatarUri = buildAvatarSource(avatarUrl);
                     avatarUriRef.current = newAvatarUri;
                     // Обновляем state для принудительного ре-рендера
                     setAvatarUriState(newAvatarUri);
@@ -314,15 +398,28 @@ export const useProfileAvatar = (profile, currentUser, editable = false) => {
         }
     }, [debugText, profile, currentUser]);
 
+    useEffect(() => {
+        return () => {
+            if (openTimeoutRef.current) {
+                clearTimeout(openTimeoutRef.current);
+            }
+        };
+    }, []);
+
     return {
         avatarUri: avatarUriState || avatarUriRef.current,
         isUploading,
         uploadProgress,
         modalVisible,
         setModalVisible,
+        closeAvatarModal,
+        beginCloseAvatarModal,
         debugText,
         handleChooseAvatar,
         handleAvatarPress,
-        loadAvatarUri
+        loadAvatarUri,
+        permissionModalVisible,
+        setPermissionModalVisible,
+        permissionType,
     };
 };

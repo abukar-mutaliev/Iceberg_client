@@ -6,6 +6,7 @@
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+  <uses-permission android:name="android.permission.READ_CONTACTS"/>
   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
   <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
   <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
@@ -16,6 +17,7 @@
   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
   <uses-permission android:name="android.permission.VIBRATE"/>
   <uses-permission android:name="android.permission.WAKE_LOCK"/>
+  <uses-permission android:name="android.permission.WRITE_CONTACTS"/>
   <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
   <uses-permission android:name="com.google.android.gms.permission.AD_ID"/>
   <queries>
@@ -26,18 +28,6 @@
     </intent>
   </queries>
   <application android:name=".MainApplication" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="true" android:theme="@style/AppTheme" android:supportsRtl="true" android:enableOnBackInvokedCallback="false" android:requestLegacyExternalStorage="true" android:usesCleartextTraffic="true" android:resizeableActivity="true">
-    <!-- 
-      Android 16+ compatibility: Override ML Kit Barcode Scanner orientation restriction
-      Google Play требует удаления ограничений на изменение размера и ориентации
-      для устройств с большим экраном (складные телефоны, планшеты)
-    -->
-    <activity
-        android:name="com.google.mlkit.vision.codescanner.internal.GmsBarcodeScanningDelegateActivity"
-        tools:node="merge"
-        tools:replace="android:screenOrientation,android:resizeableActivity"
-        android:screenOrientation="unspecified"
-        android:resizeableActivity="true"
-        android:exported="false" />
     <meta-data android:name="com.google.android.geo.API_KEY" android:value="AIzaSyDev-AMb24bvlQn3a-b4DGsItiYB6su6_E"/>
     <meta-data android:name="com.google.firebase.messaging.default_notification_color" android:resource="@color/notification_icon_color"/>
     <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/notification_icon"/>
@@ -48,6 +38,7 @@
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATE_URL" android:value="https://u.expo.dev/934456aa-74ef-4c35-844b-aa0c0c2899f3"/>
+    <activity android:name="com.google.mlkit.vision.codescanner.internal.GmsBarcodeScanningDelegateActivity" tools:node="merge" tools:replace="android:screenOrientation,android:resizeableActivity" android:screenOrientation="unspecified" android:resizeableActivity="true" android:exported="false" android:windowSoftInputMode="adjustResize|stateHidden"/>
     <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode|smallestScreenSize" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize|stateHidden" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:resizeableActivity="true">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>

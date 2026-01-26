@@ -14,9 +14,8 @@ import {
     Keyboard,
     Animated,
     TouchableWithoutFeedback,
-    ScrollView,
-    SafeAreaView
-} from 'react-native';
+    ScrollView} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { CommonActions, useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import { LoginForm } from '@features/auth/ui/LoginForm';
@@ -66,7 +65,6 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
     const [formState, setFormState] = useState('register');
     const [registrationType, setRegistrationType] = useState('email'); // 'email' или 'phone'
     const [currentTempToken, setCurrentTempToken] = useState(null);
-    const [receiveCallData, setReceiveCallData] = useState(null); // Данные для Receive Call
     const [keyboardVisible, setKeyboardVisible] = useState(false);
     const scrollViewRef = useRef(null);
     const [isCheckingAuth, setIsCheckingAuth] = useState(true);
@@ -74,7 +72,6 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
     // Восстановление пароля
     const [resetToken, setResetToken] = useState(null);
     const [confirmResetToken, setConfirmResetToken] = useState(null);
-    const [resetReceiveCall, setResetReceiveCall] = useState(null);
 
     const headerTranslateY = useRef(new Animated.Value(0)).current;
     const formMarginTop = useRef(new Animated.Value(0)).current;
@@ -82,7 +79,7 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
     
     // Динамически вычисляем высоту header
     const getHeaderHeight = () => {
-        const baseHeight = normalize(250);
+        const baseHeight = normalize(210);
         const registrationTypeHeight = (activeTab === 'register' && formState === 'register') ? normalize(70) : 0;
         return baseHeight + registrationTypeHeight;
     };
@@ -233,63 +230,42 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
         }, [formState, isAuthenticated, navigation])
     );
 
-    const handleVerification = (tempToken, receiveCallOrRegType = null) => {
+    const handleVerification = (tempToken, regType = null) => {
         setCurrentTempToken(tempToken);
-        
-        // Проверяем тип второго аргумента
-        if (typeof receiveCallOrRegType === 'string') {
-            // Старый вариант: второй аргумент - regType ('email' или 'phone')
-            setRegistrationType(receiveCallOrRegType);
-            setReceiveCallData(null);
-        } else if (receiveCallOrRegType && receiveCallOrRegType.phoneToCall) {
-            // Новый вариант: второй аргумент - данные receiveCall
-            setRegistrationType('phone');
-            setReceiveCallData(receiveCallOrRegType);
+
+        if (typeof regType === 'string') {
+            setRegistrationType(regType);
         } else {
-            // По умолчанию - email
             setRegistrationType('email');
-            setReceiveCallData(null);
         }
-        
+
         setFormState('verification');
     };
 
     const handleBackToRegister = () => {
         setFormState('register');
         setCurrentTempToken(null);
-        setReceiveCallData(null);
     };
 
     const handleLoginTab = () => {
         setActiveTab('login');
         setFormState('register');
-        // Сброс состояния восстановления пароля
-        setResetToken(null);
-        setConfirmResetToken(null);
-        setResetReceiveCall(null);
     };
 
     const handleRegisterTab = () => {
         setActiveTab('register');
         setFormState('register');
-        // Сброс состояния восстановления пароля
-        setResetToken(null);
-        setConfirmResetToken(null);
-        setResetReceiveCall(null);
     };
 
     // Обработка клика "Забыли пароль?"
     const handleForgotPassword = () => {
         setFormState('forgotPassword');
-        setResetToken(null);
-        setConfirmResetToken(null);
-        setResetReceiveCall(null);
     };
 
     // Когда код сброса пароля успешно отправлен
-    const handleResetCodeSent = (token, receiveCall) => {
+    const handleResetCodeSent = (token) => {
         setResetToken(token);
-        setResetReceiveCall(receiveCall);
+        setConfirmResetToken(null);
         setFormState('resetCode');
     };
 
@@ -305,7 +281,6 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
         setActiveTab('login');
         setResetToken(null);
         setConfirmResetToken(null);
-        setResetReceiveCall(null);
     };
 
     // Возврат с формы восстановления
@@ -316,9 +291,6 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
             setFormState('resetCode');
         } else if (formState === 'forgotPassword') {
             setFormState('register');
-            setResetToken(null);
-            setConfirmResetToken(null);
-            setResetReceiveCall(null);
         }
     };
 
@@ -347,7 +319,7 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
     }
 
     return (
-        <SafeAreaView style={styles.safeArea}>
+        <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
             <KeyboardAvoidingView
                 style={styles.container}
                 behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -481,11 +453,12 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
                                 ) : formState === 'forgotPassword' ? (
                                     <ForgotPasswordForm 
                                         onCodeSent={handleResetCodeSent}
+                                        resetToken={resetToken}
+                                        onUseExistingCode={() => setFormState('resetCode')}
                                     />
                                 ) : formState === 'resetCode' ? (
                                     <ResetPasswordCodeForm 
                                         resetToken={resetToken}
-                                        receiveCall={resetReceiveCall}
                                         onCodeVerified={handleResetCodeVerified}
                                         onBack={handleBackFromReset}
                                     />
@@ -499,18 +472,17 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
                                     <VerificationForm
                                         tempToken={currentTempToken}
                                         registrationType={registrationType}
-                                        receiveCall={receiveCallData}
                                         onBack={handleBackToRegister}
                                     />
                                 ) : registrationType === 'phone' ? (
                                     <PhoneRegisterForm
                                         navigation={navigation}
-                                        onVerification={(token, receiveCallData) => handleVerification(token, receiveCallData || 'phone')}
+                                        onVerification={(token) => handleVerification(token, 'phone')}
                                     />
                                 ) : (
                                     <RegisterForm
                                         navigation={navigation}
-                                        onVerification={(token, receiveCallData) => handleVerification(token, receiveCallData || 'email')}
+                                        onVerification={(token) => handleVerification(token, 'email')}
                                     />
                                 )}
                             <View style={styles.bottomPadding} />

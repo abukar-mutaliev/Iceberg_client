@@ -8,10 +8,9 @@ import {
     TextInput,
     Switch,
     ScrollView,
-    SafeAreaView,
     KeyboardAvoidingView,
-    Platform,
-} from 'react-native';
+    Platform} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
 import { useWarehouses } from '@entities/warehouse/hooks/useWarehouses';
@@ -82,11 +81,19 @@ const WarehouseQuantityInput = React.memo(({ warehouse, quantity, warehousePrice
 
     return (
         <View style={styles.quantityItem}>
-            <View style={styles.quantityInfo}>
-                <Text style={styles.quantityWarehouseName}>{warehouse.name}</Text>
-                {warehouse.address && (
-                    <Text style={styles.quantityWarehouseAddress}>{warehouse.address}</Text>
-                )}
+            <View style={styles.quantityHeaderRow}>
+                <View style={styles.quantityInfo}>
+                    <Text style={styles.quantityWarehouseName}>{warehouse.name}</Text>
+                    {warehouse.address && (
+                        <Text style={styles.quantityWarehouseAddress}>{warehouse.address}</Text>
+                    )}
+                </View>
+                <TouchableOpacity
+                    style={styles.removeButton}
+                    onPress={() => onRemove(warehouse.id)}
+                >
+                    <Text style={styles.removeButtonText}>✕</Text>
+                </TouchableOpacity>
             </View>
             <View style={styles.quantityControls}>
                 <View style={styles.inputGroup}>
@@ -136,12 +143,6 @@ const WarehouseQuantityInput = React.memo(({ warehouse, quantity, warehousePrice
                     </>
                 )}
             </View>
-            <TouchableOpacity
-                style={styles.removeButton}
-                onPress={() => onRemove(warehouse.id)}
-            >
-                <Text style={styles.removeButtonText}>✕</Text>
-            </TouchableOpacity>
         </View>
     );
 }, (prevProps, nextProps) => {
@@ -155,9 +156,9 @@ const WarehouseQuantityInput = React.memo(({ warehouse, quantity, warehousePrice
     );
 });
 
-export const WarehouseSelectionScreen = () => {
-    const navigation = useNavigation();
-    const route = useRoute();
+export const WarehouseSelectionScreen = ({ navigation: navigationProp, route: routeProp } = {}) => {
+    const navigation = navigationProp || useNavigation();
+    const route = routeProp || useRoute();
     const { warehouses, loading: loadingWarehouses } = useWarehouses({ autoLoad: true });
 
     const {
@@ -526,10 +527,354 @@ export const WarehouseSelectionScreen = () => {
     );
 };
 
+export const WarehouseSelectionInline = ({
+    selectedWarehouseQuantities = [],
+    basePrice = null,
+    isAdmin = false,
+    onSelectWarehouseQuantities
+}) => {
+    const { warehouses, loading: loadingWarehouses } = useWarehouses({ autoLoad: true });
+
+    const [searchText, setSearchText] = useState('');
+    const [filteredWarehouses, setFilteredWarehouses] = useState(warehouses);
+    const [tempSelectedWarehouses, setTempSelectedWarehouses] = useState([]);
+    const [warehouseQuantities, setWarehouseQuantities] = useState({});
+    const [warehousePrices, setWarehousePrices] = useState({});
+    const [stopPrices, setStopPrices] = useState({});
+    const [selectAll, setSelectAll] = useState(false);
+    const [commonWarehousePrice, setCommonWarehousePrice] = useState('');
+    const [commonStopPrice, setCommonStopPrice] = useState('');
+
+    useEffect(() => {
+        const selectedIds = selectedWarehouseQuantities.map(item => item.warehouseId);
+        setTempSelectedWarehouses(selectedIds);
+
+        const quantitiesMap = {};
+        const pricesMap = {};
+        const stopPricesMap = {};
+        selectedWarehouseQuantities.forEach(item => {
+            quantitiesMap[item.warehouseId] = item.quantity;
+            if (item.warehousePrice !== undefined && item.warehousePrice !== null) {
+                pricesMap[item.warehouseId] = item.warehousePrice;
+            }
+            if (item.stopPrice !== undefined && item.stopPrice !== null) {
+                stopPricesMap[item.warehouseId] = item.stopPrice;
+            }
+        });
+        setWarehouseQuantities(quantitiesMap);
+        setWarehousePrices(pricesMap);
+        setStopPrices(stopPricesMap);
+    }, [selectedWarehouseQuantities]);
+
+    useEffect(() => {
+        if (!warehouses || loadingWarehouses) {
+            setFilteredWarehouses([]);
+            return;
+        }
+
+        if (!searchText) {
+            setFilteredWarehouses(warehouses);
+            return;
+        }
+
+        const filtered = warehouses.filter(warehouse =>
+            warehouse.name.toLowerCase().includes(searchText.toLowerCase()) ||
+            (warehouse.address && warehouse.address.toLowerCase().includes(searchText.toLowerCase())) ||
+            (warehouse.district && warehouse.district.name && warehouse.district.name.toLowerCase().includes(searchText.toLowerCase()))
+        );
+        setFilteredWarehouses(filtered);
+    }, [searchText, warehouses, loadingWarehouses]);
+
+    useEffect(() => {
+        if (!warehouses || !warehouses.length) {
+            setSelectAll(false);
+            return;
+        }
+        setSelectAll(tempSelectedWarehouses.length === warehouses.length);
+    }, [tempSelectedWarehouses.length, warehouses]);
+
+    const handleWarehouseToggle = React.useCallback((warehouseId) => {
+        setTempSelectedWarehouses(prev => {
+            if (prev.includes(warehouseId)) {
+                return prev.filter(id => id !== warehouseId);
+            }
+            const newSelected = [...prev, warehouseId];
+            setWarehouseQuantities(prevQ => {
+                if (!prevQ[warehouseId]) {
+                    return { ...prevQ, [warehouseId]: 1 };
+                }
+                return prevQ;
+            });
+            return newSelected;
+        });
+    }, []);
+
+    const handleQuantityChange = React.useCallback((warehouseId, quantity) => {
+        setWarehouseQuantities(prev => ({ ...prev, [warehouseId]: quantity }));
+    }, []);
+
+    const handlePriceChange = React.useCallback((warehouseId, price) => {
+        setWarehousePrices(prev => ({ ...prev, [warehouseId]: price }));
+    }, []);
+
+    const handleStopPriceChange = React.useCallback((warehouseId, price) => {
+        setStopPrices(prev => ({ ...prev, [warehouseId]: price }));
+    }, []);
+
+    const handleRemoveWarehouse = React.useCallback((warehouseId) => {
+        setTempSelectedWarehouses(prev => prev.filter(id => id !== warehouseId));
+        setWarehouseQuantities(prev => {
+            const newQuantities = { ...prev };
+            delete newQuantities[warehouseId];
+            return newQuantities;
+        });
+        setWarehousePrices(prev => {
+            const newPrices = { ...prev };
+            delete newPrices[warehouseId];
+            return newPrices;
+        });
+        setStopPrices(prev => {
+            const newStopPrices = { ...prev };
+            delete newStopPrices[warehouseId];
+            return newStopPrices;
+        });
+    }, []);
+
+    const handleSelectAll = React.useCallback(() => {
+        if (selectAll || tempSelectedWarehouses.length === warehouses.length) {
+            setTempSelectedWarehouses([]);
+            setSelectAll(false);
+        } else {
+            const allIds = warehouses.map(w => w.id);
+            setTempSelectedWarehouses(allIds);
+            const allQuantities = {};
+            warehouses.forEach(w => {
+                allQuantities[w.id] = 1;
+            });
+            setWarehouseQuantities(allQuantities);
+            setSelectAll(true);
+        }
+    }, [selectAll, tempSelectedWarehouses.length, warehouses]);
+
+    const handleApply = React.useCallback(() => {
+        const result = tempSelectedWarehouses
+            .filter(id => warehouseQuantities[id] > 0)
+            .map(warehouseId => {
+                const item = {
+                    warehouseId,
+                    quantity: warehouseQuantities[warehouseId] || 1
+                };
+                if (warehousePrices[warehouseId] !== undefined && warehousePrices[warehouseId] !== null) {
+                    item.warehousePrice = warehousePrices[warehouseId];
+                }
+                if (stopPrices[warehouseId] !== undefined && stopPrices[warehouseId] !== null) {
+                    item.stopPrice = stopPrices[warehouseId];
+                }
+                return item;
+            });
+
+        if (onSelectWarehouseQuantities) {
+            onSelectWarehouseQuantities(result);
+        }
+    }, [tempSelectedWarehouses, warehouseQuantities, warehousePrices, stopPrices, onSelectWarehouseQuantities]);
+
+    const handleApplyCommonPrices = React.useCallback(() => {
+        const warehousePriceNum = commonWarehousePrice.trim() ? parseFloat(commonWarehousePrice.replace(',', '.')) : null;
+        const stopPriceNum = commonStopPrice.trim() ? parseFloat(commonStopPrice.replace(',', '.')) : null;
+
+        if (warehousePriceNum !== null && !isNaN(warehousePriceNum) && warehousePriceNum > 0) {
+            const newPrices = {};
+            tempSelectedWarehouses.forEach(id => {
+                newPrices[id] = warehousePriceNum;
+            });
+            setWarehousePrices(prev => ({ ...prev, ...newPrices }));
+        } else if (commonWarehousePrice.trim() === '') {
+            setWarehousePrices(prev => {
+                const updated = { ...prev };
+                tempSelectedWarehouses.forEach(id => {
+                    updated[id] = null;
+                });
+                return updated;
+            });
+        }
+
+        if (stopPriceNum !== null && !isNaN(stopPriceNum) && stopPriceNum > 0) {
+            const newStopPrices = {};
+            tempSelectedWarehouses.forEach(id => {
+                newStopPrices[id] = stopPriceNum;
+            });
+            setStopPrices(prev => ({ ...prev, ...newStopPrices }));
+        } else if (commonStopPrice.trim() === '') {
+            setStopPrices(prev => {
+                const updated = { ...prev };
+                tempSelectedWarehouses.forEach(id => {
+                    updated[id] = null;
+                });
+                return updated;
+            });
+        }
+    }, [commonWarehousePrice, commonStopPrice, tempSelectedWarehouses]);
+
+    const selectedWarehousesData = useMemo(() =>
+        tempSelectedWarehouses
+            .map(id => warehouses.find(w => w.id === id))
+            .filter(Boolean),
+        [tempSelectedWarehouses, warehouses]
+    );
+
+    const renderWarehousesList = React.useCallback(() => (
+        <>
+            {filteredWarehouses.map((item) => {
+                const isSelected = tempSelectedWarehouses.includes(item.id);
+                return (
+                    <TouchableOpacity
+                        key={item.id.toString()}
+                        style={[
+                            styles.warehouseItem,
+                            isSelected && styles.selectedItem
+                        ]}
+                        onPress={() => handleWarehouseToggle(item.id)}
+                    >
+                        <View style={styles.warehouseInfo}>
+                            <Text style={[
+                                styles.warehouseName,
+                                isSelected && styles.selectedItemText
+                            ]}>
+                                {item.name}
+                            </Text>
+                        </View>
+                        <View style={styles.checkboxContainer}>
+                            <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                                {isSelected && <Text style={styles.checkmark}>✓</Text>}
+                            </View>
+                        </View>
+                    </TouchableOpacity>
+                );
+            })}
+            {filteredWarehouses.length === 0 && (
+                <View style={styles.emptyContainer}>
+                    <Text style={styles.emptyText}>
+                        {loadingWarehouses ? 'Загрузка складов...' : searchText ? 'Склады не найдены' : 'Список складов пуст'}
+                    </Text>
+                </View>
+            )}
+        </>
+    ), [filteredWarehouses, tempSelectedWarehouses, handleWarehouseToggle, loadingWarehouses, searchText]);
+
+    return (
+        <View style={styles.inlineContainer}>
+            <View style={styles.searchContainer}>
+                <TextInput
+                    style={styles.searchInput}
+                    placeholder="Поиск склада..."
+                    value={searchText}
+                    onChangeText={setSearchText}
+                    placeholderTextColor="#999"
+                />
+            </View>
+
+            <TouchableOpacity
+                style={styles.selectAllContainer}
+                onPress={handleSelectAll}
+            >
+                <Text style={styles.selectAllText}>
+                    {selectAll ? 'Снять выделение' : 'Выбрать все'}
+                </Text>
+                <Switch
+                    value={selectAll || (tempSelectedWarehouses.length === warehouses.length && warehouses.length > 0)}
+                    onValueChange={handleSelectAll}
+                />
+            </TouchableOpacity>
+
+            {renderWarehousesList()}
+
+            {selectedWarehousesData.length > 0 && isAdmin && (
+                <View style={styles.commonPricesSection}>
+                    <Text style={styles.commonPricesTitle}>Общие цены для всех выбранных складов:</Text>
+                    <View style={styles.commonPricesRow}>
+                        <View style={styles.commonPriceInputContainer}>
+                            <Text style={styles.commonPriceLabel}>Цена склада (₽)</Text>
+                            <TextInput
+                                style={styles.commonPriceInput}
+                                value={commonWarehousePrice}
+                                onChangeText={setCommonWarehousePrice}
+                                placeholder={basePrice ? basePrice.toString() : "Авто"}
+                                keyboardType="numeric"
+                                placeholderTextColor="#999"
+                            />
+                        </View>
+                        <View style={styles.commonPriceInputContainer}>
+                            <Text style={styles.commonPriceLabel}>Цена фургона (₽)</Text>
+                            <TextInput
+                                style={styles.commonPriceInput}
+                                value={commonStopPrice}
+                                onChangeText={setCommonStopPrice}
+                                placeholder={basePrice ? basePrice.toString() : "Авто"}
+                                keyboardType="numeric"
+                                placeholderTextColor="#999"
+                            />
+                        </View>
+                        <TouchableOpacity
+                            style={styles.applyCommonPriceButton}
+                            onPress={handleApplyCommonPrices}
+                        >
+                            <Text style={styles.applyCommonPriceButtonText}>Применить</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            )}
+
+            {selectedWarehousesData.length > 0 && (
+                <View style={styles.quantitiesSection}>
+                    <Text style={styles.quantitiesTitle}>
+                        {isAdmin ? 'Укажите количество коробок и цены (склад/фургон):' : 'Укажите количество коробок:'}
+                    </Text>
+                    <View style={styles.quantitiesList}>
+                        {selectedWarehousesData.map(warehouse => {
+                            const warehouseId = warehouse.id;
+                            return (
+                                <WarehouseQuantityInput
+                                    key={warehouseId}
+                                    warehouse={warehouse}
+                                    quantity={warehouseQuantities[warehouseId] || 1}
+                                    warehousePrice={warehousePrices[warehouseId]}
+                                    stopPrice={stopPrices[warehouseId]}
+                                    basePrice={basePrice}
+                                    onQuantityChange={handleQuantityChange}
+                                    onPriceChange={handlePriceChange}
+                                    onStopPriceChange={handleStopPriceChange}
+                                    onRemove={handleRemoveWarehouse}
+                                    isAdmin={isAdmin}
+                                />
+                            );
+                        })}
+                    </View>
+                </View>
+            )}
+
+            <View style={styles.inlineFooter}>
+                <TouchableOpacity
+                    style={[styles.footerButton, styles.applyButton]}
+                    onPress={handleApply}
+                >
+                    <Text style={styles.applyButtonText}>Применить</Text>
+                </TouchableOpacity>
+            </View>
+        </View>
+    );
+};
+
 const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: Color.colorLightMode,
+    },
+    inlineContainer: {
+        borderWidth: 1,
+        borderColor: Color.border || '#E0E0E0',
+        borderRadius: Border.radius.medium,
+        backgroundColor: Color.colorLightMode,
+        overflow: 'hidden',
     },
     keyboardAvoidingView: {
         flex: 1,
@@ -733,14 +1078,17 @@ const styles = StyleSheet.create({
         height: normalize(100),
     },
     quantityItem: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingVertical: normalize(8),
+        paddingVertical: normalize(10),
         paddingHorizontal: normalize(12),
         backgroundColor: Color.backgroundLight || '#F8F8F8',
         borderRadius: 8,
         marginBottom: normalize(8),
+    },
+    quantityHeaderRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        gap: normalize(8),
     },
     quantityInfo: {
         flex: 1,
@@ -762,6 +1110,7 @@ const styles = StyleSheet.create({
         alignItems: 'flex-end',
         gap: normalize(8),
         flexWrap: 'wrap',
+        marginTop: normalize(8),
     },
     inputGroup: {
         alignItems: 'center',
@@ -778,6 +1127,8 @@ const styles = StyleSheet.create({
         borderColor: Color.border || '#E0E0E0',
         borderRadius: 4,
         paddingHorizontal: normalize(4),
+        paddingVertical: normalize(6),
+        minHeight: normalize(28),
         textAlign: 'center',
         fontSize: normalizeFont(11),
         fontFamily: FontFamily.sFProText,
@@ -789,6 +1140,8 @@ const styles = StyleSheet.create({
         borderColor: Color.border || '#E0E0E0',
         borderRadius: 4,
         paddingHorizontal: normalize(4),
+        paddingVertical: normalize(6),
+        minHeight: normalize(28),
         textAlign: 'center',
         fontSize: normalizeFont(11),
         fontFamily: FontFamily.sFProText,
@@ -813,6 +1166,12 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.1,
         shadowRadius: 4,
         elevation: 5,
+    },
+    inlineFooter: {
+        borderTopWidth: 1,
+        borderTopColor: Color.border || '#E0E0E0',
+        padding: normalize(12),
+        backgroundColor: Color.colorLightMode,
     },
     footerButton: {
         paddingVertical: normalize(14),

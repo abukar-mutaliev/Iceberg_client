@@ -156,11 +156,17 @@ export const CategoriesBar = ({ hideLoader = true }) => {
                             )}
                         </View>
                         {category.isCategoriesLink ? (
-                            <Text style={styles.categoryName} numberOfLines={2}>
+                            <Text
+                                style={styles.categoryName}
+                                numberOfLines={1}
+                            >
                                 Все
                             </Text>
                         ) : (
-                            <Text style={styles.categoryName} numberOfLines={2}>
+                            <Text
+                                style={styles.categoryName}
+                                numberOfLines={1}
+                            >
                                 {category.name}
                             </Text>
                         )}
@@ -203,7 +209,7 @@ const styles = StyleSheet.create({
     },
     errorText: {
         color: 'red',
-        fontSize: FontSize.size_xs,
+        fontSize: FontSize.size_xxs,
         fontFamily: FontFamily.sFProText,
     },
     categoryItem: {

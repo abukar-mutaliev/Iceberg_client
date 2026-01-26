@@ -288,7 +288,15 @@ export const chatMessagesDb = {
     for (const row of rows || []) {
       if (!row?.json) continue;
       try {
-        messages.push(JSON.parse(row.json));
+        const message = JSON.parse(row.json);
+        
+        // КРИТИЧНО: Фильтруем удаленные сообщения при загрузке из кэша
+        // Сообщения с isDeletedForAll === true не должны показываться
+        if (message.isDeletedForAll === true) {
+          continue;
+        }
+        
+        messages.push(message);
       } catch {
         // skip corrupted row
       }

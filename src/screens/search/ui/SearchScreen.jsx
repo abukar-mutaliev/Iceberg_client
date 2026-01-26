@@ -2,13 +2,13 @@ import React, {useState, useEffect, useRef, useCallback} from 'react';
 import {
     View,
     StyleSheet,
-    SafeAreaView,
     Keyboard,
     Text,
     Platform,
     BackHandler,
     TouchableWithoutFeedback, Dimensions, PixelRatio
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import {
     fetchProducts,
@@ -112,14 +112,9 @@ export const SearchScreen = ({ navigation }) => {
 
             // Только при первом открытии экрана
             if (!initialFocusComplete.current) {
-                // Первый фокус с задержкой
+                // Не фокусируем инпут автоматически, чтобы не открывать клавиатуру
                 clearTimeout(keyboardShowTimeout.current);
-                keyboardShowTimeout.current = setTimeout(() => {
-                    if (componentMounted.current) {
-                        safelyFocusInput();
-                        initialFocusComplete.current = true;
-                    }
-                }, 300);
+                initialFocusComplete.current = true;
             }
 
             return () => {
@@ -261,7 +256,12 @@ export const SearchScreen = ({ navigation }) => {
     // Обработчик нажатия "Отмена"
     const handleCancel = () => {
         Keyboard.dismiss();
-        navigation.goBack();
+        const parent = navigation.getParent();
+        if (parent) {
+            parent.navigate('MainTab');
+        } else {
+            navigation.navigate('MainTab');
+        }
     };
 
     // Обработчик фокуса на поле поиска
@@ -385,6 +385,7 @@ const styles = StyleSheet.create({
     },
     header: {
         paddingHorizontal: 30,
+        width: '100%',
     },
     content: {
         flex: 1,

@@ -3,9 +3,10 @@ import {
     View,
     ScrollView,
     StyleSheet,
-    SafeAreaView,
     TouchableOpacity,
-} from 'react-native';
+    FlatList,
+    ActivityIndicator} from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { useFocusEffect } from '@react-navigation/native';
 import { resetCurrentProduct, fetchProductById } from '@entities/product';
@@ -23,6 +24,11 @@ import { useCustomAlert } from '@shared/ui/CustomAlert';
 import { ReusableModal } from '@shared/ui/Modal/ui/ReusableModal';
 import { RepostProductContent } from '@widgets/product/ProductContent/ui/RepostProductContent';
 import { ImageViewerModal } from '@shared/ui/ImageViewerModal/ui/ImageViewerModal';
+import { FeedbacksList } from '@entities/feedback/ui/FeedbacksList';
+import { employeeApiMethods } from '@entities/user/api/userApi';
+import { profileApi } from '@entities/profile/api/profileApi';
+import { fetchAllDistricts } from '@entities/district/model/slice';
+import { loadUserProfile } from '@entities/auth/model/slice';
 
 import {
     StaticBackgroundGradient,
@@ -58,8 +64,15 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     const [isImageViewerVisible, setIsImageViewerVisible] = useState(false);
     const [imageViewerImages, setImageViewerImages] = useState([]);
     const [imageViewerInitialIndex, setImageViewerInitialIndex] = useState(0);
+    const [isDistrictSelectionVisible, setIsDistrictSelectionVisible] = useState(false);
+    const [selectedDistrictId, setSelectedDistrictId] = useState(null);
+    const [isLoadingManager, setIsLoadingManager] = useState(false);
     const rooms = useSelector(selectRoomsList) || [];
     const loadMoreCalledRef = useRef(false);
+    const reviewsSectionYRef = useRef(0);
+    const districts = useSelector(state => state.district?.districts || []);
+    const insets = useSafeAreaInsets();
+    const scrollBottomPadding = 80 + insets.bottom + 16;
 
     // Кастомные хуки для разделения логики
     const {
@@ -78,7 +91,6 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         handleContentSizeChange,
         handleQuantityChange,
         handleTabChange,
-        handleViewAllReviews,
         handleProductUpdated,
         setSelectedQuantity,
         setOptimisticProduct
@@ -328,8 +340,20 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         setIsRepostModalVisible(true);
     }, [isAuthenticated, showInfo]);
 
-    // Обработчик вопроса о продукте
-    const handleAskQuestion = useCallback(async () => {
+    // ============================================================================
+    // СТАРАЯ ЛОГИКА: Открытие чата с поставщиком товара
+    // ============================================================================
+    // ВНИМАНИЕ: Эта функциональность временно отключена, но сохранена для 
+    // возможного использования в будущем. Она открывает чат с поставщиком товара,
+    // создавая или находя существующий PRODUCT чат и отправляя туда товар.
+    // 
+    // В будущем может понадобиться для:
+    // - Прямого общения клиента с поставщиком по вопросам о товаре
+    // - Уточнения характеристик, наличия, условий поставки
+    // - Обсуждения индивидуальных условий сотрудничества
+    // ============================================================================
+    /*
+    const handleAskQuestionToSupplier = useCallback(async () => {
         if (!isAuthenticated) {
             showInfo('Требуется авторизация', 'Для отправки вопросов необходимо войти в систему');
             return;
@@ -478,6 +502,277 @@ export const ProductDetailScreen = ({ route, navigation }) => {
             showCustomError('Ошибка', 'Не удалось открыть чат');
         }
     }, [enrichedProduct, supplier, navigation, currentUser, isAuthenticated, showInfo, showCustomError, rooms, dispatch]);
+    */
+
+    // ============================================================================
+    // НОВАЯ ЛОГИКА: Открытие чата с менеджером района
+    // ============================================================================
+    // Обработчик вопроса о продукте - открывает чат с менеджером района пользователя
+    const handleAskQuestion = useCallback(async () => {
+        if (!isAuthenticated) {
+            showInfo('Требуется авторизация', 'Для отправки вопросов необходимо войти в систему');
+            return;
+        }
+
+        // Проверяем наличие района у клиента
+        const districtId = currentUser?.client?.districtId;
+        if (!districtId) {
+            // Предлагаем выбрать район
+            showInfo(
+                'Выберите район',
+                'Для связи с менеджером необходимо выбрать ваш район обслуживания',
+                [
+                    {
+                        text: 'Выбрать район',
+                        style: 'primary',
+                        onPress: () => {
+                            // Загружаем районы, если их нет
+                            if (districts.length === 0) {
+                                dispatch(fetchAllDistricts());
+                            }
+                            setIsDistrictSelectionVisible(true);
+                        }
+                    },
+                    {
+                        text: 'Отмена',
+                        style: 'secondary'
+                    }
+                ]
+            );
+            return;
+        }
+
+        // Используем общую функцию для открытия чата с менеджером
+        await openChatWithManagerByDistrict(districtId, enrichedProduct?.id);
+    }, [currentUser, isAuthenticated, showInfo, showCustomError, openChatWithManagerByDistrict, districts.length, dispatch, enrichedProduct?.id]);
+
+    // Загрузка районов при монтировании, если их нет
+    useEffect(() => {
+        if (districts.length === 0) {
+            dispatch(fetchAllDistricts());
+        }
+    }, [dispatch, districts.length]);
+
+    // Функция для открытия чата с менеджером по districtId
+    const openChatWithManagerByDistrict = useCallback(async (districtId, productId) => {
+        setIsLoadingManager(true);
+
+        try {
+            // Получаем менеджера района
+            const response = await employeeApiMethods.getDistrictManager(districtId);
+            const managerData = response?.data?.manager;
+
+            if (!managerData) {
+                showCustomError(
+                    'Менеджер не найден',
+                    'Менеджер вашего района временно недоступен. Попробуйте позже или обратитесь в службу поддержки.'
+                );
+                setIsLoadingManager(false);
+                return;
+            }
+
+            const managerUserId = managerData.user?.id;
+            if (!managerUserId) {
+                throw new Error('ID менеджера не найден');
+            }
+
+            // Нормализуем ID для сравнения
+            const normalizedManagerUserId = Number(managerUserId);
+            const normalizedCurrentUserId = Number(currentUser?.id);
+
+            // Сначала проверяем существующий чат в Redux store
+            let existingChat = null;
+            const roomsFromStore = rooms || [];
+            
+            // Функция для проверки, является ли комната чатом с менеджером
+            const isChatWithManager = (room) => {
+                const roomData = room?.room || room;
+                if (roomData?.type !== 'DIRECT') return false;
+                
+                // Проверяем участников
+                const participants = roomData.participants || [];
+                return participants.some(p => {
+                    const participantId = p?.userId ?? p?.user?.id ?? p?.id;
+                    if (!participantId) return false;
+                    
+                    const normalizedParticipantId = Number(participantId);
+                    // Должен быть менеджер, но не текущий пользователь
+                    return normalizedParticipantId === normalizedManagerUserId && 
+                           normalizedParticipantId !== normalizedCurrentUserId;
+                });
+            };
+            
+            existingChat = roomsFromStore.find(isChatWithManager);
+
+            // Если не нашли в Redux, обновляем список и проверяем через API
+            if (!existingChat) {
+                try {
+                    // Обновляем список комнат для получения актуальных данных
+                    await dispatch(fetchRooms({ page: 1, forceRefresh: true }));
+                    
+                    // После обновления rooms из Redux должны обновиться автоматически
+                    // Но так как мы в callback, нужно проверить через API
+                } catch (fetchError) {
+                    console.warn('Ошибка при обновлении списка комнат:', fetchError);
+                }
+            }
+
+            // Если все еще не нашли, проверяем через API напрямую
+            if (!existingChat) {
+                try {
+                    const roomsResponse = await ChatApi.getRooms({ type: 'DIRECT' });
+                    const allRooms = roomsResponse?.data?.rooms || roomsResponse?.data?.data?.rooms || [];
+                    
+                    existingChat = allRooms.find(isChatWithManager);
+                } catch (apiError) {
+                    console.warn('Ошибка при получении комнат через API:', apiError);
+                }
+            }
+
+            let roomId;
+            let roomObj;
+            const managerName = managerData.name || managerData.user?.email || 'Менеджер';
+
+            if (existingChat) {
+                // Найден существующий чат - используем его
+                roomObj = existingChat.room || existingChat;
+                roomId = roomObj.id || existingChat.id;
+                
+                console.log('✅ Найден существующий чат с менеджером:', {
+                    roomId,
+                    managerUserId: normalizedManagerUserId
+                });
+            } else {
+                // Создаем новый чат
+                console.log('🆕 Создаем новый чат с менеджером:', {
+                    managerUserId: normalizedManagerUserId
+                });
+                
+                const formData = new FormData();
+                formData.append('type', 'DIRECT');
+                formData.append('title', managerName);
+                formData.append('members', JSON.stringify([managerUserId]));
+
+                const createResponse = await ChatApi.createRoom(formData);
+                roomObj = createResponse?.data?.room || createResponse?.data?.data?.room;
+
+                if (!roomObj?.id) {
+                    throw new Error('Не удалось создать чат');
+                }
+
+                roomId = roomObj.id;
+                
+                // Обновляем список комнат после создания
+                try {
+                    await dispatch(fetchRooms({ page: 1, forceRefresh: true }));
+                } catch (updateError) {
+                    console.warn('Ошибка при обновлении списка комнат после создания:', updateError);
+                }
+            }
+
+            // Отправляем товар в чат, если productId указан
+            if (productId) {
+                try {
+                    // Загружаем продукт в Redux store для отображения в списке чатов
+                    await dispatch(fetchProductById(productId));
+                    
+                    // Отправляем товар в чат
+                    const sendResult = await dispatch(sendProduct({
+                        roomId,
+                        productId: productId
+                    }));
+
+                    if (sendResult.error) {
+                        console.warn('Не удалось отправить товар в чат:', sendResult.error);
+                        // Продолжаем открывать чат даже если отправка товара не удалась
+                    } else {
+                        console.log('✅ Товар успешно отправлен в чат:', {
+                            roomId,
+                            productId
+                        });
+                    }
+                } catch (sendError) {
+                    console.error('Ошибка при отправке товара в чат:', sendError);
+                    // Продолжаем открывать чат даже если отправка товара не удалась
+                }
+            }
+
+            // Переходим в чат
+            const rootNavigation =
+                navigation?.getParent?.('AppStack') ||
+                navigation?.getParent?.()?.getParent?.() ||
+                null;
+
+            (rootNavigation || navigation).navigate('ChatRoom', {
+                roomId,
+                roomTitle: managerName,
+                roomData: roomObj,
+                currentUserId: currentUser?.id,
+                productId: productId,
+                fromScreen: 'ProductDetail'
+            });
+        } catch (err) {
+            console.error('Ошибка при открытии чата с менеджером:', err);
+            showCustomError(
+                'Ошибка',
+                'Не удалось открыть чат с менеджером. Попробуйте позже.'
+            );
+        } finally {
+            setIsLoadingManager(false);
+        }
+    }, [navigation, currentUser, showCustomError, dispatch, rooms]);
+
+    // Обработчик сохранения выбранного района
+    const handleDistrictSave = useCallback(async () => {
+        if (!selectedDistrictId) {
+            showCustomError('Ошибка', 'Пожалуйста, выберите район');
+            return;
+        }
+
+        try {
+            // Обновляем район клиента
+            await profileApi.updateProfile({ districtId: selectedDistrictId });
+            
+            // Обновляем профиль пользователя в Redux
+            await dispatch(loadUserProfile()).unwrap();
+            
+            setIsDistrictSelectionVisible(false);
+            const savedDistrictId = selectedDistrictId;
+            setSelectedDistrictId(null);
+            
+            // После выбора района, открываем чат с менеджером используя сохраненный districtId
+            // Передаем productId, чтобы отправить товар в чат
+            await openChatWithManagerByDistrict(savedDistrictId, productId || enrichedProduct?.id);
+        } catch (error) {
+            console.error('Ошибка при сохранении района:', error);
+            showCustomError('Ошибка', 'Не удалось сохранить район. Попробуйте позже.');
+        }
+    }, [selectedDistrictId, dispatch, showCustomError, openChatWithManagerByDistrict, productId, enrichedProduct?.id]);
+
+    const handleReviewsSectionLayout = useCallback((event) => {
+        reviewsSectionYRef.current = event.nativeEvent.layout.y;
+    }, []);
+
+    const scrollToReviewsSection = useCallback(() => {
+        if (!scrollViewRef.current) return;
+
+        const targetY = Math.max((reviewsSectionYRef.current || 0) - 12, 0);
+        scrollViewRef.current.scrollTo({ y: targetY, animated: true });
+    }, [scrollViewRef]);
+
+    const handleTabChangeWithScroll = useCallback((tabId) => {
+        handleTabChange(tabId);
+
+        if (tabId === 'reviews') {
+            createSafeTimeout(() => {
+                scrollToReviewsSection();
+            }, 50);
+        }
+    }, [handleTabChange, createSafeTimeout, scrollToReviewsSection]);
+
+    const handleViewAllReviews = useCallback(() => {
+        handleTabChangeWithScroll('reviews');
+    }, [handleTabChangeWithScroll]);
 
     // Мемоизированные компоненты
     const displayProduct = useMemo(() => {
@@ -514,14 +809,10 @@ export const ProductDetailScreen = ({ route, navigation }) => {
             <ProductContent
                 product={displayProduct}
                 feedbacks={feedbacks || []}
-                feedbackLoading={false}
-                feedbackError={null}
-                isFeedbacksLoaded={Array.isArray(feedbacks) && feedbacks.length > 0}
                 quantity={cartQuantity || 0}
                 activeTab={activeTab}
                 onQuantityChange={handleQuantityChange}
-                onTabChange={handleTabChange}
-                onRefreshFeedbacks={handleRefreshFeedbacks}
+                onTabChange={handleTabChangeWithScroll}
                 isUpdatingQuantity={isUpdating}
                 maxQuantity={displayProduct?.availableQuantity || displayProduct?.stockQuantity}
                 isInCart={isInCart}
@@ -538,8 +829,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         cartQuantity,
         activeTab,
         handleQuantityChange,
-        handleTabChange,
-        handleRefreshFeedbacks,
+        handleTabChangeWithScroll,
         isUpdating,
         isInCart,
         handleCartAdd,
@@ -558,9 +848,10 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 quantity={selectedQuantity}
                 onProductUpdated={(data) => handleProductUpdated(data, refreshData)}
                 onAskQuestion={handleAskQuestion}
+                isLoadingAskQuestion={isLoadingManager}
             />
         );
-    }, [displayProduct, handleAddToCart, selectedQuantity, handleProductUpdated, refreshData, handleAskQuestion]);
+    }, [displayProduct, handleAddToCart, selectedQuantity, handleProductUpdated, refreshData, handleAskQuestion, isLoadingManager]);
 
     const brandCardComponent = useMemo(() => (
         activeTab === 'description' && supplier ? (
@@ -574,15 +865,53 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         ) : null
     ), [activeTab, supplier, handleSupplierPress, productId, displayProduct?.supplierId]);
 
-    const recentFeedbacksComponent = useMemo(() => (
-        activeTab === 'description' && Array.isArray(feedbacks) && feedbacks.length > 0 ? (
-            <RecentFeedbacks
-                feedbacks={feedbacks}
-                productId={displayProduct?.id || 0}
-                onViewAllPress={handleViewAllReviews}
-            />
-        ) : null
-    ), [activeTab, feedbacks, displayProduct?.id, handleViewAllReviews]);
+    const reviewsSectionComponent = useMemo(() => {
+        if (!displayProduct?.id) return null;
+
+        const hasMoreFeedbacks = Array.isArray(feedbacks) && feedbacks.length > 3;
+        const feedbacksLoaded = Array.isArray(feedbacks) && feedbacks.length > 0;
+
+        return (
+            <View style={styles.reviewsSection} onLayout={handleReviewsSectionLayout}>
+                {activeTab === 'reviews' ? (
+                    <FeedbacksList
+                        productId={displayProduct?.id}
+                        feedbacks={feedbacks || []}
+                        isLoading={false}
+                        error={null}
+                        isDataLoaded={feedbacksLoaded}
+                        onRefresh={handleRefreshFeedbacks}
+                        style={styles.feedbacksList}
+                    />
+                ) : (
+                    <>
+                        <RecentFeedbacks
+                            feedbacks={feedbacks}
+                            productId={displayProduct?.id || 0}
+                            limit={3}
+                        />
+                        {hasMoreFeedbacks && (
+                            <TouchableOpacity
+                                style={styles.viewAllReviewsButton}
+                                onPress={handleViewAllReviews}
+                            >
+                                <Text style={styles.viewAllReviewsText}>
+                                    Показать все отзывы
+                                </Text>
+                            </TouchableOpacity>
+                        )}
+                    </>
+                )}
+            </View>
+        );
+    }, [
+        activeTab,
+        displayProduct?.id,
+        feedbacks,
+        handleReviewsSectionLayout,
+        handleRefreshFeedbacks,
+        handleViewAllReviews
+    ]);
 
     // Объединяем похожие и остальные товары в один массив
     const allProductsForDisplay = useMemo(() => {
@@ -652,7 +981,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     if (isLoading && !displayProduct) {
         return (
             <View style={styles.fullScreenContainer}>
-                <SafeAreaView style={styles.safeArea}>
+                <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
                     <StaticBackgroundGradient />
                     <View style={styles.errorContainer}>
                         <Loader type="youtube" color={colors.primary || Color.blue2} text={null} />
@@ -665,7 +994,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     if (error && !displayProduct) {
         return (
             <View style={styles.fullScreenContainer}>
-                <SafeAreaView style={styles.safeArea}>
+                <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
                     <StaticBackgroundGradient />
                     <View style={styles.errorContainer}>
                         <Text style={[styles.errorText, { color: Color.dark }]}>
@@ -691,7 +1020,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     if (!displayProduct && !isLoading && productId && (error || !product)) {
         return (
             <View style={styles.fullScreenContainer}>
-                <SafeAreaView style={styles.safeArea}>
+                <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
                     <StaticBackgroundGradient />
                     <View style={styles.errorContainer}>
                         <Text style={[styles.errorText, { color: colors.primary }]}>
@@ -720,14 +1049,17 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     // Основной рендер
     return (
         <View style={styles.fullScreenContainer}>
-            <SafeAreaView style={styles.safeArea}>
+            <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
                 <ScrollView
                     ref={scrollViewRef}
                     style={styles.contentScrollView}
                     showsVerticalScrollIndicator={false}
                     onScroll={handleScrollWithPagination}
                     scrollEventThrottle={16}
-                    contentContainerStyle={styles.scrollContent}
+                    contentContainerStyle={[
+                        styles.scrollContent,
+                        { paddingBottom: scrollBottomPadding }
+                    ]}
                     onContentSizeChange={handleContentSizeChange}
                     overScrollMode="never"
                     bounces={false}
@@ -741,9 +1073,9 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                     <View style={styles.contentContainer}>
                         {productHeaderComponent}
                         {productContentComponent}
-                        {productActionsComponent}
                         {brandCardComponent}
-                        {recentFeedbacksComponent}
+                        {productActionsComponent}
+                        {reviewsSectionComponent}
                         {similarProductsComponent}
                     </View>
                 </ScrollView>
@@ -774,6 +1106,74 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 onClose={handleImageViewerClose}
                 title={displayProduct?.name || ''}
             />
+
+            {/* Модальное окно выбора района */}
+            <ReusableModal
+                visible={isDistrictSelectionVisible}
+                onClose={() => {
+                    setIsDistrictSelectionVisible(false);
+                    setSelectedDistrictId(null);
+                }}
+                title="Выберите район"
+                height={80}
+            >
+                <View style={styles.districtModalContent}>
+                    <Text style={styles.districtModalText}>
+                        Для связи с менеджером необходимо выбрать ваш район обслуживания
+                    </Text>
+                    {districts.length === 0 ? (
+                        <View style={styles.districtLoadingContainer}>
+                            <ActivityIndicator size="small" color={Color.blue2} />
+                            <Text style={styles.districtLoadingText}>Загрузка районов...</Text>
+                        </View>
+                    ) : (
+                        <>
+                            <FlatList
+                                data={districts}
+                                keyExtractor={(item) => item.id.toString()}
+                                renderItem={({ item }) => (
+                                    <TouchableOpacity
+                                        style={[
+                                            styles.districtItem,
+                                            selectedDistrictId === item.id && styles.districtItemSelected
+                                        ]}
+                                        onPress={() => setSelectedDistrictId(item.id)}
+                                    >
+                                        <Text style={[
+                                            styles.districtItemText,
+                                            selectedDistrictId === item.id && styles.districtItemTextSelected
+                                        ]}>
+                                            {item.name}
+                                        </Text>
+                                        {item.description && (
+                                            <Text style={[
+                                                styles.districtItemDescription,
+                                                selectedDistrictId === item.id && styles.districtItemTextSelected
+                                            ]}>
+                                                {item.description}
+                                            </Text>
+                                        )}
+                                    </TouchableOpacity>
+                                )}
+                                style={styles.districtList}
+                                showsVerticalScrollIndicator={false}
+                            />
+                            <TouchableOpacity
+                                style={[
+                                    styles.districtSaveButton,
+                                    !selectedDistrictId && styles.districtSaveButtonDisabled
+                                ]}
+                                onPress={handleDistrictSave}
+                                disabled={!selectedDistrictId}
+                            >
+                                <Text style={styles.districtSaveButtonText}>
+                                    Сохранить и открыть чат
+                                </Text>
+                            </TouchableOpacity>
+                        </>
+                    )}
+                </View>
+            </ReusableModal>
         </View>
     );
 };
@@ -825,6 +1225,97 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: 'white',
         textAlign: 'center',
+    },
+    districtModalContent: {
+        flex: 1,
+        padding: 16,
+    },
+    districtModalText: {
+        fontSize: 14,
+        color: Color.dark,
+        fontFamily: FontFamily.sFProText,
+        marginBottom: 16,
+        textAlign: 'center',
+    },
+    districtLoadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingVertical: 40,
+    },
+    districtLoadingText: {
+        marginTop: 12,
+        fontSize: 14,
+        color: Color.textSecondary,
+        fontFamily: FontFamily.sFProText,
+    },
+    districtList: {
+        flex: 1,
+        maxHeight: 300,
+    },
+    districtItem: {
+        padding: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: '#E5E5E5',
+        backgroundColor: '#FFFFFF',
+    },
+    districtItemSelected: {
+        backgroundColor: Color.blue2,
+    },
+    districtItemText: {
+        fontSize: 16,
+        fontWeight: '500',
+        color: Color.dark,
+        fontFamily: FontFamily.sFProText,
+    },
+    districtItemTextSelected: {
+        color: '#FFFFFF',
+    },
+    districtItemDescription: {
+        fontSize: 14,
+        color: Color.textSecondary,
+        fontFamily: FontFamily.sFProText,
+        marginTop: 4,
+    },
+    districtSaveButton: {
+        backgroundColor: Color.blue2,
+        borderRadius: 8,
+        paddingVertical: 12,
+        paddingHorizontal: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 16,
+    },
+    districtSaveButtonDisabled: {
+        backgroundColor: '#CCCCCC',
+        opacity: 0.6,
+    },
+    districtSaveButtonText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#FFFFFF',
+        fontFamily: FontFamily.sFProText,
+    },
+    reviewsSection: {
+        marginTop: 10,
+        paddingHorizontal: 16,
+    },
+    feedbacksList: {
+        paddingHorizontal: 0,
+    },
+    viewAllReviewsButton: {
+        marginTop: 8,
+        alignSelf: 'center',
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        borderRadius: 16,
+        backgroundColor: Color.blue2,
+    },
+    viewAllReviewsText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#FFFFFF',
+        fontFamily: FontFamily.sFProText,
     },
 });
 

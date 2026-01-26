@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { View, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, Text, TouchableOpacity, Platform } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Redux imports
 import { fetchProducts } from '@entities/product/model/slice';
@@ -20,10 +21,10 @@ import { fetchCart, useCartAvailability } from '@entities/cart';
 // UI Components
 import { Color } from '@app/styles/GlobalStyles';
 import { Header } from "@widgets/header";
-import { PromoBanner } from "@widgets/promoSlider";
+// import { PromoBanner } from "@widgets/promoSlider";
 import { CategoriesBar } from "@widgets/categoriesBar";
 import { ProductsList } from "@widgets/product/productsList";
-import DriverLocator from "@features/driver/driverLocator/ui/DriverLocator";
+import { LocatorsSlider } from "@features/locatorsSlider";
 
 // Hooks
 import { useNotifications } from '@entities/notification';
@@ -39,6 +40,10 @@ export const MainScreen = ({ navigation, route }) => {
     const { isCartAvailable } = useCartAvailability();
     const { currentUser: user } = useAuth();
     const notifications = useNotifications(navigation);
+    const isAndroid = Platform.OS === 'android';
+    const insets = useSafeAreaInsets();
+    const tabBarHeight = 80 + insets.bottom;
+    const listContentPadding = isAndroid ? tabBarHeight + 12 : 12;
 
     // Redux selectors
     const products = useSelector(selectProducts);
@@ -318,15 +323,24 @@ export const MainScreen = ({ navigation, route }) => {
         navigation.navigate('StopsListScreen');
     }, [navigation]);
 
+    const handleWarehouseLocatorPress = useCallback(() => {
+        // Пока просто навигация на список складов
+        // В будущем можно добавить логику выбора конкретного склада
+        navigation.navigate('WarehouseList');
+    }, [navigation]);
+
     // Компоненты рендеринга
     const renderHeader = useCallback(() => (
         <>
             <Header navigation={navigation} />
-            <PromoBanner hideLoader={isDataReady} />
+            {/* <PromoBanner hideLoader={isDataReady} /> */}
             <CategoriesBar hideLoader={false} />
-            <DriverLocator onPress={handleDriverLocatorPress} />
+            <LocatorsSlider 
+                onDriverPress={handleDriverLocatorPress}
+                onWarehousePress={handleWarehouseLocatorPress}
+            />
         </>
-    ), [navigation, isDataReady, handleDriverLocatorPress]);
+    ), [navigation, isDataReady, handleDriverLocatorPress, handleWarehouseLocatorPress]);
 
     const renderFooter = useCallback(() => (
         <View style={styles.bottomSpacer} />
@@ -409,6 +423,9 @@ export const MainScreen = ({ navigation, route }) => {
                 ListFooterComponent={renderFooter}
                 hideLoader={isDataReady}
                 products={shuffledProducts.length > 0 ? shuffledProducts : products}
+                scrollEnabled={true}
+                nestedScrollEnabled={isAndroid}
+                contentContainerStyle={{ paddingBottom: listContentPadding }}
             />
         </View>
     );
@@ -469,7 +486,7 @@ const styles = StyleSheet.create({
         borderRadius: 8,
     },
     bottomSpacer: {
-        height: 60,
+        height: 0,
     },
     messageContainer: {
         padding: 20,

@@ -8,11 +8,14 @@ import {
     TextInput,
     ScrollView,
     ActivityIndicator,
-    SafeAreaView,
     KeyboardAvoidingView,
     Platform,
-} from 'react-native';
+    Image,
+    Alert,
+    InteractionManager} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch } from 'react-redux';
+import * as ImagePicker from 'expo-image-picker';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
 import IconClose from '@shared/ui/Icon/Profile/CloseIcon';
@@ -38,8 +41,11 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
         latitude: '',
         longitude: '',
         maxDeliveryRadius: '30',
-        isActive: true
+        isActive: true,
+        autoManageStatus: false,
+        workingHours: [] // График работы: [{ dayOfWeek: 0-6, isOpen: true/false, openTime: '09:00', closeTime: '18:00' }]
     });
+    const [selectedImage, setSelectedImage] = useState(null);
     const [districts, setDistricts] = useState([]);
     const [isLoadingDistricts, setIsLoadingDistricts] = useState(false);
     const [errors, setErrors] = useState({});
@@ -65,6 +71,41 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                 const addressParts = warehouse.address ? warehouse.address.split(',').map(s => s.trim()) : ['', ''];
                 const hasCity = addressParts.length > 1;
                 
+                // Инициализируем график работы (7 дней недели)
+                // Если график работы уже существует, используем его, иначе создаем полный график
+                let defaultWorkingHours;
+                if (warehouse.workingHours && warehouse.workingHours.length > 0) {
+                    // Используем существующий график работы
+                    defaultWorkingHours = Array.from({ length: 7 }, (_, i) => {
+                        const existing = warehouse.workingHours.find(wh => wh.dayOfWeek === i);
+                        if (existing) {
+                            // Используем существующие данные
+                            return {
+                                dayOfWeek: existing.dayOfWeek,
+                                isOpen: existing.isOpen !== undefined ? existing.isOpen : true,
+                                openTime: existing.openTime || null,
+                                closeTime: existing.closeTime || null
+                            };
+                        } else {
+                            // День не найден в графике - это выходной
+                            return {
+                                dayOfWeek: i,
+                                isOpen: false,
+                                openTime: null,
+                                closeTime: null
+                            };
+                        }
+                    });
+                } else {
+                    // Графика работы нет - создаем по умолчанию
+                    defaultWorkingHours = Array.from({ length: 7 }, (_, i) => ({
+                        dayOfWeek: i,
+                        isOpen: i !== 0 && i !== 6, // По умолчанию выходной в воскресенье (0) и субботу (6)
+                        openTime: i !== 0 && i !== 6 ? '09:00' : null,
+                        closeTime: i !== 0 && i !== 6 ? '18:00' : null
+                    }));
+                }
+
                 setFormData({
                     name: warehouse.name || '',
                     city: hasCity ? addressParts[0] : '',
@@ -73,10 +114,27 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                     latitude: warehouse.latitude?.toString() || '',
                     longitude: warehouse.longitude?.toString() || '',
                     maxDeliveryRadius: warehouse.maxDeliveryRadius?.toString() || '30',
-                    isActive: warehouse.isActive !== undefined ? warehouse.isActive : true
+                    isActive: warehouse.isActive !== undefined ? warehouse.isActive : true,
+                    autoManageStatus: warehouse.autoManageStatus !== undefined ? warehouse.autoManageStatus : false,
+                    workingHours: defaultWorkingHours
                 });
+                
+                // Устанавливаем изображение если есть
+                if (warehouse.image) {
+                    setSelectedImage({ uri: warehouse.image });
+                } else {
+                    setSelectedImage(null);
+                }
             } else {
                 // Режим создания
+                // Инициализируем график работы по умолчанию (7 дней недели)
+                const defaultWorkingHours = Array.from({ length: 7 }, (_, i) => ({
+                    dayOfWeek: i,
+                    isOpen: i !== 0 && i !== 6, // По умолчанию выходной в воскресенье (0) и субботу (6)
+                    openTime: i !== 0 && i !== 6 ? '09:00' : null,
+                    closeTime: i !== 0 && i !== 6 ? '18:00' : null
+                }));
+
                 setFormData({
                     name: '',
                     city: '',
@@ -85,8 +143,11 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                     latitude: '',
                     longitude: '',
                     maxDeliveryRadius: '30',
-                    isActive: true
+                    isActive: true,
+                    autoManageStatus: false,
+                    workingHours: defaultWorkingHours
                 });
+                setSelectedImage(null);
             }
             setErrors({});
             loadDistricts();
@@ -445,6 +506,95 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
         return Object.keys(newErrors).length === 0;
     };
 
+    // Выбор изображения
+    const pickImage = async () => {
+        try {
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert('Требуется разрешение', 'Для выбора изображения необходимо разрешение на доступ к галерее.');
+                return;
+            }
+
+            // На Android добавляем задержку и ждем завершения всех взаимодействий,
+            // чтобы ActivityResultLauncher успел зарегистрироваться
+            // Это решает проблему "Attempting to launch an unregistered ActivityResultLauncher"
+            if (Platform.OS === 'android') {
+                // Используем requestAnimationFrame для гарантии, что UI полностью отрендерен
+                await new Promise(resolve => requestAnimationFrame(resolve));
+                // Затем небольшая задержка для регистрации ActivityResultLauncher
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+
+            // Пробуем запустить ImagePicker с повторной попыткой на Android
+            let result;
+            let attempts = 0;
+            const maxAttempts = 3;
+            
+            while (attempts < maxAttempts) {
+                try {
+                    result = await ImagePicker.launchImageLibraryAsync({
+                        mediaTypes: 'images',
+                        allowsEditing: true,
+                        aspect: [16, 9],
+                        quality: 0.8,
+                    });
+                    break; // Успешно запущен
+                } catch (error) {
+                    attempts++;
+                    if (error.message && error.message.includes('unregistered ActivityResultLauncher')) {
+                        if (attempts < maxAttempts) {
+                            // Увеличиваем задержку с каждой попыткой
+                            await new Promise(resolve => setTimeout(resolve, 200 * attempts));
+                            continue;
+                        }
+                    }
+                    throw error; // Если это другая ошибка или все попытки исчерпаны
+                }
+            }
+
+            if (result && !result.canceled && result.assets && result.assets.length > 0) {
+                const asset = result.assets[0];
+                // Всегда определяем тип файла на основе расширения URI, так как asset.type может быть просто "image"
+                let mimeType = 'image/jpeg'; // По умолчанию
+                if (asset.uri) {
+                    const uriLower = asset.uri.toLowerCase();
+                    if (uriLower.includes('.png')) {
+                        mimeType = 'image/png';
+                    } else if (uriLower.includes('.jpg') || uriLower.includes('.jpeg')) {
+                        mimeType = 'image/jpeg';
+                    } else if (uriLower.includes('.webp')) {
+                        mimeType = 'image/webp';
+                    } else if (asset.type && asset.type.startsWith('image/')) {
+                        // Используем asset.type только если это полный MIME-тип
+                        mimeType = asset.type;
+                    }
+                }
+                
+                const imageFile = {
+                    uri: asset.uri,
+                    name: asset.fileName || `warehouse_${Date.now()}.jpg`,
+                    type: mimeType,
+                };
+                
+                console.log('📸 Selected image:', {
+                    uri: imageFile.uri.substring(0, 50) + '...',
+                    type: imageFile.type,
+                    name: imageFile.name
+                });
+                
+                setSelectedImage(imageFile);
+            }
+        } catch (error) {
+            console.error('Ошибка при выборе изображения:', error);
+            Alert.alert('Ошибка', 'Не удалось выбрать изображение');
+        }
+    };
+
+    // Удаление изображения
+    const removeImage = () => {
+        setSelectedImage(null);
+    };
+
     // Обработка отправки формы
     const handleSubmit = async () => {
         if (!validateForm()) {
@@ -454,6 +604,7 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
         // Объединяем город и адрес в один полный адрес
         const fullAddress = formData.city.trim() + ', ' + formData.address.trim();
 
+        // Отправляем все дни недели (7 дней), чтобы сервер мог правильно обработать выходные дни
         const submitData = {
             name: formData.name,
             address: fullAddress, // Полный адрес с городом
@@ -461,7 +612,10 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
             latitude: formData.latitude ? parseFloat(formData.latitude) : null,
             longitude: formData.longitude ? parseFloat(formData.longitude) : null,
             maxDeliveryRadius: parseFloat(formData.maxDeliveryRadius) || 30,
-            isActive: formData.isActive
+            isActive: formData.isActive,
+            autoManageStatus: formData.autoManageStatus,
+            workingHours: formData.workingHours || [], // Отправляем все 7 дней недели
+            image: selectedImage // Добавляем изображение
         };
 
         console.log('Отправка данных склада:', submitData);
@@ -529,6 +683,33 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                             placeholderTextColor={Color.textSecondary}
                         />
                         {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
+                    </View>
+
+                    {/* Изображение склада */}
+                    <View style={styles.fieldContainer}>
+                        <Text style={styles.label}>Изображение склада</Text>
+                        {selectedImage ? (
+                            <View style={styles.imageContainer}>
+                                <Image source={{ uri: selectedImage.uri }} style={styles.imagePreview} />
+                                <TouchableOpacity
+                                    style={styles.removeImageButton}
+                                    onPress={removeImage}
+                                    activeOpacity={0.7}
+                                >
+                                    <Ionicons name="close-circle" size={24} color={Color.red || '#ff0000'} />
+                                </TouchableOpacity>
+                            </View>
+                        ) : (
+                            <TouchableOpacity
+                                style={styles.imagePickerButton}
+                                onPress={pickImage}
+                                activeOpacity={0.7}
+                                disabled={isSubmitting}
+                            >
+                                <Ionicons name="image-outline" size={24} color={Color.blue2} />
+                                <Text style={styles.imagePickerText}>Выбрать изображение</Text>
+                            </TouchableOpacity>
+                        )}
                     </View>
 
                     {/* Населенный пункт */}
@@ -699,6 +880,122 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                             Текущий статус: {formData.isActive ? 'Активен' : 'Неактивен'}
                         </Text>
                     </View>
+
+                    {/* Автоматическое управление статусом */}
+                    <View style={styles.fieldContainer}>
+                        <View style={styles.switchContainer}>
+                            <Text style={styles.label}>Автоматическое управление статусом</Text>
+                            <TouchableOpacity
+                                style={[
+                                    styles.switch,
+                                    formData.autoManageStatus && styles.switchActive
+                                ]}
+                                onPress={() => handleFieldChange('autoManageStatus', !formData.autoManageStatus)}
+                                disabled={isSubmitting}
+                            >
+                                <View style={[
+                                    styles.switchThumb,
+                                    formData.autoManageStatus && styles.switchThumbActive
+                                ]} />
+                            </TouchableOpacity>
+                        </View>
+                        <Text style={styles.hintText}>
+                            {formData.autoManageStatus 
+                                ? 'Статус склада будет автоматически меняться в зависимости от графика работы'
+                                : 'Статус склада управляется вручную'}
+                        </Text>
+                    </View>
+
+                    {/* График работы */}
+                    {formData.autoManageStatus && (
+                        <View style={styles.fieldContainer}>
+                            <Text style={styles.label}>График работы</Text>
+                            <Text style={[styles.hintText, { marginBottom: 12 }]}>
+                                Настройте время работы для каждого дня недели
+                            </Text>
+                            {formData.workingHours
+                                .slice()
+                                .sort((a, b) => {
+                                    // Сортируем так, чтобы понедельник (1) был первым, воскресенье (0) - последним
+                                    if (a.dayOfWeek === 0) return 1; // Воскресенье в конец
+                                    if (b.dayOfWeek === 0) return -1;
+                                    return a.dayOfWeek - b.dayOfWeek;
+                                })
+                                .map((wh) => {
+                                const dayNames = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+                                const shortDayNames = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+                                
+                                // Находим индекс в исходном массиве по dayOfWeek
+                                const originalIndex = formData.workingHours.findIndex(w => w.dayOfWeek === wh.dayOfWeek);
+                                
+                                return (
+                                    <View key={wh.dayOfWeek} style={styles.workingHoursDayContainer}>
+                                        <View style={styles.workingHoursDayHeader}>
+                                            <TouchableOpacity
+                                                style={styles.workingHoursDayToggle}
+                                                onPress={() => {
+                                                    const updated = [...formData.workingHours];
+                                                    updated[originalIndex] = {
+                                                        ...updated[originalIndex],
+                                                        isOpen: !updated[originalIndex].isOpen,
+                                                        openTime: !updated[originalIndex].isOpen ? '09:00' : null,
+                                                        closeTime: !updated[originalIndex].isOpen ? '18:00' : null
+                                                    };
+                                                    handleFieldChange('workingHours', updated);
+                                                }}
+                                                disabled={isSubmitting}
+                                            >
+                                                <View style={[
+                                                    styles.checkbox,
+                                                    wh.isOpen && styles.checkboxChecked
+                                                ]}>
+                                                    {wh.isOpen && <Ionicons name="checkmark" size={16} color="#fff" />}
+                                                </View>
+                                                <Text style={styles.workingHoursDayName}>
+                                                    {shortDayNames[wh.dayOfWeek]} - {dayNames[wh.dayOfWeek]}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                        
+                                        {wh.isOpen && (
+                                            <View style={styles.workingHoursTimeContainer}>
+                                                <View style={styles.halfWidth}>
+                                                    <Text style={styles.workingHoursTimeLabel}>Открытие</Text>
+                                                    <TextInput
+                                                        style={styles.workingHoursTimeInput}
+                                                        value={wh.openTime || ''}
+                                                        onChangeText={(value) => {
+                                                            const updated = [...formData.workingHours];
+                                                            updated[originalIndex] = { ...updated[originalIndex], openTime: value };
+                                                            handleFieldChange('workingHours', updated);
+                                                        }}
+                                                        placeholder="09:00"
+                                                        placeholderTextColor={Color.textSecondary}
+                                                        keyboardType="default"
+                                                    />
+                                                </View>
+                                                <View style={styles.halfWidth}>
+                                                    <Text style={styles.workingHoursTimeLabel}>Закрытие</Text>
+                                                    <TextInput
+                                                        style={styles.workingHoursTimeInput}
+                                                        value={wh.closeTime || ''}
+                                                        onChangeText={(value) => {
+                                                            const updated = [...formData.workingHours];
+                                                            updated[originalIndex] = { ...updated[originalIndex], closeTime: value };
+                                                            handleFieldChange('workingHours', updated);
+                                                        }}
+                                                        placeholder="18:00"
+                                                        placeholderTextColor={Color.textSecondary}
+                                                        keyboardType="default"
+                                                    />
+                                                </View>
+                                            </View>
+                                        )}
+                                    </View>
+                                );
+                            })}
+                        </View>
+                    )}
                     </ScrollView>
                 </KeyboardAvoidingView>
 
@@ -867,7 +1164,7 @@ const styles = StyleSheet.create({
         color: Color.textPrimary,
     },
     closeButton: {
-        padding: normalize(8),
+        padding: normalize(20),
     },
     keyboardAvoidingView: {
         flex: 1,
@@ -877,7 +1174,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(20),
     },
     scrollContentContainer: {
-        paddingBottom: normalize(100),
+        paddingTop: normalize(5),
+        paddingBottom: normalize(105),
     },
     fieldContainer: {
         marginBottom: normalize(16),
@@ -1073,6 +1371,128 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
         color: Color.colorLightMode,
+    },
+    imageContainer: {
+        position: 'relative',
+        marginTop: normalize(8),
+    },
+    imagePreview: {
+        width: '100%',
+        height: normalize(200),
+        borderRadius: Border.radius.small,
+        backgroundColor: Color.colorLightGray || '#f5f5f5',
+    },
+    removeImageButton: {
+        position: 'absolute',
+        top: normalize(8),
+        right: normalize(8),
+        backgroundColor: Color.colorLightMode,
+        borderRadius: 20,
+        padding: normalize(4),
+    },
+    imagePickerButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: Color.border,
+        borderStyle: 'dashed',
+        borderRadius: Border.radius.small,
+        paddingVertical: normalize(16),
+        paddingHorizontal: normalize(12),
+        marginTop: normalize(8),
+        gap: normalize(8),
+    },
+    imagePickerText: {
+        fontSize: normalizeFont(FontSize.size_sm),
+        fontFamily: FontFamily.sFProText,
+        color: Color.blue2,
+        fontWeight: '500',
+    },
+    switchContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: normalize(8),
+    },
+    switch: {
+        width: normalize(50),
+        height: normalize(30),
+        borderRadius: normalize(15),
+        backgroundColor: Color.border || '#ccc',
+        justifyContent: 'center',
+        paddingHorizontal: normalize(2),
+    },
+    switchActive: {
+        backgroundColor: Color.blue2,
+    },
+    switchThumb: {
+        width: normalize(26),
+        height: normalize(26),
+        borderRadius: normalize(13),
+        backgroundColor: Color.colorLightMode,
+        alignSelf: 'flex-start',
+    },
+    switchThumbActive: {
+        alignSelf: 'flex-end',
+    },
+    workingHoursDayContainer: {
+        marginBottom: normalize(12),
+        padding: normalize(12),
+        borderWidth: 1,
+        borderColor: Color.border,
+        borderRadius: Border.radius.small,
+        backgroundColor: Color.colorLightMode,
+    },
+    workingHoursDayHeader: {
+        marginBottom: normalize(8),
+    },
+    workingHoursDayToggle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: normalize(8),
+    },
+    checkbox: {
+        width: normalize(24),
+        height: normalize(24),
+        borderRadius: normalize(4),
+        borderWidth: 2,
+        borderColor: Color.border,
+        backgroundColor: Color.colorLightMode,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    checkboxChecked: {
+        backgroundColor: Color.blue2,
+        borderColor: Color.blue2,
+    },
+    workingHoursDayName: {
+        fontSize: normalizeFont(FontSize.size_sm),
+        fontFamily: FontFamily.sFProText,
+        color: Color.textPrimary,
+        fontWeight: '500',
+    },
+    workingHoursTimeContainer: {
+        flexDirection: 'row',
+        gap: normalize(12),
+        marginTop: normalize(8),
+    },
+    workingHoursTimeLabel: {
+        fontSize: normalizeFont(FontSize.size_xs),
+        fontFamily: FontFamily.sFProText,
+        color: Color.textSecondary,
+        marginBottom: normalize(4),
+    },
+    workingHoursTimeInput: {
+        borderWidth: 1,
+        borderColor: Color.border,
+        borderRadius: Border.radius.small,
+        paddingHorizontal: normalize(12),
+        paddingVertical: normalize(8),
+        fontSize: normalizeFont(FontSize.size_sm),
+        fontFamily: FontFamily.sFProText,
+        color: Color.textPrimary,
+        backgroundColor: Color.colorLightMode,
     },
 });
 

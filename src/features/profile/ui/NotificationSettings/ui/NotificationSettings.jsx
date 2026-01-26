@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import {View, Text, StyleSheet, TouchableOpacity, ScrollView} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 import {
@@ -22,6 +23,8 @@ import { useGlobalAlert } from '@shared/ui/CustomAlert';
 export const NotificationSettings = () => {
     const navigation = useNavigation();
     const dispatch = useDispatch();
+    const insets = useSafeAreaInsets();
+    const tabBarHeight = normalize(80) + insets.bottom;
     const { showSuccess, showError } = useToast();
     const { showConfirm, showAlert } = useGlobalAlert();
 
@@ -219,7 +222,11 @@ export const NotificationSettings = () => {
             </View>
 
             {/* Содержимое */}
-            <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+            <ScrollView
+                style={styles.content}
+                contentContainerStyle={[styles.contentContainer, { paddingBottom: tabBarHeight + normalize(24) }]}
+                showsVerticalScrollIndicator={false}
+            >
                 {/* Описание */}
                 <View style={styles.descriptionContainer}>
                     <Text style={styles.description}>
@@ -302,6 +309,9 @@ const styles = StyleSheet.create({
     content: {
         flex: 1,
         paddingHorizontal: normalize(16),
+    },
+    contentContainer: {
+        paddingBottom: normalize(24),
     },
     descriptionContainer: {
         paddingVertical: normalize(16),

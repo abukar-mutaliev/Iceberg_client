@@ -151,10 +151,10 @@ export const ProductWarehouseStockManager = ({
         }).filter(Boolean);
     }, [warehouses, stocks]);
 
-    // Доступные склады для добавления
+    // Доступные склады для добавления (все склады, включая неактивные)
     const availableWarehouses = useMemo(() => {
         if (!warehouses) return [];
-        return warehouses.filter(w => w.isActive && stocks[w.id] === undefined);
+        return warehouses.filter(w => stocks[w.id] === undefined);
     }, [warehouses, stocks]);
 
     if (loadingWarehouses) {

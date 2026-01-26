@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
 import { ProductInfo } from '@entities/product/ui/ProductInfo';
 import { ProductRating } from '@entities/product/ui/ProductRating';
@@ -6,11 +6,8 @@ import { ProductPrice } from '@entities/product/ui/ProductPrice';
 import { QuantityControl } from '@features/productQuantity/ui/QuantityControl';
 import { TabsContainer } from '@features/tabs/ui/TabsContainer';
 import { ProductDescription } from '@entities/product/ui/ProductDescription';
-import { FeedbacksList } from '@entities/feedback/ui/FeedbacksList';
 import { FeedbackAvatars } from '@entities/feedback/ui/FeedbackAvatars';
 import { Border } from '@app/styles/GlobalStyles';
-import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
-import { ScrollableBackgroundGradient } from "@shared/ui/BackgroundGradient";
 import { HighlightChange } from "@shared/ui/HighlightChange/HighlightChange";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -18,14 +15,10 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 export const ProductContent = React.memo(({
                                               product,
                                               feedbacks,
-                                              feedbackLoading,
-                                              feedbackError,
-                                              isFeedbacksLoaded,
                                               quantity,
                                               activeTab,
                                               onQuantityChange,
                                               onTabChange,
-                                              onRefreshFeedbacks,
                                               isUpdatingQuantity = false,
                                               maxQuantity,
                                               isInCart = false,
@@ -35,9 +28,6 @@ export const ProductContent = React.memo(({
                                               autoCartManagement = false,
                                               currentUser,
                                           }) => {
-    const { colors } = useTheme();
-    const [feedbacksHeight, setFeedbacksHeight] = useState(500);
-
     const safeFeedbacks = useMemo(() => {
         return Array.isArray(feedbacks) ? feedbacks : [];
     }, [feedbacks]);
@@ -67,11 +57,6 @@ export const ProductContent = React.memo(({
         { id: 'description', title: 'Описание' },
         { id: 'reviews', title: `Отзывы (${safeProduct.feedbackCount})` },
     ], [safeProduct.feedbackCount]);
-
-    const handleFeedbacksLayout = (event) => {
-        const { height } = event.nativeEvent.layout;
-        setFeedbacksHeight(height);
-    };
 
     return (
         <View style={styles.mainContainer}>
@@ -136,39 +121,15 @@ export const ProductContent = React.memo(({
                         onTabChange={onTabChange}
                     />
 
-                    {activeTab === 'description' && (
-                        <View style={styles.descriptionContainer}>
-                            <ProductDescription
-                                shortDescription={safeProduct.name}
-                                fullDescription={safeProduct.description}
-                                style={styles.description}
-                            />
-                        </View>
-                    )}
+                    <View style={styles.descriptionContainer}>
+                        <ProductDescription
+                            shortDescription={safeProduct.name}
+                            fullDescription={safeProduct.description}
+                            style={styles.description}
+                        />
+                    </View>
                 </View>
             </View>
-
-            {activeTab === 'reviews' && safeProduct.id && (
-                <View
-                    style={styles.feedbacksContainer}
-                    onLayout={handleFeedbacksLayout}
-                >
-                    {/* Градиент отображается только при активной вкладке отзывов */}
-                    <View style={styles.gradientContainer}>
-                        <ScrollableBackgroundGradient contentHeight={feedbacksHeight} />
-                    </View>
-
-                    <FeedbacksList
-                        productId={safeProduct.id}
-                        feedbacks={safeFeedbacks}
-                        isLoading={feedbackLoading}
-                        error={feedbackError}
-                        isDataLoaded={isFeedbacksLoaded}
-                        onRefresh={onRefreshFeedbacks}
-                        style={styles.feedbacks}
-                    />
-                </View>
-            )}
         </View>
     );
 });
@@ -198,28 +159,6 @@ const styles = StyleSheet.create({
     },
     description: {
         backgroundColor: 'white',
-    },
-    feedbacksContainer: {
-        position: 'relative',
-        marginTop: 10,
-        paddingBottom: 0,
-        paddingTop: 10,
-        overflow: 'hidden',
-    },
-    gradientContainer: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        paddingBottom: 0,
-        width: SCREEN_WIDTH,
-    },
-    feedbacks: {
-        position: 'relative',
-        zIndex: 1,
-        paddingBottom: 0,
-        paddingHorizontal: 16,
     },
     ratingContainer: {
         flexDirection: 'row',

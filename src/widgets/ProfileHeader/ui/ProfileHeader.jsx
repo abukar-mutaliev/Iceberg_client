@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 import { ProfileAvatar } from '@entities/profile';
@@ -8,6 +8,7 @@ import { useAuth } from "@entities/auth/hooks/useAuth";
 import {BackButton} from "@shared/ui/Button/BackButton";
 
 export const ProfileHeader = () => {
+    const navigation = useNavigation();
     const { currentUser } = useAuth();
     const profile = useSelector(state => state.profile.data);
 
@@ -38,7 +39,7 @@ export const ProfileHeader = () => {
             case 'DRIVER':
                 return profile?.driver?.name || profile?.name || currentUser?.name || 'Водитель';
             case 'CLIENT':
-                return profile?.client?.name || profile?.name || currentUser?.name || 'Клиент';
+                return profile?.client?.name || profile?.name || currentUser?.name || 'Пользователь';
             default:
                 return 'Пользователь';
         }
@@ -65,13 +66,18 @@ export const ProfileHeader = () => {
     const userRoleOrPosition = getUserRoleOrPosition();
     const showRole = currentUser?.role && currentUser.role !== 'CLIENT';
 
+    const handleBackToMain = () => {
+        const parent = navigation.getParent?.();
+        if (parent) {
+            parent.navigate('MainTab', { screen: 'Main' });
+        } else {
+            navigation.navigate('MainTab', { screen: 'Main' });
+        }
+    };
+
     return (
         <View style={styles.container} key={componentKey}>
-            <TouchableOpacity
-                style={styles.backButton}
-            >
-                <BackButton />
-            </TouchableOpacity>
+            <BackButton onPress={handleBackToMain} style={styles.backButton} />
 
 
             <View style={styles.placeholder} />

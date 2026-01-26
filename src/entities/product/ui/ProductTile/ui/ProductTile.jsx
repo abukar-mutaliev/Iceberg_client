@@ -10,6 +10,8 @@ import {
     PixelRatio,
     Platform
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import PagerView from "react-native-pager-view";
 import { FontFamily, FontSize, Border, Color } from '@app/styles/GlobalStyles';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -251,6 +253,18 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
         setLoadingError(prev => ({...prev, [index]: true}));
     }, []);
 
+    const renderPlaceholder = useCallback(() => (
+        <LinearGradient
+            colors={['#dfe7ff', '#cdd6ff', '#bfc7ff']}
+            style={styles.placeholder}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+        >
+            <Icon name="image" size={28} color="rgba(255,255,255,0.95)" />
+            <Text style={styles.placeholderText}>Нет фото</Text>
+        </LinearGradient>
+    ), []);
+
     // Очистка timeout при размонтировании
     useEffect(() => {
         return () => {
@@ -432,16 +446,40 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
         }
     }, [onPress, navigation, productData, routeParams, isScrolling]);
 
+    // Форматирование цены: рубли обычным шрифтом, копейки маленьким
+    const formatPriceWithKopecks = useCallback((priceValue) => {
+        if (!priceValue && priceValue !== 0) return { rubles: '0', kopecks: '00' };
+        
+        const numPrice = typeof priceValue === 'string' ? parseFloat(priceValue) : priceValue;
+        const rubles = Math.floor(numPrice);
+        const kopecks = Math.round((numPrice - rubles) * 100);
+        
+        return {
+            rubles: rubles.toString(),
+            kopecks: kopecks.toString().padStart(2, '0')
+        };
+    }, []);
+
     const formattedPrice = useMemo(() => {
         try {
-            if (!productData?.price || productData.price === 0) return '0';
+            if (!productData?.price || productData.price === 0) return { rubles: '0', kopecks: '00' };
 
-            return new Intl.NumberFormat('ru-RU').format(productData.price);
+            return formatPriceWithKopecks(productData.price);
         } catch (error) {
             console.warn('ProductTile: Ошибка форматирования цены:', error);
-            return String(productData?.price || 0);
+            return { rubles: String(productData?.price || 0), kopecks: '00' };
         }
-    }, [productData?.price]);
+    }, [productData?.price, formatPriceWithKopecks]);
+
+    // Проверка, является ли товар рыбой
+    const isFishCategory = useMemo(() => {
+        if (!productData) return false;
+        
+        const category = productData.category || '';
+        const categoryLower = category.toLowerCase().trim();
+        
+        return categoryLower === 'рыба' || categoryLower === 'fish';
+    }, [productData?.category]);
 
     if (!productData) return null;
 
@@ -450,7 +488,7 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
             style={styles.container}
             testID={testID}
             accessible={true}
-            accessibilityLabel={`Продукт ${productData.name}, цена ${formattedPrice} рублей`}
+            accessibilityLabel={`Продукт ${productData.name}, цена ${formattedPrice.rubles} рублей ${formattedPrice.kopecks} копеек`}
             accessibilityRole="button"
         >
             {/* Изображение продукта с возможностью листания - обработка тапа и свайпа */}
@@ -485,11 +523,7 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
                                             collapsable={false}
                                         >
                                             {loadingError[index % imageArray.length] ? (
-                                                <Image
-                                                    source={placeholderImage}
-                                                    style={styles.productImage}
-                                                    resizeMode="cover"
-                                                />
+                                                renderPlaceholder()
                                             ) : (
                                                 <Image
                                                     source={imageSource}
@@ -511,15 +545,17 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
                         disabled={isNavigatingRef.current}
                         android_ripple={null}
                     >
-                        <Image
-                            style={styles.productImage}
-                            resizeMode="cover"
-                            source={imageArray.length > 0 ? getImageSource(imageArray[0]) : (productData.image || placeholderImage)}
-                            defaultSource={placeholderImage}
-                            onError={() => {
-                                console.warn('ProductTile: Ошибка загрузки изображения для продукта', productData.id);
-                            }}
-                        />
+                        {imageArray.length === 0 || loadingError[0] ? (
+                            renderPlaceholder()
+                        ) : (
+                            <Image
+                                style={styles.productImage}
+                                resizeMode="cover"
+                                source={getImageSource(imageArray[0])}
+                                defaultSource={placeholderImage}
+                                onError={() => handleImageError(0)}
+                            />
+                        )}
                     </Pressable>
                 )}
                 {/* Индикатор слайдов */}
@@ -546,11 +582,19 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
                     {productData.name}
                 </Text>
                 <View style={styles.priceContainer}>
-                    <Text style={styles.price}>
-                        {formattedPrice} р
-                    </Text>
+                    <View style={styles.priceRow}>
+                        <Text style={styles.price}>
+                            {formattedPrice.rubles}
+                        </Text>
+                        <Text style={styles.kopecks}>
+                            {formattedPrice.kopecks}
+                        </Text>
+                        <Text style={styles.price}>
+                            {' ₽'}
+                        </Text>
+                    </View>
                     <Text style={styles.unit}>
-                        / 1 шт
+                        {isFishCategory ? '/ кг' : '/ 1 шт'}
                     </Text>
                 </View>
             </TouchableOpacity>
@@ -656,6 +700,18 @@ const styles = StyleSheet.create({
         height: 142,
         backgroundColor: '#f5f5f5',
     },
+    placeholder: {
+        width: '100%',
+        height: 142,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    placeholderText: {
+        marginTop: 6,
+        fontSize: 11,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.95)',
+    },
     indicatorContainer: {
         position: 'absolute',
         bottom: 4,
@@ -693,11 +749,23 @@ const styles = StyleSheet.create({
         alignItems: 'baseline',
         marginTop: 4,
     },
+    priceRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+    },
     price: {
         color: Color.colorLightMode,
         fontFamily: FontFamily.sFProText,
         fontSize: FontSize.size_lg,
         fontWeight: '700',
+    },
+    kopecks: {
+        color: Color.colorLightMode,
+        fontFamily: FontFamily.sFProText,
+        fontSize: 10,
+        fontWeight: '700',
+        marginLeft: 2,
+        paddingTop: 2,
     },
     unit: {
         color: 'rgba(255, 255, 255, 0.7)',

@@ -168,8 +168,18 @@ class ChatCacheService {
     if (!roomId || !messages) return;
 
     try {
+      // КРИТИЧНО: Фильтруем удаленные сообщения перед сохранением в кэш
+      // Это предотвращает сохранение сообщений, которые были удалены для всех
+      const validMessages = messages.filter(msg => {
+        // Исключаем сообщения, удаленные для всех
+        if (msg.isDeletedForAll === true) {
+          return false;
+        }
+        return true;
+      });
+      
       // Ограничиваем количество сообщений
-      const messagesToSave = messages.slice(0, CONFIG.MAX_MESSAGES_PER_ROOM);
+      const messagesToSave = validMessages.slice(0, CONFIG.MAX_MESSAGES_PER_ROOM);
       
       // Нормализуем waveform для голосовых сообщений перед сохранением
       const normalizedMessages = messagesToSave.map(message => {
@@ -306,7 +316,50 @@ class ChatCacheService {
     if (!roomId || !messageId) return;
 
     try {
+      // Удаляем из SQLite
       await chatMessagesDb.deleteMessage(roomId, messageId);
+      
+      // КРИТИЧНО: Также удаляем из legacy AsyncStorage кэша
+      // Это предотвращает загрузку старых сообщений при следующем открытии чата
+      try {
+        const legacyKey = this.getMessagesKey(roomId);
+        const cached = await AsyncStorage.getItem(legacyKey);
+        if (cached) {
+          const cacheData = JSON.parse(cached);
+          if (cacheData?.messages && Array.isArray(cacheData.messages)) {
+            // Фильтруем удаленное сообщение
+            const filteredMessages = cacheData.messages.filter(msg => {
+              const msgId = msg?.id || msg?.temporaryId;
+              return msgId && String(msgId) !== String(messageId);
+            });
+            
+            // Обновляем кэш только если есть изменения
+            if (filteredMessages.length !== cacheData.messages.length) {
+              await AsyncStorage.setItem(legacyKey, JSON.stringify({
+                ...cacheData,
+                messages: filteredMessages
+              }));
+              
+              if (__DEV__) {
+                console.log('🗑️ Removed message from legacy cache:', {
+                  roomId,
+                  messageId,
+                  remainingMessages: filteredMessages.length
+                });
+              }
+            }
+          }
+        }
+      } catch (legacyError) {
+        // Игнорируем ошибки legacy кэша
+        if (__DEV__) {
+          console.warn('Failed to remove from legacy cache:', legacyError);
+        }
+      }
+      
+      if (__DEV__) {
+        console.log('✅ Message removed from cache:', { roomId, messageId });
+      }
     } catch (error) {
       console.warn('Failed to remove message from cache:', error);
     }

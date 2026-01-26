@@ -481,7 +481,10 @@ const adminSlice = createSlice({
             })
             .addCase(fetchWarehousesForSelection.fulfilled, (state, action) => {
                 state.warehouses.isLoading = false;
-                state.warehouses.items = action.payload.warehouses || [];
+                state.warehouses.items =
+                    action.payload.warehouses ||
+                    action.payload.data?.warehouses ||
+                    [];
             })
             .addCase(fetchWarehousesForSelection.rejected, (state, action) => {
                 state.warehouses.isLoading = false;
@@ -495,7 +498,10 @@ const adminSlice = createSlice({
             })
             .addCase(fetchDistrictsForSelection.fulfilled, (state, action) => {
                 state.districts.isLoading = false;
-                state.districts.items = action.payload.districts || [];
+                state.districts.items =
+                    action.payload.districts ||
+                    action.payload.data?.districts ||
+                    [];
             })
             .addCase(fetchDistrictsForSelection.rejected, (state, action) => {
                 state.districts.isLoading = false;

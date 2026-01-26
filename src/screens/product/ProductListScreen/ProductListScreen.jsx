@@ -11,6 +11,8 @@ import {
     Image,
     Platform
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import PagerView from "react-native-pager-view";
 import { useDispatch } from 'react-redux';
 import { deleteProduct } from '@entities/product';
@@ -110,6 +112,18 @@ export const ProductListScreen = () => {
         const stockBoxes = item.stockQuantity || 0;
         const totalItems = stockBoxes * itemsPerBox;
 
+        const renderPlaceholder = () => (
+            <LinearGradient
+                colors={['#dfe7ff', '#cdd6ff', '#bfc7ff']}
+                style={styles.placeholder}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+            >
+                <Icon name="image" size={28} color="rgba(255,255,255,0.95)" />
+                <Text style={styles.placeholderText}>Нет фото</Text>
+            </LinearGradient>
+        );
+
         return (
             <View style={styles.card}>
                 {/* Изображение продукта с возможностью листания */}
@@ -139,11 +153,7 @@ export const ProductListScreen = () => {
                                         collapsable={false}
                                     >
                                         {hasError ? (
-                                            <Image
-                                                source={placeholderImage}
-                                                style={styles.productImage}
-                                                resizeMode="cover"
-                                            />
+                                            renderPlaceholder()
                                         ) : (
                                             <Image
                                                 source={imageSource}
@@ -157,13 +167,16 @@ export const ProductListScreen = () => {
                                 );
                             })}
                         </PagerView>
-                    ) : (
+                    ) : imageArray.length === 1 ? (
                         <Image
                             style={styles.productImage}
                             resizeMode="cover"
                             source={imageArray.length > 0 ? getImageSource(imageArray[0]) : placeholderImage}
                             defaultSource={placeholderImage}
+                            onError={() => handleImageError(productId, 0)}
                         />
+                    ) : (
+                        renderPlaceholder()
                     )}
                     {/* Индикатор слайдов */}
                     {imageArray.length > 1 && (
@@ -309,6 +322,18 @@ const styles = StyleSheet.create({
     productImage: {
         width: '100%',
         height: '100%',
+    },
+    placeholder: {
+        width: '100%',
+        height: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    placeholderText: {
+        marginTop: 6,
+        fontSize: 11,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.95)',
     },
     indicatorContainer: {
         position: 'absolute',

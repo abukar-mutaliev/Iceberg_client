@@ -9,6 +9,7 @@ import {authService} from "@shared/api/api";
 import {PersistGate} from "redux-persist/integration/react";
 import {persistor} from "@app/store/store";
 import {useDispatch} from "react-redux";
+import {loadUserProfile} from "@entities/auth/model/slice";
 import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {initConsolePolyfill} from '@shared/lib/consolePolyfill';
 import {testNetworkConnection} from '@shared/api/api';
@@ -195,22 +196,33 @@ const AppInitializer = ({children}) => {
                     return;
                 }
 
+                // Небольшая задержка чтобы дать request interceptor'у возможность обновить токены
+                // если они истекли (избегаем гонки обновления токенов)
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                // Перечитываем токены из AsyncStorage на случай если они были обновлены interceptor'ом
+                let currentTokens = await authService.getStoredTokens();
+                if (!currentTokens) {
+                    currentTokens = tokens; // Fallback на исходные токены
+                }
+
                 // Безопасная валидация токенов
                 let accessTokenValid = false;
                 let refreshTokenValid = false;
                 try {
-                    accessTokenValid = tokens.accessToken ? authService.isTokenValid(tokens.accessToken) : false;
-                    refreshTokenValid = tokens.refreshToken ? authService.isTokenValid(tokens.refreshToken) : false;
+                    accessTokenValid = currentTokens.accessToken ? authService.isTokenValid(currentTokens.accessToken) : false;
+                    refreshTokenValid = currentTokens.refreshToken ? authService.isTokenValid(currentTokens.refreshToken) : false;
                 } catch (validationError) {
                     console.error('❌ App: Token validation failed:', validationError);
                     return;
                 }
 
                 console.log('🔍 Token validation:', {
-                    hasAccessToken: !!tokens.accessToken,
-                    hasRefreshToken: !!tokens.refreshToken,
+                    hasAccessToken: !!currentTokens.accessToken,
+                    hasRefreshToken: !!currentTokens.refreshToken,
                     accessTokenValid,
-                    refreshTokenValid
+                    refreshTokenValid,
+                    tokensWereRefreshed: currentTokens !== tokens
                 });
 
                 if (!refreshTokenValid) {
@@ -226,10 +238,58 @@ const AppInitializer = ({children}) => {
                     return;
                 }
 
+                // Если access token валиден, просто синхронизируем Redux
+                if (accessTokenValid) {
+                    if (dispatch && typeof dispatch === 'function') {
+                        console.log('✅ App: Access token valid, syncing with Redux store');
+                        dispatch({ 
+                            type: 'auth/setTokens', 
+                            payload: { 
+                                accessToken: currentTokens.accessToken, 
+                                refreshToken: currentTokens.refreshToken 
+                            } 
+                        });
+                        // Загружаем полный профиль пользователя для получения admin.isSuperAdmin
+                        setTimeout(() => {
+                            dispatch(loadUserProfile()).catch(err => {
+                                console.warn('⚠️ App: Failed to load user profile:', err);
+                            });
+                        }, 500);
+                    }
+                    return; // Не пытаемся обновлять если токен уже валиден
+                }
+
+                // Если access token истек, но refresh token валиден - обновляем
+                // НО только если токены не были уже обновлены interceptor'ом
                 if (!accessTokenValid && refreshTokenValid) {
+                    // Проверяем еще раз - может быть interceptor уже обновил токены
+                    const latestTokens = await authService.getStoredTokens();
+                    const latestAccessValid = latestTokens?.accessToken ? authService.isTokenValid(latestTokens.accessToken) : false;
+                    
+                            if (latestAccessValid && latestTokens) {
+                                // Токены уже обновлены interceptor'ом, просто синхронизируем Redux
+                                console.log('✅ App: Tokens were already refreshed by interceptor, syncing Redux');
+                                if (dispatch && typeof dispatch === 'function') {
+                                    dispatch({ 
+                                        type: 'auth/setTokens', 
+                                        payload: { 
+                                            accessToken: latestTokens.accessToken, 
+                                            refreshToken: latestTokens.refreshToken 
+                                        } 
+                                    });
+                                    // Загружаем полный профиль пользователя для получения admin.isSuperAdmin
+                                    setTimeout(() => {
+                                        dispatch(loadUserProfile()).catch(err => {
+                                            console.warn('⚠️ App: Failed to load user profile:', err);
+                                        });
+                                    }, 500);
+                                }
+                                return;
+                            }
+
+                    // Токены не обновлены, пытаемся обновить сами
                     try {
-                        // Используем authService.refreshAccessToken напрямую, так как он работает с AsyncStorage
-                        // Это избегает проблемы несинхронизированности Redux store с AsyncStorage
+                        console.log('🔄 App: Attempting to refresh tokens...');
                         const refreshed = await authService.refreshAccessToken();
                         if (refreshed?.accessToken) {
                             console.log('✅ App: Token refreshed successfully on initialization');
@@ -242,6 +302,12 @@ const AppInitializer = ({children}) => {
                                         refreshToken: refreshed.refreshToken 
                                     } 
                                 });
+                                // Загружаем полный профиль пользователя для получения admin.isSuperAdmin
+                                setTimeout(() => {
+                                    dispatch(loadUserProfile()).catch(err => {
+                                        console.warn('⚠️ App: Failed to load user profile:', err);
+                                    });
+                                }, 500);
                             }
                         } else {
                             console.warn('⚠️ App: Token refresh failed - no new tokens received');
@@ -249,25 +315,50 @@ const AppInitializer = ({children}) => {
                             return;
                         }
                     } catch (refreshError) {
+                        // Если получили 401, это может означать что токены уже были использованы interceptor'ом
+                        // Проверяем еще раз - может быть токены уже обновлены
+                        if (refreshError?.response?.status === 401 || refreshError?.message?.includes('401')) {
+                            console.warn('⚠️ App: Got 401 on refresh, checking if tokens were already refreshed...');
+                            const checkTokens = await authService.getStoredTokens();
+                            const checkAccessValid = checkTokens?.accessToken ? authService.isTokenValid(checkTokens.accessToken) : false;
+                            
+                            if (checkAccessValid && checkTokens) {
+                                console.log('✅ App: Tokens were refreshed by interceptor, syncing Redux');
+                                if (dispatch && typeof dispatch === 'function') {
+                                    dispatch({ 
+                                        type: 'auth/setTokens', 
+                                        payload: { 
+                                            accessToken: checkTokens.accessToken, 
+                                            refreshToken: checkTokens.refreshToken 
+                                        } 
+                                    });
+                                    // Загружаем полный профиль пользователя для получения admin.isSuperAdmin
+                                    setTimeout(() => {
+                                        dispatch(loadUserProfile()).catch(err => {
+                                            console.warn('⚠️ App: Failed to load user profile:', err);
+                                        });
+                                    }, 500);
+                                }
+                                return; // Успешно восстановили
+                            }
+                        }
+                        
                         console.error('❌ App: Failed to refresh token on initialization:', refreshError?.message || refreshError);
-                        try {
-                            await authService.clearTokens();
-                        } catch (clearError) {
-                            console.error('❌ App: Failed to clear tokens after refresh error:', clearError);
+                        // Не очищаем токены сразу - может быть это временная ошибка сети
+                        // Только если refresh token точно истек
+                        const finalCheck = await authService.getStoredTokens();
+                        if (!finalCheck?.refreshToken || !authService.isTokenValid(finalCheck.refreshToken)) {
+                            console.warn('⚠️ App: Refresh token expired, clearing tokens');
+                            try {
+                                await authService.clearTokens();
+                                if (dispatch && typeof dispatch === 'function') {
+                                    dispatch({ type: 'auth/resetState' });
+                                }
+                            } catch (clearError) {
+                                console.error('❌ App: Failed to clear tokens after refresh error:', clearError);
+                            }
                         }
                         return;
-                    }
-                } else if (accessTokenValid) {
-                    // Если access token валиден, убеждаемся что Redux store синхронизирован
-                    if (dispatch && typeof dispatch === 'function') {
-                        console.log('✅ App: Syncing valid tokens with Redux store');
-                        dispatch({ 
-                            type: 'auth/setTokens', 
-                            payload: { 
-                                accessToken: tokens.accessToken, 
-                                refreshToken: tokens.refreshToken 
-                            } 
-                        });
                     }
                 }
 
@@ -320,15 +411,11 @@ const AppInitializer = ({children}) => {
 };
 
 const AppContent = () => {
-    useEffect(() => {
-        // В продакшене полностью отключаем загрузку шрифтов
-        // Система будет использовать системные fallback шрифты
-        if (!__DEV__) {
-            console.log('ℹ️ App: Font loading disabled in production - using system fonts');
-            return;
-        }
+    const [fontsReady, setFontsReady] = useState(false);
 
-        // Загрузка шрифтов только в DEV режиме
+    useEffect(() => {
+        // Загружаем кастомные шрифты безопасно для всех сборок
+        // При ошибках всегда будет fallback на системные шрифты
         async function loadFonts() {
             try {
                 const fontMap = {};
@@ -403,7 +490,7 @@ const AppContent = () => {
                         const finalValidFonts = Object.keys(validFontMap);
                         if (finalValidFonts.length > 0) {
                             await Font.loadAsync(validFontMap);
-                            console.log(`✅ App: ${finalValidFonts.length} font(s) loaded in DEV mode`);
+                            console.log(`✅ App: ${finalValidFonts.length} font(s) loaded`);
                         }
                     } catch (fontLoadError) {
                         console.error('❌ App: Font.loadAsync error (non-critical):', fontLoadError);
@@ -411,18 +498,22 @@ const AppContent = () => {
                 }
             } catch (e) {
                 console.error('❌ App: Font loading error (non-critical):', e);
+            } finally {
+                // Триггерим перерисовку, чтобы уже смонтированные экраны применили шрифты
+                setFontsReady(true);
             }
         }
 
         loadFonts().catch(err => {
             console.error('❌ App: Unexpected error in loadFonts (non-critical):', err);
+            setFontsReady(true);
         });
     }, []);
 
     // Сразу показываем навигатор - все загрузки происходят в фоне во время SplashScreen
     return (
         <AppInitializer>
-            <AppNavigator/>
+            <AppNavigator fontsReady={fontsReady} />
         </AppInitializer>
     );
 };

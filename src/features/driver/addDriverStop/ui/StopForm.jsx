@@ -96,6 +96,7 @@ export const StopForm = memo(({
     const isNavigatingRef = useRef(false);
     const isFormInitialized = useRef(false);
     const [showHint, setShowHint] = useState(true);
+    const lastAddressFromMapRef = useRef('');
 
     // Функция повторной отправки после неудачи
     const handleRetryUpload = useCallback(async () => {
@@ -226,23 +227,19 @@ export const StopForm = memo(({
     }, [userRole]);
 
     useEffect(() => {
-        if (addressFromMap && addressFromMap.trim() !== '') {
-            logData('StopForm: Получен адрес из карты', addressFromMap);
-            setAddress(addressFromMap);
-            setErrors(prev => ({...prev, address: ''}));
-            setTimeout(() => {
-                logData('StopForm: Адрес после обновления', {
-                    currentAddress: address,
-                    setToAddress: addressFromMap,
-                    addressMatch: address === addressFromMap
-                });
-                if (address !== addressFromMap) {
-                    setAddress(addressFromMap);
-                    logData('StopForm: Повторная попытка обновления адреса');
-                }
-            }, 150);
+        if (!addressFromMap || addressFromMap.trim() === '') {
+            return;
         }
-    }, [addressFromMap, address]);
+
+        if (addressFromMap === lastAddressFromMapRef.current) {
+            return;
+        }
+
+        lastAddressFromMapRef.current = addressFromMap;
+        logData('StopForm: Получен адрес из карты', addressFromMap);
+        setAddress(addressFromMap);
+        setErrors(prev => ({ ...prev, address: '' }));
+    }, [addressFromMap]);
 
     const onStartDateChange = useCallback((date) => {
         logData('Изменение даты начала', date);

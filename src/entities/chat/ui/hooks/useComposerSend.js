@@ -198,14 +198,23 @@ export const useComposerSend = ({
     stopTyping();
     
     try {
+      let sendPromise = null;
       // Отправляем изображения
       if (currentFiles.length > 0) {
-        await sendImageMessages(currentFiles, currentCaptions);
+        sendPromise = sendImageMessages(currentFiles, currentCaptions);
       }
       
       // Отправляем текст
       if (currentText.length > 0) {
-        await sendTextMessage(currentText);
+        sendPromise = sendTextMessage(currentText);
+      }
+      
+      // Освобождаем блокировку сразу после старта отправки,
+      // чтобы не блокировать последующие сообщения при медленной сети.
+      isSendingRef.current = false;
+      
+      if (sendPromise) {
+        await sendPromise;
       }
     } catch (error) {
       console.error('Ошибка отправки сообщения:', error);

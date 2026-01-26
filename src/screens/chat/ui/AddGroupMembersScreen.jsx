@@ -6,10 +6,9 @@ import {
   TouchableOpacity,
   FlatList,
   Image,
-  SafeAreaView,
   TextInput,
-  ActivityIndicator,
-} from 'react-native';
+  ActivityIndicator} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { addMembers, fetchRoom } from '@entities/chat/model/slice';
 import ChatApi from '@entities/chat/api/chatApi';

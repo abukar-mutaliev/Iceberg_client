@@ -1,6 +1,7 @@
 // Обновленный SupplierScreenContainer
 import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, SafeAreaView } from 'react-native';
+import { View, StyleSheet} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { SupplierContent } from '@screens/supplier/ui/SupplierContent';
 import { ErrorState } from '@shared/ui/states/ErrorState';
 import { Loader } from '@shared/ui/Loader/ui/Loader';
@@ -129,7 +130,7 @@ const SupplierScreenContainer = React.memo(({ supplierId, navigation, route }) =
     }
 
     return (
-        <SafeAreaView style={styles.safeArea}>
+        <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
             <SupplierContent
                 supplierId={validSupplierId}
                 supplier={supplier}

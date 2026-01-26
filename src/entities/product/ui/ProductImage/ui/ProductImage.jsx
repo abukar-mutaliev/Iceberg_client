@@ -1,9 +1,11 @@
-import React, {useRef, useState, useEffect} from "react";
+import React, {useRef, useState} from "react";
 import {Dimensions, Image, StyleSheet, View, Text, TouchableOpacity} from "react-native";
+import { LinearGradient } from 'expo-linear-gradient';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import PagerView from "react-native-pager-view";
 import {CustomSliderIndicator} from "@shared/ui/CustomSliderIndicator";
 
-// Заменяем изображение на простой серый блок
+// Fallback для defaultSource, когда нужен Image placeholder
 const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -32,6 +34,22 @@ export const ProductImage = ({ images, style, onImagePress }) => {
         setActiveIndex(newIndex);
     };
 
+    const goToPrevious = () => {
+        if (pagerRef.current && activeIndex > 0) {
+            const targetIndex = activeIndex - 1;
+            pagerRef.current.setPage(targetIndex);
+            setActiveIndex(targetIndex);
+        }
+    };
+
+    const goToNext = () => {
+        if (pagerRef.current && activeIndex < imageArray.length - 1) {
+            const targetIndex = activeIndex + 1;
+            pagerRef.current.setPage(targetIndex);
+            setActiveIndex(targetIndex);
+        }
+    };
+
     const handleImageError = (index) => {
         console.error(`Error loading image at index ${index}`);
         setLoadingError(prev => ({...prev, [index]: true}));
@@ -42,6 +60,20 @@ export const ProductImage = ({ images, style, onImagePress }) => {
             onImagePress(imageArray, index);
         }
     };
+
+    const Placeholder = ({ style: placeholderStyle }) => (
+        <View style={[styles.placeholderContainer, placeholderStyle]}>
+            <LinearGradient
+                colors={['#dfe7ff', '#cdd6ff', '#bfc7ff']}
+                style={styles.placeholderGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+            >
+                <Icon name="image" size={64} color="rgba(255,255,255,0.95)" />
+                <Text style={styles.placeholderText}>Нет фото</Text>
+            </LinearGradient>
+        </View>
+    );
 
     const renderImages = () => {
         return imageArray.map((item, index) => {
@@ -57,21 +89,23 @@ export const ProductImage = ({ images, style, onImagePress }) => {
                         onPress={() => handleImagePress(index)}
                     >
                         {loadingError[index] ? (
-                            <View style={styles.errorContainer}>
+                            <Placeholder />
+                        ) : (
+                            <View style={styles.blurWrapper}>
                                 <Image
-                                    source={placeholderImage}
-                                    style={styles.placeholderImage}
+                                    source={imageSource}
+                                    style={styles.blurBackground}
+                                    resizeMode="cover"
+                                    blurRadius={20}
+                                />
+                                <Image
+                                    source={imageSource}
+                                    style={styles.fullImage}
                                     resizeMode="contain"
+                                    defaultSource={placeholderImage}
+                                    onError={() => handleImageError(index)}
                                 />
                             </View>
-                        ) : (
-                            <Image
-                                source={imageSource}
-                                style={styles.fullImage}
-                                resizeMode="cover"
-                                defaultSource={placeholderImage}
-                                onError={() => handleImageError(index)}
-                            />
                         )}
                     </TouchableOpacity>
                 </View>
@@ -82,13 +116,7 @@ export const ProductImage = ({ images, style, onImagePress }) => {
     if (imageArray.length === 0) {
         return (
             <View style={[styles.container, style]}>
-                <View style={styles.slide}>
-                    <Image
-                        source={placeholderImage}
-                        style={styles.placeholderImage}
-                        resizeMode="contain"
-                    />
-                </View>
+                <Placeholder style={styles.slide} />
             </View>
         );
     }
@@ -112,6 +140,25 @@ export const ProductImage = ({ images, style, onImagePress }) => {
                     />
                 </View>
             )}
+
+            {imageArray.length > 1 && activeIndex > 0 && (
+                <TouchableOpacity
+                    style={[styles.navArrow, styles.navArrowLeft]}
+                    onPress={goToPrevious}
+                    activeOpacity={0.8}
+                >
+                    <Text style={styles.navArrowText}>‹</Text>
+                </TouchableOpacity>
+            )}
+            {imageArray.length > 1 && activeIndex < imageArray.length - 1 && (
+                <TouchableOpacity
+                    style={[styles.navArrow, styles.navArrowRight]}
+                    onPress={goToNext}
+                    activeOpacity={0.8}
+                >
+                    <Text style={styles.navArrowText}>›</Text>
+                </TouchableOpacity>
+            )}
         </View>
     );
 };
@@ -123,7 +170,7 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
         margin: 0,
         padding: 0,
-        backgroundColor: '#F9F9F9',
+        backgroundColor: '#F2F2F2',
     },
     pagerView: {
         flex: 1,
@@ -144,13 +191,32 @@ const styles = StyleSheet.create({
         width: '100%',
         height: '100%',
     },
+    blurWrapper: {
+        flex: 1,
+        width: '100%',
+        height: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
+        overflow: 'hidden',
+        backgroundColor: '#F2F2F2',
+    },
+    blurBackground: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: '100%',
+        height: '100%',
+        opacity: 0.9,
+    },
     fullImage: {
         position: 'absolute',
         top: 0,
         left: 0,
         right: 0,
         bottom: 0,
-        width: SCREEN_WIDTH,
+        width: '100%',
         height: '100%',
     },
     placeholderImage: {
@@ -163,11 +229,53 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
+    placeholderContainer: {
+        width: '100%',
+        height: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    placeholderGradient: {
+        width: '100%',
+        height: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    placeholderText: {
+        marginTop: 8,
+        fontSize: 14,
+        color: 'rgba(255,255,255,0.95)',
+        fontWeight: '600',
+    },
     indicatorContainer: {
         position: 'absolute',
         bottom: 60,
         width: '100%',
         alignItems: 'center',
         zIndex: 100,
-    }
+    },
+    navArrow: {
+        position: 'absolute',
+        top: '50%',
+        marginTop: -22,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(0,0,0,0.45)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 101,
+    },
+    navArrowLeft: {
+        left: 12,
+    },
+    navArrowRight: {
+        right: 12,
+    },
+    navArrowText: {
+        color: '#fff',
+        fontSize: 28,
+        fontWeight: '600',
+        marginTop: -2,
+    },
 });

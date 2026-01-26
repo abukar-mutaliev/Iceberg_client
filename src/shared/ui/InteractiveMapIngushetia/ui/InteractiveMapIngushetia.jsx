@@ -5,10 +5,9 @@ import {
     Pressable,
     ScrollView,
     StyleSheet,
-    SafeAreaView,
     StatusBar,
-    useWindowDimensions,
-} from 'react-native';
+    useWindowDimensions} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {Gesture, GestureDetector} from 'react-native-gesture-handler';
 import Animated, {
     useAnimatedStyle,
@@ -574,7 +573,7 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
             ...styles.mapWrapper,
             width: screenWidth,
             height: screenHeight * 0.5,
-            paddingTop: 20 * scaleUI,
+            paddingTop: 15 * scaleUI,
         },
         instruction: {
             ...styles.instruction,
@@ -663,14 +662,14 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f9fafb',
+        backgroundColor: '#f0f9ff',
     },
     header: {
         paddingHorizontal: 16,
         paddingVertical: 0,
-        backgroundColor: '#ffffff',
-        borderBottomWidth: 1,
-        borderBottomColor: '#e5e7eb',
+        backgroundColor: 'transparent',
+        borderBottomWidth: 0,
+        borderBottomColor: 'transparent',
         minHeight: 0,
     },
     title: {
@@ -747,13 +746,13 @@ const styles = StyleSheet.create({
         fontWeight: '500',
     },
     bottomPanel: {
-        backgroundColor: '#ffffff',
+        backgroundColor: '#f9fafb',
         borderTopWidth: 1,
         borderTopColor: '#e5e7eb',
     },
     scrollContent: {
         padding: 16,
-        paddingBottom: 24,
+        paddingBottom: 0,
     },
     infoPanel: {
         alignItems: 'center',
@@ -836,7 +835,7 @@ const styles = StyleSheet.create({
     },
     legend: {
         width: '100%',
-        paddingBottom: 8,
+        paddingBottom: 0,
     },
     legendTitle: {
         fontSize: 16,

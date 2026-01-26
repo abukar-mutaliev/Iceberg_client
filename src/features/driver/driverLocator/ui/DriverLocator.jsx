@@ -9,7 +9,7 @@ const DriverLocator = ({ onPress }) => {
             <View style={styles.contentContainer}>
                 <Instance />
                 <View style={styles.iconContainer}>
-                    <IceCreamTruckIcon width={50} height={50} fill="#FFFFFF" />
+                    <IceCreamTruckIcon width={36} height={36} fill="#FFFFFF" />
                 </View>
             </View>
         </TouchableOpacity>
@@ -19,10 +19,10 @@ const DriverLocator = ({ onPress }) => {
 const styles = StyleSheet.create({
     container: {
         backgroundColor: "#7367F0",
-        borderRadius: 12,
-        marginHorizontal: 16,
-        marginVertical: 12,
-        padding: 16,
+        borderRadius: 10,
+        marginHorizontal: 0,
+        marginVertical: 0,
+        padding: 12,
         shadowColor: "#000",
         shadowOffset: {
             width: 0,
@@ -36,9 +36,11 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
+        minHeight: 36,
     },
     iconContainer: {
-        marginLeft: 16,
+        marginLeft: 8,
+        flexShrink: 0,
     }
 });
 

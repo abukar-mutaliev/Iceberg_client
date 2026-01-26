@@ -164,21 +164,61 @@ export const selectWarehousesWithProductError = (state, productId) => {
 export const selectWarehousesWithProductAndStock = createSelector(
     [
         (state, productId) => selectWarehousesWithProduct(state, productId),
-        (state, productId) => selectProductStocks(state, productId)
+        (state, productId) => selectProductStocks(state, productId),
+        selectWarehouses
     ],
-    (warehouses, stocks) => {
+    (warehouses, stocks, allWarehouses) => {
         if (!Array.isArray(warehouses)) return EMPTY_ARRAY;
         
         // Если есть остатки из API product-stock, используем их
         if (Array.isArray(stocks) && stocks.length > 0) {
-            return warehouses.map(warehouse => {
-                const stock = stocks.find(s => s.warehouseId === warehouse.warehouseId);
+            if (warehouses.length > 0) {
+                return warehouses.map(warehouse => {
+                    const stock = stocks.find(s => s.warehouseId === warehouse.warehouseId);
+                    return {
+                        ...warehouse,
+                        stock: stock || { quantity: 0, reserved: 0 },
+                        availableQuantity: stock ? Math.max(0, (stock.quantity || 0) - (stock.reserved || 0)) : 0
+                    };
+                });
+            }
+
+            if (Array.isArray(allWarehouses) && allWarehouses.length > 0) {
+                return stocks.map(stock => {
+                    const warehouse = allWarehouses.find(w => w.id === stock.warehouseId);
+                    const availableQuantity = Math.max(0, (stock.quantity || 0) - (stock.reserved || 0));
+                    return {
+                        warehouseId: stock.warehouseId,
+                        id: stock.warehouseId,
+                        name: warehouse?.name || 'Склад без названия',
+                        warehouseName: warehouse?.name,
+                        address: warehouse?.address,
+                        warehouseAddress: warehouse?.address,
+                        district: warehouse?.district,
+                        totalQuantity: stock.quantity || 0,
+                        availableQuantity,
+                        stock: {
+                            quantity: stock.quantity || 0,
+                            reserved: stock.reserved || 0
+                        }
+                    };
+                });
+            }
+
+            return stocks.map(stock => {
+                const availableQuantity = Math.max(0, (stock.quantity || 0) - (stock.reserved || 0));
                 return {
-                    ...warehouse,
-                    stock: stock || { quantity: 0, reserved: 0 },
-                    availableQuantity: stock ? Math.max(0, (stock.quantity || 0) - (stock.reserved || 0)) : 0
+                    warehouseId: stock.warehouseId,
+                    id: stock.warehouseId,
+                    name: 'Склад без названия',
+                    totalQuantity: stock.quantity || 0,
+                    availableQuantity,
+                    stock: {
+                        quantity: stock.quantity || 0,
+                        reserved: stock.reserved || 0
+                    }
                 };
-            }).filter(warehouse => warehouse.availableQuantity > 0);
+            });
         }
         
         // Если остатков нет, используем данные из find-with-product API
@@ -193,7 +233,7 @@ export const selectWarehousesWithProductAndStock = createSelector(
                 quantity: warehouse.quantity || 0,
                 reserved: warehouse.reserved || 0
             }
-        })).filter(warehouse => warehouse.availableQuantity > 0);
+        }));
     }
 );
 

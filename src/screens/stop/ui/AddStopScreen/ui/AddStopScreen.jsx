@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, ScrollView, SafeAreaView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Text, ScrollView, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Location from 'expo-location';
-import { Ionicons } from '@expo/vector-icons';
 
 import { Color, FontFamily } from '@app/styles/GlobalStyles';
 import {
@@ -24,16 +24,95 @@ import { fetchAllDistricts } from "@entities/district";
 import { AddStopHeader } from './AddStopHeader';
 import { LoadingState } from '@shared/ui/states/LoadingState';
 import { StopForm } from "@features/driver/addDriverStop";
+import { logData } from '@shared/lib/logger';
 import { ReusableModal } from '@shared/ui/Modal';
 import MapView, { Marker } from 'react-native-maps';
 import { parseCoordinates } from '@/shared/lib/coordinatesHelper';
+
+const MapContent = React.memo(({
+    mapRef,
+    locationData,
+    setLocationData,
+    handleMapCancel,
+    handleLocationConfirm,
+    onDetectLocation,
+    isLocationLoading,
+    onMapReady
+}) => (
+    <View style={mapStyles.container}>
+        <MapView
+            ref={mapRef}
+            style={mapStyles.map}
+            initialRegion={locationData.mapRegion}
+            onMapReady={onMapReady}
+            onRegionChangeComplete={(region) =>
+                setLocationData(prev => ({ ...prev, mapRegion: region }))
+            }
+            onPress={(e) => {
+                const coordinate = e?.nativeEvent?.coordinate;
+                if (!coordinate) {
+                    return;
+                }
+                const { latitude, longitude } = coordinate;
+                setLocationData(prev => ({
+                    ...prev,
+                    markerPosition: { latitude, longitude }
+                }));
+            }}
+        >
+            {locationData.markerPosition && (
+                <Marker coordinate={locationData.markerPosition} />
+            )}
+        </MapView>
+
+        <View style={mapStyles.buttonContainer}>
+            <TouchableOpacity
+                style={[mapStyles.button, mapStyles.cancelButton]}
+                onPress={handleMapCancel}
+                activeOpacity={0.7}
+            >
+                <Text style={[mapStyles.buttonText, mapStyles.cancelButtonText]}>Отмена</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+                style={[mapStyles.button, mapStyles.confirmButton, !locationData.markerPosition && mapStyles.buttonDisabled]}
+                onPress={() => {
+                    if (locationData.markerPosition) {
+                        const coordinates = `${locationData.markerPosition.latitude},${locationData.markerPosition.longitude}`;
+                        handleLocationConfirm(coordinates);
+                    }
+                }}
+                disabled={!locationData.markerPosition}
+                activeOpacity={0.7}
+            >
+                <Text style={mapStyles.buttonText}>Подтвердить</Text>
+            </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity
+            style={[mapStyles.myLocationButton, isLocationLoading && mapStyles.buttonDisabled]}
+            onPress={onDetectLocation}
+            disabled={isLocationLoading}
+            activeOpacity={0.7}
+        >
+            <Text style={mapStyles.myLocationButtonText}>
+                {isLocationLoading ? 'Определяем...' : 'Мое местоположение'}
+            </Text>
+        </TouchableOpacity>
+
+        {!locationData.markerPosition && (
+            <View style={mapStyles.hintContainer}>
+                <Text style={mapStyles.hintText}>Нажмите на карту для выбора точки</Text>
+            </View>
+        )}
+    </View>
+));
 
 export const AddStopScreen = ({ navigation, route }) => {
     const prevRouteParamsRef = useRef(null);
     const isProcessingRouteParams = useRef(false);
     const isInitialized = useRef(false);
     const lastUpdateTime = useRef(0);
-    const scrollViewRef = useRef(null);
 
     const dispatch = useDispatch();
     const isLoading = useSelector(selectDriverLoading);
@@ -46,11 +125,13 @@ export const AddStopScreen = ({ navigation, route }) => {
     const [formSubmitted, setFormSubmitted] = useState(false);
     const [mapModalVisible, setMapModalVisible] = useState(false);
     const [isLocationLoading, setIsLocationLoading] = useState(false);
-    const [isGettingCurrentLocation, setIsGettingCurrentLocation] = useState(false);
+    const mapRef = useRef(null);
+    const mapReadyRef = useRef(false);
+    const pendingRegionRef = useRef(null);
     const [locationData, setLocationData] = useState({
         mapRegion: {
-            latitude: 43.12,
-            longitude: 45.0,
+            latitude: 43.2269,
+            longitude: 44.7646,
             latitudeDelta: 0.01,
             longitudeDelta: 0.01,
         },
@@ -89,9 +170,12 @@ export const AddStopScreen = ({ navigation, route }) => {
                         }
                     };
                 });
+                logData('AddStopScreen: Координаты успешно обновлены', coordinates);
+            } else {
+                logData('AddStopScreen: Неверный формат координат', coordinates);
             }
         } catch (error) {
-            // Ошибка при обработке координат
+            logData('AddStopScreen: Ошибка при обработке координат', error);
         }
     }, []);
 
@@ -137,9 +221,7 @@ export const AddStopScreen = ({ navigation, route }) => {
             isProcessingRouteParams.current = false;
 
         }, 300);
-        // Убрали addressFromMap и locationData.mapLocation из зависимостей,
-        // так как они устанавливаются внутри эффекта и вызывают бесконечный цикл
-    }, [route.params, handleLocationUpdate, navigation]);
+    }, [route.params, handleLocationUpdate, navigation, addressFromMap, locationData.mapLocation]);
 
     useEffect(() => {
         if (isInitialized.current) return;
@@ -156,7 +238,7 @@ export const AddStopScreen = ({ navigation, route }) => {
                 await Promise.all(promises);
 
             } catch (error) {
-                // Ошибка при загрузке начальных данных
+                logData('AddStopScreen: Ошибка при загрузке начальных данных', error);
             }
         };
 
@@ -188,13 +270,26 @@ export const AddStopScreen = ({ navigation, route }) => {
                             longitude: lng
                         }
                     }));
+
+                    const targetRegion = {
+                        latitude: lat,
+                        longitude: lng,
+                        latitudeDelta: locationData.mapRegion.latitudeDelta || 0.01,
+                        longitudeDelta: locationData.mapRegion.longitudeDelta || 0.01
+                    };
+
+                    if (mapReadyRef.current) {
+                        animateToRegionSafe(targetRegion);
+                    } else {
+                        pendingRegionRef.current = targetRegion;
+                    }
                 }
             } catch (error) {
-                // Ошибка при обработке существующих координат
+                logData('AddStopScreen: Ошибка при обработке существующих координат', error);
             }
         }
         setMapModalVisible(true);
-    }, []);
+    }, [animateToRegionSafe, locationData.mapRegion.latitudeDelta, locationData.mapRegion.longitudeDelta]);
 
     const handleLocationConfirm = useCallback((coordinates) => {
         handleLocationUpdate(coordinates);
@@ -205,46 +300,59 @@ export const AddStopScreen = ({ navigation, route }) => {
         setMapModalVisible(false);
     }, []);
 
-    const handleScrollToInput = useCallback((yOffset) => {
-        if (scrollViewRef.current) {
-            setTimeout(() => {
-                scrollViewRef.current?.scrollTo({
-                    y: Math.max(0, yOffset),
-                    animated: true
-                });
-            }, 100);
-        }
+    const animateToRegionSafe = useCallback((targetRegion) => {
+        if (!targetRegion) return;
+        const animate = () => {
+            if (mapRef.current?.animateToRegion) {
+                mapRef.current.animateToRegion(targetRegion, 600);
+            } else if (mapRef.current?.animateCamera) {
+                mapRef.current.animateCamera({
+                    center: {
+                        latitude: targetRegion.latitude,
+                        longitude: targetRegion.longitude
+                    }
+                }, { duration: 600 });
+            }
+        };
+
+        requestAnimationFrame(animate);
+        setTimeout(animate, 300);
     }, []);
 
-    const handleScrollToEnd = useCallback(() => {
-        if (scrollViewRef.current) {
-            setTimeout(() => {
-                scrollViewRef.current?.scrollToEnd({ animated: true });
-            }, 300);
-        }
-    }, []);
-
-    const handleGetCurrentLocation = useCallback(async () => {
-        if (isGettingCurrentLocation) return;
-
+    const handleDetectCurrentLocation = useCallback(async () => {
         try {
-            setIsGettingCurrentLocation(true);
+            if (isLocationLoading) return;
+            setIsLocationLoading(true);
 
-            const { status } = await Location.requestForegroundPermissionsAsync();
-            if (status !== 'granted') {
-                Alert.alert(
-                    'Требуется разрешение',
-                    'Для определения текущего местоположения необходим доступ к геолокации'
-                );
+            let permission = await Location.getForegroundPermissionsAsync();
+            if (permission.status !== 'granted') {
+                permission = await Location.requestForegroundPermissionsAsync();
+            }
+
+            if (permission.status !== 'granted') {
+                Alert.alert('Доступ к геолокации', 'Разрешите доступ к местоположению, чтобы определить текущую позицию.');
                 return;
             }
 
-            const location = await Location.getCurrentPositionAsync({
-                accuracy: Location.Accuracy.Balanced
+            const position = await Location.getCurrentPositionAsync({
+                accuracy: Location.Accuracy.High
             });
-
-            const { latitude, longitude } = location.coords;
+            const { latitude, longitude } = position.coords;
             const coordinates = `${latitude},${longitude}`;
+
+            let formattedAddress = '';
+            try {
+                const [address] = await Location.reverseGeocodeAsync({ latitude, longitude });
+                if (address) {
+                    const locality = address.city || address.district || address.subregion || '';
+                    const street = address.street || address.name || '';
+                    const house = address.streetNumber || '';
+                    const streetLine = [street, house].filter(Boolean).join(' ');
+                    formattedAddress = [locality, streetLine].filter(Boolean).join(', ');
+                }
+            } catch (error) {
+                console.warn('Ошибка при определении адреса:', error?.message || error);
+            }
 
             setLocationData(prev => ({
                 ...prev,
@@ -257,113 +365,39 @@ export const AddStopScreen = ({ navigation, route }) => {
                 }
             }));
 
-            handleLocationUpdate(coordinates);
-
-        } catch (error) {
-            Alert.alert('Ошибка', 'Не удалось определить текущее местоположение');
-        } finally {
-            setIsGettingCurrentLocation(false);
-        }
-    }, [isGettingCurrentLocation, handleLocationUpdate]);
-
-    // MapContent компонент вынесен за пределы условного return для соблюдения правил хуков
-    const MapContent = React.memo(({ 
-        locationData, 
-        setLocationData, 
-        handleMapCancel, 
-        handleLocationConfirm,
-        onGetCurrentLocation,
-        isGettingCurrentLocation
-    }) => {
-        const mapRef = useRef(null);
-        
-        // Анимируем карту к новому региону при изменении
-        useEffect(() => {
-            if (mapRef.current && locationData.mapRegion) {
-                mapRef.current.animateToRegion(locationData.mapRegion, 500);
+            if (formattedAddress) {
+                setAddressFromMap(formattedAddress);
             }
-        }, [locationData.mapRegion]);
-        
-        return (
-            <View style={mapStyles.container}>
-                {/* Кнопка "Назад" в левом верхнем углу */}
-                <TouchableOpacity
-                    style={mapStyles.backButton}
-                    onPress={handleMapCancel}
-                    activeOpacity={0.7}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                    <View style={mapStyles.backButtonCircle}>
-                        <Text style={mapStyles.backButtonText}>✕</Text>
-                    </View>
-                </TouchableOpacity>
 
-                {/* Кнопка определения текущего местоположения */}
-                <TouchableOpacity
-                    style={mapStyles.locationButton}
-                    onPress={onGetCurrentLocation}
-                    activeOpacity={0.7}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    disabled={isGettingCurrentLocation}
-                >
-                    <View style={mapStyles.locationButtonCircle}>
-                        {isGettingCurrentLocation ? (
-                            <ActivityIndicator size="small" color={Color.primary || '#3B43A2'} />
-                        ) : (
-                            <Ionicons name="locate" size={24} color={Color.primary || '#3B43A2'} />
-                        )}
-                    </View>
-                </TouchableOpacity>
+            const targetRegion = {
+                latitude,
+                longitude,
+                latitudeDelta: locationData.mapRegion.latitudeDelta || 0.01,
+                longitudeDelta: locationData.mapRegion.longitudeDelta || 0.01
+            };
 
-                <MapView
-                    ref={mapRef}
-                    style={mapStyles.map}
-                    initialRegion={locationData.mapRegion}
-                    region={locationData.mapRegion}
-                    onPress={(e) => setLocationData(prev => ({
-                        ...prev,
-                        markerPosition: e.nativeEvent.coordinate
-                    }))}
-                >
-                    {locationData.markerPosition && (
-                        <Marker coordinate={locationData.markerPosition} />
-                    )}
-                </MapView>
+            if (mapReadyRef.current && mapRef.current?.animateToRegion) {
+                animateToRegionSafe(targetRegion);
+            } else {
+                pendingRegionRef.current = targetRegion;
+            }
+        } catch (error) {
+            console.warn('Ошибка при определении местоположения:', error?.message || error);
+            Alert.alert('Ошибка', 'Не удалось определить местоположение. Попробуйте еще раз.');
+        } finally {
+            setIsLocationLoading(false);
+        }
+    }, [animateToRegionSafe, isLocationLoading, locationData.mapRegion.latitudeDelta, locationData.mapRegion.longitudeDelta]);
 
-            <View style={mapStyles.buttonContainer}>
-                <TouchableOpacity
-                    style={[mapStyles.button, mapStyles.cancelButton]}
-                    onPress={handleMapCancel}
-                    activeOpacity={0.7}
-                >
-                    <Text style={[mapStyles.buttonText, mapStyles.cancelButtonText]}>Отмена</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                    style={[mapStyles.button, mapStyles.confirmButton, !locationData.markerPosition && mapStyles.buttonDisabled]}
-                    onPress={() => {
-                        if (locationData.markerPosition) {
-                            const coordinates = `${locationData.markerPosition.latitude},${locationData.markerPosition.longitude}`;
-                            handleLocationConfirm(coordinates);
-                        }
-                    }}
-                    disabled={!locationData.markerPosition}
-                    activeOpacity={0.7}
-                >
-                    <Text style={mapStyles.buttonText}>Подтвердить</Text>
-                </TouchableOpacity>
-            </View>
+    const handleMapReady = useCallback(() => {
+        mapReadyRef.current = true;
+        const pendingRegion = pendingRegionRef.current;
+        if (pendingRegion) {
+            animateToRegionSafe(pendingRegion);
+            pendingRegionRef.current = null;
+        }
+    }, [animateToRegionSafe]);
 
-                {!locationData.markerPosition && (
-                    <View style={mapStyles.hintContainer}>
-                        <Text style={mapStyles.hintText}>Нажмите на карту для выбора точки</Text>
-                    </View>
-                )}
-            </View>
-        );
-    });
-
-    // Условный return должен быть после ВСЕХ хуков
     if ((isLoading || isDistrictLoading) && !formSubmitted && districts.length === 0) {
         return <LoadingState />;
     }
@@ -371,43 +405,35 @@ export const AddStopScreen = ({ navigation, route }) => {
     return (
         <SafeAreaView style={styles.container}>
             <AddStopHeader />
-            <KeyboardAvoidingView
-                style={styles.keyboardAvoidingView}
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+            <ScrollView 
+                style={styles.scrollView}
+                contentContainerStyle={styles.scrollContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={true}
+                showsHorizontalScrollIndicator={false}
+                scrollEnabled={true}
+                bounces={true}
+                nestedScrollEnabled={true}
+                automaticallyAdjustContentInsets={false}
+                contentInsetAdjustmentBehavior="never"
+                contentInset={{ top: 0, left: 0, bottom: 0, right: 0 }}
+                keyboardDismissMode="on-drag"
+                scrollEventThrottle={16}
             >
-                <ScrollView 
-                    ref={scrollViewRef}
-                    style={styles.scrollView}
-                    contentContainerStyle={styles.scrollContent}
-                    keyboardShouldPersistTaps="handled"
-                    showsVerticalScrollIndicator={true}
-                    showsHorizontalScrollIndicator={false}
-                    scrollEnabled={true}
-                    bounces={true}
-                    nestedScrollEnabled={true}
-                    automaticallyAdjustContentInsets={false}
-                    contentInsetAdjustmentBehavior="automatic"
-                    keyboardDismissMode="on-drag"
-                    scrollEventThrottle={16}
-                >
-                    <StopForm
-                        districts={districtsForDropdown}
-                        onMapOpen={handleMapModalOpen}
-                        locationData={locationData}
-                        setLocationData={setLocationData}
-                        formSubmitted={formSubmitted}
-                        setFormSubmitted={setFormSubmitted}
-                        userRole={userRole}
-                        isLocationLoading={isLocationLoading}
-                        setIsLocationLoading={setIsLocationLoading}
-                        addressFromMap={addressFromMap}
-                        scrollToInput={handleScrollToInput}
-                        scrollToEnd={handleScrollToEnd}
-                        useModalMap={true}
-                    />
-                </ScrollView>
-            </KeyboardAvoidingView>
+                <StopForm
+                    districts={districtsForDropdown}
+                    onMapOpen={handleMapModalOpen}
+                    useModalMap={true}
+                    locationData={locationData}
+                    setLocationData={setLocationData}
+                    formSubmitted={formSubmitted}
+                    setFormSubmitted={setFormSubmitted}
+                    userRole={userRole}
+                    isLocationLoading={isLocationLoading}
+                    setIsLocationLoading={setIsLocationLoading}
+                    addressFromMap={addressFromMap}
+                />
+            </ScrollView>
 
             <ReusableModal
                 visible={mapModalVisible}
@@ -416,13 +442,15 @@ export const AddStopScreen = ({ navigation, route }) => {
                 height={80}
                 additionalStyles={mapStyles.modalContainer}
             >
-                <MapContent 
+                <MapContent
+                    mapRef={mapRef}
                     locationData={locationData}
                     setLocationData={setLocationData}
                     handleMapCancel={handleMapCancel}
                     handleLocationConfirm={handleLocationConfirm}
-                    onGetCurrentLocation={handleGetCurrentLocation}
-                    isGettingCurrentLocation={isGettingCurrentLocation}
+                    onDetectLocation={handleDetectCurrentLocation}
+                    isLocationLoading={isLocationLoading}
+                    onMapReady={handleMapReady}
                 />
             </ReusableModal>
         </SafeAreaView>
@@ -434,14 +462,11 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: Color.colorLightMode,
     },
-    keyboardAvoidingView: {
-        flex: 1,
-    },
     scrollView: {
         flex: 1,
     },
     scrollContent: {
-        paddingBottom: 100,
+        paddingBottom: 40,
     },
 });
 
@@ -452,55 +477,6 @@ const mapStyles = StyleSheet.create({
     container: {
         flex: 1,
         position: 'relative',
-    },
-    backButton: {
-        position: 'absolute',
-        top: 20,
-        left: 20,
-        zIndex: 10,
-    },
-    backButtonCircle: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: 'rgba(255, 255, 255, 0.95)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 2,
-        },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
-        elevation: 5,
-    },
-    backButtonText: {
-        fontSize: 24,
-        color: '#333',
-        fontWeight: '600',
-    },
-    locationButton: {
-        position: 'absolute',
-        top: 20,
-        right: 20,
-        zIndex: 10,
-    },
-    locationButtonCircle: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: 'rgba(255, 255, 255, 0.95)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 2,
-        },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
-        elevation: 5,
     },
     map: {
         width: '100%',
@@ -552,7 +528,7 @@ const mapStyles = StyleSheet.create({
     },
     hintContainer: {
         position: 'absolute',
-        top: 70,
+        top: 20,
         left: 20,
         right: 20,
         backgroundColor: 'rgba(0, 0, 0, 0.75)',
@@ -565,5 +541,26 @@ const mapStyles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontSize: 14,
         textAlign: 'center',
+    },
+    myLocationButton: {
+        position: 'absolute',
+        top: 16,
+        right: 16,
+        backgroundColor: '#ffffff',
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderRadius: 10,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 3,
+        elevation: 4,
+        zIndex: 10,
+    },
+    myLocationButtonText: {
+        color: '#000',
+        fontFamily: FontFamily.sFProText,
+        fontSize: 12,
+        fontWeight: '600',
     },
 });

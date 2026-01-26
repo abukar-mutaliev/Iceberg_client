@@ -9,6 +9,15 @@ export const usePushTokenAutoRegistration = () => {
   const user = useSelector((s) => s.auth?.user);
   const isAuthenticated = useSelector((s) => s.auth?.isAuthenticated);
   const hasAttemptedRegistration = useRef(false);
+  const latestAuthRef = useRef({ isAuthenticated: false, userId: null });
+  const registrationAttemptRef = useRef(0);
+
+  useEffect(() => {
+    latestAuthRef.current = {
+      isAuthenticated: !!isAuthenticated,
+      userId: user?.id || null
+    };
+  }, [isAuthenticated, user?.id]);
 
   // 1️⃣ Базовый запрос разрешения на уведомления после авторизации
   useNotificationOnboardingHint({ isAuthenticated, userId: user?.id });
@@ -22,6 +31,7 @@ export const usePushTokenAutoRegistration = () => {
       try {
         if (!isAuthenticated || !user) {
           hasAttemptedRegistration.current = false;
+          registrationAttemptRef.current += 1;
           return;
         }
 
@@ -29,9 +39,17 @@ export const usePushTokenAutoRegistration = () => {
           return;
         }
 
+        const attemptId = ++registrationAttemptRef.current;
+
         // Увеличиваем задержку до 3 секунд, чтобы дать время показать кастомный алерт
         // и дождаться, пока пользователь нажмет "Разрешить" перед инициализацией OneSignal
         await new Promise(resolve => setTimeout(resolve, 3000));
+
+        // Если пользователь вышел или изменился — отменяем отложенную регистрацию
+        const latestAuth = latestAuthRef.current;
+        if (!latestAuth.isAuthenticated || latestAuth.userId !== user.id || attemptId !== registrationAttemptRef.current) {
+          return;
+        }
 
         hasAttemptedRegistration.current = true;
 
@@ -57,8 +75,12 @@ export const usePushTokenAutoRegistration = () => {
           const token = PushNotificationService.getCurrentToken();
           
           if (!token) {
+            const latestAuth = latestAuthRef.current;
+            if (!latestAuth.isAuthenticated || latestAuth.userId !== user.id) {
+              return;
+            }
             hasAttemptedRegistration.current = false;
-            const success = await PushNotificationService.initializeForUser(user);
+            await PushNotificationService.initializeForUser(user);
           }
         } catch (e) {
           // Временно отключены логи OneSignal

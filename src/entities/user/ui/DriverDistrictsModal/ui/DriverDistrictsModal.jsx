@@ -7,9 +7,8 @@ import {
     FlatList,
     StyleSheet,
     Alert,
-    ActivityIndicator,
-    SafeAreaView
-} from 'react-native';
+    ActivityIndicator} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';

@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Animated, Keyboard } from 'react-native';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Animated, Keyboard, BackHandler, Modal, TouchableOpacity, TextInput } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { selectProfile, selectProfileLoading } from '@entities/profile';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { ProfileAvatar } from "@entities/profile/ui/ProfileAvatar";
 import { ProfileHeader } from "@features/profile/ui/ProfileEdit/ui/ProfileHeader";
@@ -19,6 +20,10 @@ export const ProfileEdit = () => {
     const profile = useSelector(selectProfile);
     const isLoading = useSelector(selectProfileLoading);
     const { currentUser } = useAuth();
+    const insets = useSafeAreaInsets();
+    const isAndroid = Platform.OS === 'android';
+    const tabBarHeight = 80 + insets.bottom;
+    const formBottomInset = isAndroid ? tabBarHeight + normalize(12) : insets.bottom + normalize(12);
     const districts = useSelector(selectDistrictsForDropdown);
     const districtsLoading = useSelector(selectDistrictLoading);
     const warehouses = useSelector(selectWarehousesForDropdown);
@@ -27,6 +32,29 @@ export const ProfileEdit = () => {
     const [formInitialValues, setFormInitialValues] = useState({});
     const [isFormInitialized, setIsFormInitialized] = useState(false);
     const [keyboardVisible, setKeyboardVisible] = useState(false);
+    const saveHandlerRef = useRef(null);
+    const [emailBindCode, setEmailBindCode] = useState('');
+
+    useFocusEffect(
+        React.useCallback(() => {
+            const onBackPress = () => {
+                if (navigation.canGoBack()) {
+                    navigation.goBack();
+                } else {
+                    navigation.navigate('ProfileMain');
+                }
+                return true;
+            };
+
+            const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+
+            return () => {
+                if (backHandler && typeof backHandler.remove === 'function') {
+                    backHandler.remove();
+                }
+            };
+        }, [navigation])
+    );
 
     const {
         userType,
@@ -43,9 +71,23 @@ export const ProfileEdit = () => {
         loadDistricts,
         isWarehousesNeeded,
         loadWarehouses,
+        isEmailBindModalVisible,
+        emailBindEmail,
+        emailBindError,
+        isEmailBindLoading,
+        handleConfirmEmailBind,
+        handleCancelEmailBind,
     } = useProfileEdit(profile, dispatch, navigation, currentUser);
 
     const displayName = useMemo(() => getProfileName(), [getProfileName]);
+    const handleHeaderSave = useCallback(() => {
+        if (saveHandlerRef.current) {
+            saveHandlerRef.current();
+        }
+    }, []);
+    const registerSaveHandler = useCallback((handler) => {
+        saveHandlerRef.current = handler;
+    }, []);
 
     // Отслеживание состояния клавиатуры
     useEffect(() => {
@@ -163,7 +205,12 @@ export const ProfileEdit = () => {
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
         >
-            <ProfileHeader title="Редактирование профиля" onGoBack={handleGoBack} />
+            <ProfileHeader
+                title="Редактирование профиля"
+                onGoBack={handleGoBack}
+                onSave={handleHeaderSave}
+                isSaving={isSaving}
+            />
 
             {/* Условно рендерим хедер с аватаром только когда клавиатура скрыта */}
             {!keyboardVisible && (
@@ -194,7 +241,59 @@ export const ProfileEdit = () => {
                 onScroll={handleScroll}
                 editableFields={editableFields}
                 toggleFieldEditable={toggleFieldEditable}
+                bottomInset={formBottomInset}
+                registerSaveHandler={registerSaveHandler}
             />
+
+            <Modal
+                visible={isEmailBindModalVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={handleCancelEmailBind}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Подтверждение email</Text>
+                        <Text style={styles.modalSubtitle}>
+                            Мы отправили код на {emailBindEmail}
+                        </Text>
+
+                        <TextInput
+                            style={styles.codeInput}
+                            value={emailBindCode}
+                            onChangeText={(text) => {
+                                const numeric = text.replace(/[^0-9]/g, '').slice(0, 6);
+                                setEmailBindCode(numeric);
+                            }}
+                            keyboardType="number-pad"
+                            placeholder="000000"
+                            maxLength={6}
+                        />
+
+                        {emailBindError ? (
+                            <Text style={styles.modalError}>{emailBindError}</Text>
+                        ) : null}
+
+                        <TouchableOpacity
+                            style={[styles.modalButton, isEmailBindLoading && styles.modalButtonDisabled]}
+                            onPress={() => handleConfirmEmailBind(emailBindCode)}
+                            disabled={isEmailBindLoading || emailBindCode.length !== 6}
+                        >
+                            <Text style={styles.modalButtonText}>
+                                {isEmailBindLoading ? 'Проверка...' : 'Подтвердить'}
+                            </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={styles.modalCancel}
+                            onPress={handleCancelEmailBind}
+                            disabled={isEmailBindLoading}
+                        >
+                            <Text style={styles.modalCancelText}>Отмена</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
         </KeyboardAvoidingView>
     );
 };
@@ -241,6 +340,73 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: '500',
         color: '#000000',
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.4)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: normalize(20),
+    },
+    modalContent: {
+        width: '100%',
+        maxWidth: normalize(360),
+        backgroundColor: '#FFFFFF',
+        borderRadius: normalize(16),
+        padding: normalize(20),
+    },
+    modalTitle: {
+        fontSize: normalizeFont(18),
+        fontWeight: '700',
+        color: '#000',
+        textAlign: 'center',
+        marginBottom: normalize(8),
+    },
+    modalSubtitle: {
+        fontSize: normalizeFont(14),
+        color: '#666',
+        textAlign: 'center',
+        marginBottom: normalize(16),
+    },
+    codeInput: {
+        borderWidth: 1,
+        borderColor: '#E5E5E5',
+        borderRadius: normalize(8),
+        paddingVertical: normalize(10),
+        paddingHorizontal: normalize(12),
+        fontSize: normalizeFont(18),
+        textAlign: 'center',
+        letterSpacing: normalize(6),
+        marginBottom: normalize(10),
+    },
+    modalError: {
+        color: '#FF0000',
+        textAlign: 'center',
+        marginBottom: normalize(10),
+        fontSize: normalizeFont(12),
+    },
+    modalButton: {
+        backgroundColor: '#000cff',
+        borderRadius: normalize(24),
+        paddingVertical: normalize(12),
+        alignItems: 'center',
+    },
+    modalButtonDisabled: {
+        backgroundColor: '#d3d3d3',
+    },
+    modalButtonText: {
+        color: '#FFFFFF',
+        fontSize: normalizeFont(16),
+        fontWeight: '600',
+    },
+    modalCancel: {
+        marginTop: normalize(10),
+        alignItems: 'center',
+    },
+    modalCancelText: {
+        color: '#3339b0',
+        fontSize: normalizeFont(14),
+        fontWeight: '600',
     },
 });
 

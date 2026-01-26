@@ -475,11 +475,8 @@ export const RegisterForm = ({ onVerification }) => {
             })).unwrap();
             console.log('Результат initiateRegister:', result);
             const tempToken = result?.registrationToken || null;
-            const receiveCall = result?.receiveCall || null; // Данные для Receive Call
-            
             if (tempToken) {
-                // Передаем receiveCall и email для возможности повторной отправки
-                onVerification(tempToken, receiveCall, email);
+                onVerification(tempToken);
             }
         } catch (error) {
             console.error('Ошибка регистрации:', error);

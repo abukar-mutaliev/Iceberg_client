@@ -210,9 +210,52 @@ export const LoginForm = ({ onForgotPassword }) => {
             });
     };
 
+    // Форматирование телефона: +7 (XXX) XXX-XX-XX
+    const formatPhoneNumber = (text) => {
+        let digits = text.replace(/\D/g, '');
+
+        if (digits.startsWith('8')) {
+            digits = '7' + digits.slice(1);
+        }
+
+        if (digits.length > 0 && !digits.startsWith('7')) {
+            digits = '7' + digits;
+        }
+
+        digits = digits.slice(0, 11);
+
+        let formatted = '';
+        if (digits.length > 0) {
+            formatted = '+7';
+        }
+        if (digits.length > 1) {
+            formatted += ' (' + digits.slice(1, 4);
+        }
+        if (digits.length >= 4) {
+            formatted += ')';
+        }
+        if (digits.length > 4) {
+            formatted += ' ' + digits.slice(4, 7);
+        }
+        if (digits.length > 7) {
+            formatted += '-' + digits.slice(7, 9);
+        }
+        if (digits.length > 9) {
+            formatted += '-' + digits.slice(9, 11);
+        }
+
+        return formatted;
+    };
 
     const handleEmailChange = (text) => {
-        setLocalEmail(text);
+        let nextValue = text;
+        const looksLikeEmail = /[a-zа-я]/i.test(text) || text.includes('@');
+
+        if (text && !looksLikeEmail) {
+            nextValue = formatPhoneNumber(text);
+        }
+
+        setLocalEmail(nextValue);
         setEmailError('');
         setFormError('');
     };
@@ -246,7 +289,7 @@ export const LoginForm = ({ onForgotPassword }) => {
                         onBlur={handleEmailBlur}
                         keyboardType="default"
                         autoCapitalize="none"
-                        placeholder="email@example.com или 8 928 000 00 00"
+                        placeholder="email@example.com или +7 (___)___-__-__"
                         placeholderTextColor="#888"
                         editable={!isLoading}
                     />

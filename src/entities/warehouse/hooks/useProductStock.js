@@ -29,7 +29,8 @@ import {
  */
 export const useProductStock = (productId, {
     autoLoad = true,
-    findWarehouses = false
+    findWarehouses = false,
+    includeInactiveWarehouses = false
 } = {}) => {
     const dispatch = useDispatch();
 
@@ -128,7 +129,10 @@ export const useProductStock = (productId, {
             requestsRef.current.add(requestKey);
 
             if (isMountedRef.current) {
-                await dispatch(fetchProductStock(validProductId)).unwrap();
+                await dispatch(fetchProductStock({
+                    productId: validProductId,
+                    params: includeInactiveWarehouses ? { includeInactive: 'true' } : {}
+                })).unwrap();
                 loadedDataRef.current.add(requestKey);
             }
         } catch (error) {
@@ -157,7 +161,7 @@ export const useProductStock = (productId, {
             if (isMountedRef.current) {
                 await dispatch(findWarehousesWithProduct({
                     productId: validProductId,
-                    params
+                    params: includeInactiveWarehouses ? { ...params, includeInactive: 'true' } : params
                 })).unwrap();
                 loadedDataRef.current.add(requestKey);
             }

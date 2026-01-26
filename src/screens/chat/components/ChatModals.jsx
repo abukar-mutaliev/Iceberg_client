@@ -28,6 +28,7 @@ export const ChatModals = ({
   onDeleteMessage,
   isSuperAdmin,
   currentUserId,
+  canDeleteForAll,
   
   // Forward Modal
   forwardModalVisible,
@@ -48,12 +49,14 @@ export const ChatModals = ({
   onFullEmojiSelect,
 }) => {
   // Проверяем, можно ли удалять у всех
-  const canDeleteForAll = isSuperAdmin || 
-    (messagesToDelete && messagesToDelete.length > 0 && messagesToDelete.every(msg => {
-      const messageSenderId = msg.senderId ? Number(msg.senderId) : null;
-      const normalizedCurrentUserId = currentUserId ? Number(currentUserId) : null;
-      return messageSenderId === normalizedCurrentUserId;
-    }));
+  const canDeleteForAllResolved = typeof canDeleteForAll === 'boolean'
+    ? canDeleteForAll
+    : (isSuperAdmin || 
+      (messagesToDelete && messagesToDelete.length > 0 && messagesToDelete.every(msg => {
+        const messageSenderId = msg.senderId ? Number(msg.senderId) : null;
+        const normalizedCurrentUserId = currentUserId ? Number(currentUserId) : null;
+        return messageSenderId === normalizedCurrentUserId;
+      })));
 
   // Определяем тексты для меню в зависимости от типа комнаты
   const getLeaveText = () => {
@@ -181,7 +184,7 @@ export const ChatModals = ({
                   Удалить у меня
                 </Text>
               </TouchableOpacity>
-              {canDeleteForAll && (
+              {canDeleteForAllResolved && (
                 <>
                   <View style={styles.menuDivider} />
                   <TouchableOpacity

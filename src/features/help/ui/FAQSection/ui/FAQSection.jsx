@@ -200,8 +200,8 @@ export const FAQSection = () => {
 const styles = StyleSheet.create({
     container: {
         paddingHorizontal: normalize(20),
-        paddingTop: normalize(16),
-        paddingBottom: normalize(24),
+        paddingTop: 0,
+        paddingBottom: 0,
         backgroundColor: '#fff',
     },
     sectionTitle: {
@@ -209,6 +209,7 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: Color.colorGray_100,
         fontFamily: FontFamily.sFProText,
+        marginTop: 10,
         marginBottom: normalize(20),
     },
     categoriesContainer: {

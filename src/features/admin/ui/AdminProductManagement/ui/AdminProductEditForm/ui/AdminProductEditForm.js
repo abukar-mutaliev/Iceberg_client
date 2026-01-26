@@ -273,7 +273,7 @@ export const AdminProductEditForm = ({
                             photos={currentFormData.images || []}
                             setPhotos={handleImagesChange}
                             error={errors.images}
-                            maxImages={5}
+                            maxImages={10}
                         />
                         {errors.images && (
                             <Text style={styles.errorText}>{errors.images}</Text>

@@ -6,12 +6,12 @@ import {
     TouchableOpacity,
     TextInput,
     Alert,
-    SafeAreaView,
     ActivityIndicator,
     ScrollView,
     KeyboardAvoidingView,
     Platform
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {CommonActions, useNavigation} from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import { FontFamily, Border, Color } from '@app/styles/GlobalStyles';
@@ -121,7 +121,7 @@ export const ChangePasswordScreen = () => {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
             <View style={styles.header}>
                 <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
                     <ArrowBackIcon width={24} height={24} color="rgba(0, 12, 255, 1)" />

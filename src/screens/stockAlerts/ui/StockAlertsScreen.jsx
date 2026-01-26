@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import {
-    SafeAreaView,
+    
     View,
     Text,
     StyleSheet,
@@ -8,8 +8,8 @@ import {
     RefreshControl,
     ActivityIndicator,
     Alert,
-    TouchableOpacity,
-} from 'react-native';
+    TouchableOpacity} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import {

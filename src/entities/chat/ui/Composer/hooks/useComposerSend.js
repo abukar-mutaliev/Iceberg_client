@@ -5,6 +5,7 @@ import {
   sendImages, 
   sendVoice, 
   sendPoll, 
+  sendContact,
   addOptimisticMessage 
 } from '@entities/chat/model/slice';
 import { playSendSound } from '@entities/chat/lib/sendSound';
@@ -80,16 +81,19 @@ export const useComposerSend = ({
   
   // ============ SEND IMAGES ============
   
-  const sendImageMessages = useCallback(async (files, captions) => {
+  const sendImageMessages = useCallback(async (files, caption) => {
+    // Используем текст из поля ввода как подпись для всех изображений
+    const commonCaption = typeof caption === 'string' ? caption : '';
+    
     const { temporaryId, replyToIdToSend, replyToData, ...optimisticMessage } = 
       createOptimisticMessage('IMAGE', {
-        content: '',
+        content: commonCaption, // Используем подпись из поля ввода в content
         attachments: files.map((f) => ({
           type: 'IMAGE',
           path: f.uri,
           mimeType: f.type || 'image/jpeg',
           size: f.size,
-          caption: captions[f.uri || f.name] || ''
+          caption: commonCaption // Все изображения получают одну подпись
         })),
       });
     
@@ -99,7 +103,8 @@ export const useComposerSend = ({
     // Добавляем оптимистичное сообщение
     dispatch(addOptimisticMessage({ roomId, message: optimisticMessage }));
     
-    const orderedCaptions = files.map((f) => captions[f.uri || f.name] || '');
+    // Отправляем одну и ту же подпись для всех изображений
+    const orderedCaptions = files.map(() => commonCaption);
     
     // Отправляем на сервер
     await dispatch(sendImages({ 
@@ -181,6 +186,82 @@ export const useComposerSend = ({
     
     playSendSound();
   }, [dispatch, roomId, createOptimisticMessage, onCancelReply]);
+
+  // ============ SEND CONTACT ============
+  
+  const sendContactMessage = useCallback(async (contactUser) => {
+    // Защита от двойной отправки
+    if (isSendingRef.current) {
+      console.warn('sendContactMessage: уже идет отправка, игнорируем');
+      return;
+    }
+    
+    const contactUserId = contactUser?.id;
+    if (!contactUserId) {
+      console.warn('sendContactMessage: contactUserId отсутствует');
+      return;
+    }
+    
+    isSendingRef.current = true;
+
+    // Получаем имя контакта
+    const contactName = contactUser.client?.name ||
+                       contactUser.admin?.name ||
+                       contactUser.employee?.name ||
+                       contactUser.supplier?.contactPerson ||
+                       contactUser.driver?.name ||
+                       contactUser.email?.split('@')[0] ||
+                       'Пользователь';
+
+    const { temporaryId, replyToIdToSend, replyToData, ...optimisticMessage } = 
+      createOptimisticMessage('CONTACT', {
+        content: JSON.stringify({
+          userId: contactUserId,
+          name: contactName,
+          role: contactUser.role,
+          phone: contactUser.phone || contactUser.client?.phone || contactUser.admin?.phone || contactUser.employee?.phone || contactUser.driver?.phone || null,
+          email: contactUser.email || null,
+          avatar: contactUser.avatar || null,
+        }),
+        contactUserId,
+        contact: {
+          userId: contactUserId,
+          name: contactName,
+          role: contactUser.role,
+          phone: contactUser.phone || contactUser.client?.phone || contactUser.admin?.phone || contactUser.employee?.phone || contactUser.driver?.phone || null,
+          email: contactUser.email || null,
+          avatar: contactUser.avatar || null,
+        },
+      });
+    
+    // Отменяем ответ СРАЗУ для лучшего UX
+    onCancelReply?.();
+    
+    // Добавляем оптимистичное сообщение
+    dispatch(addOptimisticMessage({ roomId, message: optimisticMessage }));
+    
+    try {
+      // Отправляем на сервер
+      const sendPromise = dispatch(sendContact({ 
+        roomId, 
+        contactUserId,
+        temporaryId,
+        replyToId: replyToIdToSend
+      })).unwrap();
+      
+      // Освобождаем блокировку сразу после старта отправки,
+      // чтобы не блокировать последующие сообщения при медленной сети.
+      isSendingRef.current = false;
+      
+      await sendPromise;
+      playSendSound();
+    } catch (error) {
+      console.error('Ошибка отправки контакта:', error);
+      // В случае ошибки можно показать уведомление или обработать ошибку
+    } finally {
+      isSendingRef.current = false;
+    }
+  }, [dispatch, roomId, createOptimisticMessage, onCancelReply, isSendingRef]);
   
   // ============ MAIN SEND HANDLER ============
   
@@ -191,21 +272,27 @@ export const useComposerSend = ({
     // Сохраняем текущие значения
     const currentText = text.trim();
     const currentFiles = [...files];
-    const currentCaptions = { ...captions };
     
     // Очищаем форму немедленно для лучшего UX
     clearForm();
     stopTyping();
     
     try {
-      // Отправляем изображения
+      let sendPromise = null;
+      // Отправляем изображения (текст используется как подпись)
       if (currentFiles.length > 0) {
-        await sendImageMessages(currentFiles, currentCaptions);
+        sendPromise = sendImageMessages(currentFiles, currentText);
+      } else if (currentText.length > 0) {
+        // Отправляем текст только если нет изображений
+        sendPromise = sendTextMessage(currentText);
       }
       
-      // Отправляем текст
-      if (currentText.length > 0) {
-        await sendTextMessage(currentText);
+      // Освобождаем блокировку сразу после старта отправки,
+      // чтобы не блокировать последующие сообщения при медленной сети.
+      isSendingRef.current = false;
+      
+      if (sendPromise) {
+        await sendPromise;
       }
     } catch (error) {
       console.error('Ошибка отправки сообщения:', error);
@@ -225,5 +312,6 @@ export const useComposerSend = ({
     handleSend,
     sendVoiceMessage,
     sendPollMessage,
+    sendContactMessage,
   };
 };

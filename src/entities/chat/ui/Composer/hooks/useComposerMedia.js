@@ -5,6 +5,8 @@ import { Platform } from 'react-native';
 /**
  * Хук для работы с медиа (изображения, камера, голосовые сообщения)
  * Обрабатывает выбор изображений из галереи, съемку фото
+ * Соответствует требованиям Apple: запрашивает разрешение по действию пользователя,
+ * а экран настроек показывается только после отказа
  */
 export const useComposerMedia = ({
   disabled,
@@ -12,6 +14,7 @@ export const useComposerMedia = ({
   setShowAttachmentMenu,
   setPendingAction,
   setShowPollModal,
+  onShowPermissionModal,
 }) => {
   // ============ PICK IMAGES ============
   
@@ -19,13 +22,28 @@ export const useComposerMedia = ({
     if (disabled) return;
     
     try {
-      const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
-      
-      if (currentStatus !== 'granted') {
-        const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (Platform.OS === 'android') {
+        // На Android: автоматический запрос разрешения (как раньше)
+        const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
         
-        if (permissionResult.status !== 'granted') {
-          return;
+        if (currentStatus !== 'granted') {
+          const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          
+          if (permissionResult.status !== 'granted') {
+            return;
+          }
+        }
+      } else {
+        // iOS: сначала запрашиваем разрешение, и только после отказа показываем экран настроек
+        const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
+        if (currentStatus !== 'granted') {
+          const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (permissionResult.status !== 'granted') {
+            if (onShowPermissionModal) {
+              onShowPermissionModal('photos');
+            }
+            return;
+          }
         }
       }
 
@@ -48,7 +66,7 @@ export const useComposerMedia = ({
     } catch (e) {
       console.error('❌ Ошибка при выборе изображений:', e);
     }
-  }, [disabled, setFiles]);
+  }, [disabled, setFiles, onShowPermissionModal]);
 
   // ============ TAKE PHOTO ============
   
@@ -56,13 +74,28 @@ export const useComposerMedia = ({
     if (disabled) return;
     
     try {
-      const { status: currentStatus } = await ImagePicker.getCameraPermissionsAsync();
-      
-      if (currentStatus !== 'granted') {
-        const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      if (Platform.OS === 'android') {
+        // На Android: автоматический запрос разрешения (как раньше)
+        const { status: currentStatus } = await ImagePicker.getCameraPermissionsAsync();
         
-        if (permissionResult.status !== 'granted') {
-          return;
+        if (currentStatus !== 'granted') {
+          const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+          
+          if (permissionResult.status !== 'granted') {
+            return;
+          }
+        }
+      } else {
+        // iOS: сначала запрашиваем разрешение, и только после отказа показываем экран настроек
+        const { status: currentStatus } = await ImagePicker.getCameraPermissionsAsync();
+        if (currentStatus !== 'granted') {
+          const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+          if (permissionResult.status !== 'granted') {
+            if (onShowPermissionModal) {
+              onShowPermissionModal('camera');
+            }
+            return;
+          }
         }
       }
 
@@ -83,7 +116,7 @@ export const useComposerMedia = ({
     } catch (e) {
       console.error('❌ Ошибка при съемке фото:', e);
     }
-  }, [disabled, setFiles]);
+  }, [disabled, setFiles, onShowPermissionModal]);
 
   // ============ HANDLE ATTACHMENT MENU ============
   

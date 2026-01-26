@@ -4,9 +4,8 @@ import {
     Text,
     StyleSheet,
     ScrollView,
-    ActivityIndicator,
-    SafeAreaView
-} from 'react-native';
+    ActivityIndicator} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
@@ -214,20 +213,13 @@ export const AdminPanelScreen = () => {
     const isEmployee = currentUser?.role === 'EMPLOYEE';
     const isSuperAdmin = currentUser?.admin?.isSuperAdmin || false;
 
-    // Отладка для проверки структуры currentUser
-    console.log('AdminPanel currentUser:', {
-        role: currentUser?.role,
-        hasAdmin: !!currentUser?.admin,
-        isSuperAdmin: currentUser?.admin?.isSuperAdmin,
-        hasProfile: !!currentUser?.profile
-    });
 
     const panelTitle = isAdmin
         ? "Панель Администратора"
         : (isEmployee ? "Панель Сотрудника" : "Панель Управления");
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
             <AdminHeader
                 title={panelTitle}
                 icon={<IconAdmin width={24} height={24} color={Color.blue2} />}

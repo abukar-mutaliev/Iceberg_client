@@ -28,6 +28,17 @@ export const roleFieldsConfig = {
             required: false,
             order: 2,
         },
+        email: {
+            id: 'email',
+            type: 'text',
+            label: 'Email',
+            placeholder: 'email@example.com',
+            validation: (value) => !value || /\S+@\S+\.\S+/.test(value),
+            errorMessage: 'Введите корректный email',
+            required: false,
+            keyboardType: 'email-address',
+            order: 3,
+        },
         gender: {
             id: 'gender',
             type: 'select',
@@ -39,7 +50,7 @@ export const roleFieldsConfig = {
                 { value: 'PREFER_NOT_TO_SAY', label: 'Предпочитаю не указывать' },
             ],
             required: false,
-            order: 3,
+            order: 4,
         },
         address: {
             id: 'address',
@@ -49,7 +60,7 @@ export const roleFieldsConfig = {
             validation: (value) => !value || value.length >= 5,
             errorMessage: 'Адрес должен содержать не менее 5 символов',
             required: false,
-            order: 4,
+            order: 5,
         },
         districtId: {
             id: 'districtId',
@@ -57,7 +68,7 @@ export const roleFieldsConfig = {
             label: 'Район доставки',
             placeholder: 'Выберите район доставки',
             required: false,
-            order: 5,
+            order: 6,
         }
     },
 

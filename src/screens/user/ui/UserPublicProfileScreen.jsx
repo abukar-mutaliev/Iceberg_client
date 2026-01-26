@@ -1,5 +1,7 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { SafeAreaView, View, Text, Image, StyleSheet, ActivityIndicator, TouchableOpacity, ScrollView, Modal, Dimensions, StatusBar, Linking, Alert } from 'react-native';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
+import {  View, Text, Image, StyleSheet, ActivityIndicator, TouchableOpacity, ScrollView, Modal, Dimensions, StatusBar, Linking, Alert, Animated, PanResponder } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { CommonActions } from '@react-navigation/native';
 import { userApi } from '@entities/user';
 import { getImageUrl } from '@shared/api/api';
 import { useAuth } from '@entities/auth/hooks/useAuth';
@@ -8,6 +10,7 @@ import { useSelector } from 'react-redux';
 import { selectRoomsList } from '@entities/chat/model/selectors';
 import CallIcon from '@shared/ui/Chat/CallIcon';
 import ChatIcon from '@shared/ui/Chat/ChatIcon';
+import { PROCESSING_ROLE_LABELS } from '@entities/admin/lib/constants';
 
 export const UserPublicProfileScreen = ({ route, navigation }) => {
     const userId = route?.params?.userId;
@@ -17,6 +20,13 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
     const [error, setError] = useState(null);
     const [user, setUser] = useState(null);
     const [showAvatarModal, setShowAvatarModal] = useState(false);
+    
+    // Анимация для модального окна с аватаром
+    const translateY = useRef(new Animated.Value(0)).current;
+    const opacity = useRef(new Animated.Value(1)).current;
+    
+    // Анимация для аватара при скролле основного экрана
+    const scrollY = useRef(new Animated.Value(0)).current;
     
     // Получаем текущего пользователя для проверки прав доступа
     const { currentUser } = useAuth();
@@ -42,8 +52,20 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                 setLoading(true);
                 const res = await userApi.getUserById(userId);
                 const data = res?.data?.user || res?.data || res;
-                if (isMounted) setUser(data || null);
+                if (isMounted) {
+                    setUser(data || null);
+                    // Отладочная информация
+                    console.log('UserPublicProfileScreen: Загружен пользователь:', {
+                        id: data?.id,
+                        role: data?.role,
+                        phone: data?.phone,
+                        employee: data?.employee,
+                        profile: data?.profile,
+                        processingRole: data?.employee?.processingRole || data?.profile?.processingRole
+                    });
+                }
             } catch (e) {
+                console.error('UserPublicProfileScreen: Ошибка загрузки пользователя:', e);
                 if (isMounted) setError('Не удалось загрузить пользователя');
             } finally {
                 if (isMounted) setLoading(false);
@@ -52,6 +74,98 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
         load();
         return () => { isMounted = false; };
     }, [userId]);
+
+    // Функция для закрытия модального окна с анимацией
+    const closeAvatarModal = () => {
+        Animated.parallel([
+            Animated.timing(translateY, {
+                toValue: 0,
+                duration: 200,
+                useNativeDriver: true,
+            }),
+            Animated.timing(opacity, {
+                toValue: 1,
+                duration: 200,
+                useNativeDriver: true,
+            }),
+        ]).start(() => {
+            setShowAvatarModal(false);
+            translateY.setValue(0);
+            opacity.setValue(1);
+        });
+    };
+
+    // PanResponder для обработки свайпов
+    const panResponder = useRef(
+        PanResponder.create({
+            onStartShouldSetPanResponder: () => true,
+            onMoveShouldSetPanResponder: (_, gestureState) => {
+                // Активируем только при вертикальном движении
+                return Math.abs(gestureState.dy) > Math.abs(gestureState.dx) && Math.abs(gestureState.dy) > 10;
+            },
+            onPanResponderGrant: () => {
+                translateY.setOffset(translateY._value);
+                opacity.setOffset(opacity._value);
+            },
+            onPanResponderMove: (_, gestureState) => {
+                translateY.setValue(gestureState.dy);
+                // Уменьшаем прозрачность при движении (максимум до 0.3)
+                const opacityValue = Math.max(0.3, 1 - Math.abs(gestureState.dy) / screenHeight);
+                opacity.setValue(opacityValue);
+            },
+            onPanResponderRelease: (_, gestureState) => {
+                translateY.flattenOffset();
+                opacity.flattenOffset();
+                const { dy, vy } = gestureState;
+                const threshold = 100; // Порог для закрытия модального окна
+                
+                // Если свайп вверх или вниз достаточно большой, или скорость высокая - закрываем
+                if (Math.abs(dy) > threshold || Math.abs(vy) > 0.5) {
+                    const direction = dy > 0 ? 1 : -1;
+                    Animated.parallel([
+                        Animated.timing(translateY, {
+                            toValue: direction * screenHeight,
+                            duration: 300,
+                            useNativeDriver: true,
+                        }),
+                        Animated.timing(opacity, {
+                            toValue: 0,
+                            duration: 300,
+                            useNativeDriver: true,
+                        }),
+                    ]).start(() => {
+                        setShowAvatarModal(false);
+                        translateY.setValue(0);
+                        opacity.setValue(1);
+                    });
+                } else {
+                    // Возвращаем на место
+                    Animated.parallel([
+                        Animated.spring(translateY, {
+                            toValue: 0,
+                            useNativeDriver: true,
+                            tension: 50,
+                            friction: 7,
+                        }),
+                        Animated.spring(opacity, {
+                            toValue: 1,
+                            useNativeDriver: true,
+                            tension: 50,
+                            friction: 7,
+                        }),
+                    ]).start();
+                }
+            },
+        })
+    ).current;
+
+    // Сброс анимации при открытии модального окна
+    useEffect(() => {
+        if (showAvatarModal) {
+            translateY.setValue(0);
+            opacity.setValue(1);
+        }
+    }, [showAvatarModal]);
 
     // Проверяем права доступа к конфиденциальной информации
     const canViewSensitiveInfo = useMemo(() => {
@@ -153,22 +267,33 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
         console.log('fromScreen:', fromScreen);
         console.log('roomId:', roomId);
 
-        // Если профиль открыт из ChatRoom — стараемся вернуться именно в комнату, а не в список чатов.
-        try {
-            const state = navigation?.getState?.();
-            const routes = state?.routes || [];
-            const prevRoute = routes.length >= 2 ? routes[routes.length - 2] : null;
-
-            // Если предыдущий экран в этом же навигаторе — ChatRoom, просто goBack().
-            if (navigation?.canGoBack?.() && prevRoute?.name === 'ChatRoom') {
-                navigation.goBack();
-                return;
+        // Всегда используем goBack() для плавной анимации, если можем вернуться назад
+        if (navigation?.canGoBack?.()) {
+            // Проверяем, есть ли ChatRoom в стеке навигации
+            try {
+                const state = navigation?.getState?.();
+                const routes = state?.routes || [];
+                
+                // Ищем ChatRoom в стеке (может быть предыдущим экраном или где-то в стеке)
+                const chatRoomIndex = routes.findIndex(route => route.name === 'ChatRoom');
+                
+                if (chatRoomIndex >= 0 && chatRoomIndex < routes.length - 1) {
+                    // ChatRoom есть в стеке, используем goBack() для плавной анимации
+                    navigation.goBack();
+                    return;
+                }
+            } catch (e) {
+                // Игнорируем ошибки при проверке стека
             }
-        } catch (e) {
-            // игнорируем
+            
+            // Если ChatRoom не найден в стеке, но можем вернуться назад - используем goBack()
+            // Это обеспечит плавную анимацию вместо дергания при navigate()
+            navigation.goBack();
+            return;
         }
 
-        // Fallback: если у нас есть roomId, уходим в ChatRoom через корневой AppStack.
+        // Fallback: если не можем вернуться назад и есть roomId, используем navigate
+        // Но это должно быть крайне редко
         if (roomId) {
             const rootNavigation =
                 navigation?.getParent?.('AppStack') ||
@@ -181,11 +306,6 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                 userId,
             });
             return;
-        }
-
-        // В остальных случаях — стандартный back.
-        if (navigation?.canGoBack?.()) {
-            navigation.goBack();
         }
     };
 
@@ -200,23 +320,19 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
         }
     };
 
-    // Получаем текст для отображения под именем (должность для сотрудников, роль для остальных)
+    // Получаем текст для отображения под именем (роль для всех, без должности)
     const getRoleOrPositionText = (userData) => {
         if (!userData) return null;
         
-        // Для сотрудников показываем должность
-        if (userData.role === 'EMPLOYEE') {
-            const position = userData.employee?.position || userData.profile?.position;
-            return position || 'Сотрудник';
-        }
-        
-        // Для остальных показываем роль
+        // Для всех показываем только роль, без должности (должность выводится отдельно)
         return getRoleText(userData.role);
     };
 
     const getPhoneNumber = (userData) => {
         if (!userData) return null;
-        return userData.client?.phone ||
+        // Приоритет: user.phone (телефон регистрации) > профильные телефоны
+        return userData.phone ||
+            userData.client?.phone ||
             userData.supplier?.phone ||
             userData.employee?.phone ||
             userData.driver?.phone ||
@@ -378,32 +494,98 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                 >
                     <Text style={styles.backIcon}>←</Text>
                 </TouchableOpacity>
+                <Animated.View
+                    style={[
+                        styles.headerTitleContainer,
+                        {
+                            opacity: scrollY.interpolate({
+                                inputRange: [80, 150],
+                                outputRange: [0, 1],
+                                extrapolate: 'clamp',
+                            }),
+                        },
+                    ]}
+                >
+                    {displayName ? (
+                        <Text style={styles.headerTitle} numberOfLines={1}>{displayName}</Text>
+                    ) : null}
+                    {user?.role ? (
+                        <Text style={styles.headerSubtitle} numberOfLines={1}>{getRoleOrPositionText(user)}</Text>
+                    ) : null}
+                </Animated.View>
                 <View style={styles.headerActions}>
                 </View>
             </View>
 
-            <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+            <Animated.ScrollView 
+                style={styles.content}
+                contentContainerStyle={styles.scrollContent}
+                showsVerticalScrollIndicator={false}
+                onScroll={Animated.event(
+                    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                    { useNativeDriver: false }
+                )}
+                scrollEventThrottle={16}
+            >
                 <View style={styles.avatarSection}>
-                    <TouchableOpacity
-                        style={styles.avatarContainer}
-                        onPress={() => avatarUri && setShowAvatarModal(true)}
-                        activeOpacity={avatarUri ? 0.8 : 1}
-                        disabled={!avatarUri}
+                    <Animated.View
+                        style={{
+                            transform: [
+                                {
+                                    scale: scrollY.interpolate({
+                                        inputRange: [0, 150],
+                                        outputRange: [1, 0],
+                                        extrapolate: 'clamp',
+                                    }),
+                                },
+                            ],
+                            opacity: scrollY.interpolate({
+                                inputRange: [0, 150],
+                                outputRange: [1, 0],
+                                extrapolate: 'clamp',
+                            }),
+                        }}
                     >
-                        {avatarUri ? (
-                            <Image source={{ uri: avatarUri }} style={styles.avatar} />
-                        ) : (
-                            <View style={styles.avatarPlaceholder}>
-                                <Text style={styles.avatarPlaceholderText}>👤</Text>
-                            </View>
-                        )}
-                    </TouchableOpacity>
-                    {displayName ? (
-                        <Text style={styles.avatarName}>{displayName}</Text>
-                    ) : null}
-                    {user?.role ? (
-                        <Text style={styles.avatarRole}>{getRoleOrPositionText(user)}</Text>
-                    ) : null}
+                        <TouchableOpacity
+                            style={styles.avatarContainer}
+                            onPress={() => avatarUri && setShowAvatarModal(true)}
+                            activeOpacity={avatarUri ? 0.8 : 1}
+                            disabled={!avatarUri}
+                        >
+                            {avatarUri ? (
+                                <Image source={{ uri: avatarUri }} style={styles.avatar} />
+                            ) : (
+                                <View style={styles.avatarPlaceholder}>
+                                    <Text style={styles.avatarPlaceholderText}>👤</Text>
+                                </View>
+                            )}
+                        </TouchableOpacity>
+                    </Animated.View>
+                    <Animated.View
+                        style={{
+                            transform: [
+                                {
+                                    translateY: scrollY.interpolate({
+                                        inputRange: [0, 150],
+                                        outputRange: [0, -120],
+                                        extrapolate: 'clamp',
+                                    }),
+                                },
+                            ],
+                            opacity: scrollY.interpolate({
+                                inputRange: [0, 80, 150],
+                                outputRange: [1, 0.3, 0],
+                                extrapolate: 'clamp',
+                            }),
+                        }}
+                    >
+                        {displayName ? (
+                            <Text style={styles.avatarName}>{displayName}</Text>
+                        ) : null}
+                        {user?.role ? (
+                            <Text style={styles.avatarRole}>{getRoleOrPositionText(user)}</Text>
+                        ) : null}
+                    </Animated.View>
                 </View>
 
                 {/* Phone Section - показываем только если есть права доступа */}
@@ -490,18 +672,47 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                     </>
                 )}
 
+                {/* Employee Position - показываем всем пользователям */}
+                {user?.role === 'EMPLOYEE' && (
+                    <View style={styles.infoSection}>
+                        <View style={styles.infoRow}>
+                            <Text style={styles.sectionLabel}>Должность</Text>
+                        </View>
+                        <Text style={styles.infoText}>
+                            {(() => {
+                                const processingRole = user.employee?.processingRole || user.profile?.processingRole;
+                                if (processingRole && PROCESSING_ROLE_LABELS[processingRole]) {
+                                    return PROCESSING_ROLE_LABELS[processingRole];
+                                }
+                                return processingRole || 'Не назначена';
+                            })()}
+                        </Text>
+                    </View>
+                )}
+
+                {/* Employee Districts - показываем всем пользователям */}
+                {user?.role === 'EMPLOYEE' && (() => {
+                    const districts = user.employee?.districts || user.profile?.districts || [];
+                    console.log('UserPublicProfileScreen: Районы сотрудника:', {
+                        employee: user.employee,
+                        profile: user.profile,
+                        districts: districts
+                    });
+                    const districtNames = districts.map(d => d.name).join(', ');
+                    return districtNames ? (
+                        <View style={styles.infoSection}>
+                            <View style={styles.infoRow}>
+                                <Text style={styles.sectionLabel}>Районы обслуживания</Text>
+                            </View>
+                            <Text style={styles.infoText}>{districtNames}</Text>
+                        </View>
+                    ) : null;
+                })()}
+
+
                 {/* Employee Info - показываем только если есть права доступа */}
                 {(user?.employee || (user?.role === 'EMPLOYEE' && user?.profile)) && canViewSensitiveInfo && (
                     <>
-                        {(user.employee?.position || user.profile?.position) && (
-                            <View style={styles.infoSection}>
-                                <View style={styles.infoRow}>
-                                    <Text style={styles.sectionLabel}>Должность</Text>
-                                </View>
-                                <Text style={styles.infoText}>{user.employee?.position || user.profile?.position}</Text>
-                            </View>
-                        )}
-
                         {(user.employee?.address || user.profile?.address) && (
                             <View style={styles.infoSection}>
                                 <View style={styles.infoRow}>
@@ -512,6 +723,20 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                         )}
                     </>
                 )}
+
+                {/* Driver Districts - показываем всем пользователям */}
+                {user?.role === 'DRIVER' && (() => {
+                    const districts = user.driver?.districts || user.profile?.districts || [];
+                    const districtNames = districts.map(d => d.name).join(', ');
+                    return districtNames ? (
+                        <View style={styles.infoSection}>
+                            <View style={styles.infoRow}>
+                                <Text style={styles.sectionLabel}>Районы обслуживания</Text>
+                            </View>
+                            <Text style={styles.infoText}>{districtNames}</Text>
+                        </View>
+                    ) : null;
+                })()}
 
                 {/* Driver Info - показываем только если есть права доступа */}
                 {(user?.driver || (user?.role === 'DRIVER' && user?.profile)) && canViewSensitiveInfo && (
@@ -543,32 +768,40 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                     </View>
                 )}
 
-            </ScrollView>
+            </Animated.ScrollView>
 
             {/* Avatar Modal */}
             <Modal
                 visible={showAvatarModal}
                 transparent={true}
                 animationType="fade"
-                onRequestClose={() => setShowAvatarModal(false)}
+                onRequestClose={closeAvatarModal}
             >
                 <SafeAreaView style={styles.modalBackground}>
-                    <View style={styles.modalHeader}>
-                        <TouchableOpacity
-                            style={styles.modalBackButton}
-                            onPress={() => setShowAvatarModal(false)}
-                        >
-                            <Text style={styles.modalBackIcon}>←</Text>
-                        </TouchableOpacity>
-                        <Text style={styles.modalTitle}>{displayName}</Text>
-                    </View>
+                    <View style={styles.modalContainer}>
+                        <View style={styles.modalHeader}>
+                            <TouchableOpacity
+                                style={styles.modalBackButton}
+                                onPress={closeAvatarModal}
+                            >
+                                <Text style={styles.modalBackIcon}>←</Text>
+                            </TouchableOpacity>
+                            <Text style={styles.modalTitle}>{displayName}</Text>
+                        </View>
 
-                    <View style={styles.modalContent}>
-                        <Image
-                            source={{ uri: avatarUri }}
-                            style={styles.fullSizeAvatar}
-                            resizeMode="contain"
-                        />
+                        <View style={styles.modalContent} {...panResponder.panHandlers}>
+                            <Animated.Image
+                                source={{ uri: avatarUri }}
+                                style={[
+                                    styles.fullSizeAvatar,
+                                    {
+                                        transform: [{ translateY }],
+                                        opacity: opacity,
+                                    },
+                                ]}
+                                resizeMode="contain"
+                            />
+                        </View>
                     </View>
                 </SafeAreaView>
             </Modal>
@@ -625,11 +858,21 @@ const styles = StyleSheet.create({
         color: '#000000',
         fontWeight: '400',
     },
+    headerTitleContainer: {
+        flex: 1,
+        marginLeft: 8,
+        justifyContent: 'center',
+    },
     headerTitle: {
-        fontSize: 20,
+        fontSize: 16,
         fontWeight: '500',
         color: '#000000',
-        flex: 1,
+        marginBottom: 2,
+    },
+    headerSubtitle: {
+        fontSize: 12,
+        color: '#666666',
+        fontWeight: '400',
     },
     headerActions: {
         flexDirection: 'row',
@@ -646,6 +889,9 @@ const styles = StyleSheet.create({
     content: {
         flex: 1,
         backgroundColor: '#FFFFFF',
+    },
+    scrollContent: {
+        paddingBottom: 120,
     },
 
     // Avatar Section
@@ -825,6 +1071,9 @@ const styles = StyleSheet.create({
     modalBackground: {
         flex: 1,
         backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    },
+    modalContainer: {
+        flex: 1,
     },
     modalHeader: {
         flexDirection: 'row',

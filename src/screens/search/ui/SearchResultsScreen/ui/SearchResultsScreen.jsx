@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
     StyleSheet,
-    SafeAreaView,
     FlatList,
     Dimensions,
     PixelRatio,
@@ -12,6 +11,7 @@ import {
     TouchableOpacity,
     ActivityIndicator
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -30,7 +30,9 @@ import {
 
 import {
     selectIsFilterActive,
-    selectFilteredProductsBySearch
+    selectFilterCriteria,
+    applyFiltersToProducts,
+    clearFilterCriteria
 } from '@entities/filter';
 
 import { addSearchQuery } from '@entities/search';
@@ -67,11 +69,30 @@ export const SearchResultsScreen = () => {
 
     const products = useSelector(selectProducts);
     const isFilterActive = useSelector(selectIsFilterActive);
+    const filterCriteria = useSelector(selectFilterCriteria);
     const isProductsLoading = useSelector(selectProductsLoading);
 
-    const filteredProducts = useSelector(state =>
-        selectFilteredProductsBySearch(state, searchText)
-    );
+    const filteredProducts = useMemo(() => {
+        let result = Array.isArray(products) ? [...products] : [];
+
+        if (isFilterActive && filterCriteria) {
+            result = applyFiltersToProducts(result, filterCriteria);
+        }
+
+        if (searchText && searchText.trim() !== '') {
+            const query = searchText.toLowerCase().trim();
+            result = result.filter(product =>
+                (product.name && product.name.toLowerCase().includes(query)) ||
+                (product.description && product.description.toLowerCase().includes(query)) ||
+                (product.categories && Array.isArray(product.categories) && product.categories.some(cat =>
+                    (typeof cat === 'object' && cat.name && cat.name.toLowerCase().includes(query)) ||
+                    (typeof cat === 'object' && cat.description && cat.description.toLowerCase().includes(query))
+                ))
+            );
+        }
+
+        return result;
+    }, [products, isFilterActive, filterCriteria, searchText]);
 
     useEffect(() => {
         if (!products?.length) {
@@ -102,7 +123,12 @@ export const SearchResultsScreen = () => {
     };
 
     const handleGoBack = () => {
-        navigation.goBack();
+        const searchStack = navigation.getParent?.('SearchStack');
+        if (searchStack?.navigate) {
+            searchStack.navigate('SearchMain');
+        } else {
+            navigation.navigate('SearchMain');
+        }
     };
 
     const handleOpenFilters = () => {
@@ -111,6 +137,11 @@ export const SearchResultsScreen = () => {
             fromScreen: 'SearchResults'
         });
     };
+
+    const handleResetFilters = useCallback(() => {
+        dispatch(clearFilterCriteria());
+        setForceUpdate(prev => prev + 1);
+    }, [dispatch]);
 
     const handleSubmitSearch = () => {
         if (searchText.trim()) {
@@ -138,8 +169,6 @@ export const SearchResultsScreen = () => {
     const renderItem = ({ item, index }) => {
         const isEven = index % 2 === 0;
         const marginRight = isEven ? GRID_SPACING : 0;
-
-        console.log('SearchResults: Rendering item with ID:', item?.id);
 
         return (
             <View style={[styles.itemContainer, { marginRight }]}>
@@ -172,7 +201,7 @@ export const SearchResultsScreen = () => {
                     start={{ x: 0, y: 0.5 }}
                     end={{ x: 1, y: 0.5 }}
                 >
-                    <SafeAreaView style={styles.safeAreaHeader}>
+                    <SafeAreaView style={styles.safeAreaHeader} edges={['left', 'right']}>
                         <View style={styles.header}>
                             <TouchableOpacity
                                 style={styles.backButton}
@@ -244,11 +273,7 @@ export const SearchResultsScreen = () => {
                                 {isFilterActive && (
                                     <TouchableOpacity
                                         style={styles.resetFiltersButton}
-                                        onPress={() => navigation.navigate('FilterScreen', {
-                                            searchQuery: searchText,
-                                            fromScreen: 'SearchResults',
-                                            resetFilters: true
-                                        })}
+                                        onPress={handleResetFilters}
                                     >
                                         <Text style={styles.resetFiltersText}>Сбросить фильтры</Text>
                                     </TouchableOpacity>
@@ -282,7 +307,7 @@ const styles = StyleSheet.create({
     },
     gradient: {
         width: '100%',
-        paddingBottom: normalize(10),
+        paddingBottom: normalize(24),
     },
     safeAreaHeader: {
         width: '100%',
@@ -291,7 +316,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingTop: Platform.OS === 'ios' ? normalize(15) : normalize(15),
+        paddingTop: normalize(8),
         paddingBottom: normalize(8),
         paddingHorizontal: normalize(16),
     },
@@ -307,11 +332,13 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(22),
         fontWeight: '700',
         color: '#000000',
+        flex: 1,
         textAlign: 'center',
     },
     filterButton: {
         padding: normalize(5),
-        width: normalize(30),
+        width: 50,
+        height: 50,
         alignItems: 'center',
         justifyContent: 'center',
         position: 'relative',
@@ -326,7 +353,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#6a3cf7',
     },
     searchBarContainer: {
-        paddingHorizontal: normalize(16),
+        paddingHorizontal: normalize(26),
         paddingVertical: normalize(10),
         justifyContent: 'center',
         alignItems: 'center',
@@ -339,7 +366,7 @@ const styles = StyleSheet.create({
         paddingTop: normalize(15),
     },
     listContent: {
-        paddingTop: normalize(10),
+        paddingTop: normalize(24),
         paddingBottom: normalize(20),
     },
     columnWrapper: {

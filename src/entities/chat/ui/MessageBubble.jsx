@@ -4,6 +4,7 @@ import {Ionicons} from '@expo/vector-icons';
 import {useSelector} from 'react-redux';
 import {ProductCard} from '@entities/product/ui/ProductCard';
 import {StopCard} from '@entities/stop/ui/StopCard';
+import {WarehouseCard} from '@entities/warehouse/ui/WarehouseCard';
 import {CachedVoice} from './CachedVoice';
 import {MessageErrorActions} from './MessageErrorActions';
 import {ReplyPreview} from './ReplyPreview';
@@ -12,6 +13,7 @@ import {getImageUrl} from '@shared/api/api';
 import {CachedImage} from './CachedImage/CachedImage';
 import ChatApi from '@entities/chat/api/chatApi';
 import {selectIsProductDeleted} from '@entities/product/model/selectors';
+import {PROCESSING_ROLE_LABELS} from '@entities/admin/lib/constants';
 
 // ============= ВСПОМОГАТЕЛЬНЫЕ КОМПОНЕНТЫ =============
 
@@ -718,73 +720,182 @@ const ImageMessage = ({
     senderNameColor = '#667781',
     onSenderNamePress = null,
     isForwarded = false
-}) => (
-    <>
-        <BubbleContainer
-            isOwn={isOwn}
-            time={time}
-            status={status}
-            avatarUri={avatarUri}
-            showAvatar={showAvatar}
-            text={caption || ''}
-            hasImage={true}
-            isSelectionMode={isSelectionMode}
-            isSelected={isSelected}
-            isHighlighted={isHighlighted}
-            isPressed={isPressed}
-            isContextMenuActive={isContextMenuActive}
-            hasContextMenu={hasContextMenu}
-            canDelete={canDelete}
-            onToggleSelection={onToggleSelection}
-            onLongPress={onLongPress}
-            onPress={onPress}
-            onAvatarPress={onAvatarPress}
-            replyTo={replyTo}
-            onReplyPress={onReplyPress}
-            onReply={onReply}
-            currentUserId={currentUserId}
-            showSenderName={showSenderName}
-            senderName={senderName}
-            senderId={senderId}
-            senderNameColor={senderNameColor}
-            onSenderNamePress={onSenderNamePress}
-            isForwarded={isForwarded}
-        >
-            <View style={styles.imageContainer}>
-                {attachments.map((attachment, index) => (
-                    <View key={attachment.id || index} style={styles.imageWrapper}>
-                        <TouchableOpacity
-                            onPress={() => onImagePress?.(attachment.path)}
-                            activeOpacity={0.8}
-                        >
-                            <CachedImage
-                                source={{uri: attachment.path}}
-                                style={styles.messageImage}
-                                resizeMode="cover"
-                            />
-                        </TouchableOpacity>
+}) => {
+    const imageCount = attachments.length;
+    
+    // Определяем размеры сетки в зависимости от количества изображений (максимум 4)
+    const getGridLayout = (count) => {
+        if (count === 1) return { rows: 1, cols: 1 };
+        if (count === 2) return { rows: 1, cols: 2 };
+        if (count === 3) return { rows: 2, cols: 2 }; // 2 вверху, 1 внизу
+        if (count >= 4) return { rows: 2, cols: 2 }; // Максимум 4 изображения в сетке
+        return { rows: 2, cols: 2 };
+    };
+    
+    const { rows, cols } = getGridLayout(imageCount);
+    const containerWidth = 250;
+    const gap = 2;
+    const imageSize = (containerWidth - (gap * (cols - 1))) / cols;
+    
+    // Функция для определения позиции изображения в сетке
+    const getImageStyle = (index) => {
+        const row = Math.floor(index / cols);
+        const col = index % cols;
+        const isFirstRow = row === 0;
+        const isLastRow = row === rows - 1;
+        const isFirstCol = col === 0;
+        const isLastCol = col === cols - 1;
+        
+        // Для 3 изображений: первое занимает 2 колонки вверху
+        if (imageCount === 3 && index === 0) {
+            return {
+                width: imageSize * 2 + gap,
+                height: imageSize,
+                marginRight: gap,
+                marginBottom: gap,
+                borderTopLeftRadius: 13,
+                borderTopRightRadius: 13,
+                borderBottomLeftRadius: 0,
+                borderBottomRightRadius: 0,
+            };
+        }
+        
+        // Для 3 изображений: второе и третье внизу
+        if (imageCount === 3 && index > 0) {
+            const borderRadius = {
+                borderTopLeftRadius: 0,
+                borderTopRightRadius: 0,
+                borderBottomLeftRadius: index === 1 ? 0 : 13,
+                borderBottomRightRadius: index === 2 ? 13 : 0,
+            };
+            return {
+                width: imageSize,
+                height: imageSize,
+                marginRight: index === 1 ? gap : 0,
+                marginBottom: 0,
+                ...borderRadius,
+            };
+        }
+        
+        // Для остальных случаев
+        const isLastInRow = isLastCol;
+        
+        // Определяем скругления углов
+        let borderRadius = {};
+        if (isFirstRow && isFirstCol) {
+            borderRadius.borderTopLeftRadius = 13;
+        }
+        if (isFirstRow && isLastCol) {
+            borderRadius.borderTopRightRadius = 13;
+        }
+        if (isLastRow && isFirstCol) {
+            borderRadius.borderBottomLeftRadius = 13;
+        }
+        if (isLastRow && isLastCol) {
+            borderRadius.borderBottomRightRadius = 13;
+        }
+        
+        return {
+            width: imageSize,
+            height: imageSize,
+            marginRight: isLastInRow ? 0 : gap,
+            marginBottom: isLastRow ? 0 : gap,
+            ...borderRadius,
+        };
+    };
+    
+    // Показываем счетчик для изображений больше 4
+    const remainingCount = imageCount > 4 ? imageCount - 4 : 0;
+    
+    return (
+        <>
+            <BubbleContainer
+                isOwn={isOwn}
+                time={time}
+                status={status}
+                avatarUri={avatarUri}
+                showAvatar={showAvatar}
+                text={caption || ''}
+                hasImage={true}
+                isSelectionMode={isSelectionMode}
+                isSelected={isSelected}
+                isHighlighted={isHighlighted}
+                isPressed={isPressed}
+                isContextMenuActive={isContextMenuActive}
+                hasContextMenu={hasContextMenu}
+                canDelete={canDelete}
+                onToggleSelection={onToggleSelection}
+                onLongPress={onLongPress}
+                onPress={onPress}
+                onAvatarPress={onAvatarPress}
+                replyTo={replyTo}
+                onReplyPress={onReplyPress}
+                onReply={onReply}
+                currentUserId={currentUserId}
+                showSenderName={showSenderName}
+                senderName={senderName}
+                senderId={senderId}
+                senderNameColor={senderNameColor}
+                onSenderNamePress={onSenderNamePress}
+                isForwarded={isForwarded}
+            >
+                <View style={styles.imageContainer}>
+                    <View style={styles.imageGrid}>
+                        {attachments.slice(0, 4).map((attachment, index) => {
+                            const imageStyle = getImageStyle(index);
+                            const { borderTopLeftRadius, borderTopRightRadius, borderBottomLeftRadius, borderBottomRightRadius, ...containerStyle } = imageStyle;
+                            return (
+                                <TouchableOpacity
+                                    key={attachment.id || index}
+                                    onPress={() => onImagePress?.(attachment.path)}
+                                    activeOpacity={0.8}
+                                    style={[styles.imageWrapper, containerStyle]}
+                                >
+                                    <CachedImage
+                                        source={{uri: attachment.path}}
+                                        style={[
+                                            styles.messageImage, 
+                                            { 
+                                                width: imageStyle.width, 
+                                                height: imageStyle.height,
+                                                borderTopLeftRadius: borderTopLeftRadius || 0,
+                                                borderTopRightRadius: borderTopRightRadius || 0,
+                                                borderBottomLeftRadius: borderBottomLeftRadius || 0,
+                                                borderBottomRightRadius: borderBottomRightRadius || 0,
+                                            }
+                                        ]}
+                                        resizeMode="cover"
+                                    />
+                                    {index === 3 && remainingCount > 0 && (
+                                        <View style={styles.imageOverlay}>
+                                            <Text style={styles.imageOverlayText}>+{remainingCount}</Text>
+                                        </View>
+                                    )}
+                                </TouchableOpacity>
+                            );
+                        })}
                     </View>
-                ))}
-                {caption && (
-                    <View style={styles.imageCaptionContainer}>
-                        <Text style={styles.messageText}>{caption}</Text>
-                    </View>
-                )}
-            </View>
-        </BubbleContainer>
-        {message?.reactions && message.reactions.length > 0 && (
-            <View style={[styles.reactionsWrapper, isOwn ? styles.reactionsWrapperOwn : styles.reactionsWrapperOther]}>
-                <MessageReactions
-                    reactions={message.reactions}
-                    currentUserId={currentUserId}
-                    messageId={message.id}
-                    onReactionPress={onAddReaction}
-                    onReactionLongPress={onAddReaction}
-                />
-            </View>
-        )}
-    </>
-);
+                    {caption && (
+                        <View style={styles.imageCaptionContainer}>
+                            <Text style={styles.messageText}>{caption}</Text>
+                        </View>
+                    )}
+                </View>
+            </BubbleContainer>
+            {message?.reactions && message.reactions.length > 0 && (
+                <View style={[styles.reactionsWrapper, isOwn ? styles.reactionsWrapperOwn : styles.reactionsWrapperOther]}>
+                    <MessageReactions
+                        reactions={message.reactions}
+                        currentUserId={currentUserId}
+                        messageId={message.id}
+                        onReactionPress={onAddReaction}
+                        onReactionLongPress={onAddReaction}
+                    />
+                </View>
+            )}
+        </>
+    );
+};
 
 const ProductMessage = memo(({
     product,
@@ -961,6 +1072,277 @@ const ProductMessage = memo(({
     );
 });
 
+const WarehouseMessage = ({
+    warehouse,
+    warehouseId,
+    isOwn,
+    time,
+    status,
+    onOpenWarehouse,
+    avatarUri,
+    showAvatar,
+    isSelectionMode,
+    isSelected,
+    isPressed = false,
+    isContextMenuActive,
+    hasContextMenu,
+    canDelete,
+    onToggleSelection,
+    onLongPress,
+    onPress,
+    onAvatarPress,
+    replyTo,
+    onReplyPress,
+    onReply,
+    currentUserId,
+    message,
+    onAddReaction,
+    showSenderName = false,
+    senderName = null,
+    senderId = null,
+    senderNameColor = '#667781',
+    onSenderNamePress = null,
+    isForwarded = false
+}) => {
+    // Преобразуем данные склада в нужный формат
+    const transformedWarehouse = {
+        id: warehouse.id || warehouseId || warehouse.warehouseId,
+        name: warehouse.name || 'Склад',
+        address: warehouse.address || '',
+        district: warehouse.district || null,
+        image: warehouse.image || null,
+        isActive: warehouse.isActive !== false,
+        maxDeliveryRadius: warehouse.maxDeliveryRadius,
+        latitude: warehouse.latitude,
+        longitude: warehouse.longitude,
+        workingHours: warehouse.workingHours || null,
+        autoManageStatus: warehouse.autoManageStatus || false
+    };
+
+    const finalWarehouseId = transformedWarehouse.id || warehouseId;
+
+    return (
+        <>
+            <BubbleContainer
+                isOwn={isOwn}
+                time={time}
+                status={status}
+                avatarUri={avatarUri}
+                showAvatar={showAvatar}
+                text={''}
+                hasImage={false}
+                isSelectionMode={isSelectionMode}
+                isSelected={isSelected}
+                isPressed={isPressed}
+                isContextMenuActive={isContextMenuActive}
+                canDelete={canDelete}
+                onToggleSelection={onToggleSelection}
+                onLongPress={onLongPress}
+                onPress={onPress}
+                onAvatarPress={onAvatarPress}
+                replyTo={replyTo}
+                onReplyPress={onReplyPress}
+                onReply={onReply}
+                currentUserId={currentUserId}
+                showSenderName={showSenderName}
+                senderName={senderName}
+                senderId={senderId}
+                senderNameColor={senderNameColor}
+                onSenderNamePress={onSenderNamePress}
+                isForwarded={isForwarded}
+            >
+                <View style={styles.warehouseCardContainer}>
+                    <WarehouseCard
+                        warehouse={transformedWarehouse}
+                        onPress={() => {
+                            console.log('🔵 WarehouseMessage: onPress called', {
+                                finalWarehouseId,
+                                hasOnOpenWarehouse: !!onOpenWarehouse,
+                                warehouse: transformedWarehouse
+                            });
+                            if (finalWarehouseId && onOpenWarehouse) {
+                                onOpenWarehouse(finalWarehouseId);
+                            } else {
+                                console.warn('⚠️ WarehouseMessage: Cannot navigate', {
+                                    hasId: !!finalWarehouseId,
+                                    hasHandler: !!onOpenWarehouse
+                                });
+                            }
+                        }}
+                        width={250}
+                        compact={true}
+                    />
+                </View>
+            </BubbleContainer>
+            {message?.reactions && message.reactions.length > 0 && (
+                <View style={[styles.reactionsWrapper, isOwn ? styles.reactionsWrapperOwn : styles.reactionsWrapperOther]}>
+                    <MessageReactions
+                        reactions={message.reactions}
+                        currentUserId={currentUserId}
+                        messageId={message.id}
+                        onReactionPress={onAddReaction}
+                        onReactionLongPress={onAddReaction}
+                    />
+                </View>
+            )}
+        </>
+    );
+};
+
+const ContactMessage = ({
+    contact,
+    contactUserId,
+    isOwn,
+    time,
+    status,
+    onOpenContact,
+    avatarUri,
+    showAvatar,
+    isSelectionMode,
+    isSelected,
+    isPressed = false,
+    isContextMenuActive,
+    hasContextMenu,
+    canDelete,
+    onToggleSelection,
+    onLongPress,
+    onPress,
+    onAvatarPress,
+    replyTo,
+    onReplyPress,
+    onReply,
+    currentUserId,
+    message,
+    onAddReaction,
+    showSenderName = false,
+    senderName = null,
+    senderId = null,
+    senderNameColor = '#667781',
+    onSenderNamePress = null,
+    isForwarded = false
+}) => {
+    // Получаем данные контакта
+    const contactData = contact || {};
+    const finalContactUserId = contactUserId || contactData.userId;
+    
+    // Получаем имя контакта
+    const contactName = contactData.name || 'Пользователь';
+    const contactRole = contactData.role || '';
+    const contactPhone = contactData.phone || '';
+    const contactEmail = contactData.email || '';
+    const contactAvatar = contactData.avatar || null;
+    
+    // Получаем отображаемое название роли
+    const getRoleDisplay = () => {
+        if (contactRole === 'SUPPLIER') return 'Поставщик';
+        if (contactRole === 'CLIENT') return 'Клиент';
+        if (contactRole === 'EMPLOYEE') {
+            // Для сотрудников показываем должность вместо "Сотрудник"
+            // Пробуем получить processingRole из разных источников
+            const processingRole = contactData.processingRole || 
+                                   contactData.employee?.processingRole || 
+                                   (message?.contactUser?.employee?.processingRole) ||
+                                   (message?.contact?.employee?.processingRole) ||
+                                   null;
+            
+            if (processingRole && PROCESSING_ROLE_LABELS[processingRole]) {
+                return PROCESSING_ROLE_LABELS[processingRole];
+            }
+            
+            // Fallback на "Сотрудник" если должность не определена
+            return 'Сотрудник';
+        }
+        if (contactRole === 'ADMIN') return 'Администратор';
+        if (contactRole === 'DRIVER') return 'Водитель';
+        return contactRole || '';
+    };
+    
+    const avatarUriFinal = contactAvatar ? getImageUrl(contactAvatar) : null;
+
+    return (
+        <>
+            <BubbleContainer
+                isOwn={isOwn}
+                time={time}
+                status={status}
+                avatarUri={avatarUri}
+                showAvatar={showAvatar}
+                text={''}
+                hasImage={false}
+                isSelectionMode={isSelectionMode}
+                isSelected={isSelected}
+                isPressed={isPressed}
+                isContextMenuActive={isContextMenuActive}
+                canDelete={canDelete}
+                onToggleSelection={onToggleSelection}
+                onLongPress={onLongPress}
+                onPress={onPress}
+                onAvatarPress={onAvatarPress}
+                replyTo={replyTo}
+                onReplyPress={onReplyPress}
+                onReply={onReply}
+                currentUserId={currentUserId}
+                showSenderName={showSenderName}
+                senderName={senderName}
+                senderId={senderId}
+                senderNameColor={senderNameColor}
+                onSenderNamePress={onSenderNamePress}
+                isForwarded={isForwarded}
+            >
+                <TouchableOpacity
+                    style={styles.contactCardContainer}
+                    onPress={() => {
+                        if (isSelectionMode && onToggleSelection) {
+                            onToggleSelection();
+                        } else if (finalContactUserId && onOpenContact) {
+                            onOpenContact(finalContactUserId);
+                        }
+                    }}
+                    activeOpacity={0.7}
+                    disabled={isSelectionMode}
+                >
+                    {avatarUriFinal ? (
+                        <Image source={{ uri: avatarUriFinal }} style={styles.contactAvatar} />
+                    ) : (
+                        <View style={styles.contactAvatarPlaceholder}>
+                            <Text style={styles.contactAvatarPlaceholderText}>👤</Text>
+                        </View>
+                    )}
+                    <View style={styles.contactInfo}>
+                        <Text style={styles.contactName}>{contactName}</Text>
+                        {contactRole && (
+                            <Text style={styles.contactRole}>{getRoleDisplay()}</Text>
+                        )}
+                        {contactPhone && (
+                            <View style={styles.contactDetailRow}>
+                                <Ionicons name="call-outline" size={14} color="#8696A0" />
+                                <Text style={styles.contactDetailText}>{contactPhone}</Text>
+                            </View>
+                        )}
+                        {contactEmail && (
+                            <View style={styles.contactDetailRow}>
+                                <Ionicons name="mail-outline" size={14} color="#8696A0" />
+                                <Text style={styles.contactDetailText}>{contactEmail}</Text>
+                            </View>
+                        )}
+                    </View>
+                </TouchableOpacity>
+            </BubbleContainer>
+            {message?.reactions && message.reactions.length > 0 && (
+                <View style={[styles.reactionsWrapper, isOwn ? styles.reactionsWrapperOwn : styles.reactionsWrapperOther]}>
+                    <MessageReactions
+                        reactions={message.reactions}
+                        currentUserId={currentUserId}
+                        messageId={message.id}
+                        onReactionPress={onAddReaction}
+                        onReactionLongPress={onAddReaction}
+                    />
+                </View>
+            )}
+        </>
+    );
+};
+
 const StopMessage = ({
     stop,
     stopId,
@@ -1088,6 +1470,8 @@ export const MessageBubble = memo(({
                                        currentUserId,
                                        onOpenProduct,
                                        onOpenStop,
+                                       onOpenWarehouse,
+                                       onOpenContact,
                                        onImagePress,
                                        showAvatar = true,
                                        incomingAvatarUri,
@@ -1672,6 +2056,245 @@ export const MessageBubble = memo(({
         );
     }
 
+    if (message.type === 'WAREHOUSE') {
+        // Получаем данные о складе из content (JSON строка)
+        let warehouseData = null;
+        let warehouseId = null;
+
+        try {
+            // Сначала пробуем получить из relation warehouse (приоритет)
+            if (message?.warehouse) {
+                warehouseData = message.warehouse;
+                warehouseId = warehouseData?.id || message?.warehouseId;
+            }
+            // Если не получилось, пробуем из content
+            else if (message?.content) {
+                warehouseData = JSON.parse(message.content);
+                warehouseId = warehouseData?.id || message?.warehouseId;
+            }
+        } catch (error) {
+            // Ошибка парсинга обрабатывается через fallback UI
+            return (
+                <BubbleContainer
+                    isOwn={isOwn}
+                    time={time}
+                    status={status}
+                    avatarUri={avatarUri}
+                    showAvatar={showAvatar}
+                    text={'Ошибка отображения склада'}
+                    hasImage={false}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={isSelected}
+                    isHighlighted={isHighlighted}
+                    isPressed={isPressed}
+                    isContextMenuActive={isContextMenuActive}
+                    canDelete={canDelete}
+                    onToggleSelection={onToggleSelection}
+                    onLongPress={onLongPress}
+                    onPress={onPress}
+                    onAvatarPress={onAvatarPress}
+                    replyTo={message.replyTo}
+                    onReplyPress={onReplyPress}
+                    onReply={() => onReply?.(message)}
+                    currentUserId={currentUserId}
+                >
+                    <Text style={styles.messageText}>Ошибка отображения склада</Text>
+                </BubbleContainer>
+            );
+        }
+
+        // Если данных о складе нет, показываем сообщение об ошибке
+        if (!warehouseData) {
+            return (
+                <BubbleContainer
+                    isOwn={isOwn}
+                    time={time}
+                    status={status}
+                    avatarUri={avatarUri}
+                    showAvatar={showAvatar}
+                    text={'Данные о складе не найдены'}
+                    hasImage={false}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={isSelected}
+                    isHighlighted={isHighlighted}
+                    isPressed={isPressed}
+                    isContextMenuActive={isContextMenuActive}
+                    canDelete={canDelete}
+                    onToggleSelection={onToggleSelection}
+                    onLongPress={onLongPress}
+                    onPress={onPress}
+                    onAvatarPress={onAvatarPress}
+                    replyTo={message.replyTo}
+                    onReplyPress={onReplyPress}
+                    onReply={() => onReply?.(message)}
+                    currentUserId={currentUserId}
+                >
+                    <Text style={styles.messageText}>Данные о складе не найдены</Text>
+                </BubbleContainer>
+            );
+        }
+
+        return (
+            <WarehouseMessage
+                warehouse={warehouseData}
+                warehouseId={warehouseId}
+                isOwn={isOwn}
+                time={time}
+                status={status}
+                onOpenWarehouse={onOpenWarehouse}
+                avatarUri={avatarUri}
+                showAvatar={showAvatar}
+                isSelectionMode={isSelectionMode}
+                isSelected={isSelected}
+                isPressed={isPressed}
+                isContextMenuActive={isContextMenuActive}
+                hasContextMenu={hasContextMenu}
+                canDelete={canDelete}
+                onToggleSelection={onToggleSelection}
+                onLongPress={onLongPress}
+                onPress={onPress}
+                onAvatarPress={onAvatarPress}
+                replyTo={message.replyTo}
+                onReplyPress={onReplyPress}
+                onReply={() => onReply?.(message)}
+                currentUserId={currentUserId}
+                message={message}
+                onAddReaction={onAddReaction}
+                onShowReactionPicker={onShowReactionPicker}
+                showSenderName={showSenderName}
+                senderName={senderName}
+                senderId={senderId}
+                senderNameColor={senderNameColor}
+                onSenderNamePress={onSenderNamePress}
+                isForwarded={isForwarded}
+            />
+        );
+    }
+
+    if (message.type === 'CONTACT') {
+        // Получаем данные о контакте из content (JSON строка)
+        let contactData = null;
+        let contactUserId = null;
+
+        try {
+            // Сначала пробуем получить из relation contact (приоритет)
+            if (message?.contact) {
+                contactData = message.contact;
+                contactUserId = contactData?.userId || message?.contactUserId;
+            }
+            // Если не получилось, пробуем из content
+            else if (message?.content) {
+                if (typeof message.content === 'string') {
+                    contactData = JSON.parse(message.content);
+                } else if (typeof message.content === 'object') {
+                    contactData = message.content;
+                }
+                contactUserId = contactData?.userId || message?.contactUserId;
+            }
+        } catch (error) {
+            // Ошибка парсинга обрабатывается через fallback UI
+            return (
+                <BubbleContainer
+                    isOwn={isOwn}
+                    time={time}
+                    status={status}
+                    avatarUri={avatarUri}
+                    showAvatar={showAvatar}
+                    text={'Ошибка отображения контакта'}
+                    hasImage={false}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={isSelected}
+                    isHighlighted={isHighlighted}
+                    isPressed={isPressed}
+                    isContextMenuActive={isContextMenuActive}
+                    canDelete={canDelete}
+                    onToggleSelection={onToggleSelection}
+                    onLongPress={onLongPress}
+                    onPress={onPress}
+                    onAvatarPress={onAvatarPress}
+                    replyTo={message.replyTo}
+                    onReplyPress={onReplyPress}
+                    onReply={() => onReply?.(message)}
+                    currentUserId={currentUserId}
+                >
+                    <Text style={styles.messageText}>Ошибка отображения контакта</Text>
+                </BubbleContainer>
+            );
+        }
+
+        // Fallback: если есть relation contactUser, используем его
+        if (contactData && !contactData.avatar && message?.contactUser?.avatar) {
+            contactData.avatar = message.contactUser.avatar;
+        }
+
+        // Если данных о контакте нет, показываем сообщение об ошибке
+        if (!contactData) {
+            return (
+                <BubbleContainer
+                    isOwn={isOwn}
+                    time={time}
+                    status={status}
+                    avatarUri={avatarUri}
+                    showAvatar={showAvatar}
+                    text={'Данные о контакте не найдены'}
+                    hasImage={false}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={isSelected}
+                    isHighlighted={isHighlighted}
+                    isPressed={isPressed}
+                    isContextMenuActive={isContextMenuActive}
+                    canDelete={canDelete}
+                    onToggleSelection={onToggleSelection}
+                    onLongPress={onLongPress}
+                    onPress={onPress}
+                    onAvatarPress={onAvatarPress}
+                    replyTo={message.replyTo}
+                    onReplyPress={onReplyPress}
+                    onReply={() => onReply?.(message)}
+                    currentUserId={currentUserId}
+                >
+                    <Text style={styles.messageText}>Данные о контакте не найдены</Text>
+                </BubbleContainer>
+            );
+        }
+
+        return (
+            <ContactMessage
+                contact={contactData}
+                contactUserId={contactUserId}
+                isOwn={isOwn}
+                time={time}
+                status={status}
+                onOpenContact={onOpenContact}
+                avatarUri={avatarUri}
+                showAvatar={showAvatar}
+                isSelectionMode={isSelectionMode}
+                isSelected={isSelected}
+                isPressed={isPressed}
+                isContextMenuActive={isContextMenuActive}
+                hasContextMenu={hasContextMenu}
+                canDelete={canDelete}
+                onToggleSelection={onToggleSelection}
+                onLongPress={onLongPress}
+                onPress={onPress}
+                onAvatarPress={onAvatarPress}
+                replyTo={message.replyTo}
+                onReplyPress={onReplyPress}
+                onReply={() => onReply?.(message)}
+                currentUserId={currentUserId}
+                message={message}
+                onAddReaction={onAddReaction}
+                onShowReactionPicker={onShowReactionPicker}
+                showSenderName={showSenderName}
+                senderName={senderName}
+                senderId={senderId}
+                senderNameColor={senderNameColor}
+                onSenderNamePress={onSenderNamePress}
+                isForwarded={isForwarded}
+            />
+        );
+    }
+
     return (
         <TextMessage
             text={message?.content || ''}
@@ -2129,19 +2752,37 @@ const styles = StyleSheet.create({
 
     // Изображения
     imageContainer: {
-        overflow: 'visible',
+        overflow: 'hidden',
         borderRadius: 13,
         minWidth: 180,
+        maxWidth: 250,
+    },
+    imageGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        width: 250,
     },
     imageWrapper: {
         position: 'relative',
-        marginBottom: 0,
+        overflow: 'hidden',
     },
     messageImage: {
-        width: 250,
-        height: 250,
         backgroundColor: '#F0F0F0',
-        borderRadius: 13,
+    },
+    imageOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    imageOverlayText: {
+        color: '#FFFFFF',
+        fontSize: 24,
+        fontWeight: 'bold',
     },
     imageCaptionContainer: {
         padding: 8,
@@ -2190,6 +2831,61 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         width: 250,
+    },
+    warehouseCardContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 250,
+    },
+    contactCardContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 12,
+        backgroundColor: '#F5F5F5',
+        borderRadius: 12,
+        width: 250,
+    },
+    contactAvatar: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: '#E0E0E0',
+    },
+    contactAvatarPlaceholder: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: '#E0E0E0',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    contactAvatarPlaceholderText: {
+        fontSize: 24,
+    },
+    contactInfo: {
+        flex: 1,
+        marginLeft: 12,
+    },
+    contactName: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#000',
+        marginBottom: 2,
+    },
+    contactRole: {
+        fontSize: 14,
+        color: '#8696A0',
+        marginBottom: 6,
+    },
+    contactDetailRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 4,
+    },
+    contactDetailText: {
+        fontSize: 13,
+        color: '#8696A0',
+        marginLeft: 6,
     },
     reactionsWrapper: {
         marginTop: -6, // Поднимаем реакции чтобы они заходили на пузырек

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
     View,
     Text,
@@ -10,6 +10,11 @@ import {
     ActivityIndicator,
     TextInput,
     Keyboard,
+    Platform,
+    KeyboardAvoidingView,
+    Dimensions,
+    PanResponder,
+    Animated,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -20,6 +25,7 @@ import { getImageUrl } from '@shared/api/api';
 import { useToast } from '@shared/ui/Toast';
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 import ChatApi from '@entities/chat/api/chatApi';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
     const dispatch = useDispatch();
@@ -28,18 +34,157 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
     const currentUserRole = useSelector((s) => s.auth?.user?.role);
     const { showSuccess } = useToast();
     const { showAlert, showError: showErrorAlert } = useCustomAlert();
+    const insets = useSafeAreaInsets();
     const [sending, setSending] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState([]);
     const [searching, setSearching] = useState(false);
+    const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
+    const translateY = useRef(new Animated.Value(0)).current;
+    const currentTranslateY = useRef(0);
+    const screenHeight = Dimensions.get('window').height;
+    const collapsedHeight = Math.round(screenHeight * 0.5);
+    const expandedHeight = Math.round(Math.min(screenHeight - insets.top, screenHeight * 0.92));
+    const collapsedTranslateY = Math.max(0, expandedHeight - collapsedHeight);
+    const closeTranslateY = screenHeight;
 
     useEffect(() => {
         if (visible) {
+            translateY.setValue(closeTranslateY);
+            currentTranslateY.current = closeTranslateY;
+            Animated.timing(translateY, {
+                toValue: collapsedTranslateY,
+                duration: 220,
+                useNativeDriver: true
+            }).start(() => {
+                currentTranslateY.current = collapsedTranslateY;
+            });
             dispatch(fetchRooms({ page: 1, limit: 100 }));
             setSearchQuery('');
             setSearchResults([]);
         }
     }, [visible, dispatch]);
+
+    useEffect(() => {
+        const keyboardWillShow = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+            (event) => {
+                setIsKeyboardVisible(true);
+                setKeyboardHeight(event?.endCoordinates?.height || 0);
+                Animated.timing(translateY, {
+                    toValue: 0,
+                    duration: 200,
+                    useNativeDriver: true
+                }).start(() => {
+                    currentTranslateY.current = 0;
+                });
+            }
+        );
+        const keyboardWillHide = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+            () => {
+                setIsKeyboardVisible(false);
+                setKeyboardHeight(0);
+                Animated.timing(translateY, {
+                    toValue: collapsedTranslateY,
+                    duration: 200,
+                    useNativeDriver: true
+                }).start(() => {
+                    currentTranslateY.current = collapsedTranslateY;
+                });
+            }
+        );
+
+        return () => {
+            keyboardWillShow.remove();
+            keyboardWillHide.remove();
+        };
+    }, [collapsedTranslateY, translateY]);
+
+    const modalHeightRef = useRef(expandedHeight);
+
+    useEffect(() => {
+        const availableHeight = Math.max(0, screenHeight - keyboardHeight - insets.top);
+        const height = isKeyboardVisible ? Math.min(expandedHeight, availableHeight) : expandedHeight;
+        modalHeightRef.current = height;
+    }, [screenHeight, keyboardHeight, insets.top, expandedHeight, isKeyboardVisible]);
+
+    const isDragArea = useCallback((y0) => {
+        const modalTop = screenHeight - modalHeightRef.current + currentTranslateY.current;
+        return y0 <= modalTop + 140;
+    }, [screenHeight]);
+
+    const panResponder = useRef(
+        PanResponder.create({
+            onStartShouldSetPanResponder: (_, gestureState) => {
+                if (isKeyboardVisible) return false;
+                return isDragArea(gestureState.y0);
+            },
+            onMoveShouldSetPanResponder: (_, gestureState) => {
+                if (isKeyboardVisible) return false;
+                return isDragArea(gestureState.y0) &&
+                    Math.abs(gestureState.dy) > 6 &&
+                    Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+            },
+            onMoveShouldSetPanResponderCapture: (_, gestureState) => {
+                if (isKeyboardVisible) return false;
+                return isDragArea(gestureState.y0) &&
+                    Math.abs(gestureState.dy) > 6 &&
+                    Math.abs(gestureState.dy) > Math.abs(gestureState.dx);
+            },
+            onPanResponderTerminationRequest: () => false,
+            onPanResponderGrant: () => {
+                translateY.stopAnimation((value) => {
+                    currentTranslateY.current = value;
+                });
+            },
+            onPanResponderMove: (_, gestureState) => {
+                const nextTranslateY = Math.min(
+                    Math.max(currentTranslateY.current + gestureState.dy, 0),
+                    closeTranslateY
+                );
+                translateY.setValue(nextTranslateY);
+            },
+            onPanResponderRelease: (_, gestureState) => {
+                const nextValue = currentTranslateY.current + gestureState.dy;
+                const shouldClose = nextValue > collapsedTranslateY + 60 || gestureState.vy > 1.2;
+                const shouldExpand = nextValue < collapsedTranslateY / 2 || gestureState.vy < -0.8;
+
+                if (shouldClose) {
+                    Animated.timing(translateY, {
+                        toValue: closeTranslateY,
+                        duration: 200,
+                        useNativeDriver: true
+                    }).start(() => {
+                        currentTranslateY.current = closeTranslateY;
+                        onClose();
+                    });
+                    return;
+                }
+
+                if (shouldExpand) {
+                    Animated.timing(translateY, {
+                        toValue: 0,
+                        duration: 200,
+                        useNativeDriver: true
+                    }).start(() => {
+                        currentTranslateY.current = 0;
+                    });
+                    return;
+                }
+
+                const snapTo = nextValue > collapsedTranslateY / 2 ? collapsedTranslateY : 0;
+                Animated.timing(translateY, {
+                    toValue: snapTo,
+                    duration: 200,
+                    useNativeDriver: true
+                }).start(() => {
+                    currentTranslateY.current = snapTo;
+                });
+            }
+        })
+    ).current;
 
     // Поиск пользователей
     useEffect(() => {
@@ -522,15 +667,45 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
         );
     }, [getUserDisplayName, getUserAvatar, handleUserPress, sending]);
 
+    const availableHeight = Math.max(
+        0,
+        screenHeight - keyboardHeight - insets.top
+    );
+    const modalHeight = isKeyboardVisible
+        ? Math.min(expandedHeight, availableHeight)
+        : expandedHeight;
+
     return (
         <Modal
             visible={visible}
-            animationType="slide"
+            animationType="none"
             transparent={true}
             onRequestClose={onClose}
         >
-            <View style={styles.modalOverlay}>
-                <View style={styles.modalContent}>
+            <KeyboardAvoidingView
+                style={styles.modalOverlay}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={0}
+            >
+                <TouchableOpacity
+                    style={styles.backdropTouchable}
+                    activeOpacity={1}
+                    onPress={onClose}
+                    disabled={sending}
+                />
+                <Animated.View
+                    style={[
+                        styles.modalContent,
+                        {
+                            height: modalHeight,
+                            transform: [{ translateY }]
+                        }
+                    ]}
+                    {...panResponder.panHandlers}
+                >
+                    <View style={styles.dragHandleContainer}>
+                        <View style={styles.dragHandle} />
+                    </View>
                     <View style={styles.modalHeader}>
                         <Text style={styles.modalTitle}>Поделиться остановкой</Text>
                         <TouchableOpacity onPress={onClose} disabled={sending}>
@@ -608,8 +783,8 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
                             }
                         />
                     )}
-                </View>
-            </View>
+                </Animated.View>
+            </KeyboardAvoidingView>
         </Modal>
     );
 };
@@ -620,12 +795,29 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0, 0, 0, 0.5)',
         justifyContent: 'flex-end',
     },
+    backdropTouchable: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+    },
     modalContent: {
         backgroundColor: Color.colorLightMode,
         borderTopLeftRadius: Border.br_xl,
         borderTopRightRadius: Border.br_xl,
-        maxHeight: '80%',
         paddingBottom: 20,
+    },
+    dragHandleContainer: {
+        paddingTop: 8,
+        paddingBottom: 6,
+        alignItems: 'center',
+    },
+    dragHandle: {
+        width: 44,
+        height: 5,
+        borderRadius: 3,
+        backgroundColor: '#D8D8D8',
     },
     modalHeader: {
         flexDirection: 'row',

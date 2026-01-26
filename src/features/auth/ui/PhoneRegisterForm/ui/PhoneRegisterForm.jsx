@@ -406,11 +406,8 @@ export const PhoneRegisterForm = ({ onVerification }) => {
             
             console.log('Результат initiatePhoneRegister:', result);
             const tempToken = result?.registrationToken || null;
-            const receiveCall = result?.receiveCall || null; // Данные для Receive Call
-            
             if (tempToken) {
-                // Передаем receiveCall если он есть, иначе передаем тип 'phone'
-                onVerification(tempToken, receiveCall || 'phone');
+                onVerification(tempToken);
             }
         } catch (error) {
             console.error('Ошибка регистрации по телефону:', error);
@@ -436,7 +433,7 @@ export const PhoneRegisterForm = ({ onVerification }) => {
     return (
         <View style={styles.formContainer}>
             <Text style={styles.infoText}>
-                📱 Вы получите номер для звонка
+                📱 Мы отправим SMS с кодом подтверждения
             </Text>
 
             <View style={styles.inputsContainer}>

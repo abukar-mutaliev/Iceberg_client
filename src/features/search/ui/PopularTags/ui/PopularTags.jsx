@@ -103,6 +103,8 @@ const styles = StyleSheet.create({
         marginVertical: normalize(5),
         marginHorizontal: normalize(5),
         position: "relative",
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     tagText: {
         color: Color.colorLightMode,
@@ -110,10 +112,6 @@ const styles = StyleSheet.create({
         fontWeight: "500",
         textAlign: "center",
         fontFamily: FontFamily.sFProText,
-        position: "absolute",
-        top: 20, // Исправлено с "50%" на числовое значение (50% от высоты 40px)
-        marginTop: normalize(-10),
-        left: normalize(10),
-        right: normalize(10),
+        paddingHorizontal: normalize(10),
     }
 });

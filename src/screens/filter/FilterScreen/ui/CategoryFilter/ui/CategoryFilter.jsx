@@ -8,9 +8,9 @@ import {
     PixelRatio,
     Modal,
     TextInput,
-    SafeAreaView,
     Platform
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronRight } from 'lucide-react-native';
 import { FontFamily, Color } from '@app/styles/GlobalStyles';
 import { useEffect, useState } from "react";

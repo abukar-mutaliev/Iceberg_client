@@ -6,14 +6,13 @@ import {
     ActivityIndicator,
     Platform,
     StyleSheet,
-    Animated,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { initiatePasswordReset, clearError, clearPasswordReset } from '@entities/auth';
 import { CustomTextInput } from '@shared/ui/CustomTextInput/CustomTextInput';
 import { normalize, normalizeFont } from "@shared/lib/normalize";
 
-export const ForgotPasswordForm = ({ onCodeSent }) => {
+export const ForgotPasswordForm = ({ onCodeSent, resetToken, onUseExistingCode }) => {
     const dispatch = useDispatch();
     const isLoading = useSelector((state) => state.auth?.isLoading ?? false);
     const error = useSelector((state) => state.auth?.error);
@@ -46,8 +45,10 @@ export const ForgotPasswordForm = ({ onCodeSent }) => {
 
         if (lowerCaseError.includes('email') || 
             lowerCaseError.includes('почт') ||
+            lowerCaseError.includes('телефон') ||
+            lowerCaseError.includes('phone') ||
             lowerCaseError.includes('не найден')) {
-            setIdentifierError('Пользователь с таким email не найден');
+            setIdentifierError('Пользователь с такими данными не найден');
             setFormError('');
         } else {
             setFormError(errorMessage);
@@ -59,12 +60,13 @@ export const ForgotPasswordForm = ({ onCodeSent }) => {
         let isValid = true;
 
         if (!identifier) {
-            setIdentifierError('Пожалуйста, введите email');
+            setIdentifierError('Пожалуйста, введите email или номер телефона');
             isValid = false;
         } else {
             const isEmail = /\S+@\S+\.\S+/.test(identifier);
-            if (!isEmail) {
-                setIdentifierError('Пожалуйста, введите корректный email');
+            const isPhone = /^[+8]?\d[\d\s\-()]+$/.test(identifier);
+            if (!isEmail && !isPhone) {
+                setIdentifierError('Введите корректный email или номер телефона');
                 isValid = false;
             }
         }
@@ -90,12 +92,12 @@ export const ForgotPasswordForm = ({ onCodeSent }) => {
             
             if (result.resetToken) {
                 // Переходим к форме ввода кода
-                onCodeSent(result.resetToken, result.receiveCall || null);
+                onCodeSent(result.resetToken);
             }
         } catch (err) {
             // Ошибки обрабатываются через Redux state
             if (typeof err === 'string') {
-                if (err.toLowerCase().includes('email') || err.toLowerCase().includes('почта')) {
+                if (err.toLowerCase().includes('email') || err.toLowerCase().includes('почта') || err.toLowerCase().includes('телефон')) {
                     setIdentifierError(err);
                 } else {
                     setFormError(err);
@@ -114,20 +116,20 @@ export const ForgotPasswordForm = ({ onCodeSent }) => {
         <View style={styles.formContainer}>
             <Text style={styles.title}>Восстановление пароля</Text>
             <Text style={styles.description}>
-                Введите email, который вы использовали при регистрации. 
-                Мы отправим вам код подтверждения для сброса пароля.
+                Введите email или номер телефона, указанный при регистрации.
+                Мы отправим код подтверждения для сброса пароля.
             </Text>
 
             <View style={styles.inputsContainer}>
                 <View style={styles.inputContainer}>
-                    <Text style={styles.inputLabel}>Email</Text>
+                    <Text style={styles.inputLabel}>Email или телефон</Text>
                     <CustomTextInput
                         style={styles.input}
                         value={identifier}
                         onChangeText={handleIdentifierChange}
-                        keyboardType="email-address"
+                        keyboardType="default"
                         autoCapitalize="none"
-                        placeholder="email@example.com"
+                        placeholder="email@example.com или +7 (999) 123-45-67"
                         editable={!isLoading}
                     />
                     <View style={[
@@ -158,6 +160,16 @@ export const ForgotPasswordForm = ({ onCodeSent }) => {
                     <Text style={styles.buttonText}>Отправить код</Text>
                 )}
             </TouchableOpacity>
+
+            {resetToken && (
+                <TouchableOpacity
+                    style={styles.secondaryButton}
+                    onPress={onUseExistingCode}
+                    disabled={isLoading}
+                >
+                    <Text style={styles.secondaryButtonText}>У меня уже есть код</Text>
+                </TouchableOpacity>
+            )}
         </View>
     );
 };
@@ -261,5 +273,15 @@ const styles = StyleSheet.create({
         textTransform: 'uppercase',
         color: '#fff',
         lineHeight: normalize(30),
+    },
+    secondaryButton: {
+        marginTop: normalize(12),
+        alignItems: 'center',
+    },
+    secondaryButtonText: {
+        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+        fontSize: normalizeFont(14),
+        fontWeight: '600',
+        color: '#3339b0',
     },
 });

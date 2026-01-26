@@ -41,24 +41,22 @@ export const useChatLifecycle = ({
   const { emitActiveRoom } = useChatSocketActions();
   const appStateRef = useRef(AppState.currentState);
   const typingIndicatorHeight = useTypingIndicatorHeight(roomId);
-  const isMountedRef = useRef(true);
   
   // Монтирование/размонтирование
   useEffect(() => {
-    isMountedRef.current = true;
     hideTabBar();
     
     return () => {
-      isMountedRef.current = false;
+      showTabBar();
     };
-  }, [hideTabBar]);
+  }, [hideTabBar, showTabBar]);
   
   // TabBar visibility
   useFocusEffect(
     useCallback(() => {
       hideTabBar();
       return () => {
-        if (isMountedRef.current) showTabBar();
+        showTabBar();
       };
     }, [hideTabBar, showTabBar])
   );
@@ -116,7 +114,23 @@ export const useChatLifecycle = ({
     
     dispatch(setActiveRoom(roomId));
     emitActiveRoom?.(roomId);
-    dispatch(fetchRoom(roomId));
+    
+    // КРИТИЧНО: Обрабатываем ошибку 404 при загрузке комнаты
+    // Если комната удалена другим участником, она будет удалена из списка через fetchRoom.rejected
+    dispatch(fetchRoom(roomId)).then((result) => {
+      // Если комната не найдена (404), она уже обработана в fetchRoom.rejected
+      // и помечена как удаленная, что вызовет isRoomDeleted и вернет на список чатов
+      if (result.type.endsWith('/rejected')) {
+        const payload = result.payload;
+        if (payload?.isNotFound && payload?.roomId) {
+          if (__DEV__) {
+            console.log('[useChatLifecycle] ⚠️ Room not found (404), will be removed from list', { roomId });
+          }
+        }
+      }
+    }).catch(() => {
+      // Игнорируем ошибки - они обрабатываются в fetchRoom.rejected
+    });
 
     let markAsReadTimeout;
     const unsubscribe = navigation.addListener('focus', () => {

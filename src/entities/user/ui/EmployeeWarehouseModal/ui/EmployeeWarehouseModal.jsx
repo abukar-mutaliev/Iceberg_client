@@ -7,9 +7,8 @@ import {
     TouchableOpacity,
     FlatList,
     ActivityIndicator,
-    Alert,
-    SafeAreaView
-} from 'react-native';
+    Alert} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
 import WarehouseService from '@entities/warehouse/api/warehouseApi';

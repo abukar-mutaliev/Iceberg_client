@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo, useCallback, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Dimensions, Keyboard, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
@@ -19,11 +19,43 @@ import { useTabBar } from '../../context';
 
 const { width } = Dimensions.get('window');
 
+const TABS_HIDE_ON_KEYBOARD = new Set(['Search', 'ProfileTab']);
+
+const useKeyboardVisibility = () => {
+    const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+    useEffect(() => {
+        const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+        const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+        const keyboardWillShow = Keyboard.addListener(showEvent, () => {
+            setIsKeyboardVisible(true);
+        });
+
+        const keyboardWillHide = Keyboard.addListener(hideEvent, () => {
+            setIsKeyboardVisible(false);
+        });
+
+        return () => {
+            keyboardWillShow.remove();
+            keyboardWillHide.remove();
+        };
+    }, []);
+
+    return isKeyboardVisible;
+};
+
 export const CustomTabBar = ({ state, descriptors, navigation }) => {
     const insets = useSafeAreaInsets();
+    const tabBarHeight = 80 + insets.bottom;
     const { isCartAvailable } = useCartAvailability();
     const { currentUser } = useAuth();
     const { hideTabBar, showTabBar, isTabBarVisible } = useTabBar();
+    const isKeyboardVisible = useKeyboardVisibility();
+    const getCurrentTab = useCallback(
+        () => state.routes[state.index]?.name,
+        [state.index, state.routes]
+    );
     
     // Логируем изменения активного таба
     const prevIndexRef = useRef(state.index);
@@ -36,50 +68,37 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
                 to: currentRoute,
                 timestamp: new Date().toISOString()
             });
+            // Сбрасываем блокировку после реальной смены вкладки
+            isNavigating.current = false;
+            lastPressTime.current = 0;
             prevIndexRef.current = state.index;
         }
     }, [state.index, state.routes]);
     
-    // Отслеживаем состояние клавиатуры
+    // Управляем видимостью таббара при смене таба и состояния клавиатуры.
+    // Это защищает от ситуации, когда клавиатура спрятала таббар,
+    // а при смене таба событие keyboardWillHide не пришло (iOS).
     useEffect(() => {
-        const keyboardWillShow = Keyboard.addListener(
-            Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-            (e) => {
-                // НЕ скрываем таббар глобально во всём приложении.
-                // В чатах мы скрываем таббар на уровне экранов (useFocusEffect),
-                // а здесь оставляем безопасное поведение только для Search/Auth.
-                const currentTab = state.routes[state.index]?.name;
-                const shouldHide = currentTab === 'Search' || currentTab === 'ProfileTab';
-                if (shouldHide) {
-                    if (__DEV__) {
-                        console.log('⌨️ Keyboard shown: hiding TabBar', { currentTab });
-                    }
-                    hideTabBar();
-                }
-            }
-        );
+        const currentTab = getCurrentTab();
+        const shouldHideForKeyboard = TABS_HIDE_ON_KEYBOARD.has(currentTab);
 
-        const keyboardWillHide = Keyboard.addListener(
-            Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-            () => {
-                if (__DEV__) {
-                    console.log('⌨️ Keyboard hidden, current visibility:', isTabBarVisible);
-                }
-                // Показываем таббар только если мы в табах Search или ProfileTab
-                // В чатах таббар управляется через useFocusEffect в экранах чата
-                const currentTab = state.routes[state.index]?.name;
-                const shouldShow = currentTab === 'Search' || currentTab === 'ProfileTab';
-                if (shouldShow) {
-                    showTabBar();
-                }
+        if (isKeyboardVisible && shouldHideForKeyboard) {
+            if (__DEV__) {
+                console.log('⌨️ Keyboard visible: hiding TabBar', { currentTab });
             }
-        );
+            hideTabBar();
+            return;
+        }
 
-        return () => {
-            keyboardWillShow.remove();
-            keyboardWillHide.remove();
-        };
-    }, [hideTabBar, showTabBar, isTabBarVisible, state.index, state.routes]);
+        if (!shouldHideForKeyboard) {
+            showTabBar();
+            return;
+        }
+
+        if (!isKeyboardVisible) {
+            showTabBar();
+        }
+    }, [getCurrentTab, hideTabBar, isKeyboardVisible, showTabBar]);
     
     // Получаем ID поставщика, если пользователь является поставщиком
     const supplierId = currentUser?.supplier?.id;
@@ -233,7 +252,13 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
     }
 
     return (
-        <View style={[styles.menuDoneWithBack, { paddingBottom: insets.bottom }]}>
+        <View
+            pointerEvents="auto"
+            style={[
+                styles.menuDoneWithBack,
+                { paddingBottom: insets.bottom, height: tabBarHeight }
+            ]}
+        >
             <View style={styles.iconMenuHomeParent}>
                 {visibleRoutes.map((route, visibleIndex) => {
                     const actualIndex = state.routes.findIndex(r => r.key === route.key);
@@ -304,7 +329,11 @@ const styles = StyleSheet.create({
         shadowColor: '#000',
         shadowOffset: { width: 0, height: -2 },
         elevation: 8,
-        position: 'relative',
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 999,
     },
     iconMenuHomeParent: {
         flexDirection: "row",

@@ -9,7 +9,6 @@ export const LoadingState = () => {
 
     return (
         <View style={styles.fullScreenContainer}>
-            <ScrollableBackgroundGradient />
             <View style={styles.loaderContainer}>
                 <ActivityIndicator size="large" color={colors.primary} />
             </View>

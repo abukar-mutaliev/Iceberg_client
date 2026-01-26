@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, SafeAreaView, Alert, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, Alert, Dimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import UniversalMapView, { Marker } from '@shared/ui/Map/UniversalMapView';
 import { PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';

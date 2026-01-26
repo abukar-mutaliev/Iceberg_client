@@ -11,10 +11,10 @@ import {
     Pressable,
     Animated,
     RefreshControl,
-    SafeAreaView,
     ImageBackground,
     Platform
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { LinearGradient } from 'expo-linear-gradient'; // или react-native-linear-gradient
 import { BlurView } from 'expo-blur';
@@ -36,7 +36,6 @@ try {
 
     ProductCard = require('@entities/product/ui/ProductCard').ProductCard;
 } catch (error) {
-    console.warn('ProductsByCategory: Проблема с импортами, используем fallback');
     selectProductsByCategory = () => [];
     selectProductsByCategoryLoading = () => false;
     selectProductsByCategoryError = () => null;
@@ -154,7 +153,7 @@ const LoadingComponent = () => {
 };
 
 // Компонент пустого состояния
-const EmptyStateComponent = ({ categoryName, onRetry, navigation }) => {
+const EmptyStateComponent = ({ categoryName, onRetry, navigation, bottomInset = 0 }) => {
     const fadeAnim = new Animated.Value(0);
     const slideAnim = new Animated.Value(30);
 
@@ -180,6 +179,7 @@ const EmptyStateComponent = ({ categoryName, onRetry, navigation }) => {
                 {
                     opacity: fadeAnim,
                     transform: [{ translateY: slideAnim }],
+                    paddingBottom: bottomInset
                 }
             ]}
         >
@@ -444,25 +444,14 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
     const { categoryId, categoryName } = route.params || {};
     const dispatch = useDispatch();
     const [refreshing, setRefreshing] = useState(false);
+    const insets = useSafeAreaInsets();
 
     const products = useSelector((state) => selectProductsByCategory(state, categoryId));
     const isLoading = useSelector(selectProductsByCategoryLoading);
     const error = useSelector(selectProductsByCategoryError);
 
-    // Логирование для отладки
-    useEffect(() => {
-        console.log('ProductsByCategory: Состояние:', {
-            categoryId,
-            productsCount: Array.isArray(products) ? products.length : 0,
-            isLoading,
-            refreshing,
-            error: error ? String(error).substring(0, 50) : null
-        });
-    }, [categoryId, products, isLoading, refreshing, error]);
-
     useEffect(() => {
         if (categoryId && dispatch && fetchProductsByCategory) {
-            console.log('ProductsByCategory: Загружаем продукты для категории:', categoryId);
             dispatch(fetchProductsByCategory({ categoryId, params: {} }));
         }
     }, [dispatch, categoryId]);
@@ -497,20 +486,16 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
             return;
         }
         
-        console.log('ProductsByCategory: Начало обновления, текущее количество товаров:', Array.isArray(products) ? products.length : 0);
-        
         setRefreshing(true);
         try {
             // Ждем завершения загрузки перед сбросом refreshing
             const result = await dispatch(fetchProductsByCategory({ categoryId, params: {}, refresh: true })).unwrap();
-            console.log('ProductsByCategory: Обновление завершено, получено товаров:', result?.products?.length || 0);
         } catch (error) {
             console.error('ProductsByCategory: Ошибка при обновлении:', error);
             // Даже при ошибке сбрасываем refreshing, чтобы пользователь мог попробовать снова
         } finally {
             // Сбрасываем refreshing только после завершения загрузки
             setRefreshing(false);
-            console.log('ProductsByCategory: Обновление завершено, refreshing = false');
         }
     }, [dispatch, categoryId, products]);
 
@@ -524,14 +509,6 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
 
     const content = useMemo(() => {
         const hasProducts = Array.isArray(products) && products.length > 0;
-        
-        console.log('ProductsByCategory: Рендер контента:', {
-            hasProducts,
-            productsCount: Array.isArray(products) ? products.length : 0,
-            isLoading,
-            refreshing,
-            error: !!error
-        });
 
         // Показываем загрузку только при первой загрузке (не при обновлении)
         if (isLoading && !refreshing && !hasProducts) {
@@ -586,6 +563,7 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
                     categoryName={categoryName}
                     onRetry={handleRetry}
                     navigation={navigation}
+                    bottomInset={80 + insets.bottom + normalize(16)}
                 />
             );
         }
@@ -610,7 +588,7 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
     }, [isLoading, error, products, renderProductItem, refreshing, onRefresh, handleRetry, categoryName, navigation]);
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
             {/* Кастомный градиентный фон */}
             <ScrollableBackgroundGradient
                 contentHeight={SCREEN_HEIGHT}
@@ -629,7 +607,7 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
                     <BlurView intensity={20} style={styles.headerBlur} />
                 )}
 
-                <View style={styles.header}>
+                <View style={[styles.header, { height: normalize(70) }]}>
                     <ModernBackArrow onPress={handleBackPress} />
 
                     <View style={styles.headerTitleContainer}>
@@ -775,7 +753,7 @@ const styles = StyleSheet.create({
     },
     emptyIconGradient: {
         position: 'absolute',
-        top: 0,
+        top: 5,
         left: 0,
         right: 0,
         bottom: 0,

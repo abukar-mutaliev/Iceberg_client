@@ -12,14 +12,13 @@ import {
     ScrollView,
     KeyboardAvoidingView,
     Platform,
-    SafeAreaView,
-    Animated,
-} from "react-native";
+    Animated} from "react-native";
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {Color, FontFamily} from "@app/styles/GlobalStyles";
 import {MultipleImageUpload} from "@entities/product/ui/MultipleImageUpload";
 import {CategoryPicker} from "@shared/ui/Pickers/CategoryPicker/ui/CategoryPicker";
 import {SupplierPicker} from "@shared/ui/Pickers/SupplierPicker";
-import {WarehouseQuantityPicker} from "@shared/ui/Pickers/WarehousePicker";
+import { WarehouseSelectionInline } from "@screens/warehouse/ui/WarehouseSelectionScreen";
 import {selectIsAuthenticated, selectUser} from "@entities/auth/model/selectors";
 import {createProductChunked, clearProductsCache} from '@entities/product';
 import {fetchProfile} from "@entities/profile";
@@ -526,7 +525,7 @@ export const AddProductScreen = () => {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
             <View style={styles.header}>
                 <TouchableOpacity
                     style={styles.closeButton}
@@ -551,6 +550,7 @@ export const AddProductScreen = () => {
                     contentContainerStyle={styles.formContainer}
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}
+                    nestedScrollEnabled={true}
                 >
                     {/* Фотографии */}
                     {renderSection("📸 Фотографии товара", (
@@ -559,7 +559,7 @@ export const AddProductScreen = () => {
                                 photos={formData.images}
                                 setPhotos={handlePhotosChange}
                                 error={errors.images}
-                                maxImages={5}
+                                maxImages={10}
                             />
                             {errors.images && (
                                 <Text style={styles.sectionError}>{errors.images}</Text>
@@ -663,14 +663,15 @@ export const AddProductScreen = () => {
                     {renderSection("📦 Складские запасы", (
                         <>
                             <View style={styles.pickerCard}>
-                                <WarehouseQuantityPicker
+                                <WarehouseSelectionInline
                                     selectedWarehouseQuantities={formData.warehouseQuantities}
                                     onSelectWarehouseQuantities={handleWarehouseQuantitiesChange}
-                                    error={errors.warehouseQuantities}
-                                    isWarning={errors.warehouseQuantities && errors.warehouseQuantities.includes("Не выбраны")}
                                     basePrice={formData.boxPrice ? parseFloat(formData.boxPrice) : null}
                                     isAdmin={user?.role === 'ADMIN'}
                                 />
+                                {errors.warehouseQuantities ? (
+                                    <Text style={styles.sectionError}>{errors.warehouseQuantities}</Text>
+                                ) : null}
                             </View>
 
                             {formData.warehouseQuantities.length > 0 && (

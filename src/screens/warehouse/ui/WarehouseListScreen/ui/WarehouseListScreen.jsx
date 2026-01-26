@@ -5,10 +5,12 @@ import {
     StyleSheet,
     FlatList,
     ActivityIndicator,
-    SafeAreaView,
     TouchableOpacity,
-    RefreshControl
+    RefreshControl,
+    Dimensions,
+    Platform
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
 import WarehouseService from '@entities/warehouse/api/warehouseApi';
@@ -16,8 +18,15 @@ import { AdminHeader } from '@widgets/admin/AdminHeader';
 import IconWarehouse from '@shared/ui/Icon/Warehouse/IconWarehouse';
 import { MapPinIcon } from '@shared/ui/Icon/DistrictManagement/MapPinIcon';
 
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const TABLET_BREAKPOINT = 768;
+const isTablet = SCREEN_WIDTH >= TABLET_BREAKPOINT;
+
 export const WarehouseListScreen = () => {
     const navigation = useNavigation();
+    const insets = useSafeAreaInsets();
+    const tabBarHeight = 80 + insets.bottom;
+    const listBottomPadding = tabBarHeight + 24;
     const [warehouses, setWarehouses] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -26,7 +35,8 @@ export const WarehouseListScreen = () => {
     const loadWarehouses = useCallback(async () => {
         try {
             setError(null);
-            const response = await WarehouseService.getWarehouses({ isActive: true });
+            // Убираем фильтр isActive, чтобы показывать все склады, включая закрытые
+            const response = await WarehouseService.getWarehouses({});
             setWarehouses(response.data?.warehouses || response.data || []);
         } catch (err) {
             console.error('Ошибка загрузки складов:', err);
@@ -47,40 +57,64 @@ export const WarehouseListScreen = () => {
     }, [loadWarehouses]);
 
     const handleWarehousePress = useCallback((warehouse) => {
-        navigation.navigate('WarehouseStatistics', {
-            warehouseId: warehouse.id,
-            warehouseName: warehouse.name
+        navigation.navigate('WarehouseDetails', {
+            warehouseId: warehouse.id
         });
     }, [navigation]);
 
-    const renderWarehouseItem = ({ item }) => {
+    const renderWarehouseItem = ({ item, index }) => {
         return (
             <TouchableOpacity
-                style={styles.warehouseItem}
+                style={[
+                    styles.warehouseItem,
+                    isTablet && styles.warehouseItemTablet,
+                    { 
+                        transform: [{ scale: 1 }],
+                        opacity: 1,
+                    }
+                ]}
                 onPress={() => handleWarehousePress(item)}
-                activeOpacity={0.7}
+                activeOpacity={0.8}
             >
-                <View style={styles.warehouseContent}>
-                    <View style={styles.warehouseHeader}>
-                        <View style={styles.iconContainer}>
-                            <IconWarehouse width={24} height={24} color={Color.blue2} />
-                        </View>
-                        <View style={styles.warehouseInfo}>
-                            <Text style={styles.warehouseName}>{item.name}</Text>
-                            <View style={styles.addressContainer}>
-                                <MapPinIcon size={14} color={Color.textSecondary} />
-                                <Text style={styles.warehouseAddress}>{item.address}</Text>
+                <View style={styles.warehouseItemInner}>
+                    <View style={styles.cardGradient}>
+                        <View style={styles.iconWrapper}>
+                            <View style={styles.iconBackground}>
+                                <IconWarehouse width={28} height={28} color={Color.blue2} />
                             </View>
-                            {item.district && (
-                                <Text style={styles.districtName}>
-                                    Район: {item.district.name}
-                                </Text>
-                            )}
+                        </View>
+
+                        <View style={styles.warehouseContent}>
+                            <Text style={styles.warehouseName} numberOfLines={1}>
+                                {item.name}
+                            </Text>
+                            
+                            <View style={styles.detailsContainer}>
+                                <View style={styles.addressRow}>
+                                    <View style={styles.iconBadge}>
+                                        <MapPinIcon size={12} color={Color.blue2} />
+                                    </View>
+                                    <Text style={styles.warehouseAddress} numberOfLines={2}>
+                                        {item.address}
+                                    </Text>
+                                </View>
+                                
+                                {item.district && (
+                                    <View style={styles.districtBadge}>
+                                        <Text style={styles.districtText}>
+                                            {item.district.name}
+                                        </Text>
+                                    </View>
+                                )}
+                            </View>
+                        </View>
+
+                        <View style={styles.arrowContainer}>
+                            <View style={styles.arrowCircle}>
+                                <Text style={styles.arrow}>→</Text>
+                            </View>
                         </View>
                     </View>
-                </View>
-                <View style={styles.arrowContainer}>
-                    <Text style={styles.arrow}>→</Text>
                 </View>
             </TouchableOpacity>
         );
@@ -88,7 +122,7 @@ export const WarehouseListScreen = () => {
 
     if (loading) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['left', 'right']}>
                 <AdminHeader
                     title="Выбор склада"
                     icon={<IconWarehouse width={24} height={24} color={Color.blue2} />}
@@ -96,8 +130,10 @@ export const WarehouseListScreen = () => {
                     showBackButton={true}
                 />
                 <View style={styles.centered}>
-                    <ActivityIndicator size="large" color={Color.blue2} />
-                    <Text style={styles.loadingText}>Загрузка складов...</Text>
+                    <View style={styles.loadingContainer}>
+                        <ActivityIndicator size="large" color={Color.blue2} />
+                        <Text style={styles.loadingText}>Загрузка складов...</Text>
+                    </View>
                 </View>
             </SafeAreaView>
         );
@@ -105,7 +141,7 @@ export const WarehouseListScreen = () => {
 
     if (error) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['left', 'right']}>
                 <AdminHeader
                     title="Выбор склада"
                     icon={<IconWarehouse width={24} height={24} color={Color.blue2} />}
@@ -113,17 +149,25 @@ export const WarehouseListScreen = () => {
                     showBackButton={true}
                 />
                 <View style={styles.centered}>
-                    <Text style={styles.errorText}>Ошибка: {error}</Text>
-                    <TouchableOpacity style={styles.retryButton} onPress={loadWarehouses}>
-                        <Text style={styles.retryButtonText}>Повторить</Text>
-                    </TouchableOpacity>
+                    <View style={styles.errorContainer}>
+                        <Text style={styles.errorEmoji}>⚠️</Text>
+                        <Text style={styles.errorTitle}>Ошибка загрузки</Text>
+                        <Text style={styles.errorText}>{error}</Text>
+                        <TouchableOpacity 
+                            style={styles.retryButton} 
+                            onPress={loadWarehouses}
+                            activeOpacity={0.8}
+                        >
+                            <Text style={styles.retryButtonText}>Повторить попытку</Text>
+                        </TouchableOpacity>
+                    </View>
                 </View>
             </SafeAreaView>
         );
     }
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right']}>
             <AdminHeader
                 title="Выбор склада"
                 icon={<IconWarehouse width={24} height={24} color={Color.blue2} />}
@@ -135,15 +179,31 @@ export const WarehouseListScreen = () => {
                 data={warehouses}
                 renderItem={renderWarehouseItem}
                 keyExtractor={(item) => `warehouse-${item.id}`}
-                contentContainerStyle={styles.listContent}
+                contentContainerStyle={[
+                    styles.listContent,
+                    isTablet && styles.listContentTablet,
+                    { paddingBottom: listBottomPadding }
+                ]}
+                numColumns={isTablet ? 2 : 1}
+                key={isTablet ? 'tablet' : 'phone'}
                 refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+                    <RefreshControl 
+                        refreshing={refreshing} 
+                        onRefresh={handleRefresh}
+                        tintColor={Color.blue2}
+                        colors={[Color.blue2]}
+                    />
                 }
                 ListEmptyComponent={
                     <View style={styles.emptyContainer}>
-                        <Text style={styles.emptyText}>Склады не найдены</Text>
+                        <Text style={styles.emptyEmoji}>📦</Text>
+                        <Text style={styles.emptyTitle}>Склады не найдены</Text>
+                        <Text style={styles.emptySubtitle}>
+                            Попробуйте обновить список
+                        </Text>
                     </View>
                 }
+                showsVerticalScrollIndicator={false}
             />
         </SafeAreaView>
     );
@@ -152,7 +212,7 @@ export const WarehouseListScreen = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: Color.colorLightMode || '#F5F7FA',
     },
     centered: {
         flex: 1,
@@ -160,101 +220,233 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         padding: 20,
     },
+    loadingContainer: {
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        padding: 32,
+        borderRadius: 16,
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.1,
+                shadowRadius: 12,
+            },
+            android: {
+                elevation: 4,
+            },
+        }),
+    },
     loadingText: {
-        marginTop: 12,
-        fontSize: FontSize.size_md,
-        color: Color.textSecondary,
+        marginTop: 16,
+        fontSize: FontSize.size_md || 16,
+        color: Color.textSecondary || '#6B7280',
         fontFamily: FontFamily.sFProText,
+        fontWeight: '500',
+    },
+    errorContainer: {
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        padding: 32,
+        borderRadius: 16,
+        maxWidth: 320,
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.1,
+                shadowRadius: 12,
+            },
+            android: {
+                elevation: 4,
+            },
+        }),
+    },
+    errorEmoji: {
+        fontSize: 48,
+        marginBottom: 16,
+    },
+    errorTitle: {
+        fontSize: 20,
+        fontWeight: '700',
+        color: Color.textPrimary || '#111827',
+        marginBottom: 8,
+        fontFamily: FontFamily.bold,
     },
     errorText: {
-        fontSize: FontSize.size_md,
-        color: Color.colorCrimson,
+        fontSize: FontSize.size_md || 16,
+        color: Color.textSecondary || '#6B7280',
         textAlign: 'center',
-        marginBottom: 16,
+        marginBottom: 24,
         fontFamily: FontFamily.sFProText,
+        lineHeight: 22,
     },
     retryButton: {
-        paddingHorizontal: 24,
-        paddingVertical: 12,
-        backgroundColor: Color.blue2,
-        borderRadius: Border.br_base,
+        paddingHorizontal: 32,
+        paddingVertical: 14,
+        backgroundColor: Color.blue2 || '#3B82F6',
+        borderRadius: 12,
+        minWidth: 160,
+        ...Platform.select({
+            ios: {
+                shadowColor: Color.blue2 || '#3B82F6',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.3,
+                shadowRadius: 8,
+            },
+            android: {
+                elevation: 4,
+            },
+        }),
     },
     retryButtonText: {
         color: '#FFFFFF',
-        fontSize: FontSize.size_md,
+        fontSize: FontSize.size_md || 16,
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
+        textAlign: 'center',
     },
     listContent: {
         paddingHorizontal: 16,
         paddingVertical: 12,
+        paddingBottom: 0,
+    },
+    listContentTablet: {
+        paddingHorizontal: 24,
+        paddingVertical: 16,
     },
     warehouseItem: {
-        flexDirection: 'row',
+        marginBottom: 16,
+        borderRadius: 16,
         backgroundColor: '#FFFFFF',
-        borderRadius: Border.br_base,
+        ...Platform.select({
+            ios: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.08,
+                shadowRadius: 12,
+            },
+            android: {
+                elevation: 3,
+            },
+        }),
+    },
+    warehouseItemInner: {
+        borderRadius: 16,
+        overflow: 'hidden',
+        backgroundColor: '#FFFFFF',
+    },
+    warehouseItemTablet: {
+        flex: 1,
+        marginHorizontal: 8,
+    },
+    cardGradient: {
+        flexDirection: 'row',
+        alignItems: 'center',
         padding: 16,
-        marginBottom: 12,
-        ...Shadow.shadow_sm,
+        backgroundColor: '#FFFFFF',
+        borderLeftWidth: 4,
+        borderLeftColor: Color.blue2 || '#3B82F6',
+    },
+    iconWrapper: {
+        marginRight: 16,
+    },
+    iconBackground: {
+        width: 56,
+        height: 56,
+        borderRadius: 14,
+        backgroundColor: '#EFF6FF',
+        justifyContent: 'center',
         alignItems: 'center',
     },
     warehouseContent: {
         flex: 1,
-    },
-    warehouseHeader: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-    },
-    iconContainer: {
         marginRight: 12,
     },
-    warehouseInfo: {
-        flex: 1,
-    },
     warehouseName: {
-        fontSize: FontSize.size_md,
+        fontSize: isTablet ? 18 : 17,
         fontFamily: FontFamily.bold,
-        fontWeight: '600',
-        color: Color.textPrimary,
-        marginBottom: 4,
+        fontWeight: '700',
+        color: Color.textPrimary || '#111827',
+        marginBottom: 8,
+        letterSpacing: -0.3,
     },
-    addressContainer: {
+    detailsContainer: {
+        gap: 8,
+    },
+    addressRow: {
         flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 6,
+    },
+    iconBadge: {
+        width: 20,
+        height: 20,
+        borderRadius: 6,
+        backgroundColor: '#EFF6FF',
+        justifyContent: 'center',
         alignItems: 'center',
-        marginBottom: 4,
+        marginTop: 2,
     },
     warehouseAddress: {
-        fontSize: FontSize.size_sm,
-        color: Color.textSecondary,
+        flex: 1,
+        fontSize: FontSize.size_sm || 14,
+        color: Color.textSecondary || '#6B7280',
         fontFamily: FontFamily.sFProText,
-        marginLeft: 4,
+        lineHeight: 20,
     },
-    districtName: {
-        fontSize: FontSize.size_sm,
-        color: Color.textSecondary,
+    districtBadge: {
+        alignSelf: 'flex-start',
+        backgroundColor: '#F0F9FF',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#BFDBFE',
+    },
+    districtText: {
+        fontSize: 12,
+        color: '#1E40AF',
         fontFamily: FontFamily.sFProText,
+        fontWeight: '600',
     },
     arrowContainer: {
-        marginLeft: 12,
-    },
-    arrow: {
-        fontSize: FontSize.size_lg,
-        color: Color.blue2,
-    },
-    emptyContainer: {
-        paddingVertical: 48,
+        justifyContent: 'center',
         alignItems: 'center',
     },
-    emptyText: {
-        fontSize: FontSize.size_md,
-        color: Color.textSecondary,
+    arrowCircle: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: '#EFF6FF',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    arrow: {
+        fontSize: 20,
+        color: Color.blue2 || '#3B82F6',
+        fontWeight: 'bold',
+    },
+    emptyContainer: {
+        paddingVertical: 80,
+        alignItems: 'center',
+        paddingHorizontal: 32,
+    },
+    emptyEmoji: {
+        fontSize: 64,
+        marginBottom: 16,
+    },
+    emptyTitle: {
+        fontSize: 20,
+        fontWeight: '700',
+        color: Color.textPrimary || '#111827',
+        marginBottom: 8,
+        fontFamily: FontFamily.bold,
+    },
+    emptySubtitle: {
+        fontSize: FontSize.size_md || 16,
+        color: Color.textSecondary || '#6B7280',
         fontFamily: FontFamily.sFProText,
+        textAlign: 'center',
     },
 });
-
-
-
-
-
-
-

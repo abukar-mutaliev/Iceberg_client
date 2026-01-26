@@ -9,12 +9,11 @@ import {
   Image,
   ActivityIndicator,
   ScrollView,
-  SafeAreaView,
   Platform,
   KeyboardAvoidingView,
   ActionSheetIOS,
-  Alert,
-} from 'react-native';
+  Alert} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useDispatch, useSelector } from 'react-redux';
@@ -23,6 +22,7 @@ import ChatApi from '@entities/chat/api/chatApi';
 import { getImageUrl } from '@shared/api/api';
 import NetInfo from '@react-native-community/netinfo';
 import { useGlobalAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
+import { PermissionInfoModal } from '@entities/chat/ui/Composer/components/PermissionInfoModal';
 
 export const CreateGroupScreen = ({ navigation, route }) => {
   // Получаем тип из параметров навигации (по умолчанию GROUP)
@@ -48,6 +48,8 @@ export const CreateGroupScreen = ({ navigation, route }) => {
   const [creating, setCreating] = useState(false);
   const [creatingStep, setCreatingStep] = useState(''); // Текущий шаг создания для UI
   const [groupAvatar, setGroupAvatar] = useState(null); // { uri, type, name }
+  const [permissionModalVisible, setPermissionModalVisible] = useState(false);
+  const [permissionType, setPermissionType] = useState('photos');
 
   // Поиск пользователей
   const searchUsers = async (query) => {
@@ -115,43 +117,61 @@ export const CreateGroupScreen = ({ navigation, route }) => {
   }, []);
 
   // Функции для работы с аватаром группы
-  const requestPermissions = async () => {
-    if (Platform.OS === 'web') {
-      return true;
-    }
-    
-    try {
-      // Сначала проверяем текущий статус разрешений
-      const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
-      
-      if (currentStatus === 'granted') {
-        return true;
-      }
-      
-      // Если разрешения нет, запрашиваем
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        showError('Ошибка', 'Для загрузки изображений необходимо разрешение на доступ к галерее');
-        return false;
-      }
-      
-      return true;
-    } catch (error) {
-      console.error('Ошибка при запросе разрешений:', error);
-      showError('Ошибка', 'Не удалось запросить разрешение на доступ к галерее');
-      return false;
-    }
-  };
+  // Убрана функция requestPermissions - теперь только проверяем статус
 
 
 
   const pickImageFromGallery = async () => {
     try {
-      console.log('📸 Запрос разрешений для галереи...');
-      const hasPermission = await requestPermissions();
-      if (!hasPermission) {
-        console.log('❌ Разрешения не получены');
+      console.log('📸 Проверка разрешений для галереи...');
+      
+      if (Platform.OS === 'web') {
+        // Для веба сразу открываем галерею
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: 'images',
+          allowsEditing: false,
+          quality: 1.0,
+          allowsMultipleSelection: false,
+        });
+        
+        if (!result.canceled && result.assets && result.assets[0]) {
+          const selectedAsset = result.assets[0];
+          const avatarData = {
+            uri: selectedAsset.uri,
+            type: selectedAsset.type || 'image/jpeg',
+            name: selectedAsset.fileName || `group_avatar_${Date.now()}.jpg`
+          };
+          setGroupAvatar(avatarData);
+        }
         return;
+      }
+      
+      if (Platform.OS === 'android') {
+        // На Android: автоматический запрос разрешения (как раньше)
+        const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
+        
+        if (currentStatus !== 'granted') {
+          const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          
+          if (permissionResult.status !== 'granted') {
+            console.log('❌ Разрешения не предоставлены');
+            return;
+          }
+        }
+      } else {
+        // iOS: сначала запрашиваем разрешение, и только после отказа показываем экран настроек
+        const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
+
+        if (currentStatus !== 'granted') {
+          const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+          if (permissionResult.status !== 'granted') {
+            console.log('❌ Разрешения не предоставлены, показываем информационное окно');
+            setPermissionType('photos');
+            setPermissionModalVisible(true);
+            return;
+          }
+        }
       }
 
       console.log('📸 Открываем галерею...');
@@ -188,18 +208,54 @@ export const CreateGroupScreen = ({ navigation, route }) => {
 
   const takePhoto = async () => {
     try {
-      console.log('📸 Запрос разрешений для камеры...');
-      const hasPermission = await requestPermissions();
-      if (!hasPermission) {
-        console.log('❌ Разрешения галереи не получены');
+      console.log('📸 Проверка разрешений для камеры...');
+      
+      if (Platform.OS === 'web') {
+        // Для веба сразу открываем камеру
+        const result = await ImagePicker.launchCameraAsync({
+          mediaTypes: 'images',
+          allowsEditing: false,
+          quality: 1.0,
+        });
+        
+        if (!result.canceled && result.assets && result.assets[0]) {
+          const selectedAsset = result.assets[0];
+          const avatarData = {
+            uri: selectedAsset.uri,
+            type: selectedAsset.type || 'image/jpeg',
+            name: selectedAsset.fileName || `group_avatar_${Date.now()}.jpg`
+          };
+          setGroupAvatar(avatarData);
+        }
         return;
       }
+      
+      if (Platform.OS === 'android') {
+        // На Android: автоматический запрос разрешения (как раньше)
+        const { status: currentStatus } = await ImagePicker.getCameraPermissionsAsync();
+        
+        if (currentStatus !== 'granted') {
+          const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+          
+          if (permissionResult.status !== 'granted') {
+            console.log('❌ Разрешения камеры не предоставлены');
+            return;
+          }
+        }
+      } else {
+        // iOS: сначала запрашиваем разрешение, и только после отказа показываем экран настроек
+        const { status: currentStatus } = await ImagePicker.getCameraPermissionsAsync();
 
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        console.log('❌ Разрешения камеры не получены');
-        showError('Ошибка', 'Для съемки фото необходимо разрешение на доступ к камере');
-        return;
+        if (currentStatus !== 'granted') {
+          const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+
+          if (permissionResult.status !== 'granted') {
+            console.log('❌ Разрешения камеры не предоставлены, показываем информационное окно');
+            setPermissionType('camera');
+            setPermissionModalVisible(true);
+            return;
+          }
+        }
       }
 
       console.log('📸 Открываем камеру...');
@@ -566,7 +622,7 @@ export const CreateGroupScreen = ({ navigation, route }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -820,6 +876,13 @@ export const CreateGroupScreen = ({ navigation, route }) => {
         </View>
       </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Permission Info Modal */}
+      <PermissionInfoModal
+        visible={permissionModalVisible}
+        onClose={() => setPermissionModalVisible(false)}
+        type={permissionType}
+      />
     </SafeAreaView>
   );
 };

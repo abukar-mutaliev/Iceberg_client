@@ -173,7 +173,8 @@ export const ProductActions = React.memo(({
                                               quantity,
                                               onProductUpdated,
                                               allowEdit = true,
-                                              onAskQuestion
+                                              onAskQuestion,
+                                              isLoadingAskQuestion = false
                                           }) => {
     const dispatch = useDispatch();
     const navigation = useNavigation();
@@ -411,11 +412,26 @@ export const ProductActions = React.memo(({
 
             {onAskQuestion && (
                 <TouchableOpacity
-                    style={[styles.editButton, styles.askButtonColor, buttonStyle]}
+                    style={[
+                        styles.editButton, 
+                        styles.askButtonColor, 
+                        buttonStyle,
+                        isLoadingAskQuestion && styles.buttonDisabled
+                    ]}
                     onPress={onAskQuestion}
                     activeOpacity={0.7}
+                    disabled={isLoadingAskQuestion}
                 >
-                    <Text style={[styles.buttonText, textStyle]}>Задать вопрос</Text>
+                    {isLoadingAskQuestion ? (
+                        <View style={styles.buttonLoadingContainer}>
+                            <ActivityIndicator size="small" color="#FFFFFF" />
+                            <Text style={[styles.buttonText, textStyle, styles.buttonLoadingText]}>
+                                Открытие чата...
+                            </Text>
+                        </View>
+                    ) : (
+                        <Text style={[styles.buttonText, textStyle]}>Задать вопрос</Text>
+                    )}
                 </TouchableOpacity>
             )}
 
@@ -529,6 +545,17 @@ const styles = StyleSheet.create({
         padding: 16,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    buttonLoadingContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    buttonLoadingText: {
+        marginLeft: 8,
+    },
+    buttonDisabled: {
+        opacity: 0.7,
     }
 });
 

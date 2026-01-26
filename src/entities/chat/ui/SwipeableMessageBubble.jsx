@@ -18,6 +18,8 @@ export const SwipeableMessageBubble = ({
   onSwipeStart,
   onSwipeEnd,
   shouldReset = false,
+  onOpenWarehouse,
+  onOpenContact,
   ...props 
 }) => {
   const translateX = useRef(new Animated.Value(0)).current;
@@ -149,7 +151,9 @@ export const SwipeableMessageBubble = ({
             onPress={onPress}
             onAddReaction={onAddReaction}
             onRemoveReaction={onRemoveReaction}
-            {...props} 
+            onOpenWarehouse={onOpenWarehouse}
+            onOpenContact={onOpenContact}
+            {...props}
           />
         </Animated.View>
       </PanGestureHandler>

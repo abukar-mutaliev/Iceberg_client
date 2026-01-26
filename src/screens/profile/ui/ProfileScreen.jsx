@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { SafeAreaView, StyleSheet, ScrollView, View, ActivityIndicator, Text } from 'react-native';
+import {  StyleSheet, ScrollView, View, ActivityIndicator, Text } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import { ProfileInfo } from "@features/profile";
@@ -70,7 +71,7 @@ export const ProfileScreen = ({ onProductPress }) => {
     // Показываем загрузку только при первой загрузке
     if (isInitialLoading && isProfileLoading) {
         return (
-            <SafeAreaView style={styles.loadingContainer}>
+            <SafeAreaView style={styles.loadingContainer} edges={['left', 'right', 'bottom']}>
                 <ActivityIndicator size="large" color="#007AFF" />
                 <Text style={styles.loadingText}>Загрузка профиля...</Text>
             </SafeAreaView>
@@ -80,7 +81,7 @@ export const ProfileScreen = ({ onProductPress }) => {
     // Обработка ошибок профиля (если ProfileInfo не справился)
     if (profileError && !isProfileLoading) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
                 <ScrollView contentContainerStyle={styles.errorContainer}>
                     <Text style={styles.errorText}>Ошибка загрузки профиля</Text>
                     <Text style={styles.errorDetails}>{profileError}</Text>
@@ -90,7 +91,7 @@ export const ProfileScreen = ({ onProductPress }) => {
     }
 
     return (
-        <SafeAreaView style={styles.container} key={screenKey}>
+        <SafeAreaView style={styles.container} key={screenKey} edges={['left', 'right', 'bottom']}>
             <ScrollView>
                 {isAuthenticated && (
                     <ProfileHeader />

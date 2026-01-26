@@ -158,6 +158,42 @@ export const GroupChatScreen = ({ route, navigation }) => {
   });
   const { loadMoreMessages } = lifecycle;
   
+  // ============ CALLBACKS (определяем перед useChatNavigation) ============
+  
+  const handleReplyToSelected = useCallback(() => {
+    if (selectedMessages.size === 1) {
+      const messageId = Array.from(selectedMessages)[0];
+      const message = messages.find(m => m.id === messageId);
+      if (message) {
+        setReplyTo(message);
+        clearSelection();
+      }
+    }
+  }, [selectedMessages, messages, clearSelection]);
+
+  const handleForwardSelectedMessages = useCallback(() => {
+    if (selectedMessages.size > 0) {
+      openForwardModal(null);
+    }
+  }, [selectedMessages, openForwardModal]);
+  
+  const deleteSelectedMessages = useCallback(() => {
+    if (selectedMessages.size === 0) return;
+    
+    const messageIds = Array.from(selectedMessages);
+    const messagesToDeleteData = messageIds
+      .map(id => messages.find(m => m.id === id))
+      .filter(Boolean)
+      .filter(msg => actions.canDeleteMessage(msg));
+    
+    if (messagesToDeleteData.length === 0) {
+      showWarning('Удаление', 'Нет сообщений, которые можно удалить');
+      return;
+    }
+    
+    openDeleteMessageModal(messagesToDeleteData);
+  }, [selectedMessages, messages, actions, showWarning, openDeleteMessageModal]);
+  
   // Навигация
   useChatNavigation({
     navigation,
@@ -172,7 +208,21 @@ export const GroupChatScreen = ({ route, navigation }) => {
     onCopy: () => actions.handleCopyMessages(Array.from(selectedMessages)),
     onForward: handleForwardSelectedMessages,
     onDelete: deleteSelectedMessages,
+    isSuperAdmin, // Передаем напрямую для надежной проверки
+    isAdmin, // Передаем напрямую для надежной проверки
   });
+
+  // Отладочная информация для суперадмина
+  useEffect(() => {
+    if (__DEV__ && isSelectionMode) {
+      console.log('[GroupChatScreen] Selection mode debug', {
+        isSuperAdmin,
+        isAdmin,
+        selectedCount: selectedMessages.size,
+        messagesCount: messages.length,
+      });
+    }
+  }, [isSelectionMode, isSuperAdmin, isAdmin, selectedMessages.size, messages.length]);
   
   // ============ NOTIFICATION MANAGEMENT ============
   
@@ -210,25 +260,8 @@ export const GroupChatScreen = ({ route, navigation }) => {
     };
   }, [roomId]);
   
-  // ============ CALLBACKS ============
-  
-  const handleReplyToSelected = useCallback(() => {
-    if (selectedMessages.size === 1) {
-      const messageId = Array.from(selectedMessages)[0];
-      const message = messages.find(m => m.id === messageId);
-      if (message) {
-        setReplyTo(message);
-        clearSelection();
-      }
-    }
-  }, [selectedMessages, messages, clearSelection]);
-  
-  const handleForwardSelectedMessages = useCallback(() => {
-    if (selectedMessages.size > 0) {
-      openForwardModal(null);
-    }
-  }, [selectedMessages, openForwardModal]);
-  
+  // ============ ADDITIONAL CALLBACKS ============
+
   const handleForwardMessage = useCallback(async (roomIds) => {
     const messageIds = selectedMessages.size > 0 
       ? Array.from(selectedMessages)
@@ -255,23 +288,6 @@ export const GroupChatScreen = ({ route, navigation }) => {
       }
     }
   }, [selectedMessages, messageToForward, rooms, navigation, actions, clearSelection, closeForwardModal]);
-  
-  const deleteSelectedMessages = useCallback(() => {
-    if (selectedMessages.size === 0) return;
-    
-    const messageIds = Array.from(selectedMessages);
-    const messagesToDeleteData = messageIds
-      .map(id => messages.find(m => m.id === id))
-      .filter(Boolean)
-      .filter(msg => actions.canDeleteMessage(msg));
-    
-    if (messagesToDeleteData.length === 0) {
-      showWarning('Удаление', 'Нет сообщений, которые можно удалить');
-      return;
-    }
-    
-    openDeleteMessageModal(messagesToDeleteData);
-  }, [selectedMessages, messages, actions, showWarning, openDeleteMessageModal]);
   
   const handleDeleteSelectedMessages = useCallback(async (forAll) => {
     const success = await actions.handleDeleteMessages(messagesToDelete, forAll);
@@ -345,9 +361,62 @@ export const GroupChatScreen = ({ route, navigation }) => {
   
   const handleOpenStop = useCallback((stopId) => {
     if (isSelectionMode) return;
-    navigation.navigate('StopDetails', { stopId });
-  }, [isSelectionMode, navigation]);
-  
+    // Открываем остановку в корневом AppStack (там же где ChatRoom),
+    // чтобы back возвращал обратно в комнату чата.
+    const rootNav = navigation?.getParent?.('AppStack') || navigation?.getParent?.() || navigation;
+    rootNav.navigate('StopDetails', { 
+      stopId,
+      fromScreen: 'ChatRoom',
+      roomId
+    });
+  }, [isSelectionMode, navigation, roomId]);
+
+  const handleOpenContact = useCallback((userId) => {
+    if (isSelectionMode) return;
+    
+    const rootNav = navigation?.getParent?.('AppStack') || navigation?.getParent?.() || navigation;
+    rootNav.navigate('UserPublicProfile', { 
+      userId, 
+      fromScreen: 'GroupChatRoom', 
+      roomId 
+    });
+  }, [isSelectionMode, navigation, roomId]);
+
+  const handleOpenWarehouse = useCallback((warehouseId) => {
+    if (isSelectionMode) return;
+    // Открываем склад в корневом AppStack (там же где ChatRoom),
+    // чтобы back возвращал обратно в комнату чата.
+    const rootNav = navigation?.getParent?.('AppStack') || navigation?.getParent?.() || navigation;
+    
+    try {
+      if (rootNav && typeof rootNav.navigate === 'function') {
+        rootNav.navigate('WarehouseDetails', { 
+          warehouseId,
+          fromScreen: 'ChatRoom',
+          roomId
+        });
+      } else {
+        // Fallback через navigationRef
+        const { navigationRef } = require('@shared/utils/NavigationRef');
+        if (navigationRef?.isReady?.()) {
+          navigationRef.navigate('WarehouseDetails', {
+            warehouseId,
+            fromScreen: 'ChatRoom',
+            roomId
+          });
+        } else {
+          navigation.navigate('WarehouseDetails', {
+            warehouseId,
+            fromScreen: 'ChatRoom',
+            roomId
+          });
+        }
+      }
+    } catch (error) {
+      console.error('❌ GroupChatScreen: Navigation error to WarehouseDetails', error);
+    }
+  }, [isSelectionMode, navigation, roomId]);
+
   const handleSenderNamePress = useCallback((senderId) => {
     if (!senderId || senderId === currentUserId) return;
     
@@ -395,6 +464,14 @@ export const GroupChatScreen = ({ route, navigation }) => {
     width: '100%',
   }), [insets.bottom]);
   
+  const canDeleteForAllSelected = useMemo(() => {
+    if (!messagesToDelete?.length) return false;
+    return messagesToDelete.every(msg => {
+      if (isSuperAdmin || isAdmin) return true;
+      return Number(msg?.senderId) === Number(currentUserId);
+    });
+  }, [messagesToDelete, isSuperAdmin, isAdmin, currentUserId]);
+  
   // ============ RENDER ============
   
   return (
@@ -423,6 +500,8 @@ export const GroupChatScreen = ({ route, navigation }) => {
             onToggleSelection={toggleMessageSelection}
             onOpenProduct={handleOpenProduct}
             onOpenStop={handleOpenStop}
+            onOpenContact={handleOpenContact}
+            onOpenWarehouse={handleOpenWarehouse}
             onImagePress={(imageUri) => handleImagePress(imageUri, messages)}
             onAvatarPress={() => {}} // В групповых чатах аватар не кликабелен
             onContactDriver={() => {}} // Не используется в групповых чатах
@@ -494,6 +573,7 @@ export const GroupChatScreen = ({ route, navigation }) => {
         onDeleteMessage={handleDeleteSelectedMessages}
         isSuperAdmin={isSuperAdmin}
         currentUserId={currentUserId}
+        canDeleteForAll={canDeleteForAllSelected}
         forwardModalVisible={forwardModalVisible}
         onForwardModalClose={closeForwardModal}
         messageToForward={messageToForward}

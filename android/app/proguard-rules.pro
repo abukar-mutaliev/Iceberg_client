@@ -37,6 +37,17 @@
 -assumenosideeffects class com.facebook.react.modules.statusbar.StatusBarModule {
     *** setColor(...);
     *** setTranslucent(...);
+    *** getTypedExportedConstants(...);
+}
+
+# Удаляем вызовы, выполняющиеся в guard-раннерах внутри StatusBarModule
+-assumenosideeffects class com.facebook.react.modules.statusbar.StatusBarModule$* {
+    *** runGuarded(...);
+}
+
+# Отключаем вызов edge-to-edge из React Native, который использует deprecated APIs
+-assumenosideeffects class com.facebook.react.views.view.WindowUtilKt {
+    *** enableEdgeToEdge(...);
 }
 
 # ============================================================================

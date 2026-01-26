@@ -679,13 +679,21 @@ export const EditStopForm = ({
                         <Text style={[styles.label, { marginBottom: normalize(10) }]}>Время стоянки *</Text>
                         <View style={styles.timeRow}>
                           <View style={[styles.inputGroup, { flex: 1 }]}>
-                            <Text style={styles.sublabel}>Дата</Text>
+                            <Text style={styles.sublabel}>Дата начала</Text>
                             <CustomDatePicker date={startDate} onDateChange={onStartDateChange} />
                             <View style={[styles.inputUnderline, errors.startTime ? styles.underlineError : null]} />
+                          </View>
+                          <View style={[styles.inputGroup, { flex: 1, marginLeft: normalize(10) }]}>
+                            <Text style={styles.sublabel}>Дата окончания</Text>
+                            <CustomDatePicker date={endDate} onDateChange={onEndDateChange} />
+                            <View style={[styles.inputUnderline, errors.endTime ? styles.underlineError : null]} />
                           </View>
                         </View>
                         {errors.startTime && typeof errors.startTime === 'string' && errors.startTime.trim() ? (
                           <Text style={styles.errorText}>{String(errors.startTime)}</Text>
+                        ) : null}
+                        {errors.endTime && typeof errors.endTime === 'string' && errors.endTime.trim() ? (
+                          <Text style={styles.errorText}>{String(errors.endTime)}</Text>
                         ) : null}
                       </View>
                     </View>

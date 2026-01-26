@@ -97,10 +97,6 @@ export const SplashScreen = () => {
         const performNavigation = () => {
             if (hasNavigated) return;
             hasNavigated = true;
-            
-            if (__DEV__) {
-                console.log('[SplashScreen] 🏠 Редирект на Welcome');
-            }
             navigation.replace('Welcome');
         };
 
@@ -108,27 +104,13 @@ export const SplashScreen = () => {
             // Проверяем, есть ли pending навигация из уведомления
             const hasPending = PushNotificationService.hasPendingNotificationNavigation;
             
-            if (__DEV__) {
-                console.log('[SplashScreen] 🔍 Проверка флага hasPendingNotificationNavigation:', hasPending);
-            }
-            
             if (hasPending) {
-                if (__DEV__) {
-                    console.log('[SplashScreen] ⏳ Пропускаем редирект на Welcome - есть pending навигация из уведомления');
-                }
-                
                 // Мониторим флаг каждые 500мс
                 checkInterval = setInterval(() => {
                     const stillPending = PushNotificationService.hasPendingNotificationNavigation;
-                    if (__DEV__) {
-                        console.log('[SplashScreen] 🔄 Мониторинг флага:', stillPending);
-                    }
                     
                     if (!stillPending) {
                         // Навигация выполнена, очищаем интервал и не делаем редирект
-                        if (__DEV__) {
-                            console.log('[SplashScreen] ✅ Навигация из уведомления выполнена, останавливаем мониторинг');
-                        }
                         if (checkInterval) clearInterval(checkInterval);
                         if (safetyTimeout) clearTimeout(safetyTimeout);
                     }
@@ -136,17 +118,11 @@ export const SplashScreen = () => {
                 
                 // Timeout безопасности: если за 10 секунд флаг не сбросился - делаем редирект как fallback
                 safetyTimeout = setTimeout(() => {
-                    if (__DEV__) {
-                        console.warn('[SplashScreen] ⚠️ Timeout безопасности - принудительный редирект на Welcome');
-                    }
                     if (checkInterval) clearInterval(checkInterval);
                     performNavigation();
                 }, 10000);
             } else {
                 // Нет pending навигации - обычный редирект
-                if (__DEV__) {
-                    console.log('[SplashScreen] ℹ️ Нет pending навигации, выполняем обычный редирект');
-                }
                 performNavigation();
             }
         }, 3000);

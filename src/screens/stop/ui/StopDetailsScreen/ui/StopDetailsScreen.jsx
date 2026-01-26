@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, SafeAreaView } from 'react-native';
+import { StyleSheet} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useFocusEffect } from '@react-navigation/native';
 import { useSelector, useDispatch } from 'react-redux';
 import { selectDriverLoading, selectDriverError } from '@entities/driver';
@@ -156,7 +157,7 @@ export const StopDetailsScreen = ({ navigation }) => {
 
     // Показываем контент остановки
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
             <StopDetailsContent stop={stop} navigation={navigation} />
         </SafeAreaView>
     );

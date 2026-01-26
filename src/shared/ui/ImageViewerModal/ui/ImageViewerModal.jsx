@@ -14,11 +14,17 @@ import {
   Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { PanGestureHandler, State, FlatList as GestureFlatList } from 'react-native-gesture-handler';
+import {
+  PanGestureHandler,
+  State,
+  FlatList as GestureFlatList,
+  GestureHandlerRootView,
+} from 'react-native-gesture-handler';
 import { MoreVertical, Download } from 'lucide-react-native';
+import Constants from 'expo-constants';
 
 import * as MediaLibrary from 'expo-media-library';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 
 import { getImageUrl } from '@shared/api/api';
@@ -102,7 +108,15 @@ const ViewerOverlay = ({
 
   const saveToGallery = async (fileUri) => {
     try {
-      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (Constants.appOwnership === 'expo') {
+        showError(
+          'Недоступно в Expo Go',
+          'Сохранение в галерею требует development build. Соберите dev-клиент и запустите его.'
+        );
+        return;
+      }
+
+      const { status } = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
 
       if (status !== 'granted') {
         showError(
@@ -171,13 +185,16 @@ const ViewerOverlay = ({
     }
   };
 
+  const headerOffset = insets.top + 8;
+  const menuTop = insets.top + 56;
+
   return (
     <>
       {/* Header */}
       <View style={[styles.header, { 
-        top: Platform.OS === 'ios' ? 0 : insets.top,
-        paddingTop: Platform.OS === 'ios' ? insets.top + 12 : 12,
-        height: Platform.OS === 'ios' ? insets.top + 56 : 56,
+        top: 0,
+        paddingTop: headerOffset,
+        paddingBottom: 8,
       }]}>
         <TouchableOpacity onPress={onClose} style={styles.iconBtn}>
           <Text style={styles.back}>←</Text>
@@ -206,7 +223,7 @@ const ViewerOverlay = ({
 
       {headerRight && (
         <View style={[styles.headerRight, { 
-          top: Platform.OS === 'ios' ? insets.top + 12 : insets.top + 12 
+          top: headerOffset 
         }]}>
           {headerRight}
         </View>
@@ -215,7 +232,7 @@ const ViewerOverlay = ({
       {/* Menu */}
       {menuVisible && (
         <View style={[styles.menu, { 
-          top: Platform.OS === 'ios' ? insets.top + 64 : insets.top + 64 
+          top: menuTop 
         }]}>
           <TouchableOpacity onPress={saveImage} style={styles.menuItem}>
             <Download size={18} color="#fff" />
@@ -256,6 +273,11 @@ export const ImageViewerModal = ({
   const flatListRef = useRef(null);
   const panGestureRef = useRef(null);
   const isScrolling = useRef(false);
+  const gestureModeRef = useRef('undetermined');
+  const lastTranslationYRef = useRef(0);
+  const lastVelocityYRef = useRef(0);
+  const GalleryList = Platform.OS === 'android' ? GestureFlatList : FlatList;
+  const [isVerticalDragging, setIsVerticalDragging] = useState(false);
 
   // Анимация для вертикального свайпа (закрытие)
   const translateY = useRef(new Animated.Value(0)).current;
@@ -331,6 +353,28 @@ export const ImageViewerModal = ({
     }
   }, [normalized.length, currentIndex, onIndexChange]);
 
+  const scrollToIndex = useCallback((index) => {
+    if (!flatListRef.current || normalized.length <= 1) return;
+    const safeIndex = Math.max(0, Math.min(index, normalized.length - 1));
+    flatListRef.current.scrollToIndex({ index: safeIndex, animated: true });
+    setCurrentIndex(safeIndex);
+    if (onIndexChange) {
+      onIndexChange(safeIndex);
+    }
+  }, [normalized.length, onIndexChange]);
+
+  const handlePrev = useCallback(() => {
+    if (currentIndex > 0) {
+      scrollToIndex(currentIndex - 1);
+    }
+  }, [currentIndex, scrollToIndex]);
+
+  const handleNext = useCallback(() => {
+    if (currentIndex < normalized.length - 1) {
+      scrollToIndex(currentIndex + 1);
+    }
+  }, [currentIndex, normalized.length, scrollToIndex]);
+
   // Отслеживаем начало прокрутки
   const handleScrollBeginDrag = useCallback(() => {
     isScrolling.current = true;
@@ -340,7 +384,7 @@ export const ImageViewerModal = ({
   const handleScrollEndDrag = useCallback(() => {
     setTimeout(() => {
       isScrolling.current = false;
-    }, 100);
+    }, 150); // Увеличиваем задержку для Android
   }, []);
 
   // Обработка ошибки при прокрутке к индексу
@@ -356,10 +400,39 @@ export const ImageViewerModal = ({
   }, []);
 
   // Обработчик свайпа вниз
-  const handleGestureEvent = Animated.event(
-    [{ nativeEvent: { translationY: translateY } }],
-    { useNativeDriver: true }
-  );
+  const handleGestureEvent = useCallback((event) => {
+    const { translationY, translationX, velocityY } = event.nativeEvent;
+
+    if (isScrolling.current) {
+      return;
+    }
+
+    if (gestureModeRef.current === 'horizontal') {
+      return;
+    }
+
+    if (gestureModeRef.current === 'undetermined') {
+      const absX = Math.abs(translationX);
+      const absY = Math.abs(translationY);
+
+      if (absY > absX + 8) {
+        gestureModeRef.current = 'vertical';
+        setIsVerticalDragging(true);
+      } else if (absX > absY + 8) {
+        gestureModeRef.current = 'horizontal';
+        return;
+      }
+    }
+
+    if (gestureModeRef.current === 'vertical') {
+      lastTranslationYRef.current = translationY;
+      lastVelocityYRef.current = velocityY || 0;
+      translateY.setValue(translationY);
+
+      const opacityValue = Math.max(0, 1 - Math.abs(translationY) / 400);
+      opacity.setValue(opacityValue);
+    }
+  }, [translateY, opacity]);
 
   const handleGestureStateChange = useCallback((event) => {
     const { translationY, state, velocityY, translationX } = event.nativeEvent;
@@ -367,6 +440,10 @@ export const ImageViewerModal = ({
     // В начале жеста сбрасываем флаг прокрутки
     if (state === State.BEGAN) {
       isScrolling.current = false;
+      gestureModeRef.current = 'undetermined';
+      lastTranslationYRef.current = 0;
+      lastVelocityYRef.current = 0;
+      setIsVerticalDragging(false);
     }
 
     // Игнорируем жест если идет горизонтальная прокрутка
@@ -374,22 +451,29 @@ export const ImageViewerModal = ({
       return;
     }
 
-    // На Android проверяем направление жеста только в активном состоянии
-    if (Platform.OS === 'android' && state === State.ACTIVE) {
-      // Если горизонтальное движение больше вертикального, это горизонтальный жест
-      if (Math.abs(translationX) > Math.abs(translationY) + 10) {
-        // Это горизонтальный жест, игнорируем
+    // Улучшенная логика определения направления жеста
+    if (state === State.ACTIVE) {
+      // Если горизонтальное движение значительно больше вертикального,
+      // и при этом есть несколько изображений (горизонтальный скролл возможен),
+      // считаем это горизонтальным жестом
+      if (normalized.length > 1 && Math.abs(translationX) > Math.abs(translationY) * 2) {
+        gestureModeRef.current = 'horizontal';
+        // Это горизонтальный жест для переключения изображений
         return;
       }
-    }
 
-    if (state === State.ACTIVE) {
-      // Обновляем непрозрачность в зависимости от расстояния свайпа
-      const opacityValue = Math.max(0, 1 - Math.abs(translationY) / 400);
-      opacity.setValue(opacityValue);
+      // Если вертикальное движение больше горизонтального, это вертикальный свайп
+      if (Math.abs(translationY) > Math.abs(translationX) + 20) {
+        gestureModeRef.current = 'vertical';
+        setIsVerticalDragging(true);
+        // Обновляем непрозрачность в зависимости от расстояния свайпа
+        const opacityValue = Math.max(0, 1 - Math.abs(translationY) / 400);
+        opacity.setValue(opacityValue);
+      }
     } else if (state === State.END || state === State.CANCELLED || state === State.FAILED) {
+      setIsVerticalDragging(false);
       // Если был горизонтальный скролл, возвращаем на место
-      if (isScrolling.current) {
+      if (isScrolling.current || gestureModeRef.current === 'horizontal') {
         Animated.parallel([
           Animated.spring(translateY, {
             toValue: 0,
@@ -407,12 +491,16 @@ export const ImageViewerModal = ({
         return;
       }
 
-      // Для Android используем более низкие пороги
-      const threshold = Platform.OS === 'android' ? 80 : 100;
-      const velocityThreshold = Platform.OS === 'android' ? 300 : 500;
-      const shouldClose = Math.abs(translationY) > threshold || Math.abs(velocityY) > velocityThreshold;
+    // Для Android используем более низкие пороги
+      const threshold = Platform.OS === 'android' ? 40 : 100;
+      const velocityThreshold = Platform.OS === 'android' ? 150 : 500;
+      const effectiveTranslationY = translationY || lastTranslationYRef.current;
+      const effectiveVelocityY = velocityY || lastVelocityYRef.current;
+      const shouldClose =
+        Math.abs(effectiveTranslationY) > threshold ||
+        Math.abs(effectiveVelocityY) > velocityThreshold;
 
-      if (shouldClose && translationY > 0) {
+      if (shouldClose && effectiveTranslationY > 0) {
         // Закрываем модалку свайпом вниз
         Animated.parallel([
           Animated.timing(translateY, {
@@ -446,7 +534,7 @@ export const ImageViewerModal = ({
         ]).start();
       }
     }
-  }, [onClose, opacity, translateY]);
+  }, [onClose, opacity, translateY, normalized.length]);
 
   if (!visible || !normalized.length) return null;
 
@@ -459,30 +547,109 @@ export const ImageViewerModal = ({
     >
       <StatusBar hidden={statusBarHidden} />
 
-      <View style={styles.container}>
+      <GestureHandlerRootView style={styles.container}>
         <PanGestureHandler
           ref={panGestureRef}
           onGestureEvent={handleGestureEvent}
           onHandlerStateChange={handleGestureStateChange}
-          activeOffsetY={Platform.OS === 'android' ? [-10, 10] : [-10, 10]}
-          failOffsetX={Platform.OS === 'android' ? [-20, 20] : [-50, 50]}
-          failOffsetY={Platform.OS === 'android' ? undefined : undefined}
+          activeOffsetY={Platform.OS === 'android' ? [-6, 6] : [-10, 10]}
           minPointers={1}
           maxPointers={1}
           enabled={true}
           shouldCancelWhenOutside={false}
-          avgTouches={Platform.OS === 'android'}
+          avgTouches={false}
+          simultaneousHandlers={flatListRef}
         >
-          <Animated.View
-            style={[
-              styles.animatedContainer,
-              {
-                transform: [{ translateY }],
-                opacity,
-              },
-            ]}
-          >
-            {/* Overlay с кнопками */}
+          <View style={styles.gestureContainer}>
+            <Animated.View
+              style={[
+                styles.animatedContainer,
+                {
+                  transform: [{ translateY }],
+                  opacity,
+                },
+              ]}
+            >
+              {/* Галерея фотографий */}
+              {normalized.length > 1 ? (
+                <GalleryList
+                  ref={flatListRef}
+                  data={normalized}
+                  horizontal
+                  pagingEnabled
+                  bounces={false}
+                  showsHorizontalScrollIndicator={false}
+                  onScroll={handleScroll}
+                  onScrollBeginDrag={handleScrollBeginDrag}
+                  onScrollEndDrag={handleScrollEndDrag}
+                  onMomentumScrollEnd={handleScrollEndDrag}
+                  scrollEventThrottle={16}
+                  onScrollToIndexFailed={handleScrollToIndexFailed}
+                  keyExtractor={(item, index) => `image-viewer-${index}`}
+                  simultaneousHandlers={panGestureRef}
+                  scrollEnabled={!isVerticalDragging}
+                  renderItem={({ item, index }) => (
+                    <View style={styles.slide}>
+                      <View style={styles.imageWrapper}>
+                        <Image
+                          key={`img-bg-${index}-${item}`}
+                          source={{ uri: item }}
+                          style={styles.imageBackground}
+                          resizeMode="cover"
+                          blurRadius={20}
+                          onError={(error) => {
+                            console.error('Image load error:', error);
+                          }}
+                        />
+                        <Image
+                          key={`img-${index}-${item}`}
+                          source={{ uri: item }}
+                          style={styles.imageForeground}
+                          resizeMode="contain"
+                          onError={(error) => {
+                            console.error('Image load error:', error);
+                          }}
+                        />
+                      </View>
+                    </View>
+                  )}
+                  getItemLayout={(data, index) => ({
+                    length: SCREEN_WIDTH,
+                    offset: SCREEN_WIDTH * index,
+                    index,
+                  })}
+                  nestedScrollEnabled={false}
+                  removeClippedSubviews={false}
+                />
+              ) : (
+                /* Одно изображение */
+                <View style={styles.slide}>
+                  <View style={styles.imageWrapper}>
+                    <Image
+                      key={`single-bg-${normalized[0]}-${visible}`}
+                      source={{ uri: normalized[0] }}
+                      style={styles.imageBackground}
+                      resizeMode="cover"
+                      blurRadius={20}
+                      onError={(error) => {
+                        console.error('Image load error:', error);
+                      }}
+                    />
+                    <Image
+                      key={`single-${normalized[0]}-${visible}`}
+                      source={{ uri: normalized[0] }}
+                      style={styles.imageForeground}
+                      resizeMode="contain"
+                      onError={(error) => {
+                        console.error('Image load error:', error);
+                      }}
+                    />
+                  </View>
+                </View>
+              )}
+            </Animated.View>
+
+            {/* Overlay с кнопками - остается на месте */}
             <ViewerOverlay
               images={normalized}
               title={title}
@@ -491,100 +658,32 @@ export const ImageViewerModal = ({
               currentIndex={currentIndex}
             />
 
-            {/* Галерея фотографий */}
-            {normalized.length > 1 ? (
-              Platform.OS === 'android' ? (
-                <GestureFlatList
-                  ref={flatListRef}
-                  data={normalized}
-                  horizontal
-                  pagingEnabled
-                  bounces={false}
-                  showsHorizontalScrollIndicator={false}
-                  onScroll={handleScroll}
-                  onScrollBeginDrag={handleScrollBeginDrag}
-                  onScrollEndDrag={handleScrollEndDrag}
-                  onMomentumScrollEnd={handleScrollEndDrag}
-                  scrollEventThrottle={16}
-                  onScrollToIndexFailed={handleScrollToIndexFailed}
-                  keyExtractor={(item, index) => `image-viewer-${index}`}
-                  renderItem={({ item, index }) => (
-                    <View style={styles.slide}>
-                      <Image
-                        key={`android-img-${index}-${item}`}
-                        source={{ uri: item }}
-                        style={styles.image}
-                        resizeMode="contain"
-                        onError={(error) => {
-                          console.error('Image load error:', error);
-                        }}
-                      />
-                    </View>
-                  )}
-                  getItemLayout={(data, index) => ({
-                    length: SCREEN_WIDTH,
-                    offset: SCREEN_WIDTH * index,
-                    index,
-                  })}
-                  scrollEnabled={true}
-                  nestedScrollEnabled={false}
-                  removeClippedSubviews={false}
-                />
-              ) : (
-                <FlatList
-                  ref={flatListRef}
-                  data={normalized}
-                  horizontal
-                  pagingEnabled
-                  bounces={false}
-                  showsHorizontalScrollIndicator={false}
-                  onScroll={handleScroll}
-                  onScrollBeginDrag={handleScrollBeginDrag}
-                  onScrollEndDrag={handleScrollEndDrag}
-                  onMomentumScrollEnd={handleScrollEndDrag}
-                  scrollEventThrottle={16}
-                  onScrollToIndexFailed={handleScrollToIndexFailed}
-                  keyExtractor={(item, index) => `image-viewer-${index}`}
-                  renderItem={({ item, index }) => (
-                    <View style={styles.slide}>
-                      <Image
-                        key={`ios-img-${index}-${item}`}
-                        source={{ uri: item }}
-                        style={styles.image}
-                        resizeMode="contain"
-                        onError={(error) => {
-                          console.error('Image load error:', error);
-                        }}
-                      />
-                    </View>
-                  )}
-                  getItemLayout={(data, index) => ({
-                    length: SCREEN_WIDTH,
-                    offset: SCREEN_WIDTH * index,
-                    index,
-                  })}
-                  scrollEnabled={true}
-                  nestedScrollEnabled={false}
-                  removeClippedSubviews={false}
-                />
-              )
-            ) : (
-              /* Одно изображение */
-              <View style={styles.slide}>
-                <Image
-                  key={`single-${normalized[0]}-${visible}`}
-                  source={{ uri: normalized[0] }}
-                  style={styles.image}
-                  resizeMode="contain"
-                  onError={(error) => {
-                    console.error('Image load error:', error);
-                  }}
-                />
-              </View>
+            {/* Стрелки навигации */}
+            {normalized.length > 1 && (
+              <>
+                {currentIndex > 0 && (
+                  <TouchableOpacity
+                    style={[styles.navArrow, styles.navArrowLeft]}
+                    onPress={handlePrev}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.navArrowText}>‹</Text>
+                  </TouchableOpacity>
+                )}
+                {currentIndex < normalized.length - 1 && (
+                  <TouchableOpacity
+                    style={[styles.navArrow, styles.navArrowRight]}
+                    onPress={handleNext}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.navArrowText}>›</Text>
+                  </TouchableOpacity>
+                )}
+              </>
             )}
-          </Animated.View>
+          </View>
         </PanGestureHandler>
-      </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 };
@@ -600,6 +699,14 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  gestureContainer: {
+    flex: 1,
   },
   slide: {
     width: SCREEN_WIDTH,
@@ -607,7 +714,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  image: {
+  imageWrapper: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+    backgroundColor: '#0B0B0B',
+  },
+  imageBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
+    opacity: 0.9,
+  },
+  imageForeground: {
     width: '100%',
     height: '100%',
   },
@@ -615,7 +740,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    zIndex: 10,
+    zIndex: 100,
     paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
@@ -651,14 +776,38 @@ const styles = StyleSheet.create({
   headerRight: {
     position: 'absolute',
     right: 16,
-    zIndex: 11,
+    zIndex: 101,
+  },
+  navArrow: {
+    position: 'absolute',
+    top: '50%',
+    marginTop: -24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 120,
+  },
+  navArrowLeft: {
+    left: 12,
+  },
+  navArrowRight: {
+    right: 12,
+  },
+  navArrowText: {
+    color: '#fff',
+    fontSize: 28,
+    fontWeight: '600',
+    marginTop: -2,
   },
   menu: {
     position: 'absolute',
     right: 16,
     backgroundColor: 'rgba(0,0,0,0.9)',
     borderRadius: 8,
-    zIndex: 20,
+    zIndex: 102,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
     ...Platform.select({

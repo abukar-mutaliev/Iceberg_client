@@ -1,13 +1,29 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Keyboard, Platform } from 'react-native';
+import * as Device from 'expo-device';
+import { getChatKeyboardGapPx } from '@shared/lib/device/chatKeyboardGap';
 
 /**
  * Хук для управления состоянием клавиатуры в чате
  * Оптимизирован для правильной работы KeyboardAvoidingView
  */
-export const useChatKeyboard = (insets) => {
+export const useChatKeyboard = (insets, options = {}) => {
+  const {
+    headerOffset = 64,
+    androidVerticalOffset = 83,
+    androidBehavior = 'padding',
+    enableSamsungBehavior = false,
+    enableSamsungGap = false,
+  } = options;
+  
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  
+  const isSamsung = useMemo(() => {
+    if (!enableSamsungBehavior && !enableSamsungGap) return false;
+    const brand = String(Device.brand || '').toLowerCase();
+    return brand.includes('samsung');
+  }, [enableSamsungBehavior, enableSamsungGap]);
   
   // ============ KEYBOARD LISTENERS ============
   
@@ -58,32 +74,42 @@ export const useChatKeyboard = (insets) => {
    */
   const keyboardVerticalOffset = useMemo(() => {
     if (Platform.OS === 'android') {
-      // На Android нужен небольшой offset
-      // Обычно это высота header (56dp стандартный Material header)
-      return 83;
+      return androidVerticalOffset;
     }
     
-    // iOS: header + status bar
-    const headerHeight = 44;
-    const statusBarHeight = insets.top;
-    
-    return headerHeight + statusBarHeight;
-  }, [insets.top]);
+    return headerOffset + insets.top;
+  }, [insets.top, headerOffset, androidVerticalOffset]);
   
   /**
    * Стили для контейнера Composer
    * На Android добавляем дополнительный отступ снизу
    */
-  const composerContainerStyle = useMemo(() => {
-    if (Platform.OS === 'android' && keyboardVisible) {
-      // На Android добавляем небольшой отступ для компенсации
-      return {
-        marginBottom: 0,
-      };
+  const androidKeyboardGap = useMemo(() => {
+    if (Platform.OS !== 'android' || !keyboardVisible || !enableSamsungGap) {
+      return 0;
     }
     
-    return {};
-  }, [keyboardVisible]);
+    return getChatKeyboardGapPx({ keyboardHeight });
+  }, [keyboardVisible, keyboardHeight, enableSamsungGap]);
+  
+  const composerContainerStyle = useMemo(() => {
+    const baseStyle = { position: 'relative' };
+    if (Platform.OS === 'android' && androidKeyboardGap > 0) {
+      return [baseStyle, { marginBottom: androidKeyboardGap }];
+    }
+    return baseStyle;
+  }, [androidKeyboardGap]);
+  
+  const keyboardAvoidingBehavior = useMemo(() => {
+    if (Platform.OS === 'ios') return 'padding';
+    if (enableSamsungBehavior && isSamsung) return 'padding';
+    return androidBehavior;
+  }, [androidBehavior, enableSamsungBehavior, isSamsung]);
+  
+  const keyboardAvoidingOffset = useMemo(() => {
+    if (Platform.OS === 'ios') return keyboardVerticalOffset;
+    return keyboardAvoidingBehavior === 'padding' ? keyboardVerticalOffset : 0;
+  }, [keyboardVerticalOffset, keyboardAvoidingBehavior]);
   
   return {
     keyboardVisible,
@@ -91,5 +117,8 @@ export const useChatKeyboard = (insets) => {
     keyboardVerticalOffset,
     composerContainerStyle,
     dismissKeyboard,
+    keyboardAvoidingBehavior,
+    keyboardAvoidingOffset,
+    androidKeyboardGap,
   };
 };

@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback } from 'react';
 import { useDispatch } from 'react-redux';
 import { Platform, Vibration, Clipboard } from 'react-native';
 import * as Haptics from 'expo-haptics';
@@ -15,6 +15,7 @@ import {
 } from '@entities/chat/model/slice';
 import ChatApi from '@entities/chat/api/chatApi';
 import { useChatSocketActions } from '@entities/chat/hooks/useChatSocketActions';
+import { chatCacheService } from '@entities/chat/lib/chatCacheService';
 
 /**
  * Хук для всех действий в чате
@@ -25,6 +26,8 @@ export const useChatActions = ({
   currentUserId,
   messages,
   isSuperAdmin,
+  isAdmin = false,
+  canDeleteForAll,
   showError,
   showWarning,
   showConfirm,
@@ -32,12 +35,12 @@ export const useChatActions = ({
 }) => {
   const dispatch = useDispatch();
   const { emitToggleReaction } = useChatSocketActions();
-  const retryingMessagesRef = useRef(new Set());
   
   // ============ PERMISSIONS ============
   
   const canDeleteMessage = useCallback((message) => {
-    if (!message || isSuperAdmin) return isSuperAdmin;
+    if (!message) return false;
+    if (isSuperAdmin) return true;
     return Number(message.senderId) === Number(currentUserId);
   }, [isSuperAdmin, currentUserId]);
   
@@ -145,31 +148,55 @@ export const useChatActions = ({
   }, [dispatch, roomId, showConfirm]);
   
   const handleDeleteMessages = useCallback(async (messagesToDelete, forAll) => {
-    if (messagesToDelete.length === 0) return;
+    if (!Array.isArray(messagesToDelete) || messagesToDelete.length === 0) return false;
+    
+    const normalizedMessages = messagesToDelete
+      .map(msgOrId => {
+        if (!msgOrId) return null;
+        if (typeof msgOrId === 'object') return msgOrId;
+        return messages.find(m => m.id === msgOrId) || null;
+      })
+      .filter(Boolean);
+    
+    if (normalizedMessages.length === 0) return false;
 
     try {
       if (forAll) {
-        const canDeleteForAll = isSuperAdmin || 
-          messagesToDelete.every(msg => Number(msg.senderId) === Number(currentUserId));
+        const canDeleteAll = typeof canDeleteForAll === 'function'
+          ? normalizedMessages.every(msg => canDeleteForAll(msg))
+          : (isSuperAdmin || isAdmin || normalizedMessages.every(msg => Number(msg.senderId) === Number(currentUserId)));
         
-        if (!canDeleteForAll) {
+        if (!canDeleteAll) {
           showError('Ошибка', 'Недостаточно прав для удаления этих сообщений у всех');
-          return;
+          return false;
         }
       }
       
-      const results = await Promise.allSettled(
-        messagesToDelete.map(msg => 
-          dispatch(deleteMessage({ messageId: msg.id, forAll, currentUserId }))
-        )
-      );
+      const results = [];
+      for (const msg of normalizedMessages) {
+        const result = await dispatch(deleteMessage({ messageId: msg.id, forAll, currentUserId, roomId }));
+        results.push(result);
+        if (normalizedMessages.length > 1) {
+          await new Promise(resolve => setTimeout(resolve, 80));
+        }
+      }
       
-      const successCount = results.filter(r => 
-        r.status === 'fulfilled' && r.value?.type?.endsWith('/fulfilled')
-      ).length;
+      const successCount = results.filter(r => r?.type?.endsWith('/fulfilled')).length;
       const failCount = results.length - successCount;
 
-      setTimeout(() => dispatch(fetchMessages({roomId, limit: 100})), 100);
+      // КРИТИЧНО: Принудительная синхронизация после удаления
+      // Это гарантирует, что кэш обновится с актуальными данными сервера
+      if (successCount > 0) {
+        // Инвалидируем кэш, чтобы при следующей загрузке подтянулись свежие данные
+        try {
+          await chatCacheService.updateRoomSyncTime(roomId);
+        } catch (e) {
+          // Игнорируем ошибки инвалидации
+        }
+        
+        // Загружаем свежие сообщения с сервера
+        setTimeout(() => dispatch(fetchMessages({roomId, limit: 100})), 100);
+      }
       
       if (failCount > 0) {
         showWarning('Частичное удаление', `Удалено: ${successCount}, не удалось: ${failCount}`);
@@ -181,7 +208,7 @@ export const useChatActions = ({
       showError('Ошибка', 'Не удалось удалить сообщения');
       return false;
     }
-  }, [dispatch, currentUserId, roomId, showWarning, showError, isSuperAdmin]);
+  }, [dispatch, currentUserId, roomId, showWarning, showError, isSuperAdmin, isAdmin, canDeleteForAll, messages]);
   
   const handleCopyMessages = useCallback((messageIds) => {
     if (messageIds.length === 0) return;

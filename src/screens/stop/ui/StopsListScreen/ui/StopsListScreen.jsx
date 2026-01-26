@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, RefreshControl, TextInput, BackHandler } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl, TextInput, BackHandler, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { useRoute, useFocusEffect } from '@react-navigation/native';
 import { Color, FontFamily, FontSize, CommonStyles } from '@app/styles/GlobalStyles';
@@ -24,6 +25,9 @@ import { Ionicons } from '@expo/vector-icons';
 export const StopsListScreen = ({ navigation }) => {
     const dispatch = useDispatch();
     const route = useRoute();
+    const insets = useSafeAreaInsets();
+    const tabBarHeight = 80 + insets.bottom;
+    const scrollBottomPadding = tabBarHeight + 40;
 
     const { districtId: routeDistrictId, districtName: routeDistrictName, highlightStopId, fromScreen } = route.params || {};
 
@@ -212,6 +216,10 @@ export const StopsListScreen = ({ navigation }) => {
         return (
             <ScrollView
                 style={styles.scrollView}
+                contentContainerStyle={[
+                    styles.scrollContent,
+                    { paddingBottom: scrollBottomPadding }
+                ]}
                 refreshControl={
                     <RefreshControl
                         refreshing={refreshing}
@@ -221,23 +229,15 @@ export const StopsListScreen = ({ navigation }) => {
                     />
                 }
             >
-                <InteractiveMap onDistrictSelect={handleDistrictSelect} />
+                <View style={styles.mapCard}>
+                    <View style={styles.mapCardInner}>
+                        <InteractiveMap onDistrictSelect={handleDistrictSelect} />
+                    </View>
+                </View>
 
                 {renderSearchBar()}
 
-                {selectedDistrictId && (
-                    <View style={styles.filterContainer}>
-                        <Text style={styles.filterText}>
-                            Фильтр: {selectedDistrictName}
-                        </Text>
-                        <TouchableOpacity
-                            style={styles.resetFilterButton}
-                            onPress={resetFilter}
-                        >
-                            <Text style={styles.resetFilterText}>Сбросить</Text>
-                        </TouchableOpacity>
-                    </View>
-                )}
+         
 
                 {error && (
                     <ErrorState
@@ -253,12 +253,15 @@ export const StopsListScreen = ({ navigation }) => {
                 ) : (
                     <View style={styles.locationsList}>
                         {filteredStops.map((stop) => (
-                            <StopCard
-                                key={stop.id}
-                                stop={stop}
-                                onPress={handleStopPress}
-                                isHighlighted={stop.id === highlightStopId}
-                            />
+                            <View style={styles.stopCardWrapper} key={stop.id}>
+                                <View style={styles.stopCardInner}>
+                                    <StopCard
+                                        stop={stop}
+                                        onPress={handleStopPress}
+                                        isHighlighted={stop.id === highlightStopId}
+                                    />
+                                </View>
+                            </View>
                         ))}
                     </View>
                 )}
@@ -358,7 +361,7 @@ export const StopsListScreen = ({ navigation }) => {
                         onPress={handleAddStop}
                         activeOpacity={0.7}
                     >
-                        <Ionicons name="add" size={28} color={Color.blue3} />
+                        <Ionicons name="add" size={24} color={Color.blue3} />
                     </TouchableOpacity>
                 ) : (
                     <View style={styles.backButton} />
@@ -373,8 +376,8 @@ export const StopsListScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
     container: {
         ...CommonStyles.container,
-        overflow: "hidden",
         flex: 1,
+        backgroundColor: '#f6f7fb',
     },
     centerContainer: {
         flex: 1,
@@ -384,64 +387,87 @@ const styles = StyleSheet.create({
         ...CommonStyles.flexRow,
         alignItems: 'center',
         justifyContent: 'flex-start',
-        paddingVertical: 15,
+        paddingTop: 10,
+        paddingBottom: 8,
+        paddingHorizontal: 8,
+        backgroundColor: '#f6f7fb',
     },
     backButton: {
-        padding: 15,
-        width: 50,
-        height: 50,
+        padding: 10,
+        width: 44,
+        height: 44,
         justifyContent: 'center',
         alignItems: 'center',
     },
     addButton: {
-        padding: 10,
-        width: 50,
-        height: 50,
+        padding: 8,
+        width: 44,
+        height: 44,
         justifyContent: 'center',
         alignItems: 'center',
+        borderRadius: 12,
+        backgroundColor: '#eef2ff',
     },
     headerTitleContainer: {
         flex: 1,
         alignItems: 'center',
+        paddingHorizontal: 6,
     },
     headerTitle: {
         fontSize: FontSize.size_lg,
-        fontWeight: '500',
+        fontWeight: '600',
         color: Color.dark,
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
-        letterSpacing: 0.9,
+        letterSpacing: 0.4,
     },
     scrollView: {
         flex: 1,
     },
+    scrollContent: {
+        paddingBottom: 24,
+    },
+    mapCard: {
+        marginHorizontal: 16,
+        marginTop: 0,
+        borderRadius: 16,
+        backgroundColor: '#ffffff',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+        elevation: 3,
+    },
+    mapCardInner: {
+        borderRadius: 16,
+        overflow: 'hidden',
+        backgroundColor: '#ffffff',
+    },
     searchContainer: {
         paddingHorizontal: 16,
-        paddingTop: 2,
-        paddingBottom: 8,
-        backgroundColor: Color.colorLightMode,
-        marginTop: -25,
+        paddingTop: 6,
+        paddingBottom: 4,
     },
     searchInputContainer: {
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: '#ffffff',
-        borderRadius: 12,
-        paddingHorizontal: 16,
+        borderRadius: 16,
+        paddingHorizontal: 14,
         paddingVertical: 12,
         borderWidth: 1,
-        borderColor: Color.colorLavender,
+        borderColor: '#e8eaf3',
         shadowColor: '#000',
         shadowOffset: {
             width: 0,
             height: 1,
         },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
+        shadowOpacity: 0.06,
+        shadowRadius: 6,
         elevation: 2,
     },
     searchIcon: {
-        marginRight: 12,
+        marginRight: 10,
     },
     searchInput: {
         flex: 1,
@@ -456,31 +482,48 @@ const styles = StyleSheet.create({
     },
 
     locationsList: {
-        backgroundColor: Color.colorLightMode,
+        paddingHorizontal: 16,
+        paddingBottom: 8,
+        marginTop: 8,
+    },
+    stopCardWrapper: {
+        marginBottom: 12,
+        borderRadius: 16,
+        backgroundColor: '#ffffff',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 8,
+        elevation: 2,
+    },
+    stopCardInner: {
+        borderRadius: 16,
+        overflow: 'hidden',
+        backgroundColor: '#ffffff',
     },
     filterContainer: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        backgroundColor: '#e8f4f8',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: '#d1ecf1',
-        marginHorizontal: 0,
+        backgroundColor: '#eef4ff',
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderRadius: 12,
+        marginHorizontal: 16,
+        marginBottom: 6,
     },
     filterText: {
         fontSize: FontSize.size_md,
-        fontWeight: '500',
-        color: '#0c4a6e',
+        fontWeight: '600',
+        color: '#2b3a67',
         fontFamily: FontFamily.sFProText,
         flex: 1,
     },
     resetFilterButton: {
-        backgroundColor: '#0ea5e9',
+        backgroundColor: '#4f46e5',
         paddingHorizontal: 12,
         paddingVertical: 6,
-        borderRadius: 6,
+        borderRadius: 8,
     },
     resetFilterText: {
         fontSize: FontSize.size_sm,

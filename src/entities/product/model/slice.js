@@ -439,8 +439,18 @@ const productsSlice = createSlice({
                 const payload = action.payload;
                 if (payload?.isDeleted && payload?.productId) {
                     const productId = parseInt(payload.productId, 10);
-                    if (!isNaN(productId) && !state.deletedProductIds.includes(productId)) {
-                        state.deletedProductIds.push(productId);
+                    if (!isNaN(productId)) {
+                        // Помечаем как удаленный
+                        if (!state.deletedProductIds.includes(productId)) {
+                            state.deletedProductIds.push(productId);
+                        }
+                        // Удаляем из списков
+                        state.items = state.items.filter(item => item?.id !== productId);
+                        delete state.byId[productId];
+                        // Очищаем currentProduct если это удаленный продукт
+                        if (state.currentProduct?.id === productId) {
+                            state.currentProduct = null;
+                        }
                     }
                     // Don't set global error for deleted products - it's expected
                     return;
@@ -550,12 +560,19 @@ const productsSlice = createSlice({
             })
             .addCase(deleteProduct.fulfilled, (state, action) => {
                 state.loading = false;
-                const deletedProductId = action.payload;
-                state.items = state.items.filter(item => item?.id !== deletedProductId);
-                delete state.byId[deletedProductId];
-                state.lastFetchTime = Date.now();
-                if (state.currentProduct?.id === deletedProductId) {
-                    state.currentProduct = null;
+                const deletedProductId = parseInt(action.payload, 10);
+                if (!isNaN(deletedProductId)) {
+                    // Помечаем как удаленный
+                    if (!state.deletedProductIds.includes(deletedProductId)) {
+                        state.deletedProductIds.push(deletedProductId);
+                    }
+                    // Удаляем из списков
+                    state.items = state.items.filter(item => item?.id !== deletedProductId);
+                    delete state.byId[deletedProductId];
+                    state.lastFetchTime = Date.now();
+                    if (state.currentProduct?.id === deletedProductId) {
+                        state.currentProduct = null;
+                    }
                 }
             })
             .addCase(deleteProduct.rejected, (state, action) => {

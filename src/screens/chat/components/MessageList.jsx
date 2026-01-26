@@ -26,6 +26,8 @@ const MessageItem = memo(({
   onToggleSelection,
   onOpenProduct,
   onOpenStop,
+  onOpenWarehouse,
+  onOpenContact,
   onImagePress,
   onAvatarPress,
   onContactDriver,
@@ -49,6 +51,8 @@ const MessageItem = memo(({
       currentUserId={currentUserId}
       onOpenProduct={onOpenProduct}
       onOpenStop={onOpenStop}
+      onOpenWarehouse={onOpenWarehouse}
+      onOpenContact={onOpenContact}
       onImagePress={onImagePress}
       incomingAvatarUri={partnerAvatar}
       isSelectionMode={isSelectionMode}
@@ -122,6 +126,8 @@ export const MessageList = memo(({
   onToggleSelection,
   onOpenProduct,
   onOpenStop,
+  onOpenWarehouse,
+  onOpenContact,
   onImagePress,
   onAvatarPress,
   onContactDriver,
@@ -196,6 +202,8 @@ export const MessageList = memo(({
         onToggleSelection={() => onToggleSelection?.(item.id)}
         onOpenProduct={onOpenProduct}
         onOpenStop={onOpenStop}
+        onOpenWarehouse={onOpenWarehouse}
+        onOpenContact={onOpenContact}
         onImagePress={onImagePress}
         onAvatarPress={onAvatarPress}
         onContactDriver={onContactDriver}
@@ -228,6 +236,8 @@ export const MessageList = memo(({
     onToggleSelection,
     onOpenProduct,
     onOpenStop,
+    onOpenWarehouse,
+  onOpenContact,
     onImagePress,
     onAvatarPress,
     onContactDriver,

@@ -1,6 +1,8 @@
-import React, { memo, useCallback } from 'react';
+import React, { memo, useCallback, useMemo, useState } from 'react';
 import { View, TextInput, TouchableOpacity, Text, StyleSheet, Platform, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Audio } from 'expo-av';
+import * as Contacts from 'expo-contacts';
 
 // Hooks
 import { useComposerState } from './hooks/useComposerState';
@@ -15,6 +17,8 @@ import { VoiceRecorder } from '../VoiceRecorder';
 import { PollCreationModal } from '../PollCreationModal';
 import { ReplyPreview } from '../ReplyPreview';
 import { FullEmojiPicker } from '../FullEmojiPicker';
+import { ContactPicker } from '../ContactPicker/ContactPicker';
+import { PermissionInfoModal } from './components/PermissionInfoModal';
 import { AttachIcon } from '@shared/ui/Icon/AttachIcon';
 import { CameraIcon } from '@shared/ui/Icon/CameraIcon';
 
@@ -33,6 +37,7 @@ const ComposerModals = memo(({
   isRecording, 
   showAttachmentMenu, 
   showPollModal,
+  showContactPicker,
   pendingAction,
   onCancelRecording,
   onSendVoice,
@@ -41,8 +46,11 @@ const ComposerModals = memo(({
   onGalleryPress,
   onCameraPress,
   onPollPress,
+  onContactPress,
   onClosePollModal,
+  onCloseContactPicker,
   onCreatePoll,
+  onSelectContact,
   roomId,
   disabled,
 }) => (
@@ -98,6 +106,13 @@ const ComposerModals = memo(({
             onPress={onPollPress}
             disabled={disabled}
           />
+          <AttachmentMenuItem
+            icon="person"
+            backgroundColor="#9C27B0"
+            text="Контакт"
+            onPress={onContactPress}
+            disabled={disabled}
+          />
         </View>
       </TouchableOpacity>
     </Modal>
@@ -107,6 +122,13 @@ const ComposerModals = memo(({
       visible={showPollModal}
       onClose={onClosePollModal}
       onSubmit={onCreatePoll}
+    />
+
+    {/* Contact Picker Modal */}
+    <ContactPicker
+      visible={showContactPicker}
+      onClose={onCloseContactPicker}
+      onSelect={onSelectContact}
     />
   </>
 ));
@@ -126,6 +148,9 @@ export const Composer = memo(({
   // ============ STATE ============
   
   const state = useComposerState(disabled);
+  const [permissionModalVisible, setPermissionModalVisible] = useState(false);
+  const [permissionType, setPermissionType] = useState('photos');
+  const [showContactPicker, setShowContactPicker] = useState(false);
   
   const {
     text,
@@ -188,6 +213,19 @@ export const Composer = memo(({
     disabled,
   });
   
+  // ============ PERMISSION HANDLERS ============
+  
+  const handleShowPermissionModal = useCallback((type) => {
+    console.log('🔔 handleShowPermissionModal вызван', { type });
+    setPermissionType(type);
+    setPermissionModalVisible(true);
+    console.log('🔔 Модальное окно должно быть видимым сейчас');
+  }, []);
+  
+  const handleClosePermissionModal = useCallback(() => {
+    setPermissionModalVisible(false);
+  }, []);
+
   // ============ MEDIA ============
   
   const media = useComposerMedia({
@@ -195,6 +233,8 @@ export const Composer = memo(({
     setFiles: state.setFiles,
     setShowAttachmentMenu,
     setPendingAction,
+    setShowPollModal,
+    onShowPermissionModal: handleShowPermissionModal,
   });
   
   // ============ HANDLERS ============
@@ -211,9 +251,38 @@ export const Composer = memo(({
     setText(prevText => prevText + emoji);
   }, [setText]);
   
-  const handleStartRecording = useCallback(() => {
-    if (!disabled) setIsRecording(true);
-  }, [disabled, setIsRecording]);
+  const handleStartRecording = useCallback(async () => {
+    if (disabled) return;
+    
+    try {
+      // Проверяем разрешение ПЕРЕД открытием VoiceRecorder
+      const { status: currentStatus } = await Audio.getPermissionsAsync();
+      
+      if (currentStatus === 'granted') {
+        // Разрешение есть - открываем VoiceRecorder
+        setIsRecording(true);
+      } else if (currentStatus === 'undetermined') {
+        // Первый запрос - запрашиваем разрешение
+        const permission = await Audio.requestPermissionsAsync();
+        if (permission.granted) {
+          // Разрешение получено - открываем VoiceRecorder
+          setIsRecording(true);
+        } else {
+          // Пользователь отказал - показываем модальное окно настроек
+          console.log('🔔 Composer: Пользователь отказал от разрешения микрофона');
+          setPermissionType('microphone');
+          setPermissionModalVisible(true);
+        }
+      } else {
+        // Разрешение denied или restricted - показываем модальное окно настроек
+        console.log('🔔 Composer: Разрешение микрофона отклонено, показываем настройки');
+        setPermissionType('microphone');
+        setPermissionModalVisible(true);
+      }
+    } catch (error) {
+      console.error('Ошибка при проверке разрешения микрофона:', error);
+    }
+  }, [disabled, setIsRecording, setPermissionType, setPermissionModalVisible]);
   
   const handleCancelRecording = useCallback(() => {
     setIsRecording(false);
@@ -232,6 +301,52 @@ export const Composer = memo(({
   const handlePollPress = useCallback(() => {
     media.handlePollPress(setShowPollModal);
   }, [media, setShowPollModal]);
+
+  const handleContactPress = useCallback(async () => {
+    setShowAttachmentMenu(false);
+    
+    try {
+      // Проверяем разрешение ПЕРЕД открытием ContactPicker
+      const { status: currentStatus } = await Contacts.getPermissionsAsync();
+
+      if (currentStatus === 'granted') {
+        // Разрешение есть - открываем ContactPicker
+        setShowContactPicker(true);
+      } else if (currentStatus === 'undetermined') {
+        // Первый запрос - запрашиваем разрешение
+        const permission = await Contacts.requestPermissionsAsync();
+        if (permission.granted) {
+          // Разрешение получено - открываем ContactPicker
+          setShowContactPicker(true);
+        } else {
+          // Пользователь отказал - показываем модальное окно настроек
+          console.log('🔔 Composer: Пользователь отказал от разрешения контактов');
+          setPermissionType('contacts');
+          setPermissionModalVisible(true);
+        }
+      } else {
+        // Разрешение denied или restricted - показываем модальное окно настроек
+        console.log('🔔 Composer: Разрешение контактов отклонено, показываем настройки');
+        setPermissionType('contacts');
+        setPermissionModalVisible(true);
+      }
+    } catch (error) {
+      console.error('Ошибка при проверке разрешения контактов:', error);
+    }
+  }, [setShowAttachmentMenu, setShowContactPicker, setPermissionType, setPermissionModalVisible]);
+
+  const handleSelectContact = useCallback(async (contactUser) => {
+    // Закрываем пикер ПЕРЕД отправкой, чтобы избежать двойных нажатий
+    setShowContactPicker(false);
+    
+    // Добавляем небольшую задержку для анимации закрытия модального окна
+    // но отправляем сразу, чтобы не задерживать отправку
+    await send.sendContactMessage(contactUser);
+  }, [send]);
+
+  const handleCloseContactPicker = useCallback(() => {
+    setShowContactPicker(false);
+  }, []);
   
   const handleDismissAttachmentMenu = useCallback(() => {
     if (pendingAction === 'gallery') {
@@ -246,6 +361,13 @@ export const Composer = memo(({
     }
   }, [pendingAction, setPendingAction, media, setShowPollModal]);
   
+  // ============ COMPUTED VALUES ============
+  
+  // Стабилизируем placeholder чтобы избежать мерцания
+  const inputPlaceholder = useMemo(() => {
+    return files.length > 0 ? "Подпись..." : "Сообщение";
+  }, [files.length]);
+  
   // ============ RENDER ============
   
   return (
@@ -254,8 +376,6 @@ export const Composer = memo(({
       {files.length > 0 && (
         <AttachmentPreview 
           files={files} 
-          captions={captions} 
-          onChangeCaption={onChangeCaption} 
           onRemove={onRemoveFile} 
         />
       )}
@@ -299,7 +419,7 @@ export const Composer = memo(({
             <TextInput
               ref={textInputRef}
               style={[styles.input, disabled && styles.inputDisabled]}
-              placeholder="Сообщение"
+              placeholder={inputPlaceholder}
               value={text}
               onChangeText={handleChangeText}
               onBlur={typing.handleBlur}
@@ -352,6 +472,7 @@ export const Composer = memo(({
         isRecording={isRecording}
         showAttachmentMenu={showAttachmentMenu}
         showPollModal={showPollModal}
+        showContactPicker={showContactPicker}
         pendingAction={pendingAction}
         onCancelRecording={handleCancelRecording}
         onSendVoice={handleSendVoice}
@@ -360,8 +481,11 @@ export const Composer = memo(({
         onGalleryPress={media.handleGalleryPress}
         onCameraPress={media.handleCameraPress}
         onPollPress={handlePollPress}
+        onContactPress={handleContactPress}
         onClosePollModal={() => setShowPollModal(false)}
+        onCloseContactPicker={handleCloseContactPicker}
         onCreatePoll={handleCreatePoll}
+        onSelectContact={handleSelectContact}
         roomId={roomId}
         disabled={disabled}
       />
@@ -371,6 +495,13 @@ export const Composer = memo(({
         visible={showEmojiPicker}
         onClose={() => {}}
         onEmojiSelect={handleEmojiSelect}
+      />
+
+      {/* Permission Info Modal */}
+      <PermissionInfoModal
+        visible={permissionModalVisible}
+        onClose={handleClosePermissionModal}
+        type={permissionType}
       />
     </View>
   );

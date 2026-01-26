@@ -8,6 +8,7 @@ import { WarehousePicker } from '@shared/ui/Pickers/WarehousePicker';
 import { MultiDistrictPicker } from '@shared/ui/Pickers/MultiDistrictPicker';
 import { useAdmin } from '@entities/admin';
 import { useDistrict } from '@entities/district';
+import { useWarehouses } from '@entities/warehouse/hooks/useWarehouses';
 import { PROCESSING_ROLES, PROCESSING_ROLE_LABELS } from '@entities/admin/lib/constants';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -342,12 +343,23 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
     // Хуки для загрузки данных
     const { warehouses, loadWarehouses } = useAdmin();
     const { districts, loadDistricts } = useDistrict();
+    const {
+        warehouses: allWarehouses,
+        loading: allWarehousesLoading,
+        loadWarehouses: loadAllWarehouses
+    } = useWarehouses({ autoLoad: false });
+
+    const warehouseOptions = (warehouses.items && warehouses.items.length > 0)
+        ? warehouses.items
+        : allWarehouses;
+    const warehousesLoading = warehouses.isLoading || allWarehousesLoading;
 
     // Загрузка данных при открытии модального окна
     useEffect(() => {
         if (visible) {
             loadWarehouses();
             loadDistricts();
+            loadAllWarehouses(true);
         }
     }, [visible]);
 
@@ -597,13 +609,13 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
 
                         {/* Компонент выбора склада для сотрудника */}
                         <WarehousePicker
-                            warehouses={warehouses.items || []}
+                            warehouses={warehouseOptions || []}
                             selectedWarehouse={selectedWarehouse}
                             setSelectedWarehouse={handleWarehouseChange}
                             showWarehousePicker={showWarehousePicker}
                             setShowWarehousePicker={setShowWarehousePicker}
                             error={null}
-                            disabled={warehouses.isLoading}
+                            disabled={warehousesLoading}
                         />
 
                         {/* Компонент выбора районов для сотрудника */}
@@ -689,13 +701,13 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
 
                         {/* Компонент выбора склада для водителя */}
                         <WarehousePicker
-                            warehouses={warehouses.items || []}
+                            warehouses={warehouseOptions || []}
                             selectedWarehouse={selectedDriverWarehouse}
                             setSelectedWarehouse={handleDriverWarehouseChange}
                             showWarehousePicker={showDriverWarehousePicker}
                             setShowWarehousePicker={setShowDriverWarehousePicker}
                             error={null}
-                            disabled={warehouses.isLoading}
+                            disabled={warehousesLoading}
                         />
 
                         {/* Компонент выбора районов для водителя */}

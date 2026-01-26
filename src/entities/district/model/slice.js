@@ -1,5 +1,4 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import { logData } from '@shared/lib/logger';
 // Импортируем напрямую из API, чтобы избежать циклической зависимости
 import { districtApi } from "../api/districtsApi";
 
@@ -57,15 +56,12 @@ export const fetchAllDistricts = createAsyncThunk(
     'district/fetchAll',
     async (_, { rejectWithValue, getState }) => {
         try {
-            logData('Запрос на получение списка всех районов');
-
             const state = getState();
 
             if (
                 isCacheValid(state.district.lastFetchTime) &&
                 state.district.districts.length > 0
             ) {
-                logData('Возвращены районы из кэша', { count: state.district.districts.length });
                 return {
                     data: state.district.districts,
                     fromCache: true
@@ -74,24 +70,16 @@ export const fetchAllDistricts = createAsyncThunk(
 
             // Получаем базовый список районов
             const response = await districtApi.getAllDistricts();
-            logData('Получен список районов с сервера', { count: response.data?.length });
-
             // ДОБАВЛЕНО: Нормализуем данные
             const normalizedData = Array.isArray(response.data)
                 ? response.data.map(normalizeDistrictData)
                 : [];
-
-            logData('Нормализованные данные районов', {
-                count: normalizedData.length,
-                sample: normalizedData[0]
-            });
 
             return {
                 data: normalizedData,
                 fromCache: false
             };
         } catch (error) {
-            logData('Ошибка при получении списка районов', error);
             return rejectWithValue(handleError(error));
         }
     }
@@ -104,16 +92,13 @@ export const fetchDistrictById = createAsyncThunk(
     'district/fetchById',
     async (id, { rejectWithValue }) => {
         try {
-            logData('Запрос на получение района по ID', { id });
             const response = await districtApi.getDistrictById(id);
 
             // ДОБАВЛЕНО: Нормализуем данные
             const normalizedDistrict = normalizeDistrictData(response.data);
 
-            logData('Получен район по ID', { id, data: normalizedDistrict });
             return normalizedDistrict;
         } catch (error) {
-            logData('Ошибка при получении района по ID', { id, error });
             return rejectWithValue(handleError(error));
         }
     }
@@ -126,16 +111,13 @@ export const createDistrict = createAsyncThunk(
     'district/create',
     async (districtData, { rejectWithValue }) => {
         try {
-            logData('Запрос на создание нового района', { data: districtData });
             const response = await districtApi.createDistrict(districtData);
 
             // ДОБАВЛЕНО: Нормализуем данные
             const normalizedDistrict = normalizeDistrictData(response.data);
 
-            logData('Район успешно создан', { district: normalizedDistrict });
             return normalizedDistrict;
         } catch (error) {
-            logData('Ошибка при создании района', { data: districtData, error });
             return rejectWithValue(handleError(error));
         }
     }
@@ -148,16 +130,13 @@ export const updateDistrict = createAsyncThunk(
     'district/update',
     async ({ id, districtData }, { rejectWithValue }) => {
         try {
-            logData('Запрос на обновление района', { id, data: districtData });
             const response = await districtApi.updateDistrict(id, districtData);
 
             // ДОБАВЛЕНО: Нормализуем данные
             const normalizedDistrict = normalizeDistrictData(response.data);
 
-            logData('Район успешно обновлен', { id, district: normalizedDistrict });
             return normalizedDistrict;
         } catch (error) {
-            logData('Ошибка при обновлении района', { id, data: districtData, error });
             return rejectWithValue(handleError(error));
         }
     }
@@ -170,12 +149,9 @@ export const deleteDistrict = createAsyncThunk(
     'district/delete',
     async (id, { rejectWithValue }) => {
         try {
-            logData('Запрос на удаление района', { id });
             await districtApi.deleteDistrict(id);
-            logData('Район успешно удален', { id });
             return id;
         } catch (error) {
-            logData('Ошибка при удалении района', { id, error });
             return rejectWithValue(handleError(error));
         }
     }
@@ -188,7 +164,6 @@ export const fetchDriverDistricts = createAsyncThunk(
     'district/fetchDriverDistricts',
     async (driverId = null, { rejectWithValue }) => {
         try {
-            logData('Запрос на получение районов водителя', { driverId: driverId || 'текущий' });
             const response = await districtApi.getDriverDistricts(driverId);
 
             // ДОБАВЛЕНО: Нормализуем данные
@@ -196,14 +171,8 @@ export const fetchDriverDistricts = createAsyncThunk(
                 ? response.data.map(normalizeDistrictData)
                 : [];
 
-            logData('Получены районы водителя', {
-                driverId: driverId || 'текущий',
-                count: normalizedData.length
-            });
-
             return normalizedData;
         } catch (error) {
-            logData('Ошибка при получении районов водителя', { driverId: driverId || 'текущий', error });
             return rejectWithValue(handleError(error));
         }
     }
@@ -216,21 +185,9 @@ export const updateDriverDistrictsList = createAsyncThunk(
     'district/updateDriverDistricts',
     async ({ districtIds, driverId = null }, { rejectWithValue }) => {
         try {
-            logData('Запрос на обновление районов водителя', {
-                districtIds,
-                driverId: driverId || 'текущий'
-            });
             const response = await districtApi.updateDriverDistricts(districtIds, driverId);
-            logData('Районы водителя успешно обновлены', {
-                driverId: driverId || 'текущий'
-            });
             return response.data;
         } catch (error) {
-            logData('Ошибка при обновлении районов водителя', {
-                districtIds,
-                driverId: driverId || 'текущий',
-                error
-            });
             return rejectWithValue(handleError(error));
         }
     }

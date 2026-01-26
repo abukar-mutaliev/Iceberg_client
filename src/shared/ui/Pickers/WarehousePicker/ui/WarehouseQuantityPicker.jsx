@@ -118,13 +118,18 @@ export const WarehouseQuantityPicker = ({
     isWarning = false,
     disabled = false,
     basePrice = null, // Базовая цена за коробку для подсказки
-    isAdmin = false // Флаг, разрешено ли устанавливать цены
+    isAdmin = false, // Флаг, разрешено ли устанавливать цены
+    onOpenSelection
 }) => {
     const navigation = useNavigation();
     const { warehouses, loading: loadingWarehouses } = useWarehouses({ autoLoad: true });
 
     // Обработчик открытия экрана выбора складов
     const handleOpenSelection = () => {
+        if (onOpenSelection) {
+            onOpenSelection();
+            return;
+        }
         navigation.navigate('WarehouseSelection', {
             selectedWarehouseQuantities,
             basePrice,
@@ -159,16 +164,16 @@ export const WarehouseQuantityPicker = ({
                 style={[
                     styles.pickerButton,
                     error && !isWarning ? styles.pickerButtonError : null,
-                    disabled || loadingWarehouses ? styles.pickerButtonDisabled : null
+                    disabled ? styles.pickerButtonDisabled : null
                 ]}
-                onPress={() => !disabled && !loadingWarehouses && handleOpenSelection()}
-                disabled={disabled || loadingWarehouses}
+                onPress={() => !disabled && handleOpenSelection()}
+                disabled={disabled}
             >
                 <Text style={[
                     styles.pickerButtonText,
                     error && !isWarning ? styles.pickerButtonTextError : null,
                     selectedWarehouseQuantities && selectedWarehouseQuantities.length > 0 ? styles.selectedText : null,
-                    disabled || loadingWarehouses ? styles.pickerButtonTextDisabled : null
+                    disabled ? styles.pickerButtonTextDisabled : null
                 ]}>
                     {getButtonText()}
                 </Text>

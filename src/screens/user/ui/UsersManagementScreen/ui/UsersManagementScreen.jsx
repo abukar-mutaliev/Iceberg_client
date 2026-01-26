@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { SafeAreaView, StyleSheet } from 'react-native';
+import {  StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Color } from '@app/styles/GlobalStyles';
 import IconUser from '@shared/ui/Icon/Profile/IconPersona';
@@ -287,7 +288,7 @@ export const UsersManagementScreen = () => {
     );
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
             <AdminHeader
                 title="Управление пользователями"
                 icon={<IconUser width={24} height={24} color={Color.blue2} />}

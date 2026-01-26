@@ -8,11 +8,12 @@ import {
     ActivityIndicator,
     Dimensions,
     PixelRatio,
-    SafeAreaView,
     TouchableOpacity,
     Pressable
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
+import { CategoryIcon } from '@entities/category/ui/CategoryIcon';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = SCREEN_WIDTH / 440;
@@ -20,6 +21,33 @@ const scale = SCREEN_WIDTH / 440;
 const normalize = (size) => {
     const newSize = size * scale;
     return Math.round(PixelRatio.roundToNearestPixel(newSize));
+};
+
+const CATEGORY_ICON_MAP = {
+    'Стаканчик': 'стаканчик',
+    'Эскимо': 'эскимо',
+    'Рожок': 'рожок',
+    'Рожки': 'рожок',
+    'Килограммовые': 'килограммовое',
+    'Брикеты': 'брикеты',
+    'Брикет': 'брикеты',
+    'Фруктовый лед': 'фруктовый лед',
+    'Фруктовый лёд': 'фруктовый лед',
+    'Рыба': 'рыба',
+    'Стандартный': 'стандартный'
+};
+
+// Цвета для разных категорий
+const getCardColor = (name) => {
+    if (!name || typeof name !== 'string') return '#6b5be6';
+
+    const colors = [
+        '#6b5be6', '#ff6b6b', '#4ecdc4', '#45b7d1',
+        '#f9ca24', '#f0932b', '#eb4d4b', '#6c5ce7'
+    ];
+
+    const index = name.length % colors.length;
+    return colors[index];
 };
 
 // Простая замена BackArrowIcon без SVG
@@ -48,19 +76,6 @@ const SimpleCategoryCard = ({ category, onPress }) => {
         return firstChar ? firstChar.toUpperCase() : '?';
     };
 
-    // Цвета для разных категорий
-    const getCardColor = (name) => {
-        if (!name || typeof name !== 'string') return '#6b5be6';
-
-        const colors = [
-            '#6b5be6', '#ff6b6b', '#4ecdc4', '#45b7d1',
-            '#f9ca24', '#f0932b', '#eb4d4b', '#6c5ce7'
-        ];
-
-        const index = name.length % colors.length;
-        return colors[index];
-    };
-
     // Безопасное получение отображаемого имени
     const getDisplayName = () => {
         if (category.name && typeof category.name === 'string') {
@@ -74,6 +89,7 @@ const SimpleCategoryCard = ({ category, onPress }) => {
 
     const displayName = getDisplayName();
     const categoryName = category.name || '';
+    const iconType = CATEGORY_ICON_MAP[categoryName] || 'стандартный';
 
     return (
         <Pressable
@@ -95,9 +111,12 @@ const SimpleCategoryCard = ({ category, onPress }) => {
             </View>
 
             <View style={styles.iconContainer}>
-                <Text style={styles.iconText}>
-                    {getInitial(categoryName)}
-                </Text>
+                <CategoryIcon
+                    type={iconType}
+                    style={styles.iconWrapper}
+                    size={normalize(90)}
+                    color="#3b3b3b"
+                />
             </View>
         </Pressable>
     );
@@ -278,7 +297,7 @@ export const CategoriesScreen = ({ navigation }) => {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
             <View style={styles.header}>
                 <TouchableOpacity
                     style={styles.backButton}
@@ -343,22 +362,17 @@ const styles = StyleSheet.create({
     categoryContainer: {
         width: '32.43%',
         aspectRatio: 0.75,
-        backgroundColor: "#6b5be6",
         borderRadius: 20,
         overflow: 'hidden',
-        justifyContent: 'space-between',
+        justifyContent: 'center',
         alignItems: 'center',
-        padding: normalize(10),
-        elevation: 3,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
+        padding: normalize(6),
+        backgroundColor: "#6b5be6",
     },
     textContainer: {
         width: '100%',
-        height: normalize(33),
-        marginTop: normalize(8),
+        height: normalize(28),
+        marginTop: normalize(4),
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -367,23 +381,19 @@ const styles = StyleSheet.create({
         lineHeight: normalize(18),
         fontWeight: '700',
         fontFamily: 'System',
-        color: '#ffffff',
+        color: '#3b3b3b',
         textAlign: 'center',
     },
     iconContainer: {
-        width: normalize(40),
-        height: normalize(40),
-        borderRadius: normalize(20),
-        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        width: '100%',
+        flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        marginBottom: normalize(8),
+        marginBottom: normalize(4),
     },
-    iconText: {
-        fontSize: normalize(18),
-        fontWeight: 'bold',
-        color: '#ffffff',
-        fontFamily: 'System',
+    iconWrapper: {
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     placeholderCard: {
         width: '32.43%',

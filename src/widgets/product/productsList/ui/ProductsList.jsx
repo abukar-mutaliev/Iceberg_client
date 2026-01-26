@@ -24,7 +24,10 @@ export const ProductsList = ({
                                  ListHeaderComponent,
                                  ListFooterComponent,
                                  hideLoader = false,
-                                 products: productsProp = null
+                                 products: productsProp = null,
+                                 scrollEnabled = true,
+                                 nestedScrollEnabled = true,
+                                 contentContainerStyle = null
                              }) => {
     // Безопасные значения по умолчанию
     const safeOnEndReachedThreshold = onEndReachedThreshold || 8;
@@ -36,6 +39,8 @@ export const ProductsList = ({
     const error = useSelector(selectProductsError);
     // Используем переданные продукты через пропсы, если они есть, иначе из store
     const products = productsProp !== null ? productsProp : productsFromStore;
+    const safeScrollEnabled = scrollEnabled !== false;
+    const safeNestedScrollEnabled = nestedScrollEnabled !== false;
 
     // Сохраняем позицию скролла
     const flatListRef = useRef(null);
@@ -58,7 +63,7 @@ export const ProductsList = ({
                 price: product.price ? product.price.toString() : '0',
                 image: product.images && Array.isArray(product.images) && product.images.length > 0
                     ? { uri: product.images[0] }
-                    : defaultProductImage,
+                    : null,
                 // Сохраняем массив images для листания изображений
                 // Передаем массив images, если он есть, иначе undefined (ProductCard будет искать в originalData.images)
                 images: product.images && Array.isArray(product.images) && product.images.length > 0 
@@ -66,6 +71,9 @@ export const ProductsList = ({
                     : (product.originalData?.images && Array.isArray(product.originalData.images) && product.originalData.images.length > 0
                         ? product.originalData.images
                         : undefined),
+                // Сохраняем категорию для проверки в ProductCard
+                category: product.category || product.originalData?.category || null,
+                categories: product.categories || product.originalData?.categories || null,
                 originalData: product
             }));
     }, [products?.length, products]); // Добавляем products.length для лучшего контроля зависимостей
@@ -203,11 +211,12 @@ export const ProductsList = ({
                 removeClippedSubviews={false}
                 initialNumToRender={10}
                 showsVerticalScrollIndicator={false}
-                scrollEnabled={true}
-                nestedScrollEnabled={true}
+                scrollEnabled={safeScrollEnabled}
+                nestedScrollEnabled={safeNestedScrollEnabled}
                 ListHeaderComponent={ListHeaderComponent}
                 ListFooterComponent={renderListFooter}
                 scrollEventThrottle={16}
+                contentContainerStyle={[styles.contentContainer, contentContainerStyle]}
             />
         </View>
     );
@@ -216,7 +225,12 @@ export const ProductsList = ({
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        marginVertical: 10,
+        marginTop: 10,
+        marginBottom: 0,
+    },
+    contentContainer: {
+        flexGrow: 1,
+        paddingBottom: 12,
     },
     loaderContainer: {
         paddingVertical: 20,

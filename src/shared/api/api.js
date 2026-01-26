@@ -77,21 +77,11 @@ const processQueue = (error, token = null) => {
  * @returns {string} Базовый URL (например: http://85.192.33.223:5000)
  */
 export const getBaseUrl = () => {
-    // Используем apiUrl из конфига Expo, если доступен
-    const configApiUrl = Constants?.expoConfig?.extra?.apiUrl || 
-                         Constants?.manifest?.extra?.apiUrl;
-    
-    if (configApiUrl) {
+    // ВАЖНО: Всегда используем production сервер для всех типов сборок Android
+    // Не используем локальные IP даже в dev режиме
+    const productionUrl = 'http://85.192.33.223:5000';
 
-        return configApiUrl;
-    }
-    
-    // Fallback на захардкоженное значение
-    const fallbackUrl = 'http://85.192.33.223:5000';
-    if (__DEV__) {
-        console.warn('⚠️ [API] Using fallback API URL:', fallbackUrl);
-    }
-    return fallbackUrl;
+    return productionUrl;
 };
 
 /**
@@ -113,26 +103,30 @@ export const getApiUrl = (endpoint) => {
 export const getImageUrl = (imagePath) => {
     if (!imagePath) return null;
     
-    // Если уже полный URL, нормализуем его (заменяем старый IP на текущий базовый URL)
+    // Если уже полный URL
     if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
         const baseUrl = getBaseUrl();
-        // Извлекаем путь из полного URL (все что после домена)
         try {
             const url = new URL(imagePath);
+            const base = new URL(baseUrl);
+
+            // Если это НЕ наш API домен — возвращаем как есть (например S3/CDN)
+            if (url.host !== base.host) {
+                return imagePath;
+            }
+
+            const origin = url.origin;
             const path = url.pathname;
             // Если путь начинается с /uploads/, используем его, иначе добавляем /uploads/
             if (path.startsWith('/uploads/')) {
-                return `${baseUrl}${path}`;
+                return `${origin}${path}`;
             } else if (path.startsWith('/')) {
-                return `${baseUrl}/uploads${path}`;
+                return `${origin}/uploads${path}`;
             } else {
-                return `${baseUrl}/uploads/${path}`;
+                return `${origin}/uploads/${path}`;
             }
         } catch (e) {
             // Если не удалось распарсить URL, возвращаем как есть
-            if (__DEV__) {
-                console.warn('⚠️ [API] Failed to parse image URL:', imagePath, e);
-            }
             return imagePath;
         }
     }
@@ -208,6 +202,18 @@ const decodeToken = (accessToken) => {
     }
 };
 
+const isTokenValid = (token) => {
+    try {
+        const decoded = decodeToken(token);
+        if (!decoded?.exp) return false;
+        const currentTime = Date.now() / 1000;
+        return decoded.exp > currentTime;
+    } catch (error) {
+        console.error('Ошибка проверки токена:', error);
+        return false;
+    }
+};
+
 const setTokensAndUser = (tokens) => {
     const decoded = decodeToken(tokens.accessToken);
     if (decoded) {
@@ -239,18 +245,6 @@ const saveTokens = async (tokens) => {
 
         await AsyncStorage.setItem(STORAGE_KEYS.TOKENS, JSON.stringify(tokens));
         api.defaults.headers.common['Authorization'] = `Bearer ${tokens.accessToken}`;
-        
-        // Логируем успешное сохранение токенов (только в dev режиме)
-        if (__DEV__) {
-            const decoded = decodeToken(tokens.accessToken);
-            const currentTime = Math.floor(Date.now() / 1000);
-            const expiresIn = decoded?.exp ? decoded.exp - currentTime : null;
-            console.log('✅ [API] Токены сохранены:', {
-                hasAccessToken: !!tokens.accessToken,
-                hasRefreshToken: !!tokens.refreshToken,
-                expiresIn: expiresIn ? `${expiresIn}s` : 'unknown'
-            });
-        }
     } catch (error) {
         console.error('❌ [API] Ошибка сохранения токенов:', error);
     }
@@ -389,7 +383,6 @@ const handleRefreshToken = async (error, originalRequest) => {
         const tokens = await getStoredTokens();
 
         if (!tokens || !tokens.refreshToken) {
-            console.error('handleRefreshToken: Токены или refresh token отсутствуют');
             await removeTokens();
             if (dispatchAction) {
                 // Только сбрасываем auth, но НЕ полностью приложение
@@ -401,12 +394,6 @@ const handleRefreshToken = async (error, originalRequest) => {
         const decoded = decodeToken(tokens.refreshToken);
         const currentTime = Math.floor(Date.now() / 1000);
         if (!decoded || !decoded.exp || decoded.exp < currentTime) {
-            console.warn('⚠️ handleRefreshToken: Refresh token истек - требуется повторный вход', {
-                hasDecoded: !!decoded,
-                exp: decoded?.exp,
-                currentTime,
-                timeExpired: currentTime - (decoded?.exp || 0)
-            });
             await removeTokens();
             if (dispatchAction) {
                 // Только сбрасываем auth, но НЕ полностью приложение
@@ -443,15 +430,12 @@ const handleRefreshToken = async (error, originalRequest) => {
 
         const newTokens = { accessToken, refreshToken };
         await saveTokens(newTokens);
-        
-        console.log('🔄 [API] handleRefreshToken: Tokens refreshed, updating Redux store');
         setTokensAndUser(newTokens);
 
         processQueue(null, newTokens.accessToken);
 
         originalRequest.headers['Authorization'] = `Bearer ${newTokens.accessToken}`;
 
-        console.log('✅ [API] handleRefreshToken: Successfully refreshed and retrying request');
         return api(originalRequest);
     } catch (refreshError) {
         console.error('Ошибка при обновлении токена:', refreshError.message);
@@ -467,7 +451,6 @@ const handleRefreshToken = async (error, originalRequest) => {
         );
 
         if (isCriticalOperation) {
-            console.warn('⚠️ Refresh token error during critical operation, not logging out immediately');
             // Для критичных операций возвращаем ошибку но НЕ выбрасываем пользователя
             return Promise.reject(Object.assign(refreshError, {
                 isCriticalOperation: true,
@@ -523,7 +506,6 @@ api.interceptors.request.use(async (config) => {
                     const refreshExpired = !decodedRefresh || !decodedRefresh.exp || decodedRefresh.exp <= currentTime;
 
                     if (refreshExpired) {
-                        console.warn('⚠️ [API REQUEST] Refresh token expired - user needs to re-login');
                         await removeTokens();
                         if (dispatchAction) {
                             // НЕ сбрасываем полностью состояние приложения (RESET_APP_STATE)
@@ -536,7 +518,6 @@ api.interceptors.request.use(async (config) => {
                     if (!refreshExpired) {
                         // Если токен уже обновляется, ждем завершения
                         if (isRefreshing) {
-                            // console.log('⏳ [API REQUEST] Token refresh already in progress, waiting...', config.url);
                             return new Promise((resolve, reject) => {
                                 failedQueue.push({ resolve, reject });
                             }).then((token) => {
@@ -574,13 +555,10 @@ api.interceptors.request.use(async (config) => {
                             if (newAccessToken && newRefreshToken) {
                                 const newTokens = { accessToken: newAccessToken, refreshToken: newRefreshToken };
                                 await saveTokens(newTokens);
-                                
-                                console.log('🔄 [API REQUEST] Updating Redux store with new tokens');
                                 setTokensAndUser(newTokens);
-                                
+
                                 config.headers.Authorization = `Bearer ${newAccessToken}`;
-                                console.log('✅ [API REQUEST] Token refreshed proactively before request');
-                                
+
                                 // Обрабатываем очередь ожидающих запросов
                                 processQueue(null, newAccessToken);
                             }
@@ -593,7 +571,6 @@ api.interceptors.request.use(async (config) => {
                             isRefreshing = false;
                         }
                     } else {
-                        console.warn('⚠️ [API REQUEST] Refresh token also expired');
                         config.headers.Authorization = `Bearer ${tokens.accessToken}`;
                     }
                 } else {
@@ -603,7 +580,6 @@ api.interceptors.request.use(async (config) => {
 
                
             } else {
-                console.warn('⚠️ [API REQUEST] No access token found for request:', config.url);
             }
         }
 
@@ -673,13 +649,6 @@ api.interceptors.response.use(
             };
             
             console.error('🌐 [API ERROR] Network connection error:', detailedError);
-            
-            // Дополнительная диагностика для Expo Go
-            if (Constants?.executionEnvironment === 'storeClient') {
-                console.warn('⚠️ [API] Running in Expo Go - network_security_config.xml не применяется!');
-                console.warn('⚠️ [API] Для применения network_security_config.xml нужен development build');
-                console.warn('⚠️ [API] Выполните: npx expo prebuild && npx expo run:android');
-            }
         }
         
         // Не логируем 401 ошибки для корзины (корзина скрыта в первой версии приложения)
@@ -744,17 +713,8 @@ api.interceptors.response.use(
 
 // Остальной код остается без изменений...
 export const handleAuthTokens = (tokens) => {
-    console.log('🔑 [API] handleAuthTokens called', {
-        hasAccessToken: !!tokens?.accessToken,
-        hasRefreshToken: !!tokens?.refreshToken,
-        hasDispatchAction: !!dispatchAction
-    });
-    
     if (dispatchAction) {
         dispatchAction({ type: 'auth/setTokens', payload: tokens });
-        console.log('✅ [API] Tokens dispatched to Redux store');
-    } else {
-        console.warn('⚠️ [API] dispatchAction not available, tokens not synced with Redux');
     }
 };
 
@@ -814,7 +774,6 @@ export const authService = {
         try {
             // Если токен уже обновляется, возвращаем существующий промис
             if (refreshPromise) {
-                console.log('⏳ refreshAccessToken: Already refreshing, waiting...');
                 return refreshPromise;
             }
 
@@ -832,12 +791,6 @@ export const authService = {
                     const decoded = decodeToken(tokens.refreshToken);
                     const currentTime = Math.floor(Date.now() / 1000);
                     if (!decoded || !decoded.exp || decoded.exp <= currentTime) {
-                        console.error('❌ refreshAccessToken: Refresh token expired', {
-                            hasExp: !!decoded?.exp,
-                            tokenExp: decoded?.exp,
-                            currentTime,
-                            diff: decoded?.exp ? decoded.exp - currentTime : null
-                        });
                         await removeTokens();
                         if (dispatchAction) {
                             dispatchAction({ type: 'auth/resetState' });
@@ -845,7 +798,18 @@ export const authService = {
                         return null;
                     }
 
-                    console.log('🔄 refreshAccessToken: Refreshing token...');
+                    // Проверяем, не обновляются ли токены в request interceptor
+                    if (isRefreshing) {
+                        // Ждем немного и проверяем токены еще раз
+                        await new Promise(resolve => setTimeout(resolve, 200));
+                        const updatedTokens = await getStoredTokens();
+                        const updatedAccessValid = updatedTokens?.accessToken ? isTokenValid(updatedTokens.accessToken) : false;
+                        
+                        if (updatedAccessValid && updatedTokens) {
+                            return updatedTokens;
+                        }
+                    }
+                    
                     const response = await axios.post(
                         `${getBaseUrl()}/api/auth/refresh-token`,
                         { refreshToken: tokens.refreshToken },
@@ -873,11 +837,8 @@ export const authService = {
 
                     const newTokens = { accessToken, refreshToken };
                     await saveTokens(newTokens);
-                    
-                    console.log('🔄 refreshAccessToken: Updating Redux store with new tokens');
                     setTokensAndUser(newTokens);
 
-                    console.log('✅ refreshAccessToken: Token refreshed successfully and Redux updated');
                     return newTokens;
                 } finally {
                     // Сбрасываем промис после завершения (успешного или нет)
@@ -890,12 +851,24 @@ export const authService = {
             refreshPromise = null; // Сбрасываем промис при ошибке
             console.error('❌ refreshAccessToken: Error refreshing token:', error.message);
             
-            // При ошибке обновления токена - очищаем токены
+            // При ошибке 401/403 - это может означать что токены уже были использованы другим процессом
             if (error.response?.status === 401 || error.response?.status === 403) {
-                console.warn('⚠️ refreshAccessToken: Server returned 401/403, clearing tokens');
-                await removeTokens();
-                if (dispatchAction) {
-                    dispatchAction({ type: 'auth/resetState' });
+                // Проверяем, не были ли токены обновлены request interceptor'ом
+                await new Promise(resolve => setTimeout(resolve, 300)); // Даем время interceptor'у завершиться
+                const checkTokens = await getStoredTokens();
+                const checkAccessValid = checkTokens?.accessToken ? isTokenValid(checkTokens.accessToken) : false;
+                
+                if (checkAccessValid && checkTokens) {
+                    return checkTokens;
+                }
+                
+                // Токены не обновлены, проверяем refresh token
+                const checkRefreshValid = checkTokens?.refreshToken ? isTokenValid(checkTokens.refreshToken) : false;
+                if (!checkRefreshValid) {
+                    await removeTokens();
+                    if (dispatchAction) {
+                        dispatchAction({ type: 'auth/resetState' });
+                    }
                 }
             }
             
@@ -940,18 +913,8 @@ export const createProtectedRequest = async (method, url, data = null, config = 
         // Для blob ответов возвращаем response.data (который должен быть Blob)
         // Но добавляем дополнительную проверку и логирование
         if (isBlobResponse) {
-            console.log('createProtectedRequest blob response:', {
-                status: response.status,
-                headers: response.headers,
-                dataType: typeof response.data,
-                isBlob: response.data instanceof Blob,
-                dataSize: response.data?.size || 'unknown'
-            });
-            
             // Если получили не blob, но ожидали blob - что-то пошло не так
             if (!(response.data instanceof Blob)) {
-                console.warn('Expected Blob but got:', typeof response.data, response.data);
-                
                 // Попытаемся создать blob из полученных данных
                 if (typeof response.data === 'string' || response.data instanceof ArrayBuffer) {
                     const blob = new Blob([response.data], { type: 'application/pdf' });
@@ -1003,13 +966,9 @@ export const createPublicRequest = async (method, url, data = null, config = {})
 // Остальные функции остаются без изменений...
 export const validateTokensStatus = async () => {
     try {
-        console.log('🔍 [VALIDATE] Starting token validation...');
-
         const tokens = await getStoredTokens();
-        console.log('🔍 [VALIDATE] Tokens retrieved:', !!tokens);
 
         if (!tokens) {
-            console.log('🔍 [VALIDATE] Result: No tokens found');
             return { status: 'error', message: 'Токены не найдены' };
         }
 
@@ -1024,11 +983,6 @@ export const validateTokensStatus = async () => {
                 const decoded = decodeToken(tokens.accessToken);
                 accessTokenValid = decoded && decoded.exp > currentTime;
                 accessTokenExpiry = decoded ? decoded.exp : null;
-                console.log('🔍 [VALIDATE] Access token:', {
-                    valid: accessTokenValid,
-                    exp: accessTokenExpiry,
-                    timeToExpiry: accessTokenExpiry ? accessTokenExpiry - currentTime : null
-                });
             } catch (e) {
                 console.error('🔍 [VALIDATE] Ошибка декодирования access token:', e);
             }
@@ -1039,18 +993,12 @@ export const validateTokensStatus = async () => {
                 const decoded = decodeToken(tokens.refreshToken);
                 refreshTokenValid = decoded && decoded.exp > currentTime;
                 refreshTokenExpiry = decoded ? decoded.exp : null;
-                console.log('🔍 [VALIDATE] Refresh token:', {
-                    valid: refreshTokenValid,
-                    exp: refreshTokenExpiry,
-                    timeToExpiry: refreshTokenExpiry ? refreshTokenExpiry - currentTime : null
-                });
             } catch (e) {
                 console.error('🔍 [VALIDATE] Ошибка декодирования refresh token:', e);
             }
         }
 
         const authHeader = api.defaults.headers.common['Authorization'];
-        console.log('🔍 [VALIDATE] Auth header present:', !!authHeader);
 
         const result = {
             status: 'success',
@@ -1062,7 +1010,6 @@ export const validateTokensStatus = async () => {
             currentTime
         };
 
-        console.log('🔍 [VALIDATE] Final result:', result);
         return result;
     } catch (error) {
         console.error('🔍 [VALIDATE] Ошибка при проверке токенов:', error);
@@ -1101,10 +1048,6 @@ export const testNetworkConnection = async () => {
     try {
         const baseUrl = getBaseUrl();
 
-        if (baseUrl.startsWith('http://')) {
-            console.log('WARNING: Using HTTP (cleartext) connection');
-        }
-
         return new Promise((resolve, reject) => {
             const timeout = setTimeout(() => {
                 reject(new Error('Request timeout'));
@@ -1131,16 +1074,11 @@ export const testNetworkConnection = async () => {
                 .catch(error => {
                     clearTimeout(timeout);
 
-                    if (error.name === 'TypeError' && error.message.includes('Network request failed')) {
-                        console.log('ERROR: This is likely a CORS/cleartext traffic issue');
-                    }
-
                     reject(new Error(`Network request failed: ${error.message}`));
                 });
         });
 
     } catch (error) {
-        console.log('ERROR in testNetworkConnection setup:', error.message);
         throw error;
     }
 };

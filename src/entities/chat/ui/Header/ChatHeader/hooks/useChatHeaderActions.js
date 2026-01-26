@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { CommonActions } from '@react-navigation/native';
 import { useDispatch } from 'react-redux';
 import { deleteRoom, leaveRoom } from '@entities/chat/model/slice';
 
@@ -16,6 +17,32 @@ export const useChatHeaderActions = ({
   showError,
 }) => {
   const dispatch = useDispatch();
+
+  const resetToChatList = useCallback(() => {
+    try {
+      const rootNavigation = navigation.getParent('AppStack') || navigation.getParent() || navigation;
+      rootNavigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [
+            {
+              name: 'Main',
+              params: {
+                screen: 'ChatList',
+                params: { screen: 'ChatMain' },
+              },
+            },
+          ],
+        })
+      );
+    } catch (error) {
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+      } else {
+        navigation.navigate('ChatMain');
+      }
+    }
+  }, [navigation]);
   
   // ============ NAVIGATION ============
   
@@ -110,14 +137,7 @@ export const useChatHeaderActions = ({
               await dispatch(deleteRoom({ roomId })).unwrap();
               
               // Возврат к списку чатов
-              if (navigation.canGoBack()) {
-                navigation.goBack();
-              } else {
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: 'ChatTab', params: { screen: 'ChatList' } }],
-                });
-              }
+              resetToChatList();
             } catch (error) {
               console.error('Delete room error:', error);
               showError('Ошибка', error.message || 'Не удалось удалить чат');
@@ -152,14 +172,7 @@ export const useChatHeaderActions = ({
               await dispatch(deleteRoom({ roomId })).unwrap();
               
               // Возврат к списку чатов
-              if (navigation.canGoBack()) {
-                navigation.goBack();
-              } else {
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: 'ChatTab', params: { screen: 'ChatList' } }],
-                });
-              }
+              resetToChatList();
             } catch (error) {
               console.error('Delete group error:', error);
               showError('Ошибка', error.message || `Не удалось удалить ${entityName}`);
@@ -206,14 +219,7 @@ export const useChatHeaderActions = ({
               await dispatch(leaveRoom({ roomId, deleteMessages })).unwrap();
               
               // Возврат к списку чатов
-              if (navigation.canGoBack()) {
-                navigation.goBack();
-              } else {
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: 'ChatTab', params: { screen: 'ChatList' } }],
-                });
-              }
+              resetToChatList();
             } catch (error) {
               console.error('Leave room error:', error);
               const errorMessage = error.message || `Не удалось покинуть ${entityName}`;

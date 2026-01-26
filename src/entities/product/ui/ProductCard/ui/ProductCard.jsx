@@ -6,6 +6,8 @@
 
 import React, { memo, useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import { View, Text, Image, StyleSheet, Pressable, Dimensions, Platform } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import PagerView from "react-native-pager-view";
 import { Color, Border, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { useProductCard } from "../../../hooks/useProductCard";
@@ -309,6 +311,18 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
         setLoadingError(prev => ({...prev, [index]: true}));
     }, []);
 
+    const renderPlaceholder = useCallback((style) => (
+        <LinearGradient
+            colors={['#dfe7ff', '#cdd6ff', '#bfc7ff']}
+            style={[styles.placeholder, style]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+        >
+            <Icon name="image" size={24} color="rgba(255,255,255,0.95)" />
+            <Text style={styles.placeholderText}>Нет фото</Text>
+        </LinearGradient>
+    ), []);
+
     // Очистка timeout при размонтировании
     useEffect(() => {
         return () => {
@@ -347,6 +361,64 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
         }
         return productData.boxPrice || productData.price || (pricePerItem * itemsPerBox);
     }, [priceInfo, productData, pricePerItem, itemsPerBox]);
+
+    // Проверка, является ли товар рыбой
+    const isFishCategory = useMemo(() => {
+        if (!product && !productData) return false;
+        
+        // Собираем все возможные источники данных
+        const productToCheck = product || productData;
+        const originalData = product?.originalData || productToCheck?.originalData;
+        
+        // Функция проверки категории
+        const checkCategory = (categoryValue) => {
+            if (!categoryValue) return false;
+            const categoryLower = typeof categoryValue === 'string' 
+                ? categoryValue.toLowerCase().trim()
+                : (categoryValue.name ? categoryValue.name.toLowerCase().trim() : '');
+            return categoryLower === 'рыба' || categoryLower === 'fish';
+        };
+        
+        // Проверяем product.category (строка)
+        if (productToCheck?.category && typeof productToCheck.category === 'string') {
+            if (checkCategory(productToCheck.category)) return true;
+        }
+        
+        // Проверяем originalData.category (строка)
+        if (originalData?.category && typeof originalData.category === 'string') {
+            if (checkCategory(originalData.category)) return true;
+        }
+        
+        // Проверяем product.categories (массив)
+        if (Array.isArray(productToCheck?.categories) && productToCheck.categories.length > 0) {
+            for (const cat of productToCheck.categories) {
+                if (checkCategory(cat)) return true;
+            }
+        }
+        
+        // Проверяем originalData.categories (массив)
+        if (Array.isArray(originalData?.categories) && originalData.categories.length > 0) {
+            for (const cat of originalData.categories) {
+                if (checkCategory(cat)) return true;
+            }
+        }
+        
+        return false;
+    }, [product, productData]);
+
+    // Форматирование цены: рубли обычным шрифтом, копейки маленьким
+    const formatPriceWithKopecks = useCallback((priceValue) => {
+        if (!priceValue && priceValue !== 0) return { rubles: '0', kopecks: '00' };
+        
+        const numPrice = typeof priceValue === 'string' ? parseFloat(priceValue) : priceValue;
+        const rubles = Math.floor(numPrice);
+        const kopecks = Math.round((numPrice - rubles) * 100);
+        
+        return {
+            rubles: rubles.toString(),
+            kopecks: kopecks.toString().padStart(2, '0')
+        };
+    }, []);
 
     const getStatusBadge = () => {
         if (!isActive) {
@@ -400,13 +472,9 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                                         style={styles.compactSlide}
                                         collapsable={false}
                                     >
-                                        {loadingError[index % imageArray.length] ? (
-                                            <Image
-                                                source={placeholderImage}
-                                                style={styles.compactProductImage}
-                                                resizeMode="cover"
-                                            />
-                                        ) : (
+                                    {loadingError[index % imageArray.length] ? (
+                                        renderPlaceholder(styles.compactProductImage)
+                                    ) : (
                                             <Image
                                                 source={imageSource}
                                                 style={styles.compactProductImage}
@@ -419,13 +487,16 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                                 );
                             })}
                         </PagerView>
-                    ) : (
+                    ) : imageArray.length === 1 ? (
                         <Image
                             style={styles.compactProductImage}
                             resizeMode="cover"
                             source={imageArray.length > 0 ? getImageSource(imageArray[0]) : (productData.image || placeholderImage)}
                             defaultSource={placeholderImage}
+                            onError={() => handleImageError(0)}
                         />
+                    ) : (
+                        renderPlaceholder(styles.compactProductImage)
                     )}
                     {imageArray.length > 1 && (
                         <View style={styles.compactIndicatorContainer} pointerEvents="none">
@@ -448,10 +519,20 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                     </Text>
 
                     <View style={styles.compactPriceContainer}>
-                        <Text style={styles.compactPrice}>
-                            {pricePerItem.toFixed(0)} ₽
+                        <View style={styles.compactPriceRow}>
+                            <Text style={styles.compactPrice}>
+                                {formatPriceWithKopecks(pricePerItem).rubles}
+                            </Text>
+                            <Text style={styles.compactKopecks}>
+                                {formatPriceWithKopecks(pricePerItem).kopecks}
+                            </Text>
+                            <Text style={styles.compactPrice}>
+                                {' ₽'}
+                            </Text>
+                        </View>
+                        <Text style={styles.compactPriceUnit}>
+                            {isFishCategory ? '/ кг' : '/ шт.'}
                         </Text>
-                        <Text style={styles.compactPriceUnit}>/ шт.</Text>
                     </View>
                     
                     {itemsPerBox > 1 && (
@@ -502,11 +583,7 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                                     collapsable={false}
                                 >
                                     {loadingError[index % imageArray.length] ? (
-                                        <Image
-                                            source={placeholderImage}
-                                            style={styles.productImage}
-                                            resizeMode="cover"
-                                        />
+                                        renderPlaceholder([styles.productImage, { width: adaptiveStyles.imageWidth }])
                                     ) : (
                                         <Image
                                             source={imageSource}
@@ -520,13 +597,16 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                             );
                         })}
                     </PagerView>
-                ) : (
+                ) : imageArray.length === 1 ? (
                     <Image
                         style={[styles.productImage, { width: adaptiveStyles.imageWidth }]}
                         resizeMode="cover"
                         source={imageArray.length > 0 ? getImageSource(imageArray[0]) : (productData.image || placeholderImage)}
                         defaultSource={placeholderImage}
+                        onError={() => handleImageError(0)}
                     />
+                ) : (
+                    renderPlaceholder([styles.productImage, { width: adaptiveStyles.imageWidth }])
                 )}
                 {imageArray.length > 1 && (
                     <View style={styles.indicatorContainer} pointerEvents="none">
@@ -562,11 +642,19 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
 
                 <View style={styles.priceContainer}>
                     <View style={styles.priceWrapper}>
-                        <Text style={[styles.price, { fontSize: adaptiveStyles.fontSize.price }]}>
-                            {pricePerItem.toFixed(0)} ₽
-                        </Text>
+                        <View style={styles.priceRow}>
+                            <Text style={[styles.price, { fontSize: adaptiveStyles.fontSize.price }]}>
+                                {formatPriceWithKopecks(pricePerItem).rubles}
+                            </Text>
+                            <Text style={[styles.kopecks, { fontSize: Math.max(10, adaptiveStyles.fontSize.price * 0.4) }]}>
+                                {formatPriceWithKopecks(pricePerItem).kopecks}
+                            </Text>
+                            <Text style={[styles.price, { fontSize: adaptiveStyles.fontSize.price }]}>
+                                {' ₽'}
+                            </Text>
+                        </View>
                         <Text style={[styles.priceUnit, { fontSize: adaptiveStyles.fontSize.priceUnit }]}>
-                            / шт.
+                            {isFishCategory ? '/ кг' : '/ шт.'}
                         </Text>
                     </View>
 
@@ -773,7 +861,7 @@ const styles = StyleSheet.create({
     },
     priceWrapper: {
         flexDirection: 'row',
-        alignItems: 'flex-end',
+        alignItems: 'baseline',
         width: "100%",
         marginBottom: 1,
         flexWrap: 'wrap',
@@ -796,10 +884,22 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontSize: 9,
         fontWeight: '600',
-        color: Color.colorSilver_100,
+        color: Color.grey7D7D7D,
         textAlign: 'left',
         marginLeft: 4,
         marginBottom: 2,
+    },
+    priceRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+    },
+    kopecks: {
+        fontFamily: FontFamily.sFProText,
+        fontWeight: '600',
+        color: Color.purpleSoft,
+        textAlign: 'left',
+        marginLeft: 2,
+        paddingTop: 2,
     },
     addButton: {
         position: 'absolute',
@@ -879,6 +979,18 @@ const styles = StyleSheet.create({
         width: '100%',
         height: '100%',
     },
+    placeholder: {
+        width: '100%',
+        height: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    placeholderText: {
+        marginTop: 6,
+        fontSize: 11,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.95)',
+    },
     compactIndicatorContainer: {
         position: 'absolute',
         bottom: 8,
@@ -912,8 +1024,20 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontSize: 11,
         fontWeight: '500',
-        color: Color.colorSilver_100,
+        color: Color.grey7D7D7D,
         marginLeft: 4,
+    },
+    compactPriceRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+    },
+    compactKopecks: {
+        fontFamily: FontFamily.sFProText,
+        fontSize: 10,
+        fontWeight: '700',
+        color: Color.purpleSoft,
+        marginLeft: 2,
+        paddingTop: 2,
     },
     compactBoxInfo: {
         fontFamily: FontFamily.sFProText,

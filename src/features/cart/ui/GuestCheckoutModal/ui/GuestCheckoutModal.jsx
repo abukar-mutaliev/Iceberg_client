@@ -5,9 +5,8 @@ import {
     StyleSheet,
     TouchableOpacity,
     Modal,
-    SafeAreaView,
-    Dimensions,
-} from 'react-native';
+    Dimensions} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Color, FontFamily } from '@app/styles/GlobalStyles';
 import { AuthDialog } from "@entities/auth/ui/AuthDialog";
 

@@ -14,8 +14,14 @@
     "web": "expo start --web",
     "build": "eas build --profile preview --platform android --clear-cache",
     "production": "eas build --platform android --profile production",
+    "build:ios": "eas build --profile preview --platform ios",
+    "build:ios:dev": "eas build --profile development --platform ios",
+    "build:android:dev": "eas build --profile development --platform android",
+    "build:ios:production": "eas build --profile production --platform ios",
     "prebuild": "npx expo prebuild --clean",
+    "eas-build-post-install": "bash eas-build-pre-install.sh || echo 'Post-install hook completed with warnings'",
     "ios": "npx expo start --lan --go",
+    "submit": "eas submit -p ios --profile production --latest",
     "eas-build-pre-install": "npm install --legacy-peer-deps"
   },
   "dependencies": {
@@ -40,6 +46,7 @@
     "expo-blur": "~15.0.8",
     "expo-build-properties": "~1.0.10",
     "expo-constants": "~18.0.12",
+    "expo-contacts": "^15.0.11",
     "expo-dev-client": "~6.0.20",
     "expo-device": "~8.0.10",
     "expo-file-system": "~19.0.21",

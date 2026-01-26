@@ -10,11 +10,16 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
-  Image 
+  Image,
+  Linking
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import * as Contacts from 'expo-contacts';
 import ChatApi from '@entities/chat/api/chatApi';
+import { ContactPicker } from '@entities/chat/ui/ContactPicker/ContactPicker';
+import { PermissionInfoModal } from '@entities/chat/ui/Composer/components/PermissionInfoModal';
 import { debounce } from 'lodash';
 
 export const ChatSearchScreen = () => {
@@ -26,6 +31,9 @@ export const ChatSearchScreen = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [permissionModalVisible, setPermissionModalVisible] = useState(false);
+  const [permissionType, setPermissionType] = useState('contacts');
 
   // Дебаунсированный поиск
   const searchUsersDebounced = useCallback(
@@ -174,6 +182,38 @@ export const ChatSearchScreen = () => {
     }
   };
 
+  // Обработчик кнопки "Пригласить друга" с проверкой разрешений
+  const handleInvitePress = async () => {
+    try {
+      // Проверяем разрешение ПЕРЕД открытием ContactPicker
+      const { status: currentStatus } = await Contacts.getPermissionsAsync();
+
+      if (currentStatus === 'granted') {
+        // Разрешение есть - открываем ContactPicker
+        setShowInviteModal(true);
+      } else if (currentStatus === 'undetermined') {
+        // Первый запрос - запрашиваем разрешение
+        const permission = await Contacts.requestPermissionsAsync();
+        if (permission.granted) {
+          // Разрешение получено - открываем ContactPicker
+          setShowInviteModal(true);
+        } else {
+          // Пользователь отказал - показываем модальное окно настроек
+          console.log('🔔 ChatSearchScreen: Пользователь отказал от разрешения контактов');
+          setPermissionType('contacts');
+          setPermissionModalVisible(true);
+        }
+      } else {
+        // Разрешение denied или restricted - показываем модальное окно настроек
+        console.log('🔔 ChatSearchScreen: Разрешение контактов отклонено, показываем настройки');
+        setPermissionType('contacts');
+        setPermissionModalVisible(true);
+      }
+    } catch (error) {
+      console.error('Ошибка при проверке разрешения контактов:', error);
+    }
+  };
+
   // Рендер элемента списка
   const renderUserItem = ({ item }) => {
     if (item.type === 'room') {
@@ -273,15 +313,33 @@ export const ChatSearchScreen = () => {
         )}
       </View>
 
-      {/* Кнопка создания группы */}
-      <View style={styles.createGroupContainer}>
+      {/* Кнопки действий */}
+      <View style={styles.actionsContainer}>
         <TouchableOpacity
-          style={styles.createGroupButton}
+          style={[styles.actionButton, styles.createGroupButton]}
           onPress={() => navigation.navigate('CreateGroup')}
         >
           <Text style={styles.createGroupButtonText}>Создать группу</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.actionButton, styles.inviteButton]}
+          onPress={handleInvitePress}
+        >
+          <Ionicons name="person-add" size={20} color="#FFFFFF" style={styles.inviteIcon} />
+          <Text style={styles.inviteButtonText}>Пригласить друга</Text>
+        </TouchableOpacity>
       </View>
+
+      {/* Модальное окно выбора контакта для приглашения */}
+      <ContactPicker
+        visible={showInviteModal}
+        onClose={() => setShowInviteModal(false)}
+        onSelect={() => {
+          // Это не используется, так как мы используем режим приглашения
+          setShowInviteModal(false);
+        }}
+        initialMode="device"
+      />
 
       {/* Результаты поиска */}
       {searchQuery.length >= 2 ? (
@@ -316,6 +374,13 @@ export const ChatSearchScreen = () => {
           <ActivityIndicator size="large" color="#075E54" />
         </View>
       )}
+
+      {/* Permission Info Modal */}
+      <PermissionInfoModal
+        visible={permissionModalVisible}
+        onClose={() => setPermissionModalVisible(false)}
+        type={permissionType}
+      />
     </KeyboardAvoidingView>
   );
 };
@@ -345,22 +410,39 @@ const styles = StyleSheet.create({
   searchLoader: {
     marginLeft: 12,
   },
-  createGroupContainer: {
+  actionsContainer: {
+    flexDirection: 'row',
     paddingHorizontal: 16,
     paddingVertical: 12,
     backgroundColor: '#f5f5f5',
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
+    gap: 12,
   },
-  createGroupButton: {
-    backgroundColor: '#075E54',
+  actionButton: {
+    flex: 1,
     paddingVertical: 12,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+  },
+  createGroupButton: {
+    backgroundColor: '#075E54',
   },
   createGroupButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  inviteButton: {
+    backgroundColor: '#25D366',
+  },
+  inviteIcon: {
+    marginRight: 6,
+  },
+  inviteButtonText: {
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',

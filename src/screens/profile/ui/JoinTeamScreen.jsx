@@ -5,7 +5,6 @@ import {
     StyleSheet,
     ScrollView,
     TouchableOpacity,
-    SafeAreaView,
     Modal,
     FlatList,
     ActivityIndicator,
@@ -14,6 +13,7 @@ import {
     Keyboard,
     TouchableWithoutFeedback
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
@@ -266,7 +266,7 @@ export const JoinTeamScreen = () => {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
             <View style={styles.header}>
                 <BackButton onPress={() => navigation.goBack()} />
                 <Text style={styles.headerTitle}>Присоединиться к команде</Text>

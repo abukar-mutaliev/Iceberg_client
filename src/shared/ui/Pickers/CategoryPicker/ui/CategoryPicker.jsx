@@ -150,7 +150,7 @@ export const CategoryPicker = ({
         const itemHeight = 44;
         const doneButtonHeight = isMultiple ? 50 : 0;
         const padding = 10;
-        const maxVisibleItems = 6; // максимум видимых элементов без прокрутки
+        const maxVisibleItems = 8; // максимум видимых элементов без прокрутки
         
         const visibleItems = Math.min(categories.length, maxVisibleItems);
         const scrollViewHeight = visibleItems * itemHeight;
@@ -230,7 +230,8 @@ export const CategoryPicker = ({
                         style={styles.dropdownList}
                         keyboardShouldPersistTaps="handled"
                         nestedScrollEnabled={true}
-                        showsVerticalScrollIndicator={categories.length > 6}
+                        scrollEnabled={true}
+                        showsVerticalScrollIndicator={categories.length > 8}
                     >
                         {renderCategories()}
                     </ScrollView>
