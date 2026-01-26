@@ -4,6 +4,7 @@ import { AppState, Platform } from 'react-native';
 
 import { selectUser } from '@entities/auth';
 import PushNotificationService from "@shared/services/PushNotificationService";
+import OneSignalService from '@shared/services/OneSignalService';
 import {
     fetchNotifications,
     fetchUnreadCount,
@@ -67,6 +68,9 @@ export const useNotifications = (navigation) => {
                 lastRefreshTime.current = now;
 
                 dispatch(fetchUnreadCount());
+                if (user?.id) {
+                    OneSignalService.flushPendingSubscription(user.id);
+                }
                 setTimeout(() => { refreshing.current = false; }, 1000);
             }
             appState.current = nextAppState;

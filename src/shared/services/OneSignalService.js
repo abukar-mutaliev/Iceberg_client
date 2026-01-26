@@ -11,6 +11,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 let OneSignal = null;
 let oneSignalLoadAttempted = false;
 
+const PENDING_SUBSCRIPTION_STORAGE_KEY = '@onesignal:pending_subscription';
+const SAVE_RETRY_CONFIG = {
+    maxAttempts: 3,
+    baseDelayMs: 1000,
+    maxDelayMs: 8000
+};
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 const getOneSignal = () => {
     if (OneSignal !== null) {
         return OneSignal;
@@ -54,6 +63,8 @@ class OneSignalService {
         this.subscriptionId = null;
         this.lastSavedSubscriptionKey = null;
         this.lastSavedSubscriptionAt = 0;
+        this.lastAttemptedSubscriptionKey = null;
+        this.lastAttemptedSubscriptionAt = 0;
     }
 
     // Получить экземпляр OneSignal SDK
@@ -442,6 +453,9 @@ setupNotificationHandlers(oneSignal) {
     // Инициализация для пользователя
     async initializeForUser(user) {
         try {
+            // Сначала пробуем досохранить отложенный токен для этого пользователя
+            await this.flushPendingSubscription(user?.id);
+
             // Проверяем, не тот же ли это пользователь
             const isSameUser = this.currentUserId === user.id;
             if (isSameUser && this.subscriptionId) {
@@ -582,26 +596,79 @@ setupNotificationHandlers(oneSignal) {
         }
     }
 
+    async getPendingSubscription() {
+        try {
+            const raw = await AsyncStorage.getItem(PENDING_SUBSCRIPTION_STORAGE_KEY);
+            return raw ? JSON.parse(raw) : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    async setPendingSubscription(pending) {
+        try {
+            await AsyncStorage.setItem(
+                PENDING_SUBSCRIPTION_STORAGE_KEY,
+                JSON.stringify({
+                    ...pending,
+                    updatedAt: new Date().toISOString()
+                })
+            );
+        } catch (_) {
+            // Игнорируем ошибку, чтобы не блокировать основной поток
+        }
+    }
+
+    async clearPendingSubscription() {
+        try {
+            await AsyncStorage.removeItem(PENDING_SUBSCRIPTION_STORAGE_KEY);
+        } catch (_) {
+            // Игнорируем
+        }
+    }
+
+    async flushPendingSubscription(currentUserId) {
+        const pending = await this.getPendingSubscription();
+        if (!pending?.subscriptionId || !pending?.userId) {
+            return false;
+        }
+
+        if (currentUserId && pending.userId !== currentUserId) {
+            // Не сохраняем токен другого пользователя
+            await this.clearPendingSubscription();
+            return false;
+        }
+
+        return this.saveSubscriptionToServer(
+            pending.subscriptionId,
+            pending.userId,
+            { force: true, fromPending: true, maxAttempts: 2 }
+        );
+    }
+
     // Сохранение subscription на сервер
-    async saveSubscriptionToServer(subscriptionId, userId) {
+    async saveSubscriptionToServer(subscriptionId, userId, options = {}) {
         try {
             if (!subscriptionId) {
                 console.error('[OneSignal] ❌ subscriptionId пустой или undefined');
                 return false;
             }
 
+            const {
+                force = false,
+                fromPending = false,
+                maxAttempts = SAVE_RETRY_CONFIG.maxAttempts
+            } = options;
+
             const dedupeKey = `${userId}:${subscriptionId}`;
             const now = Date.now();
-            if (this.lastSavedSubscriptionKey === dedupeKey && now - this.lastSavedSubscriptionAt < 30000) {
+            if (!force && this.lastSavedSubscriptionKey === dedupeKey && now - this.lastSavedSubscriptionAt < 30000) {
                 console.log('[OneSignal] 🔁 Пропуск дублирующего сохранения subscription', {
                     userId,
                     subscriptionId
                 });
                 return true;
             }
-
-            this.lastSavedSubscriptionKey = dedupeKey;
-            this.lastSavedSubscriptionAt = now;
 
             // Импортируем API только когда нужно (чтобы избежать циклических зависимостей)
             const { createProtectedRequest } = require('@shared/api/api');
@@ -618,22 +685,54 @@ setupNotificationHandlers(oneSignal) {
                 tokenType: 'onesignal'
             };
 
-            const response = await createProtectedRequest('post', '/api/push-tokens', tokenData);
+            let lastError = null;
+            let attempt = 0;
 
-            // Проверяем успешность сохранения
-            if (response && (
-                response.success === true ||
-                response.status === 'success' ||
-                (response.data && response.data.id)
-            )) {
-                return true;
-            } else {
-                // Все равно считаем успехом, если ответ есть (может быть другой формат)
-                if (response) {
-                    return true;
+            while (attempt < maxAttempts) {
+                attempt += 1;
+                this.lastAttemptedSubscriptionKey = dedupeKey;
+                this.lastAttemptedSubscriptionAt = Date.now();
+
+                try {
+                    const response = await createProtectedRequest('post', '/api/push-tokens', tokenData);
+
+                    const isSuccess = !!response && (
+                        response.success === true ||
+                        response.status === 'success' ||
+                        (response.data && response.data.id)
+                    );
+
+                    if (isSuccess || response) {
+                        this.lastSavedSubscriptionKey = dedupeKey;
+                        this.lastSavedSubscriptionAt = Date.now();
+                        await this.clearPendingSubscription();
+                        return true;
+                    }
+
+                    lastError = new Error('Empty response from server');
+                } catch (error) {
+                    lastError = error;
                 }
-                return false;
+
+                if (attempt < maxAttempts) {
+                    const baseDelay = Math.min(
+                        SAVE_RETRY_CONFIG.baseDelayMs * (2 ** (attempt - 1)),
+                        SAVE_RETRY_CONFIG.maxDelayMs
+                    );
+                    const jitter = Math.floor(Math.random() * 250);
+                    await sleep(baseDelay + jitter);
+                }
             }
+
+            if (!fromPending) {
+                await this.setPendingSubscription({
+                    subscriptionId,
+                    userId,
+                    reason: lastError?.message || 'Unknown error'
+                });
+            }
+
+            return false;
 
         } catch (error) {
             console.error('[OneSignal] ❌ Ошибка сохранения OneSignal subscription:', {
@@ -698,7 +797,13 @@ setupNotificationHandlers(oneSignal) {
             // Сбрасываем локальное состояние
             this.currentUserId = null;
             this.subscriptionId = null;
+            // Сбрасываем дедупликацию, чтобы после logout сразу переактивировать токен
+            this.lastSavedSubscriptionKey = null;
+            this.lastSavedSubscriptionAt = 0;
+            this.lastAttemptedSubscriptionKey = null;
+            this.lastAttemptedSubscriptionAt = 0;
             this.isInitialized = false;
+            await this.clearPendingSubscription();
 
             // Во время выхода из системы не пытаемся использовать OneSignal модуль
             // чтобы избежать ошибок "Could not load RNOneSignal native module"
@@ -733,6 +838,21 @@ setupNotificationHandlers(oneSignal) {
             configuredAndroidChannelUuid,
             expectedAndroidChannelId,
             service: 'OneSignal'
+        };
+    }
+
+    async getPendingSubscriptionStatus() {
+        const pending = await this.getPendingSubscription();
+        if (!pending?.subscriptionId || !pending?.userId) {
+            return { hasPending: false };
+        }
+
+        return {
+            hasPending: true,
+            userId: pending.userId,
+            subscriptionIdPreview: pending.subscriptionId?.substring(0, 20),
+            updatedAt: pending.updatedAt,
+            reason: pending.reason
         };
     }
 

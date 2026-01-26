@@ -158,6 +158,17 @@ export const PushNotificationDiagnostic = () => {
                 if (oneSignalStatus.currentUserId) {
                     addLog(`👤 OneSignal User ID: ${oneSignalStatus.currentUserId}`, 'info');
                 }
+
+                const pendingStatus = await OneSignalService.getPendingSubscriptionStatus();
+                data.pendingSubscription = pendingStatus;
+                if (pendingStatus.hasPending) {
+                    addLog(`⏳ Отложенный токен: userId=${pendingStatus.userId}`, 'warning');
+                    if (pendingStatus.reason) {
+                        addLog(`⚠️ Причина: ${pendingStatus.reason}`, 'warning');
+                    }
+                } else {
+                    addLog('✅ Отложенных токенов нет', 'success');
+                }
             } catch (error) {
                 data.oneSignalService = { error: error.message };
                 addLog(`❌ Ошибка OneSignal Service: ${error.message}`, 'error');
