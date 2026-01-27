@@ -2,16 +2,72 @@
  * Универсальный хелпер для повторных попыток API запросов
  * Особенно полезен для загрузки файлов при нестабильном соединении
  */
+import NetInfo from '@react-native-community/netinfo';
 
 /**
  * Задержка между попытками (экспоненциальная)
  * @param {number} attempt - номер попытки (начиная с 0)
  * @returns {Promise<void>}
  */
-const delay = (attempt) => {
-  const baseDelay = 1000; // 1 секунда базовая задержка
-  const delayTime = Math.min(baseDelay * Math.pow(2, attempt), 10000); // максимум 10 секунд
+const delay = (attempt, options = {}) => {
+  const {
+    baseDelayMs = 1000,
+    maxDelayMs = 10000,
+    jitter = true
+  } = options;
+  const rawDelay = Math.min(baseDelayMs * Math.pow(2, attempt), maxDelayMs);
+  const jitterFactor = jitter ? (0.6 + Math.random() * 0.8) : 1;
+  const delayTime = Math.round(rawDelay * jitterFactor);
   return new Promise(resolve => setTimeout(resolve, delayTime));
+};
+
+const getErrorMessage = (error) => {
+  if (!error) return '';
+  return (
+    error.message ||
+    error.error ||
+    error.response?.data?.message ||
+    error.originalError?.message ||
+    error.originalError?.response?.data?.message ||
+    ''
+  );
+};
+
+const getErrorCode = (error) => {
+  return error?.code || error?.originalError?.code || error?.errorCode || '';
+};
+
+const getStatusCode = (error) => {
+  return error?.response?.status || error?.status || error?.code || null;
+};
+
+export const waitForConnection = async (timeoutMs = 20000) => {
+  try {
+    const state = await NetInfo.fetch();
+    const isOnline = state.isConnected && state.isInternetReachable !== false;
+    if (isOnline) {
+      return true;
+    }
+
+    return await new Promise((resolve) => {
+      let timeoutId = null;
+      const unsubscribe = NetInfo.addEventListener(nextState => {
+        const online = nextState.isConnected && nextState.isInternetReachable !== false;
+        if (online) {
+          if (timeoutId) clearTimeout(timeoutId);
+          unsubscribe();
+          resolve(true);
+        }
+      });
+
+      timeoutId = setTimeout(() => {
+        unsubscribe();
+        resolve(false);
+      }, timeoutMs);
+    });
+  } catch (error) {
+    return false;
+  }
 };
 
 /**
@@ -20,44 +76,59 @@ const delay = (attempt) => {
  * @returns {boolean}
  */
 const isRetryableError = (error) => {
+  const message = getErrorMessage(error);
+  const code = getErrorCode(error);
+  const status = getStatusCode(error);
+  const messageLower = String(message || '').toLowerCase();
+
   // Сетевые ошибки
-  if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
+  if (code === 'ERR_NETWORK' || message === 'Network Error') {
+    return true;
+  }
+
+  if (!error?.response && (
+      messageLower.includes('network') ||
+      messageLower.includes('internet') ||
+      messageLower.includes('интернет') ||
+      messageLower.includes('соедин') ||
+      messageLower.includes('сетев')
+    )) {
     return true;
   }
   
   // Таймауты - ВАЖНО для медленных соединений
-  if (error.code === 'ECONNABORTED' || 
-      error.code === 'ETIMEDOUT' ||
-      error.message?.includes('timeout') ||
-      error.message?.includes('timed out') ||
-      error.message?.toLowerCase().includes('превышено время')) {
+  if (code === 'ECONNABORTED' || 
+      code === 'ETIMEDOUT' ||
+      messageLower.includes('timeout') ||
+      messageLower.includes('timed out') ||
+      messageLower.includes('превышено время')) {
     return true;
   }
   
   // Ошибки загрузки файлов
-  if (error.message?.includes('загрузки файла') ||
-      error.message?.includes('upload') ||
-      error.message?.includes('Upload')) {
+  if (messageLower.includes('загрузки файла') ||
+      messageLower.includes('upload') ||
+      messageLower.includes('file')) {
     return true;
   }
   
   // 5xx ошибки сервера (временные проблемы на сервере)
-  if (error.response?.status >= 500 && error.response?.status < 600) {
+  if (status >= 500 && status < 600) {
     return true;
   }
   
   // 408 Request Timeout
-  if (error.response?.status === 408) {
+  if (status === 408) {
     return true;
   }
   
   // 429 Too Many Requests (rate limiting) - стоит подождать и повторить
-  if (error.response?.status === 429) {
+  if (status === 429) {
     return true;
   }
   
   // 503 Service Unavailable
-  if (error.response?.status === 503) {
+  if (status === 503) {
     return true;
   }
   
@@ -78,13 +149,25 @@ export const retryRequest = async (requestFunction, options = {}) => {
   const {
     maxRetries = 3,
     onRetry = null,
-    shouldRetry = isRetryableError
+    shouldRetry = isRetryableError,
+    waitForConnection: shouldWaitForConnection = false,
+    connectionTimeoutMs = 20000,
+    baseDelayMs = 1000,
+    maxDelayMs = 10000,
+    jitter = true
   } = options;
   
   let lastError = null;
   
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
+      if (shouldWaitForConnection) {
+        const isOnline = await waitForConnection(connectionTimeoutMs);
+        if (!isOnline) {
+          throw new Error('Отсутствует подключение к интернету');
+        }
+      }
+
       if (__DEV__ && attempt > 0) {
         console.log(`🔄 Retry attempt ${attempt}/${maxRetries}`);
       }
@@ -106,9 +189,9 @@ export const retryRequest = async (requestFunction, options = {}) => {
       
       if (__DEV__) {
         console.log(`❌ Request failed on attempt ${attempt + 1}/${maxRetries + 1}`, {
-          error: error.message,
-          code: error.code,
-          status: error.response?.status,
+          error: getErrorMessage(error),
+          code: getErrorCode(error),
+          status: getStatusCode(error),
           shouldRetry: shouldRetryThisError,
           hasMoreAttempts
         });
@@ -128,7 +211,7 @@ export const retryRequest = async (requestFunction, options = {}) => {
       }
       
       // Ждем перед следующей попыткой
-      await delay(attempt);
+      await delay(attempt, { baseDelayMs, maxDelayMs, jitter });
     }
   }
   
@@ -148,11 +231,18 @@ export const retryFileUpload = async (uploadFunction, options = {}) => {
   return retryRequest(uploadFunction, {
     maxRetries: options.maxRetries || 5, // Для файлов больше попыток
     onRetry: options.onRetry,
+    waitForConnection: options.waitForConnection,
+    connectionTimeoutMs: options.connectionTimeoutMs,
+    baseDelayMs: options.baseDelayMs,
+    maxDelayMs: options.maxDelayMs,
+    jitter: options.jitter,
     shouldRetry: (error) => {
       // Для файлов более агрессивный retry
-      return isRetryableError(error) || 
-             error.message?.includes('upload') ||
-             error.message?.includes('file');
+      const message = getErrorMessage(error).toLowerCase();
+      return isRetryableError(error) ||
+             message.includes('upload') ||
+             message.includes('file') ||
+             message.includes('загрузк');
     }
   });
 };

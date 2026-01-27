@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { 
   sendText, 
@@ -9,6 +9,7 @@ import {
   addOptimisticMessage 
 } from '@entities/chat/model/slice';
 import { playSendSound } from '@entities/chat/lib/sendSound';
+import { waitForConnection } from '@shared/api/retryHelper';
 
 /**
  * Хук для отправки сообщений
@@ -24,6 +25,15 @@ export const useComposerSend = ({
   const dispatch = useDispatch();
   const currentUserId = useSelector(state => state.auth?.user?.id);
   const currentUser = useSelector(state => state.auth?.user);
+  const queueRef = useRef([]);
+  const isProcessingRef = useRef(false);
+  const waitForOnline = useCallback(async () => {
+    while (true) {
+      const isOnline = await waitForConnection(20000);
+      if (isOnline) return true;
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+  }, []);
   
   // ============ HELPERS ============
   
@@ -56,7 +66,17 @@ export const useComposerSend = ({
   
   // ============ SEND TEXT ============
   
-  const sendTextMessage = useCallback(async (text) => {
+  const sendTextToServer = useCallback(async ({ text, temporaryId, replyToId }) => {
+    await dispatch(sendText({ 
+      roomId, 
+      content: text, 
+      temporaryId, 
+      replyToId 
+    })).unwrap();
+    playSendSound();
+  }, [dispatch, roomId]);
+
+  const sendTextMessage = useCallback((text) => {
     const { temporaryId, replyToIdToSend, replyToData, ...optimisticMessage } = 
       createOptimisticMessage('TEXT', {
         content: text,
@@ -67,21 +87,30 @@ export const useComposerSend = ({
     
     // Добавляем оптимистичное сообщение
     dispatch(addOptimisticMessage({ roomId, message: optimisticMessage }));
-    
-    // Отправляем на сервер
-    await dispatch(sendText({ 
-      roomId, 
-      content: text, 
-      temporaryId, 
-      replyToId: replyToIdToSend 
-    })).unwrap();
-    
-    playSendSound();
+    queueRef.current.push({
+      type: 'text',
+      text,
+      temporaryId,
+      replyToId: replyToIdToSend
+    });
+    processQueue();
   }, [dispatch, roomId, createOptimisticMessage, onCancelReply]);
   
   // ============ SEND IMAGES ============
   
-  const sendImageMessages = useCallback(async (files, caption) => {
+  const sendImagesToServer = useCallback(async ({ files, captions, temporaryId, replyToId }) => {
+    const orderedCaptions = files.map(() => captions);
+    await dispatch(sendImages({ 
+      roomId, 
+      files, 
+      captions: orderedCaptions,
+      temporaryId,
+      replyToId
+    })).unwrap();
+    playSendSound();
+  }, [dispatch, roomId]);
+
+  const sendImageMessages = useCallback((files, caption) => {
     // Используем текст из поля ввода как подпись для всех изображений
     const commonCaption = typeof caption === 'string' ? caption : '';
     
@@ -102,25 +131,29 @@ export const useComposerSend = ({
     
     // Добавляем оптимистичное сообщение
     dispatch(addOptimisticMessage({ roomId, message: optimisticMessage }));
-    
-    // Отправляем одну и ту же подпись для всех изображений
-    const orderedCaptions = files.map(() => commonCaption);
-    
-    // Отправляем на сервер
-    await dispatch(sendImages({ 
-      roomId, 
-      files, 
-      captions: orderedCaptions,
+    queueRef.current.push({
+      type: 'images',
+      files,
+      captions: commonCaption,
       temporaryId,
       replyToId: replyToIdToSend
-    })).unwrap();
-    
-    playSendSound();
+    });
+    processQueue();
   }, [dispatch, roomId, createOptimisticMessage, onCancelReply]);
   
   // ============ SEND VOICE ============
   
-  const sendVoiceMessage = useCallback(async (voiceData) => {
+  const sendVoiceToServer = useCallback(async ({ voiceData, temporaryId, replyToId }) => {
+    await dispatch(sendVoice({ 
+      roomId, 
+      voice: voiceData,
+      temporaryId,
+      replyToId
+    })).unwrap();
+    playSendSound();
+  }, [dispatch, roomId]);
+
+  const sendVoiceMessage = useCallback((voiceData) => {
     const { temporaryId, replyToIdToSend, replyToData, ...optimisticMessage } = 
       createOptimisticMessage('VOICE', {
         content: '',
@@ -139,21 +172,28 @@ export const useComposerSend = ({
     
     // Добавляем оптимистичное сообщение
     dispatch(addOptimisticMessage({ roomId, message: optimisticMessage }));
-    
-    // Отправляем на сервер
-    await dispatch(sendVoice({ 
-      roomId, 
-      voice: voiceData,
+    queueRef.current.push({
+      type: 'voice',
+      voiceData,
       temporaryId,
       replyToId: replyToIdToSend
-    })).unwrap();
-    
-    playSendSound();
+    });
+    processQueue();
   }, [dispatch, roomId, createOptimisticMessage, onCancelReply]);
   
   // ============ SEND POLL ============
   
-  const sendPollMessage = useCallback(async (pollData) => {
+  const sendPollToServer = useCallback(async ({ pollData, temporaryId, replyToId }) => {
+    await dispatch(sendPoll({ 
+      roomId, 
+      pollData,
+      temporaryId,
+      replyToId
+    })).unwrap();
+    playSendSound();
+  }, [dispatch, roomId]);
+
+  const sendPollMessage = useCallback((pollData) => {
     const { temporaryId, replyToIdToSend, replyToData, ...optimisticMessage } = 
       createOptimisticMessage('POLL', {
         content: pollData.question,
@@ -175,34 +215,33 @@ export const useComposerSend = ({
     
     // Добавляем оптимистичное сообщение
     dispatch(addOptimisticMessage({ roomId, message: optimisticMessage }));
-    
-    // Отправляем на сервер
-    await dispatch(sendPoll({ 
-      roomId, 
+    queueRef.current.push({
+      type: 'poll',
       pollData,
       temporaryId,
       replyToId: replyToIdToSend
-    })).unwrap();
-    
-    playSendSound();
+    });
+    processQueue();
   }, [dispatch, roomId, createOptimisticMessage, onCancelReply]);
 
   // ============ SEND CONTACT ============
   
-  const sendContactMessage = useCallback(async (contactUser) => {
-    // Защита от двойной отправки
-    if (isSendingRef.current) {
-      console.warn('sendContactMessage: уже идет отправка, игнорируем');
-      return;
-    }
-    
+  const sendContactToServer = useCallback(async ({ contactUserId, temporaryId, replyToId }) => {
+    await dispatch(sendContact({ 
+      roomId, 
+      contactUserId,
+      temporaryId,
+      replyToId
+    })).unwrap();
+    playSendSound();
+  }, [dispatch, roomId]);
+
+  const sendContactMessage = useCallback((contactUser) => {
     const contactUserId = contactUser?.id;
     if (!contactUserId) {
       console.warn('sendContactMessage: contactUserId отсутствует');
       return;
     }
-    
-    isSendingRef.current = true;
 
     // Получаем имя контакта
     const contactName = contactUser.client?.name ||
@@ -239,72 +278,81 @@ export const useComposerSend = ({
     
     // Добавляем оптимистичное сообщение
     dispatch(addOptimisticMessage({ roomId, message: optimisticMessage }));
-    
-    try {
-      // Отправляем на сервер
-      const sendPromise = dispatch(sendContact({ 
-        roomId, 
-        contactUserId,
-        temporaryId,
-        replyToId: replyToIdToSend
-      })).unwrap();
-      
-      // Освобождаем блокировку сразу после старта отправки,
-      // чтобы не блокировать последующие сообщения при медленной сети.
-      isSendingRef.current = false;
-      
-      await sendPromise;
-      playSendSound();
-    } catch (error) {
-      console.error('Ошибка отправки контакта:', error);
-      // В случае ошибки можно показать уведомление или обработать ошибку
-    } finally {
-      isSendingRef.current = false;
-    }
-  }, [dispatch, roomId, createOptimisticMessage, onCancelReply, isSendingRef]);
+    queueRef.current.push({
+      type: 'contact',
+      contactUserId,
+      temporaryId,
+      replyToId: replyToIdToSend
+    });
+    processQueue();
+  }, [dispatch, roomId, createOptimisticMessage, onCancelReply]);
   
   // ============ MAIN SEND HANDLER ============
   
-  const handleSend = useCallback(async (text, files, captions, clearForm) => {
-    if (isSendingRef.current) return;
+  const processQueue = useCallback(async () => {
+    if (isProcessingRef.current) return;
+    isProcessingRef.current = true;
     isSendingRef.current = true;
     
+    try {
+      while (queueRef.current.length > 0) {
+        const nextItem = queueRef.current[0];
+        await waitForOnline();
+        
+        try {
+          if (nextItem.type === 'images') {
+            await sendImagesToServer(nextItem);
+          } else if (nextItem.type === 'text') {
+            await sendTextToServer(nextItem);
+          } else if (nextItem.type === 'voice') {
+            await sendVoiceToServer(nextItem);
+          } else if (nextItem.type === 'poll') {
+            await sendPollToServer(nextItem);
+          } else if (nextItem.type === 'contact') {
+            await sendContactToServer(nextItem);
+          }
+        } catch (error) {
+          console.error('Ошибка отправки сообщения из очереди:', error);
+        } finally {
+          queueRef.current.shift();
+        }
+      }
+    } finally {
+      isProcessingRef.current = false;
+      isSendingRef.current = false;
+    }
+  }, [
+    isSendingRef,
+    waitForOnline,
+    sendImagesToServer,
+    sendTextToServer,
+    sendVoiceToServer,
+    sendPollToServer,
+    sendContactToServer
+  ]);
+
+  const handleSend = useCallback(async (text, files, captions, clearForm) => {
     // Сохраняем текущие значения
     const currentText = text.trim();
     const currentFiles = [...files];
+    
+    if (currentText.length === 0 && currentFiles.length === 0) {
+      return;
+    }
     
     // Очищаем форму немедленно для лучшего UX
     clearForm();
     stopTyping();
     
-    try {
-      let sendPromise = null;
-      // Отправляем изображения (текст используется как подпись)
-      if (currentFiles.length > 0) {
-        sendPromise = sendImageMessages(currentFiles, currentText);
-      } else if (currentText.length > 0) {
-        // Отправляем текст только если нет изображений
-        sendPromise = sendTextMessage(currentText);
-      }
-      
-      // Освобождаем блокировку сразу после старта отправки,
-      // чтобы не блокировать последующие сообщения при медленной сети.
-      isSendingRef.current = false;
-      
-      if (sendPromise) {
-        await sendPromise;
-      }
-    } catch (error) {
-      console.error('Ошибка отправки сообщения:', error);
-      // В случае ошибки восстанавливаем содержимое
-      // (но НЕ восстанавливаем - лучше показать ошибку)
-    } finally {
-      isSendingRef.current = false;
+    if (currentFiles.length > 0) {
+      sendImageMessages(currentFiles, currentText);
+    }
+    if (currentText.length > 0) {
+      sendTextMessage(currentText);
     }
   }, [
-    isSendingRef, 
-    stopTyping, 
-    sendImageMessages, 
+    stopTyping,
+    sendImageMessages,
     sendTextMessage
   ]);
   

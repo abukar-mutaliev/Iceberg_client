@@ -64,6 +64,10 @@ export const stopApi = {
                 }),
                 {
                     maxRetries: 5,
+                    waitForConnection: true,
+                    connectionTimeoutMs: 20000,
+                    baseDelayMs: 1500,
+                    maxDelayMs: 15000,
                     onRetry: (attempt, error) => {
                         console.log(`🔄 Повторная попытка загрузки остановки ${attempt}/5`, {
                             error: error.message,

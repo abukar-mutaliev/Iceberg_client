@@ -322,29 +322,10 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
 
             // Получаем priceInfo из product или originalData
             const priceInfo = product?.priceInfo || product?.originalData?.priceInfo || null;
+            const pricePerItem = product?.pricePerItem || product?.originalData?.pricePerItem;
             
-            // Определяем цену: приоритет отдается цене из фургона (stopPrice/effectivePrice)
-            let displayPrice = safeNumber(product.price, 0);
-            
-            if (priceInfo) {
-                // Если есть цена фургона (stopPrice), используем её
-                if (priceInfo.stopPrice !== null && priceInfo.stopPrice !== undefined) {
-                    const itemsPerBox = product.itemsPerBox || product.originalData?.itemsPerBox || 1;
-                    // stopPrice - это цена за коробку, делим на itemsPerBox для получения цены за штуку
-                    displayPrice = safeNumber(priceInfo.stopPrice / itemsPerBox, displayPrice);
-                } 
-                // Если нет stopPrice, но есть effectivePrice (эффективная цена фургона)
-                else if (priceInfo.effectivePrice) {
-                    const itemsPerBox = product.itemsPerBox || product.originalData?.itemsPerBox || 1;
-                    // effectivePrice - это цена за коробку, делим на itemsPerBox для получения цены за штуку
-                    displayPrice = safeNumber(priceInfo.effectivePrice / itemsPerBox, displayPrice);
-                }
-                // Если есть warehousePrice, но нет stopPrice, используем warehousePrice
-                else if (priceInfo.warehousePrice !== null && priceInfo.warehousePrice !== undefined) {
-                    const itemsPerBox = product.itemsPerBox || product.originalData?.itemsPerBox || 1;
-                    displayPrice = safeNumber(priceInfo.warehousePrice / itemsPerBox, displayPrice);
-                }
-            }
+            // Цена за штуку (как в ProductCard)
+            const displayPrice = safeNumber(pricePerItem ?? product.price, 0);
 
             // Получаем первое изображение для обратной совместимости
             const firstImage = imageArray.length > 0 ? getImageSource(imageArray[0]) : placeholderImage;
@@ -473,13 +454,41 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
 
     // Проверка, является ли товар рыбой
     const isFishCategory = useMemo(() => {
-        if (!productData) return false;
+        if (!product && !productData) return false;
         
-        const category = productData.category || '';
-        const categoryLower = category.toLowerCase().trim();
+        const productToCheck = product || productData;
+        const originalData = product?.originalData || productToCheck?.originalData;
         
-        return categoryLower === 'рыба' || categoryLower === 'fish';
-    }, [productData?.category]);
+        const checkCategory = (categoryValue) => {
+            if (!categoryValue) return false;
+            const categoryLower = typeof categoryValue === 'string'
+                ? categoryValue.toLowerCase().trim()
+                : (categoryValue.name ? categoryValue.name.toLowerCase().trim() : '');
+            return categoryLower === 'рыба' || categoryLower === 'fish';
+        };
+        
+        if (productToCheck?.category && typeof productToCheck.category === 'string') {
+            if (checkCategory(productToCheck.category)) return true;
+        }
+        
+        if (originalData?.category && typeof originalData.category === 'string') {
+            if (checkCategory(originalData.category)) return true;
+        }
+        
+        if (Array.isArray(productToCheck?.categories) && productToCheck.categories.length > 0) {
+            for (const cat of productToCheck.categories) {
+                if (checkCategory(cat)) return true;
+            }
+        }
+        
+        if (Array.isArray(originalData?.categories) && originalData.categories.length > 0) {
+            for (const cat of originalData.categories) {
+                if (checkCategory(cat)) return true;
+            }
+        }
+        
+        return false;
+    }, [product, productData]);
 
     if (!productData) return null;
 

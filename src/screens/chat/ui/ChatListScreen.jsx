@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useMemo, useRef} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {View, FlatList, TouchableOpacity, Text, StyleSheet, RefreshControl, Image, InteractionManager, Platform} from 'react-native';
 import {useFocusEffect, CommonActions} from '@react-navigation/native';
 import { useTabBar } from '@widgets/navigation/context';
@@ -64,6 +64,7 @@ export const ChatListScreen = ({navigation}) => {
     const { showTabBar } = useTabBar();
     const insets = useSafeAreaInsets();
     const tabBarHeight = 80 + insets.bottom;
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const rooms = useSelector(selectRoomsList) || [];
     const loading = useSelector((s) => s.chat?.rooms?.loading);
     const currentUser = useSelector((s) => s.auth?.user);
@@ -104,7 +105,9 @@ export const ChatListScreen = ({navigation}) => {
 
     // Обработчик для pull-to-refresh
     const handleRefresh = useCallback(() => {
-        dispatch(fetchRooms({page: 1, forceRefresh: true}));
+        setIsRefreshing(true);
+        dispatch(fetchRooms({page: 1, forceRefresh: true}))
+            .finally(() => setIsRefreshing(false));
     }, [dispatch]);
 
     useEffect(() => {
@@ -451,7 +454,9 @@ export const ChatListScreen = ({navigation}) => {
     }, [currentUserId, participantsById, productsById, toAbsoluteUri]);
 
     const onRefresh = useCallback(() => {
-        dispatch(fetchRooms({page: 1}));
+        setIsRefreshing(true);
+        dispatch(fetchRooms({page: 1}))
+            .finally(() => setIsRefreshing(false));
     }, [dispatch]);
 
     const handleLoadMore = useCallback(() => {
@@ -750,6 +755,8 @@ export const ChatListScreen = ({navigation}) => {
         ) : null
     ), [loading]);
 
+    const showTopLoader = loading && !isRefreshing;
+
     return (
         <View style={styles.container}>
             {/* Индикатор соединения только в dev режиме и только если отключен */}
@@ -772,9 +779,16 @@ export const ChatListScreen = ({navigation}) => {
                 renderItem={renderItem}
                 onEndReached={handleLoadMore}
                 onEndReachedThreshold={0.1}
+                ListHeaderComponent={
+                    showTopLoader ? (
+                        <View style={styles.topLoader}>
+                            <View style={styles.topLoaderBar} />
+                        </View>
+                    ) : null
+                }
                 refreshControl={
                     <RefreshControl
-                        refreshing={loading && !isNavigatingRef.current}
+                        refreshing={isRefreshing}
                         onRefresh={handleRefresh}
                         colors={['#007AFF']}
                         tintColor="#007AFF"
@@ -987,6 +1001,18 @@ const styles = StyleSheet.create({
         fontSize: 11,
         color: '#856404',
         marginTop: 4,
+        opacity: 0.8,
+    },
+    topLoader: {
+        height: 4,
+        backgroundColor: '#EAF2FF',
+        justifyContent: 'center',
+    },
+    topLoaderBar: {
+        height: 2,
+        backgroundColor: '#007AFF',
+        marginHorizontal: 16,
+        borderRadius: 1,
         opacity: 0.8,
     },
     voiceMessageContainer: {

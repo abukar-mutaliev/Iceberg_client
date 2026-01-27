@@ -299,7 +299,7 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     scrollContent: {
-        paddingBottom: 0,
+        paddingBottom: SCREEN_WIDTH * 0.50,
     },
     productsContainer: {
         position: 'relative',

@@ -43,7 +43,7 @@ export const MainScreen = ({ navigation, route }) => {
     const isAndroid = Platform.OS === 'android';
     const insets = useSafeAreaInsets();
     const tabBarHeight = 80 + insets.bottom;
-    const listContentPadding = isAndroid ? tabBarHeight + 12 : 12;
+    const listContentPadding = tabBarHeight + 12;
 
     // Redux selectors
     const products = useSelector(selectProducts);

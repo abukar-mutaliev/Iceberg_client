@@ -145,6 +145,25 @@ export const AddStopScreen = ({ navigation, route }) => {
         [userRole]
     );
 
+    const formatAddressFromGeocode = useCallback((address) => {
+        if (!address) return '';
+        const locality = address.city || address.district || address.subregion || '';
+        const street = address.street || address.name || '';
+        const house = address.streetNumber || '';
+        const streetLine = [street, house].filter(Boolean).join(' ');
+        return [locality, streetLine].filter(Boolean).join(', ');
+    }, []);
+
+    const fetchAddressByCoordinates = useCallback(async (latitude, longitude) => {
+        try {
+            const [address] = await Location.reverseGeocodeAsync({ latitude, longitude });
+            return formatAddressFromGeocode(address);
+        } catch (error) {
+            console.warn('Ошибка при определении адреса:', error?.message || error);
+            return '';
+        }
+    }, [formatAddressFromGeocode]);
+
     const handleLocationUpdate = useCallback((coordinates) => {
         if (!coordinates) return;
 
@@ -291,10 +310,23 @@ export const AddStopScreen = ({ navigation, route }) => {
         setMapModalVisible(true);
     }, [animateToRegionSafe, locationData.mapRegion.latitudeDelta, locationData.mapRegion.longitudeDelta]);
 
-    const handleLocationConfirm = useCallback((coordinates) => {
+    const handleLocationConfirm = useCallback(async (coordinates) => {
         handleLocationUpdate(coordinates);
         setMapModalVisible(false);
-    }, [handleLocationUpdate]);
+
+        try {
+            const [lat, lng] = coordinates.split(',').map(coord => parseFloat(coord.trim()));
+            if (!isNaN(lat) && !isNaN(lng)) {
+                setIsLocationLoading(true);
+                const formattedAddress = await fetchAddressByCoordinates(lat, lng);
+                if (formattedAddress) {
+                    setAddressFromMap(formattedAddress);
+                }
+            }
+        } finally {
+            setIsLocationLoading(false);
+        }
+    }, [handleLocationUpdate, fetchAddressByCoordinates]);
 
     const handleMapCancel = useCallback(() => {
         setMapModalVisible(false);
@@ -340,19 +372,7 @@ export const AddStopScreen = ({ navigation, route }) => {
             const { latitude, longitude } = position.coords;
             const coordinates = `${latitude},${longitude}`;
 
-            let formattedAddress = '';
-            try {
-                const [address] = await Location.reverseGeocodeAsync({ latitude, longitude });
-                if (address) {
-                    const locality = address.city || address.district || address.subregion || '';
-                    const street = address.street || address.name || '';
-                    const house = address.streetNumber || '';
-                    const streetLine = [street, house].filter(Boolean).join(' ');
-                    formattedAddress = [locality, streetLine].filter(Boolean).join(', ');
-                }
-            } catch (error) {
-                console.warn('Ошибка при определении адреса:', error?.message || error);
-            }
+            const formattedAddress = await fetchAddressByCoordinates(latitude, longitude);
 
             setLocationData(prev => ({
                 ...prev,
@@ -387,7 +407,7 @@ export const AddStopScreen = ({ navigation, route }) => {
         } finally {
             setIsLocationLoading(false);
         }
-    }, [animateToRegionSafe, isLocationLoading, locationData.mapRegion.latitudeDelta, locationData.mapRegion.longitudeDelta]);
+    }, [animateToRegionSafe, fetchAddressByCoordinates, isLocationLoading, locationData.mapRegion.latitudeDelta, locationData.mapRegion.longitudeDelta]);
 
     const handleMapReady = useCallback(() => {
         mapReadyRef.current = true;

@@ -16,7 +16,6 @@ export const WarehouseDetailsScreen = ({ navigation }) => {
 
     const [isLoadingWarehouses, setIsLoadingWarehouses] = useState(false);
     const [retryCount, setRetryCount] = useState(0);
-    const [forceLoading, setForceLoading] = useState(true);
 
     // Используем хук для получения данных склада
     const {
@@ -47,36 +46,21 @@ export const WarehouseDetailsScreen = ({ navigation }) => {
         }
     }, [dispatch]);
 
-    // КРИТИЧНО: Принудительная загрузка данных при монтировании
+    // Загрузка данных при монтировании только если склада нет
     useEffect(() => {
         const loadWarehousesImmediately = async () => {
             if (!warehouseId) {
-                setForceLoading(false);
                 return;
             }
 
-            setIsLoadingWarehouses(true);
-            setForceLoading(true);
-
-            try {
-                await dispatch(fetchWarehouses(true)).unwrap();
-                setRetryCount(0);
-
-                // Даем время на обновление селектора
-                setTimeout(() => {
-                    setForceLoading(false);
-                }, 500);
-
-            } catch (error) {
-                setRetryCount(prev => prev + 1);
-                setForceLoading(false);
-            } finally {
-                setIsLoadingWarehouses(false);
+            if (warehouse) {
+                return;
             }
+            await loadWarehousesData();
         };
 
         loadWarehousesImmediately();
-    }, [warehouseId, dispatch]);
+    }, [warehouseId, warehouse, loadWarehousesData]);
 
     // Фокус на экране - дополнительная проверка и перезагрузка
     useFocusEffect(
@@ -90,7 +74,6 @@ export const WarehouseDetailsScreen = ({ navigation }) => {
 
     const handleRetry = () => {
         setRetryCount(0);
-        setForceLoading(true);
         loadWarehousesData();
         if (warehouseId) {
             refreshWarehouse();
@@ -101,8 +84,8 @@ export const WarehouseDetailsScreen = ({ navigation }) => {
         navigation.goBack();
     };
 
-    // Показываем загрузку если данные загружаются или принудительная загрузка
-    if (warehouseLoading || isLoadingWarehouses || forceLoading) {
+    // Показываем загрузку если данные загружаются
+    if (warehouseLoading || isLoadingWarehouses) {
         return <LoadingState />;
     }
 

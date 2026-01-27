@@ -72,83 +72,96 @@ export const FeedbackCard = memo(({
     const hasPhotos = feedbackData.photoUrls && Array.isArray(feedbackData.photoUrls) && feedbackData.photoUrls.length > 0;
 
     return (
-        <View style={styles.card}>
-            <LinearGradient
-                style={styles.feedbackBackground}
-                locations={[0, 0.99]}
-                colors={['rgba(255, 255, 255, 1)', 'rgba(255, 255, 255, 1)']}
-                useAngle={true}
-                angle={180}
-            />
-            <FeedbackCardHeader feedback={feedbackData} currentUser={currentUser} />
-            {hasPhotos && (
-                <FeedbackCardPhotos
-                    photoUrls={feedbackData.photoUrls}
-                    onPhotoPress={handlePhotoPress}
+        <View style={styles.cardWrapper}>
+            <View style={styles.card}>
+                <LinearGradient
+                    style={styles.feedbackBackground}
+                    locations={[0, 0.99]}
+                    colors={['rgba(255, 255, 255, 1)', 'rgba(255, 255, 255, 1)']}
+                    useAngle={true}
+                    angle={180}
                 />
-            )}
-            {commentLength > 0 && (
-                <View style={styles.commentContainer}>
-                    <Text
-                        style={styles.commentText}
-                        numberOfLines={isCommentExpanded ? undefined : COMMENT_MAX_LINES}
-                    >
-                        {feedbackData.comment}
-                    </Text>
-                    {shouldShowCommentButton && (
-                        <TouchableOpacity onPress={handleToggleComment} style={styles.showMoreButton}>
-                            <Text style={styles.showMoreText}>
-                                {isCommentExpanded ? 'скрыть' : 'еще'}
-                            </Text>
-                        </TouchableOpacity>
-                    )}
-                </View>
-            )}
-            {replyLength > 0 && (
-                <View style={styles.replyContainer}>
-                    <View style={styles.replyBackground} />
-                    <View style={styles.replyTextContainer}>
-                        <Text
-                            style={styles.replyText}
-                            numberOfLines={isReplyExpanded ? undefined : REPLY_MAX_LINES}
-                        >
-                            {feedbackData.reply}
-                        </Text>
-                    </View>
-                    {shouldShowReplyButton && (
-                        <TouchableOpacity onPress={handleToggleReply} style={styles.showMoreButtonReply}>
-                            <Text style={styles.showMoreText}>
-                                {isReplyExpanded ? 'скрыть' : 'еще'}
-                            </Text>
-                        </TouchableOpacity>
-                    )}
-                </View>
-            )}
-            {canDelete && onDelete && (
-                <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
-                    <IconDelete color={Color.red} />
-                </TouchableOpacity>
-            )}
-            {photoViewerVisible && hasPhotos && (
-                <Suspense fallback={<View />}>
-                    <PhotoViewerModal
-                        photos={feedbackData.photoUrls}
-                        initialIndex={selectedPhotoIndex}
-                        visible={photoViewerVisible}
-                        onClose={handleClosePhotoViewer}
+                <FeedbackCardHeader feedback={feedbackData} currentUser={currentUser} />
+                {hasPhotos && (
+                    <FeedbackCardPhotos
+                        photoUrls={feedbackData.photoUrls}
+                        onPhotoPress={handlePhotoPress}
                     />
-                </Suspense>
-            )}
+                )}
+                {commentLength > 0 && (
+                    <View style={styles.commentContainer}>
+                        <Text
+                            style={styles.commentText}
+                            numberOfLines={isCommentExpanded ? undefined : COMMENT_MAX_LINES}
+                        >
+                            {feedbackData.comment}
+                        </Text>
+                        {shouldShowCommentButton && (
+                            <TouchableOpacity onPress={handleToggleComment} style={styles.showMoreButton}>
+                                <Text style={styles.showMoreText}>
+                                    {isCommentExpanded ? 'скрыть' : 'еще'}
+                                </Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                )}
+                {replyLength > 0 && (
+                    <View style={styles.replyContainer}>
+                        <View style={styles.replyBackground} />
+                        <View style={styles.replyTextContainer}>
+                            <Text
+                                style={styles.replyText}
+                                numberOfLines={isReplyExpanded ? undefined : REPLY_MAX_LINES}
+                            >
+                                {feedbackData.reply}
+                            </Text>
+                        </View>
+                        {shouldShowReplyButton && (
+                            <TouchableOpacity onPress={handleToggleReply} style={styles.showMoreButtonReply}>
+                                <Text style={styles.showMoreText}>
+                                    {isReplyExpanded ? 'скрыть' : 'еще'}
+                                </Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                )}
+                {canDelete && onDelete && (
+                    <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
+                        <IconDelete color={Color.red} />
+                    </TouchableOpacity>
+                )}
+                {photoViewerVisible && hasPhotos && (
+                    <Suspense fallback={<View />}>
+                        <PhotoViewerModal
+                            photos={feedbackData.photoUrls}
+                            initialIndex={selectedPhotoIndex}
+                            visible={photoViewerVisible}
+                            onClose={handleClosePhotoViewer}
+                        />
+                    </Suspense>
+                )}
+            </View>
         </View>
     );
 });
 
 const styles = StyleSheet.create({
+    cardWrapper: {
+        width: '100%',
+        marginBottom: 16,
+        borderRadius: 19,
+        backgroundColor: 'transparent',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.12,
+        shadowRadius: 8,
+        elevation: 4,
+    },
     card: {
         width: '100%',
         position: 'relative',
         marginBottom: 0,
-        backgroundColor: 'transparent',
+        backgroundColor: 'white',
         borderRadius: 19,
         overflow: 'hidden',
         paddingBottom: 12,

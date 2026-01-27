@@ -7,7 +7,7 @@ import { selectDriverLoading, selectDriverError } from '@entities/driver';
 import { StopDetailsContent } from './StopDetailsContent';
 import { LoadingState } from '@shared/ui/states/LoadingState';
 import { ErrorState } from '@shared/ui/states/ErrorState';
-import { selectStopById, selectStops, fetchAllStops, clearStopCache } from "@entities/stop";
+import { selectStopById, selectStops, fetchAllStops } from "@entities/stop";
 
 export const StopDetailsScreen = ({ navigation }) => {
     const route = useRoute();
@@ -16,7 +16,6 @@ export const StopDetailsScreen = ({ navigation }) => {
 
     const [isLoadingStops, setIsLoadingStops] = useState(false);
     const [retryCount, setRetryCount] = useState(0);
-    const [forceLoading, setForceLoading] = useState(true);
 
     const stop = useSelector(state => selectStopById(state, stopId));
     const allStops = useSelector(selectStops);
@@ -28,8 +27,6 @@ export const StopDetailsScreen = ({ navigation }) => {
         setIsLoadingStops(true);
 
         try {
-            // Принудительно очищаем кеш
-            dispatch(clearStopCache());
             await dispatch(fetchAllStops()).unwrap();
             setRetryCount(0);
         } catch (error) {
@@ -39,38 +36,22 @@ export const StopDetailsScreen = ({ navigation }) => {
         }
     }, [dispatch]);
 
-    // КРИТИЧНО: Принудительная загрузка данных при монтировании
+    // Загрузка данных при монтировании только если данных нет
     useEffect(() => {
         const loadStopsImmediately = async () => {
             if (!stopId) {
-                setForceLoading(false);
                 return;
             }
 
-            setIsLoadingStops(true);
-            setForceLoading(true);
-
-            try {
-                // Принудительно очищаем кеш для получения свежих данных с userId водителя
-                dispatch(clearStopCache());
-                await dispatch(fetchAllStops()).unwrap();
-                setRetryCount(0);
-
-                // Даем время на обновление селектора
-                setTimeout(() => {
-                    setForceLoading(false);
-                }, 500);
-
-            } catch (error) {
-                setRetryCount(prev => prev + 1);
-                setForceLoading(false);
-            } finally {
-                setIsLoadingStops(false);
+            // Если данные уже есть, не перезагружаем
+            if (allStops.length > 0) {
+                return;
             }
+            await loadStopsData();
         };
 
         loadStopsImmediately();
-    }, [stopId, dispatch]);
+    }, [stopId, allStops.length, loadStopsData]);
 
     // Дополнительная проверка после загрузки данных
     useEffect(() => {
@@ -105,7 +86,6 @@ export const StopDetailsScreen = ({ navigation }) => {
 
     const handleRetry = () => {
         setRetryCount(0);
-        setForceLoading(true);
         loadStopsData();
     };
 
@@ -113,8 +93,8 @@ export const StopDetailsScreen = ({ navigation }) => {
         navigation.goBack();
     };
 
-    // Показываем загрузку если данные загружаются или принудительная загрузка
-    if (isLoading || isLoadingStops || forceLoading) {
+    // Показываем загрузку если данные загружаются
+    if (isLoading || isLoadingStops) {
         return <LoadingState />;
     }
 

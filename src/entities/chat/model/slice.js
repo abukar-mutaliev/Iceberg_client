@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { userApi } from '@entities/user/api/userApi';
 import { chatCacheService } from '../lib/chatCacheService';
+import { waitForConnection } from '@shared/api/retryHelper';
 
 const initialState = {
   rooms: {
@@ -689,6 +690,18 @@ const isNetworkError = (error) => {
 // Функция задержки для retry
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+const waitForNetwork = async (timeoutMs = 20000) => {
+  try {
+    const connected = await waitForConnection(timeoutMs);
+    if (__DEV__ && !connected) {
+      console.log('⏳ waitForNetwork: timeout', { timeoutMs });
+    }
+    return connected;
+  } catch (error) {
+    return false;
+  }
+};
+
 export const sendVoice = createAsyncThunk(
     'chat/sendVoice',
 async ({ roomId, voice, temporaryId, replyToId, retryCount = 0 }, { rejectWithValue, dispatch, getState }) => {
@@ -786,6 +799,8 @@ async ({ roomId, voice, temporaryId, replyToId, retryCount = 0 }, { rejectWithVa
             console.log(`🔄 Повторная попытка ${nextRetryCount + 1}/${MAX_RETRIES} через ${delayMs}ms`);
           }
           
+          await waitForNetwork(20000);
+          
           // Ждём перед повторной попыткой
           await delay(delayMs);
           
@@ -793,7 +808,8 @@ async ({ roomId, voice, temporaryId, replyToId, retryCount = 0 }, { rejectWithVa
           return dispatch(sendVoice({ 
             roomId, 
             voice, 
-            temporaryId, 
+            temporaryId,
+            replyToId,
             retryCount: nextRetryCount 
           })).unwrap();
         }
@@ -893,6 +909,8 @@ export const sendText = createAsyncThunk(
           if (__DEV__) {
             console.log(`🔄 Повторная попытка отправки текста ${nextRetryCount + 1}/${MAX_RETRIES} через ${delayMs}ms`);
           }
+          
+          await waitForNetwork(20000);
           
           // Ждём перед повторной попыткой
           await delay(delayMs);
@@ -1006,6 +1024,8 @@ export const sendPoll = createAsyncThunk(
           if (__DEV__) {
             console.log(`🔄 Повторная попытка отправки опроса ${nextRetryCount + 1}/${MAX_RETRIES} через ${delayMs}ms`);
           }
+          
+          await waitForNetwork(20000);
           
           // Ждём перед повторной попыткой
           await delay(delayMs);
@@ -1138,6 +1158,8 @@ export const sendImages = createAsyncThunk(
             console.log(`🔄 Повторная попытка отправки изображений ${nextRetryCount + 1}/${MAX_RETRIES} через ${delayMs}ms`);
           }
           
+          await waitForNetwork(20000);
+          
           // Ждём перед повторной попыткой
           await delay(delayMs);
           
@@ -1146,7 +1168,8 @@ export const sendImages = createAsyncThunk(
             roomId, 
             files, 
             captions,
-            temporaryId, 
+            temporaryId,
+            replyToId,
             retryCount: nextRetryCount 
           })).unwrap();
         }

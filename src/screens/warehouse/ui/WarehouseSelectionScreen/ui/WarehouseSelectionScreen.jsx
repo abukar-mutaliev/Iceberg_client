@@ -29,6 +29,14 @@ const WarehouseQuantityInput = React.memo(({ warehouse, quantity, warehousePrice
 
     const handleQuantityChange = (text) => {
         currentQuantityValue.current = text;
+        if (text === '') {
+            onQuantityChange(warehouse.id, 0);
+            return;
+        }
+        const numValue = parseInt(text, 10);
+        if (!isNaN(numValue)) {
+            onQuantityChange(warehouse.id, numValue);
+        }
     };
 
     const handleQuantityBlur = (e) => {
@@ -49,6 +57,14 @@ const WarehouseQuantityInput = React.memo(({ warehouse, quantity, warehousePrice
 
     const handlePriceChange = (text) => {
         currentPriceValue.current = text;
+        if (text === '' || text === null) {
+            onPriceChange(warehouse.id, null);
+            return;
+        }
+        const numValue = parseFloat(text.replace(',', '.'));
+        if (!isNaN(numValue)) {
+            onPriceChange(warehouse.id, numValue);
+        }
     };
 
     const handlePriceBlur = (e) => {
@@ -65,6 +81,14 @@ const WarehouseQuantityInput = React.memo(({ warehouse, quantity, warehousePrice
 
     const handleStopPriceChange = (text) => {
         currentStopPriceValue.current = text;
+        if (text === '' || text === null) {
+            onStopPriceChange(warehouse.id, null);
+            return;
+        }
+        const numValue = parseFloat(text.replace(',', '.'));
+        if (!isNaN(numValue)) {
+            onStopPriceChange(warehouse.id, numValue);
+        }
     };
 
     const handleStopPriceBlur = (e) => {

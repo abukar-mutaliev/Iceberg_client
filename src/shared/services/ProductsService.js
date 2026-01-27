@@ -3,6 +3,7 @@ import NetInfo from "@react-native-community/netinfo";
 import {getBaseUrl} from "@shared/api/api";
 import {Platform, Image} from 'react-native';
 import { authService} from "@shared/api/api";
+import { retryRequest, retryFileUpload, waitForConnection } from "@shared/api/retryHelper";
 import {createApiModule} from "@shared/services/ApiClient";
 
 const productsApi = createApiModule('/api/products');
@@ -262,7 +263,7 @@ const uploadSingleImage = async (productId, fileObj, accessToken, baseUrl) => {
 
             formData.append('image', file);
 
-            const response = await fetch(`${baseUrl}/api/products/${productId}/images`, {
+                    const response = await fetch(`${baseUrl}/api/products/${productId}/images`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${accessToken}`,
@@ -271,7 +272,40 @@ const uploadSingleImage = async (productId, fileObj, accessToken, baseUrl) => {
                 body: formData
             });
 
-            const responseText = await response.text();
+                    if (response.status === 401) {
+                        try {
+                            const newTokens = await authService.refreshAccessToken?.();
+                            if (newTokens?.accessToken) {
+                                const retryResponse = await fetch(`${baseUrl}/api/products/${productId}/images`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Authorization': `Bearer ${newTokens.accessToken}`,
+                                        'Accept': 'application/json',
+                                    },
+                                    body: formData
+                                });
+                                const retryText = await retryResponse.text();
+                                if (retryResponse.ok) {
+                                    try {
+                                        const data = JSON.parse(retryText);
+                                        return {
+                                            success: true,
+                                            data: data
+                                        };
+                                    } catch (e) {
+                                        return {
+                                            success: false,
+                                            error: 'Неверный формат ответа от сервера'
+                                        };
+                                    }
+                                }
+                            }
+                        } catch (refreshError) {
+                            console.error('Ошибка обновления токена:', refreshError);
+                        }
+                    }
+
+                    const responseText = await response.text();
 
             if (response.ok) {
                 try {
@@ -358,6 +392,43 @@ const uploadImageAsBase64 = async (productId, fileObj, accessToken, baseUrl) => 
                 extension: extension
             })
         });
+
+        if (response.status === 401) {
+            try {
+                const newTokens = await authService.refreshAccessToken?.();
+                if (newTokens?.accessToken) {
+                    const retryResponse = await fetch(`${baseUrl}/api/products/${productId}/image-base64`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${newTokens.accessToken}`,
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            image: base64Data,
+                            extension: extension
+                        })
+                    });
+                    const retryText = await retryResponse.text();
+                    if (retryResponse.ok) {
+                        try {
+                            const data = JSON.parse(retryText);
+                            return {
+                                success: true,
+                                data: data
+                            };
+                        } catch (e) {
+                            return {
+                                success: false,
+                                error: { message: 'Ошибка парсинга ответа сервера' }
+                            };
+                        }
+                    }
+                }
+            } catch (refreshError) {
+                console.error('Ошибка обновления токена:', refreshError);
+            }
+        }
 
         const responseText = await response.text();
 
@@ -490,7 +561,8 @@ const ProductsService = {
             const netInfo = await NetInfo.fetch();
             console.log('Результат проверки сети:', netInfo);
 
-            if (!netInfo.isConnected) {
+            const isOnline = await waitForConnection(20000);
+            if (!isOnline) {
                 return {
                     status: 'error',
                     message: 'Отсутствует подключение к интернету. Проверьте подключение и попробуйте снова.',
@@ -572,60 +644,66 @@ const ProductsService = {
 
             console.log('Отправка запроса создания продукта на', productsUrl);
 
-            const executeRequest = async (url, options, maxRetries = 3) => {
-                let attempts = 0;
-                let lastError = null;
+            const executeRequest = async (url, options, maxRetries = 3, onRetry = null) => {
+                return retryRequest(async () => {
+                    console.log(`Попытка ${options.method} ${url}`);
 
-                while (attempts < maxRetries) {
-                    try {
-                        console.log(`Попытка ${attempts + 1}/${maxRetries} для ${options.method} ${url}`);
-
-                        options.headers = options.headers || {};
-                        options.headers['Authorization'] = `Bearer ${accessToken}`;
-
-                        if (options.body instanceof FormData) {
-                            delete options.headers['Content-Type'];
-                        }
-
-                        const response = await fetch(url, options);
-
-                        if (response.status === 401) {
-                            console.log('Получен статус 401, попытка обновить токен');
-
-                            try {
-                                const newTokens = await authService.handleRefreshToken();
-                                if (newTokens && newTokens.accessToken) {
-                                    console.log('Токен успешно обновлен, повторяем запрос');
-                                    options.headers['Authorization'] = `Bearer ${newTokens.accessToken}`;
-                                    continue;
-                                }
-                            } catch (refreshError) {
-                                console.error('Ошибка обновления токена:', refreshError);
-                            }
-
-                            throw new Error('Ошибка авторизации. Пожалуйста, войдите снова.');
-                        }
-
-                        if (!response.ok) {
-                            const text = await response.text();
-                            console.error(`Ответ сервера с ошибкой (${response.status}):`, text);
-                            throw new Error(`Ошибка сервера: ${response.status} ${response.statusText}`);
-                        }
-
-                        return response;
-                    } catch (error) {
-                        lastError = error;
-                        attempts++;
-                        console.warn(`Ошибка запроса (попытка ${attempts}/${maxRetries}):`, error.message);
-
-                        if (attempts >= maxRetries) break;
-
-                        const delay = 1000 * Math.pow(2, attempts - 1);
-                        await new Promise(resolve => setTimeout(resolve, delay));
+                    options.headers = options.headers || {};
+                    const storedTokens = await authService.getStoredTokens();
+                    const tokenToUse = storedTokens?.accessToken || accessToken;
+                    if (tokenToUse) {
+                        options.headers['Authorization'] = `Bearer ${tokenToUse}`;
                     }
-                }
 
-                throw lastError;
+                    if (options.body instanceof FormData) {
+                        delete options.headers['Content-Type'];
+                    }
+
+                    const response = await fetch(url, options);
+
+                    if (response.status === 401) {
+                        console.log('Получен статус 401, попытка обновить токен');
+
+                        try {
+                            const newTokens = await authService.refreshAccessToken?.();
+                            if (newTokens?.accessToken) {
+                                console.log('Токен успешно обновлен, повторяем запрос');
+                                options.headers['Authorization'] = `Bearer ${newTokens.accessToken}`;
+                                const retryResponse = await fetch(url, options);
+                                if (retryResponse.status === 401) {
+                                    const authError = new Error('Ошибка авторизации. Пожалуйста, войдите снова.');
+                                    authError.status = 401;
+                                    throw authError;
+                                }
+                                return retryResponse;
+                            }
+                        } catch (refreshError) {
+                            console.error('Ошибка обновления токена:', refreshError);
+                        }
+
+                        const authError = new Error('Ошибка авторизации. Пожалуйста, войдите снова.');
+                        authError.status = 401;
+                        throw authError;
+                    }
+
+                    if (!response.ok) {
+                        const text = await response.text();
+                        console.error(`Ответ сервера с ошибкой (${response.status}):`, text);
+                        const httpError = new Error(text || `Ошибка сервера: ${response.status} ${response.statusText}`);
+                        httpError.status = response.status;
+                        httpError.response = { status: response.status };
+                        throw httpError;
+                    }
+
+                    return response;
+                }, {
+                    maxRetries,
+                    waitForConnection: true,
+                    connectionTimeoutMs: 20000,
+                    baseDelayMs: 1500,
+                    maxDelayMs: 15000,
+                    onRetry
+                });
             };
 
             updateProgress(30, 'Создание продукта...', 0);
@@ -636,6 +714,8 @@ const ProductsService = {
                     method: 'POST',
                     body: formData,
                     timeout: 30000,
+                }, 3, (attempt) => {
+                    updateProgress(30, `Повторная попытка ${attempt} создания продукта...`, 0);
                 });
             } catch (error) {
                 console.error('Ошибка при создании продукта:', error);
@@ -716,20 +796,60 @@ const ProductsService = {
                 let uploaded = false;
 
                 try {
-                    result = await uploadSingleImage(productId, fileObj, accessToken, baseUrl);
+                    result = await retryFileUpload(async () => {
+                        const uploadResult = await uploadSingleImage(productId, fileObj, accessToken, baseUrl);
+                        if (!uploadResult?.success) {
+                            const message = uploadResult?.error?.message || 'Ошибка при загрузке файла';
+                            const uploadError = new Error(message);
+                            uploadError.status = uploadResult?.error?.status;
+                            uploadError.response = uploadResult?.error?.response;
+                            throw uploadError;
+                        }
+                        return uploadResult;
+                    }, {
+                        maxRetries: 5,
+                        waitForConnection: true,
+                        connectionTimeoutMs: 20000,
+                        baseDelayMs: 1500,
+                        maxDelayMs: 15000,
+                        onRetry: (attempt) => {
+                            updateProgress(
+                                40 + (i / preparedImages.length) * 50,
+                                `Повторная попытка ${attempt} загрузки изображения ${i + 1}/${preparedImages.length}...`,
+                                i
+                            );
+                        }
+                    });
 
                     if (result && result.success && result.data) {
                         uploaded = true;
-                    } else {
-                        result = await uploadImageAsBase64(productId, fileObj, accessToken, baseUrl);
-
-                        if (result && result.success && result.data) {
-                            uploaded = true;
-                        }
                     }
                 } catch (error) {
                     try {
-                        result = await uploadImageAsBase64(productId, fileObj, accessToken, baseUrl);
+                        result = await retryFileUpload(async () => {
+                            const uploadResult = await uploadImageAsBase64(productId, fileObj, accessToken, baseUrl);
+                            if (!uploadResult?.success) {
+                                const message = uploadResult?.error?.message || 'Ошибка при загрузке файла';
+                                const uploadError = new Error(message);
+                                uploadError.status = uploadResult?.error?.status;
+                                uploadError.response = uploadResult?.error?.response;
+                                throw uploadError;
+                            }
+                            return uploadResult;
+                        }, {
+                            maxRetries: 5,
+                            waitForConnection: true,
+                            connectionTimeoutMs: 20000,
+                            baseDelayMs: 1500,
+                            maxDelayMs: 15000,
+                            onRetry: (attempt) => {
+                                updateProgress(
+                                    40 + (i / preparedImages.length) * 50,
+                                    `Повторная попытка ${attempt} загрузки изображения ${i + 1}/${preparedImages.length}...`,
+                                    i
+                                );
+                            }
+                        });
 
                         if (result && result.success && result.data) {
                             uploaded = true;
@@ -769,6 +889,8 @@ const ProductsService = {
                         method: 'POST',
                         body: finalizeFormData,
                         timeout: 30000,
+                    }, 3, (attempt) => {
+                        updateProgress(90, `Повторная попытка ${attempt} финализации...`, uploadedImages.length);
                     });
 
                     const finalizeResponseText = await finalizeResponse.text();

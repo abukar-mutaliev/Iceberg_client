@@ -248,6 +248,7 @@ const styles = StyleSheet.create({
     },
     feedbacksContainer: {
         width: '100%',
+        paddingHorizontal: 6,
     },
     firstCardContainer: {},
     cardContainer: {

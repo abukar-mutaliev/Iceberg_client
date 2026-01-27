@@ -84,6 +84,10 @@ export const StopProductsList = ({ stopId, isActive, refreshKey }) => {
                             'БАСКЕТ';
             
             // Формируем объект продукта для ProductTile
+            const priceInfo = product.priceInfo
+                ? { ...product.priceInfo, isPerItem: true }
+                : product.priceInfo;
+
             return {
                 id: product.id || product.productId || product.product?.id,
                 name: product.name || product.product?.name,
@@ -99,11 +103,11 @@ export const StopProductsList = ({ stopId, isActive, refreshKey }) => {
                 category: category,
                 categories: product.product?.categories || product.categories || [],
                 // Сохраняем priceInfo - ProductTile будет использовать его для отображения цены из фургона
-                priceInfo: product.priceInfo,
+                priceInfo: priceInfo,
                 // Сохраняем оригинальные данные
                 originalData: {
                     ...product,
-                    priceInfo: product.priceInfo,
+                    priceInfo: priceInfo,
                     boxPrice: effectivePrice,
                     price: pricePerItem,
                     itemsPerBox: itemsPerBox

@@ -22,7 +22,6 @@ import { WarehouseSelectionInline } from "@screens/warehouse/ui/WarehouseSelecti
 import {selectIsAuthenticated, selectUser} from "@entities/auth/model/selectors";
 import {createProductChunked, clearProductsCache} from '@entities/product';
 import {fetchProfile} from "@entities/profile";
-import NetInfo from "@react-native-community/netinfo";
 
 export const AddProductScreen = () => {
     const navigation = useNavigation();
@@ -368,19 +367,6 @@ export const AddProductScreen = () => {
         setUploadedImages(0);
 
         try {
-            const netInfo = await NetInfo.fetch();
-
-            if (!netInfo.isConnected) {
-                Alert.alert(
-                    "Нет подключения",
-                    "Проверьте подключение к интернету и попробуйте снова.",
-                    [{text: "OK", style: "cancel"}]
-                );
-                setIsSubmitting(false);
-                setIsUploading(false);
-                return;
-            }
-
             const productData = {
                 name: formData.name,
                 categories: formData.categories,
