@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { makeSelectRoomMessages, selectIsRoomDeleted, selectRoomsList } from '@entities/chat/model/selectors';
 import { useCachedMessages, useMediaPreload } from '@entities/chat/hooks/useChatCache';
@@ -8,6 +8,15 @@ import { useCachedMessages, useMediaPreload } from '@entities/chat/hooks/useChat
  * Расширяет useChatData для поддержки групповой логики
  */
 export const useGroupChatData = (roomId) => {
+  const [timeTick, setTimeTick] = useState(Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimeTick(Date.now());
+    }, 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, []);
   // ============ SELECTORS ============
   const selectRoomMessages = useMemo(() => makeSelectRoomMessages(), []);
   const reduxMessages = useSelector((s) => selectRoomMessages(s, roomId));
@@ -49,7 +58,7 @@ export const useGroupChatData = (roomId) => {
     const sourceMessages = (reduxMessages?.length > 0 ? reduxMessages : cachedMessages) || [];
     if (!sourceMessages.length) return [];
     
-    const now = new Date();
+    const now = new Date(timeTick);
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     
     // Дедупликация по ID для предотвращения дубликатов
@@ -63,7 +72,7 @@ export const useGroupChatData = (roomId) => {
     
     // Фильтрация сообщений
     return uniqueMessages.filter(msg => {
-      // Фильтрация STOP сообщений по району и времени остановки
+        // Фильтрация STOP сообщений по району и времени остановки
       if (msg.type === 'STOP') {
         // Проверка времени остановки - сообщение исчезает после окончания остановки
         let stopEndTime = null;
@@ -139,7 +148,7 @@ export const useGroupChatData = (roomId) => {
       // Остальные типы сообщений проходят без фильтрации
       return true;
     });
-  }, [reduxMessages, cachedMessages, userDistrictIds]);
+  }, [reduxMessages, cachedMessages, userDistrictIds, roomData?.purpose, timeTick]);
   
   // Предзагрузка медиа
   useMediaPreload(roomId, messages);

@@ -39,6 +39,7 @@ export const CreateGroupScreen = ({ navigation, route }) => {
   const [groupName, setGroupName] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
   const [groupType, setGroupType] = useState(initialType); // 'GROUP' или 'BROADCAST'
+  const [isRoutesChannel, setIsRoutesChannel] = useState(route?.params?.purpose === 'ROUTES');
   const [users, setUsers] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [selectedAdmins, setSelectedAdmins] = useState([]); // Для BROADCAST групп - выбранные админы
@@ -81,6 +82,12 @@ export const CreateGroupScreen = ({ navigation, route }) => {
 
     return () => clearTimeout(timeoutId);
   }, [searchQuery]);
+
+  useEffect(() => {
+    if (groupType !== 'BROADCAST' && isRoutesChannel) {
+      setIsRoutesChannel(false);
+    }
+  }, [groupType, isRoutesChannel]);
 
   // Используем users напрямую, так как фильтрация происходит на сервере
   const filteredUsers = users;
@@ -422,6 +429,10 @@ export const CreateGroupScreen = ({ navigation, route }) => {
         formData.append('members', JSON.stringify(memberIds));
         formData.append('admins', JSON.stringify([])); // Создатель автоматически становится владельцем
       }
+
+      if (isRoutesChannel) {
+        formData.append('purpose', 'ROUTES');
+      }
       
       // Добавляем аватар, если он выбран
       if (groupAvatar && groupAvatar.uri) {
@@ -705,6 +716,18 @@ export const CreateGroupScreen = ({ navigation, route }) => {
                 ℹ️ Все клиенты будут автоматически добавлены в этот канал при регистрации. Канал закрыт - только администраторы могут отправлять сообщения.
               </Text>
             </View>
+          )}
+
+          {groupType === 'BROADCAST' && isSuperAdmin && (
+            <TouchableOpacity
+              style={[styles.routesToggle, isRoutesChannel && styles.routesToggleActive]}
+              onPress={() => setIsRoutesChannel(prev => !prev)}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.routesToggleText, isRoutesChannel && styles.routesToggleTextActive]}>
+                🚚 Канал маршрутов (остановки водителей)
+              </Text>
+            </TouchableOpacity>
           )}
           
           {/* Avatar Section */}
@@ -1243,6 +1266,26 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderLeftWidth: 4,
     borderLeftColor: '#2196F3',
+  },
+  routesToggle: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
+  },
+  routesToggleActive: {
+    backgroundColor: '#E8F5E9',
+    borderColor: '#66BB6A',
+  },
+  routesToggleText: {
+    fontSize: 13,
+    color: '#555555',
+  },
+  routesToggleTextActive: {
+    color: '#2E7D32',
+    fontWeight: '600',
   },
   broadcastInfoText: {
     fontSize: 13,

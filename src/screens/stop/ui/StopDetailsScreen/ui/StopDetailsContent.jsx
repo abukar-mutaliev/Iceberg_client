@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Platform, Alert, Linking, ActivityIndicator, Clipboard } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -188,7 +188,7 @@ const formatStopTime = (startTime, endTime) => {
     };
 };
 
-export const StopDetailsContent = ({ stop, navigation }) => {
+export const StopDetailsContent = ({ stop, navigation, lifecycleSection }) => {
     const dispatch = useDispatch();
     const user = useSelector(selectUser);
     const rooms = useSelector(selectRoomsList);
@@ -198,6 +198,7 @@ export const StopDetailsContent = ({ stop, navigation }) => {
     const [mapLoaded, setMapLoaded] = useState(false);
     const [mapError, setMapError] = useState(false);
     const [isGeocoding, setIsGeocoding] = useState(false);
+    const timeInfo = useMemo(() => formatStopTime(stop?.startTime, stop?.endTime), [stop?.startTime, stop?.endTime]);
     const [geocodingError, setGeocodingError] = useState(null);
     const [shareModalVisible, setShareModalVisible] = useState(false);
     const [isCreatingChat, setIsCreatingChat] = useState(false);
@@ -562,70 +563,64 @@ export const StopDetailsContent = ({ stop, navigation }) => {
 
                 {stop.startTime && stop.endTime ? (
                     <View style={styles.dateTimeContainer}>
-                        {(() => {
-                            const timeInfo = formatStopTime(stop.startTime, stop.endTime);
-                            if (!timeInfo) {
-                                return (
-                                    <Text style={styles.dateTime}>Время не указано</Text>
-                                );
-                            }
-                            return (
-                                <View style={styles.timeInfoContainer}>
-                                    {/* Блок о том, что водитель сейчас на стоянке */}
-                                    {timeInfo.isActive && (
-                                        <View style={styles.activeStopBanner}>
-                                            <View style={styles.activeStopContent}>
-                                                <View style={styles.activeStopIconContainer}>
-                                                    <Icon name="location-on" size={24} color="#fff" />
-                                                </View>
-                                                <View style={styles.activeStopTextContainer}>
-                                                    <Text style={styles.activeStopTitle}>
-                                                        Водитель сейчас на стоянке
-                                                    </Text>
-                                                    <Text style={styles.activeStopSubtitle}>
-                                                        Будет стоять до {timeInfo.endTime}
-                                                        {!timeInfo.isSameDay ? `, ${timeInfo.endDate}` : `, ${timeInfo.startDate}`}
-                                                    </Text>
-                                                </View>
+                        {!timeInfo ? (
+                            <Text style={styles.dateTime}>Время не указано</Text>
+                        ) : (
+                            <View style={styles.timeInfoContainer}>
+                                {/* Блок о том, что водитель сейчас на стоянке */}
+                                {timeInfo.isActive && (
+                                    <View style={styles.activeStopBanner}>
+                                        <View style={styles.activeStopContent}>
+                                            <View style={styles.activeStopIconContainer}>
+                                                <Icon name="location-on" size={24} color="#fff" />
+                                            </View>
+                                            <View style={styles.activeStopTextContainer}>
+                                                <Text style={styles.activeStopTitle}>
+                                                    Водитель сейчас на стоянке
+                                                </Text>
+                                                <Text style={styles.activeStopSubtitle}>
+                                                    Будет стоять до {timeInfo.endTime}
+                                                    {!timeInfo.isSameDay ? `, ${timeInfo.endDate}` : `, ${timeInfo.startDate}`}
+                                                </Text>
                                             </View>
                                         </View>
-                                    )}
-                                    
-                                    {/* Показываем детальное время только если водитель НЕ на стоянке */}
-                                    {!timeInfo.isActive && (
-                                        <>
-                                            <View style={styles.timeRow}>
-                                                <View style={styles.timeIconContainer}>
-                                                    <Icon name="schedule" size={22} color={Color.blue2} />
-                                                </View>
-                                                <View style={styles.timeTextContainer}>
-                                                    <Text style={styles.timeLabel}>Начало работы:</Text>
-                                                    <Text style={styles.timeValue}>
-                                                        {timeInfo.startTime}
-                                                        {!timeInfo.isSameDay && `, ${timeInfo.startDate}`}
-                                                    </Text>
-                                                </View>
+                                    </View>
+                                )}
+                                
+                                {/* Показываем детальное время только если водитель НЕ на стоянке */}
+                                {!timeInfo.isActive && (
+                                    <>
+                                        <View style={styles.timeRow}>
+                                            <View style={styles.timeIconContainer}>
+                                                <Icon name="schedule" size={22} color={Color.blue2} />
                                             </View>
-                                            <View style={styles.timeRow}>
-                                                <View style={styles.timeIconContainer}>
-                                                    <Icon name="access-time" size={22} color={Color.blue2} />
-                                                </View>
-                                                <View style={styles.timeTextContainer}>
-                                                    <Text style={styles.timeLabel}>Окончание работы:</Text>
-                                                    <Text style={styles.timeValue}>
-                                                        {timeInfo.endTime}
-                                                        {!timeInfo.isSameDay ? `, ${timeInfo.endDate}` : `, ${timeInfo.startDate}`}
-                                                    </Text>
-                                                </View>
+                                            <View style={styles.timeTextContainer}>
+                                                <Text style={styles.timeLabel}>Начало работы:</Text>
+                                                <Text style={styles.timeValue}>
+                                                    {timeInfo.startTime}
+                                                    {!timeInfo.isSameDay && `, ${timeInfo.startDate}`}
+                                                </Text>
                                             </View>
-                                            {timeInfo.isSameDay && (
-                                                <Text style={styles.timeDate}>{timeInfo.startDate}</Text>
-                                            )}
-                                        </>
-                                    )}
-                                </View>
-                            );
-                        })()}
+                                        </View>
+                                        <View style={styles.timeRow}>
+                                            <View style={styles.timeIconContainer}>
+                                                <Icon name="access-time" size={22} color={Color.blue2} />
+                                            </View>
+                                            <View style={styles.timeTextContainer}>
+                                                <Text style={styles.timeLabel}>Окончание работы:</Text>
+                                                <Text style={styles.timeValue}>
+                                                    {timeInfo.endTime}
+                                                    {!timeInfo.isSameDay ? `, ${timeInfo.endDate}` : `, ${timeInfo.startDate}`}
+                                                </Text>
+                                            </View>
+                                        </View>
+                                        {timeInfo.isSameDay && (
+                                            <Text style={styles.timeDate}>{timeInfo.startDate}</Text>
+                                        )}
+                                    </>
+                                )}
+                            </View>
+                        )}
                     </View>
                 ) : (
                     <View style={styles.dateTimeContainer}>
@@ -695,9 +690,16 @@ export const StopDetailsContent = ({ stop, navigation }) => {
                     </View>
                 </View>
 
-                {stop.description && (
+                {(stop.description || (timeInfo && !timeInfo.isActive && (stop.schedule || stop.status === 'SCHEDULED'))) && (
                     <View style={styles.descriptionContainer}>
-                        <Text style={styles.description}>{stop.description}</Text>
+                        {stop.description ? (
+                            <Text style={styles.description}>{stop.description}</Text>
+                        ) : null}
+                        {timeInfo && !timeInfo.isActive && (stop.schedule || stop.status === 'SCHEDULED') ? (
+                            <Text style={styles.nextStopText}>
+                                Следующая остановка: {timeInfo.startDate} {timeInfo.startTime} - {timeInfo.endTime}
+                            </Text>
+                        ) : null}
                     </View>
                 )}
 
@@ -892,6 +894,7 @@ export const StopDetailsContent = ({ stop, navigation }) => {
                         )}
                     </View>
                 )}
+                {lifecycleSection}
             </View>
 
             {/* Модальное окно для выбора чата */}
@@ -1149,6 +1152,13 @@ const styles = StyleSheet.create({
         color: Color.dark,
         letterSpacing: 0.7,
         lineHeight: 17,
+    },
+    nextStopText: {
+        marginTop: 8,
+        fontSize: 13,
+        fontFamily: FontFamily.sFProText,
+        color: Color.colorCornflowerblue,
+        lineHeight: 16,
     },
     mapContainer: {
         height: 250,

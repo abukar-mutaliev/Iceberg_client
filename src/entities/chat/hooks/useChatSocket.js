@@ -12,6 +12,7 @@ import {
   fetchRoom,
   receiveSocketMessage,
   receiveMessageDeleted,
+  receiveMessageUpdated,
   setTyping,
   setTypingActivity,
   setLastActivityType,
@@ -369,6 +370,17 @@ export const useChatSocket = () => {
           }
           
           dispatch(receiveMessageDeleted(payload));
+        });
+
+        socket.on('chat:message:updated', (payload) => {
+          if (!payload?.roomId || !payload?.message?.id) {
+            if (__DEV__) {
+              console.error('❌ [WEBSOCKET] Invalid payload for message:updated', payload);
+            }
+            return;
+          }
+
+          dispatch(receiveMessageUpdated(payload));
         });
 
         socket.on('chat:poll:updated', (payload) => {

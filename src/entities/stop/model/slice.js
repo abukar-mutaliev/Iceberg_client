@@ -136,6 +136,8 @@ export const createStop = createAsyncThunk(
                     // Если это массив products, преобразуем в JSON строку
                     if (key === 'products' && Array.isArray(value)) {
                         formData.append(key, JSON.stringify(value));
+                    } else if (key === 'schedule' && typeof value === 'object') {
+                        formData.append(key, JSON.stringify(value));
                     } else {
                         formData.append(key, value);
                     }
@@ -179,6 +181,8 @@ export const updateStop = createAsyncThunk(
                         } else if (key === 'products' && Array.isArray(value)) {
                             // Если это массив products, преобразуем в JSON строку
                             formData.append(key, JSON.stringify(value));
+                        } else if (key === 'schedule' && typeof value === 'object') {
+                            formData.append(key, JSON.stringify(value));
                         } else {
                             formData.append(key, value);
                         }
@@ -207,6 +211,58 @@ export const deleteStop = createAsyncThunk(
             return stopId;
         } catch (error) {
             console.error('Ошибка удаления остановки:', error);
+            return rejectWithValue(handleError(error));
+        }
+    }
+);
+
+export const activateStop = createAsyncThunk(
+    'stop/activateStop',
+    async (stopId, { rejectWithValue }) => {
+        try {
+            const response = await stopApi.activateStop(stopId);
+            return response.data.status === 'success' ? response.data.data : response.data;
+        } catch (error) {
+            console.error('Ошибка активации остановки:', error);
+            return rejectWithValue(handleError(error));
+        }
+    }
+);
+
+export const skipStop = createAsyncThunk(
+    'stop/skipStop',
+    async ({ stopId, reason = null }, { rejectWithValue }) => {
+        try {
+            const response = await stopApi.skipStop(stopId, reason);
+            return response.data.status === 'success' ? response.data.data : response.data;
+        } catch (error) {
+            console.error('Ошибка пропуска остановки:', error);
+            return rejectWithValue(handleError(error));
+        }
+    }
+);
+
+export const completeStop = createAsyncThunk(
+    'stop/completeStop',
+    async (stopId, { rejectWithValue }) => {
+        try {
+            const response = await stopApi.completeStop(stopId);
+            return response.data.status === 'success' ? response.data.data : response.data;
+        } catch (error) {
+            console.error('Ошибка завершения остановки:', error);
+            return rejectWithValue(handleError(error));
+        }
+    }
+);
+
+export const cancelStop = createAsyncThunk(
+    'stop/cancelStop',
+    async ({ stopId, reason = null }, { rejectWithValue }) => {
+        try {
+            const response = await stopApi.cancelStop(stopId, reason);
+            return response.data.status === 'success' ? response.data.data : response.data;
+        } catch (error) {
+            console.error('Ошибка отмены остановки:', error);
             return rejectWithValue(handleError(error));
         }
     }
@@ -373,6 +429,50 @@ const stopSlice = createSlice({
             .addCase(deleteStop.rejected, (state, action) => {
                 state.loading = false;
                 state.error = action.payload;
+            })
+            .addCase(activateStop.fulfilled, (state, action) => {
+                const result = action.payload;
+                if (!result?.stopId) return;
+                const stopId = result.stopId;
+                state.stops = state.stops.map(stop =>
+                    stop.id === stopId ? { ...stop, status: 'ACTIVE' } : stop
+                );
+                if (state.currentStop?.id === stopId) {
+                    state.currentStop = { ...state.currentStop, status: 'ACTIVE' };
+                }
+            })
+            .addCase(skipStop.fulfilled, (state, action) => {
+                const result = action.payload;
+                if (!result?.stopId) return;
+                const stopId = result.stopId;
+                state.stops = state.stops.map(stop =>
+                    stop.id === stopId ? { ...stop, status: 'SKIPPED' } : stop
+                );
+                if (state.currentStop?.id === stopId) {
+                    state.currentStop = { ...state.currentStop, status: 'SKIPPED' };
+                }
+            })
+            .addCase(completeStop.fulfilled, (state, action) => {
+                const result = action.payload;
+                if (!result?.stopId) return;
+                const stopId = result.stopId;
+                state.stops = state.stops.map(stop =>
+                    stop.id === stopId ? { ...stop, status: 'COMPLETED' } : stop
+                );
+                if (state.currentStop?.id === stopId) {
+                    state.currentStop = { ...state.currentStop, status: 'COMPLETED' };
+                }
+            })
+            .addCase(cancelStop.fulfilled, (state, action) => {
+                const result = action.payload;
+                if (!result?.stopId) return;
+                const stopId = result.stopId;
+                state.stops = state.stops.map(stop =>
+                    stop.id === stopId ? { ...stop, status: 'CANCELLED' } : stop
+                );
+                if (state.currentStop?.id === stopId) {
+                    state.currentStop = { ...state.currentStop, status: 'CANCELLED' };
+                }
             })
 
             .addCase(filterStopsByDistrict.fulfilled, (state, action) => {

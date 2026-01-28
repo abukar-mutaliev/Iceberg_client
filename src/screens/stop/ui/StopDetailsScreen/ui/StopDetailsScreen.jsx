@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { StyleSheet} from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { StyleSheet, View, Text, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useFocusEffect } from '@react-navigation/native';
 import { useSelector, useDispatch } from 'react-redux';
@@ -7,7 +7,7 @@ import { selectDriverLoading, selectDriverError } from '@entities/driver';
 import { StopDetailsContent } from './StopDetailsContent';
 import { LoadingState } from '@shared/ui/states/LoadingState';
 import { ErrorState } from '@shared/ui/states/ErrorState';
-import { selectStopById, selectStops, fetchAllStops } from "@entities/stop";
+import { selectStopById, selectStops, fetchAllStops, clearStopCache, fetchDriverStops, activateStop, skipStop, completeStop, cancelStop } from "@entities/stop";
 
 export const StopDetailsScreen = ({ navigation }) => {
     const route = useRoute();
@@ -21,6 +21,12 @@ export const StopDetailsScreen = ({ navigation }) => {
     const allStops = useSelector(selectStops);
     const isLoading = useSelector(selectDriverLoading);
     const error = useSelector(selectDriverError);
+    const userRole = useSelector(state => state.auth?.user?.role || 'DRIVER');
+
+    const stopStatus = (stop?.status || 'SCHEDULED').toUpperCase();
+    const isAdminOrEmployee = userRole === 'ADMIN' || userRole === 'EMPLOYEE';
+    const isDriver = userRole === 'DRIVER';
+    const [isLifecycleLoading, setIsLifecycleLoading] = useState(false);
 
     // Функция для ручной загрузки данных
     const loadStopsData = React.useCallback(async () => {
@@ -93,6 +99,42 @@ export const StopDetailsScreen = ({ navigation }) => {
         navigation.goBack();
     };
 
+    const refreshStops = useCallback(async () => {
+        dispatch(clearStopCache());
+        await dispatch(fetchAllStops());
+        if (isDriver) {
+            dispatch(fetchDriverStops());
+        }
+    }, [dispatch, isDriver]);
+
+    const runLifecycleAction = useCallback(async (actionType) => {
+        if (isLifecycleLoading) return;
+        setIsLifecycleLoading(true);
+        try {
+            if (actionType === 'activate') {
+                await dispatch(activateStop(stopId)).unwrap();
+            } else if (actionType === 'skip') {
+                await dispatch(skipStop({ stopId })).unwrap();
+            } else if (actionType === 'complete') {
+                await dispatch(completeStop(stopId)).unwrap();
+            } else if (actionType === 'cancel') {
+                await dispatch(cancelStop({ stopId })).unwrap();
+            }
+            await refreshStops();
+        } catch (actionError) {
+            Alert.alert('Ошибка', actionError?.message || 'Не удалось обновить статус остановки');
+        } finally {
+            setIsLifecycleLoading(false);
+        }
+    }, [dispatch, stopId, refreshStops, isLifecycleLoading]);
+
+    const confirmAction = useCallback((title, message, actionType) => {
+        Alert.alert(title, message, [
+            { text: 'Отмена', style: 'cancel' },
+            { text: 'Продолжить', style: 'destructive', onPress: () => runLifecycleAction(actionType) }
+        ]);
+    }, [runLifecycleAction]);
+
     // Показываем загрузку если данные загружаются
     if (isLoading || isLoadingStops) {
         return <LoadingState />;
@@ -136,9 +178,100 @@ export const StopDetailsScreen = ({ navigation }) => {
     }
 
     // Показываем контент остановки
+    const lifecycleSection = (isDriver || isAdminOrEmployee) && (
+        <View style={styles.lifecycleSection}>
+            <Text style={styles.lifecycleTitle}>Статус остановки</Text>
+            <View style={styles.lifecycleActions}>
+                {stopStatus === 'SCHEDULED' && (
+                    <>
+                        <TouchableOpacity
+                            style={[styles.lifecycleButton, styles.lifecyclePrimary, isLifecycleLoading && styles.lifecycleDisabled]}
+                            onPress={() => runLifecycleAction('activate')}
+                            disabled={isLifecycleLoading}
+                        >
+                            <Text
+                                style={styles.lifecycleButtonTextPrimary}
+                                numberOfLines={1}
+                                ellipsizeMode="tail"
+                            >
+                                Активировать
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.lifecycleButton, styles.lifecycleWarning, isLifecycleLoading && styles.lifecycleDisabled]}
+                            onPress={() => confirmAction('Пропустить остановку', 'Остановка не будет показана в канале маршрутов.', 'skip')}
+                            disabled={isLifecycleLoading}
+                        >
+                            <Text
+                                style={styles.lifecycleButtonText}
+                                numberOfLines={1}
+                                ellipsizeMode="tail"
+                            >
+                                Пропустить
+                            </Text>
+                        </TouchableOpacity>
+                    </>
+                )}
+
+                {stopStatus === 'ACTIVE' && (
+                    <>
+                        <TouchableOpacity
+                            style={[styles.lifecycleButton, styles.lifecyclePrimary, isLifecycleLoading && styles.lifecycleDisabled]}
+                            onPress={() => runLifecycleAction('complete')}
+                            disabled={isLifecycleLoading}
+                        >
+                            <Text
+                                style={styles.lifecycleButtonTextPrimary}
+                                numberOfLines={1}
+                                ellipsizeMode="tail"
+                            >
+                                Завершить
+                            </Text>
+                        </TouchableOpacity>
+                        {isAdminOrEmployee && (
+                            <TouchableOpacity
+                                style={[styles.lifecycleButton, styles.lifecycleDanger, isLifecycleLoading && styles.lifecycleDisabled]}
+                                onPress={() => confirmAction('Отменить остановку', 'Остановка будет отменена и удалена из канала.', 'cancel')}
+                                disabled={isLifecycleLoading}
+                            >
+                                <Text
+                                    style={styles.lifecycleButtonText}
+                                    numberOfLines={1}
+                                    ellipsizeMode="tail"
+                                >
+                                    Отменить
+                                </Text>
+                            </TouchableOpacity>
+                        )}
+                    </>
+                )}
+
+                {stopStatus === 'SCHEDULED' && isAdminOrEmployee && (
+                    <TouchableOpacity
+                        style={[styles.lifecycleButton, styles.lifecycleDanger, isLifecycleLoading && styles.lifecycleDisabled]}
+                        onPress={() => confirmAction('Отменить остановку', 'Остановка будет отменена и удалена из канала.', 'cancel')}
+                        disabled={isLifecycleLoading}
+                    >
+                        <Text
+                            style={styles.lifecycleButtonText}
+                            numberOfLines={1}
+                            ellipsizeMode="tail"
+                        >
+                            Отменить
+                        </Text>
+                    </TouchableOpacity>
+                )}
+            </View>
+        </View>
+    );
+
     return (
         <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
-            <StopDetailsContent stop={stop} navigation={navigation} />
+            <StopDetailsContent
+                stop={stop}
+                navigation={navigation}
+                lifecycleSection={lifecycleSection}
+            />
         </SafeAreaView>
     );
 };
@@ -147,5 +280,58 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#fff',
+    },
+    lifecycleSection: {
+        paddingTop: 8,
+        paddingBottom: 16,
+    },
+    lifecycleTitle: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#000',
+        marginBottom: 8,
+    },
+    lifecycleActions: {
+        flexDirection: 'row',
+        flexWrap: 'nowrap',
+        gap: 8,
+    },
+    lifecycleButton: {
+        flexGrow: 1,
+        flexBasis: 0,
+        minWidth: 0,
+        paddingVertical: 8,
+        paddingHorizontal: 10,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#E0E0E0',
+        backgroundColor: '#FFFFFF',
+    },
+    lifecyclePrimary: {
+        backgroundColor: '#2E7D32',
+        borderColor: '#2E7D32',
+    },
+    lifecycleWarning: {
+        backgroundColor: '#FFF3E0',
+        borderColor: '#FFB74D',
+    },
+    lifecycleDanger: {
+        backgroundColor: '#FFEBEE',
+        borderColor: '#EF5350',
+    },
+    lifecycleDisabled: {
+        opacity: 0.6,
+    },
+    lifecycleButtonText: {
+        fontWeight: '600',
+        fontSize: 12,
+        color: '#424242',
+        textAlign: 'center',
+    },
+    lifecycleButtonTextPrimary: {
+        fontWeight: '600',
+        fontSize: 12,
+        color: '#FFFFFF',
+        textAlign: 'center',
     },
 });

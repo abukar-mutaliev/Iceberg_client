@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, Image, StyleSheet, Pressable, TouchableOpacity, Modal, Linking, Platform, ActivityIndicator } from 'react-native';
 import { Color, Border, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { getImageUrl } from '@shared/api/api';
@@ -192,6 +192,15 @@ const StopCardComponent = ({ stop, onPress, width, compact = true, showContactBu
     const [imageError, setImageError] = React.useState(false);
     const [contactModalVisible, setContactModalVisible] = useState(false);
     const [isChatLoading, setIsChatLoading] = useState(false);
+    const [timeTick, setTimeTick] = useState(Date.now());
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setTimeTick(Date.now());
+        }, 60 * 1000);
+
+        return () => clearInterval(interval);
+    }, []);
 
     // Получаем данные о водителе (важно: до ранних возвратов нельзя использовать хуки)
     const driverName = stop?.driver?.name || stop?.driverName;
@@ -285,7 +294,7 @@ const StopCardComponent = ({ stop, onPress, width, compact = true, showContactBu
     // Понятное время для пользователя
     const friendlyTime = useMemo(() => {
         return formatFriendlyTime(stop.startTime, stop.endTime);
-    }, [stop.startTime, stop.endTime]);
+    }, [stop.startTime, stop.endTime, timeTick]);
 
     const containerStyle = width ? [styles.compactContainer, { width }] : styles.compactContainer;
 

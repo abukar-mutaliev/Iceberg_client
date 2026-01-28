@@ -30,6 +30,16 @@ import { FormSection, FormField, FormDivider } from './FormField';
 import { FormProgressBar } from './FormProgressIndicator';
 import { FormHint, QuickAction, QuickActionsGroup, InfoBanner } from './FormQuickActions';
 
+const WEEK_DAYS = [
+    { label: 'Пн', value: 1 },
+    { label: 'Вт', value: 2 },
+    { label: 'Ср', value: 3 },
+    { label: 'Чт', value: 4 },
+    { label: 'Пт', value: 5 },
+    { label: 'Сб', value: 6 },
+    { label: 'Вс', value: 0 }
+];
+
 export const StopForm = memo(({
                                   districts,
                                   locationData,
@@ -81,6 +91,8 @@ export const StopForm = memo(({
     const [uploadFailed, setUploadFailed] = useState(false); // Флаг неудачной загрузки после всех попыток
     const [lastSubmitData, setLastSubmitData] = useState(null); // Данные для повторной отправки
     const [retryCount, setRetryCount] = useState(0); // Счетчик попыток для отображения
+    const [scheduleEnabled, setScheduleEnabled] = useState(false);
+    const [scheduleDays, setScheduleDays] = useState([]);
     const [errors, setErrors] = useState({
         address: '',
         district: '',
@@ -91,6 +103,7 @@ export const StopForm = memo(({
         startTime: '',
         endTime: '',
         driver: '',
+        schedule: ''
     });
 
     const isNavigatingRef = useRef(false);
@@ -277,6 +290,14 @@ export const StopForm = memo(({
         setErrors(prev => ({...prev, endTime: ''}));
     }, [startDate]);
 
+    useEffect(() => {
+        if (!scheduleEnabled) return;
+        const today = new Date();
+        const normalized = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        setStartDate(normalized);
+        setEndDate(normalized);
+    }, [scheduleEnabled]);
+
     const onEndTimeChange = useCallback((time) => {
         logData('Изменение времени окончания', time);
         if (
@@ -292,6 +313,16 @@ export const StopForm = memo(({
         setEndTime(time);
         setErrors(prev => ({...prev, endTime: ''}));
     }, [startDate, endDate, startTime]);
+
+    const toggleScheduleDay = useCallback((dayValue) => {
+        setScheduleDays((prev) => {
+            if (prev.includes(dayValue)) {
+                return prev.filter((d) => d !== dayValue);
+            }
+            return [...prev, dayValue];
+        });
+        setErrors(prev => ({ ...prev, schedule: '' }));
+    }, []);
 
     const getFullStartDateTime = useCallback(() => {
         const dateTime = new Date(startDate);
@@ -425,6 +456,11 @@ export const StopForm = memo(({
             isFormValid = false;
         }
 
+        if (scheduleEnabled && scheduleDays.length === 0) {
+            newErrors.schedule = 'Выберите хотя бы один день для графика';
+            isFormValid = false;
+        }
+
         setErrors(newErrors);
         
         if (!isFormValid) {
@@ -444,7 +480,9 @@ export const StopForm = memo(({
         truckModel,
         truckNumber,
         getFullStartDateTime,
-        getFullEndDateTime
+        getFullEndDateTime,
+        scheduleEnabled,
+        scheduleDays.length
     ]);
 
     const handleSubmit = useCallback(async () => {
@@ -560,6 +598,13 @@ export const StopForm = memo(({
                 truckNumber,
                 products: selectedProducts.length > 0 ? selectedProducts : undefined,
             };
+
+            if (scheduleEnabled) {
+                stopData.schedule = {
+                    enabled: true,
+                    daysOfWeek: scheduleDays
+                };
+            }
 
             if (isAdminOrEmployee && selectedDriver) {
                 stopData.driverId = selectedDriver;
@@ -1073,17 +1118,19 @@ export const StopForm = memo(({
                     subtitle="Укажите дату и время начала и окончания работы остановки"
                 >
                     <FormField
-                        label="Дата и время начала"
+                        label={scheduleEnabled ? 'Время начала' : 'Дата и время начала'}
                         required
                         error={errors.startTime}
                     >
                         <View style={styles.dateTimeRow}>
-                            <View style={styles.dateTimeColumn}>
-                                <Text style={styles.sublabel}>Дата</Text>
-                                <CustomDatePicker date={startDate} onDateChange={onStartDateChange} />
-                                <View style={[styles.inputUnderline, errors.startTime ? styles.underlineError : null]} />
-                            </View>
-                            
+                            {!scheduleEnabled && (
+                                <View style={styles.dateTimeColumn}>
+                                    <Text style={styles.sublabel}>Дата</Text>
+                                    <CustomDatePicker date={startDate} onDateChange={onStartDateChange} />
+                                    <View style={[styles.inputUnderline, errors.startTime ? styles.underlineError : null]} />
+                                </View>
+                            )}
+
                             <View style={styles.dateTimeColumn}>
                                 <Text style={styles.sublabel}>Время</Text>
                                 <CustomTimePicker date={startTime} onTimeChange={onStartTimeChange} />
@@ -1093,17 +1140,19 @@ export const StopForm = memo(({
                     </FormField>
 
                     <FormField
-                        label="Дата и время окончания"
+                        label={scheduleEnabled ? 'Время окончания' : 'Дата и время окончания'}
                         required
                         error={errors.endTime}
                     >
                         <View style={styles.dateTimeRow}>
-                            <View style={styles.dateTimeColumn}>
-                                <Text style={styles.sublabel}>Дата</Text>
-                                <CustomDatePicker date={endDate} onDateChange={onEndDateChange} />
-                                <View style={[styles.inputUnderline, errors.endTime ? styles.underlineError : null]} />
-                            </View>
-                            
+                            {!scheduleEnabled && (
+                                <View style={styles.dateTimeColumn}>
+                                    <Text style={styles.sublabel}>Дата</Text>
+                                    <CustomDatePicker date={endDate} onDateChange={onEndDateChange} />
+                                    <View style={[styles.inputUnderline, errors.endTime ? styles.underlineError : null]} />
+                                </View>
+                            )}
+
                             <View style={styles.dateTimeColumn}>
                                 <Text style={styles.sublabel}>Время</Text>
                                 <CustomTimePicker date={endTime} onTimeChange={onEndTimeChange} />
@@ -1111,6 +1160,65 @@ export const StopForm = memo(({
                             </View>
                         </View>
                     </FormField>
+                </FormSection>
+
+                <FormSection
+                    title="График остановки"
+                    subtitle="Повторять остановку по выбранным дням недели"
+                >
+                    <View style={styles.scheduleToggleRow}>
+                        <Text style={styles.scheduleToggleLabel}>Повторять по дням</Text>
+                        <TouchableOpacity
+                            style={[
+                                styles.scheduleToggle,
+                                scheduleEnabled && styles.scheduleToggleActive
+                            ]}
+                            onPress={() => {
+                                setScheduleEnabled((prev) => !prev);
+                                setErrors(prev => ({ ...prev, schedule: '' }));
+                            }}
+                            activeOpacity={0.8}
+                        >
+                            <Text style={[
+                                styles.scheduleToggleText,
+                                scheduleEnabled && styles.scheduleToggleTextActive
+                            ]}>
+                                {scheduleEnabled ? 'Вкл' : 'Выкл'}
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {scheduleEnabled && (
+                        <>
+                            <View style={styles.scheduleDaysRow}>
+                                {WEEK_DAYS.map((day) => {
+                                    const isActive = scheduleDays.includes(day.value);
+                                    return (
+                                        <TouchableOpacity
+                                            key={day.value}
+                                            style={[
+                                                styles.scheduleDayButton,
+                                                isActive && styles.scheduleDayButtonActive
+                                            ]}
+                                            onPress={() => toggleScheduleDay(day.value)}
+                                            activeOpacity={0.8}
+                                        >
+                                            <Text style={[
+                                                styles.scheduleDayText,
+                                                isActive && styles.scheduleDayTextActive
+                                            ]}>
+                                                {day.label}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </View>
+
+                            {errors.schedule ? (
+                                <Text style={styles.scheduleErrorText}>{errors.schedule}</Text>
+                            ) : null}
+                        </>
+                    )}
                 </FormSection>
 
                 <FormSection title="Дополнительная информация">
@@ -1302,6 +1410,67 @@ const styles = StyleSheet.create({
         color: '#FF3B30',
         fontSize: normalizeFont(13),
         marginTop: normalize(6),
+        fontFamily: FontFamily.sFProText,
+    },
+    scheduleToggleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: normalize(12),
+    },
+    scheduleToggleLabel: {
+        fontSize: normalizeFont(14),
+        color: Color.dark,
+        fontFamily: FontFamily.sFProText,
+    },
+    scheduleToggle: {
+        paddingHorizontal: normalize(14),
+        paddingVertical: normalize(6),
+        borderRadius: 14,
+        backgroundColor: '#E5E5EA',
+    },
+    scheduleToggleActive: {
+        backgroundColor: '#3B43A2',
+    },
+    scheduleToggleText: {
+        fontSize: normalizeFont(12),
+        color: '#6B7280',
+        fontFamily: FontFamily.sFProText,
+    },
+    scheduleToggleTextActive: {
+        color: '#FFFFFF',
+        fontWeight: '600',
+    },
+    scheduleDaysRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: normalize(8),
+        marginBottom: normalize(8),
+    },
+    scheduleDayButton: {
+        width: normalize(36),
+        height: normalize(36),
+        borderRadius: normalize(18),
+        backgroundColor: '#F3F4F6',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    scheduleDayButtonActive: {
+        backgroundColor: '#3B43A2',
+    },
+    scheduleDayText: {
+        fontSize: normalizeFont(12),
+        color: '#6B7280',
+        fontFamily: FontFamily.sFProText,
+    },
+    scheduleDayTextActive: {
+        color: '#FFFFFF',
+        fontWeight: '600',
+    },
+    scheduleErrorText: {
+        color: '#FF3B30',
+        fontSize: normalizeFont(12),
+        marginTop: normalize(4),
         fontFamily: FontFamily.sFProText,
     },
     dateTimeRow: {

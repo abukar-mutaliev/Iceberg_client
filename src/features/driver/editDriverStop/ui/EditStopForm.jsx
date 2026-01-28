@@ -28,6 +28,16 @@ import { CustomDatePicker, CustomTimePicker } from '@shared/ui/Pickers/CustomDat
 import { DistrictPicker } from "@shared/ui/Pickers/DistrictPicker";
 import { StopProductsSelector } from '@features/driver/addDriverStop/ui/StopProductsSelector';
 
+const WEEK_DAYS = [
+  { label: 'Пн', value: 1 },
+  { label: 'Вт', value: 2 },
+  { label: 'Ср', value: 3 },
+  { label: 'Чт', value: 4 },
+  { label: 'Пт', value: 5 },
+  { label: 'Сб', value: 6 },
+  { label: 'Вс', value: 0 }
+];
+
 export const EditStopForm = ({ 
   stopData, 
   onClose, 
@@ -119,6 +129,12 @@ export const EditStopForm = ({
       stopPrice: sp.stopPrice ?? null // Включаем stopPrice из существующих данных
     })) || []
   );
+  const [scheduleDays, setScheduleDays] = useState(
+    Array.isArray(stopData?.schedule?.daysOfWeek) ? stopData.schedule.daysOfWeek : []
+  );
+  const [scheduleEnabled, setScheduleEnabled] = useState(
+    Array.isArray(stopData?.schedule?.daysOfWeek) && stopData.schedule.daysOfWeek.length > 0
+  );
 
   // Мемоизируем инициализацию mapLocation чтобы избежать бесконечного рендеринга
   const initialMapLocation = useMemo(() => {
@@ -177,7 +193,8 @@ export const EditStopForm = ({
     truckModel: '',
     truckNumber: '',
     startTime: '',
-    endTime: ''
+    endTime: '',
+    schedule: ''
   });
 
   // Состояние видимости модального окна
@@ -194,6 +211,12 @@ export const EditStopForm = ({
 
   // Добавляем состояние для отслеживания видимости клавиатуры
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const nextDays = Array.isArray(stopData?.schedule?.daysOfWeek) ? stopData.schedule.daysOfWeek : [];
+    setScheduleDays(nextDays);
+    setScheduleEnabled(nextDays.length > 0);
+  }, [stopData?.schedule?.daysOfWeek]);
   
   // Мониторим открытие и закрытие клавиатуры
   useEffect(() => {
@@ -348,6 +371,24 @@ export const EditStopForm = ({
     setErrors(prev => ({...prev, endTime: ''}));
   };
 
+  useEffect(() => {
+    if (!scheduleEnabled) return;
+    const today = new Date();
+    const normalized = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    setStartDate(normalized);
+    setEndDate(normalized);
+  }, [scheduleEnabled]);
+
+  const toggleScheduleDay = useCallback((dayValue) => {
+    setScheduleDays((prev) => {
+      if (prev.includes(dayValue)) {
+        return prev.filter((d) => d !== dayValue);
+      }
+      return [...prev, dayValue];
+    });
+    setErrors(prev => ({ ...prev, schedule: '' }));
+  }, []);
+
   const handleMapOpen = useCallback((currentLocation) => {
     logData('Открытие карты из EditStopForm', {
       currentLocation,
@@ -421,7 +462,8 @@ export const EditStopForm = ({
       truckModel: '',
       truckNumber: '',
       startTime: '',
-      endTime: ''
+      endTime: '',
+      schedule: ''
     };
 
     if (!address || address.trim() === '') {
@@ -459,6 +501,11 @@ export const EditStopForm = ({
 
     if (endDateTime <= startDateTime) {
       newErrors.endTime = 'Время окончания должно быть позже времени начала';
+      isFormValid = false;
+    }
+
+    if (scheduleEnabled && scheduleDays.length === 0) {
+      newErrors.schedule = 'Выберите хотя бы один день для графика';
       isFormValid = false;
     }
 
@@ -624,6 +671,12 @@ export const EditStopForm = ({
     formData.append('truckModel', truckModel);
     formData.append('truckNumber', truckNumber);
 
+    if (scheduleEnabled) {
+      formData.append('schedule', JSON.stringify({ enabled: true, daysOfWeek: scheduleDays }));
+    } else if (stopData?.schedule) {
+      formData.append('schedule', JSON.stringify({ enabled: false }));
+    }
+
     // Добавляем товары если они выбраны
     if (selectedProducts.length > 0) {
       formData.append('products', JSON.stringify(selectedProducts));
@@ -676,16 +729,32 @@ export const EditStopForm = ({
 
                       {/* Перемещенный блок времени стоянки */}
                       <View style={styles.timeSection}>
-                        <Text style={[styles.label, { marginBottom: normalize(10) }]}>Время стоянки *</Text>
+                        <Text style={[styles.label, { marginBottom: normalize(10) }]}>
+                          {scheduleEnabled ? 'Время стоянки (время)' : 'Время стоянки *'}
+                        </Text>
+                        {!scheduleEnabled && (
+                          <View style={styles.timeRow}>
+                            <View style={[styles.inputGroup, { flex: 1 }]}>
+                              <Text style={styles.sublabel}>Дата начала</Text>
+                              <CustomDatePicker date={startDate} onDateChange={onStartDateChange} />
+                              <View style={[styles.inputUnderline, errors.startTime ? styles.underlineError : null]} />
+                            </View>
+                            <View style={[styles.inputGroup, { flex: 1, marginLeft: normalize(10) }]}>
+                              <Text style={styles.sublabel}>Дата окончания</Text>
+                              <CustomDatePicker date={endDate} onDateChange={onEndDateChange} />
+                              <View style={[styles.inputUnderline, errors.endTime ? styles.underlineError : null]} />
+                            </View>
+                          </View>
+                        )}
                         <View style={styles.timeRow}>
                           <View style={[styles.inputGroup, { flex: 1 }]}>
-                            <Text style={styles.sublabel}>Дата начала</Text>
-                            <CustomDatePicker date={startDate} onDateChange={onStartDateChange} />
+                            <Text style={styles.sublabel}>Время начала</Text>
+                            <CustomTimePicker date={startTime} onTimeChange={onStartTimeChange} />
                             <View style={[styles.inputUnderline, errors.startTime ? styles.underlineError : null]} />
                           </View>
                           <View style={[styles.inputGroup, { flex: 1, marginLeft: normalize(10) }]}>
-                            <Text style={styles.sublabel}>Дата окончания</Text>
-                            <CustomDatePicker date={endDate} onDateChange={onEndDateChange} />
+                            <Text style={styles.sublabel}>Время окончания</Text>
+                            <CustomTimePicker date={endTime} onTimeChange={onEndTimeChange} />
                             <View style={[styles.inputUnderline, errors.endTime ? styles.underlineError : null]} />
                           </View>
                         </View>
@@ -695,6 +764,62 @@ export const EditStopForm = ({
                         {errors.endTime && typeof errors.endTime === 'string' && errors.endTime.trim() ? (
                           <Text style={styles.errorText}>{String(errors.endTime)}</Text>
                         ) : null}
+                      </View>
+
+                      <View style={styles.scheduleSection}>
+                        <View style={styles.scheduleToggleRow}>
+                          <Text style={styles.scheduleToggleLabel}>Повторять по дням</Text>
+                          <TouchableOpacity
+                            style={[
+                              styles.scheduleToggle,
+                              scheduleEnabled && styles.scheduleToggleActive
+                            ]}
+                            onPress={() => {
+                              setScheduleEnabled((prev) => !prev);
+                              setErrors(prev => ({ ...prev, schedule: '' }));
+                            }}
+                            activeOpacity={0.8}
+                          >
+                            <Text style={[
+                              styles.scheduleToggleText,
+                              scheduleEnabled && styles.scheduleToggleTextActive
+                            ]}>
+                              {scheduleEnabled ? 'Вкл' : 'Выкл'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+
+                        {scheduleEnabled && (
+                          <>
+                            <View style={styles.scheduleDaysRow}>
+                              {WEEK_DAYS.map((day) => {
+                                const isActive = scheduleDays.includes(day.value);
+                                return (
+                                  <TouchableOpacity
+                                    key={day.value}
+                                    style={[
+                                      styles.scheduleDayButton,
+                                      isActive && styles.scheduleDayButtonActive
+                                    ]}
+                                    onPress={() => toggleScheduleDay(day.value)}
+                                    activeOpacity={0.8}
+                                  >
+                                    <Text style={[
+                                      styles.scheduleDayText,
+                                      isActive && styles.scheduleDayTextActive
+                                    ]}>
+                                      {day.label}
+                                    </Text>
+                                  </TouchableOpacity>
+                                );
+                              })}
+                            </View>
+
+                            {errors.schedule ? (
+                              <Text style={styles.scheduleErrorText}>{errors.schedule}</Text>
+                            ) : null}
+                          </>
+                        )}
                       </View>
                     </View>
 
@@ -1075,6 +1200,69 @@ const styles = StyleSheet.create({
     color: '#FF3B30',
     fontSize: normalizeFont(FontSize.size_xs),
     marginTop: normalize(5),
+    fontFamily: FontFamily.sFProText,
+  },
+  scheduleSection: {
+    marginTop: normalize(12),
+  },
+  scheduleToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: normalize(10),
+  },
+  scheduleToggleLabel: {
+    fontSize: normalizeFont(13),
+    color: Color.dark,
+    fontFamily: FontFamily.sFProText,
+  },
+  scheduleToggle: {
+    paddingHorizontal: normalize(12),
+    paddingVertical: normalize(4),
+    borderRadius: 12,
+    backgroundColor: '#E5E5EA',
+  },
+  scheduleToggleActive: {
+    backgroundColor: '#3B43A2',
+  },
+  scheduleToggleText: {
+    fontSize: normalizeFont(11),
+    color: '#6B7280',
+    fontFamily: FontFamily.sFProText,
+  },
+  scheduleToggleTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  scheduleDaysRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: normalize(6),
+  },
+  scheduleDayButton: {
+    width: normalize(30),
+    height: normalize(30),
+    borderRadius: normalize(15),
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scheduleDayButtonActive: {
+    backgroundColor: '#3B43A2',
+  },
+  scheduleDayText: {
+    fontSize: normalizeFont(11),
+    color: '#6B7280',
+    fontFamily: FontFamily.sFProText,
+  },
+  scheduleDayTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  scheduleErrorText: {
+    color: '#FF3B30',
+    fontSize: normalizeFont(FontSize.size_xs),
+    marginTop: normalize(6),
     fontFamily: FontFamily.sFProText,
   },
   dateTimePicker: {

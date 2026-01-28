@@ -181,6 +181,48 @@ export const stopApi = {
         }
     },
 
+    activateStop: async (stopId) => {
+        try {
+            const response = await createProtectedRequest('patch', `/api/stops/${stopId}/activate`);
+            return response;
+        } catch (error) {
+            console.error(`Error in activateStop(${stopId}) API call:`, error);
+            throw error;
+        }
+    },
+
+    skipStop: async (stopId, reason = null) => {
+        try {
+            const payload = reason ? { reason } : {};
+            const response = await createProtectedRequest('patch', `/api/stops/${stopId}/skip`, payload);
+            return response;
+        } catch (error) {
+            console.error(`Error in skipStop(${stopId}) API call:`, error);
+            throw error;
+        }
+    },
+
+    completeStop: async (stopId) => {
+        try {
+            const response = await createProtectedRequest('patch', `/api/stops/${stopId}/complete`);
+            return response;
+        } catch (error) {
+            console.error(`Error in completeStop(${stopId}) API call:`, error);
+            throw error;
+        }
+    },
+
+    cancelStop: async (stopId, reason = null) => {
+        try {
+            const payload = reason ? { reason } : {};
+            const response = await createProtectedRequest('patch', `/api/stops/${stopId}/cancel`, payload);
+            return response;
+        } catch (error) {
+            console.error(`Error in cancelStop(${stopId}) API call:`, error);
+            throw error;
+        }
+    },
+
     getStopProducts: async (stopId) => {
         try {
             // Эндпоинт с optionalAuth: должен работать и для гостей

@@ -2501,6 +2501,30 @@ const chatSlice = createSlice({
         updateMessageCache(roomId, bucket);
       }
     },
+
+    receiveMessageUpdated(state, action) {
+      const { roomId, message } = action.payload || {};
+
+      if (!roomId || !message?.id) {
+        return;
+      }
+
+      ensureRoomBucket(state, roomId);
+      const bucket = state.messages[roomId];
+
+      const existing = bucket.byId[message.id];
+      bucket.byId[message.id] = { ...(existing || {}), ...message };
+      if (!bucket.ids.includes(message.id)) {
+        bucket.ids.push(message.id);
+      }
+
+      const room = state.rooms.byId[roomId];
+      if (room?.lastMessage?.id === message.id) {
+        room.lastMessage = { ...(room.lastMessage || {}), ...message };
+      }
+
+      updateMessageCache(roomId, bucket);
+    },
     
     receiveMessageDeleted(state, action) {
       const { roomId, messageId, forAll } = action.payload || {};
@@ -3770,6 +3794,7 @@ export const {
   receiveSocketMessage,
   receiveMessage,
   receiveMessageDeleted,
+  receiveMessageUpdated,
   updateMessageStatus,
   updateMessageReactions,
   updateUserOnlineStatus,
