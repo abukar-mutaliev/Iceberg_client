@@ -41,6 +41,7 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
         latitude: '',
         longitude: '',
         maxDeliveryRadius: '30',
+        isMain: false,
         isActive: true,
         autoManageStatus: false,
         workingHours: [] // График работы: [{ dayOfWeek: 0-6, isOpen: true/false, openTime: '09:00', closeTime: '18:00' }]
@@ -114,6 +115,7 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                     latitude: warehouse.latitude?.toString() || '',
                     longitude: warehouse.longitude?.toString() || '',
                     maxDeliveryRadius: warehouse.maxDeliveryRadius?.toString() || '30',
+                    isMain: warehouse.isMain !== undefined ? warehouse.isMain : false,
                     isActive: warehouse.isActive !== undefined ? warehouse.isActive : true,
                     autoManageStatus: warehouse.autoManageStatus !== undefined ? warehouse.autoManageStatus : false,
                     workingHours: defaultWorkingHours
@@ -143,6 +145,7 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                     latitude: '',
                     longitude: '',
                     maxDeliveryRadius: '30',
+                    isMain: false,
                     isActive: true,
                     autoManageStatus: false,
                     workingHours: defaultWorkingHours
@@ -612,6 +615,7 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
             latitude: formData.latitude ? parseFloat(formData.latitude) : null,
             longitude: formData.longitude ? parseFloat(formData.longitude) : null,
             maxDeliveryRadius: parseFloat(formData.maxDeliveryRadius) || 30,
+            isMain: formData.isMain,
             isActive: formData.isActive,
             autoManageStatus: formData.autoManageStatus,
             workingHours: formData.workingHours || [], // Отправляем все 7 дней недели
@@ -878,6 +882,46 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                         </View>
                         <Text style={styles.helperText}>
                             Текущий статус: {formData.isActive ? 'Активен' : 'Неактивен'}
+                        </Text>
+                    </View>
+
+                    {/* Тип склада */}
+                    <View style={styles.fieldContainer}>
+                        <Text style={styles.label}>Тип склада</Text>
+                        <View style={styles.statusContainer}>
+                            <TouchableOpacity
+                                style={[
+                                    styles.statusButton,
+                                    formData.isMain && styles.statusButtonActive
+                                ]}
+                                onPress={() => handleFieldChange('isMain', true)}
+                                disabled={isSubmitting}
+                            >
+                                <Text style={[
+                                    styles.statusButtonText,
+                                    formData.isMain && styles.statusButtonTextActive
+                                ]}>
+                                    Основной
+                                </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[
+                                    styles.statusButton,
+                                    !formData.isMain && styles.statusButtonInactive
+                                ]}
+                                onPress={() => handleFieldChange('isMain', false)}
+                                disabled={isSubmitting}
+                            >
+                                <Text style={[
+                                    styles.statusButtonText,
+                                    !formData.isMain && styles.statusButtonTextInactive
+                                ]}>
+                                    Филиал
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                        <Text style={styles.helperText}>
+                            Текущий тип: {formData.isMain ? 'Основной' : 'Филиал'}
                         </Text>
                     </View>
 

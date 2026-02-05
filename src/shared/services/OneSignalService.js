@@ -221,6 +221,9 @@ setupNotificationHandlers(oneSignal) {
                     return;
                 }
 
+                // Авто-рефреш остановок по уведомлениям
+                pushNotificationService?.handleStopNotificationData?.(data, 'foreground');
+
         // ===== INBOX-STYLE ДЛЯ МНОЖЕСТВЕННЫХ СООБЩЕНИЙ =====
         if (data.type === 'CHAT_MESSAGE' && data.messageCount) {
             const messageCount = parseInt(data.messageCount || '1');
@@ -286,6 +289,9 @@ setupNotificationHandlers(oneSignal) {
                     // Но можем очистить его после получения, если чат открыт
                     // Это будет обработано при открытии чата через clearChatNotifications
                 }
+
+                // Авто-рефреш остановок по уведомлениям
+                pushNotificationService?.handleStopNotificationData?.(data, 'received');
             } catch (e) {
             }
         });

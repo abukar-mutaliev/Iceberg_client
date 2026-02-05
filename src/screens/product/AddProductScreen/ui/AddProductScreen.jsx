@@ -1,4 +1,4 @@
-import React, {useEffect, useState, useRef} from "react";
+import React, {useEffect, useState, useRef, useCallback} from "react";
 import {useDispatch, useSelector} from "react-redux";
 import {useNavigation, useRoute} from "@react-navigation/native";
 import {
@@ -22,6 +22,7 @@ import { WarehouseSelectionInline } from "@screens/warehouse/ui/WarehouseSelecti
 import {selectIsAuthenticated, selectUser} from "@entities/auth/model/selectors";
 import {createProductChunked, clearProductsCache} from '@entities/product';
 import {fetchProfile} from "@entities/profile";
+import ProductsService from "@shared/services/ProductsService";
 
 export const AddProductScreen = () => {
     const navigation = useNavigation();
@@ -46,6 +47,12 @@ export const AddProductScreen = () => {
     const [isUploading, setIsUploading] = useState(false);
     const [currentStage, setCurrentStage] = useState('');
     const [uploadedImages, setUploadedImages] = useState(0);
+    const [imageUploadState, setImageUploadState] = useState({});
+    const [pendingSubmit, setPendingSubmit] = useState(false);
+    const [isPreuploading, setIsPreuploading] = useState(false);
+    const uploadQueueRef = useRef([]);
+    const activeUploadsRef = useRef(0);
+    const maxConcurrentPreuploads = 2;
 
     // Состояния для формы
     const [formData, setFormData] = useState({
@@ -128,6 +135,11 @@ export const AddProductScreen = () => {
             setIsUploading(false);
             setCurrentStage('');
             setUploadedImages(0);
+            setImageUploadState({});
+            setPendingSubmit(false);
+            setIsPreuploading(false);
+            uploadQueueRef.current = [];
+            activeUploadsRef.current = 0;
             
             isInitialized.current = true;
         }
@@ -219,6 +231,131 @@ export const AddProductScreen = () => {
         }));
         setErrors((prev) => ({...prev, warehouseQuantities: ""}));
     };
+
+    const getUploadStats = useCallback(() => {
+        const entries = Object.values(imageUploadState);
+        const total = entries.length;
+        const uploaded = entries.filter(item => item.status === 'done').length;
+        const uploading = entries.filter(item => item.status === 'uploading' || item.status === 'pending').length;
+        const failed = entries.filter(item => item.status === 'error').length;
+        return { total, uploaded, uploading, failed };
+    }, [imageUploadState]);
+
+    const startNextUpload = useCallback(() => {
+        if (activeUploadsRef.current >= maxConcurrentPreuploads) return;
+        const nextUri = uploadQueueRef.current.shift();
+        if (!nextUri) {
+            if (activeUploadsRef.current === 0) {
+                setIsPreuploading(false);
+            }
+            return;
+        }
+
+        activeUploadsRef.current += 1;
+        setIsPreuploading(true);
+        setImageUploadState(prev => ({
+            ...prev,
+            [nextUri]: {
+                ...(prev[nextUri] || {}),
+                status: 'uploading',
+                error: null
+            }
+        }));
+
+        ProductsService.preuploadProductImage({ uri: nextUri })
+            .then((result) => {
+                if (result?.success && result?.data?.data?.imagePath) {
+                    setImageUploadState(prev => ({
+                        ...prev,
+                        [nextUri]: {
+                            status: 'done',
+                            url: result.data.data.imagePath
+                        }
+                    }));
+                } else {
+                    const message = result?.error?.message || 'Ошибка при загрузке изображения';
+                    setImageUploadState(prev => ({
+                        ...prev,
+                        [nextUri]: {
+                            status: 'error',
+                            error: message
+                        }
+                    }));
+                }
+            })
+            .catch((error) => {
+                setImageUploadState(prev => ({
+                    ...prev,
+                    [nextUri]: {
+                        status: 'error',
+                        error: error?.message || 'Ошибка при загрузке изображения'
+                    }
+                }));
+            })
+            .finally(() => {
+                activeUploadsRef.current -= 1;
+                startNextUpload();
+                if (activeUploadsRef.current === 0 && uploadQueueRef.current.length === 0) {
+                    setIsPreuploading(false);
+                }
+            });
+    }, [maxConcurrentPreuploads]);
+
+    const enqueuePreupload = useCallback((uri) => {
+        if (!uri || typeof uri !== 'string') return;
+        if (uri.startsWith('http://') || uri.startsWith('https://')) return;
+
+        setImageUploadState(prev => {
+            if (prev[uri]?.status === 'uploading' || prev[uri]?.status === 'done') {
+                return prev;
+            }
+            return {
+                ...prev,
+                [uri]: { status: 'pending' }
+            };
+        });
+
+        if (!uploadQueueRef.current.includes(uri)) {
+            uploadQueueRef.current.push(uri);
+        }
+        startNextUpload();
+    }, [startNextUpload]);
+
+    const retryFailedUploads = useCallback(() => {
+        const failedUris = Object.entries(imageUploadState)
+            .filter(([, value]) => value?.status === 'error')
+            .map(([uri]) => uri);
+        failedUris.forEach(uri => enqueuePreupload(uri));
+    }, [imageUploadState, enqueuePreupload]);
+
+    useEffect(() => {
+        const localImages = (formData.images || []).filter(img =>
+            typeof img === 'string' && !img.startsWith('http://') && !img.startsWith('https://')
+        );
+
+        const newImages = localImages.filter(uri => !imageUploadState[uri]);
+        newImages.forEach(uri => enqueuePreupload(uri));
+
+        const removedUris = Object.keys(imageUploadState).filter(uri => !localImages.includes(uri));
+        if (removedUris.length > 0) {
+            setImageUploadState(prev => {
+                const next = { ...prev };
+                removedUris.forEach(uri => {
+                    delete next[uri];
+                });
+                return next;
+            });
+        }
+    }, [formData.images, imageUploadState, enqueuePreupload]);
+
+    useEffect(() => {
+        if (!pendingSubmit || isSubmitting) return;
+        const { uploading, failed } = getUploadStats();
+        if (uploading === 0 && failed === 0) {
+            setPendingSubmit(false);
+            handleSubmit();
+        }
+    }, [pendingSubmit, isSubmitting, getUploadStats]);
 
     // Валидация формы (та же логика что и в модальном окне)
     const validateForm = () => {
@@ -351,6 +488,26 @@ export const AddProductScreen = () => {
             return;
         }
 
+        const localImages = (formData.images || []).filter(img =>
+            typeof img === 'string' && !img.startsWith('http://') && !img.startsWith('https://')
+        );
+        const missingUploads = localImages.filter(uri => !imageUploadState[uri]);
+        missingUploads.forEach(uri => enqueuePreupload(uri));
+
+        const { uploading, failed } = getUploadStats();
+        if (missingUploads.length > 0 || uploading > 0 || failed > 0) {
+            if (failed > 0) {
+                retryFailedUploads();
+            }
+            setPendingSubmit(true);
+            Alert.alert(
+                "Загрузка изображений",
+                "Изображения еще загружаются. Товар будет отправлен автоматически после завершения загрузки.",
+                [{ text: "OK", style: "cancel" }]
+            );
+            return;
+        }
+
         if (!user || !isAuthenticated) {
             Alert.alert(
                 "Ошибка авторизации",
@@ -392,9 +549,17 @@ export const AddProductScreen = () => {
                 return;
             }
 
+            const imagesForSubmit = (formData.images || []).map(img => {
+                if (typeof img === 'string' && imageUploadState[img]?.status === 'done' && imageUploadState[img]?.url) {
+                    return imageUploadState[img].url;
+                }
+                return img;
+            });
+
             const result = await dispatch(createProductChunked({
                 formData: productData,
-                images: formData.images,
+                images: imagesForSubmit,
+                preuploadedImagesMap: imageUploadState,
                 onProgress: (progress, stage, uploadedCount) => {
                     setUploadProgress(progress);
                     setCurrentStage(stage);
@@ -510,6 +675,8 @@ export const AddProductScreen = () => {
         );
     };
 
+    const uploadStats = getUploadStats();
+
     return (
         <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
             <View style={styles.header}>
@@ -549,6 +716,13 @@ export const AddProductScreen = () => {
                             />
                             {errors.images && (
                                 <Text style={styles.sectionError}>{errors.images}</Text>
+                            )}
+                            {uploadStats.total > 0 && (
+                                <Text style={styles.uploadHint}>
+                                    Загружено {uploadStats.uploaded}/{uploadStats.total} фото
+                                    {uploadStats.uploading > 0 ? " (идет загрузка...)" : ""}
+                                    {uploadStats.failed > 0 ? " (есть ошибки)" : ""}
+                                </Text>
                             )}
                         </View>
                     ), 100)}
@@ -785,6 +959,13 @@ const styles = StyleSheet.create({
         color: '#FF3B30',
         fontSize: 13,
         marginTop: 8,
+        paddingLeft: 4,
+        fontFamily: FontFamily.sFProText,
+    },
+    uploadHint: {
+        color: '#6B7280',
+        fontSize: 12,
+        marginTop: 6,
         paddingLeft: 4,
         fontFamily: FontFamily.sFProText,
     },

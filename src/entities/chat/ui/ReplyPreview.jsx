@@ -1,4 +1,5 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
+import { useSelector } from 'react-redux';
 import {View, Text, TouchableOpacity, StyleSheet, Image} from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { getImageUrl } from '@shared/api/api';
@@ -24,6 +25,40 @@ export const ReplyPreview = ({
 }) => {
   if (!replyTo) return null;
 
+  const participantsByIdFromStore = useSelector((s) => s.chat?.participants?.byUserId || {});
+  const resolvedParticipantsById = participantsById || participantsByIdFromStore;
+  const resolvedParticipants = participants || [];
+  const activeRoomId = useSelector((s) => s.chat?.activeRoomId || null);
+  const roomDataRaw = useSelector((s) => (activeRoomId ? s.chat?.rooms?.byId?.[activeRoomId] : null));
+  const roomData = roomDataRaw?.room || roomDataRaw;
+  const roomParticipants = roomData?.participants || [];
+
+  useEffect(() => {
+    if (__DEV__) {
+      console.log('[ReplyPreview] replyTo.sender', {
+        replyToId: replyTo?.id,
+        senderId: replyTo?.senderId,
+        sender: replyTo?.sender,
+      });
+    }
+  }, [replyTo?.id, replyTo?.senderId, replyTo?.sender, activeRoomId]);
+
+  const getNameFromUser = (user) => {
+    if (!user) return null;
+    const name = user.client?.name ||
+                 user.admin?.name ||
+                 user.employee?.name ||
+                 user.supplier?.contactPerson ||
+                 user.driver?.name ||
+                 user.name ||
+                 user.profile?.name ||
+                 user.firstName ||
+                 user.profile?.firstName;
+    if (name) return name;
+    if (user.email) return user.email.split('@')[0];
+    return null;
+  };
+
   const getSenderName = () => {
     const normalizedCurrentUserId = currentUserId != null ? Number(currentUserId) : null;
     const normalizedSenderId = replyTo?.senderId != null ? Number(replyTo.senderId) : null;
@@ -35,57 +70,54 @@ export const ReplyPreview = ({
 
     // Проверяем данные из replyTo.sender
     if (replyTo.sender) {
-      const sender = replyTo.sender;
-      const name = sender.client?.name ||
-                   sender.admin?.name ||
-                   sender.employee?.name ||
-                   sender.supplier?.contactPerson ||
-                   sender.email?.split('@')[0] ||
-                   sender.name;
+      const senderName = getNameFromUser(replyTo.sender);
+      if (senderName) return senderName;
+    }
 
-      if (name) return name;
+    // Для DIRECT: используем title комнаты как имя собеседника
+    if (roomData?.type === 'DIRECT' && roomData?.title && normalizedSenderId !== normalizedCurrentUserId) {
+      const trimmedTitle = String(roomData.title).trim();
+      if (trimmedTitle && trimmedTitle !== 'Чат' && trimmedTitle !== 'Водитель') {
+        return trimmedTitle;
+      }
     }
 
     // Ищем дополнительные данные в participantsById (для DirectChat)
-    if (participantsById && normalizedSenderId != null) {
-      const participantData = participantsById[normalizedSenderId] || participantsById[String(replyTo.senderId)];
+    if (resolvedParticipantsById && normalizedSenderId != null) {
+      const participantData = resolvedParticipantsById[normalizedSenderId] || resolvedParticipantsById[String(replyTo.senderId)];
       if (participantData) {
         const participant = participantData.user || participantData;
-        const name = participant.client?.name ||
-                     participant.admin?.name ||
-                     participant.employee?.name ||
-                     participant.supplier?.contactPerson ||
-                     participant.email?.split('@')[0] ||
-                     participant.name;
-
-        if (name) return name;
+        const participantName = getNameFromUser(participant);
+        if (participantName) return participantName;
       }
     }
 
     // Ищем дополнительные данные в массиве participants (для GroupChat)
-    if (participants && Array.isArray(participants) && normalizedSenderId != null) {
-      const participant = participants.find(p =>
+    if (resolvedParticipants && Array.isArray(resolvedParticipants) && normalizedSenderId != null) {
+      const participant = resolvedParticipants.find(p =>
         Number(p?.userId ?? p?.user?.id ?? p?.id) === normalizedSenderId
       );
 
       if (participant) {
         const user = participant.user || participant;
-        const name = user.client?.name ||
-                     user.admin?.name ||
-                     user.employee?.name ||
-                     user.supplier?.contactPerson ||
-                     user.email?.split('@')[0] ||
-                     user.name;
+        const userName = getNameFromUser(user);
+        if (userName) return userName;
+      }
+    }
 
-        if (name) return name;
+    // Фолбэк: участники комнаты из Redux
+    if (roomParticipants && Array.isArray(roomParticipants) && normalizedSenderId != null) {
+      const participant = roomParticipants.find(p =>
+        Number(p?.userId ?? p?.user?.id ?? p?.id) === normalizedSenderId
+      );
+      if (participant) {
+        const user = participant.user || participant;
+        const userName = getNameFromUser(user);
+        if (userName) return userName;
       }
     }
 
     // Fallback: пытаемся извлечь из senderId или показываем "Пользователь"
-    if (replyTo.sender?.email) {
-      return replyTo.sender.email.split('@')[0];
-    }
-
     return 'Пользователь';
   };
 

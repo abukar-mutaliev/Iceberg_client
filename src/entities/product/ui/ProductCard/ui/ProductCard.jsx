@@ -25,7 +25,7 @@ const isMediumScreen = SCREEN_WIDTH >= 360 && SCREEN_WIDTH < 414;
 const isLargePhone = SCREEN_WIDTH >= 414 && SCREEN_WIDTH < 768;
 const isTablet = SCREEN_WIDTH >= 768;
 
-const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = false }) => {
+const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = false, compactImageHeight = 140 }) => {
     const { showError, showWarning } = useToast();
     const {
         productId,
@@ -444,7 +444,7 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
         return (
             <View style={[styles.compactContainer, width && { width }]}>
                 <View 
-                    style={styles.compactImageContainer}
+                    style={[styles.compactImageContainer, { height: compactImageHeight }]}
                     onTouchStart={handleTouchStart}
                     onTouchMove={handleTouchMove}
                     onTouchEnd={handleTouchEnd}

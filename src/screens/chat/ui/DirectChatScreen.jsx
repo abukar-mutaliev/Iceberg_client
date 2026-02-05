@@ -49,6 +49,7 @@ export const DirectChatScreen = ({ route, navigation }) => {
     peerUserId,
     partnerAvatar,
     canSendMessages,
+    participantsById,
   } = chatData;
   
   const isAdmin = useMemo(() => currentUser?.role === 'ADMIN', [currentUser?.role]);
@@ -524,6 +525,7 @@ export const DirectChatScreen = ({ route, navigation }) => {
             partnerAvatar={partnerAvatar}
             roomType={roomData?.type}
             participants={roomData?.participants}
+            participantsById={participantsById}
             animatedPaddingTop={animatedPaddingTop}
             onLoadMore={loadMoreMessages}
             onScrollToIndexFailed={handleScrollToIndexFailed}
@@ -562,6 +564,8 @@ export const DirectChatScreen = ({ route, navigation }) => {
                 onMenuPress={handleMenuPress}
                 replyTo={replyTo}
                 onCancelReply={handleCancelReply}
+                participantsById={participantsById}
+                participants={roomData?.participants}
               />
               <TypingIndicator roomId={roomId} />
             </View>

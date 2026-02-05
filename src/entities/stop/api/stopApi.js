@@ -194,7 +194,9 @@ export const stopApi = {
     skipStop: async (stopId, reason = null) => {
         try {
             const payload = reason ? { reason } : {};
+            console.log('[stopApi] skipStop request', { stopId, payload });
             const response = await createProtectedRequest('patch', `/api/stops/${stopId}/skip`, payload);
+            console.log('[stopApi] skipStop response', response?.data);
             return response;
         } catch (error) {
             console.error(`Error in skipStop(${stopId}) API call:`, error);

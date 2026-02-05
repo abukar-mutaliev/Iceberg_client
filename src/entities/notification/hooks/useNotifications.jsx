@@ -14,7 +14,7 @@ import {
     addNotification,
     updateNotificationData
 } from "@entities/notification";
-import { fetchAllStops, selectStops } from "@entities/stop";
+import { fetchAllStops, clearStopCache, selectStops } from "@entities/stop";
 
 export const useNotifications = (navigation) => {
     const dispatch = useDispatch();
@@ -27,6 +27,7 @@ export const useNotifications = (navigation) => {
     const setupDone = useRef(false);
     const navigationHandlersSet = useRef(false);
     const lastRefreshTime = useRef(0);
+    const lastStopRefreshTime = useRef(0);
 
     // Проверяем доступность уведомлений для роли пользователя
     const isNotificationsAvailable = user?.role === 'CLIENT';
@@ -110,6 +111,39 @@ export const useNotifications = (navigation) => {
 
         setTimeout(() => { refreshing.current = false; }, 1000);
     }, [dispatch, user?.id, user?.role]);
+
+    const refreshStopsFromNotification = useCallback((data, source) => {
+        const now = Date.now();
+        if (!user || user?.role !== 'CLIENT') {
+            return;
+        }
+        if (now - lastStopRefreshTime.current < 3000) {
+            return;
+        }
+        lastStopRefreshTime.current = now;
+
+        if (__DEV__) {
+            console.log('🔄 Refreshing stops from notification', {
+                stopId: data?.stopId,
+                type: data?.type,
+                source
+            });
+        }
+
+        dispatch(clearStopCache());
+        dispatch(fetchAllStops());
+    }, [dispatch, user?.role]);
+
+    useEffect(() => {
+        if (!user || user?.role !== 'CLIENT') {
+            return;
+        }
+
+        PushNotificationService.setStopUpdateHandler?.(refreshStopsFromNotification);
+        return () => {
+            PushNotificationService.setStopUpdateHandler?.(null);
+        };
+    }, [refreshStopsFromNotification, user?.role, user?.id]);
 
     const setupNavigationHandlers = useCallback(() => {
         if (navigationHandlersSet.current || !navigation || !isNotificationsAvailable) {

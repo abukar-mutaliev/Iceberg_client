@@ -19,14 +19,19 @@ export const StopDetailsScreen = ({ navigation }) => {
 
     const stop = useSelector(state => selectStopById(state, stopId));
     const allStops = useSelector(selectStops);
+    const [localStop, setLocalStop] = useState(null);
     const isLoading = useSelector(selectDriverLoading);
     const error = useSelector(selectDriverError);
     const userRole = useSelector(state => state.auth?.user?.role || 'DRIVER');
+    const isSuperAdmin = useSelector(state => !!state.auth?.user?.admin?.isSuperAdmin);
+    const userId = useSelector(state => state.auth?.user?.id);
+    const userDriverId = useSelector(state => state.auth?.user?.driver?.id);
 
     const stopStatus = (stop?.status || 'SCHEDULED').toUpperCase();
-    const isAdminOrEmployee = userRole === 'ADMIN' || userRole === 'EMPLOYEE';
+    const isAdminOrEmployee = userRole === 'ADMIN' || userRole === 'EMPLOYEE' || isSuperAdmin;
     const isDriver = userRole === 'DRIVER';
     const [isLifecycleLoading, setIsLifecycleLoading] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
     // Функция для ручной загрузки данных
     const loadStopsData = React.useCallback(async () => {
@@ -58,6 +63,12 @@ export const StopDetailsScreen = ({ navigation }) => {
 
         loadStopsImmediately();
     }, [stopId, allStops.length, loadStopsData]);
+
+    useEffect(() => {
+        if (stop) {
+            setLocalStop(stop);
+        }
+    }, [stop]);
 
     // Дополнительная проверка после загрузки данных
     useEffect(() => {
@@ -103,25 +114,55 @@ export const StopDetailsScreen = ({ navigation }) => {
         dispatch(clearStopCache());
         await dispatch(fetchAllStops());
         if (isDriver) {
-            dispatch(fetchDriverStops());
+            await dispatch(fetchDriverStops());
         }
     }, [dispatch, isDriver]);
+
+    const handleRefresh = useCallback(async () => {
+        if (isRefreshing) return;
+        setIsRefreshing(true);
+        try {
+            await refreshStops();
+        } finally {
+            setIsRefreshing(false);
+        }
+    }, [refreshStops, isRefreshing]);
 
     const runLifecycleAction = useCallback(async (actionType) => {
         if (isLifecycleLoading) return;
         setIsLifecycleLoading(true);
         try {
+            let result = null;
+            console.log('[StopDetails] lifecycle action start', {
+                actionType,
+                stopId,
+                stopStatus,
+                hasStop: !!(localStop || stop)
+            });
             if (actionType === 'activate') {
-                await dispatch(activateStop(stopId)).unwrap();
+                result = await dispatch(activateStop(stopId)).unwrap();
             } else if (actionType === 'skip') {
-                await dispatch(skipStop({ stopId })).unwrap();
+                result = await dispatch(skipStop({ stopId })).unwrap();
             } else if (actionType === 'complete') {
-                await dispatch(completeStop(stopId)).unwrap();
+                result = await dispatch(completeStop(stopId)).unwrap();
             } else if (actionType === 'cancel') {
-                await dispatch(cancelStop({ stopId })).unwrap();
+                result = await dispatch(cancelStop({ stopId })).unwrap();
+            }
+            console.log('[StopDetails] lifecycle action result', {
+                actionType,
+                stopId,
+                result
+            });
+            if (result?.stop) {
+                setLocalStop(result.stop);
             }
             await refreshStops();
         } catch (actionError) {
+            console.log('[StopDetails] lifecycle action error', {
+                actionType,
+                stopId,
+                error: actionError?.message || actionError
+            });
             Alert.alert('Ошибка', actionError?.message || 'Не удалось обновить статус остановки');
         } finally {
             setIsLifecycleLoading(false);
@@ -177,26 +218,22 @@ export const StopDetailsScreen = ({ navigation }) => {
         );
     }
 
+    const stopOwnerUserId = (localStop || stop)?.driver?.userId;
+    const stopOwnerDriverId = (localStop || stop)?.driverId;
+    const isOwnedStop = !!(
+        isSuperAdmin ||
+        (userId && stopOwnerUserId === userId) ||
+        (userDriverId && stopOwnerDriverId === userDriverId)
+    );
+
     // Показываем контент остановки
-    const lifecycleSection = (isDriver || isAdminOrEmployee) && (
+    const lifecycleSection = (isOwnedStop && (isDriver || isAdminOrEmployee)) && (
         <View style={styles.lifecycleSection}>
             <Text style={styles.lifecycleTitle}>Статус остановки</Text>
             <View style={styles.lifecycleActions}>
                 {stopStatus === 'SCHEDULED' && (
                     <>
-                        <TouchableOpacity
-                            style={[styles.lifecycleButton, styles.lifecyclePrimary, isLifecycleLoading && styles.lifecycleDisabled]}
-                            onPress={() => runLifecycleAction('activate')}
-                            disabled={isLifecycleLoading}
-                        >
-                            <Text
-                                style={styles.lifecycleButtonTextPrimary}
-                                numberOfLines={1}
-                                ellipsizeMode="tail"
-                            >
-                                Активировать
-                            </Text>
-                        </TouchableOpacity>
+                       
                         <TouchableOpacity
                             style={[styles.lifecycleButton, styles.lifecycleWarning, isLifecycleLoading && styles.lifecycleDisabled]}
                             onPress={() => confirmAction('Пропустить остановку', 'Остановка не будет показана в канале маршрутов.', 'skip')}
@@ -207,7 +244,7 @@ export const StopDetailsScreen = ({ navigation }) => {
                                 numberOfLines={1}
                                 ellipsizeMode="tail"
                             >
-                                Пропустить
+                                Пропустить день
                             </Text>
                         </TouchableOpacity>
                     </>
@@ -268,9 +305,11 @@ export const StopDetailsScreen = ({ navigation }) => {
     return (
         <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
             <StopDetailsContent
-                stop={stop}
+                stop={localStop || stop}
                 navigation={navigation}
                 lifecycleSection={lifecycleSection}
+                onRefresh={handleRefresh}
+                refreshing={isRefreshing}
             />
         </SafeAreaView>
     );

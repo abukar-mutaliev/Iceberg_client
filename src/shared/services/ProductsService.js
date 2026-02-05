@@ -1,7 +1,7 @@
 import * as ImageManipulator from 'expo-image-manipulator';
 import NetInfo from "@react-native-community/netinfo";
 import {getBaseUrl} from "@shared/api/api";
-import {Platform, Image} from 'react-native';
+import {Platform} from 'react-native';
 import { authService} from "@shared/api/api";
 import { retryRequest, retryFileUpload, waitForConnection } from "@shared/api/retryHelper";
 import {createApiModule} from "@shared/services/ApiClient";
@@ -53,32 +53,40 @@ const normalizeFileUri = (uri) => {
     return uri;
 };
 
-const getImageDimensions = (uri) => new Promise((resolve, reject) => {
-    Image.getSize(
-        uri,
-        (width, height) => resolve({ width, height }),
-        (error) => reject(error)
-    );
-});
+const getFileExtension = (name) => {
+    if (!name || typeof name !== 'string') return '';
+    const cleanName = name.split('?')[0];
+    const parts = cleanName.split('.');
+    if (parts.length < 2) return '';
+    return parts[parts.length - 1].toLowerCase();
+};
 
-const getResizeAction = async (uri, maxSize) => {
-    try {
-        const { width, height } = await getImageDimensions(uri);
-        if (!width || !height) return null;
-
-        const scale = Math.min(maxSize / width, maxSize / height, 1);
-        if (scale >= 1) return null;
-
-        return {
-            resize: {
-                width: Math.max(1, Math.round(width * scale)),
-                height: Math.max(1, Math.round(height * scale))
-            }
-        };
-    } catch (error) {
-        console.warn('Не удалось определить размер изображения:', error?.message || error);
-        return null;
+const getFileNameFromUri = (uri, index) => {
+    if (!uri || typeof uri !== 'string') {
+        return `image-${Date.now()}-${index}.jpg`;
     }
+    const cleanUri = uri.split('?')[0];
+    const fileName = cleanUri.split('/').pop();
+    if (fileName && fileName.includes('.')) {
+        return fileName;
+    }
+    return `image-${Date.now()}-${index}.jpg`;
+};
+
+const getMimeTypeFromName = (name) => {
+    const ext = getFileExtension(name);
+    if (ext === 'png') return 'image/png';
+    if (ext === 'webp') return 'image/webp';
+    if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+    return '';
+};
+
+const isSupportedImageType = (type, name) => {
+    if (type && ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'].includes(type)) {
+        return true;
+    }
+    const ext = getFileExtension(name);
+    return ['jpg', 'jpeg', 'png', 'webp'].includes(ext);
 };
 
 const prepareImageFile = async (img, index) => {
@@ -88,75 +96,77 @@ const prepareImageFile = async (img, index) => {
                 return null;
             }
 
+            const uriToProcess = normalizeFileUri(img);
+            const fileName = getFileNameFromUri(uriToProcess, index);
+            const inferredType = getMimeTypeFromName(fileName) || 'image/jpeg';
+
+            if (isSupportedImageType(inferredType, fileName)) {
+                return {
+                    uri: uriToProcess,
+                    name: fileName,
+                    type: inferredType
+                };
+            }
+
+            console.log(`Конвертация изображения ${index + 1} в JPEG для совместимости`);
             try {
-                const uriToProcess = normalizeFileUri(img);
-
-                console.log(`Сжатие изображения ${index+1}, URI: ${uriToProcess.substring(0, 30)}...`);
-
-                const resizeAction = await getResizeAction(uriToProcess, 800);
                 const result = await ImageManipulator.manipulateAsync(
                     uriToProcess,
-                    resizeAction ? [resizeAction] : [],
-                    { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+                    [],
+                    { compress: 1, format: ImageManipulator.SaveFormat.JPEG }
                 );
-
-                const timestamp = Date.now();
-                const fileName = `image-${timestamp}-${index}.jpg`;
-
                 return {
                     uri: result.uri,
-                    name: fileName,
+                    name: fileName.replace(/\.[^/.]+$/, '.jpg'),
                     type: 'image/jpeg'
                 };
-            } catch (compressError) {
-                console.warn(`Ошибка сжатия изображения ${index+1}:`, compressError);
-
-                const timestamp = Date.now();
-                const fileName = `image-${timestamp}-${index}.jpg`;
-
+            } catch (convertError) {
+                console.warn(`Ошибка конвертации изображения ${index + 1}:`, convertError);
                 return {
-                    uri: normalizeFileUri(img),
+                    uri: uriToProcess,
                     name: fileName,
-                    type: 'image/jpeg'
+                    type: inferredType
                 };
             }
         } else if (img && img.uri) {
+            const uriToProcess = normalizeFileUri(img.uri);
+            const fileName = img.name || getFileNameFromUri(uriToProcess, index);
+            const inferredType = img.type || getMimeTypeFromName(fileName) || 'image/jpeg';
+
+            if (isSupportedImageType(inferredType, fileName)) {
+                return {
+                    uri: uriToProcess,
+                    name: fileName,
+                    type: inferredType
+                };
+            }
+
+            console.log(`Конвертация объекта изображения ${index + 1} в JPEG для совместимости`);
             try {
-                const uriToProcess = normalizeFileUri(img.uri);
-
-                console.log(`Сжатие объекта изображения ${index+1}, URI: ${uriToProcess.substring(0, 30)}...`);
-
-                const resizeAction = await getResizeAction(uriToProcess, 800);
                 const result = await ImageManipulator.manipulateAsync(
                     uriToProcess,
-                    resizeAction ? [resizeAction] : [],
-                    { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+                    [],
+                    { compress: 1, format: ImageManipulator.SaveFormat.JPEG }
                 );
-
-                const fileName = img.name || `image-${Date.now()}-${index}.jpg`;
-
                 return {
                     uri: result.uri,
-                    name: fileName,
+                    name: fileName.replace(/\.[^/.]+$/, '.jpg'),
                     type: 'image/jpeg'
                 };
-            } catch (compressError) {
-                console.warn(`Ошибка сжатия объекта изображения ${index+1}:`, compressError);
-
-                const fileName = img.name || `image-${Date.now()}-${index}.jpg`;
-
+            } catch (convertError) {
+                console.warn(`Ошибка конвертации объекта изображения ${index + 1}:`, convertError);
                 return {
-                    uri: normalizeFileUri(img.uri),
+                    uri: uriToProcess,
                     name: fileName,
-                    type: img.type || 'image/jpeg'
+                    type: inferredType
                 };
             }
         }
 
-        console.warn(`Нераспознанный формат изображения ${index+1}`);
+        console.warn(`Нераспознанный формат изображения ${index + 1}`);
         return null;
     } catch (error) {
-        console.error(`Общая ошибка подготовки изображения ${index+1}:`, error);
+        console.error(`Общая ошибка подготовки изображения ${index + 1}:`, error);
         return null;
     }
 };
@@ -173,21 +183,10 @@ const imageToBase64 = async (uri) => {
             : uri;
 
 
-        const compressResult = await ImageManipulator.manipulateAsync(
-            uriToProcess,
-            [{ resize: { width: 800, height: 800 } }],
-            { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG }
-        );
-
-        if (!compressResult || !compressResult.uri) {
-            console.error('Ошибка при сжатии изображения, результат отсутствует');
-            return null;
-        }
-
         if (Platform.OS === 'android') {
             try {
                 const FileSystem = require('expo-file-system/legacy');
-                const base64String = await FileSystem.readAsStringAsync(compressResult.uri, {
+                const base64String = await FileSystem.readAsStringAsync(uriToProcess, {
                     encoding: FileSystem.EncodingType.Base64,
                 });
                 return base64String;
@@ -195,7 +194,7 @@ const imageToBase64 = async (uri) => {
                 console.error('Ошибка при чтении файла через FileSystem:', fsError);
 
                 try {
-                    const response = await fetch(compressResult.uri);
+                    const response = await fetch(uriToProcess);
                     const blob = await response.blob();
 
                     return new Promise((resolve, reject) => {
@@ -215,7 +214,7 @@ const imageToBase64 = async (uri) => {
             }
         } else {
             try {
-                const response = await fetch(compressResult.uri);
+                const response = await fetch(uriToProcess);
                 const blob = await response.blob();
 
                 return new Promise((resolve, reject) => {
@@ -347,6 +346,139 @@ const uploadSingleImage = async (productId, fileObj, accessToken, baseUrl) => {
         };
     }
 };
+
+const preuploadProductImage = async (fileObj) => {
+    try {
+        return await retryFileUpload(async () => {
+            const result = await preuploadProductImageOnce(fileObj);
+            if (!result?.success) {
+                const message = result?.error?.message || 'Ошибка при загрузке файла';
+                throw new Error(message);
+            }
+            return result;
+        }, {
+            maxRetries: 5,
+            waitForConnection: true,
+            connectionTimeoutMs: 20000,
+            baseDelayMs: 1500,
+            maxDelayMs: 15000
+        });
+    } catch (error) {
+        return {
+            success: false,
+            error: { message: error?.message || 'Ошибка при загрузке файла' }
+        };
+    }
+};
+
+async function preuploadProductImageOnce(fileObj) {
+    try {
+        if (!fileObj || !fileObj.uri) {
+            return {
+                success: false,
+                error: { message: 'Невалидный объект файла' }
+            };
+        }
+
+        const tokens = await authService.getStoredTokens();
+        if (!tokens?.accessToken) {
+            return {
+                success: false,
+                error: { message: 'Не авторизован. Пожалуйста, войдите снова.' }
+            };
+        }
+
+        const accessToken = tokens.accessToken;
+        const baseUrl = getBaseUrl();
+        const uri = normalizeFileUri(fileObj.uri);
+        const fileName = fileObj.name || getFileNameFromUri(uri, Date.now());
+        const fileType = fileObj.type || getMimeTypeFromName(fileName) || 'image/jpeg';
+
+        const formData = new FormData();
+        formData.append('image', {
+            uri,
+            name: fileName,
+            type: fileType
+        });
+
+        const response = await fetch(`${baseUrl}/api/products/preupload-image`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Accept': 'application/json',
+            },
+            body: formData
+        });
+
+        if (response.status === 401) {
+            try {
+                const newTokens = await authService.refreshAccessToken?.();
+                if (newTokens?.accessToken) {
+                    const retryResponse = await fetch(`${baseUrl}/api/products/preupload-image`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${newTokens.accessToken}`,
+                            'Accept': 'application/json',
+                        },
+                        body: formData
+                    });
+                    const retryText = await retryResponse.text();
+                    if (retryResponse.ok) {
+                        try {
+                            const data = JSON.parse(retryText);
+                            return {
+                                success: true,
+                                data
+                            };
+                        } catch (e) {
+                            return {
+                                success: false,
+                                error: { message: 'Неверный формат ответа от сервера' }
+                            };
+                        }
+                    }
+                }
+            } catch (refreshError) {
+                console.error('Ошибка обновления токена:', refreshError);
+            }
+        }
+
+        const responseText = await response.text();
+
+        if (response.ok) {
+            try {
+                const data = JSON.parse(responseText);
+                return {
+                    success: true,
+                    data
+                };
+            } catch (e) {
+                return {
+                    success: false,
+                    error: { message: 'Неверный формат ответа от сервера' }
+                };
+            }
+        }
+
+        try {
+            const errorData = JSON.parse(responseText);
+            return {
+                success: false,
+                error: errorData
+            };
+        } catch (e) {
+            return {
+                success: false,
+                error: { message: 'Ошибка при загрузке файла' }
+            };
+        }
+    } catch (error) {
+        return {
+            success: false,
+            error: { message: 'Ошибка сети при загрузке файла' }
+        };
+    }
+}
 
 const uploadImageAsBase64 = async (productId, fileObj, accessToken, baseUrl) => {
     try {
@@ -751,26 +883,47 @@ const ProductsService = {
 
             const uploadedImages = [];
             let imageUploadErrors = 0;
+            const preuploadedImagesMap = data.preuploadedImagesMap || {};
 
 
-            for (let i = 0; i < preparedImages.length; i++) {
-                const img = preparedImages[i];
+            const maxConcurrentUploads = 2;
+            let completedUploads = 0;
 
+            const uploadImage = async (img, i) => {
                 updateProgress(
-                    40 + (i / preparedImages.length) * 50,
+                    40 + (completedUploads / preparedImages.length) * 50,
                     `Загрузка изображения ${i + 1}/${preparedImages.length}...`,
-                    i
+                    completedUploads
                 );
 
                 if (typeof img === 'string' && (img.startsWith('http://') || img.startsWith('https://'))) {
                     uploadedImages.push(img);
-                    continue;
+                    completedUploads++;
+                    updateProgress(
+                        40 + (completedUploads / preparedImages.length) * 50,
+                        `Изображение ${i + 1}/${preparedImages.length} загружено`,
+                        completedUploads
+                    );
+                    return;
+                }
+
+                if (typeof img === 'string' && preuploadedImagesMap[img]?.status === 'done' && preuploadedImagesMap[img]?.url) {
+                    uploadedImages.push(preuploadedImagesMap[img].url);
+                    completedUploads++;
+                    updateProgress(
+                        40 + (completedUploads / preparedImages.length) * 50,
+                        `Изображение ${i + 1}/${preparedImages.length} уже загружено`,
+                        completedUploads
+                    );
+                    return;
                 }
 
                 let fileObj = await prepareImageFile(img, i);
 
                 if (!fileObj) {
-                    continue;
+                    imageUploadErrors++;
+                    completedUploads++;
+                    return;
                 }
 
                 if (fileObj.uri) {
@@ -780,7 +933,9 @@ const ProductsService = {
                         }
                     }
                 } else {
-                    continue;
+                    imageUploadErrors++;
+                    completedUploads++;
+                    return;
                 }
 
                 if (!fileObj.name) {
@@ -814,9 +969,9 @@ const ProductsService = {
                         maxDelayMs: 15000,
                         onRetry: (attempt) => {
                             updateProgress(
-                                40 + (i / preparedImages.length) * 50,
+                                40 + (completedUploads / preparedImages.length) * 50,
                                 `Повторная попытка ${attempt} загрузки изображения ${i + 1}/${preparedImages.length}...`,
-                                i
+                                completedUploads
                             );
                         }
                     });
@@ -844,9 +999,9 @@ const ProductsService = {
                             maxDelayMs: 15000,
                             onRetry: (attempt) => {
                                 updateProgress(
-                                    40 + (i / preparedImages.length) * 50,
+                                    40 + (completedUploads / preparedImages.length) * 50,
                                     `Повторная попытка ${attempt} загрузки изображения ${i + 1}/${preparedImages.length}...`,
-                                    i
+                                    completedUploads
                                 );
                             }
                         });
@@ -861,16 +1016,22 @@ const ProductsService = {
                 if (uploaded && result.data && result.data.data && result.data.data.imagePath) {
                     const imagePath = result.data.data.imagePath.replace(/\\/g, '/');
                     uploadedImages.push(imagePath);
-
-                    updateProgress(
-                        40 + ((i + 1) / preparedImages.length) * 50,
-                        `Изображение ${i + 1}/${preparedImages.length} загружено`,
-                        i + 1
-                    );
                     console.log(`Изображение ${i + 1} успешно загружено, path:`, imagePath);
                 } else {
                     imageUploadErrors++;
                 }
+
+                completedUploads++;
+                updateProgress(
+                    40 + (completedUploads / preparedImages.length) * 50,
+                    `Загружено ${completedUploads}/${preparedImages.length} изображений`,
+                    completedUploads
+                );
+            };
+
+            for (let start = 0; start < preparedImages.length; start += maxConcurrentUploads) {
+                const batch = preparedImages.slice(start, start + maxConcurrentUploads);
+                await Promise.all(batch.map((img, idx) => uploadImage(img, start + idx)));
             }
 
             if (uploadedImages.length > 0) {
@@ -878,16 +1039,19 @@ const ProductsService = {
                 const normalizedImages = uploadedImages.map(img => img.replace(/\\/g, '/'));
 
                 const finalizeUrl = `${baseUrl}/api/products/${productId}/finalize`;
-                const finalizeFormData = new FormData();
-
-                finalizeFormData.append('images', JSON.stringify(normalizedImages));
+                const finalizePayload = {
+                    images: JSON.stringify(normalizedImages)
+                };
 
                 try {
 
 
                     const finalizeResponse = await executeRequest(finalizeUrl, {
                         method: 'POST',
-                        body: finalizeFormData,
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(finalizePayload),
                         timeout: 30000,
                     }, 3, (attempt) => {
                         updateProgress(90, `Повторная попытка ${attempt} финализации...`, uploadedImages.length);
@@ -950,6 +1114,7 @@ const ProductsService = {
     },
 
     uploadSingleImage,
+    preuploadProductImage,
     uploadImageAsBase64,
 
     updateProduct: (productId, data) => {

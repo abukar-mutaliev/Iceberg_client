@@ -394,6 +394,15 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
 
                     <View style={styles.infoRow}>
                         <View style={styles.infoLabelContainer}>
+                            <Text style={styles.infoLabel}>Тип:</Text>
+                        </View>
+                        <View style={styles.infoValueContainer}>
+                            <Text style={styles.infoValue}>{warehouse.isMain ? 'Основной' : 'Филиал'}</Text>
+                        </View>
+                    </View>
+
+                    <View style={styles.infoRow}>
+                        <View style={styles.infoLabelContainer}>
                             <Text style={styles.infoLabel}>Адрес:</Text>
                         </View>
                         <View style={[styles.infoValueContainer, styles.addressValueContainer]}>
@@ -743,7 +752,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         width: '100%',
-        paddingTop: 24,
+        paddingTop: 0,
         paddingHorizontal: 8,
     },
     backButton: {

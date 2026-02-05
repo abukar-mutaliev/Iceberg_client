@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
 import { ProductWarehouseInfo } from '@entities/product/ui/ProductWarehouseInfo/ui/ProductWarehouseInfo';
@@ -15,6 +15,62 @@ const getBoxesText = (count) => {
     }
 };
 
+const parseBoolean = (value) => {
+    if (typeof value === 'boolean') {
+        return value;
+    }
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (normalized === 'true' || normalized === '1') return true;
+        if (normalized === 'false' || normalized === '0') return false;
+    }
+    return Boolean(value);
+};
+
+const normalizeWarehouse = (warehouse) => {
+    if (!warehouse) {
+        return {
+            name: 'Склад',
+            isMain: false
+        };
+    }
+
+    if (warehouse.warehouse) {
+        const nestedIsMain = warehouse.warehouse.isMain ?? warehouse.warehouse.isMainWarehouse ?? warehouse.warehouse.isHead ?? warehouse.warehouse.isHeadWarehouse;
+        return {
+            name: warehouse.warehouse.name || warehouse.warehouseName || warehouse.name || 'Склад',
+            isMain: parseBoolean(nestedIsMain ?? warehouse.isMain ?? warehouse.isMainWarehouse ?? warehouse.isHead ?? warehouse.isHeadWarehouse ?? false),
+            raw: warehouse
+        };
+    }
+
+    return {
+        name: warehouse.warehouseName || warehouse.name || 'Склад',
+        isMain: parseBoolean(warehouse.isMain ?? warehouse.isMainWarehouse ?? warehouse.isHead ?? warehouse.isHeadWarehouse ?? false),
+        raw: warehouse
+    };
+};
+
+const getWarehouseTypeLabel = (warehouse) => {
+    const normalized = normalizeWarehouse(warehouse);
+    const raw = normalized.raw || warehouse || {};
+
+    const isBranchFlag = raw.isBranch === true;
+    const typeValue = raw.type || raw.warehouseType;
+    const normalizedType = typeValue ? String(typeValue).toLowerCase() : null;
+    const isMainFlag = normalized.isMain === true || parseBoolean(raw.isMainWarehouse) || parseBoolean(raw.isHead) || parseBoolean(raw.isHeadWarehouse);
+
+    if (isBranchFlag) {
+        return 'Филиал';
+    }
+
+    if (normalizedType === 'main' || isMainFlag) {
+        return 'Основной';
+    }
+
+    return 'Филиал';
+};
+
 export const AdminWarehouseInfo = ({
     warehousesWithStock,
     totalStock,
@@ -27,17 +83,29 @@ export const AdminWarehouseInfo = ({
 }) => {
     // Обогащаем данные складов информацией о ценах для редактирования
     const enrichedWarehouses = warehousesWithStock?.map(warehouse => {
+        const normalized = normalizeWarehouse(warehouse);
         const priceInfo = warehouse.priceInfo || warehouse.productStock?.priceInfo;
         const warehousePrice = priceInfo?.warehousePrice ?? warehouse.warehousePrice;
         const basePrice = priceInfo?.basePrice ?? productBasePrice;
 
         return {
             ...warehouse,
+            name: normalized.name,
+            isMain: normalized.isMain,
             warehousePrice,
             basePrice,
             priceInfo
         };
     }) || [];
+
+    useEffect(() => {
+        if (!warehousesWithStock || warehousesWithStock.length === 0) {
+            return;
+        }
+        const sample = warehousesWithStock.slice(0, 3);
+        console.log('[AdminWarehouseInfo] warehousesWithStock sample', sample);
+        console.log('[AdminWarehouseInfo] enrichedWarehouses sample', enrichedWarehouses.slice(0, 3));
+    }, [warehousesWithStock, enrichedWarehouses]);
 
     return (
         <View style={styles.container}>
@@ -56,6 +124,7 @@ export const AdminWarehouseInfo = ({
                     {enrichedWarehouses.map((warehouse) => (
                         <View key={warehouse.id || warehouse.warehouseId} style={styles.priceEditorCard}>
                             <Text style={styles.warehouseName}>{warehouse.name}</Text>
+
                             <WarehousePriceEditor
                                 warehouseId={warehouse.id || warehouse.warehouseId}
                                 productId={productId}
@@ -100,7 +169,7 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: Color.textPrimary,
         marginBottom: normalize(8),
-    },
+    }
 });
 
 

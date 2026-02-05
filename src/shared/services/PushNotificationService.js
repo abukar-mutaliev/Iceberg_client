@@ -31,6 +31,9 @@ class PushNotificationService {
         // Текущий собеседник в direct-чате (для подавления уведомлений "от этого пользователя")
         this.activeChatPeerUserId = null;
 
+        // Обработчик авто-рефреша остановок
+        this.stopUpdateHandler = null;
+
         // Защита от параллельной регистрации токена для одного пользователя
         this.initializeForUserPromise = null;
         this.initializeForUserUserId = null;
@@ -419,6 +422,31 @@ class PushNotificationService {
         this.navigateToOrderChoiceFunc = navigateToOrderChoice;
 
         this.setNavigationReady();
+    }
+
+    setStopUpdateHandler(handler) {
+        this.stopUpdateHandler = typeof handler === 'function' ? handler : null;
+    }
+
+    isStopNotificationData(data) {
+        if (!data) return false;
+        if (data.stopId || data.stop_id) return true;
+        const type = String(data.type || data.notificationType || '').toUpperCase();
+        return type === 'STOP_NOTIFICATION' || type === 'STOP_UPDATE' || type === 'STOP_CANCEL';
+    }
+
+    handleStopNotificationData(data, source = 'unknown') {
+        try {
+            if (!this.stopUpdateHandler || !this.isStopNotificationData(data)) {
+                return;
+            }
+            const normalizedData = {
+                ...data,
+                stopId: data.stopId || data.stop_id
+            };
+            this.stopUpdateHandler(normalizedData, source);
+        } catch (_) {
+        }
     }
 
     // Установка готовности навигации

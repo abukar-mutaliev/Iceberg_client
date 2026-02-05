@@ -362,10 +362,10 @@ export const MainScreen = ({ navigation, route }) => {
     ), []);
 
     const renderErrorState = useCallback(() => (
-        <View style={styles.messageContainer}>
+        <View style={styles.errorBanner}>
             <Text style={styles.errorText}>{error}</Text>
             <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
-                <Text style={styles.retryButtonText}>Повторить</Text>
+                <Text style={styles.retryButtonText}>Повторить попытку</Text>
             </TouchableOpacity>
         </View>
     ), [error, handleRefresh]);
@@ -493,6 +493,12 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         minHeight: 200,
+    },
+    errorBanner: {
+        paddingHorizontal: 20,
+        paddingTop: 16,
+        paddingBottom: 8,
+        alignItems: 'center',
     },
     messageText: {
         fontSize: 16,

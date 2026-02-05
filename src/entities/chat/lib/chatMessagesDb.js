@@ -152,6 +152,51 @@ function safeMs(iso) {
   return Number.isFinite(ms) ? ms : Date.now();
 }
 
+function parseStopData(message) {
+  if (!message) return null;
+  if (message.stop) return message.stop;
+  if (message.content) {
+    try {
+      return JSON.parse(message.content);
+    } catch (e) {
+      return null;
+    }
+  }
+  return null;
+}
+
+function isStopMessage(message) {
+  if (!message) return false;
+  if (String(message.type || '').toUpperCase() === 'STOP') return true;
+  const stopData = parseStopData(message);
+  if (!stopData) return false;
+  return Boolean(stopData?.id || stopData?.stopId || stopData?.startTime || stopData?.endTime);
+}
+
+function isStopMessageExpired(message, nowMs = Date.now()) {
+  if (!isStopMessage(message)) return false;
+
+  const stopData = parseStopData(message);
+  if (!stopData) return false;
+
+  const stopStatus = String(stopData?.status || '').toUpperCase();
+  const isDeletedStop = Boolean(
+    stopData?.isDeleted ||
+      stopData?.deletedAt ||
+      stopData?.cancelledAt ||
+      stopStatus === 'CANCELLED' ||
+      stopStatus === 'CANCELED' ||
+      stopStatus === 'DELETED'
+  );
+  if (isDeletedStop) return true;
+
+  const endTime = stopData?.endTime || stopData?.startTime || null;
+  if (!endTime) return false;
+
+  const endMs = safeMs(endTime);
+  return endMs < nowMs;
+}
+
 export const chatMessagesDb = {
   async initialize() {
     if (!SQLite) {
@@ -221,6 +266,7 @@ export const chatMessagesDb = {
       for (const msg of messages) {
         const messageId = msg?.id;
         if (!messageId) continue;
+        if (isStopMessageExpired(msg, now)) continue;
         const createdAt = msg?.createdAt || null;
         const createdAtMs = safeMs(createdAt);
         let json;
@@ -285,6 +331,8 @@ export const chatMessagesDb = {
     );
 
     const messages = [];
+    const expiredIds = [];
+    const now = Date.now();
     for (const row of rows || []) {
       if (!row?.json) continue;
       try {
@@ -295,10 +343,27 @@ export const chatMessagesDb = {
         if (message.isDeletedForAll === true) {
           continue;
         }
+
+        if (isStopMessageExpired(message, now)) {
+          if (message?.id) {
+            expiredIds.push(String(message.id));
+          }
+          continue;
+        }
         
         messages.push(message);
       } catch {
         // skip corrupted row
+      }
+    }
+
+    if (expiredIds.length > 0) {
+      try {
+        for (const messageId of expiredIds) {
+          await exec(db, `DELETE FROM ${TABLES.messages} WHERE room_id = ? AND message_id = ?;`, [rid, messageId]);
+        }
+      } catch (error) {
+        // ignore cache cleanup errors
       }
     }
 

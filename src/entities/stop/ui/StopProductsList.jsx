@@ -129,7 +129,7 @@ export const StopProductsList = ({ stopId, isActive, refreshKey }) => {
         return (
             <View style={styles.container}>
                 <Text style={styles.hint}>
-                    Товары доступны только во время работы остановки
+                    Товары доступны только во время работы водителя
                 </Text>
             </View>
         );

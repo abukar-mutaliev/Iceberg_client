@@ -15,6 +15,7 @@ import {
     Platform
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { CommonActions } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import { LinearGradient } from 'expo-linear-gradient'; // или react-native-linear-gradient
 import { BlurView } from 'expo-blur';
@@ -153,7 +154,7 @@ const LoadingComponent = () => {
 };
 
 // Компонент пустого состояния
-const EmptyStateComponent = ({ categoryName, onRetry, navigation, bottomInset = 0 }) => {
+const EmptyStateComponent = ({ categoryName, onRetry, onGoHome, navigation, bottomInset = 0 }) => {
     const fadeAnim = new Animated.Value(0);
     const slideAnim = new Animated.Value(30);
 
@@ -261,7 +262,7 @@ const EmptyStateComponent = ({ categoryName, onRetry, navigation, bottomInset = 
 
                     <TouchableOpacity
                         style={styles.tertiaryButton}
-                        onPress={() => navigation.navigate('MainTab', { screen: 'Main' })}
+                        onPress={onGoHome}
                         activeOpacity={0.8}
                     >
                         <Text style={styles.tertiaryButtonText}>🏠 На главную</Text>
@@ -450,6 +451,47 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
     const isLoading = useSelector(selectProductsByCategoryLoading);
     const error = useSelector(selectProductsByCategoryError);
 
+    const getRootNavigation = useCallback(() => {
+        let current = navigation;
+        while (current?.getParent?.()) {
+            current = current.getParent();
+        }
+        return current;
+    }, [navigation]);
+
+    const handleGoHome = useCallback(() => {
+        const rootNavigation = getRootNavigation();
+        const routeNames = rootNavigation?.getState?.()?.routeNames || [];
+
+        if (routeNames.includes('Main')) {
+            rootNavigation.dispatch(
+                CommonActions.reset({
+                    index: 0,
+                    routes: [
+                        {
+                            name: 'Main',
+                            state: {
+                                index: 0,
+                                routes: [
+                                    {
+                                        name: 'MainTab',
+                                        state: {
+                                            index: 0,
+                                            routes: [{ name: 'Main' }],
+                                        },
+                                    },
+                                ],
+                            },
+                        },
+                    ],
+                })
+            );
+            return;
+        }
+
+        navigation.navigate('MainTab', { screen: 'Main' });
+    }, [getRootNavigation, navigation]);
+
     useEffect(() => {
         if (categoryId && dispatch && fetchProductsByCategory) {
             dispatch(fetchProductsByCategory({ categoryId, params: {} }));
@@ -562,6 +604,7 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
                 <EmptyStateComponent
                     categoryName={categoryName}
                     onRetry={handleRetry}
+                    onGoHome={handleGoHome}
                     navigation={navigation}
                     bottomInset={80 + insets.bottom + normalize(16)}
                 />

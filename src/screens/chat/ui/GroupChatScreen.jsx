@@ -171,6 +171,7 @@ export const GroupChatScreen = ({ route, navigation }) => {
     }
   }, [selectedMessages, messages, clearSelection]);
 
+
   const handleForwardSelectedMessages = useCallback(() => {
     if (selectedMessages.size > 0) {
       openForwardModal(null);
@@ -532,6 +533,7 @@ export const GroupChatScreen = ({ route, navigation }) => {
                   replyTo={replyTo}
                   onCancelReply={handleCancelReply}
                   autoFocus={autoFocusInput}
+                  participants={roomData?.participants}
                 />
                 <TypingIndicator roomId={roomId} />
               </View>

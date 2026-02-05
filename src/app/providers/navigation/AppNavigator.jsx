@@ -1109,7 +1109,7 @@ const MainStackScreen = () => (
         <MainStack.Screen
             name="ProductsByCategory"
             component={ProductsByCategoryScreen}
-            options={createScreenOptions({ cardOverlayEnabled: true })}
+            options={createScreenOptions()}
         />
         <MainStack.Screen
             name="EmployeeRewardsTestMain"

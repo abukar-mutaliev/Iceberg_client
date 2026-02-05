@@ -147,7 +147,7 @@ export const ProductImage = ({ images, style, onImagePress }) => {
                     onPress={goToPrevious}
                     activeOpacity={0.8}
                 >
-                    <Text style={styles.navArrowText}>‹</Text>
+                    <Icon name="chevron-left" size={28} color="#fff" />
                 </TouchableOpacity>
             )}
             {imageArray.length > 1 && activeIndex < imageArray.length - 1 && (
@@ -156,7 +156,7 @@ export const ProductImage = ({ images, style, onImagePress }) => {
                     onPress={goToNext}
                     activeOpacity={0.8}
                 >
-                    <Text style={styles.navArrowText}>›</Text>
+                    <Icon name="chevron-right" size={28} color="#fff" />
                 </TouchableOpacity>
             )}
         </View>
@@ -261,7 +261,7 @@ const styles = StyleSheet.create({
         width: 44,
         height: 44,
         borderRadius: 22,
-        backgroundColor: 'rgba(0,0,0,0.45)',
+        backgroundColor: 'rgba(0,0,0,0.5)',
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 101,
@@ -276,6 +276,7 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 28,
         fontWeight: '600',
-        marginTop: -2,
+        lineHeight: 28,
+        textAlign: 'center',
     },
 });

@@ -75,9 +75,12 @@ export const SwipeableMessageBubble = ({
       }
     }
 
-    if (nativeEvent.state === State.END) {
-      // Используем сохраненное значение вместо nativeEvent.translationX
-      const translationX = currentTranslateX.current;
+    if (nativeEvent.state === State.END || nativeEvent.state === State.CANCELLED) {
+      // Используем nativeEvent.translationX для iOS + fallback на текущее значение
+      const rawTranslationX = typeof nativeEvent.translationX === 'number'
+        ? nativeEvent.translationX
+        : currentTranslateX.current;
+      const translationX = Math.max(0, Math.min(rawTranslationX, MAX_TRANSLATE));
 
       // Если свайп был достаточно длинным, вызываем onReply
       if (translationX >= SWIPE_THRESHOLD && onReply) {

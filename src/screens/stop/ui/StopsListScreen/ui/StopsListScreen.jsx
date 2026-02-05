@@ -13,6 +13,7 @@ import {
     selectStopError,
     selectStopById,
     fetchAllStops,
+    clearStopCache,
 } from '@entities/stop';
 import { StopCard } from "@entities/driver/ui/StopCard";
 import { BackButton } from "@shared/ui/Button/BackButton";
@@ -54,6 +55,21 @@ export const StopsListScreen = ({ navigation }) => {
         React.useCallback(() => {
             dispatch(fetchAllStops());
         }, [dispatch])
+    );
+
+    useFocusEffect(
+        React.useCallback(() => {
+            if (userRole !== 'CLIENT') {
+                return undefined;
+            }
+
+            const intervalId = setInterval(() => {
+                dispatch(clearStopCache());
+                dispatch(fetchAllStops(selectedDistrictId || null));
+            }, 30000);
+
+            return () => clearInterval(intervalId);
+        }, [dispatch, userRole, selectedDistrictId])
     );
 
     useEffect(() => {

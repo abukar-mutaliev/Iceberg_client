@@ -40,6 +40,30 @@ const WEEK_DAYS = [
     { label: 'Вс', value: 0 }
 ];
 
+const toLocalISOString = (date) => {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+        return '';
+    }
+    const pad = (value) => String(value).padStart(2, '0');
+    const year = date.getFullYear();
+    const month = pad(date.getMonth() + 1);
+    const day = pad(date.getDate());
+    const hours = pad(date.getHours());
+    const minutes = pad(date.getMinutes());
+    const seconds = pad(date.getSeconds());
+    const millis = String(date.getMilliseconds()).padStart(3, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${millis}`;
+};
+
+const getTimezoneOffsetString = () => {
+    const offsetMinutes = -new Date().getTimezoneOffset();
+    const sign = offsetMinutes >= 0 ? '+' : '-';
+    const absMinutes = Math.abs(offsetMinutes);
+    const hours = String(Math.floor(absMinutes / 60)).padStart(2, '0');
+    const minutes = String(absMinutes % 60).padStart(2, '0');
+    return `${sign}${hours}:${minutes}`;
+};
+
 export const StopForm = memo(({
                                   districts,
                                   locationData,
@@ -582,8 +606,8 @@ export const StopForm = memo(({
 
             const startDateTime = getFullStartDateTime();
             const endDateTime = getFullEndDateTime();
-            const startTimeIso = new Date(startDateTime).toISOString();
-            const endTimeIso = new Date(endDateTime).toISOString();
+            const startTimeIso = toLocalISOString(startDateTime);
+            const endTimeIso = toLocalISOString(endDateTime);
 
             const stopData = {
                 address,
@@ -602,7 +626,8 @@ export const StopForm = memo(({
             if (scheduleEnabled) {
                 stopData.schedule = {
                     enabled: true,
-                    daysOfWeek: scheduleDays
+                    daysOfWeek: scheduleDays,
+                    timezone: getTimezoneOffsetString()
                 };
             }
 
@@ -1113,55 +1138,6 @@ export const StopForm = memo(({
                     </FormField>
                 </FormSection>
 
-                <FormSection 
-                    title="Время стоянки" 
-                    subtitle="Укажите дату и время начала и окончания работы остановки"
-                >
-                    <FormField
-                        label={scheduleEnabled ? 'Время начала' : 'Дата и время начала'}
-                        required
-                        error={errors.startTime}
-                    >
-                        <View style={styles.dateTimeRow}>
-                            {!scheduleEnabled && (
-                                <View style={styles.dateTimeColumn}>
-                                    <Text style={styles.sublabel}>Дата</Text>
-                                    <CustomDatePicker date={startDate} onDateChange={onStartDateChange} />
-                                    <View style={[styles.inputUnderline, errors.startTime ? styles.underlineError : null]} />
-                                </View>
-                            )}
-
-                            <View style={styles.dateTimeColumn}>
-                                <Text style={styles.sublabel}>Время</Text>
-                                <CustomTimePicker date={startTime} onTimeChange={onStartTimeChange} />
-                                <View style={[styles.inputUnderline, errors.startTime ? styles.underlineError : null]} />
-                            </View>
-                        </View>
-                    </FormField>
-
-                    <FormField
-                        label={scheduleEnabled ? 'Время окончания' : 'Дата и время окончания'}
-                        required
-                        error={errors.endTime}
-                    >
-                        <View style={styles.dateTimeRow}>
-                            {!scheduleEnabled && (
-                                <View style={styles.dateTimeColumn}>
-                                    <Text style={styles.sublabel}>Дата</Text>
-                                    <CustomDatePicker date={endDate} onDateChange={onEndDateChange} />
-                                    <View style={[styles.inputUnderline, errors.endTime ? styles.underlineError : null]} />
-                                </View>
-                            )}
-
-                            <View style={styles.dateTimeColumn}>
-                                <Text style={styles.sublabel}>Время</Text>
-                                <CustomTimePicker date={endTime} onTimeChange={onEndTimeChange} />
-                                <View style={[styles.inputUnderline, errors.endTime ? styles.underlineError : null]} />
-                            </View>
-                        </View>
-                    </FormField>
-                </FormSection>
-
                 <FormSection
                     title="График остановки"
                     subtitle="Повторять остановку по выбранным дням недели"
@@ -1219,6 +1195,55 @@ export const StopForm = memo(({
                             ) : null}
                         </>
                     )}
+                </FormSection>
+
+                <FormSection 
+                    title="Время стоянки" 
+                    subtitle="Укажите дату и время начала и окончания работы остановки"
+                >
+                    <FormField
+                        label={scheduleEnabled ? 'Время начала' : 'Дата и время начала'}
+                        required
+                        error={errors.startTime}
+                    >
+                        <View style={styles.dateTimeRow}>
+                            {!scheduleEnabled && (
+                                <View style={styles.dateTimeColumn}>
+                                    <Text style={styles.sublabel}>Дата</Text>
+                                    <CustomDatePicker date={startDate} onDateChange={onStartDateChange} />
+                                    <View style={[styles.inputUnderline, errors.startTime ? styles.underlineError : null]} />
+                                </View>
+                            )}
+
+                            <View style={styles.dateTimeColumn}>
+                                <Text style={styles.sublabel}>Время</Text>
+                                <CustomTimePicker date={startTime} onTimeChange={onStartTimeChange} />
+                                <View style={[styles.inputUnderline, errors.startTime ? styles.underlineError : null]} />
+                            </View>
+                        </View>
+                    </FormField>
+
+                    <FormField
+                        label={scheduleEnabled ? 'Время окончания' : 'Дата и время окончания'}
+                        required
+                        error={errors.endTime}
+                    >
+                        <View style={styles.dateTimeRow}>
+                            {!scheduleEnabled && (
+                                <View style={styles.dateTimeColumn}>
+                                    <Text style={styles.sublabel}>Дата</Text>
+                                    <CustomDatePicker date={endDate} onDateChange={onEndDateChange} />
+                                    <View style={[styles.inputUnderline, errors.endTime ? styles.underlineError : null]} />
+                                </View>
+                            )}
+
+                            <View style={styles.dateTimeColumn}>
+                                <Text style={styles.sublabel}>Время</Text>
+                                <CustomTimePicker date={endTime} onTimeChange={onEndTimeChange} />
+                                <View style={[styles.inputUnderline, errors.endTime ? styles.underlineError : null]} />
+                            </View>
+                        </View>
+                    </FormField>
                 </FormSection>
 
                 <FormSection title="Дополнительная информация">

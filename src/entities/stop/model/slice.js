@@ -4,6 +4,7 @@ import {driverApi} from "@entities/driver";
 
 const initialState = {
     stops: [],
+    driverStops: [],
     currentStop: null,
     loading: false,
     error: null,
@@ -340,7 +341,31 @@ const stopSlice = createSlice({
             })
             .addCase(fetchDriverStops.fulfilled, (state, action) => {
                 state.loading = false;
-                state.stops = action.payload;
+                const driverStops = Array.isArray(action.payload) ? action.payload : [];
+                state.driverStops = driverStops;
+
+                if (state.stops.length === 0) {
+                    state.stops = driverStops;
+                    return;
+                }
+
+                const driverStopsById = new Map(
+                    driverStops
+                        .filter(stop => stop && stop.id !== undefined && stop.id !== null)
+                        .map(stop => [Number(stop.id), stop])
+                );
+
+                state.stops = state.stops.map(stop => {
+                    const driverStop = driverStopsById.get(Number(stop.id));
+                    if (!driverStop) {
+                        return stop;
+                    }
+                    return {
+                        ...stop,
+                        ...driverStop,
+                        products: driverStop.products !== undefined ? driverStop.products : stop.products
+                    };
+                });
             })
             .addCase(fetchDriverStops.rejected, (state, action) => {
                 state.loading = false;
@@ -433,7 +458,8 @@ const stopSlice = createSlice({
             .addCase(activateStop.fulfilled, (state, action) => {
                 const result = action.payload;
                 if (!result?.stopId) return;
-                const stopId = result.stopId;
+                const stopId = Number(result.stopId);
+                if (!Number.isFinite(stopId)) return;
                 state.stops = state.stops.map(stop =>
                     stop.id === stopId ? { ...stop, status: 'ACTIVE' } : stop
                 );
@@ -443,19 +469,30 @@ const stopSlice = createSlice({
             })
             .addCase(skipStop.fulfilled, (state, action) => {
                 const result = action.payload;
-                if (!result?.stopId) return;
-                const stopId = result.stopId;
-                state.stops = state.stops.map(stop =>
-                    stop.id === stopId ? { ...stop, status: 'SKIPPED' } : stop
-                );
-                if (state.currentStop?.id === stopId) {
-                    state.currentStop = { ...state.currentStop, status: 'SKIPPED' };
+                const stopId = Number(result?.stopId ?? result?.stop?.id);
+                if (!Number.isFinite(stopId)) return;
+
+                if (result?.stop) {
+                    state.stops = state.stops.map(stop =>
+                        stop.id === stopId ? { ...stop, ...result.stop } : stop
+                    );
+                    if (state.currentStop?.id === stopId) {
+                        state.currentStop = { ...state.currentStop, ...result.stop };
+                    }
+                } else {
+                    state.stops = state.stops.map(stop =>
+                        stop.id === stopId ? { ...stop, status: 'SKIPPED' } : stop
+                    );
+                    if (state.currentStop?.id === stopId) {
+                        state.currentStop = { ...state.currentStop, status: 'SKIPPED' };
+                    }
                 }
             })
             .addCase(completeStop.fulfilled, (state, action) => {
                 const result = action.payload;
                 if (!result?.stopId) return;
-                const stopId = result.stopId;
+                const stopId = Number(result.stopId);
+                if (!Number.isFinite(stopId)) return;
                 state.stops = state.stops.map(stop =>
                     stop.id === stopId ? { ...stop, status: 'COMPLETED' } : stop
                 );
@@ -466,7 +503,8 @@ const stopSlice = createSlice({
             .addCase(cancelStop.fulfilled, (state, action) => {
                 const result = action.payload;
                 if (!result?.stopId) return;
-                const stopId = result.stopId;
+                const stopId = Number(result.stopId);
+                if (!Number.isFinite(stopId)) return;
                 state.stops = state.stops.map(stop =>
                     stop.id === stopId ? { ...stop, status: 'CANCELLED' } : stop
                 );

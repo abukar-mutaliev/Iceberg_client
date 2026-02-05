@@ -20,7 +20,7 @@ import {
   FlatList as GestureFlatList,
   GestureHandlerRootView,
 } from 'react-native-gesture-handler';
-import { MoreVertical, Download } from 'lucide-react-native';
+import { MoreVertical, Download, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import Constants from 'expo-constants';
 
 import * as MediaLibrary from 'expo-media-library';
@@ -185,8 +185,8 @@ const ViewerOverlay = ({
     }
   };
 
-  const headerOffset = insets.top + 8;
-  const menuTop = insets.top + 56;
+  const headerOffset = 0;
+  const menuTop = 56;
 
   return (
     <>
@@ -194,7 +194,7 @@ const ViewerOverlay = ({
       <View style={[styles.header, { 
         top: 0,
         paddingTop: headerOffset,
-        paddingBottom: 8,
+        paddingBottom: 0,
       }]}>
         <TouchableOpacity onPress={onClose} style={styles.iconBtn}>
           <Text style={styles.back}>←</Text>
@@ -667,7 +667,7 @@ export const ImageViewerModal = ({
                     onPress={handlePrev}
                     activeOpacity={0.8}
                   >
-                    <Text style={styles.navArrowText}>‹</Text>
+                    <ChevronLeft size={28} color="#fff" />
                   </TouchableOpacity>
                 )}
                 {currentIndex < normalized.length - 1 && (
@@ -676,7 +676,7 @@ export const ImageViewerModal = ({
                     onPress={handleNext}
                     activeOpacity={0.8}
                   >
-                    <Text style={styles.navArrowText}>›</Text>
+                    <ChevronRight size={28} color="#fff" />
                   </TouchableOpacity>
                 )}
               </>
@@ -746,7 +746,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: 'rgba(0,0,0,0.65)',
-    minHeight: 56,
+    height: 56,
   },
   back: {
     color: '#fff',
@@ -785,7 +785,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 120,
@@ -795,12 +795,6 @@ const styles = StyleSheet.create({
   },
   navArrowRight: {
     right: 12,
-  },
-  navArrowText: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: '600',
-    marginTop: -2,
   },
   menu: {
     position: 'absolute',

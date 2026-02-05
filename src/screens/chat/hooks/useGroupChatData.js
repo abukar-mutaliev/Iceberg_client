@@ -72,26 +72,54 @@ export const useGroupChatData = (roomId) => {
     
     // Фильтрация сообщений
     return uniqueMessages.filter(msg => {
-        // Фильтрация STOP сообщений по району и времени остановки
-      if (msg.type === 'STOP') {
+      let stopData = null;
+      const hasStopType = String(msg?.type || '').toUpperCase() === 'STOP';
+      if (msg?.stop || msg?.content) {
+        if (msg?.stop) {
+          stopData = msg.stop;
+        } else if (msg?.content) {
+          try {
+            stopData = JSON.parse(msg.content);
+          } catch (e) {
+            stopData = null;
+          }
+        }
+      }
+
+      const isStopMessage = hasStopType || Boolean(stopData?.id || stopData?.stopId || stopData?.startTime || stopData?.endTime);
+
+      // Фильтрация STOP сообщений по району и времени остановки
+      if (isStopMessage) {
+        if (!stopData && msg?.content) {
+          try {
+            stopData = JSON.parse(msg.content);
+          } catch (e) {
+            stopData = null;
+          }
+        }
+
+        const stopStatus = String(stopData?.status || '').toUpperCase();
+        const isDeletedStop = Boolean(
+          stopData?.isDeleted ||
+          stopData?.deletedAt ||
+          stopData?.cancelledAt ||
+          stopStatus === 'CANCELLED' ||
+          stopStatus === 'CANCELED' ||
+          stopStatus === 'DELETED'
+        );
+        if (isDeletedStop) {
+          return false;
+        }
+
         // Проверка времени остановки - сообщение исчезает после окончания остановки
         let stopEndTime = null;
         
         // Пробуем получить endTime из связанного объекта stop
-        if (msg?.stop?.endTime) {
-          stopEndTime = new Date(msg.stop.endTime);
-        } else if (msg?.stop?.startTime) {
+        if (stopData?.endTime) {
+          stopEndTime = new Date(stopData.endTime);
+        } else if (stopData?.startTime) {
           // Если endTime нет, используем startTime как время окончания
-          stopEndTime = new Date(msg.stop.startTime);
-        } else if (msg?.content) {
-          // Если нет связанного объекта, пытаемся парсить из content
-          try {
-            const stopData = JSON.parse(msg.content);
-            stopEndTime = stopData?.endTime ? new Date(stopData.endTime) : 
-                         (stopData?.startTime ? new Date(stopData.startTime) : null);
-          } catch (e) {
-            // Если не удалось распарсить, не фильтруем по времени
-          }
+          stopEndTime = new Date(stopData.startTime);
         }
         
         // Если время остановки прошло, сообщение исчезает
@@ -102,18 +130,11 @@ export const useGroupChatData = (roomId) => {
         // Фильтрация по району (только для STOP сообщений)
         if (!userDistrictIds.length) return true;
         
-        let stopDistrictId = msg?.stop?.districtId;
+        let stopDistrictId = stopData?.districtId;
         
-        if (!stopDistrictId && msg?.content) {
-          try {
-            const stopData = JSON.parse(msg.content);
-            stopDistrictId = stopData?.districtId;
-          } catch (e) {
-            return false;
-          }
+        if (!stopDistrictId) {
+          return false;
         }
-        
-        if (!stopDistrictId) return false;
         
         const normalizedStopId = typeof stopDistrictId === 'string' 
           ? parseInt(stopDistrictId, 10) 

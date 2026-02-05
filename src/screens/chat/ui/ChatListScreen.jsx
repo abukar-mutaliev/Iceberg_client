@@ -59,6 +59,40 @@ const StatusTicks = React.memo(({status}) => {
     );
 });
 
+const parseStopDataFromMessage = (message) => {
+    if (!message) return null;
+    if (message.stop) return message.stop;
+    if (message.content && typeof message.content === 'string') {
+        try {
+            return JSON.parse(message.content);
+        } catch (e) {
+            return null;
+        }
+    }
+    return null;
+};
+
+const isStopMessageExpired = (message) => {
+    if (!message) return false;
+    const stopData = parseStopDataFromMessage(message);
+    if (!stopData) return false;
+    const stopStatus = String(stopData?.status || '').toUpperCase();
+    const isDeletedStop = Boolean(
+        stopData?.isDeleted ||
+        stopData?.deletedAt ||
+        stopData?.cancelledAt ||
+        stopStatus === 'CANCELLED' ||
+        stopStatus === 'CANCELED' ||
+        stopStatus === 'DELETED'
+    );
+    if (isDeletedStop) return true;
+    const endTime = stopData?.endTime || stopData?.startTime || null;
+    if (!endTime) return false;
+    const endMs = new Date(endTime).getTime();
+    if (!Number.isFinite(endMs)) return false;
+    return endMs < Date.now();
+};
+
 export const ChatListScreen = ({navigation}) => {
     const dispatch = useDispatch();
     const { showTabBar } = useTabBar();
@@ -595,8 +629,12 @@ export const ChatListScreen = ({navigation}) => {
             } else if (lastMessage.type === 'PRODUCT') {
                 messageContent = 'Товар';
             } else if (lastMessage.type === 'STOP') {
-                isStopMessage = true;
-                messageContent = 'Остановка';
+                if (isStopMessageExpired(lastMessage)) {
+                    messageContent = 'Сообщение';
+                } else {
+                    isStopMessage = true;
+                    messageContent = 'Остановка';
+                }
             } else if (lastMessage.type === 'WAREHOUSE') {
                 isWarehouseMessage = true;
                 // Пытаемся получить название склада из данных

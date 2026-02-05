@@ -2,7 +2,6 @@ package com.abuingush.iceberg
 
 import android.os.Build
 import android.os.Bundle
-import androidx.core.view.WindowCompat
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
@@ -18,15 +17,6 @@ class MainActivity : ReactActivity() {
     // This is required for expo-splash-screen.
     setTheme(R.style.AppTheme);
     super.onCreate(null)
-    
-    // Android 15+ Edge-to-Edge Compatibility
-    // Используем WindowCompat вместо deprecated Window.setStatusBarColor/setNavigationBarColor
-    // Это решает проблему Google Play о использовании неподдерживаемых APIs
-    window?.let { window ->
-      // Включаем edge-to-edge режим
-      // DecorFitsSystemWindows = false означает, что контент будет рисоваться под system bars
-      WindowCompat.setDecorFitsSystemWindows(window, false)
-    }
   }
 
   /**

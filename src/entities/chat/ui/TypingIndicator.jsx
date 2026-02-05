@@ -230,9 +230,6 @@ const useActiveTypingUsers = (roomId, typingActivities, currentUserId) => {
     // Очищаем паузы
     toClear.forEach(userKey => {
       pauseManager.clearPause(roomId, userKey);
-      if (__DEV__) {
-        console.log('[TypingIndicator] Cleared pause for user:', userKey, 'in room:', roomId);
-      }
     });
     
     // Очищаем паузы для пользователей, которых больше нет в активных
@@ -304,17 +301,11 @@ const usePauseManagement = (textUsers, voiceUsers, roomId) => {
       if (existingTimeout) {
         clearTimeout(existingTimeout);
         pauseTimeoutsRef.current.delete(timeoutKey);
-        if (__DEV__) {
-          console.log('[TypingIndicator] Cancelled pause timeout for user:', userId);
-        }
       }
 
       // Очищаем паузу
       if (pauseManager.hasPause(roomId, userId)) {
         pauseManager.clearPause(roomId, userId);
-        if (__DEV__) {
-          console.log('[TypingIndicator] Cleared pause in useEffect for user:', userId, 'in room:', roomId);
-        }
       }
     });
 
@@ -333,9 +324,6 @@ const usePauseManagement = (textUsers, voiceUsers, roomId) => {
         const timeoutId = setTimeout(() => {
           if (pauseTimeoutsRef.current.has(timeoutKey)) {
             pauseManager.setPause(roomId, userId);
-            if (__DEV__) {
-              console.log('[TypingIndicator] Marked pause for user:', userId, 'in room:', roomId);
-            }
           }
           pauseTimeoutsRef.current.delete(timeoutKey);
         }, PAUSE_DELAY);
@@ -503,11 +491,6 @@ export const TypingIndicator = ({ roomId }) => {
   const hasActiveUsers = filteredTextUsers.length > 0 || filteredVoiceUsers.length > 0;
   const slideAnim = useIndicatorAnimation(hasActiveUsers);
 
-  // Debug логирование
-  if (__DEV__ && typingUsersInfo.length > 0) {
-    console.log('[TypingIndicator] Users:', typingUsersInfo.map(u => ({ id: u.id, type: u.type })));
-    console.log('[TypingIndicator] Text users:', textTypingUsers.length, 'Voice users:', voiceTypingUsers.length);
-  }
 
   // Ранний выход, если нет активных пользователей
   if (typingUsersInfo.length === 0) {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
@@ -7,7 +7,8 @@ import { Color, FontFamily } from '@app/styles/GlobalStyles';
 import {
     selectDriverLoading,
     selectDriverError,
-    clearDriverError
+    clearDriverError,
+    fetchAllDrivers
 } from "@entities/driver";
 
 import {
@@ -107,11 +108,34 @@ export const EditStopScreen = ({ route, navigation }) => {
     const stopData = useSelector(state => selectStopById(state, stopId));
     const isDriverLoading = useSelector(selectDriverLoading);
     const userRole = useSelector(state => state.auth?.user?.role || 'DRIVER');
+    const allDrivers = useSelector(state => state.driver?.allDrivers || []);
     const districts = useSelector(selectDistricts);
     const districtsForDropdown = useSelector(selectDistrictsForDropdown);
     const error = useSelector(selectDriverError);
     const [stopWithProducts, setStopWithProducts] = useState(null);
+    const scheduleCacheRef = useRef({});
+    const scheduleLoadRef = useRef({});
     const [isLifecycleLoading, setIsLifecycleLoading] = useState(false);
+    const isAdminOrEmployee = userRole === 'ADMIN' || userRole === 'EMPLOYEE';
+    const isDriver = userRole === 'DRIVER';
+
+    const resolvedStopData = useMemo(() => {
+        const base = stopWithProducts || stopData;
+        if (!base) {
+            return null;
+        }
+
+        const hasSchedule = Array.isArray(base?.schedule?.daysOfWeek) && base.schedule.daysOfWeek.length > 0;
+        if (hasSchedule) {
+            scheduleCacheRef.current[base.id] = base.schedule;
+        }
+
+        if (!base.schedule && scheduleCacheRef.current[base.id]) {
+            return { ...base, schedule: scheduleCacheRef.current[base.id] };
+        }
+
+        return base;
+    }, [stopWithProducts, stopData]);
 
     // Загружаем товары отдельно если их нет в stopData
     useEffect(() => {
@@ -141,6 +165,29 @@ export const EditStopScreen = ({ route, navigation }) => {
             loadStopProducts();
         }
     }, [stopData, stopId]);
+
+    // Подгружаем график, если данные пришли из публичного списка без schedule
+    useEffect(() => {
+        if (!stopId || !stopData) {
+            return;
+        }
+
+        const scheduleDays = stopData?.schedule?.daysOfWeek;
+        const hasSchedule = Array.isArray(scheduleDays) && scheduleDays.length > 0;
+
+        if (hasSchedule || scheduleLoadRef.current[stopId]) {
+            return;
+        }
+
+        scheduleLoadRef.current[stopId] = true;
+
+        if (userRole === 'DRIVER') {
+            dispatch(fetchDriverStops());
+        } else if (isAdminOrEmployee && stopData.driverId) {
+            dispatch(fetchDriverStops(stopData.driverId));
+        }
+    }, [dispatch, stopId, stopData, userRole, isAdminOrEmployee]);
+
 
     useEffect(() => {
         navigation.setOptions({
@@ -175,6 +222,12 @@ export const EditStopScreen = ({ route, navigation }) => {
             dispatch(fetchAllDistricts());
         }
     }, [dispatch, districts.length]);
+
+    useEffect(() => {
+        if (isAdminOrEmployee && allDrivers.length === 0) {
+            dispatch(fetchAllDrivers());
+        }
+    }, [dispatch, isAdminOrEmployee, allDrivers.length]);
 
     // Инициализация locationData из stopData
     useEffect(() => {
@@ -302,8 +355,6 @@ export const EditStopScreen = ({ route, navigation }) => {
     };
 
     const stopStatus = (stopWithProducts?.status || stopData?.status || 'SCHEDULED').toUpperCase();
-    const isAdminOrEmployee = userRole === 'ADMIN' || userRole === 'EMPLOYEE';
-    const isDriver = userRole === 'DRIVER';
 
     const refreshStops = useCallback(async () => {
         dispatch(clearStopCache());
@@ -464,10 +515,10 @@ export const EditStopScreen = ({ route, navigation }) => {
                 keyboardDismissMode="on-drag"
                 scrollEventThrottle={16}
             >
-                {isScreenFocused && (stopWithProducts || stopData) && (
+                {isScreenFocused && resolvedStopData && (
                     <EditStopForm
                         stopData={{
-                            ...(stopWithProducts || stopData),
+                            ...resolvedStopData,
                             ...(currentLocation ? { mapLocation: currentLocation } : {}),
                             ...(currentAddress ? { address: currentAddress } : {}),
                             ...(locationData.mapLocation ? { mapLocation: locationData.mapLocation } : {})

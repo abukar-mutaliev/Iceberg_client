@@ -33,7 +33,7 @@ export const driverApi = {
                 ? `/api/drivers/stops?driverId=${driverId}`
                 : '/api/drivers/stops';
 
-            const response = await createPublicRequest('get', url);
+            const response = await createProtectedRequest('get', url);
             if (!response || !response.data) {
                 throw new Error('Получен некорректный ответ от сервера');
             }

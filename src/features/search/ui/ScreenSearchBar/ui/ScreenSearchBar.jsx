@@ -107,7 +107,7 @@ export const ScreenSearchBar = forwardRef(({
             <View style={styles.container}>
             <View style={[
                 styles.searchBarWrapper,
-                showFullWidth ? styles.searchBarFullWidth : styles.searchBarDefault
+                styles.searchBarFullWidth
             ]}>
                 {Platform.OS === 'android' ? (
                     <AndroidShadow
@@ -122,7 +122,7 @@ export const ScreenSearchBar = forwardRef(({
                         }}
                         borderRadius={10}
                     >
-                        <View style={[styles.inputContainer, styles.iosInputContainer]}>
+                        <View style={[styles.inputContainer, styles.androidInputContainer]}>
                             <TextInput
                                 ref={inputRef}
                                 style={styles.input}
@@ -156,13 +156,12 @@ export const ScreenSearchBar = forwardRef(({
                         </View>
                     </AndroidShadow>
                 ) : (
-                    <Pressable
+                    <TouchableOpacity 
                         style={styles.iosSearchBar}
-                        onPressIn={handlePressInput}
+                        activeOpacity={1}
                         onPress={handlePressInput}
-                        hitSlop={{ top: 16, bottom: 40, left: 8, right: 8 }}
                     >
-                        <View style={styles.inputContainer}>
+                        <View style={styles.inputContainer} pointerEvents="box-none">
                             <TextInput
                                 ref={inputRef}
                                 style={styles.input}
@@ -190,7 +189,7 @@ export const ScreenSearchBar = forwardRef(({
                                 </TouchableOpacity>
                             ) : null}
                         </View>
-                    </Pressable>
+                    </TouchableOpacity>
                 )}
             </View>
 
@@ -207,10 +206,10 @@ const styles = StyleSheet.create({
         flex: 1,
         width: '100%',
         minWidth: 0,
-        height: Platform.OS === 'ios' ? 64 : 44,
+        height: 44,
     },
     searchBarWrapper: {
-        height: Platform.OS === 'ios' ? 64 : 44,
+        height: 44,
         marginRight: 10,
     },
     searchBarDefault: {
@@ -224,10 +223,11 @@ const styles = StyleSheet.create({
     },
     iosSearchBar: {
         width: '100%',
-        height: '100%',
+        height: 44,
         borderRadius: 10,
         backgroundColor: Color.colorLightMode,
-        paddingBottom: normalize(12),
+        borderWidth: 1,
+        borderColor: 'rgba(0, 0, 0, 0.1)',
         shadowColor: "rgba(81, 90, 134, 0.2)",
         shadowOffset: {
             width: 0,
@@ -235,6 +235,14 @@ const styles = StyleSheet.create({
         },
         shadowRadius: 4,
         shadowOpacity: 1,
+        justifyContent: 'center',
+    },
+    androidInputContainer: {
+        height: 44,
+        backgroundColor: Color.colorLightMode,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: 'rgba(0, 0, 0, 0.1)',
     },
     iosInputContainer: {
         height: 44,
@@ -244,6 +252,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         width: '100%',
         height: '100%',
+        minHeight: 44,
     },
     input: {
         fontFamily: FontFamily.sFPro,
@@ -252,13 +261,19 @@ const styles = StyleSheet.create({
         letterSpacing: 0,
         color: Color.dark,
         height: '100%',
+        minHeight: 44,
         paddingHorizontal: normalize(24),
-        paddingVertical: Platform.OS === 'ios' ? normalize(6) : 0,
+        paddingVertical: 0,
         flex: 1,
         textAlignVertical: 'center',
         ...Platform.select({
             android: {
                 includeFontPadding: false,
+            },
+            ios: {
+                paddingTop: 0,
+                paddingBottom: 0,
+                height: 44,
             },
         }),
     },

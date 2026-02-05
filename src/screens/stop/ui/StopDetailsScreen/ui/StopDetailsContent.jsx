@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Platform, Alert, Linking, ActivityIndicator, Clipboard } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Platform, Alert, Linking, ActivityIndicator, Clipboard, RefreshControl } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
@@ -159,6 +159,118 @@ const parseMapLocation = (mapLocation) => {
     return null;
 };
 
+const getRelativeDayLabel = (targetDate, baseDate = new Date()) => {
+    if (!(targetDate instanceof Date) || isNaN(targetDate.getTime())) {
+        return null;
+    }
+
+    const startOfDay = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const diffMs = startOfDay(targetDate).getTime() - startOfDay(baseDate).getTime();
+    const diffDays = Math.round(diffMs / 86400000);
+
+    if (diffDays === 0) return 'сегодня';
+    if (diffDays === 1) return 'завтра';
+    if (diffDays === 2) return 'послезавтра';
+    if (diffDays === -1) return 'вчера';
+
+    return formatDate(targetDate);
+};
+
+const isSameDay = (left, right) => {
+    if (!(left instanceof Date) || isNaN(left.getTime()) || !(right instanceof Date) || isNaN(right.getTime())) {
+        return false;
+    }
+    return (
+        left.getFullYear() === right.getFullYear() &&
+        left.getMonth() === right.getMonth() &&
+        left.getDate() === right.getDate()
+    );
+};
+
+const parseTimeString = (timeString) => {
+    if (!timeString || typeof timeString !== 'string') {
+        return null;
+    }
+    const [hoursPart, minutesPart] = timeString.split(':');
+    const hours = Number(hoursPart);
+    const minutes = Number(minutesPart);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+        return null;
+    }
+    return { hours, minutes };
+};
+
+const buildDateWithTime = (baseDate, timeString) => {
+    const time = parseTimeString(timeString);
+    if (!time) {
+        return null;
+    }
+    const next = new Date(baseDate);
+    next.setHours(time.hours, time.minutes, 0, 0);
+    return next;
+};
+
+const getNextOccurrenceFromSchedule = (schedule, fromDate, minDateTime = null) => {
+    if (!schedule?.daysOfWeek?.length) {
+        return null;
+    }
+    const days = schedule.daysOfWeek
+        .map((day) => Number(day))
+        .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6);
+    if (!days.length) {
+        return null;
+    }
+    const minTime = minDateTime ? new Date(minDateTime) : null;
+    for (let offset = 0; offset <= 14; offset += 1) {
+        const candidate = new Date(fromDate);
+        candidate.setDate(candidate.getDate() + offset);
+        if (!days.includes(candidate.getDay())) {
+            continue;
+        }
+        const start = buildDateWithTime(candidate, schedule.startTime);
+        const end = buildDateWithTime(candidate, schedule.endTime);
+        if (start && end) {
+            if (minTime && end <= minTime) {
+                continue;
+            }
+            return { startTime: start, endTime: end };
+        }
+    }
+    return null;
+};
+
+const getDisplayTimesForStop = (stop) => {
+    if (!stop?.startTime || !stop?.endTime) {
+        return { startTime: stop?.startTime, endTime: stop?.endTime };
+    }
+
+    const schedule = stop.schedule;
+    if (!schedule?.daysOfWeek?.length) {
+        return { startTime: stop.startTime, endTime: stop.endTime };
+    }
+
+    const now = new Date();
+    const startDate = new Date(stop.startTime);
+
+    const isSkipToday = (stop.status || '').toUpperCase() === 'SKIPPED' ||
+        (stop.skipReason && isSameDay(startDate, now));
+
+    if (!isSkipToday) {
+        return { startTime: stop.startTime, endTime: stop.endTime };
+    }
+
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+
+    const nextOccurrence = getNextOccurrenceFromSchedule(schedule, tomorrow);
+    if (nextOccurrence?.startTime && nextOccurrence?.endTime) {
+        return nextOccurrence;
+    }
+
+    return { startTime: stop.startTime, endTime: stop.endTime };
+};
+
 // Функция для понятного форматирования времени стоянки
 const formatStopTime = (startTime, endTime) => {
     if (!startTime || !endTime) return null;
@@ -172,6 +284,8 @@ const formatStopTime = (startTime, endTime) => {
     const endTimeStr = formatTime(endTime);
     const startDateStr = formatDate(startTime);
     const endDateStr = formatDate(endTime);
+    const startDayLabel = getRelativeDayLabel(startDate);
+    const endDayLabel = getRelativeDayLabel(endDate);
 
     // Проверяем, находится ли водитель на стоянке сейчас
     const now = new Date();
@@ -184,11 +298,13 @@ const formatStopTime = (startTime, endTime) => {
         endDate: endDateStr,
         isSameDay: startDateStr === endDateStr,
         isActive: isActive,
-        endDateTime: endDate
+        endDateTime: endDate,
+        startDayLabel,
+        endDayLabel
     };
 };
 
-export const StopDetailsContent = ({ stop, navigation, lifecycleSection }) => {
+export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefresh, refreshing = false }) => {
     const dispatch = useDispatch();
     const user = useSelector(selectUser);
     const rooms = useSelector(selectRoomsList);
@@ -198,13 +314,64 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection }) => {
     const [mapLoaded, setMapLoaded] = useState(false);
     const [mapError, setMapError] = useState(false);
     const [isGeocoding, setIsGeocoding] = useState(false);
-    const timeInfo = useMemo(() => formatStopTime(stop?.startTime, stop?.endTime), [stop?.startTime, stop?.endTime]);
+    const [timeTick, setTimeTick] = useState(Date.now());
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setTimeTick(Date.now());
+        }, 60 * 1000);
+        return () => clearInterval(timer);
+    }, []);
+
+    const displayTimes = useMemo(() => {
+        if (!stop?.startTime || !stop?.endTime) {
+            return getDisplayTimesForStop(stop);
+        }
+
+        const now = new Date(timeTick);
+        const startDate = new Date(stop.startTime);
+        const endDate = new Date(stop.endTime);
+
+        // Если следующая остановка уже рассчитана на сервере и еще не наступила - показываем ее
+        if (startDate >= now || endDate >= now) {
+            return { startTime: stop.startTime, endTime: stop.endTime };
+        }
+
+        const schedule = stop.schedule;
+        if (schedule?.daysOfWeek?.length) {
+            const isSkipToday = (stop.status || '').toUpperCase() === 'SKIPPED' ||
+                (stop.skipReason && isSameDay(startDate, now));
+
+            const fromDate = new Date(now);
+            if (isSkipToday) {
+                fromDate.setDate(fromDate.getDate() + 1);
+                fromDate.setHours(0, 0, 0, 0);
+            }
+
+            const nextOccurrence = getNextOccurrenceFromSchedule(schedule, fromDate, now);
+            if (nextOccurrence?.startTime && nextOccurrence?.endTime) {
+                return nextOccurrence;
+            }
+        }
+
+        return getDisplayTimesForStop(stop);
+    }, [stop, timeTick]);
+    const timeInfo = useMemo(
+        () => formatStopTime(displayTimes?.startTime, displayTimes?.endTime),
+        [displayTimes]
+    );
     const [geocodingError, setGeocodingError] = useState(null);
     const [shareModalVisible, setShareModalVisible] = useState(false);
     const [isCreatingChat, setIsCreatingChat] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
-    const canEdit = ['DRIVER', 'ADMIN', 'EMPLOYEE'].includes(user?.role);
-    const canDelete = ['DRIVER', 'ADMIN'].includes(user?.role);
+    const isSuperAdmin = !!user?.admin?.isSuperAdmin;
+    const isOwnedStop = !!(
+        isSuperAdmin ||
+        (user?.id && stop?.driver?.userId === user.id) ||
+        (user?.driver?.id && stop?.driverId === user.driver.id)
+    );
+    const canEdit = isOwnedStop && (['DRIVER', 'ADMIN', 'EMPLOYEE'].includes(user?.role) || isSuperAdmin);
+    const canDelete = isOwnedStop && (['DRIVER', 'ADMIN'].includes(user?.role) || isSuperAdmin);
     const isAuthenticated = !!user;
     
     // Определяем, запущено ли приложение в Expo Go
@@ -512,6 +679,15 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection }) => {
             contentInsetAdjustmentBehavior="never"
             contentInset={{ top: 0, left: 0, bottom: 0, right: 0 }}
             keyboardDismissMode="on-drag"
+            refreshControl={
+                onRefresh ? (
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor={Color.blue2}
+                    />
+                ) : undefined
+            }
         >
             <View style={styles.header}>
                 <TouchableOpacity
@@ -580,7 +756,7 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection }) => {
                                                 </Text>
                                                 <Text style={styles.activeStopSubtitle}>
                                                     Будет стоять до {timeInfo.endTime}
-                                                    {!timeInfo.isSameDay ? `, ${timeInfo.endDate}` : `, ${timeInfo.startDate}`}
+                                                    {!timeInfo.isSameDay ? `, ${timeInfo.endDayLabel}` : `, ${timeInfo.startDayLabel}`}
                                                 </Text>
                                             </View>
                                         </View>
@@ -589,35 +765,20 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection }) => {
                                 
                                 {/* Показываем детальное время только если водитель НЕ на стоянке */}
                                 {!timeInfo.isActive && (
-                                    <>
-                                        <View style={styles.timeRow}>
-                                            <View style={styles.timeIconContainer}>
-                                                <Icon name="schedule" size={22} color={Color.blue2} />
-                                            </View>
-                                            <View style={styles.timeTextContainer}>
-                                                <Text style={styles.timeLabel}>Начало работы:</Text>
-                                                <Text style={styles.timeValue}>
-                                                    {timeInfo.startTime}
-                                                    {!timeInfo.isSameDay && `, ${timeInfo.startDate}`}
-                                                </Text>
-                                            </View>
+                                    <View style={styles.timeRow}>
+                                        <View style={styles.timeIconContainer}>
+                                            <Icon name="schedule" size={22} color={Color.blue2} />
                                         </View>
-                                        <View style={styles.timeRow}>
-                                            <View style={styles.timeIconContainer}>
-                                                <Icon name="access-time" size={22} color={Color.blue2} />
-                                            </View>
-                                            <View style={styles.timeTextContainer}>
-                                                <Text style={styles.timeLabel}>Окончание работы:</Text>
-                                                <Text style={styles.timeValue}>
-                                                    {timeInfo.endTime}
-                                                    {!timeInfo.isSameDay ? `, ${timeInfo.endDate}` : `, ${timeInfo.startDate}`}
-                                                </Text>
-                                            </View>
+                                        <View style={styles.timeTextContainer}>
+                                            <Text style={styles.timeLabel}>Следующая остановка:</Text>
+                                            <Text style={styles.timeValue}>
+                                                {timeInfo.isSameDay
+                                                    ? `${timeInfo.startDayLabel} с ${timeInfo.startTime} до ${timeInfo.endTime}`
+                                                    : `с ${timeInfo.startDayLabel} ${timeInfo.startTime} до ${timeInfo.endDayLabel} ${timeInfo.endTime}`
+                                                }
+                                            </Text>
                                         </View>
-                                        {timeInfo.isSameDay && (
-                                            <Text style={styles.timeDate}>{timeInfo.startDate}</Text>
-                                        )}
-                                    </>
+                                    </View>
                                 )}
                             </View>
                         )}
@@ -627,6 +788,8 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection }) => {
                         <Text style={styles.dateTime}>Время не указано</Text>
                     </View>
                 )}
+
+                {lifecycleSection}
 
                 {stop.photo && (
                     <Image
@@ -690,15 +853,10 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection }) => {
                     </View>
                 </View>
 
-                {(stop.description || (timeInfo && !timeInfo.isActive && (stop.schedule || stop.status === 'SCHEDULED'))) && (
+                {(stop.description) && (
                     <View style={styles.descriptionContainer}>
                         {stop.description ? (
                             <Text style={styles.description}>{stop.description}</Text>
-                        ) : null}
-                        {timeInfo && !timeInfo.isActive && (stop.schedule || stop.status === 'SCHEDULED') ? (
-                            <Text style={styles.nextStopText}>
-                                Следующая остановка: {timeInfo.startDate} {timeInfo.startTime} - {timeInfo.endTime}
-                            </Text>
                         ) : null}
                     </View>
                 )}
@@ -894,7 +1052,6 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection }) => {
                         )}
                     </View>
                 )}
-                {lifecycleSection}
             </View>
 
             {/* Модальное окно для выбора чата */}
@@ -928,7 +1085,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         width: '100%',
-        paddingTop: 24,
+        paddingTop: 5,
         paddingHorizontal: 8,
     },
     backButton: {

@@ -21,6 +21,7 @@ const MessageItem = memo(({
   partnerAvatar,
   roomType,
   participants,
+  participantsById,
   onPress,
   onLongPress,
   onToggleSelection,
@@ -76,6 +77,7 @@ const MessageItem = memo(({
       onShowReactionPicker={onShowReactionPicker}
       roomType={roomType}
       participants={participants}
+      participantsById={participantsById}
       onSenderNamePress={onSenderNamePress}
       onSwipeStart={onSwipeStart}
       onSwipeEnd={onSwipeEnd}
@@ -117,6 +119,7 @@ export const MessageList = memo(({
   partnerAvatar,
   roomType,
   participants,
+  participantsById,
   animatedPaddingTop,
   onLoadMore,
   onScroll,
@@ -197,6 +200,7 @@ export const MessageList = memo(({
         partnerAvatar={partnerAvatar}
         roomType={roomType}
         participants={participants}
+        participantsById={participantsById}
         onPress={() => onPress?.(item.id)}
         onLongPress={(position) => onLongPress?.(item.id, position)}
         onToggleSelection={() => onToggleSelection?.(item.id)}
@@ -231,6 +235,7 @@ export const MessageList = memo(({
     partnerAvatar,
     roomType,
     participants,
+    participantsById,
     onPress,
     onLongPress,
     onToggleSelection,

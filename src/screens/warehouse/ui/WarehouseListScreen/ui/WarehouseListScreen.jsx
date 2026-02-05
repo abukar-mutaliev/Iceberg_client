@@ -37,7 +37,28 @@ export const WarehouseListScreen = () => {
             setError(null);
             // Убираем фильтр isActive, чтобы показывать все склады, включая закрытые
             const response = await WarehouseService.getWarehouses({});
-            setWarehouses(response.data?.warehouses || response.data || []);
+            const rawWarehouses = response.data?.warehouses || response.data || [];
+            const preferredOrder = ['Склад Малгобек', 'Склад Сунжа', 'Склад Назрань'];
+
+            const sortedWarehouses = [...rawWarehouses].sort((a, b) => {
+                const aIsMain = a.isMain === true;
+                const bIsMain = b.isMain === true;
+                if (aIsMain !== bIsMain) {
+                    return aIsMain ? -1 : 1;
+                }
+
+                const aIndex = preferredOrder.indexOf(a.name);
+                const bIndex = preferredOrder.indexOf(b.name);
+                if (aIndex !== -1 || bIndex !== -1) {
+                    if (aIndex === -1) return 1;
+                    if (bIndex === -1) return -1;
+                    return aIndex - bIndex;
+                }
+
+                return (a.name || '').localeCompare(b.name || '', 'ru');
+            });
+
+            setWarehouses(sortedWarehouses);
         } catch (err) {
             console.error('Ошибка загрузки складов:', err);
             setError(err.response?.data?.message || 'Не удалось загрузить склады');
@@ -106,6 +127,11 @@ export const WarehouseListScreen = () => {
                                         </Text>
                                     </View>
                                 )}
+                                <View style={[styles.typeBadge, item.isMain ? styles.typeBadgeMain : styles.typeBadgeBranch]}>
+                                    <Text style={[styles.typeText, item.isMain ? styles.typeTextMain : styles.typeTextBranch]}>
+                                        {item.isMain ? 'Основной' : 'Филиал'}
+                                    </Text>
+                                </View>
                             </View>
                         </View>
 
@@ -409,6 +435,32 @@ const styles = StyleSheet.create({
         color: '#1E40AF',
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
+    },
+    typeBadge: {
+        alignSelf: 'flex-start',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 8,
+        borderWidth: 1,
+    },
+    typeBadgeMain: {
+        backgroundColor: '#ECFDF3',
+        borderColor: '#A7F3D0',
+    },
+    typeBadgeBranch: {
+        backgroundColor: '#FDF2F8',
+        borderColor: '#FBCFE8',
+    },
+    typeText: {
+        fontSize: 12,
+        fontFamily: FontFamily.sFProText,
+        fontWeight: '600',
+    },
+    typeTextMain: {
+        color: '#047857',
+    },
+    typeTextBranch: {
+        color: '#9D174D',
     },
     arrowContainer: {
         justifyContent: 'center',

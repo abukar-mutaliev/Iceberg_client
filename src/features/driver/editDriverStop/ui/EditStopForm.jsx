@@ -18,15 +18,21 @@ import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
 import { logData } from '@/shared/lib/logger';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { useRoute } from '@react-navigation/native';
+import { useSelector } from 'react-redux';
 import { useNavigation } from "@react-navigation/native";
 import { getImageUrl } from '@shared/api/api';
 
 import { EditStopHeader } from './EditStopHeader';
-import { PhotoUpload } from './PhotoUpload';
 import { LocationInput } from '@features/driver/addDriverStop/ui/LocationInput';
 import { CustomDatePicker, CustomTimePicker } from '@shared/ui/Pickers/CustomDatePicker';
 import { DistrictPicker } from "@shared/ui/Pickers/DistrictPicker";
 import { StopProductsSelector } from '@features/driver/addDriverStop/ui/StopProductsSelector';
+import { PhotoSection } from '@features/driver/addDriverStop/ui/PhotoSection';
+import { DriverPicker } from '@features/driver/DriverPicker';
+import { FormSection, FormField } from '@features/driver/addDriverStop/ui/FormField';
+import { FormProgressBar } from '@features/driver/addDriverStop/ui/FormProgressIndicator';
+import { FormHint, InfoBanner } from '@features/driver/addDriverStop/ui/FormQuickActions';
+import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 
 const WEEK_DAYS = [
   { label: 'Пн', value: 1 },
@@ -37,6 +43,55 @@ const WEEK_DAYS = [
   { label: 'Сб', value: 6 },
   { label: 'Вс', value: 0 }
 ];
+
+const toLocalISOString = (date) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return '';
+  }
+  const pad = (value) => String(value).padStart(2, '0');
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  const seconds = pad(date.getSeconds());
+  const millis = String(date.getMilliseconds()).padStart(3, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${millis}`;
+};
+
+const getTimezoneOffsetString = () => {
+  const offsetMinutes = -new Date().getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? '+' : '-';
+  const absMinutes = Math.abs(offsetMinutes);
+  const hours = String(Math.floor(absMinutes / 60)).padStart(2, '0');
+  const minutes = String(absMinutes % 60).padStart(2, '0');
+  return `${sign}${hours}:${minutes}`;
+};
+
+const parseScheduleData = (schedule) => {
+  if (!schedule) {
+    return { daysOfWeek: [], enabled: false };
+  }
+
+  let scheduleObj = schedule;
+
+  if (typeof schedule === 'string') {
+    try {
+      scheduleObj = JSON.parse(schedule);
+    } catch (error) {
+      return { daysOfWeek: [], enabled: false };
+    }
+  }
+
+  if (Array.isArray(scheduleObj)) {
+    return { daysOfWeek: scheduleObj, enabled: scheduleObj.length > 0 };
+  }
+
+  const days = Array.isArray(scheduleObj?.daysOfWeek) ? scheduleObj.daysOfWeek : [];
+  const enabled = typeof scheduleObj?.enabled === 'boolean' ? scheduleObj.enabled : days.length > 0;
+
+  return { daysOfWeek: days, enabled };
+};
 
 export const EditStopForm = ({ 
   stopData, 
@@ -122,6 +177,10 @@ export const EditStopForm = ({
   const [selectedDistrict, setSelectedDistrict] = useState(stopData?.districtId || null);
   const [showDistrictPicker, setShowDistrictPicker] = useState(false);
   const [warehouseId, setWarehouseId] = useState(stopData?.warehouseId || null);
+  const [selectedDriver, setSelectedDriver] = useState(
+    stopData?.driverId || stopData?.driver?.id || null
+  );
+  const [showDriverPicker, setShowDriverPicker] = useState(false);
   const [selectedProducts, setSelectedProducts] = useState(
     stopData?.products?.map(sp => ({
       productId: sp.product?.id || sp.productId,
@@ -129,12 +188,14 @@ export const EditStopForm = ({
       stopPrice: sp.stopPrice ?? null // Включаем stopPrice из существующих данных
     })) || []
   );
-  const [scheduleDays, setScheduleDays] = useState(
-    Array.isArray(stopData?.schedule?.daysOfWeek) ? stopData.schedule.daysOfWeek : []
-  );
-  const [scheduleEnabled, setScheduleEnabled] = useState(
-    Array.isArray(stopData?.schedule?.daysOfWeek) && stopData.schedule.daysOfWeek.length > 0
-  );
+  const [priceValidationErrors, setPriceValidationErrors] = useState({});
+  const initialSchedule = useMemo(() => parseScheduleData(stopData?.schedule), [stopData?.schedule]);
+  const [scheduleDays, setScheduleDays] = useState(initialSchedule.daysOfWeek);
+  const [scheduleEnabled, setScheduleEnabled] = useState(initialSchedule.enabled);
+
+  useEffect(() => {
+    setSelectedDriver(stopData?.driverId || stopData?.driver?.id || null);
+  }, [stopData?.driverId, stopData?.driver?.id]);
 
   // Мемоизируем инициализацию mapLocation чтобы избежать бесконечного рендеринга
   const initialMapLocation = useMemo(() => {
@@ -164,6 +225,13 @@ export const EditStopForm = ({
   const setIsLocationLoading = externalSetIsLocationLoading || setInternalIsLocationLoading;
   
   const navigation = useNavigation();
+  const userRole = useSelector(state => state.auth?.user?.role || 'DRIVER');
+  const isAdminOrEmployee = userRole === 'ADMIN' || userRole === 'EMPLOYEE';
+  const allDrivers = useSelector(state => state.driver?.allDrivers || []);
+  const { 
+    showWarning: showAlertWarning,
+    showError: showAlertError
+  } = useCustomAlert();
 
   const [startDate, setStartDate] = useState(
       stopData && stopData.startTime ? new Date(stopData.startTime) : new Date()
@@ -183,6 +251,7 @@ export const EditStopForm = ({
   const [photoWasChanged, setPhotoWasChanged] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formSubmitted, setFormSubmitted] = useState(false);
+  const [showHint, setShowHint] = useState(true);
 
   // Добавляем состояние для ошибок валидации
   const [errors, setErrors] = useState({
@@ -194,7 +263,8 @@ export const EditStopForm = ({
     truckNumber: '',
     startTime: '',
     endTime: '',
-    schedule: ''
+    schedule: '',
+    driver: ''
   });
 
   // Состояние видимости модального окна
@@ -213,10 +283,10 @@ export const EditStopForm = ({
   const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   useEffect(() => {
-    const nextDays = Array.isArray(stopData?.schedule?.daysOfWeek) ? stopData.schedule.daysOfWeek : [];
-    setScheduleDays(nextDays);
-    setScheduleEnabled(nextDays.length > 0);
-  }, [stopData?.schedule?.daysOfWeek]);
+    const nextSchedule = parseScheduleData(stopData?.schedule);
+    setScheduleDays(nextSchedule.daysOfWeek);
+    setScheduleEnabled(nextSchedule.enabled);
+  }, [stopData?.schedule]);
   
   // Мониторим открытие и закрытие клавиатуры
   useEffect(() => {
@@ -252,6 +322,8 @@ export const EditStopForm = ({
   }, []);
   
   const scrollViewRef = useRef(null);
+  const commentInputRef = useRef(null);
+  const commentInputYPosition = useRef(0);
 
   const dismissKeyboard = () => {
     Keyboard.dismiss();
@@ -463,7 +535,8 @@ export const EditStopForm = ({
       truckNumber: '',
       startTime: '',
       endTime: '',
-      schedule: ''
+      schedule: '',
+      driver: ''
     };
 
     if (!address || address.trim() === '') {
@@ -493,6 +566,11 @@ export const EditStopForm = ({
 
     if (!truckNumber || truckNumber.trim() === '') {
       newErrors.truckNumber = 'Необходимо указать номер транспорта';
+      isFormValid = false;
+    }
+
+    if (isAdminOrEmployee && !selectedDriver) {
+      newErrors.driver = 'Необходимо выбрать водителя';
       isFormValid = false;
     }
 
@@ -638,6 +716,45 @@ export const EditStopForm = ({
     setIsSubmitting(false);
   };
 
+  const { totalFields, filledFields } = useMemo(() => {
+    const requiredFields = [
+      address,
+      selectedDistrict,
+      photo,
+      locationData.mapLocation,
+      truckModel,
+      truckNumber,
+      startDate,
+      startTime,
+      endDate,
+      endTime,
+      ...(isAdminOrEmployee ? [selectedDriver] : [])
+    ];
+    const filled = requiredFields.filter(field => {
+      if (field === null || field === undefined) return false;
+      if (typeof field === 'string') return field.trim() !== '';
+      if (field instanceof Date) return true;
+      return !!field;
+    }).length;
+    return {
+      totalFields: requiredFields.length,
+      filledFields: filled
+    };
+  }, [
+    address,
+    selectedDistrict,
+    photo,
+    locationData.mapLocation,
+    truckModel,
+    truckNumber,
+    startDate,
+    startTime,
+    endDate,
+    endTime,
+    isAdminOrEmployee,
+    selectedDriver
+  ]);
+
   const handleSubmit = async () => {
     setFormSubmitted(true);
 
@@ -652,8 +769,8 @@ export const EditStopForm = ({
 
     const startDateTime = getFullStartDateTime();
     const endDateTime = getFullEndDateTime();
-    const startTimeIso = new Date(startDateTime).toISOString();
-    const endTimeIso = new Date(endDateTime).toISOString();
+    const startTimeIso = toLocalISOString(startDateTime);
+    const endTimeIso = toLocalISOString(endDateTime);
 
     const photoForSubmit = preparePhotoForSubmit();
 
@@ -670,9 +787,16 @@ export const EditStopForm = ({
     formData.append('description', description);
     formData.append('truckModel', truckModel);
     formData.append('truckNumber', truckNumber);
+    if (isAdminOrEmployee && selectedDriver) {
+      formData.append('driverId', selectedDriver);
+    }
 
     if (scheduleEnabled) {
-      formData.append('schedule', JSON.stringify({ enabled: true, daysOfWeek: scheduleDays }));
+      formData.append('schedule', JSON.stringify({
+        enabled: true,
+        daysOfWeek: scheduleDays,
+        timezone: getTimezoneOffsetString()
+      }));
     } else if (stopData?.schedule) {
       formData.append('schedule', JSON.stringify({ enabled: false }));
     }
@@ -718,319 +842,408 @@ export const EditStopForm = ({
 
   const formContent = (
     <View style={styles.formContainer}>
-                  <View style={styles.formHeader}>
-                    {/* Блок для выбора фото */}
-                    <View style={styles.leftColumn}>
-                      <PhotoUpload
-                        photo={photo}
-                        setPhoto={handlePhotoChange}
-                        error={errors.photo && typeof errors.photo === 'string' ? errors.photo : ''}
-                      />
+      <FormProgressBar 
+        totalFields={totalFields} 
+        filledFields={filledFields} 
+      />
 
-                      {/* Перемещенный блок времени стоянки */}
-                      <View style={styles.timeSection}>
-                        <Text style={[styles.label, { marginBottom: normalize(10) }]}>
-                          {scheduleEnabled ? 'Время стоянки (время)' : 'Время стоянки *'}
-                        </Text>
-                        {!scheduleEnabled && (
-                          <View style={styles.timeRow}>
-                            <View style={[styles.inputGroup, { flex: 1 }]}>
-                              <Text style={styles.sublabel}>Дата начала</Text>
-                              <CustomDatePicker date={startDate} onDateChange={onStartDateChange} />
-                              <View style={[styles.inputUnderline, errors.startTime ? styles.underlineError : null]} />
-                            </View>
-                            <View style={[styles.inputGroup, { flex: 1, marginLeft: normalize(10) }]}>
-                              <Text style={styles.sublabel}>Дата окончания</Text>
-                              <CustomDatePicker date={endDate} onDateChange={onEndDateChange} />
-                              <View style={[styles.inputUnderline, errors.endTime ? styles.underlineError : null]} />
-                            </View>
-                          </View>
-                        )}
-                        <View style={styles.timeRow}>
-                          <View style={[styles.inputGroup, { flex: 1 }]}>
-                            <Text style={styles.sublabel}>Время начала</Text>
-                            <CustomTimePicker date={startTime} onTimeChange={onStartTimeChange} />
-                            <View style={[styles.inputUnderline, errors.startTime ? styles.underlineError : null]} />
-                          </View>
-                          <View style={[styles.inputGroup, { flex: 1, marginLeft: normalize(10) }]}>
-                            <Text style={styles.sublabel}>Время окончания</Text>
-                            <CustomTimePicker date={endTime} onTimeChange={onEndTimeChange} />
-                            <View style={[styles.inputUnderline, errors.endTime ? styles.underlineError : null]} />
-                          </View>
-                        </View>
-                        {errors.startTime && typeof errors.startTime === 'string' && errors.startTime.trim() ? (
-                          <Text style={styles.errorText}>{String(errors.startTime)}</Text>
-                        ) : null}
-                        {errors.endTime && typeof errors.endTime === 'string' && errors.endTime.trim() ? (
-                          <Text style={styles.errorText}>{String(errors.endTime)}</Text>
-                        ) : null}
-                      </View>
+      {showHint && (
+        <InfoBanner
+          type="info"
+          title="Совет"
+          message="Заполните все поля со звездочкой (*) для успешного создания остановки"
+          onClose={() => setShowHint(false)}
+        />
+      )}
 
-                      <View style={styles.scheduleSection}>
-                        <View style={styles.scheduleToggleRow}>
-                          <Text style={styles.scheduleToggleLabel}>Повторять по дням</Text>
-                          <TouchableOpacity
-                            style={[
-                              styles.scheduleToggle,
-                              scheduleEnabled && styles.scheduleToggleActive
-                            ]}
-                            onPress={() => {
-                              setScheduleEnabled((prev) => !prev);
-                              setErrors(prev => ({ ...prev, schedule: '' }));
-                            }}
-                            activeOpacity={0.8}
-                          >
-                            <Text style={[
-                              styles.scheduleToggleText,
-                              scheduleEnabled && styles.scheduleToggleTextActive
-                            ]}>
-                              {scheduleEnabled ? 'Вкл' : 'Выкл'}
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
+      {isAdminOrEmployee && (
+        <FormSection title="Водитель">
+          <FormField
+            required={isAdminOrEmployee}
+            error={errors.driver && typeof errors.driver === 'string' ? errors.driver : ''}
+          >
+            <DriverPicker
+              drivers={allDrivers}
+              selectedDriver={selectedDriver}
+              setSelectedDriver={(driverId) => {
+                setSelectedDriver(driverId);
+                setErrors(prev => ({...prev, driver: ''}));
+              }}
+              showDriverPicker={showDriverPicker}
+              setShowDriverPicker={setShowDriverPicker}
+              error={errors.driver && typeof errors.driver === 'string' ? errors.driver : ''}
+            />
+          </FormField>
+        </FormSection>
+      )}
 
-                        {scheduleEnabled && (
-                          <>
-                            <View style={styles.scheduleDaysRow}>
-                              {WEEK_DAYS.map((day) => {
-                                const isActive = scheduleDays.includes(day.value);
-                                return (
-                                  <TouchableOpacity
-                                    key={day.value}
-                                    style={[
-                                      styles.scheduleDayButton,
-                                      isActive && styles.scheduleDayButtonActive
-                                    ]}
-                                    onPress={() => toggleScheduleDay(day.value)}
-                                    activeOpacity={0.8}
-                                  >
-                                    <Text style={[
-                                      styles.scheduleDayText,
-                                      isActive && styles.scheduleDayTextActive
-                                    ]}>
-                                      {day.label}
-                                    </Text>
-                                  </TouchableOpacity>
-                                );
-                              })}
-                            </View>
+      <FormSection title="Фотография" subtitle="Прикрепите фотографию остановки">
+        <FormField
+          required
+          error={errors.photo && typeof errors.photo === 'string' ? errors.photo : ''}
+        >
+          <PhotoSection
+            photo={photo}
+            setPhoto={handlePhotoChange}
+            error={errors.photo && typeof errors.photo === 'string' ? errors.photo : ''}
+          />
+        </FormField>
+      </FormSection>
 
-                            {errors.schedule ? (
-                              <Text style={styles.scheduleErrorText}>{errors.schedule}</Text>
-                            ) : null}
-                          </>
-                        )}
-                      </View>
-                    </View>
+      <FormSection title="Местоположение">
+        <FormField
+          required
+          error={errors.district && typeof errors.district === 'string' ? errors.district : ''}
+        >
+          <DistrictPicker
+            districts={districts}
+            selectedDistrict={selectedDistrict}
+            setSelectedDistrict={(districtId) => {
+              setSelectedDistrict(districtId);
+              setErrors(prev => ({...prev, district: ''}));
+              setWarehouseId(null);
+              setSelectedProducts([]);
+              setPriceValidationErrors({});
+            }}
+            showDistrictPicker={showDistrictPicker}
+            setShowDistrictPicker={setShowDistrictPicker}
+            error={errors.district && typeof errors.district === 'string' ? errors.district : ''}
+          />
+        </FormField>
 
-                    {/* Блок для ввода адреса и информации о транспорте */}
-                    <View style={styles.rightColumn}>
-                      <View style={styles.inputGroup}>
-                        {/* Блок для выбора района */}
-                        <DistrictPicker
-                          districts={districts}
-                          selectedDistrict={selectedDistrict}
-                          setSelectedDistrict={(districtId) => {
-                            setSelectedDistrict(districtId);
-                            setErrors(prev => ({...prev, district: ''}));
-                            // Сбрасываем склад и товары при смене района
-                            setWarehouseId(null);
-                            setSelectedProducts([]);
-                          }}
-                          showDistrictPicker={showDistrictPicker}
-                          setShowDistrictPicker={setShowDistrictPicker}
-                          error={errors.district && typeof errors.district === 'string' ? errors.district : ''}
-                        />
-                        
-                        <Text style={styles.label}>Адрес остановки *</Text>
-                        <TextInput
-                          style={[styles.input, errors.address ? styles.inputError : null]}
-                          value={address}
-                          onChangeText={(text) => {
-                            setAddress(text);
-                            setErrors(prev => ({...prev, address: ''}));
-                            logData('Изменен адрес', text);
-                          }}
-                          placeholder="Введите адрес"
-                        />
-                        <View style={[styles.inputUnderline, errors.address ? styles.underlineError : null]}/>
-                        {errors.address && typeof errors.address === 'string' && errors.address.trim() ? (
-                          <Text style={styles.errorText}>{String(errors.address)}</Text>
-                        ) : null}
-                      </View>
+        {/* TODO: Временно скрыто для первой версии. Раскомментировать когда понадобится функционал выбора склада и товаров */}
+        {false && selectedDistrict && (
+          <FormField
+            label="Склад и товары"
+            required
+            error={errors.warehouse}
+          >
+            <StopProductsSelector
+              warehouseId={warehouseId}
+              districtId={selectedDistrict}
+              selectedProducts={selectedProducts}
+              onWarehouseChange={(newWarehouseId) => {
+                setWarehouseId(newWarehouseId);
+                setPriceValidationErrors({});
+              }}
+              onProductsChange={setSelectedProducts}
+              showAlertError={showAlertError}
+              showAlertWarning={showAlertWarning}
+              priceValidationErrors={priceValidationErrors}
+              onPriceErrorClear={(productId) => {
+                setPriceValidationErrors(prev => {
+                  const newErrors = { ...prev };
+                  delete newErrors[productId];
+                  return newErrors;
+                });
+              }}
+            />
+          </FormField>
+        )}
 
-                      <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Модель транспорта *</Text>
-                        <TextInput
-                          style={[styles.input, errors.truckModel ? styles.inputError : null]}
-                          value={truckModel}
-                          onChangeText={(text) => {
-                            setTruckModel(text);
-                            // Очищаем ошибку при вводе
-                            setErrors(prev => ({...prev, truckModel: ''}));
-                            logData('Изменена модель транспорта', text);
-                          }}
-                          placeholder="Введите модель"
-                        />
-                        <View style={[styles.inputUnderline, errors.truckModel ? styles.underlineError : null]}/>
-                        {errors.truckModel && typeof errors.truckModel === 'string' && errors.truckModel.trim() ? (
-                          <Text style={styles.errorText}>{String(errors.truckModel)}</Text>
-                        ) : null}
-                      </View>
+        <FormHint
+          title="Используйте карту"
+          description="Нажмите на кнопку ниже, чтобы выбрать точное местоположение на карте"
+          onPress={() => {
+            if (locationData.mapLocation) {
+              handleMapOpen(locationData.mapLocation);
+            } else {
+              handleMapOpen(null);
+            }
+          }}
+        />
 
-                      {/* Блок для ввода номера транспорта */}
-                      <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Номер транспорта *</Text>
-                        <TextInput
-                          style={[styles.input, errors.truckNumber ? styles.inputError : null]}
-                          value={truckNumber}
-                          onChangeText={(text) => {
-                            setTruckNumber(text);
-                            setErrors(prev => ({...prev, truckNumber: ''}));
-                            logData('Изменен номер транспорта', text);
-                          }}
-                          placeholder="А001АА 06"
-                        />
-                        <View style={[styles.inputUnderline, errors.truckNumber ? styles.underlineError : null]}/>
-                        {errors.truckNumber && typeof errors.truckNumber === 'string' && errors.truckNumber.trim() ? (
-                          <Text style={styles.errorText}>{String(errors.truckNumber)}</Text>
-                        ) : null}
-                      </View>
-                    </View>
-                  </View>
+        <FormField
+          label="Адрес остановки"
+          required
+          hint="Полный адрес остановки"
+          error={errors.address && typeof errors.address === 'string' ? errors.address : ''}
+        >
+          <TextInput
+            style={[styles.input, errors.address ? styles.inputError : null]}
+            value={address}
+            onChangeText={(text) => {
+              setAddress(text);
+              setErrors(prev => ({...prev, address: ''}));
+              logData('Изменен адрес', text);
+            }}
+            placeholder="Введите адрес"
+            placeholderTextColor="#999"
+          />
+          <View style={[styles.inputUnderline, errors.address ? styles.underlineError : null]}/>
+        </FormField>
 
-                  {/* Блок для выбора склада и товаров на всю ширину */}
-                  {selectedDistrict != null && selectedDistrict !== '' && (
-                    <View style={styles.fullWidthContainer}>
-                      <StopProductsSelector
-                        warehouseId={warehouseId}
-                        districtId={selectedDistrict}
-                        selectedProducts={selectedProducts}
-                        onWarehouseChange={setWarehouseId}
-                        onProductsChange={setSelectedProducts}
-                      />
-                    </View>
-                  )}
+        <FormField
+          label="Координаты"
+          required
+          error={errors.location && typeof errors.location === 'string' ? errors.location : ''}
+        >
+          <LocationInput
+            mapLocation={locationData.mapLocation}
+            setMapLocation={(text) => {
+              setLocationData(prev => ({...prev, mapLocation: text}));
+              setErrors(prev => ({...prev, location: ''}));
+            }}
+            isLocationLoading={isLocationLoading}
+            setIsLocationLoading={setIsLocationLoading}
+            onOpenMap={handleMapOpen}
+            error={errors.location && typeof errors.location === 'string' ? errors.location : ''}
+            setAddress={setAddress}
+          />
+        </FormField>
+      </FormSection>
 
-                  {/* Блок для выбора времени начала и окончания стоянки (напротив друг друга) */}
-                  <View style={styles.timeContainer}>
-                    <View style={[styles.timeSection, styles.timeLeft]}>
-                      {/* Исправлено с "90%" на числовое значение */}
-                      <View style={[styles.timeRow, { width: 320 }]}>
-                        <View style={[styles.inputGroup, { flex: 1 }]}>
-                          <Text style={styles.sublabel}>Начало</Text>
-                          <CustomTimePicker date={startTime} onTimeChange={onStartTimeChange} />
-                          <View style={[styles.inputUnderline, errors.startTime ? styles.underlineError : null]} />
-                        </View>
-                      </View>
-                      {errors.startTime && typeof errors.startTime === 'string' && errors.startTime.trim() ? (
-                        <Text style={styles.errorText}>{String(errors.startTime)}</Text>
-                      ) : null}
-                    </View>
+      <FormSection title="Транспорт" subtitle="Информация о транспортном средстве">
+        <FormField
+          label="Модель транспорта"
+          required
+          error={errors.truckModel && typeof errors.truckModel === 'string' ? errors.truckModel : ''}
+        >
+          <TextInput
+            style={[styles.input, errors.truckModel ? styles.inputError : null]}
+            value={truckModel}
+            onChangeText={(text) => {
+              setTruckModel(text);
+              setErrors(prev => ({...prev, truckModel: ''}));
+              logData('Изменена модель транспорта', text);
+            }}
+            placeholder="LADA Largus"
+            placeholderTextColor="#999"
+          />
+          <View style={[styles.inputUnderline, errors.truckModel ? styles.underlineError : null]}/>
+        </FormField>
 
-                    <View style={[styles.timeSection, styles.timeRight]}>
-                      {/* Исправлено с "90%" на числовое значение */}
-                      <View style={[styles.timeRow, { width: 320 }]}>
-                        <View style={[styles.inputGroup, { flex: 1}]}>
-                          <Text style={styles.sublabel}>Окончание</Text>
-                          <CustomTimePicker date={endTime} onTimeChange={onEndTimeChange} />
-                          <View style={[styles.inputUnderline, errors.endTime ? styles.underlineError : null]} />
-                        </View>
-                      </View>
-                      {errors.endTime && typeof errors.endTime === 'string' && errors.endTime.trim() ? (
-                        <Text style={styles.errorText}>{String(errors.endTime)}</Text>
-                      ) : null}
-                    </View>
-                  </View>
+        <FormField
+          label="Номер транспорта"
+          required
+          error={errors.truckNumber && typeof errors.truckNumber === 'string' ? errors.truckNumber : ''}
+        >
+          <TextInput
+            style={[styles.input, errors.truckNumber ? styles.inputError : null]}
+            value={truckNumber}
+            onChangeText={(text) => {
+              setTruckNumber(text);
+              setErrors(prev => ({...prev, truckNumber: ''}));
+              logData('Изменен номер транспорта', text);
+            }}
+            placeholder="А001АА 06"
+            placeholderTextColor="#999"
+            autoCapitalize="characters"
+          />
+          <View style={[styles.inputUnderline, errors.truckNumber ? styles.underlineError : null]}/>
+        </FormField>
+      </FormSection>
 
-                  {/* Блок для ввода описания */}
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Дополнительный комментарий</Text>
-                    <TextInput
-                      style={[styles.input, styles.commentInput]}
-                      value={description}
-                      onChangeText={(text) => {
-                        setDescription(text);
-                        logData('Изменено описание', text);
-                      }}
-                      placeholder="Введите дополнительный комментарий"
-                      multiline={true}
-                      numberOfLines={3}
-                    />
-                    <View style={styles.inputUnderline}/>
-                  </View>
+      <FormSection
+        title="График остановки"
+        subtitle="Повторять остановку по выбранным дням недели"
+      >
+        <View style={styles.scheduleToggleRow}>
+          <Text style={styles.scheduleToggleLabel}>Повторять по дням</Text>
+          <TouchableOpacity
+            style={[
+              styles.scheduleToggle,
+              scheduleEnabled && styles.scheduleToggleActive
+            ]}
+            onPress={() => {
+              setScheduleEnabled((prev) => !prev);
+              setErrors(prev => ({ ...prev, schedule: '' }));
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={[
+              styles.scheduleToggleText,
+              scheduleEnabled && styles.scheduleToggleTextActive
+            ]}>
+              {scheduleEnabled ? 'Вкл' : 'Выкл'}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-                  {/* Блок координат */}
-                  <LocationInput
-                    mapLocation={locationData.mapLocation ? String(locationData.mapLocation) : ''}
-                    setMapLocation={(text) => {
-                      setLocationData(prev => ({...prev, mapLocation: text ? String(text) : ''}));
-                      setErrors(prev => ({...prev, location: ''}));
-                    }}
-                    isLocationLoading={isLocationLoading}
-                    setIsLocationLoading={setIsLocationLoading}
-                    onOpenMap={handleMapOpen}
-                    error={errors.location && typeof errors.location === 'string' ? errors.location : ''}
-                    setAddress={setAddress}
-                  />
+        {scheduleEnabled && (
+          <>
+            <View style={styles.scheduleDaysRow}>
+              {WEEK_DAYS.map((day) => {
+                const isActive = scheduleDays.includes(day.value);
+                return (
+                  <TouchableOpacity
+                    key={day.value}
+                    style={[
+                      styles.scheduleDayButton,
+                      isActive && styles.scheduleDayButtonActive
+                    ]}
+                    onPress={() => toggleScheduleDay(day.value)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[
+                      styles.scheduleDayText,
+                      isActive && styles.scheduleDayTextActive
+                    ]}>
+                      {day.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
 
-                  {/* Блок с кнопками Повторить/Отмена при неудачной загрузке */}
-                  {uploadFailed && (
-                    <View style={styles.retryContainer}>
-                      <View style={styles.retryIconContainer}>
-                        <Text style={styles.retryIcon}>⚠️</Text>
-                      </View>
-                      <Text style={styles.retryTitle}>Не удалось сохранить данные</Text>
-                      <Text style={styles.retryMessage}>
-                        Проверьте интернет-соединение и попробуйте снова
-                      </Text>
-                      <View style={styles.retryButtonsRow}>
-                        <TouchableOpacity
-                          style={[styles.retryButton, styles.cancelRetryButton]}
-                          onPress={handleCancelUpload}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.cancelButtonText}>Отмена</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[styles.retryButton, styles.retryActionButton]}
-                          onPress={handleRetryUpload}
-                          activeOpacity={0.7}
-                          disabled={isSubmitting}
-                        >
-                          {isSubmitting ? (
-                            <ActivityIndicator size="small" color="#fff" />
-                          ) : (
-                            <Text style={styles.retryButtonText}>🔄 Повторить</Text>
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  )}
+            {errors.schedule ? (
+              <Text style={styles.scheduleErrorText}>{errors.schedule}</Text>
+            ) : null}
+          </>
+        )}
+      </FormSection>
 
-                  {/* Кнопка добавления остановки - скрыта при показе блока retry */}
-                  {!uploadFailed && (
-                    <TouchableOpacity
-                      style={[
-                        styles.submitButton,
-                        (isSubmitting && formSubmitted) && styles.disabledButton
-                      ]}
-                      onPress={handleSubmit}
-                      activeOpacity={0.7}
-                      disabled={isSubmitting && formSubmitted}
-                    >
-                      {isSubmitting && formSubmitted ? (
-                        <View style={styles.loadingContainer}>
-                          <ActivityIndicator size="small" color="#fff"/>
-                          <Text style={styles.submitButtonText}>
-                            {retryCount > 0 ? `Попытка ${retryCount}/5...` : 'Сохранение...'}
-                          </Text>
-                        </View>
-                      ) : (
-                        <Text style={styles.submitButtonText}>Готово!</Text>
-                      )}
-                    </TouchableOpacity>
-                  )}
+      <FormSection
+        title="Время стоянки"
+        subtitle="Укажите дату и время начала и окончания работы остановки"
+      >
+        <FormField
+          label={scheduleEnabled ? 'Время начала' : 'Дата и время начала'}
+          required
+          error={errors.startTime && typeof errors.startTime === 'string' ? errors.startTime : ''}
+        >
+          <View style={styles.dateTimeRow}>
+            {!scheduleEnabled && (
+              <View style={styles.dateTimeColumn}>
+                <Text style={styles.sublabel}>Дата</Text>
+                <CustomDatePicker date={startDate} onDateChange={onStartDateChange} />
+                <View style={[styles.inputUnderline, errors.startTime ? styles.underlineError : null]} />
+              </View>
+            )}
+
+            <View style={styles.dateTimeColumn}>
+              <Text style={styles.sublabel}>Время</Text>
+              <CustomTimePicker date={startTime} onTimeChange={onStartTimeChange} />
+              <View style={[styles.inputUnderline, errors.startTime ? styles.underlineError : null]} />
+            </View>
+          </View>
+        </FormField>
+
+        <FormField
+          label={scheduleEnabled ? 'Время окончания' : 'Дата и время окончания'}
+          required
+          error={errors.endTime && typeof errors.endTime === 'string' ? errors.endTime : ''}
+        >
+          <View style={styles.dateTimeRow}>
+            {!scheduleEnabled && (
+              <View style={styles.dateTimeColumn}>
+                <Text style={styles.sublabel}>Дата</Text>
+                <CustomDatePicker date={endDate} onDateChange={onEndDateChange} />
+                <View style={[styles.inputUnderline, errors.endTime ? styles.underlineError : null]} />
+              </View>
+            )}
+
+            <View style={styles.dateTimeColumn}>
+              <Text style={styles.sublabel}>Время</Text>
+              <CustomTimePicker date={endTime} onTimeChange={onEndTimeChange} />
+              <View style={[styles.inputUnderline, errors.endTime ? styles.underlineError : null]} />
+            </View>
+          </View>
+        </FormField>
+      </FormSection>
+
+      <FormSection title="Дополнительная информация">
+        <FormField label="Комментарий">
+          <View
+            onLayout={(event) => {
+              const { y } = event.nativeEvent.layout;
+              commentInputYPosition.current = y;
+            }}
+          >
+            <TextInput
+              ref={commentInputRef}
+              style={[styles.input, styles.commentInput]}
+              value={description}
+              onChangeText={(text) => {
+                setDescription(text);
+                logData('Изменено описание', text);
+              }}
+              onFocus={() => {
+                if (scrollViewRef.current && commentInputYPosition.current > 0) {
+                  setTimeout(() => {
+                    scrollViewRef.current.scrollTo({
+                      y: commentInputYPosition.current - 150,
+                      animated: true
+                    });
+                  }, 300);
+                }
+              }}
+              placeholder="Введите дополнительную информацию"
+              placeholderTextColor="#999"
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+            />
+          </View>
+          <View style={styles.inputUnderline}/>
+        </FormField>
+      </FormSection>
+
+      {filledFields === totalFields && !uploadFailed && (
+        <InfoBanner
+          type="success"
+          title="Готово к отправке!"
+          message="Все обязательные поля заполнены. Проверьте данные и нажмите кнопку отправки."
+        />
+      )}
+
+      {/* Блок с кнопками Повторить/Отмена при неудачной загрузке */}
+      {uploadFailed && (
+        <View style={styles.retryContainer}>
+          <View style={styles.retryIconContainer}>
+            <Text style={styles.retryIcon}>⚠️</Text>
+          </View>
+          <Text style={styles.retryTitle}>Не удалось отправить данные</Text>
+          <Text style={styles.retryMessage}>
+            Проверьте интернет-соединение и попробуйте снова
+          </Text>
+          <View style={styles.retryButtonsRow}>
+            <TouchableOpacity
+              style={[styles.retryButton, styles.cancelButton]}
+              onPress={handleCancelUpload}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.cancelButtonText}>Отмена</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.retryButton, styles.retryActionButton]}
+              onPress={handleRetryUpload}
+              activeOpacity={0.7}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.retryButtonText}>🔄 Повторить</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Кнопка добавления остановки - скрыта при показе блока retry */}
+      {!uploadFailed && (
+        <TouchableOpacity
+          style={[
+            styles.submitButton,
+            isSubmitting && styles.disabledButton
+          ]}
+          onPress={handleSubmit}
+          activeOpacity={0.7}
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color="#fff"/>
+              <Text style={styles.submitButtonText}>
+                {retryCount > 0 ? `Попытка ${retryCount}/5...` : 'Добавление...'}
+              </Text>
+            </View>
+          ) : (
+            <Text style={styles.submitButtonText}>Сохранить изменения</Text>
+          )}
+        </TouchableOpacity>
+      )}
     </View>
   );
 
@@ -1129,7 +1342,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   formContainer: {
-    padding: normalize(16),
+    padding: normalize(20),
+    paddingBottom: normalize(30),
+    width: '100%',
   },
   formHeader: {
     flexDirection: 'row',
@@ -1165,32 +1380,33 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.sFProText,
   },
   sublabel: {
-    fontSize: normalizeFont(15),
+    fontSize: normalizeFont(14),
     fontWeight: '500',
     color: Color.dark,
-    opacity: 0.4,
+    opacity: 0.6,
+    marginBottom: normalize(8),
     fontFamily: FontFamily.sFProText,
   },
   input: {
-    height: normalize(30),
-    fontSize: normalizeFont(FontSize.size_xs),
+    height: normalize(44),
+    fontSize: normalizeFont(FontSize.size_sm),
     color: Color.dark,
-    paddingVertical: normalize(5),
-    paddingLeft: 0,
+    paddingVertical: normalize(8),
+    paddingHorizontal: 0,
     fontFamily: FontFamily.sFProText,
   },
   inputError: {
     color: '#FF3B30',
   },
   commentInput: {
-    height: normalize(30),
+    height: normalize(100),
     textAlignVertical: 'top',
-    paddingLeft: 0,
+    paddingTop: normalize(8),
   },
   inputUnderline: {
     height: 1,
-    backgroundColor: '#000',
-    marginTop: 0,
+    backgroundColor: '#E5E5EA',
+    marginTop: normalize(4),
   },
   underlineError: {
     backgroundColor: '#FF3B30',
@@ -1198,8 +1414,8 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: '#FF3B30',
-    fontSize: normalizeFont(FontSize.size_xs),
-    marginTop: normalize(5),
+    fontSize: normalizeFont(13),
+    marginTop: normalize(6),
     fontFamily: FontFamily.sFProText,
   },
   scheduleSection: {
@@ -1295,14 +1511,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
+  dateTimeRow: {
+    flexDirection: 'row',
+    gap: normalize(12),
+  },
+  dateTimeColumn: {
+    flex: 1,
+  },
   submitButton: {
     backgroundColor: '#3B43A2',
-    height: normalize(40),
-    borderRadius: Border.br_3xs,
+    height: normalize(52),
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: normalize(20),
+    marginTop: normalize(8),
     marginBottom: normalize(30),
+    shadowColor: '#3B43A2',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 5,
   },
   disabledButton: {
     backgroundColor: '#a0a0a0',
@@ -1324,7 +1555,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF3CD',
     borderRadius: 12,
     padding: normalize(20),
-    marginTop: normalize(16),
     marginBottom: normalize(16),
     alignItems: 'center',
     borderWidth: 1,
@@ -1364,7 +1594,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  cancelRetryButton: {
+  cancelButton: {
     backgroundColor: '#fff',
     borderWidth: 1.5,
     borderColor: '#856404',

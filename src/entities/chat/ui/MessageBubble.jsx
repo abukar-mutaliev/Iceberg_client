@@ -390,7 +390,9 @@ const BubbleContainer = ({
     senderId = null,
     senderNameColor = '#667781',
     onSenderNamePress = null,
-    isForwarded = false
+    isForwarded = false,
+    participantsById = null,
+    participants = null
 }) => {
     const containerRef = useRef(null);
     const [textWidth, setTextWidth] = useState(0);
@@ -502,11 +504,13 @@ const BubbleContainer = ({
                         )}
                         
                         {replyTo && (
-                            <ReplyPreview
+                                <ReplyPreview
                                 replyTo={replyTo}
                                 onPress={() => onReplyPress?.(replyTo)}
                                 isInMessage={true}
                                 currentUserId={currentUserId}
+                                participantsById={participantsById}
+                                participants={participants}
                             />
                         )}
                         
@@ -1054,6 +1058,7 @@ const ProductMessage = memo(({
                         }}
                         width={250}
                         compact={true}
+                        compactImageHeight={260}
                     />
                 </View>
             </BubbleContainer>
@@ -1497,6 +1502,7 @@ export const MessageBubble = memo(({
                                        onShowReactionPicker,
                                        roomType = null,
                                        participants = [],
+                                       participantsById = null,
                                        onSenderNamePress = null
                                    }) => {
     const isOwn = message?.senderId === currentUserId;

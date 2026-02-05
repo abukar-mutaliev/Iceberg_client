@@ -45,7 +45,7 @@ export const MultipleImageUpload = ({ photos, setPhotos, error, maxImages = 5 })
             const result = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: 'images',
                 allowsEditing: false,
-                quality: 0.5,
+                quality: 1,
             });
 
             if (!result.canceled && result.assets && result.assets.length > 0) {
@@ -115,7 +115,7 @@ export const MultipleImageUpload = ({ photos, setPhotos, error, maxImages = 5 })
                     pendingImage.uri,
                     [{ resize: { width: targetWidth, height: targetHeight } }],
                     {
-                        compress: isPng ? 1 : 0.8,
+                        compress: 1,
                         format: isPng ? ImageManipulator.SaveFormat.PNG : ImageManipulator.SaveFormat.JPEG
                     }
                 );
