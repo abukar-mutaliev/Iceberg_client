@@ -43,6 +43,8 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
         maxDeliveryRadius: '30',
         isMain: false,
         isActive: true,
+        maintenanceMode: false,
+        maintenanceReason: '',
         autoManageStatus: false,
         workingHours: [] // График работы: [{ dayOfWeek: 0-6, isOpen: true/false, openTime: '09:00', closeTime: '18:00' }]
     });
@@ -117,6 +119,8 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                     maxDeliveryRadius: warehouse.maxDeliveryRadius?.toString() || '30',
                     isMain: warehouse.isMain !== undefined ? warehouse.isMain : false,
                     isActive: warehouse.isActive !== undefined ? warehouse.isActive : true,
+                    maintenanceMode: warehouse.maintenanceMode !== undefined ? warehouse.maintenanceMode : false,
+                    maintenanceReason: warehouse.maintenanceReason || '',
                     autoManageStatus: warehouse.autoManageStatus !== undefined ? warehouse.autoManageStatus : false,
                     workingHours: defaultWorkingHours
                 });
@@ -147,6 +151,8 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                     maxDeliveryRadius: '30',
                     isMain: false,
                     isActive: true,
+                    maintenanceMode: false,
+                    maintenanceReason: '',
                     autoManageStatus: false,
                     workingHours: defaultWorkingHours
                 });
@@ -617,6 +623,10 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
             maxDeliveryRadius: parseFloat(formData.maxDeliveryRadius) || 30,
             isMain: formData.isMain,
             isActive: formData.isActive,
+            maintenanceMode: formData.maintenanceMode,
+            maintenanceReason: formData.maintenanceMode
+                ? (formData.maintenanceReason || '').trim() || null
+                : null,
             autoManageStatus: formData.autoManageStatus,
             workingHours: formData.workingHours || [], // Отправляем все 7 дней недели
             image: selectedImage // Добавляем изображение
@@ -852,10 +862,11 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                             <TouchableOpacity
                                 style={[
                                     styles.statusButton,
-                                    formData.isActive && styles.statusButtonActive
+                                    formData.isActive && styles.statusButtonActive,
+                                    formData.maintenanceMode && styles.statusButtonDisabled
                                 ]}
                                 onPress={() => handleFieldChange('isActive', true)}
-                                disabled={isSubmitting}
+                                disabled={isSubmitting || formData.maintenanceMode}
                             >
                                 <Text style={[
                                     styles.statusButtonText,
@@ -867,10 +878,11 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                             <TouchableOpacity
                                 style={[
                                     styles.statusButton,
-                                    !formData.isActive && styles.statusButtonInactive
+                                    !formData.isActive && styles.statusButtonInactive,
+                                    formData.maintenanceMode && styles.statusButtonDisabled
                                 ]}
                                 onPress={() => handleFieldChange('isActive', false)}
-                                disabled={isSubmitting}
+                                disabled={isSubmitting || formData.maintenanceMode}
                             >
                                 <Text style={[
                                     styles.statusButtonText,
@@ -881,8 +893,52 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                             </TouchableOpacity>
                         </View>
                         <Text style={styles.helperText}>
-                            Текущий статус: {formData.isActive ? 'Активен' : 'Неактивен'}
+                            Текущий статус: {formData.maintenanceMode ? 'Технические работы' : (formData.isActive ? 'Активен' : 'Неактивен')}
                         </Text>
+                    </View>
+
+                    {/* Технические работы */}
+                    <View style={styles.fieldContainer}>
+                        <View style={styles.switchContainer}>
+                            <Text style={styles.label}>Технические работы</Text>
+                            <TouchableOpacity
+                                style={[
+                                    styles.switch,
+                                    formData.maintenanceMode && styles.switchActive
+                                ]}
+                                onPress={() => {
+                                    const nextValue = !formData.maintenanceMode;
+                                    handleFieldChange('maintenanceMode', nextValue);
+                                    if (nextValue) {
+                                        handleFieldChange('isActive', false);
+                                    }
+                                }}
+                                disabled={isSubmitting}
+                            >
+                                <View style={[
+                                    styles.switchThumb,
+                                    formData.maintenanceMode && styles.switchThumbActive
+                                ]} />
+                            </TouchableOpacity>
+                        </View>
+                        <Text style={styles.hintText}>
+                            {formData.maintenanceMode
+                                ? 'Склад будет показан как закрытый на техработы'
+                                : 'Обычный режим без техработ'}
+                        </Text>
+                        {formData.maintenanceMode && (
+                            <View style={styles.fieldContainer}>
+                                <Text style={styles.label}>Описание работ (опционально)</Text>
+                                <TextInput
+                                    style={styles.input}
+                                    value={formData.maintenanceReason}
+                                    onChangeText={(value) => handleFieldChange('maintenanceReason', value)}
+                                    placeholder="Например: обновление оборудования, инвентаризация"
+                                    placeholderTextColor={Color.textSecondary}
+                                    multiline
+                                />
+                            </View>
+                        )}
                     </View>
 
                     {/* Тип склада */}
@@ -1322,6 +1378,9 @@ const styles = StyleSheet.create({
     },
     statusButtonTextInactive: {
         color: Color.textSecondary,
+    },
+    statusButtonDisabled: {
+        opacity: 0.6,
     },
     loadingText: {
         fontSize: normalizeFont(FontSize.size_sm),

@@ -82,10 +82,19 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
     const [editModalVisible, setEditModalVisible] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [shareModalVisible, setShareModalVisible] = useState(false);
+    const warehouseImageUrl = useMemo(() => {
+        if (!warehouse?.image) return null;
+        try {
+            return getImageUrl(warehouse.image);
+        } catch (error) {
+            return null;
+        }
+    }, [warehouse?.image]);
     
     // Определяем, запущено ли приложение в Expo Go
     const isExpoGo = Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
     const isAuthenticated = !!user;
+    const hasMaintenance = !!warehouse?.maintenanceMode;
     
     // Проверяем, является ли пользователь суперадмином
     // Используем ту же логику, что и в других экранах (DirectChatScreen, useGroupChatData)
@@ -369,9 +378,9 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
                 </View>
 
                 {/* Изображение склада */}
-                {warehouse.image ? (
+                {warehouseImageUrl ? (
                     <Image 
-                        source={{ uri: getImageUrl(warehouse.image) }} 
+                        source={{ uri: warehouseImageUrl }} 
                         style={styles.warehouseImage}
                         resizeMode="cover"
                     />
@@ -437,17 +446,35 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
                         <View style={styles.infoValueContainer}>
                             <View style={[
                                 styles.statusBadge,
-                                warehouse.isActive ? styles.statusActive : styles.statusInactive
+                                hasMaintenance
+                                    ? styles.statusMaintenance
+                                    : warehouse.isActive
+                                        ? styles.statusActive
+                                        : styles.statusInactive
                             ]}>
                                 <Text style={[
                                     styles.statusText,
-                                    warehouse.isActive ? styles.statusTextActive : styles.statusTextInactive
+                                    hasMaintenance
+                                        ? styles.statusTextMaintenance
+                                        : warehouse.isActive
+                                            ? styles.statusTextActive
+                                            : styles.statusTextInactive
                                 ]}>
-                                    {warehouse.isActive ? 'Открыто' : 'Закрыто'}
+                                    {hasMaintenance ? 'Технические работы' : (warehouse.isActive ? 'Открыто' : 'Закрыто')}
                                 </Text>
                             </View>
                         </View>
                     </View>
+                    {hasMaintenance && warehouse?.maintenanceReason ? (
+                        <View style={styles.infoRow}>
+                            <View style={styles.infoLabelContainer}>
+                                <Text style={styles.infoLabel}>Причина:</Text>
+                            </View>
+                            <View style={styles.infoValueContainer}>
+                                <Text style={styles.infoValue}>{warehouse.maintenanceReason}</Text>
+                            </View>
+                        </View>
+                    ) : null}
 
                     {/* График работы */}
                     {warehouse.autoManageStatus && (() => {
@@ -886,6 +913,9 @@ const styles = StyleSheet.create({
     statusInactive: {
         backgroundColor: '#FFEBEE',
     },
+    statusMaintenance: {
+        backgroundColor: '#FFF3E0',
+    },
     statusText: {
         fontSize: FontSize.size_sm,
         fontFamily: FontFamily.sFProText,
@@ -896,6 +926,9 @@ const styles = StyleSheet.create({
     },
     statusTextInactive: {
         color: '#C62828',
+    },
+    statusTextMaintenance: {
+        color: '#EF6C00',
     },
     mapContainer: {
         height: 250,

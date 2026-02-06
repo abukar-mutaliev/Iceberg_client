@@ -555,10 +555,14 @@ export const AddProductScreen = () => {
                 }
                 return img;
             });
+            const preuploadedUrls = (formData.images || [])
+                .map(img => (typeof img === 'string' ? imageUploadState[img]?.url : null))
+                .filter(Boolean);
 
             const result = await dispatch(createProductChunked({
                 formData: productData,
                 images: imagesForSubmit,
+                preuploadedUrls,
                 preuploadedImagesMap: imageUploadState,
                 onProgress: (progress, stage, uploadedCount) => {
                     setUploadProgress(progress);

@@ -1,7 +1,7 @@
-import React, {memo, useState, useCallback, useRef, useEffect} from 'react';
+import React, {memo, useState, useCallback, useRef, useEffect, useMemo} from 'react';
 import {View, Text, Image, TouchableOpacity, StyleSheet} from 'react-native';
 import {Ionicons} from '@expo/vector-icons';
-import {useSelector} from 'react-redux';
+import {useDispatch, useSelector} from 'react-redux';
 import {ProductCard} from '@entities/product/ui/ProductCard';
 import {StopCard} from '@entities/stop/ui/StopCard';
 import {WarehouseCard} from '@entities/warehouse/ui/WarehouseCard';
@@ -12,7 +12,8 @@ import {MessageReactions} from './ReactionPicker/MessageReactions';
 import {getImageUrl} from '@shared/api/api';
 import {CachedImage} from './CachedImage/CachedImage';
 import ChatApi from '@entities/chat/api/chatApi';
-import {selectIsProductDeleted} from '@entities/product/model/selectors';
+import {selectIsProductDeleted, selectProductById, selectCurrentProduct} from '@entities/product/model/selectors';
+import {fetchProductById} from '@entities/product/model/slice';
 import {PROCESSING_ROLE_LABELS} from '@entities/admin/lib/constants';
 
 // ============= ВСПОМОГАТЕЛЬНЫЕ КОМПОНЕНТЫ =============
@@ -933,8 +934,60 @@ const ProductMessage = memo(({
     onSenderNamePress = null,
     isForwarded = false
 }) => {
+    const dispatch = useDispatch();
     // Проверяем, удален ли продукт
     const isProductDeleted = useSelector((state) => selectIsProductDeleted(state, productId));
+    const cachedProduct = useSelector((state) =>
+        productId ? selectProductById(state, productId) : null
+    );
+    const currentProduct = useSelector(selectCurrentProduct);
+    const currentProductMatch = useMemo(() => {
+        if (!currentProduct || !productId) return null;
+        const currentId = Number(currentProduct.id);
+        const targetId = Number(productId);
+        return Number.isFinite(currentId) && Number.isFinite(targetId) && currentId === targetId
+            ? currentProduct
+            : null;
+    }, [currentProduct, productId]);
+
+    const resolvedProduct = useMemo(() => {
+        const payload = product || {};
+        const nested = payload?.product || payload?.productInfo || payload?.item || payload?.data?.product || {};
+        const cached = cachedProduct || currentProductMatch || {};
+        const merged = { ...cached, ...nested, ...payload };
+
+        const images = Array.isArray(payload.images) && payload.images.length > 0
+            ? payload.images
+            : Array.isArray(nested.images) && nested.images.length > 0
+                ? nested.images
+                : Array.isArray(cached.images) && cached.images.length > 0
+                    ? cached.images
+                    : [];
+
+        const image = payload.image || nested.image || cached.image || (images[0] ?? null);
+
+        return {
+            ...merged,
+            images,
+            image,
+        };
+    }, [product, cachedProduct, currentProductMatch]);
+
+    const fetchAttemptedRef = useRef(false);
+
+    useEffect(() => {
+        fetchAttemptedRef.current = false;
+    }, [productId]);
+
+    useEffect(() => {
+        if (!productId || fetchAttemptedRef.current) return;
+        const hasImages = Array.isArray(resolvedProduct?.images) && resolvedProduct.images.length > 0;
+        const hasImage = Boolean(resolvedProduct?.image);
+        if (hasImages || hasImage) return;
+
+        fetchAttemptedRef.current = true;
+        dispatch(fetchProductById({ productId, force: true }));
+    }, [dispatch, productId, resolvedProduct]);
 
     // Если продукт удален, показываем специальное сообщение
     if (isProductDeleted) {
@@ -998,20 +1051,18 @@ const ProductMessage = memo(({
     }
 
     const transformedProduct = {
-        id: product.productId || productId,
-        name: product.name,
-        description: product.description,
-        price: product.price,
-        images: product.images || [],
-        image: product.images && product.images.length > 0
-            ? getImageUrl(product.images[0])
-            : null,
+        id: resolvedProduct.productId || resolvedProduct.id || productId,
+        name: resolvedProduct.name,
+        description: resolvedProduct.description,
+        price: resolvedProduct.price,
+        images: resolvedProduct.images || [],
+        image: resolvedProduct.image || (resolvedProduct.images?.[0] ?? null),
         stockQuantity: 1,
         isActive: true,
         itemsPerBox: 1,
-        boxPrice: product.price,
+        boxPrice: resolvedProduct.price,
         availableBoxes: 1,
-        pricePerItem: product.price
+        pricePerItem: resolvedProduct.price
     };
 
     return (
@@ -1807,6 +1858,14 @@ export const MessageBubble = memo(({
             // Если не получилось, пробуем из product (старый способ)
             else if (message?.product) {
                 productData = message.product;
+            }
+
+            if (productData?.product) {
+                productData = productData.product;
+            } else if (productData?.data?.product) {
+                productData = productData.data.product;
+            } else if (productData?.item?.product) {
+                productData = productData.item.product;
             }
         } catch (error) {
             // Ошибка парсинга обрабатывается через fallback UI

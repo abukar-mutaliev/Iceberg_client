@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useChatSocketActions } from '@entities/chat/hooks/useChatSocketActions';
 
 /**
@@ -12,6 +12,7 @@ export const useComposerTyping = ({
   disabled,
 }) => {
   const { emitTyping } = useChatSocketActions();
+  const isTypingRef = useRef(false);
   
   // ============ CLEANUP ============
   
@@ -32,6 +33,7 @@ export const useComposerTyping = ({
     if (roomId) {
       emitTyping(roomId, true, 'text');
     }
+    isTypingRef.current = true;
   }, [disabled, onTyping, roomId, emitTyping]);
   
   // ============ STOP TYPING ============
@@ -47,6 +49,7 @@ export const useComposerTyping = ({
     if (roomId) {
       emitTyping(roomId, false, 'text');
     }
+    isTypingRef.current = false;
   }, [onTyping, roomId, emitTyping, typingTimeoutRef]);
   
   // ============ RESET TYPING TIMEOUT ============
@@ -72,13 +75,17 @@ export const useComposerTyping = ({
     
     setText(newText);
     
-    if (!isEmpty && wasEmpty) {
-      // Начал печатать
-      startTyping();
-    } else if (isEmpty && !wasEmpty) {
+    if (isEmpty && !wasEmpty) {
       // Закончил печатать
       stopTyping();
-    } else if (!isEmpty) {
+      return;
+    }
+
+    if (!isEmpty) {
+      if (!isTypingRef.current) {
+        // Начал печатать (включая повтор после тайм-аута)
+        startTyping();
+      }
       // Продолжает печатать - сбрасываем таймер
       resetTypingTimeout();
     }

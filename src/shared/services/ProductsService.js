@@ -882,9 +882,21 @@ const ProductsService = {
             updateProgress(40, 'Начинаем загрузку изображений...', 0);
 
             const uploadedImages = [];
+            const uploadedImagesSet = new Set();
             let imageUploadErrors = 0;
             const preuploadedImagesMap = data.preuploadedImagesMap || {};
+            const preuploadedUrls = Array.isArray(data.preuploadedUrls)
+                ? data.preuploadedUrls.filter(Boolean)
+                : [];
 
+            if (preuploadedUrls.length > 0) {
+                preuploadedUrls.forEach((url) => {
+                    if (!uploadedImagesSet.has(url)) {
+                        uploadedImagesSet.add(url);
+                        uploadedImages.push(url);
+                    }
+                });
+            }
 
             const maxConcurrentUploads = 2;
             let completedUploads = 0;
@@ -897,7 +909,10 @@ const ProductsService = {
                 );
 
                 if (typeof img === 'string' && (img.startsWith('http://') || img.startsWith('https://'))) {
-                    uploadedImages.push(img);
+                    if (!uploadedImagesSet.has(img)) {
+                        uploadedImagesSet.add(img);
+                        uploadedImages.push(img);
+                    }
                     completedUploads++;
                     updateProgress(
                         40 + (completedUploads / preparedImages.length) * 50,
@@ -908,7 +923,11 @@ const ProductsService = {
                 }
 
                 if (typeof img === 'string' && preuploadedImagesMap[img]?.status === 'done' && preuploadedImagesMap[img]?.url) {
-                    uploadedImages.push(preuploadedImagesMap[img].url);
+                    const preUrl = preuploadedImagesMap[img].url;
+                    if (!uploadedImagesSet.has(preUrl)) {
+                        uploadedImagesSet.add(preUrl);
+                        uploadedImages.push(preUrl);
+                    }
                     completedUploads++;
                     updateProgress(
                         40 + (completedUploads / preparedImages.length) * 50,
@@ -1015,7 +1034,10 @@ const ProductsService = {
 
                 if (uploaded && result.data && result.data.data && result.data.data.imagePath) {
                     const imagePath = result.data.data.imagePath.replace(/\\/g, '/');
-                    uploadedImages.push(imagePath);
+                    if (!uploadedImagesSet.has(imagePath)) {
+                        uploadedImagesSet.add(imagePath);
+                        uploadedImages.push(imagePath);
+                    }
                     console.log(`Изображение ${i + 1} успешно загружено, path:`, imagePath);
                 } else {
                     imageUploadErrors++;
@@ -1029,9 +1051,13 @@ const ProductsService = {
                 );
             };
 
-            for (let start = 0; start < preparedImages.length; start += maxConcurrentUploads) {
-                const batch = preparedImages.slice(start, start + maxConcurrentUploads);
-                await Promise.all(batch.map((img, idx) => uploadImage(img, start + idx)));
+            if (uploadedImages.length < preparedImages.length) {
+                for (let start = 0; start < preparedImages.length; start += maxConcurrentUploads) {
+                    const batch = preparedImages.slice(start, start + maxConcurrentUploads);
+                    await Promise.all(batch.map((img, idx) => uploadImage(img, start + idx)));
+                }
+            } else {
+                updateProgress(70, 'Изображения уже загружены', uploadedImages.length);
             }
 
             if (uploadedImages.length > 0) {

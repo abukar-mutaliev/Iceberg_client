@@ -2,6 +2,7 @@ import React, { useMemo, useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { selectTypingActivities, selectRoomsList } from '@entities/chat/model/selectors';
 
 // ============================================================================
@@ -149,19 +150,11 @@ export const useTypingIndicatorHeight = (roomId) => {
   const typingActivities = useSelector((state) => selectTypingActivities(state, roomId));
   const rooms = useSelector(selectRoomsList);
   const currentUserId = useSelector((state) => state.auth?.user?.id);
-  const [pauseKey, setPauseKey] = useState(0);
-
-  useEffect(() => {
-    return pauseManager.subscribe(() => {
-      setPauseKey(pauseManager.updateKey);
-    });
-  }, []);
 
   return useMemo(() => {
     const activeUsers = Object.entries(typingActivities || {}).filter(([userId, activity]) => {
       if (String(userId) === String(currentUserId)) return false;
       if (!isActivityCurrent(activity.timestamp)) return false;
-      if (pauseManager.hasPause(roomId, userId)) return false;
       return true;
     });
 
@@ -169,44 +162,19 @@ export const useTypingIndicatorHeight = (roomId) => {
 
     const room = rooms.find(r => r.id === roomId);
     return room ? INDICATOR_HEIGHT : 0;
-  }, [typingActivities, rooms, roomId, currentUserId, pauseKey]);
+  }, [typingActivities, rooms, roomId, currentUserId]);
 };
 
 /**
  * Хук для получения активных пользователей с их типами активности
  */
 const useActiveTypingUsers = (roomId, typingActivities, currentUserId) => {
-  const shownUsersRef = useRef(new Set());
-  const pauseActionsRef = useRef({ toSet: [], toClear: [] });
-
-  const activeUsers = useMemo(() => {
-    const now = Date.now();
+  return useMemo(() => {
     const users = [];
-    const currentUserIds = new Set();
-    
-    // Сбрасываем накопленные действия
-    pauseActionsRef.current = { toSet: [], toClear: [] };
 
     Object.entries(typingActivities).forEach(([userId, activity]) => {
       if (String(userId) === String(currentUserId)) return;
-
-      const userKey = String(userId);
-      currentUserIds.add(userKey);
-
-      if (!isActivityCurrent(activity.timestamp, TYPING_TIMEOUT)) {
-        if (shownUsersRef.current.has(userKey)) {
-          // Откладываем установку паузы
-          pauseActionsRef.current.toSet.push(userKey);
-        }
-        return;
-      }
-
-      // Откладываем очистку паузы для активного пользователя
-      if (pauseManager.hasPause(roomId, userKey)) {
-        pauseActionsRef.current.toClear.push(userKey);
-      }
-
-      shownUsersRef.current.add(userKey);
+      if (!isActivityCurrent(activity.timestamp, TYPING_TIMEOUT)) return;
 
       users.push({
         userId,
@@ -215,30 +183,8 @@ const useActiveTypingUsers = (roomId, typingActivities, currentUserId) => {
       });
     });
 
-    return { users, currentUserIds };
+    return users;
   }, [typingActivities, currentUserId, roomId]);
-
-  // Применяем отложенные действия с паузами в useEffect
-  useEffect(() => {
-    const { toSet, toClear } = pauseActionsRef.current;
-    
-    // Устанавливаем паузы
-    toSet.forEach(userKey => {
-      pauseManager.setPause(roomId, userKey);
-    });
-    
-    // Очищаем паузы
-    toClear.forEach(userKey => {
-      pauseManager.clearPause(roomId, userKey);
-    });
-    
-    // Очищаем паузы для пользователей, которых больше нет в активных
-    if (activeUsers.currentUserIds.size > 0) {
-      pauseManager.clearRoomPauses(roomId, activeUsers.currentUserIds);
-    }
-  }, [roomId, typingActivities]);
-
-  return activeUsers.users;
 };
 
 /**
@@ -249,11 +195,13 @@ const useTypingUsersInfo = (roomId, activeTypingUsers, rooms) => {
     if (!roomId || activeTypingUsers.length === 0) return [];
 
     const room = rooms.find(r => r.id === roomId);
-    if (!room) return [];
+    const participants = room?.participants;
 
     return activeTypingUsers
       .map(user => {
-        const userInfo = getUserInfoFromParticipants(user.userId, room.participants);
+        const userInfo = participants
+          ? getUserInfoFromParticipants(user.userId, participants)
+          : null;
         return userInfo
           ? { ...userInfo, type: user.type }
           : { id: user.userId, name: 'Пользователь', avatar: null, type: user.type };
@@ -266,17 +214,15 @@ const useTypingUsersInfo = (roomId, activeTypingUsers, rooms) => {
  * Хук для фильтрации пользователей с учетом пауз
  */
 const useFilteredUsers = (users, roomId) => {
-  const [pauseKey, setPauseKey] = useState(0);
-
   useEffect(() => {
-    return pauseManager.subscribe(() => {
-      setPauseKey(pauseManager.updateKey);
+    users.forEach(user => {
+      if (pauseManager.hasPause(roomId, user.id)) {
+        pauseManager.clearPause(roomId, user.id);
+      }
     });
-  }, []);
+  }, [users, roomId]);
 
-  return useMemo(() => {
-    return users.filter(user => !pauseManager.hasPause(roomId, user.id));
-  }, [users, roomId, pauseKey]);
+  return users;
 };
 
 /**
@@ -464,6 +410,7 @@ const TypingActivityIndicator = ({ users, activityType }) => {
 // ============================================================================
 
 export const TypingIndicator = ({ roomId }) => {
+  const insets = useSafeAreaInsets();
   const typingActivities = useSelector((state) => selectTypingActivities(state, roomId));
   const rooms = useSelector(selectRoomsList);
   const currentUserId = useSelector((state) => state.auth?.user?.id);
@@ -480,17 +427,17 @@ export const TypingIndicator = ({ roomId }) => {
     [typingUsersInfo]
   );
 
-  // Фильтрация пользователей с паузами
-  const filteredTextUsers = useFilteredUsers(textTypingUsers, roomId);
-  const filteredVoiceUsers = useFilteredUsers(voiceTypingUsers, roomId);
-
-  // Управление паузами
-  usePauseManagement(textTypingUsers, voiceTypingUsers, roomId);
+  const filteredTextUsers = textTypingUsers;
+  const filteredVoiceUsers = voiceTypingUsers;
 
   // Анимация
   const hasActiveUsers = filteredTextUsers.length > 0 || filteredVoiceUsers.length > 0;
   const slideAnim = useIndicatorAnimation(hasActiveUsers);
 
+
+  const containerBottom = useMemo(() => {
+    return 35 + insets.bottom;
+  }, [insets.bottom]);
 
   // Ранний выход, если нет активных пользователей
   if (typingUsersInfo.length === 0) {
@@ -501,6 +448,7 @@ export const TypingIndicator = ({ roomId }) => {
     <Animated.View
       style={[
         styles.container,
+        { bottom: containerBottom },
         {
           transform: [
             {
@@ -527,7 +475,6 @@ export const TypingIndicator = ({ roomId }) => {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 50,
     left: 16,
     right: 16,
     zIndex: 10,

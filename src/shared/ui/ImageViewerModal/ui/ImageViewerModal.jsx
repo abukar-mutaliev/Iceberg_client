@@ -12,6 +12,7 @@ import {
   Modal,
   FlatList,
   Animated,
+  ActionSheetIOS,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -67,34 +68,61 @@ const ViewerOverlay = ({
       }
 
       if (await Sharing.isAvailableAsync()) {
-        showAlert({
-          type: 'info',
-          title: 'Изображение',
-          message: 'Выберите действие',
-          buttons: [
-            { 
-              text: 'Поделиться', 
-              onPress: async () => {
+        if (Platform.OS === 'ios') {
+          ActionSheetIOS.showActionSheetWithOptions(
+            {
+              title: 'Изображение',
+              message: 'Выберите действие',
+              options: ['Поделиться', 'Сохранить', 'Отмена'],
+              cancelButtonIndex: 2,
+            },
+            async (buttonIndex) => {
+              if (buttonIndex === 0) {
                 try {
                   await Sharing.shareAsync(localUri, {
                     mimeType: 'image/jpeg',
-                    dialogTitle: 'Сохранить изображение'
+                    dialogTitle: 'Сохранить изображение',
                   });
                 } catch (shareError) {
                   console.error('Ошибка шаринга:', shareError);
                   showError('Ошибка', 'Не удалось поделиться изображением');
                 }
               }
-            },
-            {
-              text: 'Сохранить',
-              onPress: async () => {
+              if (buttonIndex === 1) {
                 await saveToGallery(localUri);
+              }
+            }
+          );
+        } else {
+          showAlert({
+            type: 'info',
+            title: 'Изображение',
+            message: 'Выберите действие',
+            buttons: [
+              { 
+                text: 'Поделиться', 
+                onPress: async () => {
+                  try {
+                    await Sharing.shareAsync(localUri, {
+                      mimeType: 'image/jpeg',
+                      dialogTitle: 'Сохранить изображение'
+                    });
+                  } catch (shareError) {
+                    console.error('Ошибка шаринга:', shareError);
+                    showError('Ошибка', 'Не удалось поделиться изображением');
+                  }
+                }
               },
-            },
-            { text: 'Отмена', style: 'cancel' },
-          ]
-        });
+              {
+                text: 'Сохранить',
+                onPress: async () => {
+                  await saveToGallery(localUri);
+                },
+              },
+              { text: 'Отмена', style: 'cancel' },
+            ]
+          });
+        }
       } else {
         await saveToGallery(localUri);
       }

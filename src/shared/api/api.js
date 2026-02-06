@@ -28,6 +28,15 @@ const SILENT_ENDPOINTS = [
     // "/api/push-tokens" - временно убрали для отладки сохранения токенов
 ];
 
+const shouldSilenceErrorLog = (error, url) => {
+    const isNotFound =
+        error?.response?.status === 404 ||
+        error?.status === 404 ||
+        error?.response?.data?.status === 404;
+    const isMyFeedback = typeof url === 'string' && url.includes('/api/app-feedback/my');
+    return isNotFound && isMyFeedback;
+};
+
 const apiDebugLog = (type, message, data) => {
     if (!DEBUG) return;
 
@@ -883,9 +892,9 @@ export const createProtectedRequest = async (method, url, data = null, config = 
         config.headers['Content-Type'].includes('multipart/form-data');
     
     const isBlobResponse = config.responseType === 'blob';
+    let finalUrl = url;
 
     try {
-        let finalUrl = url;
         if (isFileUpload) {
             config.transformRequest = [(data) => data];
             // Увеличиваем timeout до 5 минут для медленных соединений
@@ -930,7 +939,9 @@ export const createProtectedRequest = async (method, url, data = null, config = 
         return response.data;
 
     } catch (error) {
-        console.error(`Error in ${method.toUpperCase()} ${url}:`, error.message || 'Unknown error');
+        if (!shouldSilenceErrorLog(error, finalUrl)) {
+            console.error(`Error in ${method.toUpperCase()} ${finalUrl}:`, error.message || 'Unknown error');
+        }
 
         if (isFileUpload && error.code === 'ERR_NETWORK') {
             throw {
@@ -958,7 +969,9 @@ export const createPublicRequest = async (method, url, data = null, config = {})
         return response.data;
 
     } catch (error) {
-        console.error(`Error in ${method.toUpperCase()} ${url}:`, error.message || 'Unknown error');
+        if (!shouldSilenceErrorLog(error, url)) {
+            console.error(`Error in ${method.toUpperCase()} ${url}:`, error.message || 'Unknown error');
+        }
         throw error.response?.data || error;
     }
 };

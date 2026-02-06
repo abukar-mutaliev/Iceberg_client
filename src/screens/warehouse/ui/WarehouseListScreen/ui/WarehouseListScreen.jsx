@@ -127,6 +127,13 @@ export const WarehouseListScreen = () => {
                                         </Text>
                                     </View>
                                 )}
+                                {item.maintenanceMode && (
+                                    <View style={styles.maintenanceBadge}>
+                                        <Text style={styles.maintenanceText}>
+                                            Технические работы
+                                        </Text>
+                                    </View>
+                                )}
                                 <View style={[styles.typeBadge, item.isMain ? styles.typeBadgeMain : styles.typeBadgeBranch]}>
                                     <Text style={[styles.typeText, item.isMain ? styles.typeTextMain : styles.typeTextBranch]}>
                                         {item.isMain ? 'Основной' : 'Филиал'}
@@ -433,6 +440,21 @@ const styles = StyleSheet.create({
     districtText: {
         fontSize: 12,
         color: '#1E40AF',
+        fontFamily: FontFamily.sFProText,
+        fontWeight: '600',
+    },
+    maintenanceBadge: {
+        alignSelf: 'flex-start',
+        backgroundColor: '#FFF7ED',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#FED7AA',
+    },
+    maintenanceText: {
+        fontSize: 12,
+        color: '#C2410C',
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
     },

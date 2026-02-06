@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, ScrollView, View, BackHandler } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { normalize } from '@shared/lib/normalize';
 import { FAQSection } from '../../FAQSection';
@@ -12,6 +12,7 @@ import { AppFeedbackSection } from '../../AppFeedbackSection';
  */
 export const HelpCenterScreen = () => {
     const navigation = useNavigation();
+    const insets = useSafeAreaInsets();
 
     useFocusEffect(
         React.useCallback(() => {
@@ -38,7 +39,10 @@ export const HelpCenterScreen = () => {
         <SafeAreaView style={styles.container} edges={['left', 'right']}>
             <ScrollView
                 style={styles.scrollView}
-                contentContainerStyle={styles.scrollContent}
+                contentContainerStyle={[
+                    styles.scrollContent,
+                    { paddingBottom: insets.bottom + normalize(64) },
+                ]}
                 showsVerticalScrollIndicator={false}
             >
                 <FAQSection />

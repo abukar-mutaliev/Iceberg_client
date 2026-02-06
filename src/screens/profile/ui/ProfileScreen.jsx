@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {  StyleSheet, ScrollView, View, ActivityIndicator, Text } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import { ProfileInfo } from "@features/profile";
@@ -12,6 +12,7 @@ import { useAuth } from "@entities/auth/hooks/useAuth";
 export const ProfileScreen = ({ onProductPress }) => {
     const navigation = useNavigation();
     const dispatch = useDispatch();
+    const insets = useSafeAreaInsets();
     const { isAuthenticated, currentUser } = useAuth();
     const isProfileLoading = useSelector(selectProfileLoading);
     const profile = useSelector(selectProfile);
@@ -92,7 +93,12 @@ export const ProfileScreen = ({ onProductPress }) => {
 
     return (
         <SafeAreaView style={styles.container} key={screenKey} edges={['left', 'right', 'bottom']}>
-            <ScrollView>
+            <ScrollView
+                contentContainerStyle={[
+                    styles.scrollContent,
+                    { paddingBottom: insets.bottom + normalize(48) },
+                ]}
+            >
                 {isAuthenticated && (
                     <ProfileHeader />
                 )}
@@ -116,6 +122,9 @@ const styles = StyleSheet.create({
     content: {
         flex: 1,
         marginTop: normalize(8),
+    },
+    scrollContent: {
+        paddingBottom: normalize(32),
     },
     loadingContainer: {
         flex: 1,

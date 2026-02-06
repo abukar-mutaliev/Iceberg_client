@@ -6,7 +6,7 @@ export default {
     expo: {
         name: IS_DEV ? 'Iceberg (Dev)' : 'Iceberg',
         slug: 'iceberg',
-        version: '1.3.5',
+        version: '1.3.6',
         scheme: 'iceberg',
         icon: './assets/notification-icon.png',
         splash: {
@@ -115,8 +115,8 @@ export default {
         },
         android: {
             package: 'com.abuingush.iceberg',
-            versionCode: 46,
-            versionName: '1.4.6',
+            versionCode: 47,
+            versionName: '1.4.7',
             icon: './assets/icon.png',
             adaptiveIcon: {
                 foregroundImage: './assets/icon.png',
@@ -167,7 +167,7 @@ export default {
             deploymentTarget: '15.1',  // ← Минимальная версия iOS
             icon: './assets/icon.png',
             bundleIdentifier: 'com.abuingush.iceberg',
-            buildNumber: '5',
+            buildNumber: '6',
             config: {
                 googleMapsApiKey: 'AIzaSyDev-AMb24bvlQn3a-b4DGsItiYB6su6_E',
                 yandexMapsApiKey: '17ee620d-aee1-482c-acc9-c7144fd46087',

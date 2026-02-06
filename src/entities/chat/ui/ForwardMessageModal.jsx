@@ -109,7 +109,9 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
                 
                 // Пробуем разные варианты структуры ответа
                 let users = [];
-                if (response?.data?.data?.users) {
+                if (response?.data?.users) {
+                    users = response.data.users;
+                } else if (response?.data?.data?.users) {
                     users = response.data.data.users;
                 } else if (Array.isArray(response?.data?.data)) {
                     users = response.data.data;
@@ -117,6 +119,10 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
                     users = response.data;
                 } else if (response?.users) {
                     users = response.users;
+                } else if (response?.data?.status === 'success' && Array.isArray(response?.data?.data?.users)) {
+                    users = response.data.data.users;
+                } else if (response?.status === 'success' && Array.isArray(response?.data?.users)) {
+                    users = response.data.users;
                 }
 
                 // Убеждаемся, что users - это массив
@@ -124,9 +130,39 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
                     console.warn('searchUsers response is not an array:', response);
                     users = [];
                 }
-                
-                // Фильтруем себя из результатов
-                const filteredUsers = users.filter(u => u?.id && u.id !== currentUserId);
+
+                // Фильтруем себя и пользователей, у которых уже есть DIRECT-чат
+                const directChatUserIds = new Set(
+                    rooms
+                        .filter(room => room?.type === 'DIRECT')
+                        .flatMap(room =>
+                            Array.isArray(room?.participants)
+                                ? room.participants
+                                      .map(p => p?.userId ?? p?.user?.id)
+                                      .filter(Boolean)
+                                : []
+                        )
+                );
+
+                const filteredUsers = users.filter(u => {
+                    if (!u?.id || u.id === currentUserId) return false;
+                    return !directChatUserIds.has(u.id);
+                });
+
+                console.log('[ForwardMessageModal] searchUsers result', {
+                    query: searchQuery,
+                    total: Array.isArray(users) ? users.length : 0,
+                    filtered: filteredUsers.length,
+                    sample: filteredUsers[0]
+                        ? {
+                              id: filteredUsers[0].id,
+                              role: filteredUsers[0].role,
+                              name: filteredUsers[0].name,
+                              displayName: filteredUsers[0].displayName,
+                              email: filteredUsers[0].email,
+                          }
+                        : null,
+                });
                 setSearchedUsers(filteredUsers);
             } catch (error) {
                 console.error('Error searching users:', error);
@@ -326,22 +362,28 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
     const getRoomName = (room) => {
         if (!room) return 'Неизвестный чат';
 
-        // Для групп и каналов используется title
-        if (room.title) return room.title;
-        if (room.name) return room.name;
-
-        // Для личных чатов - имя собеседника
+        // Для личных чатов - имя собеседника (игнорируем title/name если это DIRECT)
         if (room.type === 'DIRECT' && room.participants) {
-            const partner = room.participants.find(p => (p?.userId ?? p?.user?.id) !== currentUserId);
+            const currentId = currentUserId != null ? String(currentUserId) : null;
+            const partner = room.participants.find(p => {
+                const participantId = p?.userId ?? p?.user?.id;
+                if (!participantId || currentId == null) return false;
+                return String(participantId) !== currentId;
+            });
             if (partner?.user) {
                 return partner.user.client?.name ||
                     partner.user.admin?.name ||
                     partner.user.employee?.name ||
+                    partner.user.driver?.name ||
                     partner.user.supplier?.contactPerson ||
                     partner.user.email?.split('@')[0] ||
                     'Собеседник';
             }
         }
+
+        // Для групп и каналов используется title/name
+        if (room.title) return room.title;
+        if (room.name) return room.name;
 
         return 'Чат';
     };
@@ -411,9 +453,12 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
         const itemData = { type: 'user', id: item.id };
         const isSelected = isItemSelected(itemData);
 
-        const userName = item.client?.name ||
+        const userName = item.displayName ||
+            item.name ||
+            item.client?.name ||
             item.admin?.name ||
             item.employee?.name ||
+            item.driver?.name ||
             item.supplier?.contactPerson ||
             item.email?.split('@')[0] ||
             'Пользователь';

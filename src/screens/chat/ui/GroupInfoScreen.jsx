@@ -87,87 +87,115 @@ export const GroupInfoScreen = ({ route, navigation }) => {
   const roomData = roomDataRaw?.room ? roomDataRaw.room : roomDataRaw;
   const { showError, showAlert, showConfirm } = useCustomAlert();
   
-  const [participants, setParticipants] = useState([]);
   const [loading, setLoading] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [avatarModalVisible, setAvatarModalVisible] = useState(false);
   const [showFullDescription, setShowFullDescription] = useState(false);
   const [adminMenuVisible, setAdminMenuVisible] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
+  const [roleOverrides, setRoleOverrides] = useState({});
 
-  // Загружаем участников группы
-  useEffect(() => {
-    if (roomData?.participants) {
-      // Для каналов BROADCAST и клиентов - показываем только менеджеров и водителей склада клиента
-      if (roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT') {
-        const clientDistrictId = currentUser?.client?.districtId;
-        
-        const filteredParticipants = roomData.participants.filter(p => {
-          const user = p.user || p;
-          const userRole = user?.role;
-          
-          // Скрываем суперадминов от клиентов
-          if (userRole === 'ADMIN') {
-            const isSuperAdmin = user?.admin?.isSuperAdmin;
-            if (isSuperAdmin) return false;
-            return true; // Обычные админы показываются
-          }
-          
-          // Сотрудники - только менеджеры из района клиента
-          if (userRole === 'EMPLOYEE') {
-            const processingRole = user?.employee?.processingRole;
-            // Скрываем сборщиков, упаковщиков, контроллеров качества, курьеров
-            const hiddenRoles = ['PICKER', 'PACKER', 'QUALITY_CHECKER', 'COURIER'];
-            if (processingRole && hiddenRoles.includes(processingRole)) {
-              return false;
-            }
-            
-            // Показываем только если есть должность (например "Менеджер по продажам")
-            const position = user?.employee?.position;
-            if (!position) {
-              return false; // Скрываем сотрудников без должности
-            }
-            
-            // Проверяем, что сотрудник работает на складе в районе клиента
-            const employeeWarehouseDistrictId = user?.employee?.warehouse?.districtId;
-            // Если у сотрудника есть склад, проверяем район
-            if (employeeWarehouseDistrictId && clientDistrictId && employeeWarehouseDistrictId !== clientDistrictId) {
-              return false; // Скрываем сотрудников других районов
-            }
-            
-            return true;
-          }
-          
-          // Поставщиков не показываем
-          if (userRole === 'SUPPLIER') {
+  const normalizeUserId = (value) => {
+    if (value == null) return null;
+    return String(value);
+  };
+
+  const getParticipantUserId = (participant) => {
+    if (!participant) return null;
+    const id = participant.userId ?? participant.user?.id ?? participant.id;
+    return normalizeUserId(id);
+  };
+
+  const participants = React.useMemo(() => {
+    if (!roomData?.participants) return [];
+
+    // Для каналов BROADCAST и клиентов - показываем только менеджеров и водителей склада клиента
+    if (roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT') {
+      const clientDistrictId = currentUser?.client?.districtId;
+
+      return roomData.participants.filter(p => {
+        const user = p.user || p;
+        const userRole = user?.role;
+
+        // Скрываем суперадминов от клиентов
+        if (userRole === 'ADMIN') {
+          const isSuperAdmin = user?.admin?.isSuperAdmin;
+          if (isSuperAdmin) return false;
+          return true; // Обычные админы показываются
+        }
+
+        // Сотрудники - только менеджеры из района клиента
+        if (userRole === 'EMPLOYEE') {
+          const processingRole = user?.employee?.processingRole;
+          // Скрываем сборщиков, упаковщиков, контроллеров качества, курьеров
+          const hiddenRoles = ['PICKER', 'PACKER', 'QUALITY_CHECKER', 'COURIER'];
+          if (processingRole && hiddenRoles.includes(processingRole)) {
             return false;
           }
-          
-          // Водители - только если их склад в районе клиента
-          if (userRole === 'DRIVER') {
-            // Если у клиента нет района - не показываем водителей
-            if (!clientDistrictId) return false;
-            
-            // Проверяем, что склад водителя находится в районе клиента
-            const driverWarehouseDistrictId = user?.driver?.warehouse?.district?.id || 
-                                              user?.driver?.warehouse?.districtId;
-            if (driverWarehouseDistrictId === clientDistrictId) {
-              return true;
-            }
-            
-            // Запасной вариант: проверяем районы обслуживания водителя
-            const driverDistricts = user?.driver?.districts || [];
-            return driverDistricts.some(d => d.id === clientDistrictId);
+
+          // Показываем только если есть должность (например "Менеджер по продажам")
+          const position = user?.employee?.position;
+          if (!position) {
+            return false; // Скрываем сотрудников без должности
           }
-          
+
+          // Проверяем, что сотрудник работает на складе в районе клиента
+          const employeeWarehouseDistrictId = user?.employee?.warehouse?.districtId;
+          // Если у сотрудника есть склад, проверяем район
+          if (employeeWarehouseDistrictId && clientDistrictId && employeeWarehouseDistrictId !== clientDistrictId) {
+            return false; // Скрываем сотрудников других районов
+          }
+
+          return true;
+        }
+
+        // Поставщиков не показываем
+        if (userRole === 'SUPPLIER') {
           return false;
-        });
-        setParticipants(filteredParticipants);
-      } else {
-        setParticipants(roomData.participants);
-      }
+        }
+
+        // Водители - только если их склад в районе клиента
+        if (userRole === 'DRIVER') {
+          // Если у клиента нет района - не показываем водителей
+          if (!clientDistrictId) return false;
+
+          // Проверяем, что склад водителя находится в районе клиента
+          const driverWarehouseDistrictId = user?.driver?.warehouse?.district?.id || 
+                                            user?.driver?.warehouse?.districtId;
+          if (driverWarehouseDistrictId === clientDistrictId) {
+            return true;
+          }
+
+          // Запасной вариант: проверяем районы обслуживания водителя
+          const driverDistricts = user?.driver?.districts || [];
+          return driverDistricts.some(d => d.id === clientDistrictId);
+        }
+
+        return false;
+      });
     }
-  }, [roomData, currentUser?.role, currentUser?.client?.districtId]);
+
+    return roomData.participants;
+  }, [roomData?.participants, roomData?.type, currentUser?.role, currentUser?.client?.districtId]);
+
+  // Убираем оверрайды, если сервер уже вернул актуальную роль
+  useEffect(() => {
+    if (!roomData?.participants) return;
+    setRoleOverrides(prev => {
+      if (!Object.keys(prev).length) return prev;
+      let changed = false;
+      const next = { ...prev };
+      roomData.participants.forEach(p => {
+        const userId = getParticipantUserId(p);
+        if (!userId) return;
+        if (next[userId] && next[userId] === p.role) {
+          delete next[userId];
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [roomData?.participants]);
 
   // Обновляем данные группы при возврате на экран
   useEffect(() => {
@@ -243,6 +271,18 @@ export const GroupInfoScreen = ({ route, navigation }) => {
         return '';
     }
   };
+
+  const getParticipantId = useCallback((participant) => {
+    return getParticipantUserId(participant);
+  }, []);
+
+  const getEffectiveRole = useCallback((participant) => {
+    const participantId = getParticipantId(participant);
+    if (participantId && roleOverrides[participantId]) {
+      return roleOverrides[participantId];
+    }
+    return participant.role;
+  }, [getParticipantId, roleOverrides]);
 
   // Функция для получения должности/роли и склада участника
   const getEmployeePosition = (participant) => {
@@ -584,7 +624,11 @@ export const GroupInfoScreen = ({ route, navigation }) => {
 
   const assignAdmin = async (userId) => {
     try {
+      const normalizedUserId = normalizeUserId(userId);
       setLoading(true);
+      if (normalizedUserId) {
+        setRoleOverrides(prev => ({ ...prev, [normalizedUserId]: 'ADMIN' }));
+      }
       await ChatApi.assignAdmin(roomId, userId);
       await dispatch(fetchRoom(roomId));
       setAdminMenuVisible(false);
@@ -599,7 +643,11 @@ export const GroupInfoScreen = ({ route, navigation }) => {
 
   const revokeAdmin = async (userId) => {
     try {
+      const normalizedUserId = normalizeUserId(userId);
       setLoading(true);
+      if (normalizedUserId) {
+        setRoleOverrides(prev => ({ ...prev, [normalizedUserId]: 'MEMBER' }));
+      }
       await ChatApi.revokeAdmin(roomId, userId);
       await dispatch(fetchRoom(roomId));
       setAdminMenuVisible(false);
@@ -740,18 +788,17 @@ export const GroupInfoScreen = ({ route, navigation }) => {
       fromScreen: 'GroupInfo',
       roomId: roomId
     };
-    console.log('===== GroupInfoScreen: Navigate to UserPublicProfile =====');
-    console.log('UserPublicProfile params:', JSON.stringify(navParams, null, 2));
     navigation.navigate('UserPublicProfile', navParams);
   };
 
   const renderParticipant = ({ item }) => {
     const displayName = getUserDisplayName(item);
     const avatarUri = getUserAvatar(item);
-    const roleLabel = getRoleLabel(item);
+    const effectiveRole = getEffectiveRole(item);
+    const roleLabel = getRoleLabel({ ...item, role: effectiveRole });
     const employeePosition = getEmployeePosition(item);
     const isCurrentUser = (item.userId || item.user?.id) === currentUser?.id;
-    const canManageThis = canEditGroup && !isCurrentUser && item.role !== 'OWNER';
+    const canManageThis = canEditGroup && !isCurrentUser && effectiveRole !== 'OWNER';
 
     return (
       <Pressable
@@ -929,6 +976,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
             data={participants}
             renderItem={renderParticipant}
             keyExtractor={(item) => String(item.userId || item.user?.id || item.id)}
+            extraData={roleOverrides}
             scrollEnabled={false}
             ItemSeparatorComponent={() => <View style={styles.separator} />}
           />
