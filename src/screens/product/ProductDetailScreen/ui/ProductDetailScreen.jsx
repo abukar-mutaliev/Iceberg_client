@@ -6,7 +6,7 @@ import {
     TouchableOpacity,
     FlatList,
     ActivityIndicator} from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { useFocusEffect } from '@react-navigation/native';
 import { resetCurrentProduct, fetchProductById } from '@entities/product';
@@ -24,7 +24,6 @@ import { useCustomAlert } from '@shared/ui/CustomAlert';
 import { ReusableModal } from '@shared/ui/Modal/ui/ReusableModal';
 import { RepostProductContent } from '@widgets/product/ProductContent/ui/RepostProductContent';
 import { ImageViewerModal } from '@shared/ui/ImageViewerModal/ui/ImageViewerModal';
-import { FeedbacksList } from '@entities/feedback/ui/FeedbacksList';
 import { employeeApiMethods } from '@entities/user/api/userApi';
 import { profileApi } from '@entities/profile/api/profileApi';
 import { fetchAllDistricts } from '@entities/district/model/slice';
@@ -69,10 +68,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     const [isLoadingManager, setIsLoadingManager] = useState(false);
     const rooms = useSelector(selectRoomsList) || [];
     const loadMoreCalledRef = useRef(false);
-    const reviewsSectionYRef = useRef(0);
     const districts = useSelector(state => state.district?.districts || []);
-    const insets = useSafeAreaInsets();
-    const scrollBottomPadding = 80 + insets.bottom + 16;
 
     // Кастомные хуки для разделения логики
     const {
@@ -91,6 +87,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         handleContentSizeChange,
         handleQuantityChange,
         handleTabChange,
+        handleViewAllReviews,
         handleProductUpdated,
         setSelectedQuantity,
         setOptimisticProduct
@@ -340,172 +337,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         setIsRepostModalVisible(true);
     }, [isAuthenticated, showInfo]);
 
-    // ============================================================================
-    // СТАРАЯ ЛОГИКА: Открытие чата с поставщиком товара
-    // ============================================================================
-    // ВНИМАНИЕ: Эта функциональность временно отключена, но сохранена для 
-    // возможного использования в будущем. Она открывает чат с поставщиком товара,
-    // создавая или находя существующий PRODUCT чат и отправляя туда товар.
-    // 
-    // В будущем может понадобиться для:
-    // - Прямого общения клиента с поставщиком по вопросам о товаре
-    // - Уточнения характеристик, наличия, условий поставки
-    // - Обсуждения индивидуальных условий сотрудничества
-    // ============================================================================
-    /*
-    const handleAskQuestionToSupplier = useCallback(async () => {
-        if (!isAuthenticated) {
-            showInfo('Требуется авторизация', 'Для отправки вопросов необходимо войти в систему');
-            return;
-        }
-
-        try {
-            if (!enrichedProduct?.id) return;
-            
-            const currentUserId = currentUser?.id;
-            if (!currentUserId) {
-                showCustomError('Ошибка', 'Не удалось определить пользователя');
-                return;
-            }
-
-            // Ищем существующий чат типа PRODUCT с этим productId
-            const existingRoom = rooms.find(room => {
-                const roomData = room.room || room;
-                return roomData.type === 'PRODUCT' && 
-                       roomData.productId === enrichedProduct.id &&
-                       roomData.participants?.some(p => {
-                           const participantId = p?.userId ?? p?.user?.id;
-                           return participantId === currentUserId;
-                       });
-            });
-
-            let roomId;
-            let roomObj;
-            let shouldSendProduct = false;
-
-            if (existingRoom) {
-                // Найден существующий чат - используем его
-                roomObj = existingRoom.room || existingRoom;
-                roomId = roomObj.id || existingRoom.id;
-                shouldSendProduct = true; // Отправляем товар повторно
-            } else {
-                // Чата нет - создаем новый через API
-                const res = await ChatApi.getOrCreateProductRoom(enrichedProduct.id);
-                const data = res?.data;
-                roomObj = data?.room || data?.data?.room;
-                roomId = roomObj?.id || data?.data?.id || data?.roomId || data?.id;
-
-                if (!roomId) {
-                    console.warn('handleAskQuestion: roomId not found in response', res?.data);
-                    return;
-                }
-                shouldSendProduct = true; // Отправляем товар при создании нового чата
-                
-                // Загружаем продукт в Redux store для отображения в списке чатов
-                try {
-                    await dispatch(fetchProductById(enrichedProduct.id));
-                } catch (error) {
-                    console.warn('Failed to load product to store:', error);
-                }
-                
-                // Немедленно добавляем созданную комнату в Redux store
-                // чтобы она сразу появилась в списке чатов с правильным productId
-                if (roomObj && roomObj.id) {
-                    const roomToAdd = {
-                        ...roomObj,
-                        productId: enrichedProduct.id,
-                        type: 'PRODUCT'
-                    };
-                    dispatch(hydrateRooms({ rooms: [roomToAdd] }));
-                }
-                
-                // Обновляем список комнат, чтобы получить актуальные данные
-                try {
-                    await dispatch(fetchRooms({ page: 1, forceRefresh: true }));
-                } catch (error) {
-                    console.warn('Failed to refresh rooms list:', error);
-                }
-            }
-
-            const productInfo = {
-                id: enrichedProduct.id,
-                name: enrichedProduct.name,
-                price: enrichedProduct.price,
-                image: enrichedProduct.images?.[0] || null,
-                supplierId: enrichedProduct.supplierId,
-                supplier: supplier || enrichedProduct.supplier,
-                ...enrichedProduct
-            };
-
-            const companyName = supplier?.companyName 
-                || supplier?.user?.companyName
-                || enrichedProduct.supplier?.companyName 
-                || enrichedProduct.supplier?.user?.companyName
-                || supplier?.name
-                || enrichedProduct.supplier?.name
-                || 'Компания';
-
-            const roomTitle = companyName;
-
-            // Отправляем товар в чат, если нужно
-            if (shouldSendProduct) {
-                try {
-                    const result = await dispatch(sendProduct({
-                        roomId,
-                        productId: enrichedProduct.id
-                    }));
-
-                    if (result.error) {
-                        console.warn('Failed to send product to chat:', result.error);
-                        // Продолжаем открывать чат даже если отправка не удалась
-                    }
-                } catch (sendError) {
-                    console.error('Error sending product to chat:', sendError);
-                    // Продолжаем открывать чат даже если отправка не удалась
-                }
-            }
-            
-            // Открываем чат
-            try {
-                const rootNavigation =
-                    navigation?.getParent?.('AppStack') ||
-                    navigation?.getParent?.()?.getParent?.() ||
-                    null;
-
-                (rootNavigation || navigation).navigate('ChatRoom', {
-                    roomId,
-                    roomTitle,
-                    productId: enrichedProduct.id,
-                    productInfo,
-                    roomData: roomObj,
-                    currentUserId,
-                    fromScreen: 'ProductDetail'
-                });
-            } catch (err) {
-                const rootNavigation =
-                    navigation?.getParent?.('AppStack') ||
-                    navigation?.getParent?.()?.getParent?.() ||
-                    null;
-
-                (rootNavigation || navigation).navigate('ChatRoom', {
-                    roomId,
-                    roomTitle,
-                    productId: enrichedProduct.id,
-                    productInfo,
-                    roomData: roomObj,
-                    currentUserId,
-                    fromScreen: 'ProductDetail'
-                });
-            }
-        } catch (e) {
-            console.error('Open product chat error', e);
-            showCustomError('Ошибка', 'Не удалось открыть чат');
-        }
-    }, [enrichedProduct, supplier, navigation, currentUser, isAuthenticated, showInfo, showCustomError, rooms, dispatch]);
-    */
-
-    // ============================================================================
-    // НОВАЯ ЛОГИКА: Открытие чата с менеджером района
+   
     // ============================================================================
     // Обработчик вопроса о продукте - открывает чат с менеджером района пользователя
     const handleAskQuestion = useCallback(async () => {
@@ -749,31 +581,6 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         }
     }, [selectedDistrictId, dispatch, showCustomError, openChatWithManagerByDistrict, productId, enrichedProduct?.id]);
 
-    const handleReviewsSectionLayout = useCallback((event) => {
-        reviewsSectionYRef.current = event.nativeEvent.layout.y;
-    }, []);
-
-    const scrollToReviewsSection = useCallback(() => {
-        if (!scrollViewRef.current) return;
-
-        const targetY = Math.max((reviewsSectionYRef.current || 0) - 12, 0);
-        scrollViewRef.current.scrollTo({ y: targetY, animated: true });
-    }, [scrollViewRef]);
-
-    const handleTabChangeWithScroll = useCallback((tabId) => {
-        handleTabChange(tabId);
-
-        if (tabId === 'reviews') {
-            createSafeTimeout(() => {
-                scrollToReviewsSection();
-            }, 50);
-        }
-    }, [handleTabChange, createSafeTimeout, scrollToReviewsSection]);
-
-    const handleViewAllReviews = useCallback(() => {
-        handleTabChangeWithScroll('reviews');
-    }, [handleTabChangeWithScroll]);
-
     // Мемоизированные компоненты
     const displayProduct = useMemo(() => {
         if (!enrichedProduct || !productId || enrichedProduct.id !== productId) {
@@ -809,10 +616,14 @@ export const ProductDetailScreen = ({ route, navigation }) => {
             <ProductContent
                 product={displayProduct}
                 feedbacks={feedbacks || []}
+                feedbackLoading={false}
+                feedbackError={null}
+                isFeedbacksLoaded={Array.isArray(feedbacks) && feedbacks.length > 0}
                 quantity={cartQuantity || 0}
                 activeTab={activeTab}
                 onQuantityChange={handleQuantityChange}
-                onTabChange={handleTabChangeWithScroll}
+                onTabChange={handleTabChange}
+                onRefreshFeedbacks={handleRefreshFeedbacks}
                 isUpdatingQuantity={isUpdating}
                 maxQuantity={displayProduct?.availableQuantity || displayProduct?.stockQuantity}
                 isInCart={isInCart}
@@ -821,6 +632,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 onRemoveFromCart={handleCartRemove}
                 autoCartManagement={true}
                 currentUser={currentUser}
+                navigation={navigation}
             />
         );
     }, [
@@ -829,13 +641,15 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         cartQuantity,
         activeTab,
         handleQuantityChange,
-        handleTabChangeWithScroll,
+        handleTabChange,
+        handleRefreshFeedbacks,
         isUpdating,
         isInCart,
         handleCartAdd,
         handleCartUpdate,
         handleCartRemove,
-        currentUser
+        currentUser,
+        navigation,
     ]);
 
     const productActionsComponent = useMemo(() => {
@@ -865,53 +679,15 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         ) : null
     ), [activeTab, supplier, handleSupplierPress, productId, displayProduct?.supplierId]);
 
-    const reviewsSectionComponent = useMemo(() => {
-        if (!displayProduct?.id) return null;
-
-        const hasMoreFeedbacks = Array.isArray(feedbacks) && feedbacks.length > 3;
-        const feedbacksLoaded = Array.isArray(feedbacks) && feedbacks.length > 0;
-
-        return (
-            <View style={styles.reviewsSection} onLayout={handleReviewsSectionLayout}>
-                {activeTab === 'reviews' ? (
-                    <FeedbacksList
-                        productId={displayProduct?.id}
-                        feedbacks={feedbacks || []}
-                        isLoading={false}
-                        error={null}
-                        isDataLoaded={feedbacksLoaded}
-                        onRefresh={handleRefreshFeedbacks}
-                        style={styles.feedbacksList}
-                    />
-                ) : (
-                    <>
-                        <RecentFeedbacks
-                            feedbacks={feedbacks}
-                            productId={displayProduct?.id || 0}
-                            limit={3}
-                        />
-                        {hasMoreFeedbacks && (
-                            <TouchableOpacity
-                                style={styles.viewAllReviewsButton}
-                                onPress={handleViewAllReviews}
-                            >
-                                <Text style={styles.viewAllReviewsText}>
-                                    Показать все отзывы
-                                </Text>
-                            </TouchableOpacity>
-                        )}
-                    </>
-                )}
-            </View>
-        );
-    }, [
-        activeTab,
-        displayProduct?.id,
-        feedbacks,
-        handleReviewsSectionLayout,
-        handleRefreshFeedbacks,
-        handleViewAllReviews
-    ]);
+    const recentFeedbacksComponent = useMemo(() => (
+        activeTab === 'description' && Array.isArray(feedbacks) && feedbacks.length > 0 ? (
+            <RecentFeedbacks
+                feedbacks={feedbacks}
+                productId={displayProduct?.id || 0}
+                onViewAllPress={handleViewAllReviews}
+            />
+        ) : null
+    ), [activeTab, feedbacks, displayProduct?.id, handleViewAllReviews]);
 
     // Объединяем похожие и остальные товары в один массив
     const allProductsForDisplay = useMemo(() => {
@@ -981,7 +757,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     if (isLoading && !displayProduct) {
         return (
             <View style={styles.fullScreenContainer}>
-                <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
+                <SafeAreaView style={styles.safeArea} edges={['bottom', 'left', 'right']}>
                     <StaticBackgroundGradient />
                     <View style={styles.errorContainer}>
                         <Loader type="youtube" color={colors.primary || Color.blue2} text={null} />
@@ -994,7 +770,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     if (error && !displayProduct) {
         return (
             <View style={styles.fullScreenContainer}>
-                <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
+                <SafeAreaView style={styles.safeArea} edges={['bottom', 'left', 'right']}>
                     <StaticBackgroundGradient />
                     <View style={styles.errorContainer}>
                         <Text style={[styles.errorText, { color: Color.dark }]}>
@@ -1020,7 +796,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     if (!displayProduct && !isLoading && productId && (error || !product)) {
         return (
             <View style={styles.fullScreenContainer}>
-                <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
+                <SafeAreaView style={styles.safeArea} edges={['bottom', 'left', 'right']}>
                     <StaticBackgroundGradient />
                     <View style={styles.errorContainer}>
                         <Text style={[styles.errorText, { color: colors.primary }]}>
@@ -1049,17 +825,14 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     // Основной рендер
     return (
         <View style={styles.fullScreenContainer}>
-            <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
+            <SafeAreaView style={styles.safeArea} edges={['bottom', 'left', 'right']}>
                 <ScrollView
                     ref={scrollViewRef}
                     style={styles.contentScrollView}
                     showsVerticalScrollIndicator={false}
                     onScroll={handleScrollWithPagination}
                     scrollEventThrottle={16}
-                    contentContainerStyle={[
-                        styles.scrollContent,
-                        { paddingBottom: scrollBottomPadding }
-                    ]}
+                    contentContainerStyle={styles.scrollContent}
                     onContentSizeChange={handleContentSizeChange}
                     overScrollMode="never"
                     bounces={false}
@@ -1073,9 +846,9 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                     <View style={styles.contentContainer}>
                         {productHeaderComponent}
                         {productContentComponent}
-                        {brandCardComponent}
                         {productActionsComponent}
-                        {reviewsSectionComponent}
+                        {brandCardComponent}
+                        {recentFeedbacksComponent}
                         {similarProductsComponent}
                     </View>
                 </ScrollView>
@@ -1292,27 +1065,6 @@ const styles = StyleSheet.create({
     },
     districtSaveButtonText: {
         fontSize: 16,
-        fontWeight: '600',
-        color: '#FFFFFF',
-        fontFamily: FontFamily.sFProText,
-    },
-    reviewsSection: {
-        marginTop: 10,
-        paddingHorizontal: 16,
-    },
-    feedbacksList: {
-        paddingHorizontal: 0,
-    },
-    viewAllReviewsButton: {
-        marginTop: 8,
-        alignSelf: 'center',
-        paddingVertical: 8,
-        paddingHorizontal: 16,
-        borderRadius: 16,
-        backgroundColor: Color.blue2,
-    },
-    viewAllReviewsText: {
-        fontSize: 14,
         fontWeight: '600',
         color: '#FFFFFF',
         fontFamily: FontFamily.sFProText,

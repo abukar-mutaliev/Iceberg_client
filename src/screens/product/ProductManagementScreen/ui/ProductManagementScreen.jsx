@@ -8,6 +8,7 @@ import { ProductManagementCard } from './ProductManagementCard';
 import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { useProductManagement } from '@entities/product';
 import { smartNavigateToProductDetail } from '@shared/utils/NavigationUtils';
+
 export const ProductManagementScreen = ({ route }) => {
     const navigation = useNavigation();
     const { isAuthenticated, currentUser } = useAuth();
@@ -316,7 +317,7 @@ const styles = StyleSheet.create({
         padding: 20,
     },
     listContainer: {
-        paddingBottom: 20,
+        paddingBottom: 196,
     },
     emptyContainer: {
         flex: 1,

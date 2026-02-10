@@ -106,28 +106,6 @@ export const useProductDetailData = (productId, isMountedRef, createSafeTimeout,
         }
     }, [isLoadingMoreProducts, hasMoreProducts, otherProductsPage, dispatch, productId]);
 
-    // Обработка ошибок продукта
-    useEffect(() => {
-        if (!isMountedRef.current || !error) return;
-        
-        if (error.includes('не найден') || error.includes('недоступен') || error.includes('Продукт не найден')) {
-            // Делаем одну повторную попытку загрузки через 1 секунду (для новосозданных продуктов)
-            const retryTimeout = createSafeTimeout(() => {
-                if (isMountedRef.current && productId) {
-                    console.log('[useProductDetailData] Повторная попытка загрузки продукта:', productId);
-                    refreshData(true);
-                    
-                    // НЕ возвращаемся назад автоматически при ошибке - это может быть временная проблема
-                    // или проблема восстановления из кэша. Пусть пользователь сам решит, что делать.
-                }
-            }, 1000);
-            
-            return () => {
-                if (retryTimeout) clearTimeout(retryTimeout);
-            };
-        }
-    }, [error, createSafeTimeout, isMountedRef, productId, refreshData]);
-
     // Обработка отсутствующего productId
     useEffect(() => {
         if (!productId) {

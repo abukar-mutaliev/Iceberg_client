@@ -48,6 +48,8 @@ class ChatCacheService {
     this.pendingDownloads = new Map(); // Трекинг активных загрузок
     this.downloadQueue = []; // Очередь загрузок
     this.isProcessingQueue = false;
+    this.failedUrls = new Set(); // URL, по которым получен 404 — не повторять
+    this.queuedUrls = new Set(); // URL уже в очереди — дедупликация
   }
 
   /**
@@ -493,6 +495,8 @@ class ChatCacheService {
       return url;
     }
     
+    if (this.failedUrls.has(url)) return url;
+    
     // Проверяем, есть ли уже в кэше
     const cachedPath = await this.isMediaCached(url);
     if (cachedPath) {
@@ -523,47 +527,62 @@ class ChatCacheService {
    */
   async downloadMedia(url, localPath, type) {
     try {
-      // Формируем абсолютный URL если нужно
-      let absoluteUrl = getImageUrl(url);
-      
+      const absoluteUrl = getImageUrl(url);
       const downloadResult = await FileSystem.downloadAsync(absoluteUrl, localPath);
       
       if (downloadResult.status === 200) {
-        // Добавляем в индекс
         this.mediaIndex.set(url, localPath);
-        
-        // Периодически сохраняем индекс
         if (this.mediaIndex.size % 10 === 0) {
           this.saveMediaIndex();
         }
-        
         return localPath;
-      } else {
-        console.warn(`Download failed for ${url}: status ${downloadResult.status}`);
-        return url;
       }
+      // 404 — не повторять, один раз логируем
+      if (downloadResult.status === 404) {
+        if (!this.failedUrls.has(url)) {
+          this.failedUrls.add(url);
+          if (__DEV__) {
+            console.warn(`[ChatCache] Изображение недоступно (404): ${url}`);
+          }
+        }
+      }
+      return url;
     } catch (error) {
-      console.warn(`Failed to cache media ${url}:`, error.message);
+      if (__DEV__) {
+        console.warn(`[ChatCache] Ошибка кэширования ${url}:`, error.message);
+      }
       return url;
     }
   }
 
   /**
-   * Добавить медиа в очередь кэширования
+   * Добавить медиа в очередь кэширования (с дедупликацией и пропуском ранее провалившихся)
    */
   queueMediaCaching(messages) {
     if (!messages || !Array.isArray(messages)) return;
 
+    const addToQueue = (url, type) => {
+      if (!url || this.failedUrls.has(url) || this.queuedUrls.has(url) || this.mediaIndex.has(url)) return;
+      this.queuedUrls.add(url);
+      this.downloadQueue.push({ url, type });
+    };
+
     for (const message of messages) {
-      // Кэшируем изображения
+      // Кэшируем изображения из attachments
       if (message.attachments && Array.isArray(message.attachments)) {
         for (const attachment of message.attachments) {
           if (attachment.type === 'IMAGE' && attachment.path) {
-            this.downloadQueue.push({ url: attachment.path, type: 'image' });
+            addToQueue(attachment.path, 'image');
           } else if (attachment.type === 'VOICE' && attachment.path) {
-            this.downloadQueue.push({ url: attachment.path, type: 'voice' });
+            addToQueue(attachment.path, 'voice');
           }
         }
+      }
+
+      // Кэшируем изображение склада из сообщений WAREHOUSE
+      const warehouseImage = message?.warehouse?.image;
+      if (warehouseImage && typeof warehouseImage === 'string' && !warehouseImage.startsWith('file://') && !warehouseImage.startsWith('content://')) {
+        addToQueue(warehouseImage, 'image');
       }
     }
     
@@ -579,20 +598,18 @@ class ChatCacheService {
     this.isProcessingQueue = true;
     
     try {
-      // Обрабатываем по 3 файла параллельно
       while (this.downloadQueue.length > 0) {
         const batch = this.downloadQueue.splice(0, 3);
+        for (const item of batch) {
+          this.queuedUrls.delete(item.url);
+        }
         await Promise.allSettled(
           batch.map(item => this.cacheMedia(item.url, item.type))
         );
-        
-        // Небольшая пауза между батчами
         await new Promise(resolve => setTimeout(resolve, 100));
       }
     } finally {
       this.isProcessingQueue = false;
-      
-      // Сохраняем индекс после обработки очереди
       await this.saveMediaIndex();
     }
   }
@@ -604,29 +621,46 @@ class ChatCacheService {
     if (!messages || !Array.isArray(messages)) return messages;
 
     return messages.map(message => {
-      if (!message.attachments || !Array.isArray(message.attachments)) {
-        return message;
+      let result = { ...message };
+
+      // Подмена путей в attachments
+      if (message.attachments && Array.isArray(message.attachments)) {
+        result.attachments = message.attachments.map(attachment => {
+          if (!attachment.path) return attachment;
+
+          const localPath = this.mediaIndex.get(attachment.path);
+          if (localPath) {
+            return {
+              ...attachment,
+              originalPath: attachment.path,
+              path: localPath,
+              isCached: true,
+            };
+          }
+          return attachment;
+        });
       }
 
-      const updatedAttachments = message.attachments.map(attachment => {
-        if (!attachment.path) return attachment;
-
-        const localPath = this.mediaIndex.get(attachment.path);
+      // Подмена изображения склада в сообщениях WAREHOUSE
+      if (message?.warehouse && message.warehouse.image && typeof message.warehouse.image === 'string') {
+        const warehouseImagePath = message.warehouse.image;
+        // Проверяем по исходному пути и по нормализованному URL (разные форматы от API)
+        const localPath = this.mediaIndex.get(warehouseImagePath) || 
+          this.mediaIndex.get(getImageUrl(warehouseImagePath) || warehouseImagePath);
         if (localPath) {
-          return {
-            ...attachment,
-            originalPath: attachment.path,
-            path: localPath,
-            isCached: true,
+          result = {
+            ...result,
+            warehouse: {
+              ...result.warehouse,
+              originalImage: warehouseImagePath,
+              image: localPath,
+              isImageCached: true,
+            },
           };
         }
-        return attachment;
-      });
+      }
 
-      return {
-        ...message,
-        attachments: updatedAttachments,
-      };
+      return result;
     });
   }
 

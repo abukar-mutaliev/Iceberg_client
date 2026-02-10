@@ -82,7 +82,7 @@ const ProfileFormComponent = ({
 
                     // Обновляем только те поля, которые отсутствуют в текущем состоянии формы
                     Object.keys(valuesWithDefaults).forEach(key => {
-                        if (updatedValues[key] === undefined || updatedValues[key] === null) {
+                        if (updatedValues[key] === undefined || updatedValues[key] === null || updatedValues[key] === '') {
                             if (key === 'districts' && Array.isArray(valuesWithDefaults[key])) {
                                 updatedValues[key] = [...valuesWithDefaults[key]];
                                 hasChanges = true;

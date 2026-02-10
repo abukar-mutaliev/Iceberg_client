@@ -79,7 +79,6 @@ export const RegisterForm = ({ onVerification }) => {
     const genderOptions = [
         { value: 'MALE', label: 'Мужской' },
         { value: 'FEMALE', label: 'Женский' },
-        { value: 'OTHER', label: 'Другой' },
         { value: 'PREFER_NOT_TO_SAY', label: 'Предпочитаю не указывать' }
     ];
 

@@ -886,6 +886,7 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
 
         try {
             // Готовим данные для отправки
+            const hasWarehouseQuantities = formData.warehouseQuantities.length > 0;
             const productData = {
                 name: formData.name,
                 categories: formData.categories, // отправляем массив категорий
@@ -897,10 +898,15 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
                 discount: formData.discount || null,
                 description: formData.description || '',
                 supplierId: canChangeSupplier ? formData.supplierId : undefined,
-                warehouses: formData.warehouseQuantities.length > 0 ? JSON.stringify(formData.warehouseQuantities) : "all",
             };
 
-            if (product && product.id && formData.warehouseQuantities.length > 0) {
+            if (hasWarehouseQuantities) {
+                productData.warehouses = JSON.stringify(formData.warehouseQuantities);
+            } else if (!product || !product.id) {
+                productData.warehouses = "all";
+            }
+
+            if (product && product.id && hasWarehouseQuantities) {
                 productData.warehouseStocks = formData.warehouseQuantities;
             }
 

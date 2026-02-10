@@ -134,6 +134,10 @@ const ViewerOverlay = ({
     }
   };
 
+  const safeTop = Platform.OS === 'ios' ? insets.top : 0;
+  const headerHeight = 56 + safeTop;
+  const menuTop = headerHeight;
+
   const saveToGallery = async (fileUri) => {
     try {
       if (Constants.appOwnership === 'expo') {
@@ -213,16 +217,14 @@ const ViewerOverlay = ({
     }
   };
 
-  const headerOffset = 0;
-  const menuTop = 56;
-
   return (
     <>
       {/* Header */}
       <View style={[styles.header, { 
         top: 0,
-        paddingTop: headerOffset,
+        paddingTop: safeTop,
         paddingBottom: 0,
+        height: headerHeight,
       }]}>
         <TouchableOpacity onPress={onClose} style={styles.iconBtn}>
           <Text style={styles.back}>←</Text>
@@ -251,7 +253,7 @@ const ViewerOverlay = ({
 
       {headerRight && (
         <View style={[styles.headerRight, { 
-          top: headerOffset 
+          top: safeTop 
         }]}>
           {headerRight}
         </View>
@@ -304,6 +306,7 @@ export const ImageViewerModal = ({
   const gestureModeRef = useRef('undetermined');
   const lastTranslationYRef = useRef(0);
   const lastVelocityYRef = useRef(0);
+  const didInitialScrollRef = useRef(false);
   const GalleryList = Platform.OS === 'android' ? GestureFlatList : FlatList;
   const [isVerticalDragging, setIsVerticalDragging] = useState(false);
 
@@ -335,13 +338,16 @@ export const ImageViewerModal = ({
       translateY.setValue(0);
       opacity.setValue(1);
       
-      // Сбрасываем индекс
       const safeIndex = Math.max(0, Math.min(initialIndex, normalized.length - 1));
       setCurrentIndex(safeIndex);
 
-      // Прокручиваем к начальному индексу
-      if (normalized.length > 1 && flatListRef.current) {
-        // Увеличиваем задержку для iOS
+      // Прокручиваем к начальному индексу только при первом открытии (не при смене слайда кнопкой), чтобы избежать бесконечного переключения
+      if (
+        normalized.length > 1 &&
+        flatListRef.current &&
+        !didInitialScrollRef.current
+      ) {
+        didInitialScrollRef.current = true;
         const delay = Platform.OS === 'ios' ? 200 : 100;
         setTimeout(() => {
           flatListRef.current?.scrollToIndex({
@@ -356,6 +362,7 @@ export const ImageViewerModal = ({
         setStatusBarHidden(true);
       }
     } else {
+      didInitialScrollRef.current = false;
       // Возвращаем статус-бар при закрытии
       if (Platform.OS === 'ios') {
         setStatusBarHidden(false);

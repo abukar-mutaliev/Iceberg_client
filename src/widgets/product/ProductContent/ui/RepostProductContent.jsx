@@ -855,9 +855,15 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
           activeOpacity={0.7}
         >
           <View style={styles.tabTextContainer}>
-            <Text style={[styles.tabText, adaptiveStyles.tabText, activeTab === 'chats' && styles.activeTabText]}>
-              Мои чаты ({filteredRooms.length})
-            </Text>
+            <View style={styles.tabTextWrapper}>
+              <Text
+                style={[styles.tabText, adaptiveStyles.tabText, activeTab === 'chats' && styles.activeTabText]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {isSmallScreen ? `Чаты (${filteredRooms.length})` : `Мои чаты (${filteredRooms.length})`}
+              </Text>
+            </View>
           </View>
         </TouchableOpacity>
         <TouchableOpacity
@@ -866,9 +872,15 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
           activeOpacity={0.7}
         >
           <View style={styles.tabTextContainer}>
-            <Text style={[styles.tabText, adaptiveStyles.tabText, activeTab === 'search' && styles.activeTabText]}>
-              Поиск пользователей
-            </Text>
+            <View style={styles.tabTextWrapper}>
+              <Text
+                style={[styles.tabText, adaptiveStyles.tabText, activeTab === 'search' && styles.activeTabText]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {isSmallScreen ? 'Поиск' : 'Поиск пользователей'}
+              </Text>
+            </View>
           </View>
         </TouchableOpacity>
       </View>
@@ -894,6 +906,7 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
           <TextInput
             style={[styles.searchInput, adaptiveStyles.searchInput]}
             placeholder="Поиск по имени или компании..."
+            placeholderTextColor="#999999"
             value={searchQuery}
             onChangeText={handleSearchChange}
             autoCapitalize="none"
@@ -993,6 +1006,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: '100%',
   },
+  tabTextWrapper: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   tabText: {
     fontSize: 14,
     color: '#666666',
@@ -1003,6 +1021,9 @@ const styles = StyleSheet.create({
     ...Platform.select({
       ios: {
         textAlign: 'center',
+      },
+      android: {
+        textAlignVertical: 'center',
       },
     }),
   },

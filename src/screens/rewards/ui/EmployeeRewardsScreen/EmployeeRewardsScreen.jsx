@@ -144,60 +144,27 @@ export const EmployeeRewardsScreen = React.memo(({ navigation }) => {
             // Проверка прав доступа
             if (!hasAccess) {
                 return (
-                    <>
-                        <MonthSelector
-                            selectedMonth={selectedMonth}
-                            selectedYear={selectedYear}
-                            onMonthChange={handleMonthChange}
+                    <View style={styles.contentContainer}>
+                        <ErrorState
+                            onRetry={() => {}}
+                            errorMessage="Недостаточно прав для просмотра вознаграждений"
                         />
-                        <View style={styles.contentContainer}>
-                            <ErrorState
-                                onRetry={() => {}}
-                                errorMessage="Недостаточно прав для просмотра вознаграждений"
-                            />
-                        </View>
-                    </>
+                    </View>
                 );
             }
 
             // Загрузка (показываем ТОЛЬКО при первой загрузке, не при смене месяца)
             if (dataHook.loadingStates.isAnyLoading && !refreshing && currentData.length === 0) {
-                return (
-                    <>
-                        <MonthSelector
-                            selectedMonth={selectedMonth}
-                            selectedYear={selectedYear}
-                            onMonthChange={handleMonthChange}
-                        />
-                        <LoadingState />
-                    </>
-                );
+                return <LoadingState />;
             }
 
             // Ошибка
             if (dataHook.hasErrors) {
-                return (
-                    <>
-                        {/* Фильтр остается видимым даже при ошибке */}
-                        <MonthSelector
-                            selectedMonth={selectedMonth}
-                            selectedYear={selectedYear}
-                            onMonthChange={handleMonthChange}
-                        />
-                        <ErrorState onRetry={handleRetry} />
-                    </>
-                );
+                return <ErrorState onRetry={handleRetry} />;
             }
 
             return (
                 <>
-                    {/* Фильтр по месяцам - ВСЕГДА ПОКАЗЫВАЕМ */}
-                    <MonthSelector
-                        selectedMonth={selectedMonth}
-                        selectedYear={selectedYear}
-                        onMonthChange={handleMonthChange}
-                    />
-
                     {/* Итоговая карточка для режима просмотра вознаграждений сотрудника */}
                     {(dataHook.isViewingSpecificEmployee || (isEmployee && viewMode === 'employee')) && employeeStatistics && dataHook.hasDataToShow && (
                         <MonthlySummaryCard
@@ -297,6 +264,16 @@ export const EmployeeRewardsScreen = React.memo(({ navigation }) => {
     try {
         return (
             <View style={styles.screen}>
+                <HeaderWithBackButton
+                    title={navigationHook.screenTitle}
+                    onBackPress={navigationHook.handleBackNavigation}
+                    showBackButton={true}
+                />
+                <MonthSelector
+                    selectedMonth={selectedMonth}
+                    selectedYear={selectedYear}
+                    onMonthChange={handleMonthChange}
+                />
                 <ScrollView
                     style={styles.scrollContainer}
                     contentContainerStyle={styles.scrollContent}
@@ -310,12 +287,6 @@ export const EmployeeRewardsScreen = React.memo(({ navigation }) => {
                     showsVerticalScrollIndicator={false}
                     nestedScrollEnabled={true}
                 >
-                    <HeaderWithBackButton
-                        title={navigationHook.screenTitle}
-                        onBackPress={navigationHook.handleBackNavigation}
-                        showBackButton={true}
-                    />
-
                     <View style={styles.contentContainer}>
                         {renderContent()}
                     </View>

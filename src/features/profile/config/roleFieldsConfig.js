@@ -46,7 +46,6 @@ export const roleFieldsConfig = {
             options: [
                 { value: 'MALE', label: 'Мужской' },
                 { value: 'FEMALE', label: 'Женский' },
-                { value: 'OTHER', label: 'Другой' },
                 { value: 'PREFER_NOT_TO_SAY', label: 'Предпочитаю не указывать' },
             ],
             required: false,
@@ -168,7 +167,6 @@ export const roleFieldsConfig = {
             options: [
                 { value: 'MALE', label: 'Мужской' },
                 { value: 'FEMALE', label: 'Женский' },
-                { value: 'OTHER', label: 'Другой' },
                 { value: 'PREFER_NOT_TO_SAY', label: 'Предпочитаю не указывать' },
             ],
             required: false,
@@ -186,16 +184,6 @@ export const roleFieldsConfig = {
             errorMessage: 'ФИО должно содержать не менее 2 символов',
             required: true,
             order: 1,
-        },
-        position: {
-            id: 'position',
-            type: 'text',
-            label: 'Должность',
-            placeholder: 'Введите должность',
-            validation: (value) => !value || value.length >= 2,
-            errorMessage: 'Должность должна содержать не менее 2 символов',
-            required: false,
-            order: 2,
         },
         phone: {
             id: 'phone',
@@ -219,7 +207,7 @@ export const roleFieldsConfig = {
             validation: (value) => !value || value.length >= 5,
             errorMessage: 'Адрес должен содержать не менее 5 символов',
             required: false,
-            order: 4,
+            order: 2,
         },
         districts: {
             id: 'districts',
@@ -227,7 +215,7 @@ export const roleFieldsConfig = {
             label: 'Районы работы',
             placeholder: 'Выберите районы работы',
             required: false,
-            order: 5,
+            order: 3,
         },
         warehouseId: {
             id: 'warehouseId',
@@ -235,7 +223,7 @@ export const roleFieldsConfig = {
             label: 'Склад',
             placeholder: 'Выберите склад',
             required: false,
-            order: 5.5,
+            order: 3.5,
         },
         gender: {
             id: 'gender',
@@ -244,11 +232,10 @@ export const roleFieldsConfig = {
             options: [
                 { value: 'MALE', label: 'Мужской' },
                 { value: 'FEMALE', label: 'Женский' },
-                { value: 'OTHER', label: 'Другой' },
                 { value: 'PREFER_NOT_TO_SAY', label: 'Предпочитаю не указывать' },
             ],
             required: false,
-            order: 6,
+            order: 4,
         },
     },
 
@@ -302,7 +289,6 @@ export const roleFieldsConfig = {
             options: [
                 { value: 'MALE', label: 'Мужской' },
                 { value: 'FEMALE', label: 'Женский' },
-                { value: 'OTHER', label: 'Другой' },
                 { value: 'PREFER_NOT_TO_SAY', label: 'Предпочитаю не указывать' },
             ],
             required: false,
@@ -352,7 +338,6 @@ export const roleFieldsConfig = {
             options: [
                 { value: 'MALE', label: 'Мужской' },
                 { value: 'FEMALE', label: 'Женский' },
-                { value: 'OTHER', label: 'Другой' },
                 { value: 'PREFER_NOT_TO_SAY', label: 'Предпочитаю не указывать' },
             ],
             required: false,

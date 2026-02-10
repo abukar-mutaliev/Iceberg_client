@@ -7,6 +7,8 @@ import { selectDriverLoading, selectDriverError } from '@entities/driver';
 import { StopDetailsContent } from './StopDetailsContent';
 import { LoadingState } from '@shared/ui/states/LoadingState';
 import { ErrorState } from '@shared/ui/states/ErrorState';
+import IceCreamTruckIcon from '@shared/ui/Icon/MainScreen/IceCreamTruckIcon';
+import { Color } from '@app/styles/GlobalStyles';
 import { selectStopById, selectStops, fetchAllStops, clearStopCache, fetchDriverStops, activateStop, skipStop, completeStop, cancelStop } from "@entities/stop";
 
 export const StopDetailsScreen = ({ navigation }) => {
@@ -69,25 +71,6 @@ export const StopDetailsScreen = ({ navigation }) => {
             setLocalStop(stop);
         }
     }, [stop]);
-
-    // Дополнительная проверка после загрузки данных
-    useEffect(() => {
-        if (stopId && allStops.length > 0 && !stop && retryCount < 3) {
-            const timer = setTimeout(() => {
-                setRetryCount(prev => prev + 1);
-
-                // Ищем остановку вручную в загруженных данных
-                const foundStop = allStops.find(s => s.id === parseInt(stopId));
-
-                if (!foundStop && retryCount < 2) {
-                    // Повторная загрузка если остановка все еще не найдена
-                    loadStopsData();
-                }
-            }, 1000 * (retryCount + 1)); // Увеличиваем задержку с каждой попыткой
-
-            return () => clearTimeout(timer);
-        }
-    }, [stopId, stop, allStops.length, retryCount, loadStopsData]);
 
     // Фокус на экране - дополнительная проверка и перезагрузка после редактирования
     useFocusEffect(
@@ -185,6 +168,8 @@ export const StopDetailsScreen = ({ navigation }) => {
     if (!stopId) {
         return (
             <ErrorState
+                icon={<IceCreamTruckIcon width={64} height={64} fill={Color.blue2} />}
+                title="Остановка не найдена"
                 message="Не указан идентификатор остановки"
                 onRetry={handleGoBack}
                 buttonText="Вернуться назад"
@@ -200,9 +185,13 @@ export const StopDetailsScreen = ({ navigation }) => {
 
         return (
             <ErrorState
+                icon={<IceCreamTruckIcon width={64} height={64} fill={Color.blue2} />}
+                title="Остановка недоступна"
                 message={errorMessage}
                 onRetry={handleRetry}
                 buttonText={retryCount < 3 ? "Повторить загрузку" : "Обновить данные"}
+                onSecondary={handleGoBack}
+                secondaryButtonText="Вернуться назад"
             />
         );
     }
@@ -211,6 +200,8 @@ export const StopDetailsScreen = ({ navigation }) => {
     if (error) {
         return (
             <ErrorState
+                icon={<IceCreamTruckIcon width={64} height={64} fill={Color.blue2} />}
+                title="Ошибка загрузки"
                 message={error}
                 onRetry={handleGoBack}
                 buttonText="Вернуться назад"

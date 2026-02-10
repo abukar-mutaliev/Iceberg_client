@@ -231,7 +231,7 @@ export const AddGroupMembersScreen = ({ route, navigation }) => {
         await dispatch(fetchRoom(roomId));
         
         const participantsText = selectedUsers.length === 1 
-          ? `${selectedUsers[0]?.name || 'Участник'} добавлен в группу` 
+          ? `${selectedUsers[0]?.name || 'Участник'} добавлен(-на) в группу` 
           : `${selectedUsers.length} участник${selectedUsers.length < 5 ? 'а' : 'ов'} добавлено в группу`;
         
         showSuccess(
@@ -409,13 +409,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5E5',
     backgroundColor: '#FFFFFF',
   },
   backButton: {
-    padding: 8,
+    paddingHorizontal: 8,
   },
   backButtonText: {
     fontSize: 24,

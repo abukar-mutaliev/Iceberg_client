@@ -1,4 +1,4 @@
-import { createProtectedRequest, createPublicRequest, getImageUrl } from '@shared/api/api';
+import { createProtectedRequest, createPublicRequest } from '@shared/api/api';
 
 const formatFeedback = (feedback, userData) => {
     // Если в отзыве уже есть клиент с именем, возвращаем его как есть с проверкой на photoUrls
@@ -7,22 +7,24 @@ const formatFeedback = (feedback, userData) => {
         return {
             ...feedback,
             photoUrls: feedback.photoUrls || (feedback.photos ? feedback.photos.map(photo =>
-                getImageUrl(photo) || photo
-            ).filter(Boolean) : [])
+                `${process.env.REACT_APP_API_URL || ''}/uploads/${photo}`
+            ) : [])
         };
     }
 
     // Проверяем, принадлежит ли отзыв текущему пользователю по id профиля
     if (userData && userData.profile && feedback.clientId === userData.profile.id) {
+        const currentUserId = userData.id ?? userData.userId;
         return {
             ...feedback,
             client: {
                 id: feedback.clientId,
-                name: 'Вы'
+                name: 'Вы',
+                ...(currentUserId != null && { user: { id: currentUserId } }),
             },
             photoUrls: feedback.photoUrls || (feedback.photos ? feedback.photos.map(photo =>
-                getImageUrl(photo) || photo
-            ).filter(Boolean) : [])
+                `${process.env.REACT_APP_API_URL || ''}/uploads/${photo}`
+            ) : [])
         };
     }
 
@@ -36,8 +38,8 @@ const formatFeedback = (feedback, userData) => {
                 name: feedback.client.name || `Пользователь ${feedback.clientId}`
             },
             photoUrls: feedback.photoUrls || (feedback.photos ? feedback.photos.map(photo =>
-                getImageUrl(photo) || photo
-            ).filter(Boolean) : [])
+                `${process.env.REACT_APP_API_URL || ''}/uploads/${photo}`
+            ) : [])
         };
     }
 
@@ -45,17 +47,21 @@ const formatFeedback = (feedback, userData) => {
     // ПРИМЕЧАНИЕ: В идеале здесь нужно получить реальное имя пользователя из API,
     // но как временное решение используем clientId
     if (feedback.clientId) {
-        // Если у нас есть данные о клиенте из сервера
+        const authorUserId = feedback.userId ?? feedback.client?.user?.id ?? feedback.client?.userId;
+        const clientWithUser = authorUserId != null
+            ? { user: { id: authorUserId } }
+            : {};
         if (feedback.clientName) {
             return {
                 ...feedback,
                 client: {
                     id: feedback.clientId,
-                    name: feedback.clientName
+                    name: feedback.clientName,
+                    ...clientWithUser,
                 },
                 photoUrls: feedback.photoUrls || (feedback.photos ? feedback.photos.map(photo =>
-                    getImageUrl(photo) || photo
-                ).filter(Boolean) : [])
+                    `${process.env.REACT_APP_API_URL || ''}/uploads/${photo}`
+                ) : [])
             };
         }
 
@@ -63,21 +69,21 @@ const formatFeedback = (feedback, userData) => {
             ...feedback,
             client: {
                 id: feedback.clientId,
-                // Используем просто "Клиент" вместо "Пользователь ID"
-                name: `Клиент`
+                name: `Клиент`,
+                ...clientWithUser,
             },
             photoUrls: feedback.photoUrls || (feedback.photos ? feedback.photos.map(photo =>
-                getImageUrl(photo) || photo
-            ).filter(Boolean) : [])
+                `${process.env.REACT_APP_API_URL || ''}/uploads/${photo}`
+            ) : [])
         };
     }
 
     // Убедимся, что у отзыва есть поле photoUrls, даже если photos пустой
     return {
         ...feedback,
-            photoUrls: feedback.photoUrls || (feedback.photos ? feedback.photos.map(photo =>
-                getImageUrl(photo) || photo
-            ).filter(Boolean) : [])
+        photoUrls: feedback.photoUrls || (feedback.photos ? feedback.photos.map(photo =>
+            `${process.env.REACT_APP_API_URL || ''}/uploads/${photo}`
+        ) : [])
     };
 };
 
@@ -146,27 +152,6 @@ export const feedbackApi = {
             return response;
         } catch (error) {
             console.error('Ошибка при получении отзывов:', error);
-            throw error;
-        }
-    },
-
-    getSupplierFeedbacks: async (supplierId, userData) => {
-        try {
-            // Публичный эндпоинт - получаем все отзывы поставщика одним запросом
-            const response = await createPublicRequest('get', `/api/feedbacks/supplier/${supplierId}`);
-
-            if (response && response.status === 'success' && Array.isArray(response.data)) {
-                // Форматируем все отзывы
-                const formattedFeedbacks = formatFeedbacks(response.data, userData);
-                return {
-                    ...response,
-                    data: formattedFeedbacks
-                };
-            }
-
-            return response;
-        } catch (error) {
-            console.error(`Ошибка при получении отзывов поставщика ${supplierId}:`, error);
             throw error;
         }
     },

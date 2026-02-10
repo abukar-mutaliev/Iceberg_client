@@ -1177,6 +1177,15 @@ const WarehouseMessage = ({
 
     const finalWarehouseId = transformedWarehouse.id || warehouseId;
 
+    if (__DEV__) {
+        console.log('[WarehouseMessage] Warehouse image source', {
+            warehouseId: finalWarehouseId,
+            rawWarehouseImage: warehouse.image,
+            transformedImage: transformedWarehouse.image,
+            messageId: message?.id,
+        });
+    }
+
     return (
         <>
             <BubbleContainer

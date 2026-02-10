@@ -79,6 +79,7 @@ export const AdminWarehouseInfo = ({
     error,
     productId,
     productBasePrice,
+    canManagePrices,
     onPriceUpdated
 }) => {
     // Обогащаем данные складов информацией о ценах для редактирования
@@ -118,7 +119,7 @@ export const AdminWarehouseInfo = ({
             />
 
             {/* Редакторы цен для каждого склада (только для админов) */}
-            {!loading && !error && enrichedWarehouses.length > 0 && (
+            {!loading && !error && enrichedWarehouses.length > 0 && canManagePrices && (
                 <View style={styles.priceEditorsContainer}>
                     <Text style={styles.priceEditorsTitle}>Управление ценами на складах</Text>
                     {enrichedWarehouses.map((warehouse) => (
@@ -136,6 +137,15 @@ export const AdminWarehouseInfo = ({
                     ))}
                 </View>
             )}
+
+            {!loading && !error && enrichedWarehouses.length > 0 && !canManagePrices && (
+                <View style={styles.priceEditorsContainer}>
+                    <Text style={styles.priceEditorsTitle}>Управление ценами на складах</Text>
+                    <Text style={styles.priceEditorsHint}>
+                        Изменение цен доступно только суперадмину.
+                    </Text>
+                </View>
+            )}
         </View>
     );
 };
@@ -147,6 +157,7 @@ const styles = StyleSheet.create({
     priceEditorsContainer: {
         marginTop: normalize(16),
         paddingHorizontal: normalize(16),
+        paddingBottom: 90
     },
     priceEditorsTitle: {
         fontSize: FontSize.size_lg,
@@ -154,6 +165,11 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         color: Color.textPrimary,
         marginBottom: normalize(12),
+    },
+    priceEditorsHint: {
+        fontSize: FontSize.size_sm,
+        fontFamily: FontFamily.sFProText,
+        color: Color.textSecondary,
     },
     priceEditorCard: {
         backgroundColor: '#FFFFFF',

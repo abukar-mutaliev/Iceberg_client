@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, Image, StyleSheet } from 'react-native';
+import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { FontFamily } from '@app/styles/GlobalStyles';
 import { RatingStarIcon, AvatarPlaceholder } from '@shared/ui/Icon/DetailScreenIcons';
@@ -12,8 +12,9 @@ import { getImageUrl } from '@shared/api/api';
  * @param {Object} props
  * @param {Object} props.feedback - Данные отзыва
  * @param {Object} props.currentUser - Текущий пользователь
+ * @param {function(number|string)} [props.onAuthorPress] - Колбэк при нажатии на аватар или имя (передаётся userId/clientId)
  */
-export const FeedbackCardHeader = ({ feedback, currentUser }) => {
+export const FeedbackCardHeader = ({ feedback, currentUser, onAuthorPress }) => {
     const { colors } = useTheme();
 
     const {
@@ -51,8 +52,12 @@ export const FeedbackCardHeader = ({ feedback, currentUser }) => {
 
     const hasValidAvatarUrl = !!fixedAvatarUrl;
 
-    return (
-        <View style={styles.header}>
+    // ID автора для перехода в профиль: используем user id (для getUserById), не client/profile id
+    const authorId = feedback.userId ?? client?.user?.id ?? feedback.client?.userId ?? clientId;
+    const canPressAuthor = authorId != null && authorId !== '' && typeof onAuthorPress === 'function';
+
+    const headerContent = (
+        <>
             {/* Аватар пользователя */}
             <View style={styles.avatarContainer}>
                 {hasValidAvatarUrl ? (
@@ -62,7 +67,6 @@ export const FeedbackCardHeader = ({ feedback, currentUser }) => {
                         resizeMode="cover"
                         onError={(e) => {
                             // Тихая обработка ошибок загрузки аватара (404 - нормальное поведение)
-                            // Ошибка логируется только если это не 404
                             const error = e.nativeEvent.error;
                             if (error && !error.message?.includes('404') && !error.message?.includes('Not Found')) {
                                 if (process.env.NODE_ENV === 'development') {
@@ -98,6 +102,22 @@ export const FeedbackCardHeader = ({ feedback, currentUser }) => {
                     />
                 ))}
             </View>
+        </>
+    );
+
+    return (
+        <View style={styles.header}>
+            {canPressAuthor ? (
+                <TouchableOpacity
+                    style={styles.authorTouchable}
+                    onPress={() => onAuthorPress(authorId)}
+                    activeOpacity={0.7}
+                >
+                    {headerContent}
+                </TouchableOpacity>
+            ) : (
+                headerContent
+            )}
         </View>
     );
 };
@@ -110,6 +130,11 @@ const styles = StyleSheet.create({
         height: 56,
         position: 'relative',
         zIndex: 1,
+    },
+    authorTouchable: {
+        flexDirection: 'row',
+        flex: 1,
+        alignItems: 'center',
     },
     avatarContainer: {
         width: 40,

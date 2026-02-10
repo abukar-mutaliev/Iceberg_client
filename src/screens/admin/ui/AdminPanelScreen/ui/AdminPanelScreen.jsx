@@ -11,6 +11,7 @@ import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
 import IconAdmin from '@shared/ui/Icon/IconAdmin';
 import CustomButton from '@shared/ui/Button/CustomButton';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import { useAuth } from "@entities/auth/hooks/useAuth";
 import { AdminHeader } from "@widgets/admin/AdminHeader";
@@ -211,6 +212,9 @@ export const AdminPanelScreen = () => {
 
     const isAdmin = currentUser?.role === 'ADMIN';
     const isEmployee = currentUser?.role === 'EMPLOYEE';
+    const processingRole = currentUser?.employee?.processingRole;
+    const restrictedRoles = ['PICKER', 'COURIER'];
+    const canViewStockAlerts = isAdmin || (isEmployee && !restrictedRoles.includes(processingRole));
     const isSuperAdmin = currentUser?.admin?.isSuperAdmin || false;
 
 
@@ -273,6 +277,15 @@ export const AdminPanelScreen = () => {
                         title="Список товаров"
                         onPress={handleProductManagementPress}
                     />
+                    {canViewStockAlerts && (
+                        <AdminMenuItem
+                            icon={<Icon name="inventory" size={24} color={Color.blue2} />}
+                            title="Остатки товаров"
+                            onPress={() => navigation.navigate('StockAlerts', {
+                                fromScreen: 'AdminPanel'
+                            })}
+                        />
+                    )}
                 </AdminSection>
 
                 {/* Управление возвратами товаров - показываем всем (ADMIN, EMPLOYEE) */}

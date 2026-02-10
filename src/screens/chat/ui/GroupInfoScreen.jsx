@@ -375,9 +375,12 @@ export const GroupInfoScreen = ({ route, navigation }) => {
     (p.userId || p.user?.id) === currentUser?.id
   );
   const canEditGroup = currentUserParticipant?.role === 'OWNER' || currentUserParticipant?.role === 'ADMIN';
+  const shouldHideEditMenu = currentUser?.role === 'EMPLOYEE' || currentUser?.role === 'DRIVER';
   
   // Права на управление админами группы: только владелец группы или админ приложения
   const canManageGroupAdmins = currentUserParticipant?.role === 'OWNER' || currentUser?.role === 'ADMIN';
+  const isBroadcast = roomData?.type === 'BROADCAST';
+  const shouldDisableMemberAdminMenu = isBroadcast && (currentUser?.role === 'EMPLOYEE' || currentUser?.role === 'DRIVER');
 
   const handleBackPress = () => {
     console.log('===== GroupInfoScreen handleBackPress (BUTTON) =====');
@@ -615,6 +618,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
   };
 
   const handleMemberLongPress = (member) => {
+    if (shouldDisableMemberAdminMenu) return;
     if (!canEditGroup) return;
     if ((member.userId || member.user?.id) === currentUser?.id) return;
     
@@ -798,7 +802,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
     const roleLabel = getRoleLabel({ ...item, role: effectiveRole });
     const employeePosition = getEmployeePosition(item);
     const isCurrentUser = (item.userId || item.user?.id) === currentUser?.id;
-    const canManageThis = canEditGroup && !isCurrentUser && effectiveRole !== 'OWNER';
+    const canManageThis = canEditGroup && !isCurrentUser && effectiveRole !== 'OWNER' && !shouldDisableMemberAdminMenu;
 
     return (
       <Pressable
@@ -852,7 +856,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
             </TouchableOpacity>
             
             {/* Кнопка меню только для владельца и админов */}
-            {canEditGroup && (
+            {canEditGroup && !shouldHideEditMenu && (
               <TouchableOpacity style={styles.menuButton} onPress={handleMenuPress}>
                 <Text style={styles.menuButtonText}>⋮</Text>
               </TouchableOpacity>
@@ -996,7 +1000,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
           onPress={() => setMenuVisible(false)}
         >
           <View style={styles.menuModal}>
-            {canEditGroup && (
+            {canEditGroup && !shouldHideEditMenu && (
               <TouchableOpacity
                 style={styles.menuItem}
                 onPress={handleEditGroup}

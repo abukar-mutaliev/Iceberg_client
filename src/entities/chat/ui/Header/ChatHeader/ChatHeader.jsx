@@ -73,6 +73,7 @@ const MenuModal = memo(({
   isGroup,
   isBroadcast,
   isOwner,
+  hideLeaveActions,
   onDeleteChat,
   onDeleteGroup,
   onLeaveGroup,
@@ -106,18 +107,20 @@ const MenuModal = memo(({
             )}
 
             {/* Выход из группы/канала */}
-            <TouchableOpacity
-              style={styles.modalItem}
-              onPress={onLeaveGroup}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.modalItemText}>
-                {isBroadcast ? 'Покинуть канал' : 'Покинуть группу'}
-              </Text>
-            </TouchableOpacity>
+            {!hideLeaveActions && (
+              <TouchableOpacity
+                style={styles.modalItem}
+                onPress={onLeaveGroup}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.modalItemText}>
+                  {isBroadcast ? 'Покинуть канал' : 'Покинуть группу'}
+                </Text>
+              </TouchableOpacity>
+            )}
 
             {/* Выход с удалением - только для не-владельцев */}
-            {!isOwner && (
+            {!hideLeaveActions && !isOwner && (
               <TouchableOpacity
                 style={styles.modalItem}
                 onPress={onLeaveGroupWithDeletion}
@@ -211,9 +214,10 @@ export const ChatHeader = memo(({ route, navigation }) => {
   const textColor = '#000000';
   const isGroup = chatPartnerInfo.isGroup;
   const isBroadcast = roomData?.type === 'BROADCAST';
+  const shouldHideLeaveActions = currentUser?.role === 'EMPLOYEE' || currentUser?.role === 'DRIVER';
   
-  // Скрываем меню для клиентов в BROADCAST каналах
-  const shouldShowMenu = !(isBroadcast && currentUser?.role === 'CLIENT');
+  // Скрываем меню для клиентов в BROADCAST каналах и для сотрудников/водителей
+  const shouldShowMenu = !(isBroadcast && currentUser?.role === 'CLIENT') && !shouldHideLeaveActions;
   
   // ============ RENDER ============
   
@@ -225,6 +229,7 @@ export const ChatHeader = memo(({ route, navigation }) => {
         isGroup={isGroup}
         isBroadcast={isBroadcast}
         isOwner={isOwner}
+        hideLeaveActions={shouldHideLeaveActions}
         onDeleteChat={handleDeleteChat}
         onDeleteGroup={handleDeleteGroup}
         onLeaveGroup={handleLeaveGroup}

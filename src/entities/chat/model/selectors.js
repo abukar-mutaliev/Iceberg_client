@@ -3,6 +3,44 @@ import { createSelector } from '@reduxjs/toolkit';
 const EMPTY_ARRAY = [];
 const EMPTY_OBJECT = {};
 
+const parseStopDataFromMessage = (message) => {
+  if (!message) return null;
+  if (message.stop) return message.stop;
+  if (message.content && typeof message.content === 'string') {
+    try {
+      return JSON.parse(message.content);
+    } catch (e) {
+      return null;
+    }
+  }
+  return null;
+};
+
+const isStopMessageExpired = (message) => {
+  if (!message) return false;
+  const type = String(message?.type || '').toUpperCase();
+  const stopData = parseStopDataFromMessage(message);
+  const isStopMessage = type === 'STOP' || Boolean(stopData?.id || stopData?.stopId || stopData?.startTime || stopData?.endTime);
+  if (!isStopMessage) return false;
+
+  const stopStatus = String(stopData?.status || '').toUpperCase();
+  const isDeletedStop = Boolean(
+    stopData?.isDeleted ||
+    stopData?.deletedAt ||
+    stopData?.cancelledAt ||
+    stopStatus === 'CANCELLED' ||
+    stopStatus === 'CANCELED' ||
+    stopStatus === 'DELETED'
+  );
+  if (isDeletedStop) return true;
+
+  const endTime = stopData?.endTime || stopData?.startTime || null;
+  if (!endTime) return false;
+  const endMs = new Date(endTime).getTime();
+  if (!Number.isFinite(endMs)) return false;
+  return endMs < Date.now();
+};
+
 export const selectChat = (state) => state.chat;
 
 export const selectRoomsList = createSelector(
@@ -34,14 +72,17 @@ export const selectRoomsList = createSelector(
       
       // Используем только unreadByRoomId как единственный источник истины
       // Если комната не в unreadByRoomId, считаем что unread = 0
-      const actualUnread = unreadByRoomId?.[id] ?? 0;
+      let actualUnread = unreadByRoomId?.[id] ?? 0;
 
       // Получаем последнее сообщение с актуальным статусом
       let lastMessage = null;
 
       // Сначала проверяем сообщения в store (они содержат актуальный статус)
       if (messages?.[id]?.ids && messages[id].ids.length > 0) {
-        const allMessages = messages[id].ids.map(msgId => messages[id].byId[msgId]).filter(Boolean);
+        const allMessages = messages[id].ids
+          .map(msgId => messages[id].byId[msgId])
+          .filter(Boolean)
+          .filter(msg => !isStopMessageExpired(msg));
         if (allMessages.length > 0) {
           // Сортируем по времени создания (новые в конце) и берем последнее
           const sortedMessages = allMessages.sort((a, b) =>
@@ -55,13 +96,18 @@ export const selectRoomsList = createSelector(
       }
 
       // Если в store нет сообщений, используем room.lastMessage
+      let hadExpiredStopLastMessage = false;
       if (!lastMessage && room.lastMessage) {
-        lastMessage = room.lastMessage;
+        if (isStopMessageExpired(room.lastMessage)) {
+          hadExpiredStopLastMessage = true;
+        } else {
+          lastMessage = room.lastMessage;
+        }
       }
 
       // Всегда пытаемся объединить данные из room.lastMessage если они есть
       // Это нужно для получения правильной информации об отправителе
-      if (lastMessage && room.lastMessage) {
+      if (lastMessage && room.lastMessage && !isStopMessageExpired(room.lastMessage)) {
         if (room.lastMessage.id === lastMessage.id) {
           // То же сообщение - объединяем данные
           lastMessage = {
@@ -92,8 +138,14 @@ export const selectRoomsList = createSelector(
       }
       
       // Если lastMessage все еще undefined, используем room.lastMessage как fallback
-      if (!lastMessage && room.lastMessage) {
+      if (!lastMessage && room.lastMessage && !isStopMessageExpired(room.lastMessage)) {
         lastMessage = room.lastMessage;
+      }
+
+      // Если последнее сообщение оказалось удаленной/просроченной остановкой,
+      // не показываем бейджи непрочитанных для этой комнаты.
+      if (!lastMessage && hadExpiredStopLastMessage && actualUnread > 0) {
+        actualUnread = 0;
       }
 
       // Для групповых чатов добавляем информацию об отправителе

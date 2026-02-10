@@ -66,7 +66,12 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                 }
             } catch (e) {
                 console.error('UserPublicProfileScreen: Ошибка загрузки пользователя:', e);
-                if (isMounted) setError('Не удалось загрузить пользователя');
+                if (isMounted) {
+                    const is404 = e?.response?.status === 404 || e?.response?.data?.code === 404;
+                    setError(is404
+                        ? 'Профиль недоступен. Пользователь не найден или удалён.'
+                        : 'Не удалось загрузить пользователя');
+                }
             } finally {
                 if (isMounted) setLoading(false);
             }

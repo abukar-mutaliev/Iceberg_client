@@ -1,5 +1,5 @@
 import React, {useEffect, useMemo, useRef} from 'react';
-import {View, Animated, Text, StyleSheet, Dimensions, ScrollView, TouchableOpacity} from 'react-native';
+import {View, Animated, Text, StyleSheet, Dimensions, TouchableOpacity, FlatList} from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { BackButton } from '@shared/ui/Button/BackButton';
 import { ProductImage } from '@entities/product/ui/ProductImage';
@@ -11,7 +11,7 @@ import {useDispatch} from "react-redux";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-export const ProductHeader = React.memo(({ product, scrollY, onGoBack, onSharePress, isAuthenticated, onImagePress }) => {
+export const ProductHeader = React.memo(({ product, scrollY, onGoBack, onSharePress, isAuthenticated }) => {
     const { colors } = useTheme();
     const dispatch = useDispatch();
     const checkedFavoriteRef = useRef(false);
@@ -81,28 +81,43 @@ export const ProductHeader = React.memo(({ product, scrollY, onGoBack, onSharePr
 
     const productImages = prepareImages;
 
+    const uniqueCategories = useMemo(() => {
+        const list = safeProduct.categories || [];
+        const seen = new Set();
+        return list.filter((category) => {
+            const key = category?.id != null ? `id-${category.id}` : `name-${category?.name ?? ''}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    }, [safeProduct.categories]);
+
     return (
         <View style={styles.container}>
             <ProductImage
                 images={productImages}
                 style={styles.productImage}
-                onImagePress={onImagePress}
             />
 
-            <View style={styles.overlayGradient} >
-                <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.categoriesContainer}
-                >
-                    {safeProduct.categories.map((category, index) => (
-                        <View key={`category-${category.id || index}`} style={styles.categoryItem}>
-                            <Text style={styles.categoryTitle}>
-                                {category.name}
-                            </Text>
-                        </View>
-                    ))}
-                </ScrollView>
+            <View style={styles.overlayGradient}>
+                <View style={styles.categoriesClip}>
+                    <FlatList
+                        data={uniqueCategories}
+                        keyExtractor={(item, index) => `category-${item?.id ?? index}`}
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        bounces={false}
+                        style={styles.categoriesList}
+                        contentContainerStyle={styles.categoriesContainer}
+                        renderItem={({ item: category }) => (
+                            <View style={styles.categoryItem}>
+                                <Text style={styles.categoryTitle} numberOfLines={1}>
+                                    {category?.name}
+                                </Text>
+                            </View>
+                        )}
+                    />
+                </View>
             </View>
 
             <BackButton
@@ -185,15 +200,33 @@ const styles = StyleSheet.create({
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
         zIndex: 5,
+        overflow: 'hidden',
+        justifyContent: 'center',
+    },
+    categoriesClip: {
+        height: 50,
+        width: SCREEN_WIDTH,
+        overflow: 'hidden',
+    },
+    categoriesList: {
+        flexGrow: 0,
+        height: 50,
+        maxHeight: 50,
     },
     categoriesContainer: {
         flexDirection: 'row',
-        paddingLeft: 5,
+        flexWrap: 'nowrap',
+        alignItems: 'center',
+        paddingHorizontal: 5,
+        paddingVertical: 10,
+        minHeight: 30,
     },
     categoryItem: {
         marginRight: 8,
         paddingHorizontal: 10,
-        paddingTop: 10
+        maxHeight: 30,
+        justifyContent: 'center',
+        flexShrink: 0,
     },
     categoryTitle: {
         color: "#919eee",

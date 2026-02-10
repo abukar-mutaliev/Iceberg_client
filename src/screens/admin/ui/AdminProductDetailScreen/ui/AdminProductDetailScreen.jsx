@@ -53,6 +53,12 @@ export const AdminProductDetailScreen = () => {
         refreshData
     } = useProductDetail(productId);
 
+    // Хук для проверки прав доступа
+    const { canEdit, canDelete } = useAdminPermissions(currentUser, displayProduct?.supplierId);
+    const canManageWarehousePrices = Boolean(
+        currentUser?.admin?.isSuperAdmin || currentUser?.isSuperAdmin
+    );
+
     const {
         productStocks,
         totalStock,
@@ -86,9 +92,6 @@ export const AdminProductDetailScreen = () => {
         handleFieldChange,
         handleSaveEdit
     } = useProductEdit(productId, displayProduct);
-
-    // Хук для проверки прав доступа
-    const { canEdit, canDelete } = useAdminPermissions(currentUser, displayProduct?.supplierId);
 
 
     const categories = useSelector(selectCategories);
@@ -469,6 +472,7 @@ export const AdminProductDetailScreen = () => {
                         error={stockError}
                         productId={productId}
                         productBasePrice={displayProduct?.boxPrice || (displayProduct?.price * (displayProduct?.itemsPerBox || 1))}
+                        canManagePrices={canManageWarehousePrices}
                         onPriceUpdated={() => {
                             // Обновляем данные складов после изменения цены
                             refreshProductStock();

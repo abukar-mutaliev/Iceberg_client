@@ -184,7 +184,6 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
                         phone: formData.phone || '',
                         address: formData.address || '',
                         name: formData.name || '',
-                        position: formData.position || '',
                         districts: processedDistricts,
                         warehouseId: processedWarehouseId,
                     }
@@ -394,7 +393,6 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
             case 'employee':
                 typeSpecificValues = {
                     name: profile.employee?.name || profile.name || '',
-                    position: profile.employee?.position || profile.position || '',
                     districts: profile.employee?.districts?.map(d => d.id) ||
                         profile.districts?.map(d => d.id) || [],
                     warehouseId: profile.employee?.warehouseId || profile.warehouseId || null,

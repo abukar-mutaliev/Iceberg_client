@@ -84,7 +84,6 @@ export const checkIsFavorite = createAsyncThunk(
                     return Number(itemId) === Number(productId);
                 });
 
-                console.log('Используем кэшированный статус избранного для', productId);
                 return {
                     productId,
                     isFavorite: isInFavorites
@@ -92,7 +91,6 @@ export const checkIsFavorite = createAsyncThunk(
             }
 
             // Если статуса нет или была ошибка, выполняем запрос
-            console.log('Checking favorite status, productId:', productId);
             const response = await favoritesApi.checkIsFavorite(productId);
 
             // Извлекаем isFavorite из ответа, с защитой от неправильной структуры

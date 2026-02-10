@@ -87,8 +87,8 @@ export const StockAlertsScreen = () => {
     const isEmployee = currentUser?.role === 'EMPLOYEE';
     const employeeRole = currentUser?.employee?.processingRole;
 
-    // Доступ имеют: админы и сотрудники без роли (не сборщики, не курьеры, не супервизоры)
-    const allowedEmployeeRoles = [null]; // Только сотрудники без роли
+    // Доступ имеют: админы и сотрудники без роли или менеджеры
+    const allowedEmployeeRoles = [null, 'MANAGER'];
     const hasAccess = isAdmin || (isEmployee && allowedEmployeeRoles.includes(employeeRole));
 
     // Загрузка данных при фокусе экрана
@@ -166,7 +166,7 @@ export const StockAlertsScreen = () => {
                     <Icon name="block" size={normalize(48)} color="#FF3B30" />
                     <Text style={styles.accessDeniedTitle}>{String('Нет доступа')}</Text>
                     <Text style={styles.accessDeniedText}>
-                        {String('Уведомления об остатках доступны только администраторам и сотрудникам без роли.')}
+                        {String('Уведомления об остатках доступны только администраторам и менеджерам или сотрудникам без роли.')}
                     </Text>
                 </View>
             </SafeAreaView>

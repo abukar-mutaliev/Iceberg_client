@@ -44,7 +44,7 @@ export const adminApi = {
 
   // Создание сотрудника
   async createStaff(data) {
-    return createProtectedRequest('post', '/api/admin/create-staff', data);
+    return createProtectedRequest('post', '/api/admin/staff', data);
   },
 
   // Изменение роли пользователя

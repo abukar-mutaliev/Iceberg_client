@@ -809,7 +809,7 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                 <View style={styles.infoSection}>
                     <View style={styles.infoRow}>
                         <View style={styles.infoLabelContainer}>
-                            <Text style={styles.infoLabel}>Модель:</Text>
+                            <Text style={styles.infoLabel} numberOfLines={1}>Модель:</Text>
                         </View>
                         <View style={styles.infoValueContainer}>
                             <Text style={styles.infoValue}>{stop.truckModel || 'Не указано'}</Text>
@@ -818,7 +818,7 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
 
                     <View style={styles.infoRow}>
                         <View style={styles.infoLabelContainer}>
-                            <Text style={styles.infoLabel}>Номер:</Text>
+                            <Text style={styles.infoLabel} numberOfLines={1}>Номер:</Text>
                         </View>
                         <View style={styles.infoValueContainer}>
                             <Text style={styles.infoValue}>{stop.truckNumber || 'Не указано'}</Text>
@@ -827,7 +827,7 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
 
                     <View style={styles.infoRow}>
                         <View style={styles.infoLabelContainer}>
-                            <Text style={styles.infoLabel}>Район:</Text>
+                            <Text style={styles.infoLabel} numberOfLines={1}>Район:</Text>
                         </View>
                         <View style={styles.infoValueContainer}>
                             <Text style={styles.infoValue}>{stop.district?.name || 'Не указано'}</Text>
@@ -836,7 +836,7 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
 
                     <View style={styles.infoRow}>
                         <View style={styles.infoLabelContainer}>
-                            <Text style={styles.infoLabel}>Адрес:</Text>
+                            <Text style={styles.infoLabel} numberOfLines={1}>Адрес:</Text>
                         </View>
                         <View style={[styles.infoValueContainer, styles.addressValueContainer]}>
                             <Text style={styles.infoValue}>{stop.address || 'Не указано'}</Text>
@@ -1260,10 +1260,13 @@ const styles = StyleSheet.create({
     },
     infoRow: {
         flexDirection: 'row',
+        alignItems: 'center',
         marginBottom: 8,
     },
     infoLabelContainer: {
         width: 80,
+        flexShrink: 0,
+        justifyContent: 'center',
     },
     infoLabel: {
         fontSize: FontSize.size_md,

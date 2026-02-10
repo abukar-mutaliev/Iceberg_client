@@ -23,6 +23,7 @@ export const MultipleImageUpload = ({ photos, setPhotos, error, maxImages = 5 })
     const [editorVisible, setEditorVisible] = useState(false);
     const [pendingImage, setPendingImage] = useState(null);
     const [selectedScale, setSelectedScale] = useState(1);
+    const scaleRef = React.useRef(1);
     const [isProcessing, setIsProcessing] = useState(false);
     const minScale = 0.6;
     const maxScale = 1.4;
@@ -68,7 +69,8 @@ export const MultipleImageUpload = ({ photos, setPhotos, error, maxImages = 5 })
 
                 console.log('Выбрано изображение:', newImage.uri);
                 setPendingImage(newImage);
-                setSelectedScale(0.9);
+                setSelectedScale(1);
+                scaleRef.current = 1;
                 setEditorVisible(true);
             }
         } catch (error) {
@@ -87,6 +89,7 @@ export const MultipleImageUpload = ({ photos, setPhotos, error, maxImages = 5 })
         setEditorVisible(false);
         setPendingImage(null);
         setSelectedScale(1);
+        scaleRef.current = 1;
         setIsProcessing(false);
     };
 
@@ -99,27 +102,73 @@ export const MultipleImageUpload = ({ photos, setPhotos, error, maxImages = 5 })
         try {
             setIsProcessing(true);
 
-            const width = pendingImage.width || 0;
-            const height = pendingImage.height || 0;
-            const shouldResize = width > 0 && height > 0 && selectedScale < 1;
+            let width = pendingImage.width || 0;
+            let height = pendingImage.height || 0;
+            if ((!width || !height) && pendingImage.uri) {
+                try {
+                    const size = await new Promise((resolve, reject) => {
+                        Image.getSize(pendingImage.uri, (w, h) => resolve({ w, h }), reject);
+                    });
+                    width = size.w;
+                    height = size.h;
+                } catch (sizeError) {
+                    console.warn('Не удалось получить размер изображения:', sizeError);
+                }
+            }
+
+            const scale = scaleRef.current || selectedScale;
+            console.log('[MultipleImageUpload] Apply scale', {
+                uri: pendingImage?.uri,
+                width,
+                height,
+                selectedScale,
+                scaleRef: scaleRef.current,
+                usedScale: scale
+            });
+            const shouldProcess = width > 0 && height > 0 && scale !== 1;
             const uriLower = (pendingImage.uri || "").toLowerCase();
             const isPng = pendingImage.mimeType === 'image/png' || uriLower.endsWith('.png');
 
             let finalUri = pendingImage.uri;
 
-            if (shouldResize) {
-                const targetWidth = Math.max(1, Math.round(width * selectedScale));
-                const targetHeight = Math.max(1, Math.round(height * selectedScale));
+            if (shouldProcess) {
+                const actions = [];
 
-                const resized = await ImageManipulator.manipulateAsync(
+                if (scale > 1) {
+                    const cropWidth = Math.max(1, Math.round(width / scale));
+                    const cropHeight = Math.max(1, Math.round(height / scale));
+                    const originX = Math.max(0, Math.round((width - cropWidth) / 2));
+                    const originY = Math.max(0, Math.round((height - cropHeight) / 2));
+
+                    actions.push({ crop: { originX, originY, width: cropWidth, height: cropHeight } });
+                    actions.push({ resize: { width, height } });
+                } else {
+                    const targetWidth = Math.max(1, Math.round(width * scale));
+                    const targetHeight = Math.max(1, Math.round(height * scale));
+                    actions.push({ resize: { width: targetWidth, height: targetHeight } });
+                }
+
+                console.log('[MultipleImageUpload] Manipulator actions', actions);
+                const processed = await ImageManipulator.manipulateAsync(
                     pendingImage.uri,
-                    [{ resize: { width: targetWidth, height: targetHeight } }],
+                    actions,
                     {
                         compress: 1,
                         format: isPng ? ImageManipulator.SaveFormat.PNG : ImageManipulator.SaveFormat.JPEG
                     }
                 );
-                finalUri = resized.uri;
+                console.log('[MultipleImageUpload] Manipulator result', {
+                    uri: processed?.uri,
+                    width: processed?.width,
+                    height: processed?.height
+                });
+                finalUri = processed.uri;
+            } else {
+                console.log('[MultipleImageUpload] Skip processing', {
+                    width,
+                    height,
+                    usedScale: scale
+                });
             }
 
             setPhotos(photos ? [...photos, finalUri] : [finalUri]);
@@ -203,6 +252,8 @@ export const MultipleImageUpload = ({ photos, setPhotos, error, maxImages = 5 })
                 </View>
             )}
 
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
             <Text style={styles.helperText}>
                 {photos ? `${photos.length}/${maxImages} фото` : `0/${maxImages} фото`}
             </Text>
@@ -248,7 +299,10 @@ export const MultipleImageUpload = ({ photos, setPhotos, error, maxImages = 5 })
                                 maximumValue={maxScale}
                                 step={0.05}
                                 value={selectedScale}
-                                onValueChange={setSelectedScale}
+                                onValueChange={(value) => {
+                                    scaleRef.current = value;
+                                    setSelectedScale(value);
+                                }}
                                 minimumTrackTintColor="#3B43A2"
                                 maximumTrackTintColor="#E5E7EB"
                                 thumbTintColor="#3B43A2"

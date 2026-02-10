@@ -1,15 +1,16 @@
-import React, { memo, useCallback, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, Image, StyleSheet, Pressable } from 'react-native';
 import { Color, Border, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { getImageUrl } from '@shared/api/api';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { CachedImage } from '@entities/chat/ui/CachedImage/CachedImage';
 
-const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
-
+// Как в WarehouseDetailsContent: getImageUrl(warehouse.image) + Image
 const getImageUrlForWarehouse = (imagePath) => {
     if (!imagePath) return null;
-    if (typeof imagePath !== 'string') return imagePath.uri;
+    if (typeof imagePath !== 'string') return imagePath?.uri || null;
+    if (imagePath.startsWith('file://') || imagePath.startsWith('content://')) {
+        return imagePath;
+    }
     return getImageUrl(imagePath);
 };
 
@@ -72,17 +73,20 @@ const WarehouseCardComponent = ({ warehouse, onPress, width, compact = true }) =
         }
     }, [onPress, warehouse.id]);
 
-    const handleImageError = useCallback(() => {
-        setImageError(true);
-    }, []);
-
     const imageUri = useMemo(() => {
-        setImageError(false);
         if (warehouse.image) {
             return getImageUrlForWarehouse(warehouse.image);
         }
         return null;
     }, [warehouse.image]);
+
+    useEffect(() => {
+        setImageError(false);
+    }, [warehouse.image]);
+
+    const handleImageError = useCallback(() => setImageError(true), []);
+
+    const showPlaceholder = !imageUri || imageError;
 
     const containerStyle = width ? [styles.compactContainer, { width }] : styles.compactContainer;
     const isActive = warehouse.isActive !== false;
@@ -94,12 +98,13 @@ const WarehouseCardComponent = ({ warehouse, onPress, width, compact = true }) =
         >
             {/* Изображение склада */}
             <View style={styles.compactImageContainer}>
-                {imageUri && !imageError ? (
-                    <CachedImage
-                        source={{ uri: imageUri }}
-                        style={styles.compactWarehouseImage}
-                        resizeMode="cover"
-                    />
+{!showPlaceholder ? (
+                           <Image
+                               source={{ uri: imageUri }}
+                               style={styles.compactWarehouseImage}
+                               resizeMode="cover"
+                               onError={handleImageError}
+                           />
                 ) : (
                     <View style={styles.placeholderContainer}>
                         <Icon name="warehouse" size={48} color={Color.blue2} />

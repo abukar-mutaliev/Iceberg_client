@@ -98,13 +98,15 @@ export const ProductPrice = ({ price, weight, product }) => {
                         style={[styles.boxPriceText, { color: Color.dark }]}
                     >
                         {formatPrice(product?.boxPrice || (product?.price * itemsPerBox))}
-
                     </Text>
                 </HighlightChange>
                 <Text style={[styles.boxUnitText, { color: Color.grey7D7D7D }]}>
                     {boxUnitText}
                 </Text>
             </View>
+
+       
+
             {weight ? (
                 <HighlightChange value={weight} style={styles.weightHighlight}>
                     <Text style={[styles.weightText, { color: Color.grey7D7D7D }]}>
@@ -169,6 +171,22 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     boxUnitText: {
+        marginLeft: 8,
+        fontFamily: FontFamily.montserratSemiBold,
+        fontSize: FontSize.size_sm,
+        fontWeight: '600',
+    },
+    itemsPerBoxRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 6,
+    },
+    itemsPerBoxLabel: {
+        fontFamily: FontFamily.montserratSemiBold,
+        fontSize: FontSize.size_sm,
+        fontWeight: '600',
+    },
+    itemsPerBoxValue: {
         marginLeft: 8,
         fontFamily: FontFamily.montserratSemiBold,
         fontSize: FontSize.size_sm,

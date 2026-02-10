@@ -28,7 +28,9 @@ export const FeedbacksList = React.memo(({
                                              isDataLoaded,
                                              showAddForm: initialShowForm = false,
                                              onFormClosed,
-                                             style, onRefresh
+                                             style,
+                                             onRefresh,
+                                             onAuthorPress,
                                          }) => {
     const {colors} = useTheme();
     const dispatch = useDispatch();
@@ -221,6 +223,7 @@ export const FeedbacksList = React.memo(({
                                             currentUser?.role === 'ADMIN'
                                         }
                                         onDelete={() => handleDeleteFeedback(feedback.id)}
+                                        onAuthorPress={onAuthorPress}
                                     />
                                 </View>
                             ))}

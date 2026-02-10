@@ -140,13 +140,20 @@ export const getImageUrl = (imagePath) => {
         }
     }
     
+    // Изображения складов — всегда из S3 (как на экране WarehouseDetailsContent)
+    const S3_UPLOADS_BASE = 'https://iceberg-uploads.hb.ru-msk.vkcloud-storage.ru';
+    const warehousePath = imagePath.replace(/^\/+/, '').replace(/^uploads\//, '');
+    if (warehousePath.startsWith('warehouses/')) {
+        return `${S3_UPLOADS_BASE}/${warehousePath}`;
+    }
+
     const baseUrl = getBaseUrl();
-    
+
     // Если путь уже начинается с /uploads/, просто добавляем базовый URL
     if (imagePath.startsWith('/uploads/')) {
         return `${baseUrl}${imagePath}`;
     }
-    
+
     // Если путь начинается с uploads/ (без слеша), добавляем слеш
     if (imagePath.startsWith('uploads/')) {
         return `${baseUrl}/${imagePath}`;

@@ -718,16 +718,6 @@ export const AddProductScreen = () => {
                                 error={errors.images}
                                 maxImages={10}
                             />
-                            {errors.images && (
-                                <Text style={styles.sectionError}>{errors.images}</Text>
-                            )}
-                            {uploadStats.total > 0 && (
-                                <Text style={styles.uploadHint}>
-                                    Загружено {uploadStats.uploaded}/{uploadStats.total} фото
-                                    {uploadStats.uploading > 0 ? " (идет загрузка...)" : ""}
-                                    {uploadStats.failed > 0 ? " (есть ошибки)" : ""}
-                                </Text>
-                            )}
                         </View>
                     ), 100)}
 
@@ -972,6 +962,7 @@ const styles = StyleSheet.create({
         marginTop: 6,
         paddingLeft: 4,
         fontFamily: FontFamily.sFProText,
+        paddingBottom: 50
     },
     
     // Photo Section

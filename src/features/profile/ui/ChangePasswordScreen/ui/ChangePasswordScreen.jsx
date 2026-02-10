@@ -5,7 +5,6 @@ import {
     StyleSheet,
     TouchableOpacity,
     TextInput,
-    Alert,
     ActivityIndicator,
     ScrollView,
     KeyboardAvoidingView,
@@ -16,6 +15,7 @@ import {CommonActions, useNavigation} from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import { FontFamily, Border, Color } from '@app/styles/GlobalStyles';
 import ArrowBackIcon from '@shared/ui/Icon/Common/ArrowBackIcon';
+import { useCustomAlert } from '@shared/ui/CustomAlert';
 import { changePassword } from '@entities/profile';
 import { selectProfileLoading, selectProfileError } from '@entities/profile/model/selectors';
 import { removeTokensFromStorage} from '@entities/auth';
@@ -25,6 +25,7 @@ export const ChangePasswordScreen = () => {
     const dispatch = useDispatch();
     const isLoading = useSelector(selectProfileLoading);
     const error = useSelector(selectProfileError);
+    const { showError, showSuccess } = useCustomAlert();
 
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
@@ -48,9 +49,9 @@ export const ChangePasswordScreen = () => {
 
     useEffect(() => {
         if (error) {
-            Alert.alert('Ошибка', error);
+            showError('Ошибка', error);
         }
-    }, [error]);
+    }, [error, showError]);
 
     const handleGoBack = () => {
         navigation.goBack();
@@ -89,12 +90,13 @@ export const ChangePasswordScreen = () => {
             })).unwrap();
 
             if (result) {
-                Alert.alert(
+                showSuccess(
                     'Успешно',
                     'Пароль успешно изменен. Пожалуйста, войдите в систему снова.',
                     [
                         {
                             text: 'ОК',
+                            style: 'primary',
                             onPress: () => {
                                 removeTokensFromStorage().then(() => {
                                     dispatch({
@@ -146,7 +148,7 @@ export const ChangePasswordScreen = () => {
                     <Text style={styles.label}>Текущий пароль</Text>
                     <View style={[styles.inputWrapper, validationErrors.currentPassword && styles.errorInput]}>
                         <TextInput
-                            style={styles.input}
+                            style={[styles.input, styles.passwordInput]}
                             value={currentPassword}
                             onChangeText={setCurrentPassword}
                             secureTextEntry={!showCurrentPassword}
@@ -168,7 +170,7 @@ export const ChangePasswordScreen = () => {
                     <Text style={styles.label}>Новый пароль</Text>
                     <View style={[styles.inputWrapper, validationErrors.newPassword && styles.errorInput]}>
                         <TextInput
-                            style={styles.input}
+                            style={[styles.input, styles.passwordInput]}
                             value={newPassword}
                             onChangeText={setNewPassword}
                             secureTextEntry={!showNewPassword}
@@ -190,7 +192,7 @@ export const ChangePasswordScreen = () => {
                     <Text style={styles.label}>Подтверждение пароля</Text>
                     <View style={[styles.inputWrapper, validationErrors.confirmPassword && styles.errorInput]}>
                         <TextInput
-                            style={styles.input}
+                            style={[styles.input, styles.passwordInput]}
                             value={confirmPassword}
                             onChangeText={setConfirmPassword}
                             secureTextEntry={!showConfirmPassword}
@@ -286,6 +288,13 @@ const styles = StyleSheet.create({
         flex: 1,
         height: '100%',
         fontFamily: FontFamily.sFProText,
+        color: "black"
+    },
+    passwordInput: {
+        fontFamily: Platform.select({
+            android: 'sans-serif',
+            ios: undefined,
+        }),
     },
     eyeIcon: {
         padding: 8,

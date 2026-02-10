@@ -20,7 +20,8 @@ export const FeedbackCard = memo(({
                                canDelete = false,
                                onDelete = null,
                                onExpandComment = null,
-                               onProductPress = () => {}
+                               onProductPress = () => {},
+                               onAuthorPress = null,
                            }) => {
     const feedbackData = feedback || feedbacks;
     if (!feedbackData) return null;
@@ -81,7 +82,7 @@ export const FeedbackCard = memo(({
                     useAngle={true}
                     angle={180}
                 />
-                <FeedbackCardHeader feedback={feedbackData} currentUser={currentUser} />
+                <FeedbackCardHeader feedback={feedbackData} currentUser={currentUser} onAuthorPress={onAuthorPress} />
                 {hasPhotos && (
                     <FeedbackCardPhotos
                         photoUrls={feedbackData.photoUrls}
