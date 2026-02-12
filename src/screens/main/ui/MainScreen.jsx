@@ -34,6 +34,7 @@ import { useAuth } from '@entities/auth/hooks/useAuth';
 const PRODUCTS_PER_PAGE = 10;
 const LOAD_MORE_THRESHOLD = 8;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 минут
+const SHUFFLE_INTERVAL = 30 * 60 * 1000; // 30 минут между перемешиваниями
 
 export const MainScreen = ({ navigation, route }) => {
     const dispatch = useDispatch();
@@ -71,6 +72,8 @@ export const MainScreen = ({ navigation, route }) => {
     const previousProductsIdsRef = useRef(new Set());
     const isRefreshingRef = useRef(false);
     const loadAllDataRef = useRef(null);
+    const lastShuffleTimeRef = useRef(0);
+    const forceShuffleRef = useRef(false);
 
     // Проверка готовности данных
     const isDataReady = useMemo(() => {
@@ -90,6 +93,11 @@ export const MainScreen = ({ navigation, route }) => {
     }, []);
 
     // Перемешивание продуктов при изменении
+    // Перемешивание происходит ТОЛЬКО при:
+    //   1. Первой загрузке (shuffledProducts пуст)
+    //   2. Pull-to-refresh (forceShuffleRef === true)
+    //   3. Прошло больше SHUFFLE_INTERVAL с последнего перемешивания
+    // В остальных случаях порядок сохраняется, а данные обновляются на месте
     useEffect(() => {
         if (!products || products.length === 0) {
             setShuffledProducts([]);
@@ -101,43 +109,70 @@ export const MainScreen = ({ navigation, route }) => {
         const currentLength = products.length;
         const previousLength = previousProductsLengthRef.current;
         const currentProductsIds = new Set(products.map(p => p?.id).filter(Boolean));
-        
-        // Проверяем, изменился ли набор ID (обновление/refresh)
-        // Если первый продукт изменился или набор ID полностью отличается - это обновление
+
+        // Определяем, является ли это refresh (а не load-more)
         const firstProductId = products[0]?.id;
         const previousFirstId = previousProductsIdsRef.current.size > 0 
             ? [...previousProductsIdsRef.current][0] 
             : null;
-        
-        
+
         const isRefresh = previousLength === 0 || 
                          (currentPage === 1 && currentLength <= previousLength) ||
                          (firstProductId && previousFirstId && firstProductId !== previousFirstId) ||
                          (currentLength <= previousLength && previousProductsIdsRef.current.size > 0 &&
                           ![...previousProductsIdsRef.current].every(id => currentProductsIds.has(id)));
 
-        // Первая загрузка или обновление (refresh) - перемешиваем все
-        if (isRefresh) {
+        // Определяем, нужно ли перемешивать
+        const now = Date.now();
+        const timeSinceLastShuffle = now - lastShuffleTimeRef.current;
+        const shouldShuffle = forceShuffleRef.current ||
+                              previousLength === 0 ||
+                              timeSinceLastShuffle > SHUFFLE_INTERVAL;
+
+        if (isRefresh && shouldShuffle) {
+            // Полное перемешивание: первая загрузка, pull-to-refresh или истёк интервал
             setShuffledProducts(shuffleArray(products));
+            lastShuffleTimeRef.current = now;
+            forceShuffleRef.current = false;
             previousProductsLengthRef.current = currentLength;
             previousProductsIdsRef.current = currentProductsIds;
-        } 
-        // Подгрузка новых продуктов - добавляем перемешанные новые в конец
-        else if (currentLength > previousLength) {
+        } else if (isRefresh && !shouldShuffle) {
+            // Данные обновились, но порядок сохраняем — обновляем товары на местах
+            setShuffledProducts(prev => {
+                if (prev.length === 0) {
+                    // Защита: если массив пуст, всё-таки перемешиваем
+                    lastShuffleTimeRef.current = now;
+                    return shuffleArray(products);
+                }
+                const productMap = new Map(products.map(p => [p.id, p]));
+                // Обновляем существующие товары свежими данными, сохраняя порядок
+                const updated = prev
+                    .map(p => productMap.get(p.id) || p)
+                    .filter(p => currentProductsIds.has(p.id));
+                // Добавляем действительно новые товары в конец
+                const existingIds = new Set(updated.map(p => p.id));
+                const newProducts = products.filter(p => p.id && !existingIds.has(p.id));
+                return newProducts.length > 0
+                    ? [...updated, ...shuffleArray(newProducts)]
+                    : updated;
+            });
+            previousProductsLengthRef.current = currentLength;
+            previousProductsIdsRef.current = currentProductsIds;
+        } else if (currentLength > previousLength) {
+            // Подгрузка (load more) — добавляем перемешанные новые в конец
             setShuffledProducts(prevShuffled => {
                 const existingIds = new Set(prevShuffled.map(p => p?.id));
                 const newProducts = products.filter(p => p?.id && !existingIds.has(p.id));
                 
                 if (newProducts.length > 0) {
-                    // Перемешиваем только новые продукты и добавляем в конец
                     const shuffledNewProducts = shuffleArray(newProducts);
                     return [...prevShuffled, ...shuffledNewProducts];
                 }
                 
-                // Если новых продуктов не найдено, но длина увеличилась, 
-                // возможно продукты были обновлены - обновляем весь список
                 if (prevShuffled.length < currentLength) {
-                    return shuffleArray(products);
+                    // Новых ID нет, но длина выросла — обновляем на месте
+                    const productMap = new Map(products.map(p => [p.id, p]));
+                    return prevShuffled.map(p => productMap.get(p.id) || p);
                 }
                 
                 return prevShuffled;
@@ -235,8 +270,9 @@ export const MainScreen = ({ navigation, route }) => {
         }));
     }, [dispatch, hasMore, isLoadingMore, currentPage, products?.length]);
 
-    // Принудительное обновление
+    // Принудительное обновление (pull-to-refresh) — перемешивает товары
     const handleRefresh = useCallback(() => {
+        forceShuffleRef.current = true;
         if (loadAllDataRef.current) {
             loadAllDataRef.current(true);
         }

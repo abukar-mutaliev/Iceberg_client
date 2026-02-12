@@ -32,11 +32,13 @@ import { productReturnReducer } from '@entities/product-return';
 import { stockAlertReducer } from '@entities/stockAlert';
 
 // Конфигурация для redux-persist
+// Расширенный whitelist: при возврате из фона или cold start закэшированные данные
+// отображаются мгновенно, а свежие подгружаются в фоне (stale-while-revalidate)
 const persistConfig = {
     key: 'root',
     storage: AsyncStorage,
-    whitelist: ['auth', 'favorites'], // Добавлен auth для сохранения состояния авторизации
-    version: 2, // Increment this to force state migration if needed
+    whitelist: ['auth', 'favorites', 'profile', 'category', 'banner'],
+    version: 3, // Increment: added profile, category, banner to persist
 };
 
 
@@ -136,12 +138,6 @@ const profileCheckMiddleware = store => next => action => {
     return result;
 };
 
-// Добавим специальный middleware для избранного
-const favoritesDebugMiddleware = store => next => action => {
-    const result = next(action);
-    return result;
-};
-
 export const store = configureStore({
     reducer: persistedReducer,
     middleware: (getDefaultMiddleware) =>
@@ -153,7 +149,6 @@ export const store = configureStore({
             .concat(localStorageMiddleware)
             .concat(notificationSettingsMiddleware)
             .concat(profileCheckMiddleware)
-            .concat(favoritesDebugMiddleware)
             .concat(cartReloadMiddleware)
 });
 

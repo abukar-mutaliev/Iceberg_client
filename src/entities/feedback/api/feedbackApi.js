@@ -156,6 +156,28 @@ export const feedbackApi = {
         }
     },
 
+    getSupplierFeedbacks: async (supplierId, userData) => {
+        try {
+            const response = await createPublicRequest(
+                'get',
+                `/api/feedbacks/supplier/${supplierId}`
+            );
+
+            if (response && response.status === 'success' && Array.isArray(response.data)) {
+                const formattedFeedbacks = formatFeedbacks(response.data, userData);
+                return {
+                    ...response,
+                    data: formattedFeedbacks
+                };
+            }
+
+            return response || { status: 'success', data: [] };
+        } catch (error) {
+            console.error('Ошибка при получении отзывов поставщика:', error);
+            throw error;
+        }
+    },
+
     createFeedback: async (feedbackData, userData) => {
         try {
             const response = await createProtectedRequest('post', '/api/feedbacks', feedbackData);

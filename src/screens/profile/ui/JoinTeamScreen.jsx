@@ -35,6 +35,12 @@ const roleOptions = [
     { value: 'DRIVER', label: 'Водитель', description: 'Доставка товаров клиентам' }
 ];
 
+const STATUS_LABELS = {
+    PENDING: 'На рассмотрении',
+    APPROVED: 'Одобрена',
+    REJECTED: 'Отклонена'
+};
+
 export const JoinTeamScreen = () => {
     const navigation = useNavigation();
     const dispatch = useDispatch();
@@ -58,6 +64,27 @@ export const JoinTeamScreen = () => {
         experience: '',
         additionalInfo: ''
     });
+    const [currentApplication, setCurrentApplication] = useState(null);
+    const [loadingMyApplication, setLoadingMyApplication] = useState(true);
+
+    // Загружаем заявку пользователя при открытии экрана
+    useEffect(() => {
+        let cancelled = false;
+        const loadMyApplication = async () => {
+            try {
+                const response = await authApi.getMyStaffApplication();
+                if (!cancelled && response?.data?.application) {
+                    setCurrentApplication(response.data.application);
+                }
+            } catch {
+                if (!cancelled) setCurrentApplication(null);
+            } finally {
+                if (!cancelled) setLoadingMyApplication(false);
+            }
+        };
+        loadMyApplication();
+        return () => { cancelled = true; };
+    }, []);
 
     // Загружаем районы при монтировании компонента
     useEffect(() => {
@@ -168,16 +195,10 @@ export const JoinTeamScreen = () => {
 
             console.log('Ответ сервера:', response);
 
+            setCurrentApplication(response.data.application);
             showSuccess(
                 'Заявка отправлена!',
-                'Ваша заявка успешно отправлена. Администратор рассмотрит её в ближайшее время.',
-                [
-                    {
-                        text: 'OK',
-                        style: 'primary',
-                        onPress: () => navigation.goBack()
-                    }
-                ]
+                'Ваша заявка успешно отправлена. Администратор рассмотрит её в ближайшее время.'
             );
 
         } catch (error) {
@@ -214,6 +235,9 @@ export const JoinTeamScreen = () => {
 
     // Нужно ли показывать выбор районов
     const shouldShowDistrictsSelection = selectedRole === 'DRIVER' || selectedRole === 'EMPLOYEE';
+
+    const getStatusLabel = (status) => STATUS_LABELS[status] || status;
+    const getRoleLabelByValue = (value) => roleOptions.find(r => r.value === value)?.label || value;
 
     // Рендер элемента роли
     const renderRoleItem = ({ item }) => (
@@ -279,6 +303,56 @@ export const JoinTeamScreen = () => {
                 enabled={Platform.OS === 'ios'}
                 keyboardVerticalOffset={0}
             >
+                {loadingMyApplication ? (
+                    <View style={styles.statusContainer}>
+                        <ActivityIndicator size="large" color={Color.blue2} />
+                        <Text style={styles.loadingStatusText}>Загрузка...</Text>
+                    </View>
+                ) : currentApplication ? (
+                    <ScrollView
+                        style={styles.content}
+                        contentContainerStyle={styles.statusScrollContent}
+                        showsVerticalScrollIndicator={false}
+                    >
+                        <View style={styles.formContainer}>
+                            <View style={styles.statusCard}>
+                                <Text style={styles.statusCardTitle}>Статус заявки</Text>
+                                <View style={styles.statusRow}>
+                                    <Text style={styles.statusLabel}>Роль:</Text>
+                                    <Text style={styles.statusValue}>{getRoleLabelByValue(currentApplication.desiredRole)}</Text>
+                                </View>
+                                <View style={[styles.statusBadge, styles[`statusBadge_${currentApplication.status}`]]}>
+                                    <Text style={[styles.statusBadgeText, styles[`statusBadgeText_${currentApplication.status}`]]}>
+                                        {getStatusLabel(currentApplication.status)}
+                                    </Text>
+                                </View>
+                                {currentApplication.createdAt && (
+                                    <View style={styles.statusRow}>
+                                        <Text style={styles.statusLabel}>Дата подачи:</Text>
+                                        <Text style={styles.statusValue}>
+                                            {new Date(currentApplication.createdAt).toLocaleDateString('ru-RU', {
+                                                day: 'numeric',
+                                                month: 'long',
+                                                year: 'numeric'
+                                            })}
+                                        </Text>
+                                    </View>
+                                )}
+                                <Text style={styles.statusHint}>
+                                    {currentApplication.status === 'PENDING' && 'Администратор рассмотрит заявку в ближайшее время.'}
+                                    {currentApplication.status === 'APPROVED' && 'Ваша заявка одобрена. Ожидайте назначения прав.'}
+                                    {currentApplication.status === 'REJECTED' && 'К сожалению, заявка была отклонена. Вы можете обратиться в поддержку.'}
+                                </Text>
+                                <CustomButton
+                                    title="Назад"
+                                    onPress={() => navigation.goBack()}
+                                    color={Color.blue2}
+                                    activeColor="#FFFFFF"
+                                />
+                            </View>
+                        </View>
+                    </ScrollView>
+                ) : (
                 <ScrollView
                     ref={scrollViewRef}
                     style={styles.content}
@@ -418,7 +492,9 @@ export const JoinTeamScreen = () => {
                             )}
                     </View>
                 </ScrollView>
+                )}
 
+                {!currentApplication && (
                 <View style={styles.footer}>
                     <CustomButton
                         title={isSubmitting ? "Отправка..." : "Отправить заявку"}
@@ -428,6 +504,7 @@ export const JoinTeamScreen = () => {
                         activeColor="#FFFFFF"
                     />
                 </View>
+                )}
             </KeyboardAvoidingView>
 
             {/* Модальное окно выбора роли */}
@@ -524,6 +601,7 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#FFFFFF',
+        paddingBottom: 120
     },
     keyboardAvoidingView: {
         flex: 1,
@@ -551,6 +629,85 @@ const styles = StyleSheet.create({
     },
     scrollViewContent: {
         flexGrow: 1,
+    },
+    statusContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: normalize(40),
+    },
+    loadingStatusText: {
+        fontSize: normalizeFont(14),
+        color: Color.textSecondary,
+        fontFamily: FontFamily.sFProText,
+        marginTop: normalize(12),
+    },
+    statusScrollContent: {
+        flexGrow: 1,
+        paddingBottom: normalize(40),
+    },
+    statusCard: {
+        padding: normalize(24),
+        backgroundColor: '#F8F9FA',
+        borderRadius: normalize(16),
+        borderWidth: 1,
+        borderColor: '#E5E5E5',
+    },
+    statusCardTitle: {
+        fontSize: normalizeFont(20),
+        fontWeight: '600',
+        color: Color.dark,
+        fontFamily: FontFamily.sFProText,
+        marginBottom: normalize(20),
+        textAlign: 'center',
+    },
+    statusRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: normalize(12),
+    },
+    statusLabel: {
+        fontSize: normalizeFont(14),
+        color: Color.textSecondary,
+        fontFamily: FontFamily.sFProText,
+    },
+    statusValue: {
+        fontSize: normalizeFont(14),
+        fontWeight: '500',
+        color: Color.dark,
+        fontFamily: FontFamily.sFProText,
+    },
+    statusBadge: {
+        alignSelf: 'flex-start',
+        paddingHorizontal: normalize(16),
+        paddingVertical: normalize(8),
+        borderRadius: normalize(20),
+        marginBottom: normalize(16),
+    },
+    statusBadge_PENDING: {
+        backgroundColor: '#FFF3E0',
+    },
+    statusBadge_APPROVED: {
+        backgroundColor: '#E8F5E9',
+    },
+    statusBadge_REJECTED: {
+        backgroundColor: '#FFEBEE',
+    },
+    statusBadgeText: {
+        fontSize: normalizeFont(14),
+        fontWeight: '600',
+        fontFamily: FontFamily.sFProText,
+    },
+    statusBadgeText_PENDING: { color: '#E65100' },
+    statusBadgeText_APPROVED: { color: '#2E7D32' },
+    statusBadgeText_REJECTED: { color: '#C62828' },
+    statusHint: {
+        fontSize: normalizeFont(14),
+        color: Color.textSecondary,
+        fontFamily: FontFamily.sFProText,
+        lineHeight: normalize(20),
+        marginBottom: normalize(24),
     },
     formContainer: {
         padding: normalize(20),

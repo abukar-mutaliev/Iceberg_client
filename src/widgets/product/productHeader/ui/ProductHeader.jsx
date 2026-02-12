@@ -11,7 +11,7 @@ import {useDispatch} from "react-redux";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-export const ProductHeader = React.memo(({ product, scrollY, onGoBack, onSharePress, isAuthenticated }) => {
+export const ProductHeader = React.memo(({ product, scrollY, onGoBack, onSharePress, isAuthenticated, onImagePress }) => {
     const { colors } = useTheme();
     const dispatch = useDispatch();
     const checkedFavoriteRef = useRef(false);
@@ -97,6 +97,7 @@ export const ProductHeader = React.memo(({ product, scrollY, onGoBack, onSharePr
             <ProductImage
                 images={productImages}
                 style={styles.productImage}
+                onImagePress={onImagePress}
             />
 
             <View style={styles.overlayGradient}>

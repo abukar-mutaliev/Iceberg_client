@@ -47,12 +47,15 @@ export const fetchProductFeedbacks = createAsyncThunk(
 
 export const fetchSupplierFeedbacks = createAsyncThunk(
     'feedback/fetchSupplierFeedbacks',
-    async (supplierId, { rejectWithValue }) => {
+    async (supplierId, { rejectWithValue, getState }) => {
         try {
             console.log(`🔄 Загрузка всех отзывов для поставщика ${supplierId} напрямую с сервера`);
-            
-            // Загружаем ВСЕ отзывы поставщика одним запросом с сервера
-            const response = await feedbackApi.getSupplierFeedbacks(supplierId);
+            const state = getState();
+            const userData = {
+                ...state.auth?.user,
+                profile: state.profile?.data,
+            };
+            const response = await feedbackApi.getSupplierFeedbacks(supplierId, userData);
             
             if (response && response.status === 'success' && Array.isArray(response.data)) {
                 console.log(`✅ Получено ${response.data.length} отзывов для поставщика ${supplierId}`);

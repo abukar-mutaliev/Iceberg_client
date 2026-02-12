@@ -52,8 +52,9 @@ export const FeedbackCardHeader = ({ feedback, currentUser, onAuthorPress }) => 
 
     const hasValidAvatarUrl = !!fixedAvatarUrl;
 
-    // ID автора для перехода в профиль: используем user id (для getUserById), не client/profile id
-    const authorId = feedback.userId ?? client?.user?.id ?? feedback.client?.userId ?? clientId;
+    // ID автора для перехода в профиль: используем User.id (для getUserById).
+    // ВАЖНО: НЕ использовать clientId — это Client.id из таблицы Client, а не User.id
+    const authorId = feedback.userId ?? client?.user?.id ?? client?.userId;
     const canPressAuthor = authorId != null && authorId !== '' && typeof onAuthorPress === 'function';
 
     const headerContent = (

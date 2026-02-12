@@ -81,6 +81,9 @@ export const authApiMethods = {
     // Подача заявки на роль сотрудника - требует авторизации
     applyForStaff: (data) => staffApplicationsApi.post('/apply', data),
 
+    // Получение заявки текущего пользователя
+    getMyStaffApplication: () => staffApplicationsApi.get('/me'),
+
     // ========================================
     // ВОССТАНОВЛЕНИЕ ПАРОЛЯ
     // ========================================

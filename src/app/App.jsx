@@ -1,5 +1,5 @@
 import React, {useEffect, useRef, useState} from 'react';
-import {View, Text, Button, StyleSheet, Image} from 'react-native';
+import {View, Text, Button, StyleSheet, Image, AppState} from 'react-native';
 import {AppNavigator} from '@app/providers/navigation/AppNavigator';
 import * as Font from 'expo-font';
 import {AppProviders} from './providers';
@@ -14,11 +14,20 @@ import {GestureHandlerRootView} from 'react-native-gesture-handler';
 import {initConsolePolyfill} from '@shared/lib/consolePolyfill';
 import {testNetworkConnection} from '@shared/api/api';
 import {useChatSocket} from '@entities/chat/hooks/useChatSocket';
-import {usePushTokenAutoRegistration} from '@shared/hooks/usePushTokenAutoRegistration';
 import {ToastContainer} from '@shared/ui/Toast';
 import InAppLogger from '@shared/services/InAppLogger';
+import { scheduleUpdateCheck } from '@shared/lib/checkUpdate';
 
 initConsolePolyfill();
+
+// Замораживаем нативные view неактивных экранов — существенно снижает потребление памяти
+// и позволяет ОС дольше держать приложение в фоне
+try {
+    const { enableFreeze } = require('react-native-screens');
+    enableFreeze(true);
+} catch (e) {
+    // react-native-screens может не поддерживать enableFreeze в текущей версии
+}
 
 // Инициализируем InAppLogger для сбора логов на prod/preview
 // Логи будут доступны в PushNotificationDiagnostic экране
@@ -145,6 +154,7 @@ class ErrorBoundary extends React.Component {
 const AppInitializer = ({children}) => {
     const [error, setError] = useState(null);
     const hasInitialized = useRef(false);
+    const appState = useRef(AppState.currentState);
     
     // Хуки вызываются безусловно (правило React hooks)
     // Защита от ошибок добавлена в useEffect и внутри самих хуков
@@ -152,8 +162,53 @@ const AppInitializer = ({children}) => {
     const dispatch = useDispatch();
     
     // Необязательные хуки - должны иметь внутреннюю защиту от ошибок
-    usePushTokenAutoRegistration();
+    // usePushTokenAutoRegistration — вызывается в AppContainer, дублировать не нужно
     useChatSocket();
+
+    // Отслеживаем переход приложения в фон / возврат из фона
+    // При возврате из фона проверяем токены, чтобы пользователь не видел экран логина
+    useEffect(() => {
+        const subscription = AppState.addEventListener('change', (nextAppState) => {
+            if (
+                appState.current.match(/inactive|background/) &&
+                nextAppState === 'active'
+            ) {
+                // Приложение вернулось из фона — лёгкая проверка токенов
+                (async () => {
+                    try {
+                        const tokens = await authService.getStoredTokens();
+                        if (tokens?.accessToken && tokens?.refreshToken) {
+                            const isAccessValid = authService.isTokenValid(tokens.accessToken);
+                            const isRefreshValid = authService.isTokenValid(tokens.refreshToken);
+                            
+                            if (!isRefreshValid) {
+                                console.log('⚠️ App resume: refresh token expired, resetting auth');
+                                dispatch({ type: 'auth/resetState' });
+                                await authService.clearTokens();
+                            } else if (!isAccessValid) {
+                                // Access token истёк, но refresh ещё жив — обновляем
+                                const refreshed = await authService.refreshAccessToken();
+                                if (refreshed?.accessToken) {
+                                    dispatch({ 
+                                        type: 'auth/setTokens', 
+                                        payload: { 
+                                            accessToken: refreshed.accessToken, 
+                                            refreshToken: refreshed.refreshToken 
+                                        } 
+                                    });
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('⚠️ App resume: token check failed:', e?.message);
+                    }
+                })();
+            }
+            appState.current = nextAppState;
+        });
+
+        return () => subscription?.remove();
+    }, [dispatch]);
 
 
     useEffect(() => {
@@ -412,6 +467,12 @@ const AppInitializer = ({children}) => {
 
 const AppContent = () => {
     const [fontsReady, setFontsReady] = useState(false);
+
+    // Проверка обновления в Google Play / App Store (с задержкой после старта)
+    useEffect(() => {
+        const clear = scheduleUpdateCheck();
+        return clear;
+    }, []);
 
     useEffect(() => {
         // Загружаем кастомные шрифты безопасно для всех сборок

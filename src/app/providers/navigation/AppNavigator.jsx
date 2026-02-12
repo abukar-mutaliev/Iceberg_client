@@ -135,15 +135,6 @@ const AdminStack = createStackNavigator();
 // ЧАСТЬ 3: Утилиты и хуки
 // ============================================================================
 
-// Хук для оптимизации памяти
-const useMemoryOptimization = () => {
-    useEffect(() => {
-        return () => {
-            if (global.gc) global.gc();
-        };
-    }, []);
-};
-
 // Хук для обработки Deep Links
 const useDeepLinking = () => {
     const processedUrls = useRef(new Set());
@@ -228,34 +219,46 @@ const useDeepLinking = () => {
 };
 
 // Хук для очистки избранного
+// Оптимизация: запускается однократно за сессию с задержкой 30 сек,
+// чтобы не нагружать API и память при каждом переключении auth-состояния
 const useFavoritesCleanup = (isAuthenticated) => {
     const dispatch = useDispatch();
+    const hasCleanedUp = useRef(false);
 
     useEffect(() => {
-        if (!isAuthenticated) return;
+        if (!isAuthenticated || hasCleanedUp.current) return;
 
-        dispatch(fetchFavorites())
-            .then(favoritesResult => {
-                if (!favoritesResult || !Array.isArray(favoritesResult.payload)) return;
+        // Откладываем очистку избранного — она не критична для UX
+        // и не должна конкурировать с загрузкой UI при запуске
+        const timer = setTimeout(() => {
+            if (hasCleanedUp.current) return;
+            hasCleanedUp.current = true;
 
-                dispatch(fetchProducts())
-                    .then(productsResult => {
-                        if (!productsResult || !Array.isArray(productsResult.payload)) return;
+            dispatch(fetchFavorites())
+                .then(favoritesResult => {
+                    if (!favoritesResult || !Array.isArray(favoritesResult.payload)) return;
 
-                        const validProductIds = new Set(
-                            productsResult.payload.map(p => Number(p.id))
-                        );
+                    dispatch(fetchProducts())
+                        .then(productsResult => {
+                            if (!productsResult || !Array.isArray(productsResult.payload)) return;
 
-                        favoritesResult.payload.forEach(favorite => {
-                            const favoriteProductId = favorite.product?.id || favorite.productId;
+                            const validProductIds = new Set(
+                                productsResult.payload.map(p => Number(p.id))
+                            );
 
-                            if (favoriteProductId && !validProductIds.has(Number(favoriteProductId))) {
-                                console.warn(`Удаляем несуществующий продукт ${favoriteProductId} из избранного`);
-                                dispatch(removeFromFavorites(favoriteProductId));
-                            }
+                            favoritesResult.payload.forEach(favorite => {
+                                const favoriteProductId = favorite.product?.id || favorite.productId;
+
+                                if (favoriteProductId && !validProductIds.has(Number(favoriteProductId))) {
+                                    console.warn(`Удаляем несуществующий продукт ${favoriteProductId} из избранного`);
+                                    dispatch(removeFromFavorites(favoriteProductId));
+                                }
+                            });
                         });
-                    });
-            });
+                });
+        }, 30000); // 30 сек задержка — даём приложению полностью загрузиться
+
+        return () => clearTimeout(timer);
     }, [isAuthenticated, dispatch]);
 };
 
@@ -1284,14 +1287,19 @@ const MainTabNavigatorContent = () => {
                     // прятать по leaf-роуту — в комнате он физически не рендерится.
                     tabBarStyle: tabBarStyle,
                     lazy: true,
-                    unmountOnBlur: true,
+                    // Не размонтируем вкладки при переключении — экраны замораживаются (freezeOnBlur)
+                    // и остаются в памяти. Это позволяет мгновенно возвращаться на предыдущую вкладку
+                    // и снижает пиковое потребление памяти (не нужно пересоздавать дерево компонентов).
+                    unmountOnBlur: false,
                     freezeOnBlur: true,
                     // Отключаем анимацию таббара для предотвращения дергания
                     animationEnabled: false,
                 };
             }}
             sceneContainerStyle={isTabBarVisible ? { paddingBottom: tabBarHeight } : undefined}
-            detachInactiveScreens={true}
+            // Не отсоединяем неактивные экраны — замороженные нативные view занимают минимум памяти,
+            // а при возврате не нужно заново монтировать компоненты
+            detachInactiveScreens={false}
             tabBar={props => <CustomTabBar {...props} />}
             backBehavior="none"
         >
@@ -1316,7 +1324,6 @@ export const MainTabNavigator = () => (
 // ============================================================================
 
 export const AppNavigator = () => {
-    useMemoryOptimization();
     const { isAuthenticated } = useSelector((state) => state.auth);
     useFavoritesCleanup(isAuthenticated);
     useDeepLinking();

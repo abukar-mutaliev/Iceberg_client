@@ -360,6 +360,7 @@ const styles = StyleSheet.create({
     buttonContainer: {
         flexDirection: 'row',
         gap: 12,
+        paddingBottom: 30
     },
     saveButton: {
         backgroundColor: Color.primary,
@@ -373,7 +374,7 @@ const styles = StyleSheet.create({
         opacity: 0.6,
     },
     saveButtonText: {
-        fontSize: 16,
+        fontSize: 14,
         fontWeight: '600',
         color: '#fff',
     },

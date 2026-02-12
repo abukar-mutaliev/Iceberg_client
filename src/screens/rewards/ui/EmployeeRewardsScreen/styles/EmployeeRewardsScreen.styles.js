@@ -6,6 +6,7 @@ export const styles = StyleSheet.create({
     screen: {
         flex: 1,
         backgroundColor: Color.colorLightMode,
+        paddingBottom: 50
     },
     container: {
         flex: 1,

@@ -319,23 +319,17 @@ export const StopsListScreen = ({ navigation }) => {
         }
     }, [fromScreen, navigation]);
 
-    // Перехватываем аппаратную кнопку "назад" на Android
+    // Нативная кнопка «Назад» на Android (жест или аппаратная кнопка)
     useFocusEffect(
         React.useCallback(() => {
+            if (Platform.OS !== 'android') return undefined;
+
             const onBackPress = () => {
                 handleGoBack();
-                return true; // Предотвращаем стандартное поведение
+                return true;
             };
-
-            // Добавляем обработчик аппаратной кнопки назад
-            const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
-
-            return () => {
-                // Удаляем обработчик при размонтировании
-                if (backHandler && typeof backHandler.remove === 'function') {
-                    backHandler.remove();
-                }
-            };
+            const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+            return () => subscription.remove();
         }, [handleGoBack])
     );
 
