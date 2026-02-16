@@ -1281,32 +1281,32 @@ const MainTabNavigatorContent = () => {
         <Tab.Navigator
             id="MainTabs"
             screenOptions={({ route }) => {
+                // iOS: freezeOnBlur вызывает утечки памяти (react-native-screens #2971),
+                //       поэтому размонтируем неактивные вкладки для экономии памяти.
+                //       Redux Persist восстанавливает состояние мгновенно при переключении.
+                // Android: храним вкладки в памяти и замораживаем — мгновенное переключение.
+                const isIOS = Platform.OS === 'ios';
                 return {
                     headerShown: false,
-                    // ChatRoom вынесен в корневой Stack (AppStack), поэтому здесь таббар больше не нужно
-                    // прятать по leaf-роуту — в комнате он физически не рендерится.
                     tabBarStyle: tabBarStyle,
                     lazy: true,
-                    // Не размонтируем вкладки при переключении — экраны замораживаются (freezeOnBlur)
-                    // и остаются в памяти. Это позволяет мгновенно возвращаться на предыдущую вкладку
-                    // и снижает пиковое потребление памяти (не нужно пересоздавать дерево компонентов).
-                    unmountOnBlur: false,
-                    freezeOnBlur: true,
-                    // Отключаем анимацию таббара для предотвращения дергания
+                    unmountOnBlur: isIOS,
+                    freezeOnBlur: !isIOS,
                     animationEnabled: false,
                 };
             }}
             sceneContainerStyle={isTabBarVisible ? { paddingBottom: tabBarHeight } : undefined}
-            // Не отсоединяем неактивные экраны — замороженные нативные view занимают минимум памяти,
-            // а при возврате не нужно заново монтировать компоненты
-            detachInactiveScreens={false}
+            // iOS: отсоединяем неактивные экраны для снижения потребления памяти,
+            //       чтобы iOS не убивала приложение при сворачивании.
+            // Android: держим всё в памяти для мгновенного переключения.
+            detachInactiveScreens={Platform.OS === 'ios'}
             tabBar={props => <CustomTabBar {...props} />}
             backBehavior="none"
         >
             <Tab.Screen name="MainTab" component={MainStackScreen} options={{ lazy: false }} />
             <Tab.Screen name="Search" component={SearchStackScreen} />
             <Tab.Screen name="Cart" component={CartStackScreen} />
-            {featureFlags.chat && <Tab.Screen name="ChatList" component={ChatStackScreen} options={{ unmountOnBlur: false }} />}
+            {featureFlags.chat && <Tab.Screen name="ChatList" component={ChatStackScreen} options={Platform.OS === 'ios' ? undefined : { unmountOnBlur: false }} />}
             <Tab.Screen name="ProfileTab" component={ProfileStackScreen} />
             <Tab.Screen name="Catalog" component={CatalogScreen} options={{ tabBarVisible: false }} />
         </Tab.Navigator>

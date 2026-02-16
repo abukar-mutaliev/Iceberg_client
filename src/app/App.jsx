@@ -1,5 +1,5 @@
 import React, {useEffect, useRef, useState} from 'react';
-import {View, Text, Button, StyleSheet, Image, AppState} from 'react-native';
+import {View, Text, Button, StyleSheet, Image, AppState, Platform} from 'react-native';
 import {AppNavigator} from '@app/providers/navigation/AppNavigator';
 import * as Font from 'expo-font';
 import {AppProviders} from './providers';
@@ -20,14 +20,11 @@ import { scheduleUpdateCheck } from '@shared/lib/checkUpdate';
 
 initConsolePolyfill();
 
-// Замораживаем нативные view неактивных экранов — существенно снижает потребление памяти
-// и позволяет ОС дольше держать приложение в фоне
-try {
-    const { enableFreeze } = require('react-native-screens');
-    enableFreeze(true);
-} catch (e) {
-    // react-native-screens может не поддерживать enableFreeze в текущей версии
-}
+// ⚠️ НЕ вызываем enableFreeze(true) глобально:
+// В react-native-screens 4.x с React Navigation 7 freeze управляется через freezeOnBlur
+// навигатора. Глобальный enableFreeze вызывает утечки памяти на iOS
+// (каждый свитч вкладки наращивает heap), после чего iOS немедленно убивает приложение
+// при переходе в фон. См. react-native-screens #2971, #1478.
 
 // Инициализируем InAppLogger для сбора логов на prod/preview
 // Логи будут доступны в PushNotificationDiagnostic экране
@@ -207,7 +204,28 @@ const AppInitializer = ({children}) => {
             appState.current = nextAppState;
         });
 
-        return () => subscription?.remove();
+        // iOS: слушаем предупреждения о нехватке памяти
+        // Когда iOS предупреждает, очищаем кэши чтобы снизить давление на память
+        // и предотвратить принудительное завершение приложения
+        let memorySubscription;
+        if (Platform.OS === 'ios') {
+            memorySubscription = AppState.addEventListener('memoryWarning', () => {
+                console.warn('⚠️ iOS memoryWarning: releasing resources');
+                try {
+                    // Очищаем логи InAppLogger (могут накапливать десятки МБ)
+                    if (InAppLogger?.clearLogs) {
+                        InAppLogger.clearLogs();
+                    }
+                } catch (e) {
+                    // Не даём ошибке в обработчике crashнуть приложение
+                }
+            });
+        }
+
+        return () => {
+            subscription?.remove();
+            memorySubscription?.remove();
+        };
     }, [dispatch]);
 
 

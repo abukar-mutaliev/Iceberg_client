@@ -25,6 +25,7 @@ import { Header } from "@widgets/header";
 import { CategoriesBar } from "@widgets/categoriesBar";
 import { ProductsList } from "@widgets/product/productsList";
 import { LocatorsSlider } from "@features/locatorsSlider";
+import { IceCreamSeasonBanner } from "@features/iceCreamSeasonBanner";
 
 // Hooks
 import { useNotifications } from '@entities/notification';
@@ -375,6 +376,7 @@ export const MainScreen = ({ navigation, route }) => {
                 onDriverPress={handleDriverLocatorPress}
                 onWarehousePress={handleWarehouseLocatorPress}
             />
+            <IceCreamSeasonBanner />
         </>
     ), [navigation, isDataReady, handleDriverLocatorPress, handleWarehouseLocatorPress]);
 
