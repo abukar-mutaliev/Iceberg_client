@@ -50,7 +50,7 @@ export default function IceCreamSeasonBanner() {
         <View style={styles.textBlock}>
           <Text style={styles.title}>Скоро сезон мороженого!</Text>
           <Text style={styles.subtitle}>
-            Готовься к самым вкусным дням лета
+            Завоз планируется в марте
           </Text>
         </View>
       </LinearGradient>

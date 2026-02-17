@@ -175,7 +175,11 @@ export const GroupInfoScreen = ({ route, navigation }) => {
       });
     }
 
-    return roomData.participants;
+    // Для всех типов комнат - скрываем поставщиков из списка участников
+    return roomData.participants.filter(p => {
+      const user = p.user || p;
+      return user?.role !== 'SUPPLIER';
+    });
   }, [roomData?.participants, roomData?.type, currentUser?.role, currentUser?.client?.districtId]);
 
   // Убираем оверрайды, если сервер уже вернул актуальную роль

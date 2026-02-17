@@ -44,11 +44,23 @@ export const useProductBox = (product) => {
         const actualProduct = product.originalData || product;
 
         const itemsPerBox = actualProduct.itemsPerBox || 1;
-        const pricePerItem = typeof actualProduct.price === 'number'
-            ? actualProduct.price
-            : parseFloat(actualProduct.price) || 0;
+        const isPendingLike = actualProduct.moderationStatus === 'PENDING' || actualProduct.moderationStatus === 'REJECTED';
 
-        const boxPrice = actualProduct.boxPrice || (pricePerItem * itemsPerBox);
+        const effectiveUnitPriceRaw =
+            isPendingLike && actualProduct.supplierProposedPrice !== undefined && actualProduct.supplierProposedPrice !== null
+                ? actualProduct.supplierProposedPrice
+                : actualProduct.price;
+        const pricePerItem = typeof effectiveUnitPriceRaw === 'number'
+            ? effectiveUnitPriceRaw
+            : parseFloat(effectiveUnitPriceRaw) || 0;
+
+        const effectiveBoxPriceRaw =
+            isPendingLike && actualProduct.supplierProposedBoxPrice !== undefined && actualProduct.supplierProposedBoxPrice !== null
+                ? actualProduct.supplierProposedBoxPrice
+                : actualProduct.boxPrice;
+        const boxPrice = (typeof effectiveBoxPriceRaw === 'number'
+            ? effectiveBoxPriceRaw
+            : parseFloat(effectiveBoxPriceRaw)) || (pricePerItem * itemsPerBox);
 
         const stockQuantityBoxes = actualProduct.stockQuantity || 0;
 
@@ -122,6 +134,9 @@ export const useProductBox = (product) => {
             categories: actualProduct.categories || [],
             images: actualProduct.images || [],
             weight: actualProduct.weight,
+            moderationStatus: actualProduct.moderationStatus || 'APPROVED',
+            supplierProposedPrice: actualProduct.supplierProposedPrice ?? null,
+            supplierProposedBoxPrice: actualProduct.supplierProposedBoxPrice ?? null,
 
             itemsPerBox,
             pricePerItem,

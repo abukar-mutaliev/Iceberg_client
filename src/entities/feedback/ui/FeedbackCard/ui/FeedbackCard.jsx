@@ -1,5 +1,5 @@
-import React, { useState, lazy, Suspense, memo, useCallback } from 'react';
-import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
+import React, { useState, lazy, Suspense, memo, useCallback, useEffect } from 'react';
+import { View, StyleSheet, TouchableOpacity, Text, TextInput } from 'react-native';
 import { useSelector } from 'react-redux';
 import { LinearGradient } from 'expo-linear-gradient';
 import { selectUser } from '@entities/auth';
@@ -22,6 +22,9 @@ export const FeedbackCard = memo(({
                                onExpandComment = null,
                                onProductPress = () => {},
                                onAuthorPress = null,
+                               canReply = false,
+                               onReplySubmit = null,
+                               isReplySubmitting = false,
                            }) => {
     const feedbackData = feedback || feedbacks;
     if (!feedbackData) return null;
@@ -31,9 +34,16 @@ export const FeedbackCard = memo(({
     const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
     const [isCommentExpanded, setIsCommentExpanded] = useState(false);
     const [isReplyExpanded, setIsReplyExpanded] = useState(false);
+    const [isReplyEditorVisible, setIsReplyEditorVisible] = useState(false);
+    const [replyInput, setReplyInput] = useState('');
 
     const COMMENT_MAX_LINES = 3;
     const REPLY_MAX_LINES = 2;
+    const existingReply = feedbackData.supplierReply || feedbackData.reply || '';
+
+    useEffect(() => {
+        setReplyInput(existingReply);
+    }, [existingReply, feedbackData.id]);
 
     const handlePhotoPress = useCallback((index) => {
         setSelectedPhotoIndex(index);
@@ -66,8 +76,19 @@ export const FeedbackCard = memo(({
         }
     }, [feedbackData.id, onDelete]);
 
+    const handleSubmitReply = useCallback(async () => {
+        const trimmedReply = replyInput.trim();
+        if (!trimmedReply || !onReplySubmit) return;
+        try {
+            await onReplySubmit(feedbackData.id, trimmedReply);
+            setIsReplyEditorVisible(false);
+        } catch (error) {
+            // Ошибка обрабатывается в вызывающем компоненте
+        }
+    }, [replyInput, onReplySubmit, feedbackData.id]);
+
     const commentLength = feedbackData.comment?.length || 0;
-    const replyLength = feedbackData.reply?.length || 0;
+    const replyLength = existingReply?.length || 0;
     const shouldShowCommentButton = commentLength > 150;
     const shouldShowReplyButton = replyLength > 80;
     const hasPhotos = feedbackData.photoUrls && Array.isArray(feedbackData.photoUrls) && feedbackData.photoUrls.length > 0;
@@ -109,12 +130,15 @@ export const FeedbackCard = memo(({
                 {replyLength > 0 && (
                     <View style={styles.replyContainer}>
                         <View style={styles.replyBackground} />
+                        <View style={styles.replyBadgeContainer}>
+                            <Text style={styles.replyBadgeText}>Ответ поставщика</Text>
+                        </View>
                         <View style={styles.replyTextContainer}>
                             <Text
                                 style={styles.replyText}
                                 numberOfLines={isReplyExpanded ? undefined : REPLY_MAX_LINES}
                             >
-                                {feedbackData.reply}
+                                {existingReply}
                             </Text>
                         </View>
                         {shouldShowReplyButton && (
@@ -123,6 +147,58 @@ export const FeedbackCard = memo(({
                                     {isReplyExpanded ? 'скрыть' : 'еще'}
                                 </Text>
                             </TouchableOpacity>
+                        )}
+                    </View>
+                )}
+                {canReply && (
+                    <View style={styles.replyActionsContainer}>
+                        {!isReplyEditorVisible ? (
+                            <TouchableOpacity
+                                onPress={() => setIsReplyEditorVisible(true)}
+                                style={styles.replyActionButton}
+                            >
+                                <Text style={styles.replyActionButtonText}>
+                                    {existingReply ? 'Изменить ответ' : 'Ответить на отзыв'}
+                                </Text>
+                            </TouchableOpacity>
+                        ) : (
+                            <View style={styles.replyEditorContainer}>
+                                <TextInput
+                                    value={replyInput}
+                                    onChangeText={setReplyInput}
+                                    placeholder="Введите ответ поставщика..."
+                                    multiline
+                                    maxLength={2000}
+                                    style={styles.replyInput}
+                                    textAlignVertical="top"
+                                    editable={!isReplySubmitting}
+                                />
+                                <View style={styles.replyEditorButtonsRow}>
+                                    <TouchableOpacity
+                                        onPress={() => {
+                                            setIsReplyEditorVisible(false);
+                                            setReplyInput(existingReply);
+                                        }}
+                                        style={[styles.replyEditorButton, styles.replyEditorCancelButton]}
+                                        disabled={isReplySubmitting}
+                                    >
+                                        <Text style={styles.replyEditorCancelButtonText}>Отмена</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        onPress={handleSubmitReply}
+                                        style={[
+                                            styles.replyEditorButton,
+                                            styles.replyEditorSubmitButton,
+                                            (!replyInput.trim() || isReplySubmitting) && styles.replyEditorSubmitButtonDisabled
+                                        ]}
+                                        disabled={!replyInput.trim() || isReplySubmitting}
+                                    >
+                                        <Text style={styles.replyEditorSubmitButtonText}>
+                                            {isReplySubmitting ? 'Сохранение...' : 'Сохранить'}
+                                        </Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
                         )}
                     </View>
                 )}
@@ -205,10 +281,85 @@ const styles = StyleSheet.create({
     replyTextContainer: {
         padding: 12,
         paddingRight: 25,
+        paddingTop: 8,
     },
     replyText: {
         fontSize: 13,
         lineHeight: 18,
+    },
+    replyBadgeContainer: {
+        alignSelf: 'flex-start',
+        marginLeft: 10,
+        marginTop: 8,
+        backgroundColor: '#6B4EFF',
+        borderRadius: 6,
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+    },
+    replyBadgeText: {
+        fontSize: 10,
+        color: '#FFFFFF',
+        fontWeight: '600',
+    },
+    replyActionsContainer: {
+        marginHorizontal: 16,
+        marginTop: 8,
+    },
+    replyActionButton: {
+        alignSelf: 'flex-start',
+        paddingVertical: 4,
+        paddingHorizontal: 2,
+    },
+    replyActionButtonText: {
+        fontSize: 13,
+        color: '#6B4EFF',
+        fontWeight: '500',
+    },
+    replyEditorContainer: {
+        marginTop: 4,
+    },
+    replyInput: {
+        minHeight: 80,
+        maxHeight: 140,
+        borderWidth: 1,
+        borderColor: '#D9D9D9',
+        borderRadius: 10,
+        backgroundColor: '#FFFFFF',
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        fontSize: 13,
+        lineHeight: 18,
+        color: '#1A1A1A',
+    },
+    replyEditorButtonsRow: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        marginTop: 8,
+    },
+    replyEditorButton: {
+        borderRadius: 8,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+    },
+    replyEditorCancelButton: {
+        backgroundColor: '#ECECEC',
+    },
+    replyEditorCancelButtonText: {
+        fontSize: 12,
+        color: '#444444',
+        fontWeight: '500',
+    },
+    replyEditorSubmitButton: {
+        backgroundColor: '#6B4EFF',
+        marginLeft: 8,
+    },
+    replyEditorSubmitButtonDisabled: {
+        backgroundColor: '#B9B0FF',
+    },
+    replyEditorSubmitButtonText: {
+        fontSize: 12,
+        color: '#FFFFFF',
+        fontWeight: '600',
     },
     showMoreButton: {
         alignItems: 'flex-end',

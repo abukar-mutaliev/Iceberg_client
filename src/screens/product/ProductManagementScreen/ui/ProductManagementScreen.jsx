@@ -15,6 +15,7 @@ export const ProductManagementScreen = ({ route }) => {
 
     const fromScreen = route?.params?.fromScreen;
     const shouldRefresh = route?.params?.refresh;
+    const moderationOnly = route?.params?.moderationOnly === true;
 
     const isMountedRef = useRef(true);
     const isNavigatingRef = useRef(false);
@@ -173,22 +174,39 @@ export const ProductManagementScreen = ({ route }) => {
         );
     }, [currentUser?.role, handleViewStagnantProducts]);
 
+    const moderationPendingCount = useMemo(() => {
+        if (!Array.isArray(filteredProducts)) return 0;
+        return filteredProducts.filter((item) => item?.moderationStatus === 'PENDING').length;
+    }, [filteredProducts]);
+
+    const displayedProducts = useMemo(() => {
+        if (!Array.isArray(filteredProducts)) return [];
+        if (moderationOnly) {
+            return filteredProducts.filter((item) => item?.moderationStatus === 'PENDING');
+        }
+        return filteredProducts;
+    }, [filteredProducts, moderationOnly]);
+
     const renderEmptyList = useMemo(() => (
         <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>
-                {currentUser?.role === 'SUPPLIER' ? 'У вас пока нет продуктов' : 'Продукты отсутствуют'}
+                {moderationOnly
+                    ? 'Нет товаров в очереди модерации'
+                    : (currentUser?.role === 'SUPPLIER' ? 'У вас пока нет продуктов' : 'Продукты отсутствуют')}
             </Text>
             <Text style={styles.infoText}>
-                {currentUser?.role === 'SUPPLIER'
+                {moderationOnly
+                    ? 'Все заявки обработаны'
+                    : (currentUser?.role === 'SUPPLIER'
                     ? 'Чтобы добавить новый продукт, перейдите в профиль и нажмите кнопку "Добавить продукт"'
                     : 'Попробуйте обновить список или вернитесь позже'
-                }
+                )}
             </Text>
             <TouchableOpacity style={styles.reloadButton} onPress={forceReloadData}>
                 <Text style={styles.reloadButtonText}>Обновить</Text>
             </TouchableOpacity>
         </View>
-    ), [currentUser?.role, forceReloadData]);
+    ), [currentUser?.role, forceReloadData, moderationOnly]);
 
     const renderProductCard = useCallback(({ item, index }) => {
         if (!item || !item.id) {
@@ -201,9 +219,14 @@ export const ProductManagementScreen = ({ route }) => {
                 key={`product-${item.id}-${index}`}
                 product={item}
                 onViewProduct={handleViewProduct}
+                onProductUpdated={() => {
+                    // Для поставщика список хранится в локальном state useProductManagement,
+                    // поэтому после сохранения форсируем перезагрузку, чтобы UI обновился без перезапуска приложения.
+                    forceReloadData();
+                }}
             />
         );
-    }, [handleViewProduct]);
+    }, [handleViewProduct, forceReloadData]);
 
     const keyExtractor = useCallback((item, index) => {
         // Используем только ID продукта как ключ для максимальной стабильности
@@ -261,19 +284,30 @@ export const ProductManagementScreen = ({ route }) => {
     return (
         <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
             <ProductManagementHeader
-                title={currentUser?.role === 'SUPPLIER' ? 'Мои продукты' : 'Управление продуктами'}
+                title={
+                    moderationOnly
+                        ? 'Очередь модерации'
+                        : (currentUser?.role === 'SUPPLIER' ? 'Мои товары' : 'Управление продуктами')
+                }
                 onBack={handleGoBack}
             />
 
             <View style={styles.content}>
                 {/* Карточки для поставщика */}
                 {renderSupplierCards}
+                {currentUser?.role === 'SUPPLIER' && moderationPendingCount > 0 && (
+                    <View style={styles.pendingInfoContainer}>
+                        <Text style={styles.pendingInfoText}>
+                            На модерации: {moderationPendingCount} товар(ов)
+                        </Text>
+                    </View>
+                )}
 
-                {!filteredProducts || filteredProducts.length === 0 ? (
+                {!displayedProducts || displayedProducts.length === 0 ? (
                     renderEmptyList
                 ) : (
                     <FlatList
-                        data={filteredProducts}
+                        data={displayedProducts}
                         renderItem={renderProductCard}
                         keyExtractor={keyExtractor}
                         contentContainerStyle={styles.listContainer}
@@ -291,7 +325,7 @@ export const ProductManagementScreen = ({ route }) => {
                             index
                         })}
                         // Дополнительные оптимизации для предотвращения ViewState ошибок
-                        extraData={filteredProducts?.length}
+                        extraData={displayedProducts?.length}
                         keyboardShouldPersistTaps="handled"
                     />
                 )}
@@ -346,6 +380,19 @@ const styles = StyleSheet.create({
         marginTop: 10,
         paddingHorizontal: 20,
         marginBottom: 20,
+    },
+    pendingInfoContainer: {
+        marginBottom: 12,
+        backgroundColor: '#FFF4E5',
+        borderRadius: 10,
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+    },
+    pendingInfoText: {
+        color: '#B26A00',
+        fontFamily: FontFamily.sFProText,
+        fontSize: FontSize.size_xs,
+        fontWeight: '600',
     },
     errorText: {
         fontSize: FontSize.size_sm,

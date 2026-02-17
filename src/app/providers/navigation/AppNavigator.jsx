@@ -620,7 +620,7 @@ const ProfileStackScreen = () => (
             component={ProductListScreen}
             options={createScreenOptions({ 
                 headerShown: true,
-                title: 'Мои продукты',
+                title: 'Мои товары',
                 headerTitleStyle: { fontWeight: '600' }
             })}
         />
@@ -899,6 +899,12 @@ const AdminStackScreen = () => (
         <AdminStack.Screen
             name="ProductManagement"
             component={ProductManagementScreen}
+            options={createScreenOptions()}
+        />
+        <AdminStack.Screen
+            name="ProductModerationQueue"
+            component={ProductManagementScreen}
+            initialParams={{ moderationOnly: true }}
             options={createScreenOptions()}
         />
         <AdminStack.Screen
@@ -1437,6 +1443,16 @@ export const AppNavigator = () => {
                     <Stack.Screen
                         name="SupplierScreen"
                         component={SupplierScreen}
+                        options={createScreenOptions()}
+                    />
+                    <Stack.Screen
+                        name="StagnantProducts"
+                        component={StagnantProductsScreen}
+                        options={createScreenOptions({ title: 'Залежавшиеся товары' })}
+                    />
+                    <Stack.Screen
+                        name="AdminProductDetail"
+                        component={AdminProductDetailScreen}
                         options={createScreenOptions()}
                     />
                     {/* WarehouseDetails в AppStack нужен для переходов из ChatRoom.

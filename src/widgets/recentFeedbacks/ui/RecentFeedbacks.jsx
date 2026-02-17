@@ -7,7 +7,10 @@ export const RecentFeedbacks = ({
                                     feedbacks = [],
                                     productId,
                                     isLoading = false,
-                                    limit = 2
+                                    limit = 2,
+                                    canReplyAsSupplier = false,
+                                    onReplySubmit = null,
+                                    replyingFeedbackId = null
                                 }) => {
     const { colors } = useTheme();
 
@@ -66,6 +69,9 @@ export const RecentFeedbacks = ({
                 >
                     <FeedbackCard
                         feedback={feedback}
+                        canReply={canReplyAsSupplier}
+                        onReplySubmit={onReplySubmit}
+                        isReplySubmitting={replyingFeedbackId === feedback.id}
                     />
                 </View>
             ))}
@@ -76,7 +82,7 @@ export const RecentFeedbacks = ({
 const styles = StyleSheet.create({
     container: {
         marginTop: 0,
-        paddingHorizontal: 5,
+        paddingHorizontal: 12,
     },
     headerContainer: {
         flexDirection: 'row',

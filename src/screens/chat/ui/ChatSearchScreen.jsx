@@ -54,14 +54,28 @@ export const ChatSearchScreen = () => {
         const roomsResponse = await ChatApi.searchRooms(query);
         const rooms = roomsResponse?.data?.rooms || [];
 
-        // Обогащаем результаты комнат
-        const enrichedRooms = rooms.map(room => ({
-          ...room,
-          type: 'room',
-          displayName: room.displayName,
-          subtitle: room.subtitle,
-          roomType: room.roomType
-        }));
+        // Обогащаем результаты комнат, исключая PRODUCT чаты (чаты с поставщиками)
+        const enrichedRooms = rooms
+          .filter(room => {
+            // Скрываем PRODUCT комнаты (чаты с поставщиками по товарам)
+            if (room.roomType === 'PRODUCT') return false;
+            // Для DIRECT комнат скрываем те, где есть поставщик
+            if (room.roomType === 'DIRECT' && room.participants) {
+              const hasSupplier = room.participants.some(p => {
+                const user = p?.user || p;
+                return user?.role === 'SUPPLIER';
+              });
+              if (hasSupplier) return false;
+            }
+            return true;
+          })
+          .map(room => ({
+            ...room,
+            type: 'room',
+            displayName: room.displayName,
+            subtitle: room.subtitle,
+            roomType: room.roomType
+          }));
 
         // Создаем Set для отслеживания пользователей, у которых уже есть DIRECT комната
         const usersWithDirectRooms = new Set();
@@ -76,10 +90,12 @@ export const ChatSearchScreen = () => {
           }
         });
 
-        // Обогащаем результаты пользователей, исключая тех, у кого уже есть DIRECT комната
+        // Обогащаем результаты пользователей, исключая тех, у кого уже есть DIRECT комната и поставщиков
         const enrichedUsers = users
           .filter(user => {
             const userId = user.id;
+            // Исключаем поставщиков из результатов поиска
+            if (user.role === 'SUPPLIER') return false;
             // Исключаем пользователей, у которых уже есть DIRECT комната в результатах
             return !usersWithDirectRooms.has(userId);
           })

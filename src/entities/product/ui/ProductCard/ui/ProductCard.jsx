@@ -356,11 +356,20 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
     const pricePerItem = productData.pricePerItem || product.price || 0;
     
     const boxPrice = useMemo(() => {
-        if (priceInfo?.effectivePrice) {
-            return priceInfo.effectivePrice;
+        const explicitBoxPrice = Number(productData?.boxPrice);
+        const hasExplicitBoxPrice = Number.isFinite(explicitBoxPrice) && explicitBoxPrice > 0;
+        if (hasExplicitBoxPrice) {
+            return explicitBoxPrice;
         }
-        return productData.boxPrice || productData.price || (pricePerItem * itemsPerBox);
-    }, [priceInfo, productData, pricePerItem, itemsPerBox]);
+
+        const effectivePrice = Number(priceInfo?.effectivePrice);
+        const hasEffectivePrice = Number.isFinite(effectivePrice) && effectivePrice > 0;
+        if (hasEffectivePrice) {
+            return effectivePrice;
+        }
+
+        return (Number(pricePerItem) || 0) * (Number(itemsPerBox) || 1);
+    }, [priceInfo?.effectivePrice, productData?.boxPrice, pricePerItem, itemsPerBox]);
 
     // Проверка, является ли товар рыбой
     const isFishCategory = useMemo(() => {
@@ -424,7 +433,7 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
         if (!isActive) {
             return (
                 <View style={[styles.statusBadge, styles.statusInactive, compact && styles.statusBadgeCompact]}>
-                    <Text style={[styles.statusText, compact && styles.statusTextCompact]}>Неактивен</Text>
+                    <Text style={[styles.statusText, styles.statusTextInactive, compact && styles.statusTextCompact]}>Неактивен</Text>
                 </View>
             );
         }
@@ -751,6 +760,11 @@ const arePropsEqual = (prevProps, nextProps) => {
         prevProduct.id === nextProduct.id &&
         prevProduct.name === nextProduct.name &&
         prevProduct.price === nextProduct.price &&
+        prevProduct.boxPrice === nextProduct.boxPrice &&
+        prevProduct.itemsPerBox === nextProduct.itemsPerBox &&
+        prevProduct.moderationStatus === nextProduct.moderationStatus &&
+        prevProduct.supplierProposedPrice === nextProduct.supplierProposedPrice &&
+        prevProduct.supplierProposedBoxPrice === nextProduct.supplierProposedBoxPrice &&
         prevProduct.stockQuantity === nextProduct.stockQuantity &&
         prevProduct.isActive === nextProduct.isActive
     );
@@ -941,6 +955,9 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: Color.purpleSoft,
         textAlign: 'center',
+    },
+    statusTextInactive: {
+        color: '#FFFFFF',
     },
     statusBadgeCompact: {
         top: 6,

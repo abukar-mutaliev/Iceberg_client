@@ -3,7 +3,6 @@ import {useDispatch, useSelector} from "react-redux";
 import {useNavigation, useRoute} from "@react-navigation/native";
 import {
     ActivityIndicator,
-    Alert,
     StyleSheet,
     Text,
     TextInput,
@@ -23,6 +22,7 @@ import {selectIsAuthenticated, selectUser} from "@entities/auth/model/selectors"
 import {createProductChunked, clearProductsCache} from '@entities/product';
 import {fetchProfile} from "@entities/profile";
 import ProductsService from "@shared/services/ProductsService";
+import {CustomAlert} from "@shared/ui/CustomAlert/CustomAlert";
 
 export const AddProductScreen = () => {
     const navigation = useNavigation();
@@ -85,6 +85,27 @@ export const AddProductScreen = () => {
         supplierId: "",
         warehouseQuantities: "",
     });
+    const [alertConfig, setAlertConfig] = useState({
+        visible: false,
+        type: "info",
+        title: "",
+        message: "",
+        buttons: [],
+    });
+
+    const hideCustomAlert = useCallback(() => {
+        setAlertConfig((prev) => ({...prev, visible: false}));
+    }, []);
+
+    const showCustomAlert = useCallback((config) => {
+        setAlertConfig({
+            visible: true,
+            type: config?.type || "info",
+            title: config?.title || "",
+            message: config?.message || "",
+            buttons: config?.buttons || [],
+        });
+    }, []);
 
     // Устанавливаем supplier ID если пользователь поставщик
     useEffect(() => {
@@ -500,20 +521,22 @@ export const AddProductScreen = () => {
                 retryFailedUploads();
             }
             setPendingSubmit(true);
-            Alert.alert(
-                "Загрузка изображений",
-                "Изображения еще загружаются. Товар будет отправлен автоматически после завершения загрузки.",
-                [{ text: "OK", style: "cancel" }]
-            );
+            showCustomAlert({
+                type: "info",
+                title: "Загрузка изображений",
+                message: "Изображения еще загружаются. Товар будет отправлен автоматически после завершения загрузки.",
+                buttons: [{text: "OK", style: "primary"}],
+            });
             return;
         }
 
         if (!user || !isAuthenticated) {
-            Alert.alert(
-                "Ошибка авторизации",
-                "Для добавления товара необходимо авторизоваться. Пожалуйста, войдите в систему.",
-                [{text: "OK", style: "cancel"}]
-            );
+            showCustomAlert({
+                type: "error",
+                title: "Ошибка авторизации",
+                message: "Для добавления товара необходимо авторизоваться. Пожалуйста, войдите в систему.",
+                buttons: [{text: "OK", style: "primary"}],
+            });
             return;
         }
 
@@ -539,11 +562,12 @@ export const AddProductScreen = () => {
             };
 
             if (!formData.images || formData.images.length === 0) {
-                Alert.alert(
-                    "Ошибка",
-                    "Необходимо добавить хотя бы одно изображение товара.",
-                    [{text: "OK", style: "cancel"}]
-                );
+                showCustomAlert({
+                    type: "error",
+                    title: "Ошибка",
+                    message: "Необходимо добавить хотя бы одно изображение товара.",
+                    buttons: [{text: "OK", style: "primary"}],
+                });
                 setIsSubmitting(false);
                 setIsUploading(false);
                 return;
@@ -572,11 +596,35 @@ export const AddProductScreen = () => {
                     }
                 }
             })).unwrap();
+            const createdProduct = result?.data?.product || result?.product || result;
+            const isPendingModeration = createdProduct?.moderationStatus === 'PENDING';
 
             dispatch(clearProductsCache());
 
             if (isSupplier) {
                 dispatch(fetchProfile());
+            }
+
+            if (isSupplier) {
+                showCustomAlert({
+                    type: "success",
+                    title: "Товар отправлен на модерацию",
+                    message: "После проверки администратором товар появится в витрине.",
+                    buttons: [{
+                        text: "OK",
+                        style: "primary",
+                        onPress: () => {
+                            navigation.goBack();
+                            // Для поставщика товар уходит в PENDING и может быть недоступен в detail экране.
+                            // Поэтому не вызываем onSuccess-навигацию в экран продукта до одобрения модерации.
+                            if (!isPendingModeration && onSuccess && typeof onSuccess === "function") {
+                                onSuccess(result);
+                            }
+                        }
+                    }],
+                    showCloseButton: false,
+                });
+                return;
             }
 
             navigation.goBack();
@@ -592,24 +640,30 @@ export const AddProductScreen = () => {
                 errorMessage = error.message;
             }
 
-            if (errorMessage.includes('сеть') || errorMessage.includes('соединен')) {
-                Alert.alert(
-                    "Ошибка соединения",
-                    "Не удалось подключиться к серверу. Проверьте ваше интернет-соединение и попробуйте снова.",
-                    [
+            const normalizedErrorMessage = typeof errorMessage === "string"
+                ? errorMessage
+                : String(errorMessage || "");
+
+            if (normalizedErrorMessage.includes('сеть') || normalizedErrorMessage.includes('соединен')) {
+                showCustomAlert({
+                    type: "error",
+                    title: "Ошибка соединения",
+                    message: "Не удалось подключиться к серверу. Проверьте ваше интернет-соединение и попробуйте снова.",
+                    buttons: [
                         {text: "OK", style: "cancel"},
-                        {text: "Попробовать снова", onPress: handleSubmit}
+                        {text: "Попробовать снова", style: "primary", onPress: handleSubmit}
                     ]
-                );
+                });
             } else {
-                Alert.alert(
-                    "Ошибка",
-                    errorMessage || "Произошла ошибка при создании товара",
-                    [
+                showCustomAlert({
+                    type: "error",
+                    title: "Ошибка",
+                    message: normalizedErrorMessage || "Произошла ошибка при создании товара",
+                    buttons: [
                         {text: "OK", style: "cancel"},
-                        {text: "Попробовать снова", onPress: handleSubmit}
+                        {text: "Попробовать снова", style: "primary", onPress: handleSubmit}
                     ]
-                );
+                });
             }
         } finally {
             setIsSubmitting(false);
@@ -678,8 +732,6 @@ export const AddProductScreen = () => {
             </View>
         );
     };
-
-    const uploadStats = getUploadStats();
 
     return (
         <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
@@ -862,6 +914,15 @@ export const AddProductScreen = () => {
                     <View style={styles.bottomSpacer} />
                 </ScrollView>
             </KeyboardAvoidingView>
+            <CustomAlert
+                visible={alertConfig.visible}
+                type={alertConfig.type}
+                title={alertConfig.title}
+                message={alertConfig.message}
+                buttons={alertConfig.buttons}
+                showCloseButton={alertConfig.showCloseButton ?? true}
+                onClose={hideCustomAlert}
+            />
         </SafeAreaView>
     );
 };

@@ -59,6 +59,12 @@ export const ProductPrice = ({ price, weight, product }) => {
     const isFish = isFishCategory();
     const unitText = isFish ? '/ кг' : '/ 1 шт';
     const itemsPerBox = product?.itemsPerBox || 1;
+    const numericUnitPrice = Number(product?.price ?? price) || 0;
+    const explicitBoxPrice = Number(product?.boxPrice);
+    const hasExplicitBoxPrice = Number.isFinite(explicitBoxPrice) && explicitBoxPrice > 0;
+    const normalizedBoxPrice = hasExplicitBoxPrice
+        ? explicitBoxPrice
+        : (numericUnitPrice * (Number(itemsPerBox) || 1));
     const boxUnitText = itemsPerBox > 1 
         ? `/ 1 коробка (${itemsPerBox} шт.)` 
         : '/ 1 коробка';
@@ -97,7 +103,7 @@ export const ProductPrice = ({ price, weight, product }) => {
                         ref={priceTextRef}
                         style={[styles.boxPriceText, { color: Color.dark }]}
                     >
-                        {formatPrice(product?.boxPrice || (product?.price * itemsPerBox))}
+                        {formatPrice(normalizedBoxPrice)}
                     </Text>
                 </HighlightChange>
                 <Text style={[styles.boxUnitText, { color: Color.grey7D7D7D }]}>

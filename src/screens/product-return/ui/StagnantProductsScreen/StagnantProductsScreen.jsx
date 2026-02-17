@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Color, FontFamily, FontSize, Border, Shadow, Padding } from '@app/styles/GlobalStyles';
 import { normalize } from '@shared/lib/normalize';
+import { BackButton } from '@shared/ui/Button/BackButton';
 import {
   useStagnantProducts,
   useReturnPermissions,
@@ -28,6 +29,7 @@ export const StagnantProductsScreen = () => {
   const navigation = useNavigation();
   const { canCreate, isSupplier } = useReturnPermissions();
   const { createReturn, isCreating } = useCreateReturn();
+  const screenTitle = isSupplier ? 'Мои залежавшиеся товары' : 'Залежавшиеся товары';
 
   // Состояние фильтров
   const [selectedUrgency, setSelectedUrgency] = useState(null);
@@ -89,12 +91,26 @@ export const StagnantProductsScreen = () => {
     navigation.navigate('CreateReturnModal', { product });
   }, [canCreate, isSupplier, navigation]);
 
+  const handleBackPress = useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
+    navigation.navigate('Main');
+  }, [navigation]);
+
+  const renderScreenHeader = () => (
+    <View style={styles.screenHeader}>
+      <BackButton onPress={handleBackPress} />
+      <Text style={styles.screenHeaderTitle}>{screenTitle}</Text>
+      <View style={styles.screenHeaderPlaceholder} />
+    </View>
+  );
+
   // Рендер заголовка со статистикой
   const renderHeader = () => (
     <View style={styles.header}>
-      <Text style={styles.title}>
-        {isSupplier ? 'Мои залежавшиеся товары' : 'Залежавшиеся товары'}
-      </Text>
       <Text style={styles.subtitle}>
         {isSupplier 
           ? 'Товары без продаж более 3 недель. Администрация может инициировать возврат.'
@@ -168,7 +184,8 @@ export const StagnantProductsScreen = () => {
   // Рендер ошибки
   if (error && !loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['left', 'right']}>
+        {renderScreenHeader()}
         <View style={styles.errorContainer}>
           <Text style={styles.errorIcon}>⚠️</Text>
           <Text style={styles.errorTitle}>Ошибка загрузки</Text>
@@ -182,7 +199,8 @@ export const StagnantProductsScreen = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['left', 'right']}>
+      {renderScreenHeader()}
       <FlatList
         data={products}
         keyExtractor={(item, index) => `stagnant-${item.productId}-${item.warehouseId || item.id || index}`}
@@ -250,19 +268,33 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Color.background,
   },
+  screenHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 56,
+    paddingHorizontal: 16,
+    backgroundColor: Color.colorWhite,
+    borderBottomWidth: 1,
+    borderBottomColor: Color.border,
+  },
+  screenHeaderTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: FontSize.size_lg,
+    fontFamily: FontFamily.sFProDisplay,
+    fontWeight: '600',
+    color: Color.textPrimary,
+  },
+  screenHeaderPlaceholder: {
+    width: 50,
+  },
   listContent: {
     padding: Padding.medium,
     paddingBottom: Padding.large,
   },
   header: {
     marginBottom: Padding.large,
-  },
-  title: {
-    fontSize: FontSize.xxxlarge,
-    fontFamily: FontFamily.bold,
-    fontWeight: '700',
-    color: Color.textPrimary,
-    marginBottom: 4,
   },
   subtitle: {
     fontSize: FontSize.size_sm,

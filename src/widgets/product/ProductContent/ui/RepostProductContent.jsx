@@ -161,8 +161,10 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
 
   // Функция обогащения пользователей информацией о чатах и сортировки
   const enrichAndSortUsers = useCallback((users) => {
+    // Исключаем поставщиков из списка пользователей
+    const usersWithoutSuppliers = users.filter(user => user.role !== 'SUPPLIER');
     // Обогащаем результаты информацией о существующих чатах
-    const enrichedUsers = users.map(user => {
+    const enrichedUsers = usersWithoutSuppliers.map(user => {
       const existingRoom = rooms.find(room => {
         const roomData = room.room || room;
         const roomType = roomData.type;
@@ -400,9 +402,18 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
         return false;
       }
       
-      // Исключаем чат с текущим товаром
-      if (room.type === 'PRODUCT' && room.productId === product?.id) {
+      // Исключаем все PRODUCT чаты (чаты с поставщиками по товарам)
+      if (room.type === 'PRODUCT') {
         return false;
+      }
+
+      // Исключаем DIRECT чаты с поставщиками
+      if (room?.type === 'DIRECT' && Array.isArray(room?.participants)) {
+        const hasSupplier = room.participants.some(p => {
+          const user = p?.user || p;
+          return user?.role === 'SUPPLIER';
+        });
+        if (hasSupplier) return false;
       }
       
       // Для каналов (BROADCAST): показываем только админам, водителям и сотрудникам

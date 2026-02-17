@@ -31,6 +31,9 @@ export const FeedbacksList = React.memo(({
                                              style,
                                              onRefresh,
                                              onAuthorPress,
+                                             canReplyAsSupplier = false,
+                                             onReplySubmit = null,
+                                             replyingFeedbackId = null,
                                          }) => {
     const {colors} = useTheme();
     const dispatch = useDispatch();
@@ -224,6 +227,9 @@ export const FeedbacksList = React.memo(({
                                         }
                                         onDelete={() => handleDeleteFeedback(feedback.id)}
                                         onAuthorPress={onAuthorPress}
+                                        canReply={canReplyAsSupplier}
+                                        onReplySubmit={onReplySubmit}
+                                        isReplySubmitting={replyingFeedbackId === feedback.id}
                                     />
                                 </View>
                             ))}
@@ -251,7 +257,7 @@ const styles = StyleSheet.create({
     },
     feedbacksContainer: {
         width: '100%',
-        paddingHorizontal: 6,
+        paddingHorizontal: 0,
     },
     firstCardContainer: {},
     cardContainer: {

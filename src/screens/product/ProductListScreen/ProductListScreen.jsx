@@ -15,6 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import PagerView from "react-native-pager-view";
 import { useDispatch } from 'react-redux';
+import { useFocusEffect } from '@react-navigation/native';
 import { deleteProduct } from '@entities/product';
 import { useProductManagement } from '@entities/product/hooks/useProductManagement';
 import { useAuth } from '@entities/auth/hooks/useAuth';
@@ -40,6 +41,14 @@ export const ProductListScreen = () => {
     // Состояния для листания изображений (храним для каждой карточки)
     const [activeImageIndices, setActiveImageIndices] = useState({});
     const [loadingErrors, setLoadingErrors] = useState({});
+
+    useFocusEffect(
+        useCallback(() => {
+            if (currentUser?.role === 'SUPPLIER') {
+                forceReloadData();
+            }
+        }, [currentUser?.role, forceReloadData])
+    );
 
     const handleDeleteProduct = async (productId) => {
         try {
@@ -185,6 +194,11 @@ export const ProductListScreen = () => {
                                 totalItems={imageArray.length}
                                 activeIndex={activeIndex}
                             />
+                        </View>
+                    )}
+                    {item.isActive === false && (
+                        <View style={styles.inactiveBadge}>
+                            <Text style={styles.inactiveBadgeText}>Неактивен</Text>
                         </View>
                     )}
                 </View>
@@ -341,6 +355,21 @@ const styles = StyleSheet.create({
         width: '100%',
         alignItems: 'center',
         zIndex: 10,
+    },
+    inactiveBadge: {
+        position: 'absolute',
+        top: 6,
+        right: 6,
+        backgroundColor: '#ff4444',
+        borderRadius: 10,
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        zIndex: 11,
+    },
+    inactiveBadgeText: {
+        color: '#fff',
+        fontSize: 10,
+        fontWeight: '700',
     },
     productName: {
         fontSize: 12,

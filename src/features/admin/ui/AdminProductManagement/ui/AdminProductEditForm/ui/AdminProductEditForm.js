@@ -117,13 +117,22 @@ export const AdminProductEditForm = ({
             }
 
             // Обновляем все базовые поля
+            const normalizedItemsPerBox =
+                parseInt(sourceProduct.itemsPerBox, 10) ||
+                parseInt(sourceProduct.boxInfo?.itemsPerBox, 10) ||
+                1;
+            const normalizedBoxPrice =
+                parseFloat(sourceProduct.boxPrice) ||
+                parseFloat(sourceProduct.boxInfo?.boxPrice) ||
+                '';
+
             const updates = {
                 name: sourceProduct.name || '',
                 categories: categoryIds, // Изменено с category на categories
                 weight: sourceProduct.weight ? sourceProduct.weight.toString() : '',
                 price: sourceProduct.price ? sourceProduct.price.toString() : '',
-                itemsPerBox: sourceProduct.itemsPerBox ? sourceProduct.itemsPerBox.toString() : '1',
-                boxPrice: sourceProduct.boxPrice ? sourceProduct.boxPrice.toString() : '',
+                itemsPerBox: normalizedItemsPerBox.toString(),
+                boxPrice: normalizedBoxPrice !== '' ? normalizedBoxPrice.toString() : '',
                 discount: sourceProduct.discount ? sourceProduct.discount.toString() : '',
                 stockQuantity: sourceProduct.stockQuantity ? sourceProduct.stockQuantity.toString() : '',
                 description: sourceProduct.description || '',

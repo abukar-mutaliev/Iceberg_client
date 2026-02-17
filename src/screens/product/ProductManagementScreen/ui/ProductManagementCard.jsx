@@ -5,7 +5,7 @@ import { ProductActions } from '@widgets/product/ProductActions';
 
 const defaultProductImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
 
-export const ProductManagementCard = ({ product, onViewProduct }) => {
+export const ProductManagementCard = ({ product, onViewProduct, onProductUpdated }) => {
     if (!product || !product.id) {
         return null;
     }
@@ -21,8 +21,13 @@ export const ProductManagementCard = ({ product, onViewProduct }) => {
     // Расчет коробочной информации
     const boxInfo = useMemo(() => {
         const itemsPerBox = product.itemsPerBox || 1;
-        const pricePerItem = product.price || 0;
-        const boxPrice = product.boxPrice || (pricePerItem * itemsPerBox);
+        const isPendingLike = product.moderationStatus === 'PENDING' || product.moderationStatus === 'REJECTED';
+        const pricePerItem = isPendingLike && product.supplierProposedPrice !== null && product.supplierProposedPrice !== undefined
+            ? product.supplierProposedPrice
+            : (product.price || 0);
+        const boxPrice = isPendingLike && product.supplierProposedBoxPrice !== null && product.supplierProposedBoxPrice !== undefined
+            ? product.supplierProposedBoxPrice
+            : (product.boxPrice || (pricePerItem * itemsPerBox));
         const stockBoxes = product.stockQuantity || 0;
         const totalItems = stockBoxes * itemsPerBox;
 
@@ -34,6 +39,29 @@ export const ProductManagementCard = ({ product, onViewProduct }) => {
             pricePerItem
         };
     }, [product]);
+
+    const moderationMeta = useMemo(() => {
+        const status = product.moderationStatus || 'APPROVED';
+        if (status === 'PENDING') {
+            return {
+                label: 'На модерации',
+                backgroundColor: '#FFF4E5',
+                color: '#B26A00'
+            };
+        }
+        if (status === 'REJECTED') {
+            return {
+                label: 'Отклонен',
+                backgroundColor: '#FFECEC',
+                color: '#C62828'
+            };
+        }
+        return {
+            label: 'Опубликован',
+            backgroundColor: '#EAF9EF',
+            color: '#1E8E3E'
+        };
+    }, [product.moderationStatus]);
 
     const handlePress = useCallback(() => {
         if (isNavigatingRef.current) {
@@ -72,6 +100,11 @@ export const ProductManagementCard = ({ product, onViewProduct }) => {
                         {product.name || 'Без названия'}
                     </Text>
                 </View>
+                <View style={[styles.moderationBadge, { backgroundColor: moderationMeta.backgroundColor }]}>
+                    <Text style={[styles.moderationBadgeText, { color: moderationMeta.color }]}>
+                        {moderationMeta.label}
+                    </Text>
+                </View>
 
                 <View style={styles.descriptionContainer}>
                     {/* Цена за штуку */}
@@ -108,6 +141,7 @@ export const ProductManagementCard = ({ product, onViewProduct }) => {
                     buttonStyle={styles.actionButtonStyle}
                     textStyle={styles.actionTextStyle}
                     allowEdit={true}
+                    onProductUpdated={onProductUpdated}
                 />
             </View>
         </Pressable>
@@ -157,9 +191,21 @@ const styles = StyleSheet.create({
         textAlign: 'left',
     },
     descriptionContainer: {
-        marginTop: 5,
+        marginTop: 6,
         height: 63,
         width: "100%",
+    },
+    moderationBadge: {
+        alignSelf: 'flex-start',
+        marginTop: 4,
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 10,
+    },
+    moderationBadgeText: {
+        fontSize: 10,
+        fontFamily: FontFamily.sFProText,
+        fontWeight: '600',
     },
     priceInfo: {
         fontFamily: FontFamily.sFProText,

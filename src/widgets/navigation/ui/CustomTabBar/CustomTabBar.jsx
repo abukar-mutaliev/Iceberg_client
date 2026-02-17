@@ -166,7 +166,7 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
             if (route.name === 'Favourites') return false; // Скрываем вкладку "Избранное"
             if (route.name === 'Cart' && !isCartAvailable) return false;
             if (route.name === 'Orders' && !isOrdersAvailable) return false;
-            if (route.name === 'ChatList' && !currentUser) return false;
+            if (route.name === 'ChatList' && (!currentUser || currentUser?.role === 'SUPPLIER')) return false;
             return true;
         });
     }, [state.routes, isCartAvailable, isOrdersAvailable, currentUser]);

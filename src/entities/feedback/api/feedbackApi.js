@@ -1,11 +1,15 @@
 import { createProtectedRequest, createPublicRequest } from '@shared/api/api';
 
 const formatFeedback = (feedback, userData) => {
+    const normalizedReply = feedback?.reply ?? feedback?.supplierReply ?? '';
+
     // Если в отзыве уже есть клиент с именем, возвращаем его как есть с проверкой на photoUrls
     if (feedback.client && feedback.client.name) {
         // Убедимся, что у отзыва есть поле photoUrls, даже если photos пустой
         return {
             ...feedback,
+            reply: normalizedReply,
+            supplierReply: feedback?.supplierReply ?? normalizedReply,
             photoUrls: feedback.photoUrls || (feedback.photos ? feedback.photos.map(photo =>
                 `${process.env.REACT_APP_API_URL || ''}/uploads/${photo}`
             ) : [])
@@ -17,6 +21,8 @@ const formatFeedback = (feedback, userData) => {
         const currentUserId = userData.id ?? userData.userId;
         return {
             ...feedback,
+            reply: normalizedReply,
+            supplierReply: feedback?.supplierReply ?? normalizedReply,
             client: {
                 id: feedback.clientId,
                 name: 'Вы',
@@ -33,6 +39,8 @@ const formatFeedback = (feedback, userData) => {
     if (feedback.client) {
         return {
             ...feedback,
+            reply: normalizedReply,
+            supplierReply: feedback?.supplierReply ?? normalizedReply,
             client: {
                 ...feedback.client,
                 name: feedback.client.name || `Пользователь ${feedback.clientId}`
@@ -54,6 +62,8 @@ const formatFeedback = (feedback, userData) => {
         if (feedback.clientName) {
             return {
                 ...feedback,
+                reply: normalizedReply,
+                supplierReply: feedback?.supplierReply ?? normalizedReply,
                 client: {
                     id: feedback.clientId,
                     name: feedback.clientName,
@@ -67,6 +77,8 @@ const formatFeedback = (feedback, userData) => {
 
         return {
             ...feedback,
+            reply: normalizedReply,
+            supplierReply: feedback?.supplierReply ?? normalizedReply,
             client: {
                 id: feedback.clientId,
                 name: `Клиент`,
@@ -81,6 +93,8 @@ const formatFeedback = (feedback, userData) => {
     // Убедимся, что у отзыва есть поле photoUrls, даже если photos пустой
     return {
         ...feedback,
+        reply: normalizedReply,
+        supplierReply: feedback?.supplierReply ?? normalizedReply,
         photoUrls: feedback.photoUrls || (feedback.photos ? feedback.photos.map(photo =>
             `${process.env.REACT_APP_API_URL || ''}/uploads/${photo}`
         ) : [])
@@ -214,6 +228,25 @@ export const feedbackApi = {
             return response;
         } catch (error) {
             console.error(`Ошибка при обновлении отзыва ${id}:`, error);
+            throw error;
+        }
+    },
+
+    replyToFeedback: async (id, replyData, userData) => {
+        try {
+            const response = await createProtectedRequest('put', `/api/feedbacks/${id}/reply`, replyData);
+
+            if (response && response.status === 'success' && response.data) {
+                const formattedFeedback = formatFeedback(response.data, userData);
+                return {
+                    ...response,
+                    data: formattedFeedback
+                };
+            }
+
+            return response;
+        } catch (error) {
+            console.error(`Ошибка при ответе на отзыв ${id}:`, error);
             throw error;
         }
     },

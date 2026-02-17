@@ -20,7 +20,7 @@ import {
     selectProfileError
 } from '@entities/profile';
 import { useAuth } from '@entities/auth/hooks/useAuth';
-import { suppliersApi } from '@entities/supplier/api/suppliersApi';
+import productsApiService from '@entities/product/api/productsApi';
 
 /**
  * Утилиты для работы с коробочной логикой (встроенные в хук)
@@ -130,6 +130,10 @@ const normalizeProductData = (rawProduct) => {
     const name = product.name || product.title || '';
     const description = product.description || '';
     const isActive = product.isActive !== false;
+    const moderationStatus = product.moderationStatus || 'APPROVED';
+    const moderationReason = product.moderationReason || null;
+    const supplierProposedPrice = product.supplierProposedPrice ?? null;
+    const supplierProposedBoxPrice = product.supplierProposedBoxPrice ?? null;
 
     const itemsPerBox = Math.max(1, parseInt(product.itemsPerBox, 10) || 1);
     const pricePerItem = parseFloat(product.price) || 0;
@@ -158,6 +162,13 @@ const normalizeProductData = (rawProduct) => {
         name,
         description,
         isActive,
+        moderationStatus,
+        moderationReason,
+        supplierProposedPrice,
+        supplierProposedBoxPrice,
+        isPendingModeration: moderationStatus === 'PENDING',
+        isRejectedModeration: moderationStatus === 'REJECTED',
+        isApprovedModeration: moderationStatus === 'APPROVED',
         supplier: product.supplier || null,
         supplierId: product.supplierId || null,
         categories: product.categories || [],
@@ -254,15 +265,14 @@ export const useProductManagement = ({
     const [lastUpdateTime, setLastUpdateTime] = useState(Date.now());
     const [optimisticUpdates, setOptimisticUpdates] = useState(new Map());
 
-    const loadSupplierProducts = useCallback(async (supplierId) => {
-        if (!supplierId) return;
+    const loadSupplierProducts = useCallback(async () => {
 
         setSupplierProductsLoading(true);
         setSupplierProductsError(null);
 
         try {
-            console.log('🔄 Загружаем продукты поставщика через API:', supplierId);
-            const response = await suppliersApi.getSupplierProducts(supplierId);
+            console.log('🔄 Загружаем продукты поставщика через приватный API');
+            const response = await productsApiService.getProducts({ page: 1, limit: 100 });
 
             if (response && response.status === 'success' && response.data) {
                 let processedProducts = response.data;
@@ -286,7 +296,7 @@ export const useProductManagement = ({
                 console.log('✅ Продукты поставщика загружены и нормализованы:', processedProducts.length);
             } else {
                 setSupplierProducts([]);
-                console.warn('⚠️ Неожиданный формат ответа API поставщика:', response);
+                console.warn('⚠️ Неожиданный формат ответа API продуктов поставщика:', response);
             }
         } catch (error) {
             console.error('❌ Ошибка загрузки продуктов поставщика:', error);
@@ -335,7 +345,7 @@ export const useProductManagement = ({
 
     useEffect(() => {
         if (currentUser?.role === 'SUPPLIER' && profile?.supplier?.id) {
-            loadSupplierProducts(profile.supplier.id);
+            loadSupplierProducts();
         }
     }, [currentUser?.role, profile?.supplier?.id, loadSupplierProducts]);
 
@@ -389,7 +399,7 @@ export const useProductManagement = ({
             if (currentUser?.role === 'SUPPLIER' && profile?.supplier?.id) {
                 await Promise.all([
                     dispatch(fetchProfile()),
-                    loadSupplierProducts(profile.supplier.id)
+                    loadSupplierProducts()
                 ]);
             } else {
                 await loadData(true, true);
@@ -444,7 +454,7 @@ export const useProductManagement = ({
                     console.log('🔄 useProductManagement: Перезагрузка данных с сервера');
 
                     if (currentUser?.role === 'SUPPLIER' && profile?.supplier?.id) {
-                        await loadSupplierProducts(profile.supplier.id);
+                        await loadSupplierProducts();
                     } else {
                         dispatch(clearProductsCache());
                         await dispatch(fetchProducts(true));
@@ -494,7 +504,7 @@ export const useProductManagement = ({
             if (currentUser?.role === 'SUPPLIER') {
                 await dispatch(fetchProfile());
                 if (profile?.supplier?.id) {
-                    await loadSupplierProducts(profile.supplier.id);
+                    await loadSupplierProducts();
                 }
             } else {
                 await dispatch(fetchProducts(true));

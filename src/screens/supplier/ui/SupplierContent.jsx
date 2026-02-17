@@ -11,6 +11,7 @@ import { resetCurrentProduct } from "@entities/product";
 import { useDispatch, useSelector } from 'react-redux';
 import { selectUser } from '@entities/auth';
 import { Color, FontFamily, FontSize, Border, Shadow, Padding } from '@app/styles/GlobalStyles';
+import { GlobalAlert } from '@shared/ui/CustomAlert';
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -157,12 +158,87 @@ const SupplierContent = React.memo(({
 
     // Обработчики навигации к возвратам товаров
     const handleStagnantProductsPress = useCallback(() => {
-        navigation.navigate('StagnantProducts');
-    }, [navigation]);
+        // Дополнительная защита: переход разрешен только авторизованному поставщику
+        if (!currentUser || !isSupplier) {
+            return;
+        }
+
+        const params = {
+            fromScreen: 'SupplierScreen',
+            supplierId,
+        };
+
+        // Если экран доступен в текущем стеке — используем прямую навигацию
+        const currentState = navigation.getState?.();
+        const hasDirectRoute = Array.isArray(currentState?.routeNames)
+            && currentState.routeNames.includes('StagnantProducts');
+
+        if (hasDirectRoute) {
+            navigation.navigate('StagnantProducts', params);
+            return;
+        }
+
+        // Пытаемся найти ближайший родительский navigator, где есть StagnantProducts
+        let navigatorWithStagnantProducts = navigation.getParent?.();
+        let safetyCounter = 0;
+        while (navigatorWithStagnantProducts && safetyCounter < 6) {
+            const state = navigatorWithStagnantProducts.getState?.();
+            if (Array.isArray(state?.routeNames) && state.routeNames.includes('StagnantProducts')) {
+                navigatorWithStagnantProducts.navigate('StagnantProducts', params);
+                return;
+            }
+
+            navigatorWithStagnantProducts = navigatorWithStagnantProducts.getParent?.();
+            safetyCounter += 1;
+        }
+
+        // Последний fallback для редких случаев, когда доступен только Main->ProfileTab
+        let navigatorWithProfileTab = navigation;
+        safetyCounter = 0;
+        while (navigatorWithProfileTab && safetyCounter < 6) {
+            const state = navigatorWithProfileTab.getState?.();
+            if (Array.isArray(state?.routeNames) && state.routeNames.includes('ProfileTab')) {
+                navigatorWithProfileTab.navigate('ProfileTab', {
+                    screen: 'StagnantProducts',
+                    params,
+                });
+                return;
+            }
+
+            navigatorWithProfileTab = navigatorWithProfileTab.getParent?.();
+            safetyCounter += 1;
+        }
+
+        const nestedNavigationPayload = {
+            screen: 'ProfileTab',
+            params: {
+                screen: 'StagnantProducts',
+                params,
+            },
+        };
+
+        let navigatorWithMain = navigation;
+        safetyCounter = 0;
+        while (navigatorWithMain && safetyCounter < 6) {
+            const state = navigatorWithMain.getState?.();
+            if (Array.isArray(state?.routeNames) && state.routeNames.includes('Main')) {
+                navigatorWithMain.navigate('Main', nestedNavigationPayload);
+                return;
+            }
+
+            navigatorWithMain = navigatorWithMain.getParent?.();
+            safetyCounter += 1;
+        }
+
+        GlobalAlert.showError('Ошибка', 'Не удалось открыть экран залежавшихся товаров');
+    }, [navigation, currentUser, isSupplier, supplierId]);
 
     const handleProductReturnsPress = useCallback(() => {
-        navigation.navigate('ProductReturns');
-    }, [navigation]);
+        GlobalAlert.showInfo(
+            'Скоро доступно',
+            'Функционал "Мои возвраты" скоро будет доступен.'
+        );
+    }, []);
 
     const noProductsContainerStyle = useMemo(() => [
         styles.noProductsContainer,

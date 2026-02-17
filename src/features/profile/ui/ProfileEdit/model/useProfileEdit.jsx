@@ -158,6 +158,11 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
         setCurrentScrollPosition(event.nativeEvent.contentOffset.y);
     }, []);
 
+    const sanitizePhone = useCallback((phone) => {
+        if (!phone || typeof phone !== 'string') return phone;
+        return phone.replace(/[\s\-\(\)]/g, '') || null;
+    }, []);
+
     const prepareDataForSubmission = useCallback((formData) => {
         let baseData = {};
 
@@ -181,7 +186,7 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
                 baseData = {
                     gender: formData.gender === '' ? null : formData.gender,
                     employee: {
-                        phone: formData.phone || '',
+                        phone: sanitizePhone(formData.phone) || '',
                         address: formData.address || '',
                         name: formData.name || '',
                         districts: processedDistricts,
@@ -194,7 +199,7 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
                 baseData = {
                     gender: formData.gender === '' ? null : formData.gender,
                     driver: {
-                        phone: formData.phone || '',
+                        phone: sanitizePhone(formData.phone) || '',
                         address: formData.address || '',
                         name: formData.name || '',
                         districts: Array.isArray(formData.districts) ? formData.districts : [],
@@ -205,7 +210,7 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
                 baseData = {
                     gender: formData.gender === '' ? null : formData.gender,
                     client: {
-                        phone: formData.phone || '',
+                        phone: sanitizePhone(formData.phone) || '',
                         address: formData.address || '',
                         name: formData.name || '',
                         districtId: formData.districtId || null,
@@ -216,7 +221,7 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
                 baseData = {
                     gender: formData.gender === '' ? null : formData.gender,
                     admin: {
-                        phone: formData.phone || '',
+                        phone: sanitizePhone(formData.phone) || '',
                         address: formData.address || '',
                         name: formData.name || '',
                     }
@@ -224,7 +229,7 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
                 break;
             case 'supplier':
                 baseData = {
-                    phone: formData.phone || null,
+                    phone: sanitizePhone(formData.phone),
                     address: formData.address || null,
                     gender: formData.gender || null,
                     companyName: formData.companyName || formData.name || '',
@@ -237,7 +242,7 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
                 break;
             default:
                 baseData = {
-                    phone: formData.phone || '',
+                    phone: sanitizePhone(formData.phone) || '',
                     address: formData.address || '',
                     gender: formData.gender || null,
                     name: formData.name || '',
@@ -361,6 +366,14 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
                 commonValues = {
                     phone: profile.admin?.phone || profile.phone || '',
                     address: profile.admin?.address || profile.address || '',
+                    email: profile.email || '',
+                    gender: profile.gender || 'MALE',
+                };
+                break;
+            case 'supplier':
+                commonValues = {
+                    phone: profile.supplier?.phone || profile.phone || '',
+                    address: profile.supplier?.address || profile.address || '',
                     email: profile.email || '',
                     gender: profile.gender || 'MALE',
                 };

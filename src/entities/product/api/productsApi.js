@@ -128,6 +128,9 @@ const ProductsService = {
         });
     },
 
+    moderateProduct: (productId, payload) =>
+        productsApi.patch(`/${productId}/moderate`, payload),
+
     deleteProduct: (productId) =>
         productsApi.delete(`/${productId}`)
 };

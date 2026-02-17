@@ -277,6 +277,16 @@ export const AdminPanelScreen = () => {
                         title="Список товаров"
                         onPress={handleProductManagementPress}
                     />
+                    {isAdmin && (
+                        <AdminMenuItem
+                            icon={<Icon name="gavel" size={24} color={Color.orange} />}
+                            title="Очередь модерации"
+                            onPress={() => navigation.navigate('ProductModerationQueue', {
+                                fromScreen: 'AdminPanel',
+                                moderationOnly: true
+                            })}
+                        />
+                    )}
                     {canViewStockAlerts && (
                         <AdminMenuItem
                             icon={<Icon name="inventory" size={24} color={Color.blue2} />}

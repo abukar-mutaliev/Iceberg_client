@@ -112,10 +112,11 @@ export const AddGroupMembersScreen = ({ route, navigation }) => {
       
       console.log('Total users collected:', allUsersData.length);
       
-      // Фильтруем пользователей (исключаем текущего и уже добавленных)
+      // Фильтруем пользователей (исключаем текущего, уже добавленных и поставщиков)
       const filteredAllUsers = allUsersData.filter(user => 
         user.id !== currentUser?.id && 
-        !currentMembers.includes(user.id)
+        !currentMembers.includes(user.id) &&
+        user.role !== 'SUPPLIER'
       );
       
       setAllUsers(filteredAllUsers);

@@ -4,6 +4,8 @@ import {
     StyleSheet,
     ScrollView,
     Alert,
+    Text,
+    TouchableOpacity,
     InteractionManager} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -40,6 +42,7 @@ export const AdminProductDetailScreen = () => {
 
     const [isInitialized, setIsInitialized] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [isModerating, setIsModerating] = useState(false);
 
     const isMountedRef = useRef(true);
     
@@ -117,8 +120,15 @@ export const AdminProductDetailScreen = () => {
         if (!displayProduct) return null;
 
         const itemsPerBox = displayProduct.itemsPerBox || 1;
-        const boxPrice = displayProduct.boxPrice || (displayProduct.price * itemsPerBox);
-        const pricePerItem = displayProduct.price || (boxPrice / itemsPerBox);
+        const isPendingLike = displayProduct.moderationStatus === 'PENDING' || displayProduct.moderationStatus === 'REJECTED';
+        const effectivePrice = isPendingLike && displayProduct.supplierProposedPrice !== null && displayProduct.supplierProposedPrice !== undefined
+            ? displayProduct.supplierProposedPrice
+            : displayProduct.price;
+        const effectiveBoxPrice = isPendingLike && displayProduct.supplierProposedBoxPrice !== null && displayProduct.supplierProposedBoxPrice !== undefined
+            ? displayProduct.supplierProposedBoxPrice
+            : displayProduct.boxPrice;
+        const boxPrice = effectiveBoxPrice || ((effectivePrice || 0) * itemsPerBox);
+        const pricePerItem = effectivePrice || (boxPrice / itemsPerBox);
         const stockBoxes = displayProduct.stockQuantity || 0;
         const totalItems = stockBoxes * itemsPerBox;
 
@@ -334,6 +344,67 @@ export const AdminProductDetailScreen = () => {
         }
     }, [refreshData, refreshProductStock]);
 
+    const handleApproveProduct = useCallback(async () => {
+        if (!displayProduct?.id || isModerating) return;
+        try {
+            setIsModerating(true);
+            const payload = {
+                action: 'approve',
+                price: displayProduct.price,
+                boxPrice: displayProduct.boxPrice
+            };
+            const response = await ProductsService.moderateProduct(displayProduct.id, payload);
+
+            if (response?.status === 'success') {
+                Alert.alert('Успешно', 'Товар одобрен и опубликован');
+                await handleForceRefreshProduct();
+            } else {
+                Alert.alert('Ошибка', response?.message || 'Не удалось одобрить товар');
+            }
+        } catch (error) {
+            const message = error?.response?.data?.message || error?.message || 'Ошибка модерации';
+            Alert.alert('Ошибка', message);
+        } finally {
+            setIsModerating(false);
+        }
+    }, [displayProduct, isModerating, handleForceRefreshProduct]);
+
+    const handleRejectProduct = useCallback(async () => {
+        if (!displayProduct?.id || isModerating) return;
+        Alert.alert(
+            'Отклонить товар',
+            'Товар будет отклонен и скрыт из витрины. Продолжить?',
+            [
+                { text: 'Отмена', style: 'cancel' },
+                {
+                    text: 'Отклонить',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            setIsModerating(true);
+                            const response = await ProductsService.moderateProduct(displayProduct.id, {
+                                action: 'reject',
+                                reason: 'Отклонено администратором. Требуется доработка карточки товара.'
+                            });
+
+                            if (response?.status === 'success') {
+                                Alert.alert('Готово', 'Товар отклонен');
+                                await handleForceRefreshProduct();
+                            } else {
+                                Alert.alert('Ошибка', response?.message || 'Не удалось отклонить товар');
+                            }
+                        } catch (error) {
+                            const message = error?.response?.data?.message || error?.message || 'Ошибка модерации';
+                            Alert.alert('Ошибка', message);
+                        } finally {
+                            setIsModerating(false);
+                        }
+                    }
+                }
+            ]
+        );
+    }, [displayProduct, isModerating, handleForceRefreshProduct]);
+
     // === Рендеринг состояний ===
 
     if (!isInitialized || productLoading) {
@@ -457,6 +528,33 @@ export const AdminProductDetailScreen = () => {
                     />
                 )}
 
+                {currentUser?.role === 'ADMIN' && displayProduct?.moderationStatus === 'PENDING' && !isEditMode && (
+                    <View style={styles.moderationActionsContainer}>
+                        <Text style={styles.moderationTitle}>Действия модерации</Text>
+                        <Text style={styles.moderationHint}>
+                            При одобрении будет использована текущая цена товара. При необходимости сначала отредактируйте цену.
+                        </Text>
+                        <View style={styles.moderationButtonsRow}>
+                            <TouchableOpacity
+                                style={[styles.moderationButton, styles.rejectButton, isModerating && styles.disabledModerationButton]}
+                                onPress={handleRejectProduct}
+                                disabled={isModerating}
+                            >
+                                <Text style={styles.moderationButtonText}>Отклонить</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.moderationButton, styles.approveButton, isModerating && styles.disabledModerationButton]}
+                                onPress={handleApproveProduct}
+                                disabled={isModerating}
+                            >
+                                <Text style={styles.moderationButtonText}>
+                                    {isModerating ? 'Обработка...' : 'Одобрить'}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                )}
+
                 {/* Предупреждение о залежавшемся товаре */}
                 {warehousesData && warehousesData.length > 0 && (
                     <StagnantProductWarning warehousesData={warehousesData} />
@@ -471,7 +569,7 @@ export const AdminProductDetailScreen = () => {
                         loading={stockLoading}
                         error={stockError}
                         productId={productId}
-                        productBasePrice={displayProduct?.boxPrice || (displayProduct?.price * (displayProduct?.itemsPerBox || 1))}
+                        productBasePrice={displayData?.boxPrice ? parseFloat(displayData.boxPrice) : (displayProduct?.boxPrice || (displayProduct?.price * (displayProduct?.itemsPerBox || 1)))}
                         canManagePrices={canManageWarehousePrices}
                         onPriceUpdated={() => {
                             // Обновляем данные складов после изменения цены
@@ -499,6 +597,48 @@ const styles = StyleSheet.create({
     },
     scrollView: {
         flex: 1,
+    },
+    moderationActionsContainer: {
+        marginHorizontal: 16,
+        marginBottom: 12,
+        padding: 14,
+        borderRadius: 12,
+        backgroundColor: '#FFFFFF',
+    },
+    moderationTitle: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#1F2937',
+        marginBottom: 6,
+    },
+    moderationHint: {
+        fontSize: 12,
+        color: '#6B7280',
+        marginBottom: 12,
+    },
+    moderationButtonsRow: {
+        flexDirection: 'row',
+        gap: 10,
+    },
+    moderationButton: {
+        flex: 1,
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+    },
+    approveButton: {
+        backgroundColor: '#16A34A',
+    },
+    rejectButton: {
+        backgroundColor: '#DC2626',
+    },
+    disabledModerationButton: {
+        opacity: 0.6,
+    },
+    moderationButtonText: {
+        color: '#FFFFFF',
+        fontWeight: '700',
     },
 });
 

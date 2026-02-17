@@ -35,6 +35,9 @@ export const ProductContent = React.memo(({
                                               autoCartManagement = false,
                                               currentUser,
                                               navigation,
+                                              canReplyAsSupplier = false,
+                                              onReplySubmit = null,
+                                              replyingFeedbackId = null,
                                           }) => {
     const { colors } = useTheme();
     const [feedbacksHeight, setFeedbacksHeight] = useState(500);
@@ -59,6 +62,26 @@ export const ProductContent = React.memo(({
         stockQuantity: product?.stockQuantity || 0,
         availableQuantity: product?.availableQuantity || product?.stockQuantity || 0,
     }), [product]);
+
+    const productWithNormalizedPricing = useMemo(() => {
+        const itemsPerBox = Number(safeProduct?.itemsPerBox) || 1;
+        const isPendingLike = safeProduct?.moderationStatus === 'PENDING' || safeProduct?.moderationStatus === 'REJECTED';
+        const effectiveUnitPrice = isPendingLike
+            ? Number(safeProduct?.supplierProposedPrice ?? safeProduct?.price)
+            : Number(safeProduct?.price);
+        const explicitBoxPrice = isPendingLike
+            ? Number(safeProduct?.supplierProposedBoxPrice ?? safeProduct?.boxPrice)
+            : Number(safeProduct?.boxPrice);
+        const hasExplicitBoxPrice = Number.isFinite(explicitBoxPrice) && explicitBoxPrice > 0;
+        const unitPrice = Number.isFinite(effectiveUnitPrice) ? effectiveUnitPrice : 0;
+
+        return {
+            ...safeProduct,
+            price: unitPrice,
+            boxPrice: hasExplicitBoxPrice ? explicitBoxPrice : (unitPrice * itemsPerBox),
+            itemsPerBox
+        };
+    }, [safeProduct]);
 
     const effectiveMaxQuantity = useMemo(() => {
         if (maxQuantity !== undefined) return maxQuantity;
@@ -101,7 +124,7 @@ export const ProductContent = React.memo(({
                 </View>
 
                 <View style={styles.priceContainer}>
-                    <ProductPrice price={safeProduct.price} product={safeProduct} weight={safeProduct.weight} />
+                    <ProductPrice price={productWithNormalizedPricing.price} product={productWithNormalizedPricing} weight={productWithNormalizedPricing.weight} />
 
                     {/* ВРЕМЕННО СКРЫТО: Контроль количества для корзины
                         TODO: Вернуть когда функциональность заказа будет готова
@@ -183,6 +206,9 @@ export const ProductContent = React.memo(({
                 isDataLoaded={isFeedbacksLoaded}
                 onRefresh={onRefreshFeedbacks}
                 onAuthorPress={handleAvatarPress}
+                canReplyAsSupplier={canReplyAsSupplier}
+                onReplySubmit={onReplySubmit}
+                replyingFeedbackId={replyingFeedbackId}
                 style={styles.feedbacks}
             />
         </View>

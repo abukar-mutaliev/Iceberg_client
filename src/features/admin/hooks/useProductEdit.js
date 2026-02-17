@@ -46,6 +46,15 @@ export const useProductEdit = (productId, displayProduct) => {
     const initializeEditForm = useCallback(() => {
         if (!displayProduct || !isMountedRef.current) return;
 
+        const normalizedItemsPerBox =
+            parseInt(displayProduct.itemsPerBox, 10) ||
+            parseInt(displayProduct.boxInfo?.itemsPerBox, 10) ||
+            1;
+        const normalizedBoxPrice =
+            parseFloat(displayProduct.boxPrice) ||
+            parseFloat(displayProduct.boxInfo?.boxPrice) ||
+            null;
+
         // Обработка категорий - поддерживаем множественный выбор
         let categoryIds = [];
         if (displayProduct.categories && Array.isArray(displayProduct.categories)) {
@@ -89,8 +98,8 @@ export const useProductEdit = (productId, displayProduct) => {
         const formData = {
             name: displayProduct.name || '',
             price: displayProduct.price ? displayProduct.price.toString() : '',
-            itemsPerBox: displayProduct.itemsPerBox ? displayProduct.itemsPerBox.toString() : '1',
-            boxPrice: displayProduct.boxPrice ? displayProduct.boxPrice.toString() : '',
+            itemsPerBox: normalizedItemsPerBox.toString(),
+            boxPrice: normalizedBoxPrice !== null ? normalizedBoxPrice.toString() : '',
             weight: displayProduct.weight ? displayProduct.weight.toString() : '',
             stockQuantity: displayProduct.stockQuantity ? displayProduct.stockQuantity.toString() : '',
             discount: displayProduct.discount ? displayProduct.discount.toString() : '',
@@ -203,6 +212,38 @@ export const useProductEdit = (productId, displayProduct) => {
             return; // Выходим, чтобы не выполнить обычную логику ниже
         }
 
+        // Автоматический расчет цены за коробку при изменении цены за штуку
+        // или количества штук в коробке.
+        if (field === 'price' || field === 'itemsPerBox') {
+            setEditFormData(prev => {
+                const next = {
+                    ...prev,
+                    [field]: value
+                };
+
+                const priceSource = field === 'price' ? value : prev.price;
+                const itemsSource = field === 'itemsPerBox' ? value : prev.itemsPerBox;
+
+                const parsedPrice = parseFloat(String(priceSource || '').replace(',', '.'));
+                const parsedItems = parseInt(String(itemsSource || ''), 10);
+
+                if (!Number.isNaN(parsedPrice) && parsedPrice > 0 && !Number.isNaN(parsedItems) && parsedItems > 0) {
+                    next.boxPrice = (parsedPrice * parsedItems).toFixed(2);
+                }
+
+                return next;
+            });
+
+            // Сбрасываем ошибки у связанных полей
+            setEditErrors(prev => {
+                const newErrors = { ...prev };
+                delete newErrors[field];
+                delete newErrors.boxPrice;
+                return newErrors;
+            });
+            return;
+        }
+
         setEditFormData(prev => ({
             ...prev,
             [field]: value
@@ -221,6 +262,11 @@ export const useProductEdit = (productId, displayProduct) => {
     const handleSaveEdit = useCallback(async () => {
         if (!isMountedRef.current || isSaving || !displayProduct) return;
 
+        const normalizedItemsPerBox =
+            parseInt(displayProduct.itemsPerBox, 10) ||
+            parseInt(displayProduct.boxInfo?.itemsPerBox, 10) ||
+            1;
+
         // // Валидация формы
         // const validation = validateProductForm(editFormData);
         // if (!validation.isValid) {
@@ -237,7 +283,9 @@ export const useProductEdit = (productId, displayProduct) => {
             const productData = {
                 name: editFormData.name.trim(),
                 price: parseFloat(editFormData.price),
-                itemsPerBox: editFormData.itemsPerBox ? parseInt(editFormData.itemsPerBox) : 1,
+                itemsPerBox: editFormData.itemsPerBox
+                    ? (parseInt(editFormData.itemsPerBox, 10) || normalizedItemsPerBox)
+                    : normalizedItemsPerBox,
                 boxPrice: editFormData.boxPrice ? parseFloat(editFormData.boxPrice) : null,
                 stockQuantity: parseInt(editFormData.stockQuantity),
                 weight: editFormData.weight ? parseFloat(editFormData.weight) : null,

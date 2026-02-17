@@ -10,6 +10,13 @@ export const AdminProductBasicInfo = ({
                                      showAdditionalInfo = false,
                                      supplier = null
                                  }) => {
+    const moderationStatus = product?.moderationStatus || 'APPROVED';
+    const moderationLabel = moderationStatus === 'PENDING'
+        ? 'На модерации'
+        : moderationStatus === 'REJECTED'
+            ? 'Отклонен'
+            : 'Одобрен';
+
     return (
         <View style={styles.container}>
             {/* Основная информация */}
@@ -74,6 +81,34 @@ export const AdminProductBasicInfo = ({
                         fullWidth={true}
                     />
                 </View>
+                <View style={styles.infoCardsRow}>
+                    <InfoCard
+                        icon="🛡️"
+                        title="Модерация"
+                        value={moderationLabel}
+                        subtitle={product?.moderationReason || 'Без комментария модератора'}
+                        fullWidth={true}
+                    />
+                </View>
+                {(product?.supplierProposedPrice || product?.supplierProposedBoxPrice) && (
+                    <View style={styles.infoCardsRow}>
+                        <InfoCard
+                            icon="💬"
+                            title="Предложение поставщика"
+                            value={
+                                product?.supplierProposedPrice
+                                    ? `${Number(product.supplierProposedPrice).toFixed(0)} ₽/шт`
+                                    : 'Без цены за штуку'
+                            }
+                            subtitle={
+                                product?.supplierProposedBoxPrice
+                                    ? `${Number(product.supplierProposedBoxPrice).toFixed(0)} ₽/коробка`
+                                    : 'Без цены за коробку'
+                            }
+                            fullWidth={true}
+                        />
+                    </View>
+                )}
             </View>
 
             {/* Дополнительная информация (опционально) */}

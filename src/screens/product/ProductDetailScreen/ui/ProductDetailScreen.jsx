@@ -15,6 +15,7 @@ import { selectRoomsList } from '@entities/chat/model/selectors';
 import { sendProduct, fetchRooms, hydrateRooms } from '@entities/chat/model/slice';
 
 import { useAuth } from '@entities/auth/hooks/useAuth';
+import { feedbackApi } from '@entities/feedback/api/feedbackApi';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { useToast } from '@shared/ui/Toast';
 import { Loader } from '@shared/ui/Loader';
@@ -57,7 +58,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     const dispatch = useDispatch();
     const { colors } = useTheme();
     const { isAuthenticated, currentUser } = useAuth();
-    const { showError, showWarning } = useToast();
+    const { showError, showWarning, showSuccess } = useToast();
     const { showError: showCustomError, showInfo } = useCustomAlert();
     const [isRepostModalVisible, setIsRepostModalVisible] = useState(false);
     const [isImageViewerVisible, setIsImageViewerVisible] = useState(false);
@@ -66,6 +67,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     const [isDistrictSelectionVisible, setIsDistrictSelectionVisible] = useState(false);
     const [selectedDistrictId, setSelectedDistrictId] = useState(null);
     const [isLoadingManager, setIsLoadingManager] = useState(false);
+    const [replyingFeedbackId, setReplyingFeedbackId] = useState(null);
     const rooms = useSelector(selectRoomsList) || [];
     const loadMoreCalledRef = useRef(false);
     const districts = useSelector(state => state.district?.districts || []);
@@ -117,6 +119,13 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         handleRefreshFeedbacks,
         loadMoreProducts
     } = useProductDetailData(productId, isMountedRef, createSafeTimeout, navigation);
+
+    const currentSupplierId = useMemo(() => {
+        return currentUser?.supplier?.id
+            || currentUser?.profile?.supplier?.id
+            || currentUser?.profile?.id
+            || null;
+    }, [currentUser]);
 
     const {
         handleGoBack,
@@ -594,6 +603,51 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         return enrichedProduct;
     }, [enrichedProduct, productId, optimisticProduct]);
 
+    const handleReplyToFeedback = useCallback(async (feedbackId, replyText) => {
+        if (currentUser?.role !== 'SUPPLIER') {
+            showWarning('Отвечать на отзывы может только поставщик');
+            return;
+        }
+
+        const productSupplierId = displayProduct?.supplierId || displayProduct?.supplier?.id;
+        if (!productSupplierId || !currentSupplierId || Number(productSupplierId) !== Number(currentSupplierId)) {
+            showWarning('Вы можете отвечать только на отзывы своих товаров');
+            return;
+        }
+
+        const trimmedReply = (replyText || '').trim();
+        if (!trimmedReply) {
+            showWarning('Введите текст ответа');
+            return;
+        }
+
+        try {
+            setReplyingFeedbackId(feedbackId);
+            await feedbackApi.replyToFeedback(feedbackId, { reply: trimmedReply }, currentUser);
+            await handleRefreshFeedbacks();
+            showSuccess('Ответ на отзыв сохранен');
+        } catch (error) {
+            console.error('Ошибка при ответе на отзыв:', error);
+            if (error?.code === 404 && error?.message === 'Маршрут не найден') {
+                showError('Функция ответа недоступна: сервер еще не обновлен');
+                return;
+            }
+            showError(error?.message || 'Не удалось сохранить ответ на отзыв');
+            throw error;
+        } finally {
+            setReplyingFeedbackId(null);
+        }
+    }, [currentUser, currentSupplierId, displayProduct?.supplierId, displayProduct?.supplier?.id, handleRefreshFeedbacks, showError, showSuccess, showWarning]);
+
+    const canReplyAsSupplierForCurrentProduct = useMemo(() => {
+        const productSupplierId = displayProduct?.supplierId || displayProduct?.supplier?.id;
+        return (
+            currentUser?.role === 'SUPPLIER'
+            && !!currentSupplierId
+            && Number(productSupplierId) === Number(currentSupplierId)
+        );
+    }, [currentUser?.role, currentSupplierId, displayProduct?.supplierId, displayProduct?.supplier?.id]);
+
     const productHeaderComponent = useMemo(() => {
         if (!displayProduct?.id) return null;
         
@@ -633,6 +687,9 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 autoCartManagement={true}
                 currentUser={currentUser}
                 navigation={navigation}
+                canReplyAsSupplier={canReplyAsSupplierForCurrentProduct}
+                onReplySubmit={handleReplyToFeedback}
+                replyingFeedbackId={replyingFeedbackId}
             />
         );
     }, [
@@ -650,6 +707,9 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         handleCartRemove,
         currentUser,
         navigation,
+        canReplyAsSupplierForCurrentProduct,
+        handleReplyToFeedback,
+        replyingFeedbackId,
     ]);
 
     const productActionsComponent = useMemo(() => {
@@ -685,9 +745,12 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 feedbacks={feedbacks}
                 productId={displayProduct?.id || 0}
                 onViewAllPress={handleViewAllReviews}
+                canReplyAsSupplier={canReplyAsSupplierForCurrentProduct}
+                onReplySubmit={handleReplyToFeedback}
+                replyingFeedbackId={replyingFeedbackId}
             />
         ) : null
-    ), [activeTab, feedbacks, displayProduct?.id, handleViewAllReviews]);
+    ), [activeTab, feedbacks, displayProduct?.id, handleViewAllReviews, canReplyAsSupplierForCurrentProduct, handleReplyToFeedback, replyingFeedbackId]);
 
     // Объединяем похожие и остальные товары в один массив
     const allProductsForDisplay = useMemo(() => {

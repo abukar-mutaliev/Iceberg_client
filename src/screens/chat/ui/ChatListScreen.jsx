@@ -121,9 +121,27 @@ export const ChatListScreen = ({navigation}) => {
         if (isNavigatingRef.current && previousRoomsRef.current) {
             return previousRoomsRef.current;
         }
+
+        // Фильтруем комнаты: скрываем DIRECT чаты с поставщиками и PRODUCT чаты
+        const filteredRooms = rooms.filter(room => {
+            // Скрываем PRODUCT чаты (чаты с поставщиками по товарам)
+            if (room?.type === 'PRODUCT') return false;
+
+            // Для DIRECT чатов проверяем, не является ли собеседник поставщиком
+            if (room?.type === 'DIRECT' && Array.isArray(room?.participants)) {
+                const hasSupplierParticipant = room.participants.some(p => {
+                    const user = p?.user || p;
+                    return user?.role === 'SUPPLIER';
+                });
+                if (hasSupplierParticipant) return false;
+            }
+
+            return true;
+        });
+
         // Обновляем предыдущее значение только если не идет навигация
-        previousRoomsRef.current = rooms;
-        return rooms;
+        previousRoomsRef.current = filteredRooms;
+        return filteredRooms;
     }, [rooms]);
 
     useEffect(() => {

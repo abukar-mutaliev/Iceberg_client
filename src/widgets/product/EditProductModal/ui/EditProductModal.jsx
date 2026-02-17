@@ -4,7 +4,6 @@ import {
     Text,
     StyleSheet,
     ActivityIndicator,
-    Alert,
     TouchableOpacity,
     TextInput,
     ScrollView,
@@ -19,8 +18,10 @@ import { SupplierPicker } from '@shared/ui/Pickers/SupplierPicker';
 import { WarehouseSelectionInline } from '@screens/warehouse/ui/WarehouseSelectionScreen';
 import { selectUser } from '@entities/auth/model/selectors';
 import { updateProductWithImages, uploadProductWithImages } from '@shared/api/uploadHelpers';
+import ProductsService from '@entities/product/api/productsApi';
 import { ReusableModal } from "@shared/ui/Modal/ui/ReusableModal";
 import WarehouseService from '@entities/warehouse/api/warehouseApi';
+import { CustomAlert } from '@shared/ui/CustomAlert/CustomAlert';
 
 const extractCategoryId = (categoryValue) => {
     if (typeof categoryValue === 'number') {
@@ -67,6 +68,9 @@ const ProductFormContent = React.memo(({
     handleWarehouseQuantitiesChange,
     handleImagesChange,
     handleSubmit,
+    handlePublish,
+    canPublish,
+    submitAction,
     user
 }) => {
     const isFormEditable = !isSubmitting && !isInteracting;
@@ -261,23 +265,41 @@ const ProductFormContent = React.memo(({
                 </>
             ), 96)}
 
-            <TouchableOpacity
-                style={[styles.submitButton, !isFormEditable && styles.disabledButton]}
-                onPress={handleSubmit}
-                activeOpacity={0.7}
-                disabled={!isFormEditable}
-            >
-                {isSubmitting ? (
-                    <View style={styles.submitButtonContent}>
-                        <ActivityIndicator size="small" color="#FFFFFF" style={styles.submitButtonLoader} />
-                        <Text style={styles.submitButtonText}>Сохранение...</Text>
-                    </View>
-                ) : (
-                    <Text style={styles.submitButtonText}>
-                        {product && product.id ? "Сохранить изменения" : "Добавить товар"}
-                    </Text>
-                )}
-            </TouchableOpacity>
+            {canPublish ? (
+                <TouchableOpacity
+                    style={[styles.submitButton, styles.publishButton, !isFormEditable && styles.disabledButton]}
+                    onPress={handlePublish}
+                    activeOpacity={0.7}
+                    disabled={!isFormEditable}
+                >
+                    {isSubmitting && submitAction === 'publish' ? (
+                        <View style={styles.submitButtonContent}>
+                            <ActivityIndicator size="small" color="#FFFFFF" style={styles.submitButtonLoader} />
+                            <Text style={styles.submitButtonText}>Сохранение и публикация...</Text>
+                        </View>
+                    ) : (
+                        <Text style={styles.submitButtonText}>Сохранить и опубликовать</Text>
+                    )}
+                </TouchableOpacity>
+            ) : (
+                <TouchableOpacity
+                    style={[styles.submitButton, !isFormEditable && styles.disabledButton]}
+                    onPress={handleSubmit}
+                    activeOpacity={0.7}
+                    disabled={!isFormEditable}
+                >
+                    {isSubmitting ? (
+                        <View style={styles.submitButtonContent}>
+                            <ActivityIndicator size="small" color="#FFFFFF" style={styles.submitButtonLoader} />
+                            <Text style={styles.submitButtonText}>Сохранение...</Text>
+                        </View>
+                    ) : (
+                        <Text style={styles.submitButtonText}>
+                            {product && product.id ? "Сохранить изменения" : "Добавить товар"}
+                        </Text>
+                    )}
+                </TouchableOpacity>
+            )}
         </View>
     );
 });
@@ -290,7 +312,16 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
     const [contentReady, setContentReady] = useState(false);
     const [isInteracting, setIsInteracting] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [submitAction, setSubmitAction] = useState('save');
     const [closeRequestPending, setCloseRequestPending] = useState(false);
+    const [alertConfig, setAlertConfig] = useState({
+        visible: false,
+        type: 'info',
+        title: '',
+        message: '',
+        buttons: [],
+        showCloseButton: true,
+    });
 
     console.log('[EditProductModal] Открытие модального окна', { visible, productId: product?.id });
 
@@ -298,6 +329,10 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
     const canChangeSupplier = useMemo(() =>
             user && (user.role === 'ADMIN' || user.role === 'EMPLOYEE'),
         [user?.role]
+    );
+    const canPublishProduct = useMemo(() =>
+            user?.role === 'ADMIN' && !!product?.id,
+        [user?.role, product?.id]
     );
 
 
@@ -334,6 +369,21 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
 
     const [removedImages, setRemovedImages] = useState([]);
     const [loadingWarehouses, setLoadingWarehouses] = useState(false);
+
+    const hideCustomAlert = useCallback(() => {
+        setAlertConfig((prev) => ({ ...prev, visible: false }));
+    }, []);
+
+    const showCustomAlert = useCallback((config) => {
+        setAlertConfig({
+            visible: true,
+            type: config?.type || 'info',
+            title: config?.title || '',
+            message: config?.message || '',
+            buttons: config?.buttons || [],
+            showCloseButton: config?.showCloseButton ?? true,
+        });
+    }, []);
 
     // Инициализация модального окна с защитой от ViewState конфликтов
     useEffect(() => {
@@ -553,14 +603,25 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
                 supplierId
             });
 
+            // Для поставщика при PENDING/REJECTED показываем предложенные цены,
+            // иначе кажется, что изменения "не сохранились" (так как approved-цены остаются прежними до модерации).
+            const shouldUseSupplierProposedPrices =
+                user?.role === 'SUPPLIER' && product?.moderationStatus !== 'APPROVED';
+            const initialPrice = shouldUseSupplierProposedPrices && product?.supplierProposedPrice !== undefined && product?.supplierProposedPrice !== null
+                ? product.supplierProposedPrice
+                : product.price;
+            const initialBoxPrice = shouldUseSupplierProposedPrices && product?.supplierProposedBoxPrice !== undefined && product?.supplierProposedBoxPrice !== null
+                ? product.supplierProposedBoxPrice
+                : product.boxPrice;
+
             // Инициализируем базовые данные формы
             const baseFormData = {
                 name: product.name || '',
                 categories: categoryIds,
                 weight: product.weight ? product.weight.toString() : '',
-                price: product.price ? product.price.toString() : '',
+                price: initialPrice ? initialPrice.toString() : '',
                 itemsPerBox: product.itemsPerBox ? product.itemsPerBox.toString() : '1',
-                boxPrice: product.boxPrice ? product.boxPrice.toString() : '',
+                boxPrice: initialBoxPrice ? initialBoxPrice.toString() : '',
                 discount: product.discount ? product.discount.toString() : '',
                 stockQuantity: product.stockQuantity ? product.stockQuantity.toString() : '',
                 description: product.description || '',
@@ -608,7 +669,7 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
                 supplierId: ''
             });
         }
-    }, [product, visible, loadProductWarehouses]);
+    }, [product, visible, loadProductWarehouses, user?.role]);
 
     // Улучшенный handleClose с защитой от повторных вызовов
     const handleClose = useCallback(() => {
@@ -629,6 +690,15 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
             }, 100);
         });
     }, [onClose, closeRequestPending, isSubmitting]);
+
+    const finalizeSave = useCallback((updatedProductData) => {
+        handleClose();
+        setTimeout(() => {
+            if (onSave && typeof onSave === 'function') {
+                onSave(updatedProductData);
+            }
+        }, 100);
+    }, [handleClose, onSave]);
 
     // Защищенный handleChange с блокировкой взаимодействий
     const handleChange = useCallback((field, value) => {
@@ -870,19 +940,23 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
     }, [formData, canChangeSupplier]);
 
     // ИСПРАВЛЕННЫЙ обработчик отправки формы
-    const handleSubmit = useCallback(async () => {
-        if (!validateForm() || isSubmitting || isInteracting) {
+    const handleSubmit = useCallback(async (options = {}) => {
+        const shouldPublish = options?.publish === true;
+        const isValid = validateForm();
+
+        if (!isValid || isSubmitting || isInteracting) {
             console.log('[EditProductModal] Отправка заблокирована:', { 
-                isValid: validateForm(), 
+                isValid, 
                 isSubmitting, 
                 isInteracting 
             });
             return;
         }
 
+        setSubmitAction(shouldPublish ? 'publish' : 'save');
         setIsSubmitting(true);
         setIsInteracting(true);
-        console.log('[EditProductModal] Начало отправки формы');
+        console.log('[EditProductModal] Начало отправки формы', { shouldPublish });
 
         try {
             // Готовим данные для отправки
@@ -946,9 +1020,30 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
 
             // Проверяем результат
             if (result && (result.status === 'success' || result.success)) {
+                if (shouldPublish && product?.id && user?.role === 'ADMIN') {
+                    const publishPrice = parseFloat(productData.price);
+                    const publishItemsPerBox = parseInt(productData.itemsPerBox, 10) || 1;
+                    const publishBoxPrice = productData.boxPrice
+                        ? parseFloat(productData.boxPrice)
+                        : publishPrice * publishItemsPerBox;
+
+                    await ProductsService.moderateProduct(product.id, {
+                        action: 'approve',
+                        price: publishPrice,
+                        boxPrice: publishBoxPrice
+                    });
+                }
+
+                const apiUpdatedProduct =
+                    result?.data?.product ||
+                    result?.product ||
+                    result?.data?.data?.product ||
+                    null;
+
                 // Готовим финальные данные продукта для передачи в родительский компонент
                 const updatedProductData = {
                     ...product, // Сохраняем все существующие данные
+                    ...(apiUpdatedProduct || {}), // Приоритет отдаем реальному ответу API
                     ...productData, // Перезаписываем обновленными данными
                     // Обновляем специфичные поля с правильными типами
                     price: parseFloat(productData.price) || product?.price || 0,
@@ -958,19 +1053,46 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
                     discount: productData.discount ? parseFloat(productData.discount) : (product?.discount || null),
                     stockQuantity: parseInt(productData.stockQuantity, 10) || product?.stockQuantity || 0,
                     images: formData.images, // Обновленные изображения
+                    isActive: shouldPublish ? true : product?.isActive,
+                    moderationStatus: shouldPublish ? 'APPROVED' : product?.moderationStatus,
                 };
+
+                if (apiUpdatedProduct?.supplierProposedPrice !== undefined) {
+                    updatedProductData.supplierProposedPrice = apiUpdatedProduct.supplierProposedPrice;
+                }
+                if (apiUpdatedProduct?.supplierProposedBoxPrice !== undefined) {
+                    updatedProductData.supplierProposedBoxPrice = apiUpdatedProduct.supplierProposedBoxPrice;
+                }
 
                 console.log('[EditProductModal] Передаем обновленные данные в onSave:', updatedProductData);
 
-                // Сначала закрываем модальное окно
-                handleClose();
-
-                // Затем с задержкой передаем данные в родительский компонент
-                setTimeout(() => {
-                    if (onSave && typeof onSave === 'function') {
-                        onSave(updatedProductData);
-                    }
-                }, 100);
+                if (user?.role === 'SUPPLIER') {
+                    showCustomAlert({
+                        type: 'info',
+                        title: 'Изменения отправлены на модерацию',
+                        message: 'Товар будет опубликован после повторного одобрения администратором.',
+                        buttons: [{
+                            text: 'OK',
+                            style: 'primary',
+                            onPress: () => finalizeSave(updatedProductData),
+                        }],
+                        showCloseButton: false,
+                    });
+                } else if (shouldPublish && user?.role === 'ADMIN') {
+                    showCustomAlert({
+                        type: 'success',
+                        title: 'Товар опубликован',
+                        message: 'Изменения сохранены, товар опубликован в витрине.',
+                        buttons: [{
+                            text: 'OK',
+                            style: 'primary',
+                            onPress: () => finalizeSave(updatedProductData),
+                        }],
+                        showCloseButton: false,
+                    });
+                } else {
+                    finalizeSave(updatedProductData);
+                }
 
             } else {
                 // Обработка ошибки
@@ -986,17 +1108,28 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
                     errorMessage = "Не удалось подключиться к серверу. Проверьте соединение с интернетом.";
                 }
 
-                Alert.alert("Ошибка", errorMessage);
+                showCustomAlert({
+                    type: 'error',
+                    title: 'Ошибка',
+                    message: errorMessage,
+                    buttons: [{ text: 'OK', style: 'primary' }],
+                });
             }
         } catch (error) {
             console.error('EditProductModal: Ошибка при отправке формы:', error);
             const errorMessage = error?.message || "Произошла ошибка при сохранении данных";
-            Alert.alert("Ошибка", errorMessage);
+            showCustomAlert({
+                type: 'error',
+                title: 'Ошибка',
+                message: errorMessage,
+                buttons: [{ text: 'OK', style: 'primary' }],
+            });
         } finally {
             setIsSubmitting(false);
             setIsInteracting(false);
+            setSubmitAction('save');
         }
-    }, [formData, product, removedImages, validateForm, onSave, handleClose, isSubmitting, isInteracting]);
+    }, [formData, product, removedImages, validateForm, isSubmitting, isInteracting, user?.role, finalizeSave, showCustomAlert]);
 
     // Не рендерим ничего, если модальное окно не видимо или не готово
     if (!visible || !isModalReady) {
@@ -1037,7 +1170,10 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
                         handleSupplierChange={handleSupplierChange}
                         handleWarehouseQuantitiesChange={handleWarehouseQuantitiesChange}
                         handleImagesChange={handleImagesChange}
-                        handleSubmit={handleSubmit}
+                        handleSubmit={() => handleSubmit({ publish: false })}
+                        handlePublish={() => handleSubmit({ publish: true })}
+                        canPublish={canPublishProduct}
+                        submitAction={submitAction}
                         user={user}
                     />
                 </ScrollView>
@@ -1048,6 +1184,15 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
                 </View>
             )}
         </ReusableModal>
+        <CustomAlert
+            visible={alertConfig.visible}
+            type={alertConfig.type}
+            title={alertConfig.title}
+            message={alertConfig.message}
+            buttons={alertConfig.buttons}
+            showCloseButton={alertConfig.showCloseButton}
+            onClose={hideCustomAlert}
+        />
         </>
     );
 });
@@ -1257,6 +1402,23 @@ const styles = StyleSheet.create({
                 shadowColor: '#3B43A2',
                 shadowOffset: { width: 0, height: 4 },
                 shadowOpacity: 0.3,
+                shadowRadius: 12,
+            },
+            android: {
+                elevation: 6,
+            },
+        }),
+    },
+    publishButton: {
+        flex: 1,
+        marginTop: 0,
+        marginBottom: 0,
+        backgroundColor: '#16A34A',
+        ...Platform.select({
+            ios: {
+                shadowColor: '#16A34A',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.25,
                 shadowRadius: 12,
             },
             android: {

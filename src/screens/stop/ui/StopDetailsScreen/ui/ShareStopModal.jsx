@@ -200,8 +200,8 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
                 const response = await ChatApi.searchUsers(searchQuery, 50);
                 const users = response?.data?.users || response?.data?.data?.users || [];
                 
-                // Фильтруем текущего пользователя
-                const filteredUsers = users.filter(u => u.id !== currentUserId);
+                // Фильтруем текущего пользователя и поставщиков
+                const filteredUsers = users.filter(u => u.id !== currentUserId && u.role !== 'SUPPLIER');
                 setSearchResults(filteredUsers);
             } catch (error) {
                 console.error('Error searching users:', error);
@@ -338,6 +338,20 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
         return rooms.filter(room => {
             if (!room || !room.id) {
                 return false;
+            }
+
+            // Скрываем PRODUCT чаты (чаты с поставщиками по товарам)
+            if (room?.type === 'PRODUCT') {
+                return false;
+            }
+
+            // Скрываем DIRECT чаты с поставщиками
+            if (room?.type === 'DIRECT' && Array.isArray(room?.participants)) {
+                const hasSupplier = room.participants.some(p => {
+                    const user = p?.user || p;
+                    return user?.role === 'SUPPLIER';
+                });
+                if (hasSupplier) return false;
             }
             
             // Для каналов (BROADCAST): показываем только админам, водителям и сотрудникам
