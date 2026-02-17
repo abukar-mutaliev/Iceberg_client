@@ -5,7 +5,15 @@ import {
     StyleSheet,
     TouchableOpacity,
     FlatList,
-    ActivityIndicator} from 'react-native';
+    ActivityIndicator,
+    Platform,
+    Dimensions} from 'react-native';
+
+const SCREEN_HEIGHT = Dimensions.get('window').height;
+// iOS: ограничиваем высоту GPU-градиента, чтобы не переполнять видеопамять.
+// Без ограничения 3 слоя LinearGradient на 5000+ px создают ~24 МБ текстур,
+// и при сворачивании iOS убивает процесс.
+const MAX_GRADIENT_HEIGHT_IOS = SCREEN_HEIGHT * 2.5;
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { useFocusEffect } from '@react-navigation/native';
@@ -215,8 +223,13 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     // Очистка при размонтировании
     useEffect(() => {
         return () => {
-            const currentRoute = navigation.getState()?.routes?.[navigation.getState()?.index];
-            if (currentRoute?.name !== 'ProductDetail') {
+            try {
+                const currentRoute = navigation.getState()?.routes?.[navigation.getState()?.index];
+                if (currentRoute?.name !== 'ProductDetail') {
+                    dispatch(resetCurrentProduct());
+                }
+            } catch (e) {
+                // navigation state может быть недоступен при фоновом завершении
                 dispatch(resetCurrentProduct());
             }
         };
@@ -264,8 +277,6 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     const handleCartRemove = useCallback(async () => {
         try {
             await removeFromCart();
-            // Используем Toast вместо Alert для успешного удаления
-            const { showSuccess } = require('@shared/ui/Toast').useToast();
             showSuccess(`"${enrichedProduct?.name}" удален из корзины`, {
                 duration: 3000,
                 position: 'top'
@@ -284,7 +295,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 });
             }
         }
-    }, [removeFromCart, enrichedProduct?.name, showError, showWarning]);
+    }, [removeFromCart, enrichedProduct?.name, showSuccess, showError, showWarning]);
 
     const handleAddToCart = useCallback(async () => {
         if (enrichedProduct && productId) {
@@ -899,11 +910,16 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                     onContentSizeChange={handleContentSizeChange}
                     overScrollMode="never"
                     bounces={false}
+                    removeClippedSubviews={Platform.OS === 'ios'}
                 >
                     <ScrollableBackgroundGradient
                         showOverlayGradient={true}
                         showShadowGradient={false}
-                        contentHeight={contentHeight}
+                        contentHeight={
+                            Platform.OS === 'ios'
+                                ? Math.min(contentHeight, MAX_GRADIENT_HEIGHT_IOS)
+                                : contentHeight
+                        }
                     />
 
                     <View style={styles.contentContainer}>
@@ -934,14 +950,17 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 </ReusableModal>
             )}
 
-            {/* Модальное окно просмотра изображений */}
-            <ImageViewerModal
-                visible={isImageViewerVisible}
-                imageList={imageViewerImages}
-                initialIndex={imageViewerInitialIndex}
-                onClose={handleImageViewerClose}
-                title={displayProduct?.name || ''}
-            />
+            {/* Модальное окно просмотра изображений — монтируем только при открытии,
+                чтобы не держать тяжёлые image-текстуры в GPU-памяти постоянно */}
+            {isImageViewerVisible && (
+                <ImageViewerModal
+                    visible={true}
+                    imageList={imageViewerImages}
+                    initialIndex={imageViewerInitialIndex}
+                    onClose={handleImageViewerClose}
+                    title={displayProduct?.name || ''}
+                />
+            )}
 
             {/* Модальное окно выбора района */}
             <ReusableModal

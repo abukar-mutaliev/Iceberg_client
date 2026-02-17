@@ -443,13 +443,7 @@ export const AdminProductDetailScreen = () => {
         );
     }
 
-    // console.log('[AdminProductDetailScreen] Данные складов:', {
-    //     warehousesWithStock: warehousesWithStock?.length,
-    //     totalStock,
-    //     availableStock,
-    //     stockLoading,
-    //     stockError
-    // });
+
 
     // === Основной рендер ===
 
