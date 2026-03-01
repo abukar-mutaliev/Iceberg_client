@@ -1,15 +1,27 @@
 import {createApiModule} from "@shared/services/ApiClient";
+import { createPublicRequest } from '@shared/api/api';
 
 const productsApi = createApiModule('/api/products');
 
 const ProductsService = {
-    getProducts: (params = {}) =>
-        productsApi.get('', params, {
+    getProducts: (params = {}, options = {}) => {
+        const requestConfig = {
             headers: {
                 'Cache-Control': 'no-cache',
                 'Pragma': 'no-cache'
             }
-        }),
+        };
+
+        if (options?.usePublicCatalog) {
+            const queryString = new URLSearchParams(
+                Object.entries(params).filter(([_, value]) => value !== undefined && value !== null)
+            ).toString();
+            const url = `/api/products/public${queryString ? `?${queryString}` : ''}`;
+            return createPublicRequest('get', url, null, requestConfig);
+        }
+
+        return productsApi.get('', params, requestConfig);
+    },
 
     getProductById: (productId) =>
         productsApi.get(`/${productId}`),

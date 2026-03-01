@@ -9,8 +9,10 @@ import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily, Border } from '@app/styles/GlobalStyles';
 import IconRight from '@shared/ui/Icon/Profile/IconRight';
 
-export const AdminMenuItem = ({ icon, title, onPress, color = Color.blue2 }) => {
+export const AdminMenuItem = ({ icon, title, onPress, color = Color.blue2, badgeCount = 0 }) => {
     const [isActive, setIsActive] = useState(false);
+    const hasBadge = Number(badgeCount) > 0;
+    const badgeText = badgeCount > 99 ? '99+' : String(badgeCount);
 
     const handlePress = () => {
         setIsActive(true);
@@ -51,7 +53,14 @@ export const AdminMenuItem = ({ icon, title, onPress, color = Color.blue2 }) => 
             ]}>
                 {title}
             </Text>
-            <IconRight color={isActive ? '#fff' : Color.grayDarker} />
+            <View style={styles.rightContainer}>
+                {hasBadge && (
+                    <View style={styles.badge}>
+                        <Text style={styles.badgeText}>{badgeText}</Text>
+                    </View>
+                )}
+                <IconRight color={isActive ? '#fff' : Color.grayDarker} />
+            </View>
         </TouchableOpacity>
     );
 };
@@ -84,6 +93,26 @@ const styles = StyleSheet.create({
     },
     activeMenuItemText: {
         color: '#fff',
+    },
+    rightContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    badge: {
+        minWidth: normalize(20),
+        height: normalize(20),
+        borderRadius: normalize(10),
+        paddingHorizontal: normalize(6),
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: Color.red,
+        marginRight: normalize(8),
+    },
+    badgeText: {
+        color: '#FFFFFF',
+        fontSize: normalizeFont(11),
+        fontFamily: FontFamily.sFProText,
+        fontWeight: '600',
     },
 });
 

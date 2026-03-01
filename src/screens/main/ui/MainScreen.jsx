@@ -58,6 +58,9 @@ export const MainScreen = ({ navigation, route }) => {
     const bannerStatus = useSelector(selectBannerStatus);
     const categoriesLoading = useSelector(selectCategoriesLoading);
     const unreadCount = useSelector(state => state.notification?.unreadCount || 0);
+    const productsFetchScope = useSelector(state => state.products?.lastFetchScope || 'default');
+    const requiresPublicCatalog = user?.role === 'SUPPLIER';
+    const hasRequiredProductsScope = !requiresPublicCatalog || productsFetchScope === 'publicCatalog';
 
     // Local state
     const [isInitialLoading, setIsInitialLoading] = useState(false);
@@ -79,9 +82,10 @@ export const MainScreen = ({ navigation, route }) => {
     // Проверка готовности данных
     const isDataReady = useMemo(() => {
         return products?.length > 0 && 
+               hasRequiredProductsScope &&
                activeBanners !== undefined && 
                categories?.length > 0;
-    }, [products?.length, activeBanners, categories?.length]);
+    }, [products?.length, activeBanners, categories?.length, hasRequiredProductsScope]);
 
     // Функция перемешивания массива (алгоритм Фишера-Йетса)
     const shuffleArray = useCallback((array) => {
@@ -196,7 +200,7 @@ export const MainScreen = ({ navigation, route }) => {
         const productsReady = products?.length > 0;
         const bannersReady = activeBanners !== undefined;
         const categoriesReady = categories?.length > 0;
-        const dataReady = productsReady && bannersReady && categoriesReady;
+        const dataReady = productsReady && bannersReady && categoriesReady && hasRequiredProductsScope;
         
         // При первой инициализации всегда загружаем данные, даже если кэш свежий
         const isFirstLoad = !isInitializedRef.current;
@@ -225,7 +229,8 @@ export const MainScreen = ({ navigation, route }) => {
                 dispatch(fetchProducts({ 
                     page: 1, 
                     limit: PRODUCTS_PER_PAGE, 
-                    refresh: shouldRefresh 
+                    refresh: shouldRefresh,
+                    usePublicCatalog: requiresPublicCatalog
                 })).unwrap(),
                 dispatch(fetchBanners({ 
                     type: 'MAIN', 
@@ -252,7 +257,7 @@ export const MainScreen = ({ navigation, route }) => {
                 setIsRefreshing(false);
             }
         }
-    }, [dispatch, products?.length, activeBanners, categories?.length, shouldRefreshCache]);
+    }, [dispatch, products?.length, activeBanners, categories?.length, shouldRefreshCache, hasRequiredProductsScope, requiresPublicCatalog]);
     
     // Сохраняем стабильную ссылку на loadAllData
     useEffect(() => {
@@ -267,9 +272,10 @@ export const MainScreen = ({ navigation, route }) => {
 
         dispatch(fetchProducts({ 
             page: currentPage + 1, 
-            limit: PRODUCTS_PER_PAGE 
+            limit: PRODUCTS_PER_PAGE,
+            usePublicCatalog: requiresPublicCatalog
         }));
-    }, [dispatch, hasMore, isLoadingMore, currentPage, products?.length]);
+    }, [dispatch, hasMore, isLoadingMore, currentPage, products?.length, requiresPublicCatalog]);
 
     // Принудительное обновление (pull-to-refresh) — перемешивает товары
     const handleRefresh = useCallback(() => {

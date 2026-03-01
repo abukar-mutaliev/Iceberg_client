@@ -13,6 +13,7 @@ import {
 import { useCartAvailability } from '@entities/cart';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { selectWaitingStockCountCombined, selectSupplierWaitingStockCount } from '@entities/order';
+import { selectTotalUnreadChatsCount } from '@entities/chat/model/selectors';
 // Важно: используем тот же экземпляр контекста, что и экраны (иначе hideTabBar() не влияет на CustomTabBar)
 // Импортируем напрямую из контекста, чтобы избежать циклической зависимости
 import { useTabBar } from '../../context';
@@ -110,6 +111,9 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
     const supplierWaitingStockCount = useSelector(state => 
         selectSupplierWaitingStockCount(state, supplierId)
     );
+
+    // Общее количество непрочитанных сообщений для бейджа на вкладке чатов
+    const totalUnreadChats = useSelector(selectTotalUnreadChatsCount);
 
     // Защита от множественных нажатий
     const isNavigating = useRef(false);
@@ -264,9 +268,12 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
                     const actualIndex = state.routes.findIndex(r => r.key === route.key);
                     const isActive = state.index === actualIndex;
                     
-                    // Показываем бейдж только для вкладки ProfileTab
-                    const showBadge = route.name === 'ProfileTab' && shouldShowBadge;
-                    const displayBadgeCount = showBadge ? badgeCount : 0;
+                    // Бейдж на ProfileTab — заказы, ожидающие товар
+                    const showProfileBadge = route.name === 'ProfileTab' && shouldShowBadge;
+                    // Бейдж на ChatList — непрочитанные сообщения
+                    const showChatBadge = route.name === 'ChatList' && totalUnreadChats > 0;
+                    const showBadge = showProfileBadge || showChatBadge;
+                    const displayBadgeCount = showProfileBadge ? badgeCount : showChatBadge ? totalUnreadChats : 0;
 
                     return (
                         <TabItem

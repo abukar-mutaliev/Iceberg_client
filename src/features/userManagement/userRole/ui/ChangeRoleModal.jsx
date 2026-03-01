@@ -323,6 +323,7 @@ const pickerStyles = StyleSheet.create({
 export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
     const [selectedRole, setSelectedRole] = useState('');
     const [userData, setUserData] = useState({});
+    const [fieldErrors, setFieldErrors] = useState({});
     const [keyboardVisible, setKeyboardVisible] = useState(false);
     const scrollViewRef = useRef(null);
     
@@ -428,6 +429,7 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
     useEffect(() => {
         if (visible && user) {
             setSelectedRole('');
+            setFieldErrors({});
             const existingData = getUserExistingData();
             // Очищаем "Не указано" из телефона и адреса, чтобы поля ввода были пустыми
             if (existingData.phone && existingData.phone.toLowerCase() === 'не указано') {
@@ -492,17 +494,38 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
 
     // Обработчик изменения данных пользователя
     const handleUserDataChange = (key, value) => {
-        setUserData({ ...userData, [key]: value });
+        setUserData(prev => ({ ...prev, [key]: value }));
+        if (fieldErrors[key]) {
+            setFieldErrors(prev => {
+                const next = { ...prev };
+                delete next[key];
+                return next;
+            });
+        }
     };
 
     // Обработчик изменения выбранного склада
     const handleWarehouseChange = (warehouseId) => {
         setSelectedWarehouse(warehouseId);
+        if (fieldErrors.warehouseId) {
+            setFieldErrors(prev => {
+                const next = { ...prev };
+                delete next.warehouseId;
+                return next;
+            });
+        }
     };
 
     // Обработчик изменения выбранных районов для сотрудника
     const handleEmployeeDistrictsChange = (districts) => {
         setSelectedEmployeeDistricts(districts);
+        if (fieldErrors.employeeDistricts) {
+            setFieldErrors(prev => {
+                const next = { ...prev };
+                delete next.employeeDistricts;
+                return next;
+            });
+        }
     };
 
     // Обработчик изменения выбранного склада для водителя
@@ -513,6 +536,13 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
     // Обработчик изменения выбранных районов для водителя
     const handleDriverDistrictsChange = (districts) => {
         setSelectedDriverDistricts(districts);
+        if (fieldErrors.driverDistricts) {
+            setFieldErrors(prev => {
+                const next = { ...prev };
+                delete next.driverDistricts;
+                return next;
+            });
+        }
     };
 
     // Отображаем дополнительные поля в зависимости от выбранной роли
@@ -551,6 +581,7 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                                     placeholder="Введите телефон (необязательно)"
                                     keyboardType="phone-pad"
                                 />
+                                {fieldErrors.phone && <Text style={styles.fieldError}>{fieldErrors.phone}</Text>}
                             </>
                         )}
                     </>
@@ -567,6 +598,7 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                                     onChangeText={(text) => handleUserDataChange('name', text)}
                                     placeholder="Введите имя клиента"
                                 />
+                                {fieldErrors.name && <Text style={styles.fieldError}>{fieldErrors.name}</Text>}
                             </>
                         )}
                         {!hasExistingPhone && (
@@ -579,6 +611,7 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                                     placeholder="Введите телефон (необязательно)"
                                     keyboardType="phone-pad"
                                 />
+                                {fieldErrors.phone && <Text style={styles.fieldError}>{fieldErrors.phone}</Text>}
                             </>
                         )}
                     </>
@@ -596,6 +629,7 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                                     placeholder="Введите телефон (необязательно)"
                                     keyboardType="phone-pad"
                                 />
+                                {fieldErrors.phone && <Text style={styles.fieldError}>{fieldErrors.phone}</Text>}
                             </>
                         )}
 
@@ -606,6 +640,7 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                             onChangeText={(text) => handleUserDataChange('address', text)}
                             placeholder="Введите адрес (необязательно)"
                         />
+                        {fieldErrors.address && <Text style={styles.fieldError}>{fieldErrors.address}</Text>}
 
                         {/* Компонент выбора склада для сотрудника */}
                         <WarehousePicker
@@ -617,6 +652,7 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                             error={null}
                             disabled={warehousesLoading}
                         />
+                        {fieldErrors.warehouseId && <Text style={styles.fieldError}>{fieldErrors.warehouseId}</Text>}
 
                         {/* Компонент выбора районов для сотрудника */}
                         <MultiDistrictPicker
@@ -628,6 +664,7 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                             error={null}
                             disabled={false}
                         />
+                        {fieldErrors.employeeDistricts && <Text style={styles.fieldError}>{fieldErrors.employeeDistricts}</Text>}
 
                         {/* Выбор должности для сотрудника */}
                         <ProcessingRolePicker
@@ -650,6 +687,7 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                             onChangeText={(text) => handleUserDataChange('companyName', text)}
                             placeholder="Введите название компании"
                         />
+                        {fieldErrors.companyName && <Text style={styles.fieldError}>{fieldErrors.companyName}</Text>}
                         <Text style={styles.modalLabel}>Контактное лицо:</Text>
                         <TextInput
                             style={styles.modalInput}
@@ -657,6 +695,7 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                             onChangeText={(text) => handleUserDataChange('contactPerson', text)}
                             placeholder="Введите контактное лицо"
                         />
+                        {fieldErrors.contactPerson && <Text style={styles.fieldError}>{fieldErrors.contactPerson}</Text>}
                         {!hasExistingPhone && (
                             <>
                                 <Text style={styles.modalLabel}>Телефон:</Text>
@@ -667,6 +706,7 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                                     placeholder="Введите телефон (необязательно)"
                                     keyboardType="phone-pad"
                                 />
+                                {fieldErrors.phone && <Text style={styles.fieldError}>{fieldErrors.phone}</Text>}
                             </>
                         )}
                     </>
@@ -683,6 +723,7 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                                     onChangeText={(text) => handleUserDataChange('name', text)}
                                     placeholder="Введите имя водителя"
                                 />
+                                {fieldErrors.name && <Text style={styles.fieldError}>{fieldErrors.name}</Text>}
                             </>
                         )}
 
@@ -696,6 +737,7 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                                     placeholder="Введите телефон (необязательно)"
                                     keyboardType="phone-pad"
                                 />
+                                {fieldErrors.phone && <Text style={styles.fieldError}>{fieldErrors.phone}</Text>}
                             </>
                         )}
 
@@ -720,6 +762,7 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                             error={null}
                             disabled={false}
                         />
+                        {fieldErrors.driverDistricts && <Text style={styles.fieldError}>{fieldErrors.driverDistricts}</Text>}
                     </>
                 );
             default:
@@ -727,30 +770,70 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
         }
     };
 
-    // Проверка валидности формы
-    const isFormValid = () => {
-        if (!selectedRole) return false;
+    const getValidationErrors = () => {
+        const errors = {};
+        const trimValue = (value) => (value || '').trim();
 
-        // Проверяем наличие имени в данных (либо существующее, либо введенное)
-        const hasName = !!userData.name && userData.name.trim().length > 0;
+        if (!selectedRole) {
+            errors.selectedRole = 'Выберите новую роль';
+            return errors;
+        }
+
+        const hasName = !!trimValue(userData.name);
 
         switch (selectedRole) {
             case 'ADMIN':
-                // Для ADMIN имя обязательно - должно быть указано при регистрации
-                return hasName;
+                if (!hasName) {
+                    errors.name = 'Имя пользователя обязательно';
+                } else if (trimValue(userData.name).length < 2) {
+                    errors.name = 'Имя должно содержать минимум 2 символа';
+                }
+                break;
             case 'CLIENT':
-                // Имя обязательно - либо уже есть у пользователя, либо должно быть введено
-                return hasName;
+                if (!hasName) {
+                    errors.name = 'Имя клиента обязательно';
+                } else if (trimValue(userData.name).length < 2) {
+                    errors.name = 'Имя клиента должно содержать минимум 2 символа';
+                }
+                break;
             case 'DRIVER':
-                // Имя обязательно, районы обязательны всегда
-                return hasName && selectedDriverDistricts.length > 0;
+                if (!hasName) {
+                    errors.name = 'Имя водителя обязательно';
+                } else if (trimValue(userData.name).length < 2) {
+                    errors.name = 'Имя водителя должно содержать минимум 2 символа';
+                }
+                if (selectedDriverDistricts.length === 0) {
+                    errors.driverDistricts = 'Выберите минимум один район';
+                }
+                break;
             case 'EMPLOYEE':
-                return !!selectedWarehouse && selectedEmployeeDistricts.length > 0;
-            case 'SUPPLIER':
-                return !!userData.companyName && !!userData.contactPerson;
+                if (!selectedWarehouse) {
+                    errors.warehouseId = 'Выберите склад';
+                }
+                if (selectedEmployeeDistricts.length === 0) {
+                    errors.employeeDistricts = 'Выберите минимум один район';
+                }
+                break;
+            case 'SUPPLIER': {
+                const companyName = trimValue(userData.companyName);
+                const contactPerson = trimValue(userData.contactPerson);
+                if (!companyName) {
+                    errors.companyName = 'Название компании обязательно';
+                } else if (companyName.length < 2) {
+                    errors.companyName = 'Название компании должно содержать минимум 2 символа';
+                }
+                if (!contactPerson) {
+                    errors.contactPerson = 'Контактное лицо обязательно';
+                } else if (contactPerson.length < 2) {
+                    errors.contactPerson = 'Контактное лицо должно содержать минимум 2 символа';
+                }
+                break;
+            }
             default:
-                return false;
+                break;
         }
+
+        return errors;
     };
 
     // Подготовка данных для отправки
@@ -790,6 +873,15 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
         if (selectedRole === 'DRIVER') {
             data.warehouseId = selectedDriverWarehouse;
             data.districts = selectedDriverDistricts;
+        }
+
+        if (selectedRole === 'SUPPLIER') {
+            if (userData.companyName?.trim()) {
+                data.companyName = userData.companyName.trim();
+            }
+            if (userData.contactPerson?.trim()) {
+                data.contactPerson = userData.contactPerson.trim();
+            }
         }
         
         console.log('[ChangeRoleModal] prepareSubmitData результат:', { selectedRole, data, selectedProcessingRole });
@@ -843,7 +935,16 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                                             styles.roleButton,
                                             selectedRole === role.value && styles.roleButtonSelected
                                         ]}
-                                        onPress={() => setSelectedRole(role.value)}
+                                        onPress={() => {
+                                            setSelectedRole(role.value);
+                                            if (fieldErrors.selectedRole) {
+                                                setFieldErrors(prev => {
+                                                    const next = { ...prev };
+                                                    delete next.selectedRole;
+                                                    return next;
+                                                });
+                                            }
+                                        }}
                                     >
                                         <Text style={[
                                             styles.roleButtonText,
@@ -854,6 +955,9 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                                     </TouchableOpacity>
                                 ))}
                             </View>
+                            {fieldErrors.selectedRole && (
+                                <Text style={styles.fieldError}>{fieldErrors.selectedRole}</Text>
+                            )}
 
                             {selectedRole && (
                                 <>
@@ -886,8 +990,15 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                             />
                             <CustomButton
                                 title="Изменить"
-                                onPress={() => onSubmit(user.id, selectedRole, prepareSubmitData())}
-                                disabled={!isFormValid()}
+                                onPress={() => {
+                                    const errors = getValidationErrors();
+                                    setFieldErrors(errors);
+                                    if (Object.keys(errors).length > 0) {
+                                        return;
+                                    }
+                                    onSubmit(user.id, selectedRole, prepareSubmitData());
+                                }}
+                                disabled={false}
                                 color={Color.blue2}
                                 style={styles.modalButton}
                             />
@@ -1003,6 +1114,13 @@ const styles = StyleSheet.create({
         marginBottom: normalize(16),
         borderWidth: 1,
         borderColor: Color.border,
+    },
+    fieldError: {
+        fontSize: normalizeFont(FontSize.size_xs),
+        color: '#D93025',
+        marginTop: normalize(-12),
+        marginBottom: normalize(12),
+        fontFamily: FontFamily.sFProText,
     },
     infoContainer: {
         backgroundColor: Color.blue2 + '15', // Полупрозрачный синий фон

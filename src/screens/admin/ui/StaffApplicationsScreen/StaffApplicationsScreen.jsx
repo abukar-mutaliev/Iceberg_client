@@ -21,7 +21,6 @@ import IconUser from '@shared/ui/Icon/Profile/IconPersona';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
 import { adminApi } from '@entities/admin/api/adminApi';
 import { districtApi } from '@entities/district/api/districtApi';
-import WarehouseService from '@entities/warehouse/api/warehouseApi';
 import CustomButton from '@shared/ui/Button/CustomButton';
 
 const STATUS_LABELS = {
@@ -88,7 +87,7 @@ export const StaffApplicationsScreen = () => {
             const [applicationsRes, statsRes, warehousesRes, districtsRes] = await Promise.all([
                 adminApi.getStaffApplications({ status: statusFilter }),
                 adminApi.getStaffApplicationsStatistics(),
-                WarehouseService.getWarehousesForSelection(),
+                adminApi.getWarehousesForSelection(),
                 districtApi.getAllDistricts()
             ]);
             
@@ -100,8 +99,18 @@ export const StaffApplicationsScreen = () => {
             
             setApplications(applicationsRes.data?.applications || []);
             setStatistics(statsRes.data || {});
-            setWarehouses(warehousesRes.data?.warehouses || []);
-            setDistricts(districtsRes.data?.districts || []);
+            const warehousesList = warehousesRes?.data?.data?.warehouses
+                || warehousesRes?.data?.warehouses
+                || warehousesRes?.warehouses
+                || warehousesRes?.data
+                || [];
+            const districtsList = districtsRes?.data?.data?.districts
+                || districtsRes?.data?.districts
+                || districtsRes?.districts
+                || districtsRes?.data
+                || [];
+            setWarehouses(Array.isArray(warehousesList) ? warehousesList : []);
+            setDistricts(Array.isArray(districtsList) ? districtsList : []);
         } catch (error) {
             console.error('Ошибка загрузки заявок:', error);
             showError('Ошибка', 'Не удалось загрузить список заявок');

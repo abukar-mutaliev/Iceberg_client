@@ -6,7 +6,7 @@ import {
     ScrollView,
     ActivityIndicator} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
 import IconAdmin from '@shared/ui/Icon/IconAdmin';
@@ -26,6 +26,8 @@ import IconSettings from "@shared/ui/Icon/Profile/IconSettings";
 import IconWarehouse from "@shared/ui/Icon/Warehouse/IconWarehouse";
 import { IconAdd } from "@shared/ui/Icon/ProductManagement";
 import AddUserIcon from "@shared/ui/Icon/AddUserIcon";
+import { adminApi } from "@entities/admin/api/adminApi";
+import productsApi from "@entities/product/api/productsApi";
 
 const AdminSection = ({ title, children }) => {
     return (
@@ -43,6 +45,11 @@ export const AdminPanelScreen = () => {
     const navigation = useNavigation();
     const { currentUser, hasPermission } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
+    const [pendingApplicationsCount, setPendingApplicationsCount] = useState(0);
+    const [pendingModerationCount, setPendingModerationCount] = useState(0);
+    const isAdmin = currentUser?.role === 'ADMIN';
+    const isEmployee = currentUser?.role === 'EMPLOYEE';
+    const isSuperAdmin = currentUser?.admin?.isSuperAdmin || false;
 
 
     // Проверка прав доступа - разрешаем доступ администраторам и сотрудникам
@@ -202,6 +209,84 @@ export const AdminPanelScreen = () => {
         });
     }, [navigation]);
 
+    const loadPendingApplicationsCount = useCallback(async () => {
+        if (!isSuperAdmin) {
+            setPendingApplicationsCount(0);
+            return;
+        }
+
+        try {
+            const statsRes = await adminApi.getStaffApplicationsStatistics();
+            const stats =
+                statsRes?.data?.data
+                || statsRes?.data
+                || statsRes
+                || {};
+            const pendingCount = Number(stats?.pending || 0);
+            setPendingApplicationsCount(Number.isFinite(pendingCount) ? pendingCount : 0);
+        } catch (error) {
+            console.error('AdminPanel: Ошибка загрузки статистики заявок:', error);
+            setPendingApplicationsCount(0);
+        }
+    }, [isSuperAdmin]);
+
+    const extractProductsAndPagination = (response) => {
+        const products = Array.isArray(response?.data)
+            ? response.data
+            : Array.isArray(response)
+                ? response
+                : [];
+
+        const pagination = response?.pagination || null;
+
+        return { products, pagination };
+    };
+
+    const loadPendingModerationCount = useCallback(async () => {
+        if (!isAdmin) {
+            setPendingModerationCount(0);
+            return;
+        }
+
+        try {
+            let page = 1;
+            const limit = 100;
+            let hasMore = true;
+            let safetyCounter = 0;
+            let totalPending = 0;
+
+            while (hasMore && safetyCounter < 30) {
+                const response = await productsApi.getProducts({ page, limit });
+                const { products, pagination } = extractProductsAndPagination(response);
+
+                totalPending += products.filter(
+                    (product) => product?.moderationStatus === 'PENDING'
+                ).length;
+
+                const byHasMore = pagination?.hasMore === true;
+                const byTotalPages = pagination?.totalPages
+                    ? page < pagination.totalPages
+                    : false;
+
+                hasMore = (byHasMore || byTotalPages) && products.length > 0;
+                page += 1;
+                safetyCounter += 1;
+            }
+
+            setPendingModerationCount(totalPending);
+        } catch (error) {
+            console.error('AdminPanel: Ошибка загрузки очереди модерации:', error);
+            setPendingModerationCount(0);
+        }
+    }, [isAdmin]);
+
+    useFocusEffect(
+        useCallback(() => {
+            loadPendingApplicationsCount();
+            loadPendingModerationCount();
+        }, [loadPendingApplicationsCount, loadPendingModerationCount])
+    );
+
     if (isLoading) {
         return (
             <View style={styles.centered}>
@@ -210,14 +295,9 @@ export const AdminPanelScreen = () => {
         );
     }
 
-    const isAdmin = currentUser?.role === 'ADMIN';
-    const isEmployee = currentUser?.role === 'EMPLOYEE';
     const processingRole = currentUser?.employee?.processingRole;
     const restrictedRoles = ['PICKER', 'COURIER'];
     const canViewStockAlerts = isAdmin || (isEmployee && !restrictedRoles.includes(processingRole));
-    const isSuperAdmin = currentUser?.admin?.isSuperAdmin || false;
-
-
     const panelTitle = isAdmin
         ? "Панель Администратора"
         : (isEmployee ? "Панель Сотрудника" : "Панель Управления");
@@ -281,6 +361,7 @@ export const AdminPanelScreen = () => {
                         <AdminMenuItem
                             icon={<Icon name="gavel" size={24} color={Color.orange} />}
                             title="Очередь модерации"
+                            badgeCount={pendingModerationCount}
                             onPress={() => navigation.navigate('ProductModerationQueue', {
                                 fromScreen: 'AdminPanel',
                                 moderationOnly: true
@@ -353,6 +434,7 @@ export const AdminPanelScreen = () => {
                             <AdminMenuItem
                                 icon={<IconUser color={Color.orange} />}
                                 title="Заявки на присоединение"
+                                badgeCount={pendingApplicationsCount}
                                 onPress={() => navigation.navigate('StaffApplications')}
                             />
                         )}

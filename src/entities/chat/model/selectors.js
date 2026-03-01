@@ -342,4 +342,29 @@ export const selectIsRoomDeleted = (state, roomId) => {
   return state.chat?.deletedRoomIds?.includes(roomId) || false;
 };
 
+// Total unread count for the ChatList tab badge.
+// Mirrors the filtering logic in ChatListScreen: excludes PRODUCT rooms
+// and DIRECT rooms whose only non-self participant is a SUPPLIER.
+export const selectTotalUnreadChatsCount = createSelector(
+  [selectRoomsList],
+  (rooms) => {
+    if (!rooms?.length) return 0;
+    return rooms.reduce((total, room) => {
+      if (!room?.unread) return total;
+
+      if (room.type === 'PRODUCT') return total;
+
+      if (room.type === 'DIRECT' && Array.isArray(room.participants)) {
+        const hasSupplier = room.participants.some(p => {
+          const user = p?.user || p;
+          return user?.role === 'SUPPLIER';
+        });
+        if (hasSupplier) return total;
+      }
+
+      return total + room.unread;
+    }, 0);
+  }
+);
+
 

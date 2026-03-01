@@ -15,6 +15,7 @@ const initialState = {
     currentPage: 1,
     totalPages: 1,
     totalItems: 0,
+    lastFetchScope: 'default',
     // Tracks product IDs that returned 404 (deleted/unavailable) to avoid re-fetching
     deletedProductIds: []
 };
@@ -27,9 +28,10 @@ const isCacheValid = (lastFetchTime) => {
 
 export const fetchProducts = createAsyncThunk(
     'products/fetchProducts',
-    async ({ page = 1, limit = 10, refresh = false } = {}, { rejectWithValue, getState }) => {
+    async ({ page = 1, limit = 10, refresh = false, usePublicCatalog = false } = {}, { rejectWithValue, getState }) => {
         try {
             const state = getState();
+            const requestScope = usePublicCatalog ? 'publicCatalog' : 'default';
 
             // Используем кэш только если:
             // 1. Это первая страница
@@ -47,10 +49,11 @@ export const fetchProducts = createAsyncThunk(
                 (state.products.totalItems > 0 && state.products.totalItems > (state.products.items?.length || 0))
             );
             
-            if (page === 1 && !refresh && isCacheValid(state.products.lastFetchTime) && 
+            if (page === 1 && !refresh && !usePublicCatalog && isCacheValid(state.products.lastFetchTime) && 
                 state.products.items?.length > 0 && 
                 hasValidPagination &&
-                looksComplete) {
+                looksComplete &&
+                state.products.lastFetchScope === requestScope) {
                 return { 
                     data: state.products.items, 
                     pagination: {
@@ -59,12 +62,13 @@ export const fetchProducts = createAsyncThunk(
                         totalItems: state.products.totalItems,
                         hasMore: state.products.hasMore
                     },
-                    fromCache: true 
+                    fromCache: true,
+                    requestScope
                 };
             }
             
             const params = { page, limit };
-            const response = await productsApi.getProducts(params);
+            const response = await productsApi.getProducts(params, { usePublicCatalog });
 
             if (!response) {
                 return { 
@@ -123,7 +127,8 @@ export const fetchProducts = createAsyncThunk(
                 data: products, 
                 pagination,
                 page,
-                fromCache: false 
+                fromCache: false,
+                requestScope
             };
         } catch (error) {
             console.error('Ошибка запроса продуктов:', error);
@@ -296,6 +301,7 @@ const productsSlice = createSlice({
             state.currentPage = 1;
             state.totalPages = 1;
             state.totalItems = 0;
+            state.lastFetchScope = 'default';
         },
         resetFetchCompleted: (state) => {
             state.fetchCompleted = false;
@@ -395,6 +401,7 @@ const productsSlice = createSlice({
                     }
                     
                     state.lastFetchTime = Date.now();
+                    state.lastFetchScope = action.payload.requestScope || 'default';
                 }
             })
             .addCase(fetchProducts.rejected, (state, action) => {
