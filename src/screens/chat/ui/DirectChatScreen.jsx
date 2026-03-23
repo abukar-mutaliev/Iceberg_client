@@ -54,12 +54,15 @@ export const DirectChatScreen = ({ route, navigation }) => {
   
   const isAdmin = useMemo(() => currentUser?.role === 'ADMIN', [currentUser?.role]);
   
+  const maxImages = useMemo(() => (isSuperAdmin || isAdmin) ? 30 : 10, [isSuperAdmin, isAdmin]);
+  
   // ============ STATE ============
   const [retryingMessages, setRetryingMessages] = useState(new Set());
   const [pressedMessageId, setPressedMessageId] = useState(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState(null);
   const [replyTo, setReplyTo] = useState(null);
   const [animatedPaddingTop, setAnimatedPaddingTop] = useState(0);
+  const [composerHeight, setComposerHeight] = useState(56);
   
   // ============ REFS ============
   const flatListRef = useRef(null);
@@ -71,9 +74,7 @@ export const DirectChatScreen = ({ route, navigation }) => {
   const keyboard = useChatKeyboard(insets, {
     headerOffset: 64,
     androidVerticalOffset: 84,
-    androidBehavior: 'height',
-    enableSamsungBehavior: true,
-    enableSamsungGap: true,
+    enableKeyboardGap: true,
   });
   const {
     composerContainerStyle,
@@ -271,6 +272,12 @@ export const DirectChatScreen = ({ route, navigation }) => {
   const handleCancelReply = useCallback(() => {
     setReplyTo(null);
   }, []);
+
+  const handleComposerLayout = useCallback((event) => {
+    const nextHeight = Math.round(event?.nativeEvent?.layout?.height || 0);
+    if (!nextHeight) return;
+    setComposerHeight((prev) => (prev !== nextHeight ? nextHeight : prev));
+  }, []);
   
   const handleReplyPress = useCallback((message) => {
     if (!message || !flatListRef.current) return;
@@ -316,11 +323,20 @@ export const DirectChatScreen = ({ route, navigation }) => {
     if (isSelectionMode) return;
     
     const rootNav = navigation?.getParent?.('AppStack') || navigation?.getParent?.() || navigation;
-    rootNav.navigate('ProductDetail', { 
-      productId, 
-      fromScreen: 'ChatRoom', 
-      roomId 
-    });
+    const params = {
+      productId,
+      fromScreen: 'ChatRoom',
+      roomId,
+    };
+
+    // Важно: из чата открываем товар через push, чтобы не переиспользовать
+    // уже существующий ProductDetail в стеке и не зациклить back-навигацию.
+    if (rootNav && typeof rootNav.push === 'function') {
+      rootNav.push('ProductDetail', params);
+      return;
+    }
+
+    rootNav.navigate('ProductDetail', params);
   }, [isSelectionMode, navigation, roomId]);
   
   const handleOpenStop = useCallback((stopId) => {
@@ -505,6 +521,17 @@ export const DirectChatScreen = ({ route, navigation }) => {
     if (!messagesToDelete?.length) return false;
     return messagesToDelete.every(msg => canDeleteForAllMessage(msg));
   }, [messagesToDelete, canDeleteForAllMessage]);
+
+  const typingIndicatorBottomOffset = useMemo(() => {
+    if (Platform.OS === 'ios') {
+      return Math.max(50, composerHeight + 1);
+    }
+    if (Platform.OS !== 'android') {
+      return composerHeight + 8;
+    }
+    // On Android keep indicator lower to avoid overlapping the last message.
+    return Math.min(44, Math.max(30, composerHeight - 20));
+  }, [composerHeight]);
   
   // ============ RENDER ============
   return (
@@ -557,17 +584,20 @@ export const DirectChatScreen = ({ route, navigation }) => {
             enabled={true}
           >
             <View style={composerContainerStyle}>
-              <Composer
-                roomId={roomId}
-                onTyping={() => {}}
-                shareProductId={shareProductId}
-                onMenuPress={handleMenuPress}
-                replyTo={replyTo}
-                onCancelReply={handleCancelReply}
-                participantsById={participantsById}
-                participants={roomData?.participants}
-              />
-              <TypingIndicator roomId={roomId} />
+              <View onLayout={handleComposerLayout}>
+                <Composer
+                  roomId={roomId}
+                  onTyping={() => {}}
+                  shareProductId={shareProductId}
+                  onMenuPress={handleMenuPress}
+                  replyTo={replyTo}
+                  onCancelReply={handleCancelReply}
+                  participantsById={participantsById}
+                  participants={roomData?.participants}
+                  maxImages={maxImages}
+                />
+              </View>
+              <TypingIndicator roomId={roomId} bottomOffset={typingIndicatorBottomOffset} />
             </View>
           </KeyboardAvoidingView>
           

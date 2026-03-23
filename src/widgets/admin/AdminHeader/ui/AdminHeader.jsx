@@ -4,7 +4,7 @@ import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily, FontSize, Shadow } from '@app/styles/GlobalStyles';
 import {BackButton} from "@shared/ui/Button/BackButton";
 
-export const AdminHeader = ({ title, icon, onBackPress, showBackButton = false }) => {
+export const AdminHeader = ({ title, icon, onBackPress, showBackButton = true }) => {
     return (
         <View style={styles.header}>
             {showBackButton && (
@@ -24,9 +24,9 @@ const styles = StyleSheet.create({
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: normalize(20),
+        paddingHorizontal: normalize(16),
         paddingTop: 0,
-        paddingBottom: normalize(16),
+        paddingBottom: normalize(15),
         borderBottomWidth: 1,
         borderBottomColor: Color.border,
         backgroundColor: Color.colorLightMode,

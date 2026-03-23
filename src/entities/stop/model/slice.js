@@ -378,11 +378,8 @@ const stopSlice = createSlice({
             })
             .addCase(createStop.fulfilled, (state, action) => {
                 state.loading = false;
-                // Добавляем новую остановку в начало списка
                 state.stops.unshift(action.payload);
-                // Обновляем время последней загрузки чтобы сбросить кэш
-                state.lastFetchTime = Date.now();
-                console.log('✅ Новая остановка добавлена в список:', action.payload.id);
+                state.lastFetchTime = null;
             })
             .addCase(createStop.rejected, (state, action) => {
                 state.loading = false;
@@ -435,8 +432,7 @@ const stopSlice = createSlice({
                     // Если остановка не найдена в списке, добавляем её
                     state.stops.push(action.payload);
                 }
-                // Сбрасываем кэш чтобы при следующей загрузке получить свежие данные
-                state.lastFetchTime = Date.now();
+                state.lastFetchTime = null;
             })
             .addCase(updateStop.rejected, (state, action) => {
                 state.loading = false;
@@ -450,6 +446,7 @@ const stopSlice = createSlice({
             .addCase(deleteStop.fulfilled, (state, action) => {
                 state.loading = false;
                 state.stops = state.stops.filter(stop => stop.id !== action.payload);
+                state.lastFetchTime = null;
             })
             .addCase(deleteStop.rejected, (state, action) => {
                 state.loading = false;

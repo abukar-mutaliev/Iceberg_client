@@ -11,7 +11,10 @@ import {useDispatch, useSelector} from 'react-redux';
 import {
     selectProfileLoading,
     selectProfileError,
-    selectProfile
+    selectProfile,
+    fetchProfile,
+    clearError,
+    clearProfile
 } from '@entities/profile';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { useProfileInfo } from "@features/profile/ui/ProfileInfo/model/useProfileInfo";
@@ -39,10 +42,8 @@ export const ProfileInfo = ({ onProductPress }) => {
     const [activeButtonId, setActiveButtonId] = useState(null);
 
     const {
-        setRetryCount,
         activeItemId,
         setActiveItemId,
-        handleLogout: logoutFromProfile,
         navigateToLogin,
         menuItems,
     } = useProfileInfo(isAuthenticated, tokens, currentUser, navigation);
@@ -156,6 +157,38 @@ export const ProfileInfo = ({ onProductPress }) => {
         navigation.navigate('StagnantProducts');
     };
 
+    const handleRetryProfileLoad = async () => {
+        try {
+            dispatch(clearError());
+            await dispatch(fetchProfile()).unwrap();
+        } catch (error) {
+            const message = typeof error === 'string'
+                ? error
+                : error?.message || 'Не удалось повторно загрузить профиль';
+            GlobalAlert.showError('Ошибка', message);
+        }
+    };
+
+    const handleProfileRecovery = async () => {
+        try {
+            dispatch(clearError());
+            dispatch(clearProfile());
+            await dispatch(fetchProfile()).unwrap();
+        } catch (error) {
+            const message = typeof error === 'string'
+                ? error
+                : error?.message || 'Не удалось восстановить профиль';
+            GlobalAlert.show(
+                'Проблема не устранена',
+                `${message}. Вы можете выйти из аккаунта и войти снова.`,
+                [
+                    { text: 'ОК' },
+                    { text: 'Выйти', onPress: handleLogoutPress }
+                ]
+            );
+        }
+    };
+
     // Проверка на авторизацию и наличие токена
     if (!isAuthenticated || !tokens?.accessToken) {
         return (
@@ -182,26 +215,68 @@ export const ProfileInfo = ({ onProductPress }) => {
         roleChecks.isAdmin &&
         profileError.includes('Профиль admin не найден');
 
-    if (profileError && !isAdminProfileError) {
-        return (
-            <View style={styles.centered}>
-                <Text style={styles.error}>{profileError}</Text>
-                <CustomButton
-                    title="Повторить"
-                    onPress={() => setRetryCount((prev) => prev + 1)}
-                    outlined={false}
-                    color="#007AFF"
-                    activeColor="#FFFFFF"
-                    height={40}
-                    style={styles.retryButtonStyle}
-                    textStyle={styles.retryButtonTextStyle}
-                />
-            </View>
-        );
-    }
+    const hasCriticalProfileError = profileError && !isAdminProfileError;
+    const lowerProfileError = (profileError || '').toLowerCase();
+    const isEmailValidationError =
+        lowerProfileError.includes('email') ||
+        lowerProfileError.includes('почт');
+    const isProfileUnavailable = hasCriticalProfileError && !profile;
 
     return (
         <View style={styles.container}>
+            {hasCriticalProfileError && (
+                <View style={styles.recoveryCard}>
+                    <Text style={styles.recoveryTitle}>Профиль временно недоступен</Text>
+                    <Text style={styles.recoveryText}>{profileError}</Text>
+                    {isEmailValidationError && (
+                        <Text style={styles.recoveryHint}>
+                            Обнаружена ошибка email. Попробуйте восстановление профиля или выйдите из аккаунта и войдите снова.
+                        </Text>
+                    )}
+
+                    <View style={styles.recoveryButtons}>
+                        <CustomButton
+                            title="Повторить загрузку"
+                            onPress={handleRetryProfileLoad}
+                            outlined={false}
+                            color="#007AFF"
+                            activeColor="#FFFFFF"
+                            height={40}
+                            style={styles.recoveryButtonStyle}
+                            textStyle={styles.recoveryButtonTextStyle}
+                        />
+                        <CustomButton
+                            title="Восстановить профиль"
+                            onPress={handleProfileRecovery}
+                            outlined={true}
+                            color={Color.orange}
+                            activeColor="#FFFFFF"
+                            height={40}
+                            style={styles.recoveryButtonStyle}
+                            textStyle={styles.recoveryButtonTextStyle}
+                        />
+                        <CustomButton
+                            title="Выйти из аккаунта"
+                            onPress={handleLogoutPress}
+                            outlined={false}
+                            color={Color.red}
+                            activeColor="#FFFFFF"
+                            height={40}
+                            style={styles.recoveryButtonStyle}
+                            textStyle={styles.recoveryButtonTextStyle}
+                        />
+                    </View>
+                </View>
+            )}
+
+            {isProfileUnavailable && (
+                <View style={styles.recoveryNotice}>
+                    <Text style={styles.recoveryNoticeText}>
+                        Основные функции профиля могут работать с ограничениями до восстановления данных.
+                    </Text>
+                </View>
+            )}
+
             <View style={styles.menuContainer}>
                 {menuItems.map((item) => (
                     <TouchableOpacity
@@ -417,11 +492,53 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         marginBottom: normalize(20),
     },
-    retryButtonStyle: {
-        width: 'auto',
-        paddingHorizontal: normalize(20),
+    recoveryCard: {
+        marginTop: normalize(16),
+        marginHorizontal: normalize(15),
+        borderRadius: normalize(12),
+        padding: normalize(14),
+        borderWidth: 1,
+        borderColor: '#FFD6D6',
+        backgroundColor: '#FFF5F5',
     },
-    retryButtonTextStyle: {
+    recoveryTitle: {
+        fontSize: normalizeFont(16),
+        fontWeight: '700',
+        color: '#B42318',
+        marginBottom: normalize(6),
+    },
+    recoveryText: {
+        fontSize: normalizeFont(13),
+        color: '#7A2E2E',
+        lineHeight: normalize(18),
+    },
+    recoveryHint: {
+        marginTop: normalize(8),
+        fontSize: normalizeFont(12),
+        color: '#5E5E5E',
+        lineHeight: normalize(17),
+    },
+    recoveryButtons: {
+        marginTop: normalize(10),
+        gap: normalize(8),
+    },
+    recoveryButtonStyle: {
+        width: '100%',
+    },
+    recoveryButtonTextStyle: {
         fontSize: normalizeFont(14),
+    },
+    recoveryNotice: {
+        marginHorizontal: normalize(15),
+        marginTop: normalize(10),
+        paddingHorizontal: normalize(12),
+        paddingVertical: normalize(10),
+        borderRadius: normalize(10),
+        backgroundColor: '#F3F6FF',
+    },
+    recoveryNoticeText: {
+        color: '#445372',
+        fontSize: normalizeFont(12),
+        lineHeight: normalize(16),
     },
 });

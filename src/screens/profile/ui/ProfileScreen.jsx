@@ -57,10 +57,10 @@ export const ProfileScreen = ({ onProductPress }) => {
 
     // Управление состоянием загрузки
     useEffect(() => {
-        if (!isProfileLoading && (profile || !isAuthenticated)) {
+        if (!isProfileLoading && (profile || !isAuthenticated || profileError)) {
             setIsInitialLoading(false);
         }
-    }, [isProfileLoading, profile, isAuthenticated]);
+    }, [isProfileLoading, profile, isAuthenticated, profileError]);
 
     // Настройка навигации
     useEffect(() => {
@@ -75,18 +75,6 @@ export const ProfileScreen = ({ onProductPress }) => {
             <SafeAreaView style={styles.loadingContainer} edges={['left', 'right', 'bottom']}>
                 <ActivityIndicator size="large" color="#007AFF" />
                 <Text style={styles.loadingText}>Загрузка профиля...</Text>
-            </SafeAreaView>
-        );
-    }
-
-    // Обработка ошибок профиля (если ProfileInfo не справился)
-    if (profileError && !isProfileLoading) {
-        return (
-            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
-                <ScrollView contentContainerStyle={styles.errorContainer}>
-                    <Text style={styles.errorText}>Ошибка загрузки профиля</Text>
-                    <Text style={styles.errorDetails}>{profileError}</Text>
-                </ScrollView>
             </SafeAreaView>
         );
     }

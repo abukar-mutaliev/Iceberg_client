@@ -7,7 +7,6 @@ import {
     resetCurrentProduct
 } from '../model/slice';
 import {
-    selectCurrentProduct,
     selectProductById
 } from '../model/selectors';
 import {
@@ -46,14 +45,12 @@ export const useProductDetail = (productId) => {
     // Предотвращаем запросы без ID
     const validProductId = productId ? parseInt(productId, 10) : null;
 
-    // Получаем данные из Redux - СНАЧАЛА ПРОВЕРЯЕМ КЭШИРОВАННЫЕ ДАННЫЕ
-    const currentProduct = useSelector(selectCurrentProduct);
     const cachedProduct = useSelector(state =>
         validProductId ? selectProductById(state, validProductId) : null
     );
 
-    // Используем кэшированный продукт, если текущий не загружен
-    const product = currentProduct || cachedProduct;
+    const product =
+        cachedProduct?.id === validProductId ? cachedProduct : null;
 
     const supplier = useSelector(state =>
         product?.supplierId ? selectSupplierById(state, product.supplierId) : null
@@ -115,15 +112,13 @@ export const useProductDetail = (productId) => {
 
     // Используем ref для хранения актуального продукта, чтобы избежать замыканий
     const productRef = useRef(product);
-    const currentProductRef = useRef(currentProduct);
-    const cachedProductRef = useRef(cachedProduct);
+    const cachedProductRef = useRef(product);
     
     // Обновляем refs при изменении продуктов
     useEffect(() => {
         productRef.current = product;
-        currentProductRef.current = currentProduct;
-        cachedProductRef.current = cachedProduct;
-    }, [product, currentProduct, cachedProduct]);
+        cachedProductRef.current = product;
+    }, [product]);
 
     // Проверяем, нужно ли загружать продукт
     // УБИРАЕМ setState из этой функции - она должна быть чистой
@@ -138,13 +133,11 @@ export const useProductDetail = (productId) => {
         // Используем актуальные данные из refs
         const productState = productRef.current;
         const cachedState = cachedProductRef.current;
-        const currentState = currentProductRef.current;
 
-        // Если продукт уже есть в кэше (cachedProduct) или в currentProduct и он соответствует запрашиваемому ID, не загружаем
+        // Если продукт уже есть в кэше и он соответствует запрашиваемому ID, не загружаем
         // Это позволяет корректно восстанавливать продукты при возврате назад
         const hasValidCache = (productState && productState.id === validProductId) ||
-                             (cachedState && cachedState.id === validProductId) ||
-                             (currentState && currentState.id === validProductId);
+                             (cachedState && cachedState.id === validProductId);
 
         if (hasValidCache) {
             // Обновляем ref без вызова ререндера
@@ -160,7 +153,6 @@ export const useProductDetail = (productId) => {
     // Загружаем данные о товаре
     const loadProductData = useCallback(async () => {
         // Используем актуальные данные из refs
-        const currentProductState = currentProductRef.current;
         const productState = productRef.current;
         const cachedState = cachedProductRef.current;
         
@@ -243,11 +235,9 @@ export const useProductDetail = (productId) => {
         // Проверяем кэш через актуальные refs (без создания зависимостей)
         const productState = productRef.current;
         const cachedState = cachedProductRef.current;
-        const currentState = currentProductRef.current;
         
         const hasCachedProduct = (productState && productState.id === validProductId) ||
-                                 (cachedState && cachedState.id === validProductId) ||
-                                 (currentState && currentState.id === validProductId);
+                                 (cachedState && cachedState.id === validProductId);
 
         // Если это новый продукт (переход вперед), сбрасываем состояние
         if (validProductId !== lastLoadedIdRef.current) {
@@ -298,7 +288,7 @@ export const useProductDetail = (productId) => {
     }, [product, isLoading, validProductId, loadSupplierData, loadFeedbacksData]);
 
     // Определяем финальное состояние загрузки
-    const finalIsLoading = isLoading && !product;
+    const finalIsLoading = isLoading && (!product || product.id !== validProductId);
 
     return {
         product,

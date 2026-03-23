@@ -15,6 +15,7 @@ export const useComposerMedia = ({
   setPendingAction,
   setShowPollModal,
   onShowPermissionModal,
+  maxImages = 10,
 }) => {
   // ============ PICK IMAGES ============
   
@@ -50,7 +51,7 @@ export const useComposerMedia = ({
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: 'images',
         allowsMultipleSelection: true,
-        selectionLimit: 10,
+        selectionLimit: maxImages,
         quality: 0.9,
       });
 
@@ -66,7 +67,7 @@ export const useComposerMedia = ({
     } catch (e) {
       console.error('❌ Ошибка при выборе изображений:', e);
     }
-  }, [disabled, setFiles, onShowPermissionModal]);
+  }, [disabled, setFiles, onShowPermissionModal, maxImages]);
 
   // ============ TAKE PHOTO ============
   

@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useMemo, useRef, useEffect } from 'react';
-import { View, StyleSheet, ActivityIndicator, Text, FlatList } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, Text, FlatList, TouchableOpacity } from 'react-native';
 import { useSelector } from 'react-redux';
 import {
     selectProducts,
@@ -27,7 +27,8 @@ export const ProductsList = ({
                                  products: productsProp = null,
                                  scrollEnabled = true,
                                  nestedScrollEnabled = true,
-                                 contentContainerStyle = null
+                                 contentContainerStyle = null,
+                                 onRetry = null
                              }) => {
     // Безопасные значения по умолчанию
     const safeOnEndReachedThreshold = onEndReachedThreshold || 8;
@@ -178,28 +179,38 @@ export const ProductsList = ({
         }
     }, [displayProducts?.length]);
 
-    // Обработка ошибок и пустых состояний (ПОСЛЕ ВСЕХ ХУКОВ!)
-    if (error) {
-        return (
-            <View style={styles.errorContainer}>
-                <Text style={styles.errorText}>Ошибка загрузки продуктов: {error}</Text>
-            </View>
-        );
-    }
-
-    if (!Array.isArray(products) || !products || products.length === 0) {
+    const renderEmptyComponent = useCallback(() => {
+        if (error) {
+            return (
+                <View style={styles.networkErrorContainer}>
+                    <Text style={styles.networkErrorTitle}>Товары не загружены</Text>
+                    <Text style={styles.networkErrorText}>
+                        Проверьте интернет-соединение и попробуйте снова
+                    </Text>
+                    {onRetry && (
+                        <TouchableOpacity style={styles.retryButton} onPress={onRetry}>
+                            <Text style={styles.retryButtonText}>Повторить попытку</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
+            );
+        }
         return (
             <View style={styles.noProductsContainer}>
                 <Text style={styles.noProductsText}>Товары не найдены</Text>
             </View>
         );
-    }
+    }, [error, onRetry]);
+
+    const hasProducts = Array.isArray(products) && products.length > 0;
+    const showError = error && !hasProducts;
+    const effectiveData = (showError || !hasProducts) ? [] : displayProducts;
 
     return (
         <View style={styles.container}>
             <FlatList
                 ref={flatListRef}
-                data={displayProducts}
+                data={effectiveData}
                 renderItem={renderItem}
                 keyExtractor={keyExtractor}
                 onEndReached={handleEndReached}
@@ -215,6 +226,7 @@ export const ProductsList = ({
                 nestedScrollEnabled={safeNestedScrollEnabled}
                 ListHeaderComponent={ListHeaderComponent}
                 ListFooterComponent={renderListFooter}
+                ListEmptyComponent={renderEmptyComponent}
                 scrollEventThrottle={16}
                 contentContainerStyle={[styles.contentContainer, contentContainerStyle]}
             />
@@ -237,17 +249,39 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
-    errorContainer: {
-        height: 200,
-        justifyContent: 'center',
+    networkErrorContainer: {
+        paddingVertical: 40,
+        paddingHorizontal: 24,
         alignItems: 'center',
-        paddingHorizontal: 20,
+        justifyContent: 'center',
     },
-    errorText: {
-        color: 'red',
+    networkErrorTitle: {
+        fontSize: 16,
+        fontFamily: FontFamily.sFProText,
+        fontWeight: '600',
+        color: '#333',
+        textAlign: 'center',
+        marginBottom: 8,
+    },
+    networkErrorText: {
         fontSize: FontSize.size_sm,
         fontFamily: FontFamily.sFProText,
+        color: '#888',
         textAlign: 'center',
+        lineHeight: 20,
+        marginBottom: 20,
+    },
+    retryButton: {
+        backgroundColor: '#3339b0',
+        paddingVertical: 12,
+        paddingHorizontal: 28,
+        borderRadius: 10,
+    },
+    retryButtonText: {
+        color: '#fff',
+        fontSize: 14,
+        fontFamily: FontFamily.sFProText,
+        fontWeight: '500',
     },
     noProductsContainer: {
         height: 200,

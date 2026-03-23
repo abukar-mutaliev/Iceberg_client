@@ -433,53 +433,55 @@ export const refreshToken = createAsyncThunk(
             const { auth } = getState();
             const tokens = auth.tokens;
 
-            if (!tokens || !tokens.refreshToken) {
+            // Если в Redux нет токена, пробуем AsyncStorage
+            let refreshTokenValue = tokens?.refreshToken;
+            if (!refreshTokenValue) {
+                const storedTokens = await authService.getStoredTokens();
+                refreshTokenValue = storedTokens?.refreshToken;
+            }
+
+            if (!refreshTokenValue) {
                 await removeTokensFromStorage();
                 dispatch({ type: 'auth/resetState' });
                 throw new Error('Необходима повторная авторизация');
             }
 
-            // Проверяем валидность refresh-токена
-            try {
-                const decoded = authService.decodeToken(tokens.refreshToken);
-                const currentTime = Math.floor(Date.now() / 1000);
+            const decoded = authService.decodeToken(refreshTokenValue);
+            const currentTime = Math.floor(Date.now() / 1000);
 
-                if (!decoded || !decoded.exp || decoded.exp <= currentTime) {
-                    await removeTokensFromStorage();
-                    // НЕ сбрасываем RESET_APP_STATE - только auth
-                    dispatch({ type: 'auth/resetState' });
-                    throw new Error('Ваша сессия истекла. Пожалуйста, войдите снова для продолжения работы.');
-                }
-            } catch (decodeError) {
+            if (!decoded || !decoded.exp || decoded.exp <= currentTime) {
                 await removeTokensFromStorage();
-                // НЕ сбрасываем RESET_APP_STATE - только auth
                 dispatch({ type: 'auth/resetState' });
-                throw new Error('Проблема с токеном авторизации. Пожалуйста, войдите снова.');
+                throw new Error('Ваша сессия истекла. Пожалуйста, войдите снова.');
             }
 
-            const response = await authApi.refreshToken(tokens.refreshToken);
+            // Используем authService.refreshAccessToken, который уже содержит
+            // retry-логику и дедупликацию промисов
+            const newTokens = await authService.refreshAccessToken();
 
-            // Проверяем структуру ответа
-            let accessToken, refreshToken;
-
-            if (response?.status === 'success' && response.data) {
-                accessToken = response.data.accessToken || response.data.data?.accessToken;
-                refreshToken = response.data.refreshToken || response.data.data?.refreshToken;
+            if (!newTokens?.accessToken || !newTokens?.refreshToken) {
+                throw new Error('Не удалось обновить токены');
             }
 
-            if (!accessToken || !refreshToken) {
-                throw new Error('Некорректный ответ от сервера при обновлении токена');
-            }
-
-            const newTokens = { accessToken, refreshToken };
             await saveTokensToStorage(newTokens);
-
             return newTokens;
         } catch (error) {
+            const isNetwork =
+                !error.response &&
+                (error.code === 'ERR_NETWORK' ||
+                 error.code === 'ECONNABORTED' ||
+                 error.message?.includes('Network') ||
+                 error.message?.includes('timeout'));
 
-            if (error.response?.status === 401 || error.code === 'ERR_NETWORK') {
+            // При сетевой ошибке НЕ сбрасываем авторизацию —
+            // токены на сервере могут быть валидны, просто нет связи
+            if (isNetwork) {
+                return rejectWithValue('Нет подключения к интернету. Попробуйте позже.');
+            }
+
+            // 401 от сервера — токен точно невалиден
+            if (error.response?.status === 401) {
                 await removeTokensFromStorage();
-                // НЕ сбрасываем RESET_APP_STATE - только auth
                 dispatch({ type: 'auth/resetState' });
             }
 
@@ -782,6 +784,15 @@ const authSlice = createSlice({
                     'Произошла ошибка';
 
             state.error = errorMessage;
+            // НЕ сбрасываем isAuthenticated здесь!
+            // Сброс должен происходить только через явный resetState
+            // или при конкретных ошибках (401 от сервера), а не при любой ошибке.
+        };
+
+        // Специальный rejected-хендлер для thunks, где сброс auth корректен
+        // (login.rejected и т.п. — пользователь ещё не авторизован)
+        const setRejectedWithAuthReset = (state, action) => {
+            setRejected(state, action);
             state.isAuthenticated = false;
         };
 
@@ -839,15 +850,7 @@ const authSlice = createSlice({
                     }
                 }
             })
-            .addCase(login.rejected, (state, action) => {
-                state.isLoading = false;
-
-                state.error = typeof action.payload === 'string'
-                    ? action.payload
-                    : action.payload?.message || 'Произошла ошибка при входе';
-
-                state.isAuthenticated = false;
-            })
+            .addCase(login.rejected, setRejectedWithAuthReset)
             .addCase(verify2FALogin.pending, setPending)
             .addCase(verify2FALogin.fulfilled, (state, action) => {
                 state.isLoading = false;
@@ -866,7 +869,7 @@ const authSlice = createSlice({
                     }, 100);
                 }
             })
-            .addCase(verify2FALogin.rejected, setRejected)
+            .addCase(verify2FALogin.rejected, setRejectedWithAuthReset)
             .addCase(initiateRegister.pending, setPending)
             .addCase(initiateRegister.fulfilled, (state, action) => {
                 state.isLoading = false;
@@ -979,10 +982,14 @@ const authSlice = createSlice({
                 state.isAuthenticated = true;
             })
             .addCase(refreshToken.rejected, (state, action) => {
-                console.error('❌ [REDUX] refreshToken rejected', {
-                    error: action.payload
-                });
-                setRejected(state, action);
+                state.isLoading = false;
+                state.error = typeof action.payload === 'string'
+                    ? action.payload
+                    : action.payload?.message || 'Ошибка обновления токена';
+                // НЕ сбрасываем isAuthenticated — при сетевой ошибке
+                // пользователь может быть ещё авторизован. Сброс auth
+                // происходит внутри thunk через dispatch resetState только
+                // при подтверждённом 401 от сервера.
             })
             .addCase(loadUserProfile.fulfilled, (state, action) => {
                 // Профиль уже обновлен через updateUserWithProfile dispatch

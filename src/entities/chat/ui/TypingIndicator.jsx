@@ -1,5 +1,5 @@
 import React, { useMemo, useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, Animated } from 'react-native';
+import { View, StyleSheet, Animated, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -409,7 +409,7 @@ const TypingActivityIndicator = ({ users, activityType }) => {
 // ОСНОВНОЙ КОМПОНЕНТ
 // ============================================================================
 
-export const TypingIndicator = ({ roomId }) => {
+export const TypingIndicator = ({ roomId, bottomOffset = 35 }) => {
   const insets = useSafeAreaInsets();
   const typingActivities = useSelector((state) => selectTypingActivities(state, roomId));
   const rooms = useSelector(selectRoomsList);
@@ -436,8 +436,14 @@ export const TypingIndicator = ({ roomId }) => {
 
 
   const containerBottom = useMemo(() => {
-    return 35 + insets.bottom;
-  }, [insets.bottom]);
+    const safeBottomOffset = Number.isFinite(bottomOffset) ? Math.max(bottomOffset, 0) : 35;
+    // iOS composer already accounts for bottom safe area;
+    // adding insets.bottom here over-lifts the indicator.
+    if (Platform.OS === 'ios') {
+      return safeBottomOffset;
+    }
+    return safeBottomOffset + insets.bottom;
+  }, [bottomOffset, insets.bottom]);
 
   // Ранний выход, если нет активных пользователей
   if (typingUsersInfo.length === 0) {
@@ -454,7 +460,7 @@ export const TypingIndicator = ({ roomId }) => {
             {
               translateY: slideAnim.interpolate({
                 inputRange: [0, 1],
-                outputRange: [0, -15],
+                outputRange: [0, Platform.OS === 'ios' ? -1 : -15],
               }),
             },
           ],

@@ -40,8 +40,20 @@ export const useGroupChatData = (roomId) => {
     if (!currentUser) return [];
     
     const role = currentUser.role;
-    if (role === 'CLIENT' && currentUser.client?.districtId) {
-      return [currentUser.client.districtId];
+    if (role === 'CLIENT') {
+      const clientDistrictId =
+        currentUser.client?.districtId ??
+        currentUser.client?.district?.id ??
+        null;
+      if (clientDistrictId != null && clientDistrictId !== '') {
+        if (__DEV__) {
+          console.log('[useGroupChatData] userDistrictIds for CLIENT', {
+            role,
+            districtId: clientDistrictId,
+          });
+        }
+        return [clientDistrictId];
+      }
     }
     
     if ((role === 'EMPLOYEE' || role === 'DRIVER') && currentUser[role.toLowerCase()]?.districts) {
@@ -50,6 +62,11 @@ export const useGroupChatData = (roomId) => {
         .filter(id => id != null);
     }
     
+    if (__DEV__) {
+      console.log('[useGroupChatData] userDistrictIds EMPTY', {
+        role, hasClient: !!currentUser.client, clientDistrictId: currentUser.client?.districtId
+      });
+    }
     return [];
   }, [currentUser]);
   

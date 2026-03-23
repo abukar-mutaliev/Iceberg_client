@@ -11,9 +11,7 @@ export const districtApi = {
      */
     getAllDistricts: async () => {
         try {
-            logData('API Запрос: Получение списка районов');
             const response = await apiClient.get(BASE_URL);
-            logData('API Ответ: Получение списка районов', { status: response.status, count: response.data?.length });
             return response;
         } catch (error) {
             logData('API Ошибка: Получение списка районов', error);
@@ -28,9 +26,7 @@ export const districtApi = {
      */
     getDistrictById: async (id) => {
         try {
-            logData('API Запрос: Получение района по ID', { id });
             const response = await apiClient.get(`${BASE_URL}/${id}`);
-            logData('API Ответ: Получение района по ID', { id, status: response.status });
             return response;
         } catch (error) {
             logData('API Ошибка: Получение района по ID', { id, error });
@@ -47,9 +43,7 @@ export const districtApi = {
      */
     createDistrict: async (data) => {
         try {
-            logData('API Запрос: Создание района', { data });
             const response = await createProtectedRequest('post', BASE_URL, data);
-            logData('API Ответ: Создание района', { status: response.status, id: response.data?.id });
             return response;
         } catch (error) {
             logData('API Ошибка: Создание района', { data, error });
@@ -67,9 +61,7 @@ export const districtApi = {
      */
     updateDistrict: async (id, data) => {
         try {
-            logData('API Запрос: Обновление района', { id, data });
             const response = await createProtectedRequest('put', `${BASE_URL}/${id}`, data);
-            logData('API Ответ: Обновление района', { id, status: response.status });
             return response;
         } catch (error) {
             logData('API Ошибка: Обновление района', { id, data, error });
@@ -84,9 +76,7 @@ export const districtApi = {
      */
     deleteDistrict: async (id) => {
         try {
-            logData('API Запрос: Удаление района', { id });
             const response = await createProtectedRequest('delete', `${BASE_URL}/${id}`);
-            logData('API Ответ: Удаление района', { id, status: response.status });
             return response;
         } catch (error) {
             logData('API Ошибка: Удаление района', { id, error });
@@ -104,14 +94,7 @@ export const districtApi = {
             const url = driverId
                 ? `/api/stops/${driverId}/districts`
                 : '/api/stops/districts';
-
-            logData('API Запрос: Получение районов водителя', { driverId: driverId || 'текущий' });
             const response = await createProtectedRequest('get', url);
-            logData('API Ответ: Получение районов водителя', {
-                driverId: driverId || 'текущий',
-                status: response.status,
-                count: response.data?.length
-            });
             return response;
         } catch (error) {
             logData('API Ошибка: Получение районов водителя', { driverId: driverId || 'текущий', error });
@@ -130,19 +113,7 @@ export const districtApi = {
             const url = driverId
                 ? `/api/stops/${driverId}/districts`
                 : '/api/stops/districts';
-
-            logData('API Запрос: Обновление районов водителя', {
-                driverId: driverId || 'текущий',
-                districtIds
-            });
-
             const response = await createProtectedRequest('put', url, { districtIds });
-
-            logData('API Ответ: Обновление районов водителя', {
-                driverId: driverId || 'текущий',
-                status: response.status
-            });
-
             return response;
         } catch (error) {
             logData('API Ошибка: Обновление районов водителя', {

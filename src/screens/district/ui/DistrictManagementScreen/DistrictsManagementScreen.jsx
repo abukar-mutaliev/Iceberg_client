@@ -316,7 +316,7 @@ export const DistrictsManagementScreen = () => {
         <View style={styles.container}>
             <AdminHeader
                 title="Управление районами и складами"
-                onBack={handleBackPress}
+                onBackPress={handleBackPress}
                 icon={<IconDistrict width={24} height={24} color={Color.blue2} />}
             />
 

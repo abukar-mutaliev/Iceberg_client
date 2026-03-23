@@ -96,17 +96,22 @@ export const SimilarProducts = React.memo(({
         };
     }, []);
 
-    // Убираем избыточное логирование, которое может вызывать проблемы производительности
-    // if (process.env.NODE_ENV === 'development') {
-    //     console.log('SimilarProducts render:', {
-    //         productsCount: validProducts.length,
-    //         currentProductId,
-    //         hasCustomHandler: !!onProductPress,
-    //         isValidComponent: isValidReactComponent
-    //     });
-    // }
+    const handleEndReached = useCallback(() => {
+        if (hasMore && !isLoadingMore && onEndReached) {
+            onEndReached();
+        }
+    }, [hasMore, isLoadingMore, onEndReached]);
 
-    // Для пустого списка сразу возвращаем сообщение без перерисовки
+    const renderFooter = useCallback(() => {
+        if (!isLoadingMore) return null;
+        return (
+            <View style={styles.loaderContainer}>
+                <ActivityIndicator size="small" color={Color.purpleSoft} />
+                <Text style={styles.loadingText}>Загружаем ещё товары...</Text>
+            </View>
+        );
+    }, [isLoadingMore]);
+
     if (!validProducts || validProducts.length === 0) {
         return (
             <View style={styles.container}>
@@ -123,24 +128,6 @@ export const SimilarProducts = React.memo(({
             </View>
         );
     }
-
-    // Функция для загрузки следующей страницы
-    const handleEndReached = useCallback(() => {
-        if (hasMore && !isLoadingMore && onEndReached) {
-            onEndReached();
-        }
-    }, [hasMore, isLoadingMore, onEndReached]);
-
-    // Компонент футера для индикатора загрузки
-    const renderFooter = useCallback(() => {
-        if (!isLoadingMore) return null;
-        return (
-            <View style={styles.loaderContainer}>
-                <ActivityIndicator size="small" color={Color.purpleSoft} />
-                <Text style={styles.loadingText}>Загружаем ещё товары...</Text>
-            </View>
-        );
-    }, [isLoadingMore]);
 
     return (
         <View style={styles.container}>

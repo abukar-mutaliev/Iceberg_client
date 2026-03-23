@@ -51,13 +51,19 @@ export const GroupChatScreen = ({ route, navigation }) => {
     cursorId,
   } = chatData;
   
+  const maxImages = useMemo(() => (isSuperAdmin || isAdmin) ? 30 : 10, [isSuperAdmin, isAdmin]);
+  
   // Управление клавиатурой
-  const keyboard = useChatKeyboard(insets);
+  const keyboard = useChatKeyboard(insets, {
+    headerOffset: 64,
+    androidVerticalOffset: 84,
+    enableKeyboardGap: true,
+  });
   const {
-    keyboardVisible,
-    keyboardVerticalOffset,
     composerContainerStyle,
     dismissKeyboard,
+    keyboardAvoidingBehavior,
+    keyboardAvoidingOffset,
   } = keyboard;
   
   // Режим выбора
@@ -82,6 +88,7 @@ export const GroupChatScreen = ({ route, navigation }) => {
   const [highlightedMessageId, setHighlightedMessageId] = useState(null);
   const [replyTo, setReplyTo] = useState(null);
   const [animatedPaddingTop, setAnimatedPaddingTop] = useState(0);
+  const [composerHeight, setComposerHeight] = useState(56);
   
   // Действия для групп
   const actions = useGroupChatActions({
@@ -305,6 +312,12 @@ export const GroupChatScreen = ({ route, navigation }) => {
   const handleCancelReply = useCallback(() => {
     setReplyTo(null);
   }, []);
+
+  const handleComposerLayout = useCallback((event) => {
+    const nextHeight = Math.round(event?.nativeEvent?.layout?.height || 0);
+    if (!nextHeight) return;
+    setComposerHeight((prev) => (prev !== nextHeight ? nextHeight : prev));
+  }, []);
   
   const handleReplyPress = useCallback((message) => {
     if (!message || !flatListRef.current) return;
@@ -353,11 +366,20 @@ export const GroupChatScreen = ({ route, navigation }) => {
     }
     
     const rootNav = navigation?.getParent?.('AppStack') || navigation?.getParent?.() || navigation;
-    rootNav.navigate('ProductDetail', { 
-      productId, 
-      fromScreen: 'ChatRoom', 
-      roomId 
-    });
+    const params = {
+      productId,
+      fromScreen: 'ChatRoom',
+      roomId,
+    };
+
+    // Важно: из чата открываем товар через push, чтобы не переиспользовать
+    // уже существующий ProductDetail в стеке и не зациклить back-навигацию.
+    if (rootNav && typeof rootNav.push === 'function') {
+      rootNav.push('ProductDetail', params);
+      return;
+    }
+
+    rootNav.navigate('ProductDetail', params);
   }, [isSelectionMode, store, navigation, roomId, showWarning]);
   
   const handleOpenStop = useCallback((stopId) => {
@@ -472,6 +494,17 @@ export const GroupChatScreen = ({ route, navigation }) => {
       return Number(msg?.senderId) === Number(currentUserId);
     });
   }, [messagesToDelete, isSuperAdmin, isAdmin, currentUserId]);
+
+  const typingIndicatorBottomOffset = useMemo(() => {
+    if (Platform.OS === 'ios') {
+      return Math.max(50, composerHeight + 1);
+    }
+    if (Platform.OS !== 'android') {
+      return composerHeight + 8;
+    }
+    // On Android keep indicator lower to avoid overlapping the last message.
+    return Math.min(44, Math.max(30, composerHeight - 20));
+  }, [composerHeight]);
   
   // ============ RENDER ============
   
@@ -518,24 +551,27 @@ export const GroupChatScreen = ({ route, navigation }) => {
           />
           
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
-            keyboardVerticalOffset={keyboardVerticalOffset}
+            behavior={keyboardAvoidingBehavior}
+            keyboardVerticalOffset={keyboardAvoidingOffset}
             style={styles.keyboardAvoid}
             enabled={true}
           >
             {canSendMessages ? (
               <View style={[styles.composerContainer, composerContainerStyle]}>
-                <Composer
-                  roomId={roomId}
-                  onTyping={() => {}}
-                  shareProductId={shareProductId}
-                  onMenuPress={handleMenuPress}
-                  replyTo={replyTo}
-                  onCancelReply={handleCancelReply}
-                  autoFocus={autoFocusInput}
-                  participants={roomData?.participants}
-                />
-                <TypingIndicator roomId={roomId} />
+                <View onLayout={handleComposerLayout}>
+                  <Composer
+                    roomId={roomId}
+                    onTyping={() => {}}
+                    shareProductId={shareProductId}
+                    onMenuPress={handleMenuPress}
+                    replyTo={replyTo}
+                    onCancelReply={handleCancelReply}
+                    autoFocus={autoFocusInput}
+                    participants={roomData?.participants}
+                    maxImages={maxImages}
+                  />
+                </View>
+                <TypingIndicator roomId={roomId} bottomOffset={typingIndicatorBottomOffset} />
               </View>
             ) : (
               <View style={styles.lockedChat}>

@@ -83,10 +83,12 @@ export const selectProductById = createSelector(
 );
 
 export const selectSimilarProducts = createSelector(
-    [selectProducts, selectCurrentProduct, (state, productId) => productId],
-    (products, currentProductInState, productId) => {
-        const currentProduct = currentProductInState ||
-            products.find(p => p && p.id === parseInt(productId, 10));
+    [selectProducts, selectProductsById, (state, productId) => productId],
+    (products, productsById, productId) => {
+        const numericProductId = parseInt(productId, 10);
+        const currentProduct =
+            (!isNaN(numericProductId) && productsById?.[numericProductId]) ||
+            products.find(p => p && p.id === numericProductId);
 
         if (!currentProduct || !Array.isArray(products) || products.length === 0) {
             return EMPTY_ARRAY;

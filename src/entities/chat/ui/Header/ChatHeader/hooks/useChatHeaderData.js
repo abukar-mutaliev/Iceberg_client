@@ -147,39 +147,43 @@ export const useChatHeaderData = (route) => {
     const partnerId = chatPartner?.userId ?? chatPartner?.user?.id ?? chatPartner?.id;
     const cachedUser = participantsById[partnerId];
     const userData = cachedUser || chatPartner.user || chatPartner;
-    
-    // ✅ ИСПРАВЛЕНИЕ: Улучшенная логика определения имени
     const displayName = getDisplayName(userData);
-    
-    // Проверяем, не является ли roomTitle именем текущего пользователя
-    const isDefaultTitle = params.roomTitle === 'Чат' || params.roomTitle === 'Водитель';
-    const isCurrentUserTitle = params.roomTitle && (
-      params.roomTitle === currentUser?.name ||
-      params.roomTitle === currentUser?.firstName ||
-      params.roomTitle === currentUser?.client?.name ||
-      params.roomTitle === currentUser?.client?.companyName ||
-      params.roomTitle === currentUser?.supplier?.companyName ||
-      params.roomTitle === currentUser?.driver?.name ||
-      params.roomTitle === currentUser?.employee?.name
-    );
-    
-    // Используем roomTitle только если:
-    // 1. Он передан
-    // 2. Не является дефолтным
-    // 3. Не является именем текущего пользователя
-    const shouldUseRoomTitle = params.roomTitle && !isDefaultTitle && !isCurrentUserTitle;
-    const finalName = shouldUseRoomTitle ? params.roomTitle : displayName;
-    
-    if (__DEV__) {
-      console.log('📝 ChatHeader name logic:', {
-        roomTitle: params.roomTitle,
-        displayName,
-        isDefaultTitle,
-        isCurrentUserTitle,
-        shouldUseRoomTitle,
-        finalName,
-        currentUserName: currentUser?.name,
-      });
+
+    // Имя собеседника из данных участника — единственный надёжный источник.
+    // params.roomTitle ненадёжен: ChatListScreen передаёт room.title с сервера,
+    // который для личных чатов часто равен имени текущего пользователя.
+    // roomTitle используем только как fallback, если getDisplayName не дал результата,
+    // и при этом roomTitle не совпадает ни с одним именем текущего пользователя.
+    const isGenericName = displayName === 'Пользователь' || displayName.startsWith('Пользователь #');
+    let finalName = displayName;
+
+    if (isGenericName && params.roomTitle) {
+      const currentUserNames = new Set(
+        [
+          currentUser?.name,
+          currentUser?.firstName,
+          currentUser?.profile?.name,
+          currentUser?.profile?.firstName,
+          currentUser?.client?.name,
+          currentUser?.client?.companyName,
+          currentUser?.supplier?.companyName,
+          currentUser?.supplier?.contactPerson,
+          currentUser?.driver?.name,
+          currentUser?.employee?.name,
+          currentUser?.companyName,
+          currentUser?.contactPerson,
+        ]
+          .filter(Boolean)
+          .map(n => String(n).trim()),
+      );
+
+      const trimmedTitle = String(params.roomTitle).trim();
+      const isOwnName = currentUserNames.has(trimmedTitle);
+      const isDefault = trimmedTitle === 'Чат' || trimmedTitle === 'Водитель';
+
+      if (!isOwnName && !isDefault) {
+        finalName = params.roomTitle;
+      }
     }
     
     const avatar = cachedUser?.avatar || 
@@ -293,216 +297,3 @@ function getParticipantWord(count, isBroadcast) {
   if (count < 5) return 'участника';
   return 'участников';
 }
-
-// ============================================
-// chat/ui/ChatHeader/hooks/useChatHeaderActions.js
-// ============================================
-
-import { useCallback } from 'react';
-import { useDispatch } from 'react-redux';
-import { deleteRoom, leaveRoom } from '@entities/chat/model/slice';
-
-export const useChatHeaderActions = ({
-  navigation,
-  roomId,
-  roomData,
-  chatPartnerInfo,
-  params,
-  showAlert,
-  showError,
-}) => {
-  const dispatch = useDispatch();
-  
-  // ============ NAVIGATION ============
-  
-  const handleBackPress = useCallback(() => {
-    const fromScreen = params.fromScreen;
-    const productId = params.productId || params.productInfo?.id;
-    
-    if (productId && (fromScreen === 'ProductDetail' || !fromScreen)) {
-      const rootNavigation = navigation.getParent() || navigation;
-      rootNavigation.navigate('ProductDetail', {
-        productId,
-        fromScreen: 'ChatRoom'
-      });
-      return;
-    }
-    
-    if (navigation.canGoBack()) {
-      navigation.goBack();
-    }
-  }, [navigation, params]);
-  
-  const handleProfilePress = useCallback(() => {
-    // Групповые чаты - открываем GroupInfo
-    if (roomData?.type === 'GROUP' || roomData?.type === 'BROADCAST') {
-      navigation.navigate('GroupInfo', { roomId });
-      return;
-    }
-    
-    // Личные чаты - открываем профиль собеседника
-    const userRole = chatPartnerInfo?.userRole;
-    const userId = chatPartnerInfo?.userId;
-    
-    // Поставщик - открываем SupplierScreen
-    if (userRole === 'SUPPLIER') {
-      const supplierFromProduct = params.productInfo?.supplier;
-      let supplierId = supplierFromProduct?.id || userId;
-      
-      if (supplierId) {
-        const rootNavigation = navigation?.getParent?.('AppStack') || navigation?.getParent?.() || navigation;
-        (rootNavigation || navigation).navigate('SupplierScreen', {
-          supplierId,
-          fromScreen: 'ChatRoom'
-        });
-        return;
-      }
-    }
-    
-    // Остальные роли - открываем UserPublicProfile
-    if (userId) {
-      const rootNavigation = navigation?.getParent?.('AppStack') || navigation?.getParent?.() || navigation;
-      (rootNavigation || navigation).navigate('UserPublicProfile', {
-        userId,
-        fromScreen: 'ChatRoom',
-        roomId,
-      });
-    }
-  }, [navigation, roomId, roomData, chatPartnerInfo, params]);
-  
-  // ============ ROOM ACTIONS ============
-  
-  const handleDeleteChat = useCallback(() => {
-    showAlert({
-      type: 'warning',
-      title: 'Удалить чат',
-      message: 'Вы уверены, что хотите удалить этот чат? Все сообщения будут удалены безвозвратно.',
-      buttons: [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Удалить',
-          style: 'destructive',
-          icon: 'delete',
-          onPress: async () => {
-            try {
-              await dispatch(deleteRoom({ roomId })).unwrap();
-              if (navigation.canGoBack()) {
-                navigation.goBack();
-              } else {
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: 'ChatTab', params: { screen: 'ChatList' } }],
-                });
-              }
-            } catch (error) {
-              console.error('Delete room error:', error);
-              showError('Ошибка', error.message || 'Не удалось удалить чат');
-            }
-          },
-        },
-      ]
-    });
-  }, [dispatch, roomId, navigation, showAlert, showError]);
-  
-  const handleDeleteGroup = useCallback(() => {
-    const isBroadcast = roomData?.type === 'BROADCAST';
-    const entityName = isBroadcast ? 'канал' : 'группу';
-    
-    showAlert({
-      type: 'warning',
-      title: `Удалить ${entityName}`,
-      message: isBroadcast 
-        ? 'Вы уверены, что хотите удалить этот канал? Все сообщения и подписчики будут удалены безвозвратно.'
-        : 'Вы уверены, что хотите удалить эту группу? Все сообщения и участники будут удалены безвозвратно.',
-      buttons: [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: `Удалить ${entityName}`,
-          style: 'destructive',
-          icon: 'delete-forever',
-          onPress: async () => {
-            try {
-              await dispatch(deleteRoom({ roomId })).unwrap();
-              if (navigation.canGoBack()) {
-                navigation.goBack();
-              } else {
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: 'ChatTab', params: { screen: 'ChatList' } }],
-                });
-              }
-            } catch (error) {
-              console.error('Delete group error:', error);
-              showError('Ошибка', error.message || `Не удалось удалить ${entityName}`);
-            }
-          },
-        },
-      ]
-    });
-  }, [dispatch, roomId, roomData, navigation, showAlert, showError]);
-  
-  const handleLeaveGroup = useCallback((deleteMessages = false) => {
-    const isBroadcast = roomData?.type === 'BROADCAST';
-    const entityName = isBroadcast ? 'канал' : 'группу';
-    
-    const title = deleteMessages ? `Покинуть ${entityName} с удалением` : `Покинуть ${entityName}`;
-    const message = deleteMessages
-      ? (isBroadcast 
-          ? 'Вы уверены, что хотите покинуть канал и удалить все свои сообщения? Это действие нельзя отменить.'
-          : 'Вы уверены, что хотите покинуть группу и удалить все свои сообщения? Это действие нельзя отменить.')
-      : (isBroadcast
-          ? 'Вы уверены, что хотите покинуть этот канал? Ваши сообщения останутся в канале.'
-          : 'Вы уверены, что хотите покинуть эту группу? Ваши сообщения останутся в группе.');
-    
-    showAlert({
-      type: deleteMessages ? 'error' : 'warning',
-      title,
-      message,
-      buttons: [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: deleteMessages ? 'Покинуть и удалить' : 'Покинуть',
-          style: 'destructive',
-          icon: deleteMessages ? 'delete-sweep' : 'exit-to-app',
-          onPress: async () => {
-            try {
-              await dispatch(leaveRoom({ roomId, deleteMessages })).unwrap();
-              if (navigation.canGoBack()) {
-                navigation.goBack();
-              } else {
-                navigation.reset({
-                  index: 0,
-                  routes: [{ name: 'ChatTab', params: { screen: 'ChatList' } }],
-                });
-              }
-            } catch (error) {
-              console.error('Leave room error:', error);
-              const errorMessage = error.message || `Не удалось покинуть ${entityName}`;
-              
-              if (errorMessage.includes('владелец') || errorMessage.includes('Владелец')) {
-                showAlert({
-                  type: 'warning',
-                  title: `Нельзя покинуть ${entityName}`,
-                  message: isBroadcast
-                    ? 'Владелец канала не может покинуть канал, не назначив другого администратора.'
-                    : 'Владелец группы не может покинуть группу, не назначив другого администратора.',
-                  buttons: [{ text: 'Понятно', style: 'primary' }]
-                });
-              } else {
-                showError('Ошибка', errorMessage);
-              }
-            }
-          },
-        },
-      ]
-    });
-  }, [dispatch, roomId, roomData, navigation, showAlert, showError]);
-  
-  return {
-    handleBackPress,
-    handleProfilePress,
-    handleDeleteChat,
-    handleDeleteGroup,
-    handleLeaveGroup,
-  };
-};

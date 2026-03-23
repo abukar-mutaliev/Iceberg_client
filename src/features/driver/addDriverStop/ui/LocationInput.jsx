@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, memo, useCallback } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Image } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Image, Platform, Linking } from 'react-native';
 import * as Location from 'expo-location';
 import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { logData } from '@shared/lib/logger';
@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { normalizeCoordinates } from '@/shared/lib/coordinatesHelper';
 import { useToast } from '@shared/ui/Toast';
+import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 
 export const LocationInput = memo(({
                                      mapLocation,
@@ -18,6 +19,7 @@ export const LocationInput = memo(({
                                      setAddress
                                    }) => {
   const { showSuccess, showError } = useToast();
+  const { showAlert, showWarning } = useCustomAlert();
   const [locationPermissionStatus, setLocationPermissionStatus] = React.useState(null);
   const [showPreview, setShowPreview] = React.useState(false);
 
@@ -113,13 +115,52 @@ export const LocationInput = memo(({
     isGettingLocation.current = true;
 
     try {
-      if (locationPermissionStatus !== 'granted') {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          showError('Для определения текущего местоположения необходимо разрешение на доступ к геолокации.');
-          return;
+      const openLocationSettings = async () => {
+        try {
+          await Linking.openSettings();
+        } catch (settingsError) {
+          logData('LocationInput (AddDriverStop): Ошибка открытия настроек', settingsError);
+          showError('Не удалось открыть настройки. Откройте их вручную и выдайте доступ к геолокации.');
         }
-        setLocationPermissionStatus(status);
+      };
+
+      const showDeniedLocationAlert = () => {
+        if (Platform.OS === 'ios') {
+          showAlert({
+            type: 'warning',
+            title: 'Доступ к геолокации',
+            message: 'Разрешите доступ к местоположению в настройках устройства, чтобы определить текущую позицию.',
+            buttons: [
+              {
+                text: 'Открыть настройки',
+                style: 'primary',
+                onPress: () => setTimeout(() => openLocationSettings(), 250),
+              },
+              { text: 'Отмена', style: 'cancel' }
+            ],
+            autoClose: false,
+            showCloseButton: true,
+          });
+        } else {
+          showWarning(
+            'Доступ к геолокации',
+            'Для определения текущего местоположения необходимо разрешение на доступ к геолокации.'
+          );
+        }
+      };
+
+      // Always request fresh permission state on press.
+      let permission = await Location.getForegroundPermissionsAsync();
+      setLocationPermissionStatus(permission.status);
+
+      if (permission.status !== 'granted' && permission.canAskAgain) {
+        permission = await Location.requestForegroundPermissionsAsync();
+        setLocationPermissionStatus(permission.status);
+      }
+
+      if (permission.status !== 'granted') {
+        showDeniedLocationAlert();
+        return;
       }
 
       setIsLocationLoading(true);
@@ -150,7 +191,19 @@ export const LocationInput = memo(({
       setIsLocationLoading(false);
       isGettingLocation.current = false;
     }
-  }, [locationPermissionStatus, isLocationLoading, setIsLocationLoading, componentId, mapLocation, setMapLocation, reverseGeocode, setAddress, showSuccess, showError]);
+  }, [
+    isLocationLoading,
+    setIsLocationLoading,
+    componentId,
+    mapLocation,
+    setMapLocation,
+    reverseGeocode,
+    setAddress,
+    showSuccess,
+    showError,
+    showAlert,
+    showWarning
+  ]);
 
   const handleOpenMap = useCallback(() => {
     if (isLocationLoading) return;

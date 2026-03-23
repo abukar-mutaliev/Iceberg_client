@@ -16,12 +16,18 @@ const parseStopDataFromMessage = (message) => {
   return null;
 };
 
-const isStopMessageExpired = (message) => {
+const isMessageStop = (message) => {
   if (!message) return false;
   const type = String(message?.type || '').toUpperCase();
+  if (type === 'STOP') return true;
   const stopData = parseStopDataFromMessage(message);
-  const isStopMessage = type === 'STOP' || Boolean(stopData?.id || stopData?.stopId || stopData?.startTime || stopData?.endTime);
-  if (!isStopMessage) return false;
+  return Boolean(stopData?.id || stopData?.stopId || stopData?.startTime || stopData?.endTime);
+};
+
+const isStopMessageExpired = (message) => {
+  if (!message) return false;
+  if (!isMessageStop(message)) return false;
+  const stopData = parseStopDataFromMessage(message);
 
   const stopStatus = String(stopData?.status || '').toUpperCase();
   const isDeletedStop = Boolean(
@@ -41,6 +47,53 @@ const isStopMessageExpired = (message) => {
   return endMs < Date.now();
 };
 
+const isStopInUserDistrict = (message, districtIds) => {
+  if (!message) return true;
+  if (!districtIds || !districtIds.length) return true;
+
+  const stopData = parseStopDataFromMessage(message);
+  if (!stopData) return true;
+
+  const stopDistrictId = stopData?.districtId;
+  if (!stopDistrictId) return false;
+
+  const normalizedStopId = typeof stopDistrictId === 'string'
+    ? parseInt(stopDistrictId, 10) : stopDistrictId;
+
+  return districtIds.some(id => {
+    const normalizedId = typeof id === 'string' ? parseInt(id, 10) : id;
+    return normalizedId === normalizedStopId;
+  });
+};
+
+const getUserDistrictIds = (user) => {
+  if (!user) return EMPTY_ARRAY;
+  const role = user.role;
+  if (role === 'CLIENT') {
+    const clientDistrictId =
+      user.client?.districtId ??
+      user.client?.district?.id ??
+      null;
+    if (clientDistrictId != null && clientDistrictId !== '') {
+      return [clientDistrictId];
+    }
+    return EMPTY_ARRAY;
+  }
+  if ((role === 'EMPLOYEE' || role === 'DRIVER') && user[role.toLowerCase()]?.districts) {
+    return user[role.toLowerCase()].districts
+      .map(d => d?.id || d)
+      .filter(id => id != null);
+  }
+  return EMPTY_ARRAY;
+};
+
+const isStopVisibleForUser = (msg, userDistrictIds) => {
+  if (!isMessageStop(msg)) return true;
+  if (isStopMessageExpired(msg)) return false;
+  if (!userDistrictIds.length) return true;
+  return isStopInUserDistrict(msg, userDistrictIds);
+};
+
 export const selectChat = (state) => state.chat;
 
 export const selectRoomsList = createSelector(
@@ -49,12 +102,14 @@ export const selectRoomsList = createSelector(
     (state) => state.chat?.rooms?.byId,
     (state) => state.chat?.unreadByRoomId,
     (state) => state.chat?.participants?.byUserId,
-    (state) => state.chat?.messages, // Добавляем сообщения для отслеживания статуса
+    (state) => state.chat?.messages,
     (state) => state.auth?.user?.id,
-    (state) => state.products?.byId || {}, // Добавляем товары для PRODUCT чатов
-    (state) => state.chat?.deletedRoomIds || [], // Добавляем список удаленных комнат
+    (state) => state.products?.byId || {},
+    (state) => state.chat?.deletedRoomIds || [],
+    (state) => state.auth?.user,
+    (state) => state.chat?.timeTick,
   ],
-  (roomIds, roomsById, unreadByRoomId, participantsById, messages, currentUserId, productsById, deletedRoomIds) => {
+  (roomIds, roomsById, unreadByRoomId, participantsById, messages, currentUserId, productsById, deletedRoomIds, currentUser, _timeTick) => {
     if (!roomIds || !roomsById) return EMPTY_ARRAY;
 
     return roomIds.map((id) => {
@@ -70,9 +125,10 @@ export const selectRoomsList = createSelector(
       const room = roomsById[id];
       if (!room) return null;
       
-      // Используем только unreadByRoomId как единственный источник истины
-      // Если комната не в unreadByRoomId, считаем что unread = 0
       let actualUnread = unreadByRoomId?.[id] ?? 0;
+      const roomType = String(room.type || '').toUpperCase();
+      const isGroupOrBroadcast = roomType === 'GROUP' || roomType === 'BROADCAST';
+      const userDistrictIds = isGroupOrBroadcast ? getUserDistrictIds(currentUser) : EMPTY_ARRAY;
 
       // Получаем последнее сообщение с актуальным статусом
       let lastMessage = null;
@@ -82,7 +138,7 @@ export const selectRoomsList = createSelector(
         const allMessages = messages[id].ids
           .map(msgId => messages[id].byId[msgId])
           .filter(Boolean)
-          .filter(msg => !isStopMessageExpired(msg));
+          .filter(msg => isStopVisibleForUser(msg, userDistrictIds));
         if (allMessages.length > 0) {
           // Сортируем по времени создания (новые в конце) и берем последнее
           const sortedMessages = allMessages.sort((a, b) =>
@@ -97,8 +153,9 @@ export const selectRoomsList = createSelector(
 
       // Если в store нет сообщений, используем room.lastMessage
       let hadExpiredStopLastMessage = false;
+      const serverLastMessageHidden = !isStopVisibleForUser(room.lastMessage, userDistrictIds);
       if (!lastMessage && room.lastMessage) {
-        if (isStopMessageExpired(room.lastMessage)) {
+        if (serverLastMessageHidden) {
           hadExpiredStopLastMessage = true;
         } else {
           lastMessage = room.lastMessage;
@@ -106,8 +163,7 @@ export const selectRoomsList = createSelector(
       }
 
       // Всегда пытаемся объединить данные из room.lastMessage если они есть
-      // Это нужно для получения правильной информации об отправителе
-      if (lastMessage && room.lastMessage && !isStopMessageExpired(room.lastMessage)) {
+      if (lastMessage && room.lastMessage && !serverLastMessageHidden) {
         if (room.lastMessage.id === lastMessage.id) {
           // То же сообщение - объединяем данные
           lastMessage = {
@@ -138,13 +194,43 @@ export const selectRoomsList = createSelector(
       }
       
       // Если lastMessage все еще undefined, используем room.lastMessage как fallback
-      if (!lastMessage && room.lastMessage && !isStopMessageExpired(room.lastMessage)) {
+      if (!lastMessage && room.lastMessage && !serverLastMessageHidden) {
         lastMessage = room.lastMessage;
       }
 
-      // Если последнее сообщение оказалось удаленной/просроченной остановкой,
-      // не показываем бейджи непрочитанных для этой комнаты.
-      if (!lastMessage && hadExpiredStopLastMessage && actualUnread > 0) {
+      // Для GROUP/BROADCAST — считаем unread НАПРЯМУЮ из сообщений в bucket.
+      // Это единственный надёжный способ, исключающий:
+      // - двойной подсчёт (fetchRooms + WebSocket)
+      // - показ бейджей для STOP из чужих районов
+      // - зависшие бейджи после истечения стоянки
+      if (isGroupOrBroadcast) {
+        const bucket = messages?.[id];
+        if (bucket?.ids?.length) {
+          actualUnread = bucket.ids.reduce((count, msgId) => {
+            const msg = bucket.byId?.[msgId];
+            if (!msg || msg.isDeletedForAll) return count;
+            if (currentUserId && Number(msg.senderId) === Number(currentUserId)) return count;
+            if (!isStopVisibleForUser(msg, userDistrictIds)) return count;
+            const st = String(msg.status || '').toUpperCase();
+            if (st && st !== 'SENT' && st !== 'DELIVERED') return count;
+            return count + 1;
+          }, 0);
+        } else if (serverLastMessageHidden) {
+          actualUnread = 0;
+        } else if (!lastMessage) {
+          // Нет загруженных сообщений в bucket и нет видимого lastMessage — «зависший»
+          // unread (например после истечения стоянки / удаления STOP) не показываем.
+          actualUnread = 0;
+        } else if (
+          roomType === 'BROADCAST' &&
+          String(room.lastMessage?.type || '').toUpperCase() === 'SYSTEM'
+        ) {
+          // Bucket пуст: lastMessage с сервера — SYSTEM (баннер/служебное), а unread в Redux
+          // мог остаться от удалённой STOP (WS не дошёл до receiveMessageDeleted без bucket).
+          actualUnread = 0;
+        }
+        // Иначе bucket пуст, но last — STOP/TEXT и т.д.: оставляем unreadByRoomId до загрузки истории.
+      } else if (!lastMessage && hadExpiredStopLastMessage && actualUnread > 0) {
         actualUnread = 0;
       }
 
@@ -181,6 +267,7 @@ export const selectRoomsList = createSelector(
         ...room,
         unread: actualUnread,
         lastMessage, // Добавляем обновленное последнее сообщение
+        serverLastMessage: room.lastMessage || null,
         // Убираем создание массива messages - он не нужен для списка чатов
       };
 

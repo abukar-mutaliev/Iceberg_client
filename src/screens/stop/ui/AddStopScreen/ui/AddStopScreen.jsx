@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, ScrollView, Alert } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Text, ScrollView, Platform, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { useFocusEffect } from '@react-navigation/native';
@@ -28,6 +28,7 @@ import { logData } from '@shared/lib/logger';
 import { ReusableModal } from '@shared/ui/Modal';
 import MapView, { Marker } from 'react-native-maps';
 import { parseCoordinates } from '@/shared/lib/coordinatesHelper';
+import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 
 const MapContent = React.memo(({
     mapRef,
@@ -115,6 +116,7 @@ export const AddStopScreen = ({ navigation, route }) => {
     const lastUpdateTime = useRef(0);
 
     const dispatch = useDispatch();
+    const { showAlert, showWarning, showError } = useCustomAlert();
     const isLoading = useSelector(selectDriverLoading);
     const isDistrictLoading = useSelector(selectDistrictLoading);
     const error = useSelector(selectDriverError);
@@ -352,17 +354,65 @@ export const AddStopScreen = ({ navigation, route }) => {
     }, []);
 
     const handleDetectCurrentLocation = useCallback(async () => {
+        const openLocationSettings = async () => {
+            try {
+                await Linking.openSettings();
+            } catch (settingsError) {
+                logData('AddStopScreen: Ошибка открытия настроек геолокации', settingsError);
+                showError('Ошибка', 'Не удалось открыть настройки. Откройте их вручную и выдайте доступ к геолокации.');
+            }
+        };
+
+        const showLocationPermissionAlert = () => {
+            showAlert({
+                type: 'warning',
+                title: 'Доступ к геолокации',
+                message: 'Разрешите доступ к местоположению в настройках устройства, чтобы определить текущую позицию.',
+                buttons: [
+                    {
+                        text: 'Открыть настройки',
+                        style: 'primary',
+                        onPress: () => setTimeout(() => openLocationSettings(), 250),
+                    },
+                    { text: 'Отмена', style: 'cancel' }
+                ],
+                autoClose: false,
+                showCloseButton: true,
+            });
+        };
+
+        const ensureLocationPermission = async () => {
+            let permission = await Location.getForegroundPermissionsAsync();
+
+            if (permission.status === 'granted') {
+                return true;
+            }
+
+            if (permission.canAskAgain) {
+                permission = await Location.requestForegroundPermissionsAsync();
+                if (permission.status === 'granted') {
+                    return true;
+                }
+            }
+
+            if (Platform.OS === 'ios') {
+                showLocationPermissionAlert();
+            } else {
+                showWarning(
+                    'Доступ к геолокации',
+                    'Разрешите доступ к местоположению, чтобы определить текущую позицию.'
+                );
+            }
+
+            return false;
+        };
+
         try {
             if (isLocationLoading) return;
             setIsLocationLoading(true);
 
-            let permission = await Location.getForegroundPermissionsAsync();
-            if (permission.status !== 'granted') {
-                permission = await Location.requestForegroundPermissionsAsync();
-            }
-
-            if (permission.status !== 'granted') {
-                Alert.alert('Доступ к геолокации', 'Разрешите доступ к местоположению, чтобы определить текущую позицию.');
+            const hasPermission = await ensureLocationPermission();
+            if (!hasPermission) {
                 return;
             }
 
@@ -403,11 +453,20 @@ export const AddStopScreen = ({ navigation, route }) => {
             }
         } catch (error) {
             console.warn('Ошибка при определении местоположения:', error?.message || error);
-            Alert.alert('Ошибка', 'Не удалось определить местоположение. Попробуйте еще раз.');
+            showError('Ошибка', 'Не удалось определить местоположение. Попробуйте еще раз.');
         } finally {
             setIsLocationLoading(false);
         }
-    }, [animateToRegionSafe, fetchAddressByCoordinates, isLocationLoading, locationData.mapRegion.latitudeDelta, locationData.mapRegion.longitudeDelta]);
+    }, [
+        animateToRegionSafe,
+        fetchAddressByCoordinates,
+        isLocationLoading,
+        locationData.mapRegion.latitudeDelta,
+        locationData.mapRegion.longitudeDelta,
+        showAlert,
+        showError,
+        showWarning
+    ]);
 
     const handleMapReady = useCallback(() => {
         mapReadyRef.current = true;

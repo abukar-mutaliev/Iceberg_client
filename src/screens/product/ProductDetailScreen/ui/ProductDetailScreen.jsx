@@ -61,7 +61,8 @@ import { useProductDetailNavigation } from '../hooks/useProductDetailNavigation'
  */
 export const ProductDetailScreen = ({ route, navigation }) => {
     const params = route.params || {};
-    const productId = params.productId;
+    const parsedProductId = params.productId != null ? Number(params.productId) : null;
+    const productId = Number.isFinite(parsedProductId) ? parsedProductId : null;
     const fromScreen = params.fromScreen;
     const dispatch = useDispatch();
     const { colors } = useTheme();
@@ -76,9 +77,37 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     const [selectedDistrictId, setSelectedDistrictId] = useState(null);
     const [isLoadingManager, setIsLoadingManager] = useState(false);
     const [replyingFeedbackId, setReplyingFeedbackId] = useState(null);
+    const [stableProduct, setStableProduct] = useState(null);
+    const [stableSupplier, setStableSupplier] = useState(null);
+    const [stableRelatedProducts, setStableRelatedProducts] = useState([]);
     const rooms = useSelector(selectRoomsList) || [];
     const loadMoreCalledRef = useRef(false);
     const districts = useSelector(state => state.district?.districts || []);
+    const userRole = currentUser?.role;
+
+    const driverDistrictIds = useMemo(() => {
+        const ids = currentUser?.driver?.districts
+            ?.map(d => Number(d?.id))
+            .filter(id => Number.isInteger(id));
+        return Array.isArray(ids) ? ids : [];
+    }, [currentUser?.driver?.districts]);
+
+    const availableDistrictsForChat = useMemo(() => {
+        if (userRole !== 'DRIVER') {
+            return districts;
+        }
+
+        // Для водителя показываем только назначенные районы.
+        const allowedIds = new Set(driverDistrictIds);
+        if (districts.length > 0 && allowedIds.size > 0) {
+            const filtered = districts.filter(d => allowedIds.has(Number(d?.id)));
+            if (filtered.length > 0) {
+                return filtered;
+            }
+        }
+
+        return currentUser?.driver?.districts || [];
+    }, [userRole, districts, driverDistrictIds, currentUser?.driver?.districts]);
 
     // Кастомные хуки для разделения логики
     const {
@@ -140,6 +169,12 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         handleSupplierPress,
         handleSimilarProductPress
     } = useProductDetailNavigation(navigation, fromScreen, params);
+
+    useEffect(() => {
+        setStableProduct(null);
+        setStableSupplier(null);
+        setStableRelatedProducts([]);
+    }, [productId]);
 
     // Обработка изменения продукта
     useEffect(() => {
@@ -366,37 +401,67 @@ export const ProductDetailScreen = ({ route, navigation }) => {
             return;
         }
 
-        // Проверяем наличие района у клиента
-        const districtId = currentUser?.client?.districtId;
-        if (!districtId) {
-            // Предлагаем выбрать район
-            showInfo(
-                'Выберите район',
-                'Для связи с менеджером необходимо выбрать ваш район обслуживания',
-                [
-                    {
-                        text: 'Выбрать район',
-                        style: 'primary',
-                        onPress: () => {
-                            // Загружаем районы, если их нет
-                            if (districts.length === 0) {
-                                dispatch(fetchAllDistricts());
-                            }
-                            setIsDistrictSelectionVisible(true);
-                        }
-                    },
-                    {
-                        text: 'Отмена',
-                        style: 'secondary'
-                    }
-                ]
+        const clientDistrictId = currentUser?.client?.districtId;
+        const singleDriverDistrictId = userRole === 'DRIVER' && driverDistrictIds.length === 1
+            ? driverDistrictIds[0]
+            : null;
+        const districtId = clientDistrictId || singleDriverDistrictId;
+
+        if (districtId) {
+            await openChatWithManagerByDistrict(districtId, enrichedProduct?.id);
+            return;
+        }
+
+        if (userRole !== 'CLIENT' && userRole !== 'DRIVER') {
+            showInfo('Недоступно', 'Эта функция доступна только клиентам');
+            return;
+        }
+
+        if (userRole === 'DRIVER' && availableDistrictsForChat.length === 0) {
+            showCustomError(
+                'Районы не назначены',
+                'Для связи с менеджером назначьте водителю хотя бы один район'
             );
             return;
         }
 
-        // Используем общую функцию для открытия чата с менеджером
-        await openChatWithManagerByDistrict(districtId, enrichedProduct?.id);
-    }, [currentUser, isAuthenticated, showInfo, showCustomError, openChatWithManagerByDistrict, districts.length, dispatch, enrichedProduct?.id]);
+        // Предлагаем выбрать район
+        showInfo(
+            'Выберите район',
+            userRole === 'DRIVER'
+                ? 'Выберите один из назначенных вам районов для связи с менеджером'
+                : 'Для связи с менеджером необходимо выбрать ваш район обслуживания',
+            [
+                {
+                    text: 'Выбрать район',
+                    style: 'primary',
+                    onPress: () => {
+                        // Для клиентов подгружаем районы, для водителя используем назначенные.
+                        if (userRole !== 'DRIVER' && districts.length === 0) {
+                            dispatch(fetchAllDistricts());
+                        }
+                        setIsDistrictSelectionVisible(true);
+                    }
+                },
+                {
+                    text: 'Отмена',
+                    style: 'secondary'
+                }
+            ]
+        );
+    }, [
+        currentUser,
+        isAuthenticated,
+        userRole,
+        driverDistrictIds,
+        availableDistrictsForChat.length,
+        showInfo,
+        showCustomError,
+        openChatWithManagerByDistrict,
+        districts.length,
+        dispatch,
+        enrichedProduct?.id
+    ]);
 
     // Загрузка районов при монтировании, если их нет
     useEffect(() => {
@@ -582,11 +647,12 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         }
 
         try {
-            // Обновляем район клиента
-            await profileApi.updateProfile({ districtId: selectedDistrictId });
-            
-            // Обновляем профиль пользователя в Redux
-            await dispatch(loadUserProfile()).unwrap();
+            // Для клиента сохраняем выбранный район в профиль.
+            // Для водителя сохранять район не нужно: он выбирает один из назначенных.
+            if (userRole === 'CLIENT') {
+                await profileApi.updateProfile({ districtId: selectedDistrictId });
+                await dispatch(loadUserProfile()).unwrap();
+            }
             
             setIsDistrictSelectionVisible(false);
             const savedDistrictId = selectedDistrictId;
@@ -599,20 +665,42 @@ export const ProductDetailScreen = ({ route, navigation }) => {
             console.error('Ошибка при сохранении района:', error);
             showCustomError('Ошибка', 'Не удалось сохранить район. Попробуйте позже.');
         }
-    }, [selectedDistrictId, dispatch, showCustomError, openChatWithManagerByDistrict, productId, enrichedProduct?.id]);
+    }, [selectedDistrictId, dispatch, showCustomError, openChatWithManagerByDistrict, productId, enrichedProduct?.id, userRole]);
 
     // Мемоизированные компоненты
-    const displayProduct = useMemo(() => {
-        if (!enrichedProduct || !productId || enrichedProduct.id !== productId) {
+    const resolvedProduct = useMemo(() => {
+        if (!enrichedProduct || !productId || Number(enrichedProduct.id) !== Number(productId)) {
             return null;
         }
-        
+
         if (optimisticProduct) {
             return { ...enrichedProduct, ...optimisticProduct };
         }
-        
+
         return enrichedProduct;
     }, [enrichedProduct, productId, optimisticProduct]);
+
+    useEffect(() => {
+        if (resolvedProduct?.id && Number(resolvedProduct.id) === Number(productId)) {
+            setStableProduct(resolvedProduct);
+        }
+    }, [resolvedProduct, productId]);
+
+    const displayProduct = resolvedProduct || stableProduct;
+    const displaySupplier = supplier || displayProduct?.supplier || stableSupplier;
+
+    useEffect(() => {
+        if (displaySupplier?.id) {
+            setStableSupplier(displaySupplier);
+        }
+    }, [displaySupplier]);
+
+    const displayProductImages = useMemo(() => {
+        if (!displayProduct?.images || !Array.isArray(displayProduct.images)) {
+            return [];
+        }
+        return displayProduct.images;
+    }, [displayProduct]);
 
     const handleReplyToFeedback = useCallback(async (feedbackId, replyText) => {
         if (currentUser?.role !== 'SUPPLIER') {
@@ -664,7 +752,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         
         return (
             <ProductHeader
-                product={{ ...displayProduct, images: productImages }}
+                product={{ ...displayProduct, images: displayProductImages }}
                 scrollY={scrollY}
                 onGoBack={handleGoBack}
                 onSharePress={handleSharePress}
@@ -672,7 +760,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 onImagePress={handleImagePress}
             />
         );
-    }, [displayProduct, productImages, scrollY, handleGoBack, handleSharePress, isAuthenticated, handleImagePress]);
+    }, [displayProduct, displayProductImages, scrollY, handleGoBack, handleSharePress, isAuthenticated, handleImagePress]);
 
     const productContentComponent = useMemo(() => {
         if (!displayProduct?.id) return null;
@@ -739,16 +827,16 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     }, [displayProduct, handleAddToCart, selectedQuantity, handleProductUpdated, refreshData, handleAskQuestion, isLoadingManager]);
 
     const brandCardComponent = useMemo(() => (
-        activeTab === 'description' && supplier ? (
+        activeTab === 'description' && displaySupplier ? (
             <View style={styles.brandCardContainer}>
                 <BrandCard
-                    key={`brand-card-${supplier.id}`}
-                    supplier={supplier}
+                    key={`brand-card-${displaySupplier.id}`}
+                    supplier={displaySupplier}
                     onSupplierPress={() => handleSupplierPress(productId, displayProduct?.supplierId)}
                 />
             </View>
         ) : null
-    ), [activeTab, supplier, handleSupplierPress, productId, displayProduct?.supplierId]);
+    ), [activeTab, displaySupplier, handleSupplierPress, productId, displayProduct?.supplierId]);
 
     const recentFeedbacksComponent = useMemo(() => (
         activeTab === 'description' && Array.isArray(feedbacks) && feedbacks.length > 0 ? (
@@ -771,6 +859,12 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         // Объединяем: сначала похожие, потом остальные
         return [...similar, ...other];
     }, [similarProducts, otherProducts]);
+
+    useEffect(() => {
+        if (allProductsForDisplay.length > 0) {
+            setStableRelatedProducts(allProductsForDisplay);
+        }
+    }, [allProductsForDisplay]);
 
     // Отслеживание скролла для загрузки следующей страницы
     const handleScrollWithPagination = useCallback((event) => {
@@ -805,18 +899,20 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     }, [isLoadingMoreProducts]);
 
     const similarProductsComponent = useMemo(() => {
-        // Показываем компонент, если есть хотя бы похожие или остальные товары
-        if ((!similarProducts || !Array.isArray(similarProducts) || similarProducts.length === 0) &&
-            (!otherProducts || !Array.isArray(otherProducts) || otherProducts.length === 0)) {
+        if (!productId) return null;
+
+        const displayProducts = allProductsForDisplay.length > 0
+            ? allProductsForDisplay
+            : stableRelatedProducts;
+
+        if (!displayProducts || displayProducts.length === 0) {
             return null;
         }
-        
-        if (!productId) return null;
         
         return (
             <SimilarProducts
                 key={`similar-products-${productId}`}
-                products={allProductsForDisplay}
+                products={displayProducts}
                 color={colors}
                 onProductPress={(similarProductId) => handleSimilarProductPress(similarProductId, productId)}
                 currentProductId={productId}
@@ -825,7 +921,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 hasMore={hasMoreProducts}
             />
         );
-    }, [allProductsForDisplay, colors, handleSimilarProductPress, productId, loadMoreProducts, isLoadingMoreProducts, hasMoreProducts, similarProducts, otherProducts]);
+    }, [allProductsForDisplay, stableRelatedProducts, colors, handleSimilarProductPress, productId, loadMoreProducts, isLoadingMoreProducts, hasMoreProducts]);
 
     // Состояния загрузки и ошибок
     if (isLoading && !displayProduct) {
@@ -867,29 +963,13 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     // 2. Не загружается
     // 3. Есть ошибка или продукт действительно не найден (не просто временная задержка)
     // 4. productId существует (чтобы не показывать ошибку при инициализации)
-    if (!displayProduct && !isLoading && productId && (error || !product)) {
+    if (!displayProduct && productId) {
         return (
             <View style={styles.fullScreenContainer}>
                 <SafeAreaView style={styles.safeArea} edges={['bottom', 'left', 'right']}>
                     <StaticBackgroundGradient />
                     <View style={styles.errorContainer}>
-                        <Text style={[styles.errorText, { color: colors.primary }]}>
-                            {error || 'Продукт не найден'}
-                        </Text>
-                        <TouchableOpacity 
-                            style={styles.retryButton} 
-                            onPress={() => {
-                                if (error) {
-                                    refreshData(true);
-                                } else {
-                                    handleGoBack();
-                                }
-                            }}
-                        >
-                            <Text style={styles.retryButtonText}>
-                                {error ? 'Попробовать снова' : 'Вернуться назад'}
-                            </Text>
-                        </TouchableOpacity>
+                        <Loader type="youtube" color={colors.primary || Color.blue2} text={null} />
                     </View>
                 </SafeAreaView>
             </View>
@@ -976,7 +1056,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                     <Text style={styles.districtModalText}>
                         Для связи с менеджером необходимо выбрать ваш район обслуживания
                     </Text>
-                    {districts.length === 0 ? (
+                    {availableDistrictsForChat.length === 0 ? (
                         <View style={styles.districtLoadingContainer}>
                             <ActivityIndicator size="small" color={Color.blue2} />
                             <Text style={styles.districtLoadingText}>Загрузка районов...</Text>
@@ -984,7 +1064,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                     ) : (
                         <>
                             <FlatList
-                                data={districts}
+                                data={availableDistrictsForChat}
                                 keyExtractor={(item) => item.id.toString()}
                                 renderItem={({ item }) => (
                                     <TouchableOpacity

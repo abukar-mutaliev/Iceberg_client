@@ -143,7 +143,8 @@ export const Composer = memo(({
   disabled = false,
   participantsById,
   participants,
-  autoFocus = false
+  autoFocus = false,
+  maxImages = 10,
 }) => {
   // ============ STATE ============
   
@@ -235,6 +236,7 @@ export const Composer = memo(({
     setPendingAction,
     setShowPollModal,
     onShowPermissionModal: handleShowPermissionModal,
+    maxImages,
   });
   
   // ============ HANDLERS ============

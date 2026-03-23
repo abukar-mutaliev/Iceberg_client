@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 import { Keyboard, Alert } from 'react-native';
 import { updateProfile, fetchProfile, initiateEmailBind, confirmEmailBind } from '@entities/profile';
 import { fetchAllDistricts } from '@entities/district';
@@ -9,61 +9,46 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
     const [isSaving, setIsSaving] = useState(false);
     const [currentScrollPosition, setCurrentScrollPosition] = useState(0);
     const [editableFields, setEditableFields] = useState({});
-    const renderCountRef = useRef(0);
     const [emailBindToken, setEmailBindToken] = useState(null);
     const [emailBindEmail, setEmailBindEmail] = useState('');
     const [isEmailBindModalVisible, setIsEmailBindModalVisible] = useState(false);
     const [emailBindError, setEmailBindError] = useState(null);
     const [isEmailBindLoading, setIsEmailBindLoading] = useState(false);
 
-    const userTypeRef = useRef('client');
-
-    useEffect(() => {
-        renderCountRef.current += 1;
-
-        const determineUserType = () => {
-
-            if (currentUser && currentUser.role) {
-                switch(currentUser.role.toUpperCase()) {
-                    case 'ADMIN': return 'admin';
-                    case 'EMPLOYEE': return 'employee';
-                    case 'SUPPLIER': return 'supplier';
-                    case 'DRIVER': return 'driver';
-                    case 'CLIENT': return 'client';
-                    default: break;
-                }
+    const userType = useMemo(() => {
+        if (currentUser && currentUser.role) {
+            switch(currentUser.role.toUpperCase()) {
+                case 'ADMIN': return 'admin';
+                case 'EMPLOYEE': return 'employee';
+                case 'SUPPLIER': return 'supplier';
+                case 'DRIVER': return 'driver';
+                case 'CLIENT': return 'client';
+                default: break;
             }
-
-            if (profile && profile.role) {
-                switch(profile.role.toUpperCase()) {
-                    case 'ADMIN': return 'admin';
-                    case 'EMPLOYEE': return 'employee';
-                    case 'SUPPLIER': return 'supplier';
-                    case 'DRIVER': return 'driver';
-                    case 'CLIENT': return 'client';
-                    default: break;
-                }
-            }
-
-            if (!profile) return 'client';
-
-            if (profile.admin) return 'admin';
-            if (profile.driver) return 'driver';
-            if (profile.client) return 'client';
-            if (profile.employee) return 'employee';
-            if (profile.companyName) return 'supplier';
-            if (profile.isSuperAdmin !== undefined) return 'admin';
-
-            return 'client';
-        };
-
-        const newUserType = determineUserType();
-        if (newUserType !== userTypeRef.current) {
-            userTypeRef.current = newUserType;
         }
-    }, [profile, currentUser]);
 
-    const userType = userTypeRef.current;
+        if (profile && profile.role) {
+            switch(profile.role.toUpperCase()) {
+                case 'ADMIN': return 'admin';
+                case 'EMPLOYEE': return 'employee';
+                case 'SUPPLIER': return 'supplier';
+                case 'DRIVER': return 'driver';
+                case 'CLIENT': return 'client';
+                default: break;
+            }
+        }
+
+        if (!profile) return 'client';
+
+        if (profile.admin) return 'admin';
+        if (profile.driver) return 'driver';
+        if (profile.client) return 'client';
+        if (profile.employee) return 'employee';
+        if (profile.companyName) return 'supplier';
+        if (profile.isSuperAdmin !== undefined) return 'admin';
+
+        return 'client';
+    }, [profile, currentUser]);
 
     const isDistrictsNeeded = useCallback(() => {
         return userType === 'driver' || userType === 'client' || userType === 'employee';
@@ -86,15 +71,6 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
         }
         return Promise.resolve();
     }, [userType, dispatch, isWarehousesNeeded]);
-
-    useEffect(() => {
-        if (isDistrictsNeeded()) {
-            loadDistricts();
-        }
-        if (isWarehousesNeeded()) {
-            loadWarehouses();
-        }
-    }, [userType, loadDistricts, isDistrictsNeeded, loadWarehouses, isWarehousesNeeded]);
 
     const getProfileData = useCallback(() => {
         if (!profile) return null;
@@ -250,8 +226,13 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
                 break;
         }
 
-        if (typeof formData.email !== 'undefined') {
-            baseData.email = formData.email || null;
+        // Отправляем email только если он реально введен в форме.
+        // Иначе для phone-only аккаунтов backend может вернуть валидационную ошибку.
+        if (typeof formData.email === 'string') {
+            const normalizedEmail = formData.email.trim().toLowerCase();
+            if (normalizedEmail) {
+                baseData.email = normalizedEmail;
+            }
         }
 
         return baseData;

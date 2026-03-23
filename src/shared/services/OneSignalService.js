@@ -92,6 +92,76 @@ class OneSignalService {
         return uuid ? `OS_${uuid}` : null;
     }
 
+    parseMaybeJson(value) {
+        if (typeof value !== 'string') {
+            return value;
+        }
+        try {
+            return JSON.parse(value);
+        } catch (_) {
+            return null;
+        }
+    }
+
+    normalizeNotificationData(data) {
+        const source = data && typeof data === 'object' ? data : {};
+        const roomId = source.roomId || source.room_id || source.chatRoomId || source.chat_room_id || null;
+        const senderId = source.senderId || source.sender_id || null;
+        const messageId = source.messageId || source.message_id || null;
+        const rawType = source.type || source.notificationType || source.notification_type || null;
+        const type = rawType ? String(rawType).toUpperCase() : null;
+
+        return {
+            ...source,
+            roomId,
+            senderId,
+            messageId,
+            type
+        };
+    }
+
+    extractNotificationData(eventOrNotification) {
+        const notification =
+            eventOrNotification?.getNotification?.() ||
+            eventOrNotification?.notification ||
+            eventOrNotification ||
+            {};
+
+        const candidates = [
+            notification?.additionalData,
+            notification?.additional_data,
+            eventOrNotification?.notification?.additionalData,
+            eventOrNotification?.notification?.additional_data,
+            eventOrNotification?.additionalData,
+            eventOrNotification?.additional_data,
+            notification?.payload?.additionalData,
+            notification?.payload?.additional_data
+        ];
+
+        const merged = {};
+        candidates.forEach((item) => {
+            const parsed = this.parseMaybeJson(item);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                Object.assign(merged, parsed);
+            }
+        });
+
+        const rawPayload =
+            notification?.rawPayload ||
+            notification?.payload?.rawPayload ||
+            eventOrNotification?.rawPayload ||
+            null;
+
+        const parsedRawPayload = this.parseMaybeJson(rawPayload);
+        const payloadObject = parsedRawPayload && typeof parsedRawPayload === 'object' ? parsedRawPayload : rawPayload;
+        const payloadCustomData = this.parseMaybeJson(payloadObject?.custom?.a);
+        if (payloadCustomData && typeof payloadCustomData === 'object' && !Array.isArray(payloadCustomData)) {
+            Object.assign(merged, payloadCustomData);
+        }
+
+        return this.normalizeNotificationData(merged);
+    }
+
     // ⚠️ КРИТИЧЕСКИ ВАЖНО: Создание канала уведомлений для Android
     // Этот канал ОБЯЗАТЕЛЬНО нужен для heads-up уведомлений
     async ensureNotificationChannelExists() {
@@ -196,18 +266,7 @@ setupNotificationHandlers(oneSignal) {
         oneSignal.Notifications.addEventListener('foregroundWillDisplay', (event) => {
             try {
                 const notification = event?.getNotification?.() || event?.notification;
-                
-                // Извлекаем data из всех возможных мест
-                const additionalData =
-                    notification?.additionalData ||
-                    notification?.additional_data ||
-                    event?.notification?.additionalData ||
-                    event?.notification?.additional_data ||
-                    event?.additionalData ||
-                    event?.additional_data ||
-                    null;
-                
-                const data = additionalData || {};
+                const data = this.extractNotificationData(event);
                 
                 // Получаем PushNotificationService для проверки подавления
                 const PushNotificationService = require('@shared/services/PushNotificationService');
@@ -225,7 +284,7 @@ setupNotificationHandlers(oneSignal) {
                 pushNotificationService?.handleStopNotificationData?.(data, 'foreground');
 
         // ===== INBOX-STYLE ДЛЯ МНОЖЕСТВЕННЫХ СООБЩЕНИЙ =====
-        if (data.type === 'CHAT_MESSAGE' && data.messageCount) {
+        if (data?.type === 'CHAT_MESSAGE' && data.messageCount) {
             const messageCount = parseInt(data.messageCount || '1');
             
             if (messageCount > 1 && data.messages) {
@@ -275,8 +334,7 @@ setupNotificationHandlers(oneSignal) {
         // Обработчик получения уведомлений в background
         oneSignal.Notifications.addEventListener('received', (event) => {
             try {
-                const notification = event?.notification || {};
-                const data = notification?.additionalData || notification?.additional_data || {};
+                const data = this.extractNotificationData(event);
                 
                 // Получаем PushNotificationService для проверки подавления
                 const PushNotificationService = require('@shared/services/PushNotificationService');
@@ -299,32 +357,16 @@ setupNotificationHandlers(oneSignal) {
         // Обработчик нажатий (включая кнопки действий)
         oneSignal.Notifications.addEventListener('click', (event) => {
             try {
-                const n = event?.notification || {};
                 const result = event?.result || {};
-
-                const data =
-                    n.additionalData ||
-                    n.additional_data ||
-                    n?.payload?.additionalData ||
-                    n?.payload?.additional_data ||
-                    null;
+                const normalizedData = this.extractNotificationData(event);
 
                 // Проверяем, была ли нажата кнопка действия
                 const actionId = result?.actionId || result?.actionID || null;
 
                 // Проверяем наличие данных
-                if (!data) {
+                if (!normalizedData || (!normalizedData.roomId && !normalizedData.type)) {
                     return;
                 }
-
-                // Нормализуем данные (OneSignal может передавать snake_case)
-                const normalizedData = {
-                    ...data,
-                    roomId: data.roomId || data.room_id,
-                    messageId: data.messageId || data.message_id,
-                    senderId: data.senderId || data.sender_id,
-                    type: data.type || 'CHAT_MESSAGE'
-                };
 
                 // Если нажата кнопка действия
                 if (actionId) {

@@ -176,7 +176,7 @@ export const CategoriesManagementScreen = () => {
         <View style={styles.container}>
             <AdminHeader
                 title="Управление категориями"
-                onBack={handleBackPress}
+                onBackPress={handleBackPress}
                 icon={<CategoryIcon width={24} height={24} color={Color.blue2} />}
             />
 

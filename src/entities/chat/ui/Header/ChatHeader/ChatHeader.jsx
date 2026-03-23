@@ -213,11 +213,19 @@ export const ChatHeader = memo(({ route, navigation }) => {
   const avatarUri = chatPartnerInfo.avatar ? getImageUrl(chatPartnerInfo.avatar) : null;
   const textColor = '#000000';
   const isGroup = chatPartnerInfo.isGroup;
-  const isBroadcast = roomData?.type === 'BROADCAST';
-  const shouldHideLeaveActions = currentUser?.role === 'EMPLOYEE' || currentUser?.role === 'DRIVER';
+  const normalizedRoomType = String(
+    roomData?.type || roomData?.roomType || route?.params?.roomType || ''
+  ).toUpperCase().trim();
+  const isBroadcast = normalizedRoomType === 'BROADCAST';
+  const isSuperAdmin = currentUser?.role === 'ADMIN' && (
+    currentUser?.admin?.isSuperAdmin ||
+    currentUser?.profile?.isSuperAdmin ||
+    currentUser?.isSuperAdmin
+  );
+  const shouldHideLeaveActions = isBroadcast && !isSuperAdmin;
   
-  // Скрываем меню для клиентов в BROADCAST каналах и для сотрудников/водителей
-  const shouldShowMenu = !(isBroadcast && currentUser?.role === 'CLIENT') && !shouldHideLeaveActions;
+  // В каналах меню доступно только суперадмину.
+  const shouldShowMenu = !isBroadcast || isSuperAdmin;
   
   // ============ RENDER ============
   

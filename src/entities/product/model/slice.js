@@ -16,7 +16,9 @@ const initialState = {
     totalPages: 1,
     totalItems: 0,
     lastFetchScope: 'default',
-    // Tracks product IDs that returned 404 (deleted/unavailable) to avoid re-fetching
+    // Tracks product IDs that are actually deleted/not found.
+    // Temporarily unavailable products must not be stored here,
+    // otherwise detail navigation breaks for the whole session.
     deletedProductIds: []
 };
 
@@ -156,15 +158,6 @@ export const fetchProductById = createAsyncThunk(
 
             const state = getState();
 
-            // Skip fetching if product is known to be deleted/unavailable
-            if (!force && state.products.deletedProductIds?.includes(numericProductId)) {
-                return rejectWithValue({ 
-                    message: 'Продукт удален или недоступен', 
-                    isDeleted: true, 
-                    productId: numericProductId 
-                });
-            }
-
             if (!force) {
                 const cachedProduct = state.products.items.find(p => p?.id === numericProductId);
                 if (cachedProduct && !state.products.error) {
@@ -179,7 +172,18 @@ export const fetchProductById = createAsyncThunk(
 
 
             const response = await productsApi.getProductById(numericProductId);
-            const product = response.data.status === 'success' ? response.data.data : response.data;
+
+            let product = null;
+            if (response?.status === 'success') {
+                product = response.data;
+            } else if (response?.data?.status === 'success') {
+                // Fallback for legacy callers that still return axios-like response.
+                product = response.data.data;
+            } else if (response?.data && response?.id === undefined) {
+                product = response.data;
+            } else {
+                product = response;
+            }
 
             if (!product?.id) {
                 return rejectWithValue({ 
@@ -191,25 +195,45 @@ export const fetchProductById = createAsyncThunk(
 
             return { data: product, fromCache: false };
         } catch (error) {
-            // Check if it's a 404 error (product deleted/not found)
-            const is404 = error?.response?.status === 404 || 
-                         error?.code === 404 || 
-                         error?.message?.includes('404') ||
-                         error?.message?.includes('не найден') ||
-                         error?.message?.includes('недоступен');
-            
-            if (is404) {
-                // Return structured error for deleted products (no console.error - this is expected)
-                return rejectWithValue({ 
-                    message: 'Продукт удален или недоступен', 
-                    isDeleted: true, 
-                    productId: typeof productId === 'object' ? productId.productId : productId 
+            const requestedProductId = typeof productId === 'object' ? productId.productId : productId;
+            const errorMessage =
+                error?.message ||
+                error?.response?.data?.message ||
+                'Ошибка при загрузке товара';
+            const errorCode =
+                error?.code ||
+                error?.response?.status ||
+                error?.response?.data?.code;
+            const normalizedMessage = String(errorMessage).toLowerCase();
+            const isTemporarilyUnavailable =
+                (errorCode === 404 || normalizedMessage.includes('404')) &&
+                normalizedMessage.includes('временно недоступ');
+            const isDeletedOrNotFound =
+                errorCode === 404 ||
+                normalizedMessage.includes('404') ||
+                normalizedMessage.includes('не найден') ||
+                normalizedMessage.includes('удален');
+
+            if (isTemporarilyUnavailable) {
+                return rejectWithValue({
+                    message: errorMessage,
+                    isUnavailable: true,
+                    productId: requestedProductId
+                });
+            }
+
+            if (isDeletedOrNotFound) {
+                // Return structured error for really deleted/missing products
+                return rejectWithValue({
+                    message: errorMessage,
+                    isDeleted: true,
+                    productId: requestedProductId
                 });
             }
             
             // Only log unexpected errors, not 404s for deleted products
             console.error(`Ошибка запроса продукта ${productId}:`, error);
-            return rejectWithValue(error.message || 'Ошибка при загрузке продукта');
+            return rejectWithValue(errorMessage);
         }
     }
 );
@@ -338,6 +362,9 @@ const productsSlice = createSlice({
                 state.currentProduct = { ...state.currentProduct, ...updatedProduct };
             }
         },
+        clearProductsError: (state) => {
+            state.error = null;
+        },
         markProductAsDeleted: (state, action) => {
             const productId = parseInt(action.payload, 10);
             if (!isNaN(productId) && !state.deletedProductIds.includes(productId)) {
@@ -421,8 +448,8 @@ const productsSlice = createSlice({
                 state.loading = false;
                 const { data, fromCache } = action.payload;
 
-                state.currentProduct = data;
                 state.byId[data.id] = data;
+                state.deletedProductIds = state.deletedProductIds.filter(id => id !== data.id);
 
                 if (!fromCache) {
                     const index = state.items.findIndex(p => p?.id === data.id);
@@ -442,7 +469,7 @@ const productsSlice = createSlice({
             .addCase(fetchProductById.rejected, (state, action) => {
                 state.loading = false;
                 
-                // Check if this is a deleted/unavailable product error
+                // Check if this is a deleted product error
                 const payload = action.payload;
                 if (payload?.isDeleted && payload?.productId) {
                     const productId = parseInt(payload.productId, 10);
@@ -460,6 +487,18 @@ const productsSlice = createSlice({
                         }
                     }
                     // Don't set global error for deleted products - it's expected
+                    return;
+                }
+
+                if (payload?.isUnavailable && payload?.productId) {
+                    const productId = parseInt(payload.productId, 10);
+                    if (!isNaN(productId)) {
+                        state.deletedProductIds = state.deletedProductIds.filter(id => id !== productId);
+                        if (state.currentProduct?.id === productId) {
+                            state.currentProduct = null;
+                        }
+                    }
+                    state.error = payload.message;
                     return;
                 }
                 
@@ -597,6 +636,7 @@ export const {
     setCurrentProductFromCache,
     updateProductOptimistic,
     setProducts,
+    clearProductsError,
     markProductAsDeleted,
     clearDeletedProductIds
 } = productsSlice.actions;

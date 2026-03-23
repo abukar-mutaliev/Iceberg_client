@@ -2,14 +2,40 @@ import { useRef } from 'react';
 
 // Simple throttle helper
 const throttle = (fn, wait) => {
-  let inFlight = false;
-  let lastArgs = null;
+  let lastExecAt = 0;
+  let timeoutId = null;
+  let trailingArgs = null;
+
+  const invoke = (args) => {
+    lastExecAt = Date.now();
+    fn(...args);
+  };
+
   return (...args) => {
-    lastArgs = args;
-    if (inFlight) return;
-    inFlight = true;
-    fn(...lastArgs);
-    setTimeout(() => { inFlight = false; }, wait);
+    const now = Date.now();
+    const remaining = wait - (now - lastExecAt);
+
+    if (remaining <= 0) {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      trailingArgs = null;
+      invoke(args);
+      return;
+    }
+
+    // Keep only the latest call during throttle window
+    trailingArgs = args;
+    if (!timeoutId) {
+      timeoutId = setTimeout(() => {
+        timeoutId = null;
+        if (trailingArgs) {
+          invoke(trailingArgs);
+          trailingArgs = null;
+        }
+      }, remaining);
+    }
   };
 };
 

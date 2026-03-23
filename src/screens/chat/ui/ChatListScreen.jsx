@@ -2,13 +2,14 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {View, FlatList, TouchableOpacity, Text, StyleSheet, RefreshControl, Image, InteractionManager, Platform} from 'react-native';
 import {useFocusEffect, CommonActions} from '@react-navigation/native';
 import { useTabBar } from '@widgets/navigation/context';
-import {useDispatch, useSelector} from 'react-redux';
-import {fetchRooms, setActiveRoom, loadRoomsCache, fetchRoom, fetchMessages} from '@entities/chat/model/slice';
+import {useDispatch, useSelector, useStore} from 'react-redux';
+import {fetchRooms, setActiveRoom, loadRoomsCache, fetchRoom, fetchMessages, tickTime} from '@entities/chat/model/slice';
 import {fetchProductById} from '@entities/product/model/slice';
 import {selectRoomsList, selectIsRoomDeleted} from '@entities/chat/model/selectors';
 import {selectProductsById, selectDeletedProductIds} from '@entities/product/model/selectors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import {MESSAGES_LOAD_LIMIT} from '../utils/chatConstants';
 import {getImageUrl} from '@shared/api/api';
 import {IconDelivery} from '@shared/ui/Icon/Profile/IconDelivery';
 import IconWarehouse from '@shared/ui/Icon/Warehouse/IconWarehouse';
@@ -72,7 +73,7 @@ const parseStopDataFromMessage = (message) => {
     return null;
 };
 
-const isStopMessageExpired = (message) => {
+const isStopMessageExpired = (message, nowMs = Date.now()) => {
     if (!message) return false;
     const stopData = parseStopDataFromMessage(message);
     if (!stopData) return false;
@@ -90,15 +91,36 @@ const isStopMessageExpired = (message) => {
     if (!endTime) return false;
     const endMs = new Date(endTime).getTime();
     if (!Number.isFinite(endMs)) return false;
-    return endMs < Date.now();
+    return endMs < nowMs;
+};
+
+const isStopInUserDistrict = (message, districtIds) => {
+    if (!message) return true;
+    if (!districtIds || !districtIds.length) return true;
+
+    const stopData = parseStopDataFromMessage(message);
+    if (!stopData) return true;
+
+    const stopDistrictId = stopData?.districtId;
+    if (!stopDistrictId) return false;
+
+    const normalizedStopId = typeof stopDistrictId === 'string'
+        ? parseInt(stopDistrictId, 10) : stopDistrictId;
+
+    return districtIds.some(id => {
+        const normalizedId = typeof id === 'string' ? parseInt(id, 10) : id;
+        return normalizedId === normalizedStopId;
+    });
 };
 
 export const ChatListScreen = ({navigation}) => {
     const dispatch = useDispatch();
+    const store = useStore();
     const { showTabBar } = useTabBar();
     const insets = useSafeAreaInsets();
     const tabBarHeight = 80 + insets.bottom;
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [timeTick, setTimeTick] = useState(Date.now());
     const rooms = useSelector(selectRoomsList) || [];
     const loading = useSelector((s) => s.chat?.rooms?.loading);
     const currentUser = useSelector((s) => s.auth?.user);
@@ -111,7 +133,30 @@ export const ChatListScreen = ({navigation}) => {
     const connection = useSelector((s) => s.chat?.connection);
     const deletedRoomIds = useSelector((s) => s.chat?.deletedRoomIds || []);
 
+    const userDistrictIds = useMemo(() => {
+        if (!currentUser) return [];
+        const role = currentUser.role;
+        if (role === 'CLIENT') {
+            const clientDistrictId =
+                currentUser.client?.districtId ??
+                currentUser.client?.district?.id ??
+                null;
+            if (clientDistrictId != null && clientDistrictId !== '') {
+                return [clientDistrictId];
+            }
+            return [];
+        }
+        if ((role === 'EMPLOYEE' || role === 'DRIVER') && currentUser[role.toLowerCase()]?.districts) {
+            return currentUser[role.toLowerCase()].districts
+                .map(d => d?.id || d)
+                .filter(id => id != null);
+        }
+        return [];
+    }, [currentUser]);
+
     const loadedProductsRef = useRef(new Set());
+    const prefetchedGroupBroadcastMessagesRef = useRef(new Set());
+    const prefetchedUserIdRef = useRef(null);
     const isNavigatingRef = useRef(false);
     const previousRoomsRef = useRef(rooms);
     
@@ -147,6 +192,54 @@ export const ChatListScreen = ({navigation}) => {
     useEffect(() => {
         dispatch(loadRoomsCache());
         dispatch(fetchRooms({page: 1}));
+    }, [dispatch]);
+
+    useEffect(() => {
+        if (prefetchedUserIdRef.current === currentUserId) return;
+        prefetchedGroupBroadcastMessagesRef.current.clear();
+        prefetchedUserIdRef.current = currentUserId ?? null;
+    }, [currentUserId]);
+
+    // GROUP/BROADCAST + район: без сообщений в bucket selectRoomsList не может вычесть
+    // непрочитанные STOP из чужих районов из raw unreadByRoomId — подгружаем последние сообщения.
+    useEffect(() => {
+        if (!userDistrictIds.length) return;
+        if (!Array.isArray(memoizedRooms) || memoizedRooms.length === 0) return;
+
+        const st = store.getState();
+        const messages = st.chat?.messages;
+        const unreadMap = st.chat?.unreadByRoomId || {};
+
+        let queued = 0;
+        const maxPrefetch = 5;
+
+        for (const room of memoizedRooms) {
+            if (queued >= maxPrefetch) break;
+            const rid = room?.id;
+            if (!rid) continue;
+            const type = String(room.type || '').toUpperCase();
+            if (type !== 'GROUP' && type !== 'BROADCAST') continue;
+            if (prefetchedGroupBroadcastMessagesRef.current.has(rid)) continue;
+
+            const bucketLen = messages?.[rid]?.ids?.length ?? 0;
+            if (bucketLen > 0) continue;
+
+            const u = unreadMap[rid] ?? 0;
+            if (u <= 0) continue;
+
+            prefetchedGroupBroadcastMessagesRef.current.add(rid);
+            queued += 1;
+            dispatch(fetchMessages({ roomId: rid, limit: MESSAGES_LOAD_LIMIT }));
+        }
+    }, [memoizedRooms, userDistrictIds, dispatch, store]);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setTimeTick(Date.now());
+            dispatch(tickTime());
+        }, 60 * 1000);
+
+        return () => clearInterval(interval);
     }, [dispatch]);
 
     // Убрано автоматическое обновление при фокусе - WebSocket обновляет данные в реальном времени
@@ -570,10 +663,29 @@ export const ChatListScreen = ({navigation}) => {
     const renderItem = useCallback(({item}) => {
         const title = getChatTitle(item);
         const avatarUri = getRoomAvatar(item);
+        // Последнее сообщение для строки: селектор может отдать только serverLastMessage
+        const lastMessageRaw = item.lastMessage ?? item.serverLastMessage;
+        // STOP из чужих районов / просроченные — не в превью и без бейджа (как в useGroupChatData / selectors)
+        const isFilteredByDistrict = (item.type === 'GROUP' || item.type === 'BROADCAST') &&
+            lastMessageRaw?.type === 'STOP' &&
+            userDistrictIds.length > 0 &&
+            !isStopInUserDistrict(lastMessageRaw, userDistrictIds);
+        const isExpiredStop = (item.type === 'GROUP' || item.type === 'BROADCAST') &&
+            lastMessageRaw?.type === 'STOP' &&
+            isStopMessageExpired(lastMessageRaw, timeTick);
+        // Канал «Маршруты» (BROADCAST): служебные SYSTEM в превью списка не показываем
+        const isRoutesBroadcastChannel =
+            item.type === 'BROADCAST' && /маршрут/i.test(String(item.title || ''));
+        const hideSystemPreviewOnRoutes =
+            isRoutesBroadcastChannel &&
+            String(lastMessageRaw?.type || '').toUpperCase() === 'SYSTEM';
+        const lastMessage = (isFilteredByDistrict || isExpiredStop || hideSystemPreviewOnRoutes)
+            ? null
+            : lastMessageRaw;
 
-        // Простая логика для последнего сообщения
-        // Приоритет: item.lastMessage (содержит senderId) > lastMessageFromMessages
-        const lastMessage = item.lastMessage;
+        const hideUnreadForForeignOrExpiredStop =
+            isFilteredByDistrict || isExpiredStop || hideSystemPreviewOnRoutes;
+        const displayUnread = hideUnreadForForeignOrExpiredStop ? 0 : (Number(item.unread) || 0);
 
         // Определяем, является ли последнее сообщение нашим
         let isOwnMessage = false;
@@ -647,7 +759,7 @@ export const ChatListScreen = ({navigation}) => {
             } else if (lastMessage.type === 'PRODUCT') {
                 messageContent = 'Товар';
             } else if (lastMessage.type === 'STOP') {
-                if (isStopMessageExpired(lastMessage)) {
+                if (isStopMessageExpired(lastMessage, timeTick)) {
                     messageContent = 'Сообщение';
                 } else {
                     isStopMessage = true;
@@ -780,14 +892,14 @@ export const ChatListScreen = ({navigation}) => {
                         )}
                     </View>
                 </View>
-                {!!item.unread && (
+                {!!displayUnread && (
                     <View style={styles.badge}>
-                        <Text style={styles.badgeText}>{item.unread}</Text>
+                        <Text style={styles.badgeText}>{displayUnread}</Text>
                     </View>
                 )}
             </TouchableOpacity>
         );
-    }, [getChatTitle, getRoomAvatar, openRoom, currentUserId]);
+    }, [getChatTitle, getRoomAvatar, openRoom, currentUserId, userDistrictIds, timeTick]);
 
     const keyExtractor = useCallback((item) => {
         // Безопасное извлечение ключа с обработкой undefined/null

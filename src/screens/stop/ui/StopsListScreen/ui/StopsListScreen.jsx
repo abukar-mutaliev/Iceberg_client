@@ -1,10 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl, TextInput, BackHandler, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { useRoute, useFocusEffect } from '@react-navigation/native';
 import { Color, FontFamily, FontSize, CommonStyles } from '@app/styles/GlobalStyles';
-import { ErrorState } from '@shared/ui/states/ErrorState';
 import { EmptyState } from '@shared/ui/states/EmptyState';
 import { Loader } from "@shared/ui/Loader";
 import {
@@ -36,6 +35,7 @@ export const StopsListScreen = ({ navigation }) => {
     const loading = useSelector(selectStopLoading);
     const error = useSelector(selectStopError);
     const userRole = useSelector(state => state.auth?.user?.role);
+    const safeStops = Array.isArray(stops) ? stops : [];
 
     const highlightedStop = useSelector(state =>
         highlightStopId ? selectStopById(state, highlightStopId) : null
@@ -50,26 +50,88 @@ export const StopsListScreen = ({ navigation }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
 
-    // Загрузка остановок при фокусе экрана (один раз при монтировании)
+    const getErrorMessage = (errorValue) => {
+        if (!errorValue) {
+            return '';
+        }
+
+        const mapNetworkErrorMessage = (message) => {
+            const normalizedMessage = String(message || '').trim().toLowerCase();
+
+            if (!normalizedMessage) {
+                return '';
+            }
+
+            if (
+                normalizedMessage.includes('network error') ||
+                normalizedMessage.includes('network request failed') ||
+                normalizedMessage.includes('failed to fetch')
+            ) {
+                return 'Нет подключения к интернету. Проверьте сеть и попробуйте снова.';
+            }
+
+            if (
+                normalizedMessage.includes('timeout') ||
+                normalizedMessage.includes('econnaborted')
+            ) {
+                return 'Превышено время ожидания ответа. Проверьте подключение и попробуйте снова.';
+            }
+
+            return String(message).trim();
+        };
+
+        if (typeof errorValue === 'string') {
+            return mapNetworkErrorMessage(errorValue);
+        }
+
+        if (typeof errorValue?.message === 'string' && errorValue.message.trim() !== '') {
+            return mapNetworkErrorMessage(errorValue.message);
+        }
+
+        if (Array.isArray(errorValue?.errors) && errorValue.errors.length > 0) {
+            return errorValue.errors
+                .map(item => item?.message || item)
+                .filter(Boolean)
+                .join('\n');
+        }
+
+        return 'Не удалось загрузить остановки. Проверьте подключение к интернету и попробуйте снова.';
+    };
+
+    const loadStops = useCallback(async (districtId = selectedDistrictId, options = {}) => {
+        const { showRefreshing = false } = options;
+
+        if (showRefreshing) {
+            setRefreshing(true);
+        }
+
+        dispatch(clearStopCache());
+
+        try {
+            await dispatch(fetchAllStops(districtId || null)).unwrap();
+        } catch (loadError) {
+            return loadError;
+        } finally {
+            if (showRefreshing) {
+                setRefreshing(false);
+            }
+        }
+    }, [dispatch, selectedDistrictId]);
+
     useFocusEffect(
         React.useCallback(() => {
-            dispatch(fetchAllStops());
-        }, [dispatch])
+            loadStops(selectedDistrictId);
+        }, [loadStops, selectedDistrictId])
     );
 
     useFocusEffect(
         React.useCallback(() => {
-            if (userRole !== 'CLIENT') {
-                return undefined;
-            }
-
             const intervalId = setInterval(() => {
-                dispatch(clearStopCache());
-                dispatch(fetchAllStops(selectedDistrictId || null));
+                loadStops(selectedDistrictId);
             }, 30000);
 
             return () => clearInterval(intervalId);
-        }, [dispatch, userRole, selectedDistrictId])
+        }, [loadStops, selectedDistrictId])
     );
 
     useEffect(() => {
@@ -84,13 +146,9 @@ export const StopsListScreen = ({ navigation }) => {
         }
     }, [highlightStopId, highlightedStop, navigation]);
 
-    const handleRefresh = () => {
-        setRefreshing(true);
-        dispatch(fetchAllStops())
-            .finally(() => {
-                setRefreshing(false);
-            });
-    };
+    const handleRefresh = useCallback(() => {
+        loadStops(selectedDistrictId, { showRefreshing: true });
+    }, [loadStops, selectedDistrictId]);
 
     const handleStopPress = (stopId) => {
         navigation.navigate('StopDetails', { stopId });
@@ -126,8 +184,8 @@ export const StopsListScreen = ({ navigation }) => {
 
     // Улучшенная функция поиска
     const isAddressMatch = (address, query) => {
-        const normalizedAddress = address.toLowerCase().trim();
-        const normalizedQuery = query.toLowerCase().trim();
+        const normalizedAddress = String(address || '').toLowerCase().trim();
+        const normalizedQuery = String(query || '').toLowerCase().trim();
         
         // Если запрос пустой, показываем все
         if (normalizedQuery === '') return true;
@@ -150,7 +208,7 @@ export const StopsListScreen = ({ navigation }) => {
     };
 
     // Фильтрация остановок по району и поисковому запросу
-    const filteredStops = stops.filter(stop => {
+    const filteredStops = safeStops.filter(stop => {
         // Фильтр по району
         const districtFilter = selectedDistrictId 
             ? stop.districtId === selectedDistrictId 
@@ -161,6 +219,8 @@ export const StopsListScreen = ({ navigation }) => {
         
         return districtFilter && searchFilter;
     });
+
+    const errorMessage = getErrorMessage(error);
 
     const getScreenTitle = () => {
         if (selectedDistrictId && selectedDistrictName) {
@@ -218,7 +278,7 @@ export const StopsListScreen = ({ navigation }) => {
     );
 
     const renderContent = () => {
-        if (loading && !refreshing && stops.length === 0) {
+        if (loading && !refreshing && safeStops.length === 0) {
             return (
                 <View style={styles.centerContainer}>
                     <Loader 
@@ -251,18 +311,26 @@ export const StopsListScreen = ({ navigation }) => {
                     </View>
                 </View>
 
-                {renderSearchBar()}
+                {!error && renderSearchBar()}
 
-         
-
-                {error && (
-                    <ErrorState
-                        message={`Ошибка загрузки: ${error}`}
-                        onRetry={handleRefresh}
-                    />
-                )}
-
-                {filteredStops.length === 0 && !loading && !error ? (
+                {error ? (
+                    <View style={styles.errorSection}>
+                        <View style={styles.errorCard}>
+                            <View style={styles.errorIconWrap}>
+                                <Ionicons name="cloud-offline-outline" size={28} color={Color.purpleSoft} />
+                            </View>
+                            <Text style={styles.errorTitle}>Не удалось загрузить остановки</Text>
+                            <Text style={styles.errorText}>{errorMessage}</Text>
+                            <TouchableOpacity
+                                style={styles.retryButton}
+                                onPress={handleRefresh}
+                                activeOpacity={0.8}
+                            >
+                                <Text style={styles.retryButtonText}>Повторить попытку</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                ) : filteredStops.length === 0 && !loading ? (
                     <EmptyState
                         message={getEmptyMessage()}
                     />
@@ -490,7 +558,62 @@ const styles = StyleSheet.create({
         padding: 4,
         marginLeft: 8,
     },
-
+    errorSection: {
+        paddingHorizontal: 16,
+        paddingTop: 12,
+    },
+    errorCard: {
+        alignItems: 'center',
+        backgroundColor: '#ffffff',
+        borderRadius: 16,
+        paddingHorizontal: 20,
+        paddingVertical: 24,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+        elevation: 3,
+    },
+    errorIconWrap: {
+        width: 56,
+        height: 56,
+        borderRadius: 16,
+        backgroundColor: '#f3f0ff',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 14,
+    },
+    errorTitle: {
+        fontSize: FontSize.size_lg,
+        fontWeight: '700',
+        color: Color.dark,
+        fontFamily: FontFamily.sFProText,
+        textAlign: 'center',
+        marginBottom: 8,
+    },
+    errorText: {
+        fontSize: FontSize.size_md,
+        color: Color.gray,
+        fontFamily: FontFamily.sFProText,
+        textAlign: 'center',
+        lineHeight: 22,
+        marginBottom: 16,
+    },
+    retryButton: {
+        minWidth: 180,
+        borderRadius: 12,
+        backgroundColor: Color.purpleSoft,
+        paddingHorizontal: 20,
+        paddingVertical: 14,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    retryButtonText: {
+        color: '#ffffff',
+        fontSize: FontSize.size_md,
+        fontWeight: '600',
+        fontFamily: FontFamily.sFProText,
+    },
     locationsList: {
         paddingHorizontal: 16,
         paddingBottom: 8,

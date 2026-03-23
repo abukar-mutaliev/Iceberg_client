@@ -163,41 +163,46 @@ const AppInitializer = ({children}) => {
     useChatSocket();
 
     // Отслеживаем переход приложения в фон / возврат из фона
-    // При возврате из фона проверяем токены, чтобы пользователь не видел экран логина
+    // При возврате из фона проверяем токены
     useEffect(() => {
         const subscription = AppState.addEventListener('change', (nextAppState) => {
             if (
                 appState.current.match(/inactive|background/) &&
                 nextAppState === 'active'
             ) {
-                // Приложение вернулось из фона — лёгкая проверка токенов
                 (async () => {
                     try {
                         const tokens = await authService.getStoredTokens();
-                        if (tokens?.accessToken && tokens?.refreshToken) {
-                            const isAccessValid = authService.isTokenValid(tokens.accessToken);
-                            const isRefreshValid = authService.isTokenValid(tokens.refreshToken);
-                            
-                            if (!isRefreshValid) {
-                                console.log('⚠️ App resume: refresh token expired, resetting auth');
-                                dispatch({ type: 'auth/resetState' });
-                                await authService.clearTokens();
-                            } else if (!isAccessValid) {
-                                // Access token истёк, но refresh ещё жив — обновляем
-                                const refreshed = await authService.refreshAccessToken();
-                                if (refreshed?.accessToken) {
-                                    dispatch({ 
-                                        type: 'auth/setTokens', 
-                                        payload: { 
-                                            accessToken: refreshed.accessToken, 
-                                            refreshToken: refreshed.refreshToken 
-                                        } 
-                                    });
-                                }
+                        if (!tokens?.refreshToken) return;
+
+                        const isRefreshValid = authService.isTokenValid(tokens.refreshToken);
+                        if (!isRefreshValid) {
+                            console.log('⚠️ App resume: refresh token expired, resetting auth');
+                            dispatch({ type: 'auth/resetState' });
+                            await authService.clearTokens();
+                            return;
+                        }
+
+                        const isAccessValid = tokens.accessToken && authService.isTokenValid(tokens.accessToken);
+                        if (!isAccessValid) {
+                            // Access token истёк — refreshAccessToken содержит retry-логику
+                            // и не удалит токены при сетевой ошибке
+                            const refreshed = await authService.refreshAccessToken();
+                            if (refreshed?.accessToken) {
+                                dispatch({
+                                    type: 'auth/setTokens',
+                                    payload: {
+                                        accessToken: refreshed.accessToken,
+                                        refreshToken: refreshed.refreshToken
+                                    }
+                                });
                             }
+                            // Если refreshed === null (сетевая ошибка), НЕ сбрасываем auth.
+                            // Следующий API-вызов попробует обновить через interceptor.
                         }
                     } catch (e) {
                         console.warn('⚠️ App resume: token check failed:', e?.message);
+                        // НЕ сбрасываем auth при ошибке — может быть просто нет сети
                     }
                 })();
             }
@@ -238,232 +243,85 @@ const AppInitializer = ({children}) => {
             try {
                 console.log('🚀 App: Starting background initialization...');
 
-                // Безопасная проверка сети
                 try {
                     await testNetworkConnection();
                 } catch (networkError) {
                     console.warn('⚠️ App: Network check failed (non-critical):', networkError);
-                    // Не блокируем инициализацию при ошибках сети
                 }
 
-                // Безопасная инициализация auth
                 try {
-                    const initialized = await authService.initializeAuth();
-                    if (!initialized) {
-                        return;
-                    }
+                    await authService.initializeAuth();
                 } catch (authError) {
                     console.error('❌ App: Auth initialization failed:', authError);
-                    return;
                 }
 
-                // Безопасное получение токенов
-                let tokens;
-                try {
-                    tokens = await authService.getStoredTokens();
-                    if (!tokens || !tokens.refreshToken) {
-                        return;
-                    }
-                } catch (tokenError) {
-                    console.error('❌ App: Failed to get stored tokens:', tokenError);
-                    return;
-                }
+                const tokens = await authService.getStoredTokens();
+                if (!tokens?.refreshToken) return;
 
-                // Небольшая задержка чтобы дать request interceptor'у возможность обновить токены
-                // если они истекли (избегаем гонки обновления токенов)
-                await new Promise(resolve => setTimeout(resolve, 100));
-
-                // Перечитываем токены из AsyncStorage на случай если они были обновлены interceptor'ом
-                let currentTokens = await authService.getStoredTokens();
-                if (!currentTokens) {
-                    currentTokens = tokens; // Fallback на исходные токены
-                }
-
-                // Безопасная валидация токенов
-                let accessTokenValid = false;
-                let refreshTokenValid = false;
-                try {
-                    accessTokenValid = currentTokens.accessToken ? authService.isTokenValid(currentTokens.accessToken) : false;
-                    refreshTokenValid = currentTokens.refreshToken ? authService.isTokenValid(currentTokens.refreshToken) : false;
-                } catch (validationError) {
-                    console.error('❌ App: Token validation failed:', validationError);
-                    return;
-                }
-
-                console.log('🔍 Token validation:', {
-                    hasAccessToken: !!currentTokens.accessToken,
-                    hasRefreshToken: !!currentTokens.refreshToken,
-                    accessTokenValid,
-                    refreshTokenValid,
-                    tokensWereRefreshed: currentTokens !== tokens
-                });
-
+                const refreshTokenValid = authService.isTokenValid(tokens.refreshToken);
                 if (!refreshTokenValid) {
-                    console.log('⚠️ Refresh token expired, need to re-login');
-                    try {
-                        if (dispatch && typeof dispatch === 'function') {
-                            dispatch({ type: 'auth/resetState' });
-                        }
-                        await authService.clearTokens();
-                    } catch (clearError) {
-                        console.error('❌ App: Failed to clear tokens:', clearError);
-                    }
+                    console.log('⚠️ App: Refresh token expired, clearing');
+                    dispatch({ type: 'auth/resetState' });
+                    await authService.clearTokens();
                     return;
                 }
 
-                // Если access token валиден, просто синхронизируем Redux
-                if (accessTokenValid) {
-                    if (dispatch && typeof dispatch === 'function') {
-                        console.log('✅ App: Access token valid, syncing with Redux store');
-                        dispatch({ 
-                            type: 'auth/setTokens', 
-                            payload: { 
-                                accessToken: currentTokens.accessToken, 
-                                refreshToken: currentTokens.refreshToken 
-                            } 
+                const accessTokenValid = tokens.accessToken && authService.isTokenValid(tokens.accessToken);
+
+                const syncRedux = (t) => {
+                    dispatch({
+                        type: 'auth/setTokens',
+                        payload: { accessToken: t.accessToken, refreshToken: t.refreshToken }
+                    });
+                    setTimeout(() => {
+                        dispatch(loadUserProfile()).catch(err => {
+                            console.warn('⚠️ App: Failed to load user profile:', err);
                         });
-                        // Загружаем полный профиль пользователя для получения admin.isSuperAdmin
-                        setTimeout(() => {
-                            dispatch(loadUserProfile()).catch(err => {
-                                console.warn('⚠️ App: Failed to load user profile:', err);
-                            });
-                        }, 500);
-                    }
-                    return; // Не пытаемся обновлять если токен уже валиден
-                }
+                    }, 500);
+                };
 
-                // Если access token истек, но refresh token валиден - обновляем
-                // НО только если токены не были уже обновлены interceptor'ом
-                if (!accessTokenValid && refreshTokenValid) {
-                    // Проверяем еще раз - может быть interceptor уже обновил токены
-                    const latestTokens = await authService.getStoredTokens();
-                    const latestAccessValid = latestTokens?.accessToken ? authService.isTokenValid(latestTokens.accessToken) : false;
-                    
-                            if (latestAccessValid && latestTokens) {
-                                // Токены уже обновлены interceptor'ом, просто синхронизируем Redux
-                                console.log('✅ App: Tokens were already refreshed by interceptor, syncing Redux');
-                                if (dispatch && typeof dispatch === 'function') {
-                                    dispatch({ 
-                                        type: 'auth/setTokens', 
-                                        payload: { 
-                                            accessToken: latestTokens.accessToken, 
-                                            refreshToken: latestTokens.refreshToken 
-                                        } 
-                                    });
-                                    // Загружаем полный профиль пользователя для получения admin.isSuperAdmin
-                                    setTimeout(() => {
-                                        dispatch(loadUserProfile()).catch(err => {
-                                            console.warn('⚠️ App: Failed to load user profile:', err);
-                                        });
-                                    }, 500);
-                                }
-                                return;
-                            }
-
-                    // Токены не обновлены, пытаемся обновить сами
-                    try {
-                        console.log('🔄 App: Attempting to refresh tokens...');
-                        const refreshed = await authService.refreshAccessToken();
-                        if (refreshed?.accessToken) {
-                            console.log('✅ App: Token refreshed successfully on initialization');
-                            // Обновляем Redux store с новыми токенами
-                            if (dispatch && typeof dispatch === 'function') {
-                                dispatch({ 
-                                    type: 'auth/setTokens', 
-                                    payload: { 
-                                        accessToken: refreshed.accessToken, 
-                                        refreshToken: refreshed.refreshToken 
-                                    } 
-                                });
-                                // Загружаем полный профиль пользователя для получения admin.isSuperAdmin
-                                setTimeout(() => {
-                                    dispatch(loadUserProfile()).catch(err => {
-                                        console.warn('⚠️ App: Failed to load user profile:', err);
-                                    });
-                                }, 500);
-                            }
-                        } else {
-                            console.warn('⚠️ App: Token refresh failed - no new tokens received');
-                            await authService.clearTokens();
-                            return;
+                if (accessTokenValid) {
+                    console.log('✅ App: Access token valid, syncing Redux');
+                    syncRedux(tokens);
+                } else {
+                    // Access token истёк, пробуем обновить.
+                    // refreshAccessToken уже содержит retry-логику и
+                    // не удаляет токены при сетевых ошибках.
+                    console.log('🔄 App: Refreshing expired access token...');
+                    const refreshed = await authService.refreshAccessToken();
+                    if (refreshed?.accessToken) {
+                        console.log('✅ App: Tokens refreshed on init');
+                        syncRedux(refreshed);
+                    } else {
+                        // refreshed === null: сетевая ошибка или другая проблема.
+                        // Проверяем — может interceptor уже обновил.
+                        const latest = await authService.getStoredTokens();
+                        if (latest?.accessToken && authService.isTokenValid(latest.accessToken)) {
+                            syncRedux(latest);
                         }
-                    } catch (refreshError) {
-                        // Если получили 401, это может означать что токены уже были использованы interceptor'ом
-                        // Проверяем еще раз - может быть токены уже обновлены
-                        if (refreshError?.response?.status === 401 || refreshError?.message?.includes('401')) {
-                            console.warn('⚠️ App: Got 401 on refresh, checking if tokens were already refreshed...');
-                            const checkTokens = await authService.getStoredTokens();
-                            const checkAccessValid = checkTokens?.accessToken ? authService.isTokenValid(checkTokens.accessToken) : false;
-                            
-                            if (checkAccessValid && checkTokens) {
-                                console.log('✅ App: Tokens were refreshed by interceptor, syncing Redux');
-                                if (dispatch && typeof dispatch === 'function') {
-                                    dispatch({ 
-                                        type: 'auth/setTokens', 
-                                        payload: { 
-                                            accessToken: checkTokens.accessToken, 
-                                            refreshToken: checkTokens.refreshToken 
-                                        } 
-                                    });
-                                    // Загружаем полный профиль пользователя для получения admin.isSuperAdmin
-                                    setTimeout(() => {
-                                        dispatch(loadUserProfile()).catch(err => {
-                                            console.warn('⚠️ App: Failed to load user profile:', err);
-                                        });
-                                    }, 500);
-                                }
-                                return; // Успешно восстановили
-                            }
-                        }
-                        
-                        console.error('❌ App: Failed to refresh token on initialization:', refreshError?.message || refreshError);
-                        // Не очищаем токены сразу - может быть это временная ошибка сети
-                        // Только если refresh token точно истек
-                        const finalCheck = await authService.getStoredTokens();
-                        if (!finalCheck?.refreshToken || !authService.isTokenValid(finalCheck.refreshToken)) {
-                            console.warn('⚠️ App: Refresh token expired, clearing tokens');
-                            try {
-                                await authService.clearTokens();
-                                if (dispatch && typeof dispatch === 'function') {
-                                    dispatch({ type: 'auth/resetState' });
-                                }
-                            } catch (clearError) {
-                                console.error('❌ App: Failed to clear tokens after refresh error:', clearError);
-                            }
-                        }
-                        return;
+                        // Если нет — НЕ сбрасываем auth. Следующий API-запрос
+                        // попробует обновить через interceptor с retry.
                     }
                 }
 
-                // Безопасная инициализация push-уведомлений
+                // Push-уведомления (не критично)
                 try {
                     const pushService = await import('@shared/services/PushNotificationService');
                     if (pushService?.default?.initialize) {
                         await pushService.default.initialize();
                     }
                 } catch (pushError) {
-                    console.warn('⚠️ App: Push notification initialization failed (non-critical):', pushError?.message || pushError);
-                    // Ошибка инициализации push-уведомлений не критична - продолжаем работу
+                    console.warn('⚠️ App: Push init failed (non-critical):', pushError?.message);
                 }
-
             } catch (err) {
                 console.error('❌ App: Initialization error:', err);
-                try {
-                    if (err?.response?.status === 401) {
-                        await authService.clearTokens();
-                        if (auth?.logout && typeof auth.logout === 'function') {
-                            auth.logout();
-                        }
-                    }
-                } catch (cleanupError) {
-                    console.error('❌ App: Cleanup error:', cleanupError);
-                }
+                // НЕ очищаем токены при ошибке инициализации —
+                // это может быть временная проблема сети
             }
         };
 
-        // Инициализация в фоне без блокировки UI
         initializeApp();
-    }, [auth, dispatch]);
+    }, [dispatch]);
 
     if (error) {
         return (

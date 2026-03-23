@@ -3,24 +3,44 @@ import * as Device from 'expo-device';
 /**
  * Device-specific keyboard gap for chat composer.
  *
- * Why: some Samsung firmwares (observed on S25 Ultra, production build) report/handle IME insets
- * in a way that leaves the composer visually lower than intended. We add a small extra margin
- * ONLY on that device model, ONLY when keyboard is visible.
+ * Some Android vendors misreport / incorrectly handle IME insets, leaving the
+ * composer visually lower than intended.  We compensate with a small extra
+ * margin ONLY when the keyboard is visible.
+ *
+ * @param {number}      keyboardHeight — reported keyboard height
+ * @param {string|null} brand          — pre-detected brand key (from useChatKeyboard)
  */
-export function getChatKeyboardGapPx({ keyboardHeight } = {}) {
-  const brand = String(Device.brand || '').toLowerCase();
-  const modelName = String(Device.modelName || '');
+export function getChatKeyboardGapPx({ keyboardHeight, brand: detectedBrand } = {}) {
+  const brand = detectedBrand ?? String(Device.brand || '').toLowerCase();
+  const modelName = String(Device.modelName || '').toLowerCase();
 
-  const isSamsung = brand.includes('samsung');
-  const isS25Ultra = modelName.toLowerCase().includes('s25') && modelName.toLowerCase().includes('ultra');
+  // Samsung S25 Ultra — tuned value (firmware misreports IME insets)
+  if (brand === 'samsung') {
+    const isS25Ultra = modelName.includes('s25') && modelName.includes('ultra');
+    if (isS25Ultra) {
+      const h = Number(keyboardHeight) || 0;
+      const dynamic = h > 0 ? Math.round(h * 0.08) : 0;
+      return Math.max(40, dynamic);
+    }
+    return 0;
+  }
 
-  if (isSamsung && isS25Ultra) {
-    // Tuned for Samsung Keyboard, portrait, production build.
-    // Some firmwares misreport IME insets; we add an extra margin above the keyboard.
-    // Use a minimum value + optional proportional component from actual keyboard height.
+  // Chinese OEMs — conservative gap; many ROMs leave a thin strip between
+  // the composer and the keyboard because adjustResize overshoots / undershoots.
+  const chineseBrands = [
+    'xiaomi', 'redmi', 'poco',
+    'huawei', 'honor',
+    'oppo', 'vivo', 'realme',
+    'oneplus', 'meizu', 'zte',
+    'tecno', 'infinix', 'itel',
+  ];
+  if (chineseBrands.some(b => brand.includes(b))) {
     const h = Number(keyboardHeight) || 0;
-    const dynamic = h > 0 ? Math.round(h * 0.08) : 0; // ~8% of keyboard height (reduced from 12%)
-    return Math.max(40, dynamic); // Reduced minimum from 90 to 40
+    if (h > 0) {
+      const dynamic = Math.round(h * 0.04);
+      return Math.max(8, dynamic);
+    }
+    return 0;
   }
 
   return 0;

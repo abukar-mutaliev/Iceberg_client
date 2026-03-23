@@ -378,7 +378,9 @@ const profileSlice = createSlice({
             })
             .addCase(updateProfile.rejected, (state, action) => {
                 state.isLoading = false;
-                state.error = action.payload;
+                // Ошибки сохранения показываются локально через Alert в UI.
+                // Не записываем их в общий profile.error, чтобы не блокировать экран профиля.
+                state.error = null;
             })
 
             // Обработка состояний для updateAvatar

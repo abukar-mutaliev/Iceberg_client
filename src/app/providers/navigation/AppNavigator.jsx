@@ -269,15 +269,62 @@ const useFavoritesCleanup = (isAuthenticated) => {
 const createNavigationFunctions = (navigation) => {
     const navigateToStops = (params = {}) => {
         try {
-            if (params.stopId) {
-                navigation.navigate('StopDetails', {
-                    stopId: parseInt(params.stopId),
-                    fromNotification: true,
-                    ...params
-                });
-            } else {
+            if (!params.stopId) {
                 navigation.navigate('StopsListScreen', params);
+                return;
             }
+
+            const stopId = parseInt(params.stopId);
+            const { InteractionManager } = require('react-native');
+            const { CommonActions } = require('@react-navigation/native');
+
+            const performNavigation = () => {
+                try {
+                    navigation.dispatch(
+                        CommonActions.reset({
+                            index: 1,
+                            routes: [
+                                { name: 'Main' },
+                                {
+                                    name: 'StopDetails',
+                                    params: {
+                                        stopId,
+                                        fromNotification: true,
+                                        ...params
+                                    }
+                                }
+                            ]
+                        })
+                    );
+                } catch (error) {
+                    console.error('Navigation error to stop (reset):', error);
+                    try {
+                        navigation.navigate('StopDetails', {
+                            stopId,
+                            fromNotification: true,
+                            ...params
+                        });
+                    } catch (fallbackError) {
+                        console.error('Fallback navigation to stop failed:', fallbackError);
+                    }
+                }
+            };
+
+            setTimeout(() => {
+                requestAnimationFrame(() => {
+                    InteractionManager.runAfterInteractions(() => {
+                        if (!navigation || typeof navigation.dispatch !== 'function') {
+                            setTimeout(() => {
+                                if (navigation && typeof navigation.dispatch === 'function') {
+                                    performNavigation();
+                                }
+                            }, 500);
+                            return;
+                        }
+                        performNavigation();
+                    });
+                });
+            }, 1500);
         } catch (error) {
             console.error('Navigation error to stops:', error);
             try {
@@ -1048,12 +1095,14 @@ const AdminStackScreen = () => (
         />
         <AdminStack.Screen
             name="FastMovingProducts"
-            component={(props) => <TurnoverProductsScreen {...props} route={{...props.route, params: {...props.route?.params, type: 'fast'}}} />}
+            component={TurnoverProductsScreen}
+            initialParams={{ type: 'fast' }}
             options={createScreenOptions()}
         />
         <AdminStack.Screen
             name="SlowMovingProducts"
-            component={(props) => <TurnoverProductsScreen {...props} route={{...props.route, params: {...props.route?.params, type: 'slow'}}} />}
+            component={TurnoverProductsScreen}
+            initialParams={{ type: 'slow' }}
             options={createScreenOptions()}
         />
     </AdminStack.Navigator>
@@ -1688,9 +1737,6 @@ export const AppNavigator = () => {
                                                                         navigation.goBack();
                                                                     }
                                                                 }
-                                                            } else if (productId && fromScreen === 'ProductDetail') {
-                                                                // ProductDetail уже в стеке (AppStack), просто возвращаемся назад
-                                                                navigation.goBack();
                                                             } else {
                                                                 navigation.goBack();
                                                             }

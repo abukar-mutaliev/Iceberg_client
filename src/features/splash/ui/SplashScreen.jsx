@@ -1,9 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigation } from '@react-navigation/native';
 import { Animated, View, Dimensions, Image } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Text from '@shared/ui/Text/Text';
 import { SafeFonts } from '@shared/lib/fontUtils';
 import PushNotificationService from '@shared/services/PushNotificationService';
+
+const HAS_SEEN_WELCOME_KEY = '@iceberg/hasSeenWelcome';
 
 export const SplashScreen = () => {
     const navigation = useNavigation();
@@ -14,6 +17,14 @@ export const SplashScreen = () => {
     const [textPosition] = useState(new Animated.Value(50));
 
     const { height, width } = Dimensions.get('window');
+
+    const hasSeenWelcomeRef = useRef(null);
+
+    useEffect(() => {
+        AsyncStorage.getItem(HAS_SEEN_WELCOME_KEY)
+            .then(value => { hasSeenWelcomeRef.current = value === 'true'; })
+            .catch(() => { hasSeenWelcomeRef.current = false; });
+    }, []);
 
     const RenderLogo = () => {
         try {
@@ -97,32 +108,28 @@ export const SplashScreen = () => {
         const performNavigation = () => {
             if (hasNavigated) return;
             hasNavigated = true;
-            navigation.replace('Welcome');
+            const destination = hasSeenWelcomeRef.current ? 'Main' : 'Welcome';
+            navigation.replace(destination);
         };
 
         const timer = setTimeout(() => {
-            // Проверяем, есть ли pending навигация из уведомления
             const hasPending = PushNotificationService.hasPendingNotificationNavigation;
             
             if (hasPending) {
-                // Мониторим флаг каждые 500мс
                 checkInterval = setInterval(() => {
                     const stillPending = PushNotificationService.hasPendingNotificationNavigation;
                     
                     if (!stillPending) {
-                        // Навигация выполнена, очищаем интервал и не делаем редирект
                         if (checkInterval) clearInterval(checkInterval);
                         if (safetyTimeout) clearTimeout(safetyTimeout);
                     }
                 }, 500);
                 
-                // Timeout безопасности: если за 10 секунд флаг не сбросился - делаем редирект как fallback
                 safetyTimeout = setTimeout(() => {
                     if (checkInterval) clearInterval(checkInterval);
                     performNavigation();
                 }, 10000);
             } else {
-                // Нет pending навигации - обычный редирект
                 performNavigation();
             }
         }, 3000);

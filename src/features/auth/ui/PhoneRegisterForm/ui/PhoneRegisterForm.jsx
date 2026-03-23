@@ -767,9 +767,10 @@ const styles = StyleSheet.create({
         backgroundColor: 'transparent',
         borderRadius: 0,
         paddingVertical: normalize(20),
+        paddingBottom: normalize(60),
         width: '100%',
         marginTop: 0,
-        marginBottom: 50,
+        marginBottom: normalize(80),
     },
     infoText: {
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',

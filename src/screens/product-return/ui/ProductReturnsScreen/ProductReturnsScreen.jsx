@@ -6,11 +6,13 @@ import {
   FlatList,
   ActivityIndicator,
   RefreshControl,
-  Pressable} from 'react-native';
+  Pressable,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Color, FontFamily, FontSize, Border, Shadow, Padding } from '@app/styles/GlobalStyles';
 import { normalize } from '@shared/lib/normalize';
+import { HeaderWithBackButton } from '@shared/ui/HeaderWithBackButton';
 import {
   useProductReturns,
   useReturnPermissions,
@@ -93,7 +95,6 @@ export const ProductReturnsScreen = () => {
   // Рендер заголовка со статистикой
   const renderHeader = () => (
     <View style={styles.header}>
-      <Text style={styles.title}>Возвраты товаров</Text>
       <Text style={styles.subtitle}>
         Управление процессом возврата залежавшихся товаров
       </Text>
@@ -194,7 +195,8 @@ export const ProductReturnsScreen = () => {
   // Рендер ошибки
   if (error && !loading && isEmpty) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+        <HeaderWithBackButton title="Возвраты товаров" />
         <View style={styles.errorContainer}>
           <Text style={styles.errorIcon}>⚠️</Text>
           <Text style={styles.errorTitle}>Ошибка загрузки</Text>
@@ -208,7 +210,8 @@ export const ProductReturnsScreen = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+      <HeaderWithBackButton title="Возвраты товаров" />
       <FlatList
         data={returns}
         keyExtractor={(item) => `return-${item.id}`}

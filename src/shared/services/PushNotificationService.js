@@ -60,29 +60,34 @@ class PushNotificationService {
             if (this.isInitialized) {
                 return true;
             }
-            
-            // Проверяем разрешения перед инициализацией OneSignal
-            // чтобы избежать автоматического запроса разрешений при инициализации
-            const Notifications = require('expo-notifications');
-            const { status } = await Notifications.getPermissionsAsync();
-            
-            // Инициализируем OneSignal только если разрешение уже есть
-            // или если пользователь еще не видел алерт (в этом случае инициализация произойдет после нажатия "Разрешить")
-            if (status === 'granted') {
-                const success = await OneSignalService.initialize(this.oneSignalAppId);
-                
-                if (!success) {
-                    return false;
-                }
 
-                this.isInitialized = true;
-                return true;
-            } else {
-                // Если разрешения нет, не инициализируем OneSignal
-                // Инициализация произойдет после того, как пользователь нажмет "Разрешить" в алерте
-                console.log('[PushNotificationService] ⏸️ Отложена инициализация OneSignal: разрешения нет');
+            // Важно: на Android OneSignal должен быть инициализирован даже до выдачи permission,
+            // иначе не поднимается стабильный pipeline регистрации подписки.
+            // На iOS сохраняем осторожное поведение, чтобы не ломать кастомный onboarding.
+            let status = 'unknown';
+            try {
+                const permissions = await Notifications.getPermissionsAsync();
+                status = permissions?.status || 'unknown';
+            } catch (_) {
+                // Не блокируем инициализацию из-за ошибки проверки permission.
+            }
+
+            const shouldInitialize =
+                Platform.OS === 'android' ||
+                status === 'granted';
+
+            if (!shouldInitialize) {
+                console.log('[PushNotificationService] ⏸️ Отложена инициализация OneSignal: iOS permission не выдан');
                 return false;
             }
+
+            const success = await OneSignalService.initialize(this.oneSignalAppId);
+            if (!success) {
+                return false;
+            }
+
+            this.isInitialized = true;
+            return true;
 
         } catch (error) {
             return false;
@@ -200,14 +205,29 @@ class PushNotificationService {
             const type = data?.type || data?.notificationType;
             const roomId = data?.roomId || data?.room_id;
             const senderId = data?.senderId || data?.sender_id;
-            
-            // Только для уведомлений типа CHAT_MESSAGE с roomId
+
             const normalizedType = String(type || '').toUpperCase();
-            if (normalizedType !== 'CHAT_MESSAGE' || !roomId) {
+            const hasChatIdentifiers = !!roomId || !!senderId;
+
+            // Если тип явно указан и это не чат - не подавляем.
+            if (normalizedType && normalizedType !== 'CHAT_MESSAGE') {
                 if (__DEV__) {
-                    console.log('[PushNotification] ✅ Не подавляем: не CHAT_MESSAGE или нет roomId', {
+                    console.log('[PushNotification] ✅ Не подавляем: тип не относится к чату', {
                         type: normalizedType,
-                        roomId
+                        roomId,
+                        senderId
+                    });
+                }
+                return false;
+            }
+
+            // Если тип не пришел (iOS edge-case), но есть roomId/senderId, считаем чат-уведомлением.
+            if (!hasChatIdentifiers) {
+                if (__DEV__) {
+                    console.log('[PushNotification] ✅ Не подавляем: недостаточно данных для чат-уведомления', {
+                        type: normalizedType,
+                        roomId,
+                        senderId
                     });
                 }
                 return false;
@@ -222,6 +242,7 @@ class PushNotificationService {
             // Логируем состояние для диагностики
             if (__DEV__) {
                 console.log('[PushNotification] 🔍 Проверка подавления уведомления', {
+                    type: normalizedType || 'UNKNOWN',
                     activeRoomId: normalizedActiveRoomId,
                     notificationRoomId: normalizedNotificationRoomId,
                     activePeerUserId: normalizedActivePeerUserId,
@@ -652,7 +673,7 @@ class PushNotificationService {
             this.navigateToOrderChoice(data);
         } else if (data.orderId || data.type === 'ORDER_STATUS') {
             this.navigateToOrder(data);
-        } else if (data.productId || data.type === 'PRODUCT_NOTIFICATION' || data.type === 'PROMOTION' || data.type === 'STOCK_ALERT') {
+        } else if (data.productId || data.type === 'PRODUCT_NOTIFICATION' || data.type === 'PROMOTION' || data.type === 'STOCK_ALERT' || data.type === 'PRODUCT_MODERATION') {
             this.navigateToProduct(data);
         } else if (data.type === 'CHAT_MESSAGE' && data.roomId) {
             // Если пользователь не авторизован — сначала ведём на экран Auth, а навигацию в чат оставляем в очереди
@@ -744,13 +765,12 @@ class PushNotificationService {
             // Для уведомлений об остатках (STOCK_ALERT) используем AdminProductDetail
             // Для обычных уведомлений о продуктах тоже используем AdminProductDetail для админов/сотрудников
             const notificationType = data?.type || '';
-            const isStockAlert = notificationType === 'STOCK_ALERT';
+            const isAdminProductView = notificationType === 'STOCK_ALERT' || notificationType === 'PRODUCT_MODERATION';
             
-            // Для STOCK_ALERT используем AdminProductDetail из AdminStack (как в StockAlertsScreen)
-            if (isStockAlert) {
+            if (isAdminProductView) {
                 const params = {
                     productId: parseInt(String(productId), 10),
-                    fromScreen: 'StockAlerts'
+                    fromScreen: notificationType === 'PRODUCT_MODERATION' ? 'ModerationNotification' : 'StockAlerts'
                 };
                 
                 // Добавляем warehouseId если он есть
@@ -758,7 +778,7 @@ class PushNotificationService {
                     params.warehouseId = parseInt(String(warehouseId), 10);
                 }
                 
-                console.log('📦 Навигация к AdminProductDetail (AdminStack) из уведомления об остатках:', params);
+                console.log('📦 Навигация к AdminProductDetail (AdminStack) из уведомления:', { ...params, notificationType });
                 
                 try {
                     // Используем вложенную навигацию через AdminStack к AdminProductDetail

@@ -10,7 +10,66 @@ const STORAGE_KEYS = {
 let isRefreshing = false;
 let failedQueue = [];
 let dispatchAction = null;
-let refreshPromise = null; // Добавляем для предотвращения множественных запросов
+let refreshPromise = null;
+
+const isNetworkError = (error) =>
+    !error.response &&
+    (error.code === 'ERR_NETWORK' ||
+     error.code === 'ECONNABORTED' ||
+     error.message?.includes('Network') ||
+     error.message?.includes('timeout'));
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+const refreshWithRetry = async (refreshTokenValue, maxRetries = 3) => {
+    let lastError;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+            const response = await axios.post(
+                `${getBaseUrl()}/api/auth/refresh-token`,
+                { refreshToken: refreshTokenValue },
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                    },
+                    timeout: 15000,
+                }
+            );
+
+            let accessToken, newRefreshToken;
+            if (response.data?.data?.accessToken) {
+                accessToken = response.data.data.accessToken;
+                newRefreshToken = response.data.data.refreshToken;
+            } else if (response.data?.accessToken) {
+                accessToken = response.data.accessToken;
+                newRefreshToken = response.data.refreshToken;
+            }
+
+            if (accessToken && newRefreshToken) {
+                return { accessToken, refreshToken: newRefreshToken };
+            }
+
+            throw new Error('Токены не найдены в ответе сервера');
+        } catch (error) {
+            lastError = error;
+
+            if (error.response?.status === 401 || error.response?.status === 403) {
+                throw error;
+            }
+
+            if (isNetworkError(error) && attempt < maxRetries - 1) {
+                const delay = Math.min(1000 * Math.pow(2, attempt), 8000);
+                console.log(`🔄 [REFRESH] Retry ${attempt + 1}/${maxRetries} after ${delay}ms`);
+                await sleep(delay);
+                continue;
+            }
+
+            throw error;
+        }
+    }
+    throw lastError;
+};
 
 export const setDispatch = (dispatch) => {
     dispatchAction = dispatch;
@@ -375,9 +434,9 @@ export const setAuthorizationHeader = async (forceRefresh = false) => {
 
 const handleRefreshToken = async (error, originalRequest) => {
     if (
-        originalRequest.url.includes('/api/auth/login') ||
-        originalRequest.url.includes('/api/auth/register') ||
-        originalRequest.url.includes('/api/auth/refresh-token')
+        originalRequest.url?.includes('/api/auth/login') ||
+        originalRequest.url?.includes('/api/auth/register') ||
+        originalRequest.url?.includes('/api/auth/refresh-token')
     ) {
         return Promise.reject(error);
     }
@@ -401,7 +460,6 @@ const handleRefreshToken = async (error, originalRequest) => {
         if (!tokens || !tokens.refreshToken) {
             await removeTokens();
             if (dispatchAction) {
-                // Только сбрасываем auth, но НЕ полностью приложение
                 dispatchAction({ type: 'auth/resetState' });
             }
             throw new Error('Отсутствуют сохраненные токены');
@@ -412,39 +470,12 @@ const handleRefreshToken = async (error, originalRequest) => {
         if (!decoded || !decoded.exp || decoded.exp < currentTime) {
             await removeTokens();
             if (dispatchAction) {
-                // Только сбрасываем auth, но НЕ полностью приложение
                 dispatchAction({ type: 'auth/resetState' });
             }
             throw new Error('Ваша сессия истекла. Пожалуйста, войдите снова');
         }
 
-        const response = await axios.post(
-            `${getBaseUrl()}/api/auth/refresh-token`,
-            { refreshToken: tokens.refreshToken },
-            {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                },
-            }
-        );
-
-        let accessToken, refreshToken;
-
-        if (response.data?.data?.accessToken) {
-            accessToken = response.data.data.accessToken;
-            refreshToken = response.data.data.refreshToken;
-        } else if (response.data.accessToken) {
-            accessToken = response.data.accessToken;
-            refreshToken = response.data.refreshToken;
-        }
-
-        if (!accessToken || !refreshToken) {
-            console.error('Не удалось извлечь токены из ответа:', response.data);
-            throw new Error('Токены не найдены в ответе сервера');
-        }
-
-        const newTokens = { accessToken, refreshToken };
+        const newTokens = await refreshWithRetry(tokens.refreshToken);
         await saveTokens(newTokens);
         setTokensAndUser(newTokens);
 
@@ -458,27 +489,21 @@ const handleRefreshToken = async (error, originalRequest) => {
 
         processQueue(refreshError, null);
 
-        // НЕ сбрасываем состояние сразу для критичных операций (заказы, оплата)
-        const isCriticalOperation = originalRequest.url && (
-            originalRequest.url.includes('/checkout') ||
-            originalRequest.url.includes('/order-alternatives') ||
-            originalRequest.url.includes('/payments') ||
-            originalRequest.url.includes('/orders/my')
-        );
-
-        if (isCriticalOperation) {
-            // Для критичных операций возвращаем ошибку но НЕ выбрасываем пользователя
+        // При сетевой ошибке НЕ сбрасываем авторизацию — токены на сервере
+        // могут быть ещё валидны, просто сеть недоступна
+        if (isNetworkError(refreshError)) {
             return Promise.reject(Object.assign(refreshError, {
-                isCriticalOperation: true,
-                message: 'Сессия истекла. Пожалуйста, войдите снова для продолжения'
+                isNetworkError: true,
+                message: 'Нет подключения к интернету. Попробуйте позже.'
             }));
         }
 
-        // Для остальных операций только сбрасываем auth (НЕ полностью приложение)
-        await removeTokens();
-        if (dispatchAction) {
-            // НЕ сбрасываем RESET_APP_STATE - пусть пользователь войдет снова
-            dispatchAction({ type: 'auth/resetState' });
+        // 401/403 от сервера — токен действительно невалиден
+        if (refreshError.response?.status === 401 || refreshError.response?.status === 403) {
+            await removeTokens();
+            if (dispatchAction) {
+                dispatchAction({ type: 'auth/resetState' });
+            }
         }
 
         return Promise.reject(refreshError);
@@ -547,41 +572,15 @@ api.interceptors.request.use(async (config) => {
                         isRefreshing = true;
 
                         try {
-                            // Обновляем токен ПЕРЕД отправкой запроса
-                            const response = await axios.post(
-                                `${getBaseUrl()}/api/auth/refresh-token`,
-                                { refreshToken: tokens.refreshToken },
-                                {
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                        'Accept': 'application/json',
-                                    },
-                                }
-                            );
+                            const newTokens = await refreshWithRetry(tokens.refreshToken);
+                            await saveTokens(newTokens);
+                            setTokensAndUser(newTokens);
 
-                            let newAccessToken, newRefreshToken;
-                            if (response.data?.data?.accessToken) {
-                                newAccessToken = response.data.data.accessToken;
-                                newRefreshToken = response.data.data.refreshToken;
-                            } else if (response.data.accessToken) {
-                                newAccessToken = response.data.accessToken;
-                                newRefreshToken = response.data.refreshToken;
-                            }
-
-                            if (newAccessToken && newRefreshToken) {
-                                const newTokens = { accessToken: newAccessToken, refreshToken: newRefreshToken };
-                                await saveTokens(newTokens);
-                                setTokensAndUser(newTokens);
-
-                                config.headers.Authorization = `Bearer ${newAccessToken}`;
-
-                                // Обрабатываем очередь ожидающих запросов
-                                processQueue(null, newAccessToken);
-                            }
+                            config.headers.Authorization = `Bearer ${newTokens.accessToken}`;
+                            processQueue(null, newTokens.accessToken);
                         } catch (refreshError) {
                             console.error('❌ [API REQUEST] Failed to refresh token proactively:', refreshError.message);
                             processQueue(refreshError, null);
-                            // Продолжаем с текущим токеном, пусть response interceptor обработает 401
                             config.headers.Authorization = `Bearer ${tokens.accessToken}`;
                         } finally {
                             isRefreshing = false;
@@ -787,109 +786,75 @@ export const authService = {
         }
     },
     refreshAccessToken: async () => {
-        try {
-            // Если токен уже обновляется, возвращаем существующий промис
-            if (refreshPromise) {
-                return refreshPromise;
-            }
-
-            // Создаем новый промис для обновления
-            refreshPromise = (async () => {
-                try {
-                    const tokens = await getStoredTokens();
-                    
-                    if (!tokens?.refreshToken) {
-                        console.error('❌ refreshAccessToken: No refresh token available');
-                        return null;
-                    }
-
-                    // Проверяем валидность refresh token перед обновлением
-                    const decoded = decodeToken(tokens.refreshToken);
-                    const currentTime = Math.floor(Date.now() / 1000);
-                    if (!decoded || !decoded.exp || decoded.exp <= currentTime) {
-                        await removeTokens();
-                        if (dispatchAction) {
-                            dispatchAction({ type: 'auth/resetState' });
-                        }
-                        return null;
-                    }
-
-                    // Проверяем, не обновляются ли токены в request interceptor
-                    if (isRefreshing) {
-                        // Ждем немного и проверяем токены еще раз
-                        await new Promise(resolve => setTimeout(resolve, 200));
-                        const updatedTokens = await getStoredTokens();
-                        const updatedAccessValid = updatedTokens?.accessToken ? isTokenValid(updatedTokens.accessToken) : false;
-                        
-                        if (updatedAccessValid && updatedTokens) {
-                            return updatedTokens;
-                        }
-                    }
-                    
-                    const response = await axios.post(
-                        `${getBaseUrl()}/api/auth/refresh-token`,
-                        { refreshToken: tokens.refreshToken },
-                        {
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Accept': 'application/json',
-                            },
-                        }
-                    );
-
-                    let accessToken, refreshToken;
-                    if (response.data?.data?.accessToken) {
-                        accessToken = response.data.data.accessToken;
-                        refreshToken = response.data.data.refreshToken;
-                    } else if (response.data.accessToken) {
-                        accessToken = response.data.accessToken;
-                        refreshToken = response.data.refreshToken;
-                    }
-
-                    if (!accessToken || !refreshToken) {
-                        console.error('❌ refreshAccessToken: Failed to extract tokens from response');
-                        return null;
-                    }
-
-                    const newTokens = { accessToken, refreshToken };
-                    await saveTokens(newTokens);
-                    setTokensAndUser(newTokens);
-
-                    return newTokens;
-                } finally {
-                    // Сбрасываем промис после завершения (успешного или нет)
-                    refreshPromise = null;
-                }
-            })();
-
+        // Если уже обновляется — ждём того же промиса
+        if (refreshPromise) {
             return refreshPromise;
-        } catch (error) {
-            refreshPromise = null; // Сбрасываем промис при ошибке
-            console.error('❌ refreshAccessToken: Error refreshing token:', error.message);
-            
-            // При ошибке 401/403 - это может означать что токены уже были использованы другим процессом
-            if (error.response?.status === 401 || error.response?.status === 403) {
-                // Проверяем, не были ли токены обновлены request interceptor'ом
-                await new Promise(resolve => setTimeout(resolve, 300)); // Даем время interceptor'у завершиться
-                const checkTokens = await getStoredTokens();
-                const checkAccessValid = checkTokens?.accessToken ? isTokenValid(checkTokens.accessToken) : false;
-                
-                if (checkAccessValid && checkTokens) {
-                    return checkTokens;
+        }
+
+        refreshPromise = (async () => {
+            try {
+                const tokens = await getStoredTokens();
+
+                if (!tokens?.refreshToken) {
+                    return null;
                 }
-                
-                // Токены не обновлены, проверяем refresh token
-                const checkRefreshValid = checkTokens?.refreshToken ? isTokenValid(checkTokens.refreshToken) : false;
-                if (!checkRefreshValid) {
+
+                const decoded = decodeToken(tokens.refreshToken);
+                const currentTime = Math.floor(Date.now() / 1000);
+                if (!decoded || !decoded.exp || decoded.exp <= currentTime) {
                     await removeTokens();
                     if (dispatchAction) {
                         dispatchAction({ type: 'auth/resetState' });
                     }
+                    return null;
                 }
+
+                // Если interceptor уже обновляет — ждём и проверяем результат
+                if (isRefreshing) {
+                    await sleep(300);
+                    const updatedTokens = await getStoredTokens();
+                    if (updatedTokens?.accessToken && isTokenValid(updatedTokens.accessToken)) {
+                        return updatedTokens;
+                    }
+                }
+
+                const newTokens = await refreshWithRetry(tokens.refreshToken);
+                await saveTokens(newTokens);
+                setTokensAndUser(newTokens);
+
+                return newTokens;
+            } catch (error) {
+                console.error('❌ refreshAccessToken:', error.message);
+
+                // Сетевая ошибка — НЕ удаляем токены, они могут быть валидны
+                if (isNetworkError(error)) {
+                    return null;
+                }
+
+                // 401/403 — проверяем, не обновил ли токены interceptor
+                if (error.response?.status === 401 || error.response?.status === 403) {
+                    await sleep(300);
+                    const checkTokens = await getStoredTokens();
+                    if (checkTokens?.accessToken && isTokenValid(checkTokens.accessToken)) {
+                        return checkTokens;
+                    }
+
+                    const checkRefreshValid = checkTokens?.refreshToken && isTokenValid(checkTokens.refreshToken);
+                    if (!checkRefreshValid) {
+                        await removeTokens();
+                        if (dispatchAction) {
+                            dispatchAction({ type: 'auth/resetState' });
+                        }
+                    }
+                }
+
+                return null;
+            } finally {
+                refreshPromise = null;
             }
-            
-            return null;
-        }
+        })();
+
+        return refreshPromise;
     }
 };
 

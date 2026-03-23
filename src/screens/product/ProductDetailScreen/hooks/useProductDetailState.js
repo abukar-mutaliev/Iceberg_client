@@ -8,7 +8,7 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
  */
 export const useProductDetailState = (productId) => {
     // Состояния компонента
-    const [contentHeight, setContentHeight] = useState(SCREEN_HEIGHT * 2);
+    const [contentHeight, setContentHeight] = useState(SCREEN_HEIGHT * 3);
     const [selectedQuantity, setSelectedQuantity] = useState(1);
     const [activeTab, setActiveTab] = useState('description');
     const [optimisticProduct, setOptimisticProduct] = useState(null);
@@ -75,7 +75,16 @@ export const useProductDetailState = (productId) => {
     );
 
     const handleContentSizeChange = useCallback((width, height) => {
-        setContentHeight(height + 100);
+        const nextHeight = Math.max((height || 0) + 100, SCREEN_HEIGHT * 3);
+
+        // Не уменьшаем фон при промежуточных перерасчетах layout,
+        // иначе нижняя часть экрана визуально "дергается".
+        setContentHeight(prevHeight => {
+            if (nextHeight <= prevHeight) {
+                return prevHeight;
+            }
+            return nextHeight;
+        });
     }, []);
 
     const handleQuantityChange = useCallback((newQuantity) => {
@@ -122,6 +131,10 @@ export const useProductDetailState = (productId) => {
             scrollY.stopAnimation();
         };
     }, [clearAllTimers, fadeAnim, scrollY]);
+
+    useEffect(() => {
+        setContentHeight(SCREEN_HEIGHT * 3);
+    }, [productId]);
 
     return {
         // Состояния

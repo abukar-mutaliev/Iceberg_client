@@ -48,27 +48,19 @@ export const useChatHeaderActions = ({
   
   /**
    * Обработка кнопки "Назад"
-   * Специальная логика для возврата из чата в ProductDetail
+   * Важно: не делаем принудительный переход в ProductDetail, иначе можно
+   * зациклить стек (ChatRoom <-> ProductDetail) при повторных переходах.
    */
   const handleBackPress = useCallback(() => {
-    const fromScreen = params.fromScreen;
-    const productId = params.productId || params.productInfo?.id;
-    
-    // ProductDetail - особый случай, переходим напрямую
-    if (productId && (fromScreen === 'ProductDetail' || !fromScreen)) {
-      const rootNavigation = navigation.getParent() || navigation;
-      rootNavigation.navigate('ProductDetail', {
-        productId,
-        fromScreen: 'ChatRoom'
-      });
-      return;
-    }
-    
     // Стандартная навигация назад
     if (navigation.canGoBack()) {
       navigation.goBack();
+      return;
     }
-  }, [navigation, params]);
+
+    // Fallback для сценариев без back-стека (cold start, deep link и т.п.)
+    resetToChatList();
+  }, [navigation, resetToChatList]);
   
   /**
    * Обработка нажатия на профиль/аватар

@@ -48,12 +48,13 @@ export const VerificationForm = ({
     onBack 
 }) => {
     const codeLength = 6;
+    const resendCooldownSeconds = registrationType === 'phone' ? 120 : 300;
     const initialCode = new Array(codeLength).fill('');
     
     const [code, setCode] = useState(initialCode);
     const [focusedIndex, setFocusedIndex] = useState(0);
     const [shakeAnimation] = useState(new Animated.Value(0));
-    const [resendTimer, setResendTimer] = useState(300);
+    const [resendTimer, setResendTimer] = useState(resendCooldownSeconds);
     
     const dispatch = useDispatch();
     const isLoading = useSelector((state) => state.auth?.isLoading ?? false);
@@ -69,6 +70,10 @@ export const VerificationForm = ({
         dispatch(clearError());
         return () => dispatch(clearError());
     }, [dispatch]);
+
+    useEffect(() => {
+        setResendTimer(resendCooldownSeconds);
+    }, [resendCooldownSeconds]);
 
     useEffect(() => {
         if (resendTimer <= 0) return;
@@ -169,6 +174,21 @@ export const VerificationForm = ({
             }
         } catch (err) {
             console.error('Error pasting from clipboard', err);
+        }
+    };
+
+    const handlePasteFullCode = async () => {
+        try {
+            const clipboardContent = await Clipboard.getString();
+            if (!clipboardContent || clipboardContent.length === 0) {
+                Alert.alert('Вставка кода', 'Буфер обмена пуст');
+                return;
+            }
+
+            handleCodePaste(clipboardContent, 0);
+        } catch (err) {
+            console.error('Error pasting full code from clipboard', err);
+            Alert.alert('Ошибка', 'Не удалось вставить код из буфера обмена');
         }
     };
 
@@ -292,7 +312,7 @@ export const VerificationForm = ({
                                     onFocus={() => setFocusedIndex(index)}
                                     onBlur={() => setFocusedIndex(-1)}
                                     keyboardType="numeric"
-                                    maxLength={1}
+                                    maxLength={codeLength}
                                     autoFocus={index === 0}
                                     textAlign="center"
                                     blurOnSubmit={false}
@@ -352,13 +372,17 @@ export const VerificationForm = ({
                     <TouchableOpacity style={styles.actionButton} onPress={onBack}>
                         <Text style={styles.actionButtonText}>← Назад</Text>
                     </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.actionButton} onPress={handlePasteFullCode}>
+                        <Text style={styles.actionButtonText}>Вставить код</Text>
+                    </TouchableOpacity>
                     
                     <TouchableOpacity 
                         style={styles.actionButton}
                         onPress={() => {
                             if (resendTimer > 0) return;
                             Alert.alert('Повторная отправка', 'Код будет отправлен повторно');
-                            setResendTimer(300);
+                            setResendTimer(resendCooldownSeconds);
                         }}
                         disabled={resendTimer > 0}
                     >
@@ -386,10 +410,11 @@ const styles = StyleSheet.create({
         flex: 1,
         paddingHorizontal: 24,
         paddingTop: safeTopPadding + 10,
+        paddingBottom: adaptiveSize(48),
         backgroundColor: '#F8F9FA',
     },
     progressContainer: {
-        marginBottom: adaptiveSize(24),
+        marginBottom: adaptiveSize(34),
         alignItems: 'center',
     },
     progressBar: {

@@ -25,6 +25,7 @@ import {
     fetchProducts,
     selectProducts,
     selectProductsLoading,
+    selectProductsError,
     ProductTile
 } from '@entities/product';
 
@@ -71,6 +72,35 @@ export const SearchResultsScreen = () => {
     const isFilterActive = useSelector(selectIsFilterActive);
     const filterCriteria = useSelector(selectFilterCriteria);
     const isProductsLoading = useSelector(selectProductsLoading);
+    const productsError = useSelector(selectProductsError);
+
+    const getReadableErrorMessage = useCallback((errorValue) => {
+        if (!errorValue) {
+            return '';
+        }
+
+        const rawMessage = typeof errorValue === 'string'
+            ? errorValue
+            : errorValue?.message || '';
+        const normalizedMessage = String(rawMessage).trim().toLowerCase();
+
+        if (
+            normalizedMessage.includes('network error') ||
+            normalizedMessage.includes('network request failed') ||
+            normalizedMessage.includes('failed to fetch')
+        ) {
+            return 'Нет подключения к интернету. Проверьте сеть и попробуйте снова.';
+        }
+
+        if (
+            normalizedMessage.includes('timeout') ||
+            normalizedMessage.includes('econnaborted')
+        ) {
+            return 'Превышено время ожидания ответа. Проверьте подключение и попробуйте снова.';
+        }
+
+        return rawMessage || 'Не удалось загрузить результаты поиска. Попробуйте снова.';
+    }, []);
 
     const filteredProducts = useMemo(() => {
         let result = Array.isArray(products) ? [...products] : [];
@@ -249,7 +279,16 @@ export const SearchResultsScreen = () => {
 
             {/* Нижняя часть с белым фоном и сеткой продуктов */}
             <View style={styles.contentWrapper}>
-                {filteredProducts.length > 0 ? (
+                {productsError ? (
+                    <View style={styles.emptyResultsContainer}>
+                        <Text style={styles.emptyResultsText}>
+                            Не удалось загрузить товары
+                        </Text>
+                        <Text style={styles.emptyResultsHint}>
+                            {getReadableErrorMessage(productsError)}
+                        </Text>
+                    </View>
+                ) : filteredProducts.length > 0 ? (
                     <FlatList
                         data={filteredProducts}
                         renderItem={renderItem}

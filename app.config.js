@@ -29,7 +29,8 @@ export default {
             [
                 'expo-location',
                 {
-                    locationAlwaysAndWhenInUsePermission: 'This app uses location to show your position on the map.',
+                    locationWhenInUsePermission: 'Приложению требуется доступ к геолокации для определения вашего текущего местоположения на карте.',
+                    locationAlwaysAndWhenInUsePermission: 'Приложению требуется доступ к геолокации для определения вашего текущего местоположения на карте.',
                 },
             ],
             [
@@ -183,6 +184,8 @@ export default {
                 NSAppTransportSecurity: {
                     NSAllowsArbitraryLoads: true,
                 },
+                NSLocationWhenInUseUsageDescription: 'Приложению требуется доступ к геолокации для определения вашего текущего местоположения на карте.',
+                NSLocationAlwaysAndWhenInUseUsageDescription: 'Приложению требуется доступ к геолокации для определения вашего текущего местоположения на карте.',
                 NSCameraUsageDescription: 'Приложению требуется доступ к камере для съемки фотографий в чате.',
                 NSPhotoLibraryUsageDescription: 'Приложению требуется доступ к вашим фотографиям для отправки изображений в чате.',
                 NSPhotoLibraryAddUsageDescription: 'Приложению требуется доступ для сохранения фотографий в вашу галерею.',

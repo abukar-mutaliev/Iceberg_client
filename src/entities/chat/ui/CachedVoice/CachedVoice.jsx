@@ -98,7 +98,12 @@ const StatusTicks = memo(({ status }) => {
         );
       case 'SENT':
       default:
-        return <Text style={styles.tick}>✓</Text>;
+        return (
+          <>
+            <Text style={styles.tick}>✓</Text>
+            <Text style={[styles.tick, styles.secondTick]}>✓</Text>
+          </>
+        );
     }
   };
 

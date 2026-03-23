@@ -1,6 +1,5 @@
 import React, { useState, useCallback } from 'react';
 import {
-    
     View,
     Text,
     StyleSheet,
@@ -8,7 +7,8 @@ import {
     RefreshControl,
     ActivityIndicator,
     Alert,
-    TouchableOpacity} from 'react-native';
+    TouchableOpacity,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -25,6 +25,7 @@ import { useAuth } from '@entities/auth/hooks/useAuth';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily } from '@app/styles/GlobalStyles';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { HeaderWithBackButton } from '@shared/ui/HeaderWithBackButton';
 import ModernStockStatsCard from '@widgets/stockAlerts/StockStatsCard';
 import ModernCriticalStockList from '@widgets/stockAlerts/CriticalStockList';
 import ModernStockAlertActions from '@widgets/stockAlerts/StockAlertActions';
@@ -85,7 +86,10 @@ export const StockAlertsScreen = () => {
     // Проверяем права доступа
     const isAdmin = currentUser?.role === 'ADMIN';
     const isEmployee = currentUser?.role === 'EMPLOYEE';
-    const employeeRole = currentUser?.employee?.processingRole;
+    const employeeRoleRaw = currentUser?.employee?.processingRole;
+    const employeeRole = typeof employeeRoleRaw === 'string'
+        ? employeeRoleRaw.toUpperCase()
+        : null;
 
     // Доступ имеют: админы и сотрудники без роли или менеджеры
     const allowedEmployeeRoles = [null, 'MANAGER'];
@@ -174,7 +178,8 @@ export const StockAlertsScreen = () => {
     }
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+            <HeaderWithBackButton title="Контроль остатков" />
             <ScrollView
                 contentContainerStyle={styles.scrollContainer}
                 refreshControl={

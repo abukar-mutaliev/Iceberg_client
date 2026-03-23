@@ -52,17 +52,37 @@ export const selectDistrictsBySearch = createSelector(
 );
 
 export const selectDistrictsWithStats = createSelector(
-    [selectDistricts],
-    (districts) => {
-        return districts.map(district => ({
-            ...district,
-            driversCount: district._count?.drivers || 0,
-            clientsCount: district._count?.clients || 0,
-            stopsCount: district._count?.stops || 0,
-            totalCount: (district._count?.drivers || 0) +
-                (district._count?.clients || 0) +
-                (district._count?.stops || 0)
-        }));
+    [
+        selectDistricts,
+        (state) => state.stop?.stops || EMPTY_ARRAY,
+        (state) => state.stop?.selectedDistrict || null,
+    ],
+    (districts, stops, selectedStopDistrict) => {
+        const stopsCountByDistrict = {};
+        stops.forEach(stop => {
+            if (stop.districtId) {
+                stopsCountByDistrict[stop.districtId] =
+                    (stopsCountByDistrict[stop.districtId] || 0) + 1;
+            }
+        });
+
+        const useComputedCounts = stops.length > 0 && !selectedStopDistrict;
+
+        return districts.map(district => {
+            const stopsCount = useComputedCounts
+                ? (stopsCountByDistrict[district.id] || 0)
+                : (district._count?.stops || 0);
+
+            return {
+                ...district,
+                driversCount: district._count?.drivers || 0,
+                clientsCount: district._count?.clients || 0,
+                stopsCount,
+                totalCount: (district._count?.drivers || 0) +
+                    (district._count?.clients || 0) +
+                    stopsCount
+            };
+        });
     }
 );
 

@@ -28,6 +28,20 @@ import { selectLastActivityType } from '@entities/chat/model/selectors';
 import { setGlobalSocket, getActivityTypeCache, setActivityTypeCache } from './useChatSocketActions';
 import { playReceiveSound } from '@entities/chat/lib/receiveSound';
 
+const getUserDistrictIdsFromUser = (user) => {
+  if (!user) return [];
+  const role = user.role;
+  if (role === 'CLIENT' && user.client?.districtId) {
+    return [user.client.districtId];
+  }
+  if ((role === 'EMPLOYEE' || role === 'DRIVER') && user[role.toLowerCase()]?.districts) {
+    return user[role.toLowerCase()].districts
+      .map(d => d?.id || d)
+      .filter(id => id != null);
+  }
+  return [];
+};
+
 // Simple throttle helper
 const throttle = (fn, wait) => {
   let inFlight = false;
@@ -346,8 +360,24 @@ export const useChatSocket = () => {
             playReceiveSound();
           }
           
-          // Передаем currentUserId для проверки оптимистичных сообщений
-          dispatch(receiveSocketMessage({ ...payload, currentUserId }));
+          // Передаем currentUserId и userDistrictIds для фильтрации STOP и подсчета unread
+          const freshState = store.getState();
+          const currentAuthUser = freshState?.auth?.user;
+          const freshUserId = currentAuthUser?.id || currentUserId;
+          const userDistrictIds = getUserDistrictIdsFromUser(currentAuthUser);
+
+          if (__DEV__ && message?.type === 'STOP') {
+            console.log('[useChatSocket] STOP message received', {
+              roomId,
+              messageType: message.type,
+              userRole: currentAuthUser?.role,
+              clientDistrictId: currentAuthUser?.client?.districtId,
+              userDistrictIds,
+              stopDistrictId: message?.stop?.districtId,
+            });
+          }
+
+          dispatch(receiveSocketMessage({ ...payload, currentUserId: freshUserId, userDistrictIds }));
         });
 
         socket.on('chat:message:deleted', (payload) => {

@@ -298,6 +298,7 @@ export const AdminPanelScreen = () => {
     const processingRole = currentUser?.employee?.processingRole;
     const restrictedRoles = ['PICKER', 'COURIER'];
     const canViewStockAlerts = isAdmin || (isEmployee && !restrictedRoles.includes(processingRole));
+
     const panelTitle = isAdmin
         ? "Панель Администратора"
         : (isEmployee ? "Панель Сотрудника" : "Панель Управления");
@@ -307,6 +308,7 @@ export const AdminPanelScreen = () => {
             <AdminHeader
                 title={panelTitle}
                 icon={<IconAdmin width={24} height={24} color={Color.blue2} />}
+                showBackButton={false}
             />
 
             <ScrollView style={styles.scrollView}>
@@ -327,8 +329,8 @@ export const AdminPanelScreen = () => {
                     />
                 </AdminSection>
 
-                {/* Раздел для управления вознаграждениями - только для администраторов */}
-                {isAdmin && (
+                {/* Раздел для управления вознаграждениями - только для суперадминистраторов */}
+                {isSuperAdmin && (
                     <AdminSection title="Управление вознаграждениями">
                         <AdminMenuItem
                             icon={<IconUser color={Color.blue2} />}
@@ -406,8 +408,8 @@ export const AdminPanelScreen = () => {
                     />
                 </AdminSection>
 
-                {/* Секцию управления пользователями показываем только администраторам */}
-                {isAdmin && (
+                {/* Секцию управления пользователями показываем только суперадминистраторам */}
+                {isSuperAdmin && (
                     <AdminSection title="Управление пользователями">
                         <AdminMenuItem
                             icon={<IconUser color={Color.blue2} />}

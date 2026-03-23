@@ -25,7 +25,6 @@ import { useSelector } from 'react-redux';
 import { selectDistrictsWithStats } from "@entities/district/model/selectors";
 import { Color } from "@app/styles/GlobalStyles";
 import { Loader } from "@shared/ui/Loader";
-import { ErrorState } from "@shared/ui/states/ErrorState";
 
 // Базовая ширина для дизайна (эталон)
 const BASE_DESIGN_WIDTH = 400;
@@ -460,20 +459,10 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
         return (
             <View style={styles.legend}>
                 <Text style={styles.legendTitle}>Районы Ингушетии:</Text>
-                {error && (
-                    <View style={styles.errorBanner}>
-                        <Text style={styles.errorBannerText}>
-                            ⚠️ Ошибка загрузки данных. Нажмите "Повторить" для обновления.
-                        </Text>
-                        <Pressable style={styles.retrySmallButton} onPress={retryLoad}>
-                            <Text style={styles.retrySmallButtonText}>Повторить</Text>
-                        </Pressable>
-                    </View>
-                )}
                 {isLoading && (
                     <Text style={styles.legendText}>Загрузка данных...</Text>
                 )}
-                {!hasData && !isLoading && !error && (
+                {!hasData && !isLoading && (
                     <Text style={styles.legendText}>Данные отсутствуют</Text>
                 )}
                 {hasData && (
@@ -526,25 +515,6 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
             <Text style={styles.loadingText}>Загрузка данных районов...</Text>
         </View>
     );
-
-    const renderErrorState = () => (
-        <View style={styles.errorContainer}>
-            <ErrorState
-                message="Не удалось загрузить данные районов"
-                onRetry={retryLoad}
-                buttonText="Повторить"
-            />
-        </View>
-    );
-
-    if (error) {
-        return (
-            <SafeAreaView style={styles.container}>
-                <StatusBar barStyle="dark-content" backgroundColor="#f9fafb" />
-                {renderErrorState()}
-            </SafeAreaView>
-        );
-    }
 
     // Адаптивные стили на основе текущих размеров экрана
     const adaptiveStyles = useMemo(() => ({
@@ -937,29 +907,6 @@ const styles = StyleSheet.create({
         borderRadius: 8,
     },
     retryButtonText: {
-        color: '#ffffff',
-        fontSize: 16,
-        fontWeight: '600',
-    },
-    errorBanner: {
-        backgroundColor: '#fef2f2',
-        padding: 12,
-        borderRadius: 8,
-        marginBottom: 12,
-    },
-    errorBannerText: {
-        color: '#b91c1c',
-        fontSize: 14,
-        fontWeight: '500',
-        marginBottom: 8,
-    },
-    retrySmallButton: {
-        backgroundColor: '#3b82f6',
-        paddingHorizontal: 24,
-        paddingVertical: 12,
-        borderRadius: 8,
-    },
-    retrySmallButtonText: {
         color: '#ffffff',
         fontSize: 16,
         fontWeight: '600',

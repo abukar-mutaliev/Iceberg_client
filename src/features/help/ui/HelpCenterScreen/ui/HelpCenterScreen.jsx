@@ -3,6 +3,7 @@ import { StyleSheet, ScrollView, View, BackHandler } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { normalize } from '@shared/lib/normalize';
+import { HeaderWithBackButton } from '@shared/ui/HeaderWithBackButton';
 import { FAQSection } from '../../FAQSection';
 import { ContactSection } from '../../ContactSection';
 import { AppFeedbackSection } from '../../AppFeedbackSection';
@@ -14,14 +15,18 @@ export const HelpCenterScreen = () => {
     const navigation = useNavigation();
     const insets = useSafeAreaInsets();
 
+    const handleBackPress = React.useCallback(() => {
+        if (navigation.canGoBack()) {
+            navigation.goBack();
+        } else {
+            navigation.navigate('ProfileMain');
+        }
+    }, [navigation]);
+
     useFocusEffect(
         React.useCallback(() => {
             const onBackPress = () => {
-                if (navigation.canGoBack()) {
-                    navigation.goBack();
-                } else {
-                    navigation.navigate('ProfileMain');
-                }
+                handleBackPress();
                 return true;
             };
 
@@ -32,16 +37,20 @@ export const HelpCenterScreen = () => {
                     backHandler.remove();
                 }
             };
-        }, [navigation])
+        }, [handleBackPress])
     );
 
     return (
         <SafeAreaView style={styles.container} edges={['left', 'right']}>
+            <HeaderWithBackButton
+                title="Центр помощи"
+                onBackPress={handleBackPress}
+            />
             <ScrollView
                 style={styles.scrollView}
                 contentContainerStyle={[
                     styles.scrollContent,
-                    { paddingBottom: insets.bottom + normalize(64) },
+                    { paddingBottom: insets.bottom + normalize(120) },
                 ]}
                 showsVerticalScrollIndicator={false}
             >

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,10 @@ import {
   TouchableOpacity,
   TextInput,
   RefreshControl,
-  ActivityIndicator
+  ActivityIndicator,
+  LayoutAnimation,
+  UIManager,
+  Platform,
 } from 'react-native';
 import { useProcessingRoles } from '@entities/admin/hooks/useProcessingRoles';
 import { ProcessingRoleAssignment } from '@entities/admin/ui/ProcessingRoleAssignment';
@@ -17,6 +20,12 @@ import {
   PROCESSING_ROLE_ICONS
 } from '@entities/admin/lib/constants';
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
+import { HeaderWithBackButton } from '@shared/ui/HeaderWithBackButton';
+import Icon from 'react-native-vector-icons/MaterialIcons';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 export const ProcessingRolesScreen = () => {
   const { showAlert } = useCustomAlert();
@@ -40,6 +49,8 @@ export const ProcessingRolesScreen = () => {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showStatistics, setShowStatistics] = useState(false);
+  const debounceTimer = useRef(null);
 
   // Загрузка данных при монтировании
   useEffect(() => {
@@ -66,11 +77,48 @@ export const ProcessingRolesScreen = () => {
     }
   }, [error, clearErrors, showAlert]);
 
-  // Обработка поиска
-  const handleSearch = useCallback((text) => {
+  // Локальная фильтрация сотрудников по поисковому запросу
+  const filteredEmployees = useMemo(() => {
+    if (!searchQuery.trim()) return employees;
+    const query = searchQuery.toLowerCase();
+    return employees.filter(employee =>
+      employee.name?.toLowerCase().includes(query) ||
+      employee.user?.email?.toLowerCase().includes(query) ||
+      employee.position?.toLowerCase().includes(query)
+    );
+  }, [employees, searchQuery]);
+
+  const handleSearchChange = useCallback((text) => {
     setSearchQuery(text);
-    setFilter({ search: text });
+
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+    }
+    debounceTimer.current = setTimeout(() => {
+      setFilter({ search: text });
+    }, 500);
   }, [setFilter]);
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+      }
+    };
+  }, []);
+
+  const handleClearSearch = useCallback(() => {
+    setSearchQuery('');
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+    }
+    setFilter({ search: '' });
+  }, [setFilter]);
+
+  const handleToggleStatistics = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setShowStatistics(prev => !prev);
+  }, []);
 
   // Обработка обновления
   const handleRefresh = useCallback(() => {
@@ -130,26 +178,6 @@ export const ProcessingRolesScreen = () => {
     setShowAssignmentModal(false);
     setSelectedEmployee(null);
   }, []);
-
-  // Рендер статистики
-  const renderStatistics = () => (
-    <View style={styles.statisticsContainer}>
-      <Text style={styles.statisticsTitle}>Статистика по должностям</Text>
-      <View style={styles.statisticsGrid}>
-        {Object.entries(roleStatistics).map(([role, count]) => (
-          <View key={role} style={styles.statisticItem}>
-            <Text style={styles.statisticIcon}>
-              {role === 'UNASSIGNED' ? '❓' : PROCESSING_ROLE_ICONS[role]}
-            </Text>
-            <Text style={styles.statisticLabel}>
-              {role === 'UNASSIGNED' ? 'Не назначены' : PROCESSING_ROLE_LABELS[role]}
-            </Text>
-            <Text style={styles.statisticCount}>{count}</Text>
-          </View>
-        ))}
-      </View>
-    </View>
-  );
 
   // Рендер сотрудника
   const renderEmployee = ({ item: employee }) => {
@@ -214,40 +242,6 @@ export const ProcessingRolesScreen = () => {
     </View>
   );
 
-  // Рендер заголовка списка
-  const renderListHeader = () => (
-    <>
-      {/* Заголовок */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Должности сотрудников</Text>
-        <Text style={styles.subtitle}>
-          Управление должностями обработки заказов
-        </Text>
-      </View>
-
-      {/* Поиск */}
-      <View style={styles.searchContainer}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Поиск по имени или email..."
-          value={searchQuery}
-          onChangeText={handleSearch}
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity
-            style={styles.clearSearchButton}
-            onPress={() => handleSearch('')}
-          >
-            <Text style={styles.clearSearchText}>✕</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Статистика */}
-      {renderStatistics()}
-    </>
-  );
-
   if (!accessRights.canViewProcessingRoles) {
     return (
       <View style={styles.accessDeniedContainer}>
@@ -260,18 +254,77 @@ export const ProcessingRolesScreen = () => {
 
   return (
     <View style={styles.container}>
+      <HeaderWithBackButton title="Должности сотрудников" />
+
+      {/* Заголовок + поиск вынесены из FlatList чтобы TextInput не терял фокус */}
+      <View style={styles.header}>
+        <Text style={styles.subtitle}>
+          Управление должностями обработки заказов
+        </Text>
+      </View>
+
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Поиск по имени или email..."
+          value={searchQuery}
+          onChangeText={handleSearchChange}
+          autoCorrect={false}
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity
+            style={styles.clearSearchButton}
+            onPress={handleClearSearch}
+          >
+            <Text style={styles.clearSearchText}>✕</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Раскрывающаяся статистика */}
+      <TouchableOpacity
+        style={styles.statisticsToggle}
+        onPress={handleToggleStatistics}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.statisticsToggleText}>Статистика по должностям</Text>
+        <Icon
+          name={showStatistics ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
+          size={24}
+          color="#333"
+        />
+      </TouchableOpacity>
+
+      {showStatistics && (
+        <View style={styles.statisticsContainer}>
+          <View style={styles.statisticsGrid}>
+            {Object.entries(roleStatistics).map(([role, count]) => (
+              <View key={role} style={styles.statisticItem}>
+                <Text style={styles.statisticIcon}>
+                  {role === 'UNASSIGNED' ? '❓' : PROCESSING_ROLE_ICONS[role]}
+                </Text>
+                <Text style={styles.statisticLabel}>
+                  {role === 'UNASSIGNED' ? 'Не назначены' : PROCESSING_ROLE_LABELS[role]}
+                </Text>
+                <Text style={styles.statisticCount}>{count}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+
       {/* Список сотрудников */}
       <FlatList
-        data={employees}
+        data={filteredEmployees}
         renderItem={renderEmployee}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.listContainer}
         refreshControl={
           <RefreshControl refreshing={loading} onRefresh={handleRefresh} />
         }
-        ListHeaderComponent={renderListHeader}
         ListEmptyComponent={renderEmptyComponent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       />
 
       {/* Модальное окно назначения должности */}
@@ -293,17 +346,11 @@ const styles = StyleSheet.create({
     paddingBottom: 30
   },
   header: {
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#e9ecef',
-    marginBottom: 0
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 4
   },
   subtitle: {
     fontSize: 14,
@@ -341,16 +388,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666'
   },
+  statisticsToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e9ecef',
+  },
+  statisticsToggleText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
   statisticsContainer: {
     padding: 16,
     backgroundColor: '#fff',
-    marginBottom: 8
-  },
-  statisticsTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 12
+    borderBottomWidth: 1,
+    borderBottomColor: '#e9ecef',
   },
   statisticsGrid: {
     flexDirection: 'row',

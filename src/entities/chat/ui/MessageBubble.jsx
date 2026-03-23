@@ -78,6 +78,7 @@ const StatusTicks = memo(({status}) => {
         return (
             <View style={styles.ticksContainer}>
                 <Text style={[styles.tick]}>✓</Text>
+                <Text style={[styles.tick, styles.secondTick]}>✓</Text>
             </View>
         );
     }

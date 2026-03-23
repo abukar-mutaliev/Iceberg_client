@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Animated, Keyboard, BackHandler, Modal, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard, BackHandler, Modal, TouchableOpacity, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { selectProfile, selectProfileLoading } from '@entities/profile';
@@ -9,7 +9,6 @@ import { ProfileAvatar } from "@entities/profile/ui/ProfileAvatar";
 import { ProfileHeader } from "@features/profile/ui/ProfileEdit/ui/ProfileHeader";
 import { ProfileForm } from "./ui/ProfileForm";
 import { useProfileEdit } from "./model/useProfileEdit";
-import { logData } from '@shared/lib/logger';
 import {selectDistrictLoading, selectDistrictsForDropdown} from "@entities/district";
 import {selectWarehouseLoading, selectWarehousesForDropdown} from "@entities/warehouse";
 import { useAuth } from "@entities/auth/hooks/useAuth";
@@ -29,8 +28,6 @@ export const ProfileEdit = () => {
     const warehouses = useSelector(selectWarehousesForDropdown);
     const warehousesLoading = useSelector(selectWarehouseLoading);
 
-    const [formInitialValues, setFormInitialValues] = useState({});
-    const [isFormInitialized, setIsFormInitialized] = useState(false);
     const [keyboardVisible, setKeyboardVisible] = useState(false);
     const saveHandlerRef = useRef(null);
     const [emailBindCode, setEmailBindCode] = useState('');
@@ -111,46 +108,31 @@ export const ProfileEdit = () => {
         };
     }, []);
 
+    const loadTriggeredRef = useRef(false);
     useEffect(() => {
-        if (isDistrictsNeeded() && !districts?.length && !districtsLoading) {
-            loadDistricts();
+        if (loadTriggeredRef.current) return;
+        const needsD = isDistrictsNeeded() && !districts?.length && !districtsLoading;
+        const needsW = isWarehousesNeeded() && !warehouses?.length && !warehousesLoading;
+        if (needsD || needsW) {
+            loadTriggeredRef.current = true;
+            if (needsD) loadDistricts();
+            if (needsW) loadWarehouses();
         }
-        if (isWarehousesNeeded() && !warehouses?.length && !warehousesLoading) {
-            loadWarehouses();
-        }
-    }, [isDistrictsNeeded, districts, districtsLoading, loadDistricts, userType, isWarehousesNeeded, warehouses, warehousesLoading, loadWarehouses]);
+    }, [isDistrictsNeeded, districts, districtsLoading, loadDistricts, isWarehousesNeeded, warehouses, warehousesLoading, loadWarehouses]);
 
-    useEffect(() => {
-        if (!profile) {
-            setIsFormInitialized(false);
-            return;
-        }
-
-        const needsDistricts = isDistrictsNeeded();
-        const needsWarehouses = isWarehousesNeeded();
+    const isFormReady = useMemo(() => {
+        if (!profile || isLoading) return false;
+        const needsDistricts = userType === 'driver' || userType === 'client' || userType === 'employee';
+        const needsWarehouses = userType === 'employee';
         const districtsReady = !needsDistricts || (districts && districts.length > 0);
         const warehousesReady = !needsWarehouses || (warehouses && warehouses.length > 0);
+        return districtsReady && warehousesReady && !districtsLoading && !warehousesLoading;
+    }, [profile, isLoading, userType, districts, districtsLoading, warehouses, warehousesLoading]);
 
-
-        if (districtsReady && warehousesReady && !districtsLoading && !warehousesLoading) {
-
-            const initialValues = getInitialFormValues();
-            console.log('ProfileEdit: Инициализация формы', {
-                userType,
-                initialValues,
-                initialValuesKeys: Object.keys(initialValues),
-                profileGender: profile?.gender,
-                profileKeys: profile ? Object.keys(profile) : 'no profile'
-            });
-            setFormInitialValues(initialValues);
-            setIsFormInitialized(true);
-
-
-        } else {
-            setIsFormInitialized(false);
-
-        }
-    }, [profile, getInitialFormValues, userType, districts, districtsLoading, isDistrictsNeeded, warehouses, warehousesLoading, isWarehousesNeeded]);
+    const formInitialValues = useMemo(() => {
+        if (!isFormReady) return null;
+        return getInitialFormValues();
+    }, [isFormReady, getInitialFormValues]);
 
     const extraData = useMemo(() => {
         const data = {};
@@ -173,7 +155,7 @@ export const ProfileEdit = () => {
         return data;
     }, [userType, districts, warehouses]);
 
-    if (isLoading || !isFormInitialized) {
+    if (!isFormReady || !formInitialValues) {
         const loadingText = isLoading ? 'Загрузка профиля...' :
             districtsLoading ? 'Загрузка районов...' :
                 warehousesLoading ? 'Загрузка складов...' :

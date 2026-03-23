@@ -1012,7 +1012,7 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                 </View>
 
                 {/* Отображение товаров остановки */}
-                <StopProductsList
+                {/* <StopProductsList
                     stopId={stop.id}
                     isActive={
                         stop.startTime &&
@@ -1021,7 +1021,7 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                         new Date() <= new Date(stop.endTime)
                     }
                     refreshKey={stop.updatedAt || stop.createdAt}
-                />
+                /> */}
 
                 {(canEdit || canDelete) && (
                     <View style={styles.actionButtonsContainer}>

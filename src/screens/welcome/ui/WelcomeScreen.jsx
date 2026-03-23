@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity, Image, Dimensions } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Text from '@shared/ui/Text/Text';
 import LinesIceCream from './assets/LinesIceCream.png';
 import { SafeFonts, getSafePlatformFont } from '@shared/lib/fontUtils';
@@ -16,15 +17,17 @@ const adaptiveSize = (baseSize) => {
 };
 
 export const WelcomeScreen = ({ navigation }) => {
-    const handleStart = () => {
-
+    const handleStart = async () => {
+        try {
+            await AsyncStorage.setItem('@iceberg/hasSeenWelcome', 'true');
+        } catch (e) {
+            console.warn('Failed to save hasSeenWelcome flag:', e);
+        }
 
         try {
-            // Используем replace вместо navigate, чтобы удалить WelcomeScreen из стека навигации
-            // Это предотвратит возможность вернуться назад на экран приветствия
             navigation.replace('Main');
         } catch (error) {
-            console.error('❌ Navigation error in WelcomeScreen:', error);
+            console.error('Navigation error in WelcomeScreen:', error);
         }
     };
 

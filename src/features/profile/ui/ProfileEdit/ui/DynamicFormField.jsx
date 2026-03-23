@@ -287,8 +287,11 @@ export const DynamicFormField = ({
                         >
                             <Text
                                 style={[
+                                    styles.selectorText,
                                     value ? styles.selectedValue : styles.placeholderText,
                                 ]}
+                                numberOfLines={1}
+                                ellipsizeMode="tail"
                             >
                                 {value ? getSelectedOptionLabel() : field.placeholder || 'Выбрать'}
                             </Text>
@@ -340,8 +343,11 @@ export const DynamicFormField = ({
                         >
                             <Text
                                 style={[
+                                    styles.selectorText,
                                     value && value.length > 0 ? styles.selectedValue : styles.placeholderText,
                                 ]}
+                                numberOfLines={1}
+                                ellipsizeMode="tail"
                             >
                                 {value && value.length > 0 ? getSelectedOptionLabel() : field.placeholder || 'Выбрать'}
                             </Text>
@@ -492,6 +498,13 @@ const styles = StyleSheet.create({
         borderRadius: normalize(8),
         backgroundColor: '#f2f3ff',
         paddingHorizontal: normalize(10),
+        overflow: 'hidden',
+    },
+    selectorText: {
+        flex: 1,
+        minWidth: 0,
+        flexShrink: 1,
+        marginRight: normalize(8),
     },
     selectedValue: {
         fontSize: normalizeFont(16),
@@ -503,6 +516,7 @@ const styles = StyleSheet.create({
     },
     iconDownContainer: {
         padding: normalize(10),
+        flexShrink: 0,
     },
     dropdown: {
         width: '100%',

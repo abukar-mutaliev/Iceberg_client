@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useMemo, useCallback, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Dimensions, Keyboard, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useSelector } from 'react-redux';
+import { useSelector, useStore } from 'react-redux';
+import { useChatRoomsBootstrap } from '@entities/chat/hooks/useChatRoomsBootstrap';
 import {
     HomeIcon,
     SearchIcon,
@@ -13,7 +14,7 @@ import {
 import { useCartAvailability } from '@entities/cart';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { selectWaitingStockCountCombined, selectSupplierWaitingStockCount } from '@entities/order';
-import { selectTotalUnreadChatsCount } from '@entities/chat/model/selectors';
+import { selectRoomsList } from '@entities/chat/model/selectors';
 // Важно: используем тот же экземпляр контекста, что и экраны (иначе hideTabBar() не влияет на CustomTabBar)
 // Импортируем напрямую из контекста, чтобы избежать циклической зависимости
 import { useTabBar } from '../../context';
@@ -47,6 +48,8 @@ const useKeyboardVisibility = () => {
 };
 
 export const CustomTabBar = ({ state, descriptors, navigation }) => {
+    const store = useStore();
+    useChatRoomsBootstrap();
     const insets = useSafeAreaInsets();
     const tabBarHeight = 80 + insets.bottom;
     const { isCartAvailable } = useCartAvailability();
@@ -113,7 +116,63 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
     );
 
     // Общее количество непрочитанных сообщений для бейджа на вкладке чатов
-    const totalUnreadChats = useSelector(selectTotalUnreadChatsCount);
+    const rooms = useSelector(selectRoomsList);
+
+    const totalUnreadChats = useMemo(() => {
+        if (!rooms?.length) return 0;
+
+        return rooms.reduce((total, room) => {
+            if (!room?.unread) return total;
+
+            if (room.type === 'PRODUCT') return total;
+
+            if (room.type === 'DIRECT' && Array.isArray(room.participants)) {
+                const hasSupplier = room.participants.some((p) => {
+                    const user = p?.user || p;
+                    return user?.role === 'SUPPLIER';
+                });
+                if (hasSupplier) return total;
+            }
+
+            return total + room.unread;
+        }, 0);
+    }, [rooms]);
+
+    useEffect(() => {
+        if (!__DEV__) return;
+        if (totalUnreadChats <= 0) return;
+        const st = store.getState();
+        const rawMap = st.chat?.unreadByRoomId || {};
+        const rows = rooms
+            ?.filter((r) => (r?.unread || 0) > 0)
+            .map((r) => {
+                const id = r.id;
+                const bucketLen = st.chat?.messages?.[id]?.ids?.length ?? 0;
+                const raw = rawMap[id];
+                return {
+                    id,
+                    title: r.title,
+                    type: r.type,
+                    unreadShownInList: r.unread,
+                    rawUnreadByRoomId: raw,
+                    selectorDiffersFromRaw: raw !== undefined && r.unread !== raw,
+                    bucketMessageCount: bucketLen,
+                    lastMessage: r.lastMessage
+                        ? { id: r.lastMessage.id, type: r.lastMessage.type, status: r.lastMessage.status }
+                        : null,
+                    serverLastMessage: r.serverLastMessage
+                        ? { id: r.serverLastMessage.id, type: r.serverLastMessage.type }
+                        : null,
+                };
+            });
+        console.log('[ChatBadgeDebug][TabBar] бейдж чата: откуда цифра', {
+            totalUnreadChats,
+            roomsWithBadge: rows?.length ?? 0,
+            rows,
+            hint:
+                'unreadShownInList — после selectRoomsList. rawUnreadByRoomId — Redux. bucketMessageCount 0 + большой raw = зависший счётчик или нет WS удаления.',
+        });
+    }, [rooms, totalUnreadChats, store]);
 
     // Защита от множественных нажатий
     const isNavigating = useRef(false);

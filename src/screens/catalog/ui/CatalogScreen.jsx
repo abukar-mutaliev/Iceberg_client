@@ -21,6 +21,7 @@ import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { ProductCard } from "@entities/product";
 import BackIcon from '@shared/ui/Icon/BackArrowIcon/BackArrowIcon';
 import {BackButton} from "@shared/ui/Button/BackButton";
+import { navigateToProductDetail } from '@shared/utils/NavigationUtils';
 
 // Заменяем изображение на простой серый блок
 const defaultProductImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
@@ -107,23 +108,20 @@ export const CatalogScreen = ({ navigation }) => {
     const handleProductPress = (product) => {
         dispatch(resetCurrentProduct());
 
-        navigation.navigate('MainTab', {
-            screen: 'ProductDetail',
-            params: {
-                productId: product.id,
-                fromScreen: 'Catalog',
-                product: {
-                    id: product.id,
-                    name: product.title,
-                    description: product.description,
-                    type: product.originalData.type || 'Рожок',
-                    shortDescription: product.description?.substring(0, 100) || '',
-                    price: parseFloat(product.price),
-                    weight: product.originalData.weight || '~150 грамм',
-                    rating: product.originalData.rating || 4.5,
-                    reviewCount: product.originalData.reviewCount || 0,
-                    image: product.image
-                }
+        navigateToProductDetail(navigation, {
+            productId: product.id,
+            fromScreen: 'Catalog',
+            product: {
+                id: product.id,
+                name: product.title,
+                description: product.description,
+                type: product.originalData.type || 'Рожок',
+                shortDescription: product.description?.substring(0, 100) || '',
+                price: parseFloat(product.price),
+                weight: product.originalData.weight || '~150 грамм',
+                rating: product.originalData.rating || 4.5,
+                reviewCount: product.originalData.reviewCount || 0,
+                image: product.image
             }
         });
     };

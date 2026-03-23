@@ -1,17 +1,18 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { View, StyleSheet, Text, TouchableOpacity, Platform } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Redux imports
-import { fetchProducts } from '@entities/product/model/slice';
+import { fetchProducts, clearProductsError } from '@entities/product/model/slice';
 import {
     selectProducts,
     selectProductsLoadingMore,
     selectProductsHasMore,
     selectProductsCurrentPage,
-    selectProductsLoading
+    selectProductsLoading,
+    selectProductsError
 } from '@entities/product/model/selectors';
 import { fetchBanners, selectActiveMainBanners, selectBannerStatus } from '@entities/banner';
 import { fetchCategories } from '@entities/category/model/slice';
@@ -57,15 +58,16 @@ export const MainScreen = ({ navigation, route }) => {
     const categories = useSelector(selectCategories);
     const bannerStatus = useSelector(selectBannerStatus);
     const categoriesLoading = useSelector(selectCategoriesLoading);
+    const productsError = useSelector(selectProductsError);
     const unreadCount = useSelector(state => state.notification?.unreadCount || 0);
     const productsFetchScope = useSelector(state => state.products?.lastFetchScope || 'default');
+    const categoriesError = useSelector(state => state.category?.error || null);
     const requiresPublicCatalog = user?.role === 'SUPPLIER';
     const hasRequiredProductsScope = !requiresPublicCatalog || productsFetchScope === 'publicCatalog';
 
     // Local state
     const [isInitialLoading, setIsInitialLoading] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
-    const [error, setError] = useState(null);
     const [shuffledProducts, setShuffledProducts] = useState([]);
 
     // Refs
@@ -78,6 +80,7 @@ export const MainScreen = ({ navigation, route }) => {
     const loadAllDataRef = useRef(null);
     const lastShuffleTimeRef = useRef(0);
     const forceShuffleRef = useRef(false);
+    const categoriesRetryAttemptedRef = useRef(false);
 
     // Проверка готовности данных
     const isDataReady = useMemo(() => {
@@ -219,8 +222,6 @@ export const MainScreen = ({ navigation, route }) => {
             setIsInitialLoading(true);
         }
 
-        setError(null);
-
         try {
             // При первой загрузке или принудительном обновлении используем refresh: true
             const shouldRefresh = forceRefresh || isFirstLoad;
@@ -247,9 +248,7 @@ export const MainScreen = ({ navigation, route }) => {
             
         } catch (err) {
             console.error('MainScreen: Ошибка загрузки данных:', err);
-            if (isMountedRef.current) {
-                setError('Не удалось загрузить данные. Проверьте подключение к интернету.');
-            }
+            isInitializedRef.current = true;
         } finally {
             if (isMountedRef.current) {
                 setIsInitialLoading(false);
@@ -279,11 +278,55 @@ export const MainScreen = ({ navigation, route }) => {
 
     // Принудительное обновление (pull-to-refresh) — перемешивает товары
     const handleRefresh = useCallback(() => {
+        dispatch(clearProductsError());
         forceShuffleRef.current = true;
+        categoriesRetryAttemptedRef.current = false;
         if (loadAllDataRef.current) {
             loadAllDataRef.current(true);
         }
-    }, []);
+    }, [dispatch]);
+
+    // Автоматическая повторная загрузка категорий при ошибке или пустом списке.
+    // Повторяет до 3 раз с увеличивающимся интервалом.
+    const categoriesRetryCountRef = useRef(0);
+    const MAX_CATEGORIES_RETRIES = 3;
+
+    useEffect(() => {
+        const hasCategories = Array.isArray(categories) && categories.length > 0;
+
+        if (hasCategories || categoriesLoading) {
+            categoriesRetryCountRef.current = 0;
+            return;
+        }
+
+        if (categoriesRetryAttemptedRef.current && categoriesRetryCountRef.current >= MAX_CATEGORIES_RETRIES) {
+            return;
+        }
+
+        const needsRetry = categoriesError || isInitializedRef.current;
+        if (!needsRetry) return;
+
+        categoriesRetryAttemptedRef.current = true;
+        const attempt = categoriesRetryCountRef.current;
+        const delay = 600 + attempt * 2000;
+
+        const retryTimeout = setTimeout(() => {
+            categoriesRetryCountRef.current = attempt + 1;
+            dispatch(fetchCategories({ refresh: true }));
+        }, delay);
+
+        return () => clearTimeout(retryTimeout);
+    }, [dispatch, categories, categoriesLoading, categoriesError]);
+
+    // При смене роли или позднем получении user — перезагружаем товары из нужного endpoint
+    useEffect(() => {
+        if (!isInitializedRef.current) return;
+        if (!hasRequiredProductsScope) {
+            if (loadAllDataRef.current) {
+                loadAllDataRef.current(true);
+            }
+        }
+    }, [hasRequiredProductsScope]);
 
     // Инициализация при монтировании
     useEffect(() => {
@@ -405,25 +448,7 @@ export const MainScreen = ({ navigation, route }) => {
         </View>
     ), []);
 
-    const renderErrorState = useCallback(() => (
-        <View style={styles.errorBanner}>
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
-                <Text style={styles.retryButtonText}>Повторить попытку</Text>
-            </TouchableOpacity>
-        </View>
-    ), [error, handleRefresh]);
-
-    const renderEmptyState = useCallback(() => (
-        <View style={styles.messageContainer}>
-            <Text style={styles.messageText}>Товары не найдены</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
-                <Text style={styles.retryButtonText}>Обновить</Text>
-            </TouchableOpacity>
-        </View>
-    ), [handleRefresh]);
-
-    // Рендер состояний загрузки
+    // Рендер состояний загрузки (только при первой загрузке без данных)
     if (isInitialLoading && !isDataReady) {
         return (
             <View style={styles.container}>
@@ -433,27 +458,8 @@ export const MainScreen = ({ navigation, route }) => {
         );
     }
 
-    // Рендер ошибки
-    if (error && !isDataReady) {
-        return (
-            <View style={styles.container}>
-                {renderHeader()}
-                {renderErrorState()}
-            </View>
-        );
-    }
-
-    // Рендер пустого состояния
-    if (!products?.length && isInitializedRef.current) {
-        return (
-            <View style={styles.container}>
-                {renderHeader()}
-                {renderEmptyState()}
-            </View>
-        );
-    }
-
-    // Основной рендер
+    // Основной рендер — ProductsList всегда отображает header (баннеры, поиск, логотип),
+    // а при ошибке сети / пустых данных показывает retry-кнопку вместо товаров
     return (
         <View style={styles.container}>
             <ProductsList
@@ -470,6 +476,7 @@ export const MainScreen = ({ navigation, route }) => {
                 scrollEnabled={true}
                 nestedScrollEnabled={isAndroid}
                 contentContainerStyle={{ paddingBottom: listContentPadding }}
+                onRetry={handleRefresh}
             />
         </View>
     );
@@ -531,41 +538,5 @@ const styles = StyleSheet.create({
     },
     bottomSpacer: {
         height: 0,
-    },
-    messageContainer: {
-        padding: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: 200,
-    },
-    errorBanner: {
-        paddingHorizontal: 20,
-        paddingTop: 16,
-        paddingBottom: 8,
-        alignItems: 'center',
-    },
-    messageText: {
-        fontSize: 16,
-        textAlign: 'center',
-        marginBottom: 10,
-        color: '#666',
-    },
-    errorText: {
-        fontSize: 16,
-        textAlign: 'center',
-        marginBottom: 16,
-        color: '#d32f2f',
-    },
-    retryButton: {
-        backgroundColor: '#3339b0',
-        paddingVertical: 10,
-        paddingHorizontal: 20,
-        borderRadius: 8,
-        marginTop: 10,
-    },
-    retryButtonText: {
-        color: 'white',
-        fontSize: 14,
-        fontWeight: '500',
     },
 });

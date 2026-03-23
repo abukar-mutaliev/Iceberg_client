@@ -69,6 +69,7 @@ export const useProductDetailData = (productId, isMountedRef, createSafeTimeout,
     const hasMoreProducts = useSelector(selectProductsHasMore);
     const isLoadingMoreProducts = useSelector(selectProductsLoadingMore);
     const allProducts = useSelector(selectProducts);
+    const lastFetchScope = useSelector(state => state.products?.lastFetchScope || 'default');
 
     const [otherProductsPage, setOtherProductsPage] = useState(1);
 
@@ -92,19 +93,28 @@ export const useProductDetailData = (productId, isMountedRef, createSafeTimeout,
     // Загрузка остальных товаров при монтировании (только если товаров нет в store)
     useEffect(() => {
         if (productId && (!allProducts || allProducts.length < 10)) {
-            // Загружаем первую страницу товаров, если их мало
-            dispatch(fetchProducts({ page: 1, limit: 20, refresh: false }));
+            dispatch(fetchProducts({
+                page: 1,
+                limit: 20,
+                refresh: false,
+                usePublicCatalog: lastFetchScope === 'publicCatalog',
+            }));
         }
-    }, [productId, dispatch, allProducts?.length]);
+    }, [productId, dispatch, allProducts?.length, lastFetchScope]);
 
     // Функция загрузки следующей страницы товаров
     const loadMoreProducts = useCallback(() => {
         if (!isLoadingMoreProducts && hasMoreProducts && productId) {
             const nextPage = otherProductsPage + 1;
             setOtherProductsPage(nextPage);
-            dispatch(fetchProducts({ page: nextPage, limit: 20, refresh: false }));
+            dispatch(fetchProducts({
+                page: nextPage,
+                limit: 20,
+                refresh: false,
+                usePublicCatalog: lastFetchScope === 'publicCatalog',
+            }));
         }
-    }, [isLoadingMoreProducts, hasMoreProducts, otherProductsPage, dispatch, productId]);
+    }, [isLoadingMoreProducts, hasMoreProducts, otherProductsPage, dispatch, productId, lastFetchScope]);
 
     // Обработка отсутствующего productId
     useEffect(() => {

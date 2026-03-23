@@ -40,7 +40,7 @@ export const ProductContent = React.memo(({
                                               replyingFeedbackId = null,
                                           }) => {
     const { colors } = useTheme();
-    const [feedbacksHeight, setFeedbacksHeight] = useState(500);
+    const [feedbacksHeight, setFeedbacksHeight] = useState(600);
     const [isAvatarsExpanded, setIsAvatarsExpanded] = useState(false);
 
     const safeFeedbacks = useMemo(() => {
@@ -93,10 +93,16 @@ export const ProductContent = React.memo(({
         { id: 'reviews', title: `Отзывы (${safeProduct.feedbackCount})` },
     ], [safeProduct.feedbackCount]);
 
-    const handleFeedbacksLayout = (event) => {
+    const handleFeedbacksLayout = useCallback((event) => {
         const { height } = event.nativeEvent.layout;
-        setFeedbacksHeight(height);
-    };
+        const nextHeight = Math.max(height || 0, 600);
+
+        // Не уменьшаем подложку отзывов на промежуточных рендерах,
+        // чтобы не было скачков фона под блоком отзывов.
+        setFeedbacksHeight(prevHeight => (
+            nextHeight > prevHeight ? nextHeight : prevHeight
+        ));
+    }, []);
 
     const handleAvatarsToggle = useCallback(() => {
         setIsAvatarsExpanded((prev) => !prev);

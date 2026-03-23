@@ -36,6 +36,8 @@ const initialState = {
   },
   // Список удаленных комнат для предотвращения повторной загрузки
   deletedRoomIds: [],
+  // Минутный тик для пересчёта истекших STOP-сообщений в селекторе
+  timeTick: 0,
 };
 
 const upsertParticipant = (state, participant) => {
@@ -1443,6 +1445,9 @@ const chatSlice = createSlice({
     setActiveRoom(state, action) {
       state.activeRoomId = action.payload || null;
     },
+    tickTime(state) {
+      state.timeTick = Date.now();
+    },
     setTyping(state, action) {
       const { roomId, userIds } = action.payload || {};
       if (!state.typingByRoomId[roomId]) {
@@ -2415,19 +2420,76 @@ const chatSlice = createSlice({
       // Обновляем кэш
       updateMessageCache(roomId, state.messages[roomId]);
 
-      // Увеличиваем счетчик непрочитанных если комната не активна и сообщение не от текущего пользователя
-      // Для определения текущего пользователя используем auth state из getState в thunk
-      const isOwnMessage = false; // Пока отключаем эту проверку, так как currentUserId не доступен в slice
+      // Увеличиваем счетчик непрочитанных если:
+      // - комната не активна
+      // - сообщение не от текущего пользователя
+      // - STOP-сообщение видимо для пользователя (не из чужого района, не просрочено)
+      const isOwnMessage = currentUserId && (message.senderId === currentUserId || Number(message.senderId) === Number(currentUserId));
 
       if (state.activeRoomId !== roomId && !isOwnMessage) {
-        // Проверяем, не было ли это сообщение учтено при загрузке комнат
         const messageTime = new Date(message.createdAt).getTime();
         const shouldIncrement = !state.lastRoomsFetchTime || messageTime > state.lastRoomsFetchTime;
 
         if (shouldIncrement) {
-          const oldUnread = state.unreadByRoomId[roomId] || 0;
-          const newUnread = oldUnread + 1;
-          state.unreadByRoomId[roomId] = newUnread;
+          const userDistrictIds = action.payload?.userDistrictIds || [];
+          const msgType = String(message.type || '').toUpperCase();
+          let isVisible = true;
+
+          if (msgType === 'STOP') {
+            let stopData = message.stop || null;
+            if (!stopData && message.content && typeof message.content === 'string') {
+              try { stopData = JSON.parse(message.content); } catch (e) { stopData = null; }
+            }
+
+            if (stopData) {
+              const stopStatus = String(stopData.status || '').toUpperCase();
+              const isDeleted = Boolean(
+                stopData.isDeleted || stopData.deletedAt || stopData.cancelledAt ||
+                stopStatus === 'CANCELLED' || stopStatus === 'CANCELED' || stopStatus === 'DELETED'
+              );
+              if (isDeleted) {
+                isVisible = false;
+              }
+
+              const endTime = stopData.endTime || stopData.startTime || null;
+              if (endTime) {
+                const endMs = new Date(endTime).getTime();
+                if (Number.isFinite(endMs) && endMs < Date.now()) {
+                  isVisible = false;
+                }
+              }
+
+              if (isVisible && userDistrictIds.length > 0) {
+                const stopDistrictId = stopData.districtId;
+                if (!stopDistrictId) {
+                  isVisible = false;
+                } else {
+                  const normalizedStopId = typeof stopDistrictId === 'string'
+                    ? parseInt(stopDistrictId, 10) : stopDistrictId;
+                  isVisible = userDistrictIds.some(id => {
+                    const n = typeof id === 'string' ? parseInt(id, 10) : id;
+                    return n === normalizedStopId;
+                  });
+                }
+              }
+
+              if (__DEV__) {
+                console.log('[slice] STOP unread check', {
+                  roomId,
+                  isVisible,
+                  userDistrictIds,
+                  stopDistrictId: stopData.districtId,
+                  isDeleted,
+                  endTime,
+                });
+              }
+            }
+          }
+
+          if (isVisible) {
+            const oldUnread = state.unreadByRoomId[roomId] || 0;
+            state.unreadByRoomId[roomId] = oldUnread + 1;
+          }
         }
       }
 
@@ -2545,18 +2607,58 @@ const chatSlice = createSlice({
         }
         return;
       }
-      
+
+      // Нормализуем messageId (может быть число или строка) — нужно до проверки bucket
+      const normalizedMessageId = String(messageId);
+      const numericMessageId = Number(messageId);
+
+      const clearRoomLastMessageIfMatches = () => {
+        const room = state.rooms.byId[roomId];
+        if (!room?.lastMessage) return;
+        const lm = room.lastMessage;
+        const lastMsgId = String(lm.id ?? '');
+        const lastMsgTemporaryId = String(lm.temporaryId ?? '');
+        const matches =
+          lastMsgId === normalizedMessageId ||
+          (!isNaN(Number(lm.id)) && Number(lm.id) === numericMessageId) ||
+          lastMsgTemporaryId === normalizedMessageId ||
+          lm.id === messageId;
+        if (matches) {
+          delete room.lastMessage;
+        }
+      };
+
+      const bumpUnreadDownOnDelete = () => {
+        if (forAll === false) return;
+        const u = state.unreadByRoomId[roomId] || 0;
+        if (u > 0) {
+          state.unreadByRoomId[roomId] = u - 1;
+        }
+      };
+
       const bucket = state.messages[roomId];
       if (!bucket) {
         if (__DEV__) {
-          console.warn('⚠️ receiveMessageDeleted: Bucket not found', { roomId });
+          console.warn('⚠️ receiveMessageDeleted: Bucket not found — правим lastMessage/unread', { roomId });
+        }
+        const unreadBefore = state.unreadByRoomId[roomId];
+        const hadLast = !!state.rooms.byId[roomId]?.lastMessage;
+        clearRoomLastMessageIfMatches();
+        bumpUnreadDownOnDelete();
+        if (__DEV__) {
+          console.log('[ChatBadgeDebug][receiveMessageDeleted]', {
+            branch: 'noBucket',
+            roomId,
+            messageId,
+            forAll,
+            hadLastMessageBefore: hadLast,
+            hasLastMessageAfter: !!state.rooms.byId[roomId]?.lastMessage,
+            unreadBefore,
+            unreadAfter: state.unreadByRoomId[roomId],
+          });
         }
         return;
       }
-      
-      // Нормализуем messageId (может быть число или строка)
-      const normalizedMessageId = String(messageId);
-      const numericMessageId = Number(messageId);
       
       // Ищем сообщение по ID (может быть как serverId, так и temporaryId)
       let foundMessageKey = null;
@@ -2594,7 +2696,7 @@ const chatSlice = createSlice({
       }
       
       if (!foundMessageKey || !foundMessage) {
-        // Сообщение не найдено - возможно уже удалено
+        // Сообщение не найдено в bucket (уже убрано), но lastMessage/unread могли остаться
         if (__DEV__) {
           console.warn('⚠️ receiveMessageDeleted: Message not found', {
             messageId,
@@ -2608,6 +2710,23 @@ const chatSlice = createSlice({
               msgId: bucket.byId[id]?.id,
               msgTemporaryId: bucket.byId[id]?.temporaryId
             }))
+          });
+        }
+        const unreadBeforeNf = state.unreadByRoomId[roomId];
+        const hadLastNf = !!state.rooms.byId[roomId]?.lastMessage;
+        clearRoomLastMessageIfMatches();
+        bumpUnreadDownOnDelete();
+        if (__DEV__) {
+          console.log('[ChatBadgeDebug][receiveMessageDeleted]', {
+            branch: 'messageNotInBucket',
+            roomId,
+            messageId,
+            forAll,
+            hadLastMessageBefore: hadLastNf,
+            hasLastMessageAfter: !!state.rooms.byId[roomId]?.lastMessage,
+            unreadBefore: unreadBeforeNf,
+            unreadAfter: state.unreadByRoomId[roomId],
+            bucketSize: bucket.ids.length,
           });
         }
         return;
@@ -3009,9 +3128,14 @@ const chatSlice = createSlice({
               ? state.messages[roomId].ids[state.messages[roomId].ids.length - 1]
               : null;
         })
-        .addCase(fetchRooms.pending, (state) => {
+        .addCase(fetchRooms.pending, (state, action) => {
           state.rooms.loading = true;
           state.rooms.error = null;
+          // Сохраняем время начала запроса — сообщения, пришедшие по WebSocket ПОСЛЕ
+          // этого момента, точно не были учтены сервером в ответе fetchRooms.
+          if (action.meta?.arg?.page === 1 || !action.meta?.arg?.page) {
+            state.lastRoomsFetchTime = Date.now();
+          }
         })
         .addCase(fetchRooms.fulfilled, (state, action) => {
           const { rooms, page, hasMore } = action.payload;
@@ -3019,18 +3143,18 @@ const chatSlice = createSlice({
             state.rooms.ids = [];
             state.rooms.byId = {};
             state.avatarFetchAttemptedByRoomId = {};
-            // НЕ очищаем счетчики непрочитанных полностью - сохраняем существующие
-            // Только инициализируем новые комнаты
           }
 
-          // Инициализируем счетчики непрочитанных из данных сервера ТОЛЬКО для новых комнат
-          // Это предотвращает потерю счетчиков при обновлении экрана
           if (rooms && Array.isArray(rooms)) {
             rooms.forEach(room => {
-              if (room.id && state.unreadByRoomId[room.id] === undefined) {
-                // Инициализируем счетчик только если он еще не существует
-                const unreadCount = room.unreadCount ?? room.unread ?? 0;
-                state.unreadByRoomId[room.id] = unreadCount;
+              if (!room.id) return;
+              const serverUnread = room.unreadCount ?? room.unread ?? 0;
+              // page 1: перезаписываем счётчик с сервера (устраняет «зависший» unread в Redux).
+              // Иначе значение задаётся только при undefined и никогда не синхронизируется.
+              if (page === 1) {
+                state.unreadByRoomId[room.id] = serverUnread;
+              } else if (state.unreadByRoomId[room.id] === undefined) {
+                state.unreadByRoomId[room.id] = serverUnread;
               }
             });
           }
@@ -3039,9 +3163,6 @@ const chatSlice = createSlice({
           state.rooms.page = page;
           state.rooms.hasMore = !!hasMore;
           state.rooms.loading = false;
-
-          // Сохраняем время загрузки комнат для предотвращения дублирования счетчиков
-          state.lastRoomsFetchTime = Date.now();
         })
         .addCase(fetchRooms.rejected, (state, action) => {
           state.rooms.loading = false;
@@ -3788,6 +3909,7 @@ const chatSlice = createSlice({
 
 export const {
   setActiveRoom,
+  tickTime,
   setTyping,
   setTypingActivity,
   setLastActivityType,

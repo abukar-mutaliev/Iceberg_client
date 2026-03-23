@@ -203,38 +203,39 @@ export const ProductActions = React.memo(({
     // Подготавливаем данные продукта для редактирования
     const productForEdit = useProductForEdit(product);
 
-    // Загружаем профиль поставщика только один раз - с использованием useCallback
+    // Догружаем профиль поставщика только если supplier нельзя определить
+    // ни из auth.user.supplier, ни из auth.user.profile.supplier.
     const loadProfileIfNeeded = useCallback(async () => {
-        if (isAuthenticated &&
-            currentUser?.role === 'SUPPLIER' &&
-            !profileLoadedRef.current &&
-            !isLoadingProfile) {
+        const isSupplier = isAuthenticated && currentUser?.role === 'SUPPLIER';
+        if (!isSupplier || profileLoadedRef.current || isLoadingProfile) {
+            return;
+        }
 
-            // Проверяем, нужно ли загружать профиль
-            const needsProfileLoad = !currentUser?.supplier ||
-                                   !currentUser?.profile ||
-                                   !currentUser?.profile?.supplier;
+        const hasUserSupplier = !!currentUser?.supplier?.id;
+        const hasProfileSupplier = !!currentUser?.profile?.supplier?.id;
+        const needsProfileLoad = !hasUserSupplier && !hasProfileSupplier;
 
-            if (needsProfileLoad) {
-                console.log('ProductActions: Загружаем профиль поставщика', {
-                    hasSupplier: !!currentUser?.supplier,
-                    hasProfile: !!currentUser?.profile,
-                    hasProfileSupplier: !!(currentUser?.profile?.supplier)
-                });
+        if (!needsProfileLoad) {
+            return;
+        }
 
-                profileLoadedRef.current = true;
-                setIsLoadingProfile(true);
+        console.log('ProductActions: Загружаем профиль поставщика', {
+            hasSupplier: hasUserSupplier,
+            hasProfile: !!currentUser?.profile,
+            hasProfileSupplier
+        });
 
-                try {
-                    await dispatch(fetchProfile()).unwrap();
-                    console.log('ProductActions: Профиль поставщика загружен успешно');
-                } catch (error) {
-                    console.error('ProductActions: Ошибка загрузки профиля:', error);
-                    profileLoadedRef.current = false; // Сбрасываем флаг при ошибке
-                } finally {
-                    setIsLoadingProfile(false);
-                }
-            }
+        profileLoadedRef.current = true;
+        setIsLoadingProfile(true);
+
+        try {
+            await dispatch(fetchProfile()).unwrap();
+            console.log('ProductActions: Профиль поставщика загружен успешно');
+        } catch (error) {
+            console.error('ProductActions: Ошибка загрузки профиля:', error);
+            profileLoadedRef.current = false;
+        } finally {
+            setIsLoadingProfile(false);
         }
     }, [dispatch, isAuthenticated, currentUser, isLoadingProfile]);
 

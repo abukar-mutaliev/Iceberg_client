@@ -152,19 +152,19 @@ export const StopProductsList = ({ stopId, isActive, refreshKey }) => {
         );
     }
 
-    if (normalizedProducts.length === 0) {
-        return (
-            <View style={styles.container}>
-                <Text style={styles.hint}>
-                    В этом фургоне пока нет товаров
-                </Text>
-            </View>
-        );
-    }
+    // if (normalizedProducts.length === 0) {
+    //     return (
+    //         <View style={styles.container}>
+    //             <Text style={styles.hint}>
+    //                 В этом фургоне пока нет товаров
+    //             </Text>
+    //         </View>
+    //     );
+    // }
 
     return (
         <View style={styles.container}>
-            <Text style={styles.title}>Товары в фургоне</Text>
+            {/* <Text style={styles.title}>Товары в фургоне</Text> */}
             <View style={styles.productsContainer}>
                 {productRows.map((row, rowIndex) => (
                     <View 

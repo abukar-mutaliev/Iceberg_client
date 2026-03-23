@@ -60,6 +60,35 @@ export const SearchScreen = ({ navigation }) => {
     const products = useSelector(selectProducts);
     const isLoading = useSelector(selectProductsLoading);
     const error = useSelector(selectProductsError);
+    const safeProducts = Array.isArray(products) ? products : [];
+
+    const getReadableErrorMessage = useCallback((errorValue) => {
+        if (!errorValue) {
+            return '';
+        }
+
+        const rawMessage = typeof errorValue === 'string'
+            ? errorValue
+            : errorValue?.message || '';
+        const normalizedMessage = String(rawMessage).trim().toLowerCase();
+
+        if (
+            normalizedMessage.includes('network error') ||
+            normalizedMessage.includes('network request failed') ||
+            normalizedMessage.includes('failed to fetch')
+        ) {
+            return 'Нет подключения к интернету. Проверьте сеть и попробуйте снова.';
+        }
+
+        if (
+            normalizedMessage.includes('timeout') ||
+            normalizedMessage.includes('econnaborted')
+        ) {
+            return 'Превышено время ожидания ответа. Проверьте подключение и попробуйте снова.';
+        }
+
+        return rawMessage || 'Не удалось загрузить данные поиска. Попробуйте снова.';
+    }, []);
 
     // Отслеживание показа/скрытия клавиатуры
     useEffect(() => {
@@ -136,10 +165,10 @@ export const SearchScreen = ({ navigation }) => {
 
     // Генерируем теги на основе продуктов
     useEffect(() => {
-        if (products?.length) {
+        if (safeProducts.length) {
             const tags = new Set();
 
-            products.forEach(product => {
+            safeProducts.forEach(product => {
                 if (product.name) {
                     tags.add(product.name);
                 }
@@ -153,7 +182,7 @@ export const SearchScreen = ({ navigation }) => {
 
             setSuggestedTags(Array.from(tags).slice(0, 15));
         }
-    }, [products]);
+    }, [safeProducts]);
 
     // Обработка нажатия кнопки "назад" на Android
     useEffect(() => {
@@ -183,14 +212,14 @@ export const SearchScreen = ({ navigation }) => {
         }
 
         const lowercaseQuery = searchQuery.toLowerCase();
-        const filtered = products.filter(product =>
+        const filtered = safeProducts.filter(product =>
             (product.name && product.name.toLowerCase().includes(lowercaseQuery)) ||
             (product.description && product.description.toLowerCase().includes(lowercaseQuery)) ||
             (product.category && product.category.toLowerCase().includes(lowercaseQuery))
         );
 
         setFilteredProducts(filtered);
-    }, [searchQuery, products]);
+    }, [searchQuery, safeProducts]);
 
     const handleProductPress = (product) => {
         console.log('SearchScreen: handleProductPress called with product:', product);
@@ -325,7 +354,7 @@ export const SearchScreen = ({ navigation }) => {
                         <Loader />
                     ) : error ? (
                         <View style={styles.errorContainer}>
-                            <Text style={styles.errorText}>{error}</Text>
+                            <Text style={styles.errorText}>{getReadableErrorMessage(error)}</Text>
                         </View>
                     ) : (
                         <>
