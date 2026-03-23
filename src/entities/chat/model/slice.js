@@ -1207,7 +1207,14 @@ export const sendProduct = createAsyncThunk(
         const res = await ChatApi.sendMessage(roomId, form);
         return res?.data?.data || res?.data;
       } catch (e) {
-        return rejectWithValue(e.message || 'Ошибка отправки товара');
+        const apiMsg = e?.response?.data?.message;
+        const firstErr = e?.response?.data?.errors?.[0];
+        const msg =
+          (typeof apiMsg === 'string' && apiMsg) ||
+          (typeof firstErr === 'string' ? firstErr : firstErr?.msg) ||
+          (typeof e?.message === 'string' ? e.message : '') ||
+          'Ошибка отправки товара';
+        return rejectWithValue(msg);
       }
     }
 );

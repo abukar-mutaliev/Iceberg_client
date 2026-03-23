@@ -17,7 +17,6 @@ export const useProductDetailState = (productId) => {
     const isMountedRef = useRef(true);
     const timersRef = useRef([]);
     const scrollViewRef = useRef(null);
-    const scrollY = useRef(new Animated.Value(0)).current;
     const fadeAnim = useRef(new Animated.Value(1)).current;
     const previousProductIdRef = useRef(null);
     const hasLoggedRef = useRef(false);
@@ -69,10 +68,7 @@ export const useProductDetailState = (productId) => {
     }, [fadeAnim]);
 
     // Обработчики событий
-    const handleScroll = useCallback(
-        Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false }),
-        [scrollY]
-    );
+    const handleScroll = useCallback(() => {}, []);
 
     const handleContentSizeChange = useCallback((width, height) => {
         const nextHeight = Math.max((height || 0) + 100, SCREEN_HEIGHT * 3);
@@ -128,9 +124,8 @@ export const useProductDetailState = (productId) => {
             isMountedRef.current = false;
             clearAllTimers();
             fadeAnim.stopAnimation();
-            scrollY.stopAnimation();
         };
-    }, [clearAllTimers, fadeAnim, scrollY]);
+    }, [clearAllTimers, fadeAnim]);
 
     useEffect(() => {
         setContentHeight(SCREEN_HEIGHT * 3);
@@ -146,7 +141,6 @@ export const useProductDetailState = (productId) => {
         // Refs
         isMountedRef,
         scrollViewRef,
-        scrollY,
         fadeAnim,
         previousProductIdRef,
         hasLoggedRef,

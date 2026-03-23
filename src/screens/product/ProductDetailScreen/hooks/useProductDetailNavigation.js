@@ -3,30 +3,55 @@ import { CommonActions } from '@react-navigation/native';
 import { useDispatch } from 'react-redux';
 import { resetCurrentProduct } from '@entities/product';
 
+/** Pop стека или родителей; без вызова goBack() при пустой истории (GO_BACK not handled). */
+function dispatchGoBackSafe(navigation) {
+    if (navigation?.canGoBack?.()) {
+        navigation.dispatch(CommonActions.goBack());
+        return true;
+    }
+    let nav = navigation;
+    for (let d = 0; d < 8 && nav; d += 1) {
+        const parent = nav.getParent?.();
+        if (parent?.canGoBack?.()) {
+            parent.dispatch(CommonActions.goBack());
+            return true;
+        }
+        nav = parent;
+    }
+    const state = navigation.getState?.();
+    const routes = state?.routes;
+    const firstName = routes?.[0]?.name;
+    if (firstName && firstName !== 'ProductDetail') {
+        try {
+            navigation.navigate(firstName);
+            return true;
+        } catch (_) {
+            /* fall through */
+        }
+    }
+    return false;
+}
+
 /**
  * Хук для управления навигацией в ProductDetailScreen
+ *
+ * Переходы по похожим товарам — через navigation.push (каждый товар в
+ * отдельном экране стека). Свайп-назад и кнопка «Назад» возвращают на
+ * предыдущий товар естественным образом, без перехвата beforeRemove.
  */
 export const useProductDetailNavigation = (navigation, fromScreen, params) => {
     const dispatch = useDispatch();
     const isNavigatingRef = useRef(false);
     const lastNavigationTimeRef = useRef(0);
-    const navigationParamsRef = useRef(params);
 
-    // Обновляем ссылку на параметры при их изменении
     useEffect(() => {
-        navigationParamsRef.current = params;
-    }, [params]);
-
-    // Раньше здесь был перехват "назад" из чата с reset в MainTab.
-    // Это ломает UX: если товар открыт из комнаты чата, назад должен возвращать в ChatRoom.
-    // Теперь ProductDetail может открываться в AppStack поверх ChatRoom, поэтому стандартный back работает корректно.
+        return () => {
+            isNavigatingRef.current = false;
+        };
+    }, []);
 
     const handleGoBack = useCallback(() => {
-        // Разрешаем навигацию даже если предыдущая еще не завершена
-        // Это позволяет прервать анимацию открытия экрана
         if (isNavigatingRef.current) {
-            // Если уже идет навигация, просто сбрасываем флаг и продолжаем
-            // Это позволяет прервать анимацию открытия
             isNavigatingRef.current = false;
         }
 
@@ -35,57 +60,30 @@ export const useProductDetailNavigation = (navigation, fromScreen, params) => {
         try {
             dispatch(resetCurrentProduct());
 
-            const origin = navigationParamsRef.current?.fromScreen || fromScreen;
-            const roomId = navigationParamsRef.current?.roomId;
-
-            // Если открыли товар из ChatRoom — возвращаемся обратно в комнату.
-            // Обычно достаточно goBack(), но оставляем fallback для случаев, когда стека нет.
-            if (origin === 'ChatRoom') {
-                if (navigation?.canGoBack?.()) {
-                    navigation.dispatch(CommonActions.goBack());
-                } else if (roomId) {
-                    navigation.navigate('ChatRoom', { roomId });
-                }
+            if (navigation?.canGoBack?.()) {
+                navigation.goBack();
                 setTimeout(() => { isNavigatingRef.current = false; }, 200);
                 return;
             }
 
-            // Если открыли из списка чатов — возвращаемся назад, либо на ChatList.
-            if (origin === 'ChatList') {
-                if (navigation?.canGoBack?.()) {
-                    navigation.dispatch(CommonActions.goBack());
-                } else {
-                    navigation.navigate('ChatList');
-                }
-                setTimeout(() => { isNavigatingRef.current = false; }, 200);
-                return;
+            const origin = params?.fromScreen || fromScreen;
+            const rootOrigin = params?.originalFromScreen || origin;
+            const roomId = params?.roomId;
+
+            if ((origin === 'ChatRoom' || rootOrigin === 'ChatRoom') && roomId) {
+                navigation.navigate('ChatRoom', { roomId });
+            } else if (origin === 'ChatList' || rootOrigin === 'ChatList') {
+                navigation.navigate('ChatList');
+            } else {
+                dispatchGoBackSafe(navigation);
             }
-            
-            // Используем dispatch для более надежной навигации, которая может прервать анимацию
-            try {
-                if (navigation.canGoBack()) {
-                    navigation.dispatch(CommonActions.goBack());
-                } else {
-                    navigation.goBack();
-                }
-            } catch (innerError) {
-                console.error('ProductDetailScreen: Navigation error:', innerError);
-                try {
-                    navigation.goBack();
-                } catch (fallbackError) {
-                    console.error('ProductDetailScreen: Critical navigation error:', fallbackError);
-                }
-            }
-            
-            // Сбрасываем блокировку быстрее, чтобы разрешить повторные нажатия
-            setTimeout(() => {
-                isNavigatingRef.current = false;
-            }, 200);
+
+            setTimeout(() => { isNavigatingRef.current = false; }, 200);
         } catch (error) {
             console.error('ProductDetailScreen: Critical error:', error);
             isNavigatingRef.current = false;
         }
-    }, [dispatch, fromScreen, navigation]);
+    }, [dispatch, fromScreen, navigation, params]);
 
     const handleSupplierPress = useCallback((productId, supplierId) => {
         if (supplierId) {
@@ -99,41 +97,33 @@ export const useProductDetailNavigation = (navigation, fromScreen, params) => {
 
     const handleSimilarProductPress = useCallback((similarProductId, currentProductId) => {
         if (!similarProductId) return;
-        
-        // Защита от двойной навигации с использованием timestamp
+
         const now = Date.now();
-        if (now - lastNavigationTimeRef.current < 500) {
-            console.log('ProductDetailScreen: Двойная навигация обнаружена, игнорируем');
+        if (now - lastNavigationTimeRef.current < 400) {
             return;
         }
         lastNavigationTimeRef.current = now;
-        
-        // Защита от множественных нажатий
+
         if (isNavigatingRef.current) {
-            console.log('ProductDetailScreen: Навигация уже в процессе, игнорируем');
             return;
         }
-        
+
         isNavigatingRef.current = true;
-        
-        console.log('ProductDetailScreen: Navigating to similar product', {
-            from: currentProductId,
-            to: similarProductId,
-            fromScreen
-        });
-        
+
+        const nextId = Number(similarProductId);
+        const originalFrom = params?.originalFromScreen || params?.fromScreen || fromScreen;
+
         navigation.push('ProductDetail', {
-            productId: similarProductId,
+            productId: nextId,
             fromScreen: 'ProductDetail',
-            previousProductId: currentProductId,
-            originalFromScreen: fromScreen || 'MainTab'
+            originalFromScreen: originalFrom,
+            roomId: params?.roomId,
         });
-        
-        // Сбрасываем флаг через задержку
+
         setTimeout(() => {
             isNavigatingRef.current = false;
-        }, 500);
-    }, [navigation, fromScreen]);
+        }, 320);
+    }, [navigation, params, fromScreen]);
 
     return {
         handleGoBack,
@@ -142,4 +132,3 @@ export const useProductDetailNavigation = (navigation, fromScreen, params) => {
         isNavigatingRef
     };
 };
-

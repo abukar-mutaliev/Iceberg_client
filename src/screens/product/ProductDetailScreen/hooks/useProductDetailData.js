@@ -73,6 +73,10 @@ export const useProductDetailData = (productId, isMountedRef, createSafeTimeout,
 
     const [otherProductsPage, setOtherProductsPage] = useState(1);
 
+    useEffect(() => {
+        setOtherProductsPage(1);
+    }, [productId]);
+
     const feedbacks = useSelector(state => {
         if (!productId) return [];
         try {

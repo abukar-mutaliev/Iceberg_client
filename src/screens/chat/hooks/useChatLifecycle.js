@@ -15,6 +15,7 @@ import { useTypingIndicatorHeight } from '@entities/chat';
 import PushNotificationService from '@shared/services/PushNotificationService';
 import { useTabBar } from '@widgets/navigation/context';
 import { MESSAGES_LOAD_LIMIT } from '../utils/chatConstants';
+import { getProductChatShareBlockReason } from '@shared/lib/productChatShare';
 
 /**
  * Хук для управления lifecycle чата
@@ -250,13 +251,17 @@ export const useChatLifecycle = ({
 
       if (!hasProductMessageAfterLoad) {
         try {
-          await dispatch(fetchProductById(productInfo.id));
-          const result = await dispatch(sendProduct({ roomId, productId: productInfo.id }));
-          
-          if (result.error) {
-            console.error('DirectChat: Ошибка при отправке товара:', result.error);
+          const fetched = await dispatch(fetchProductById(productInfo.id));
+          const loaded = fetched?.payload?.data;
+          const blockReason = getProductChatShareBlockReason(loaded || productInfo);
+          if (blockReason) {
+            if (__DEV__) {
+              console.warn('DirectChat: пропуск автоотправки товара (модерация/доступность)', blockReason);
+            }
             return;
           }
+
+          await dispatch(sendProduct({ roomId, productId: productInfo.id })).unwrap();
 
           setTimeout(() => {
             dispatch(fetchMessages({roomId, limit: 100}));

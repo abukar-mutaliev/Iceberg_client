@@ -7,7 +7,9 @@ import {
     FlatList,
     ActivityIndicator,
     Platform,
-    Dimensions} from 'react-native';
+    Dimensions,
+    InteractionManager,
+} from 'react-native';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 // iOS: ограничиваем высоту GPU-градиента, чтобы не переполнять видеопамять.
@@ -42,6 +44,7 @@ import {
     StaticBackgroundGradient,
     ScrollableBackgroundGradient,
 } from '@shared/ui/BackgroundGradient';
+import { getProductChatShareBlockReason } from '@shared/lib/productChatShare';
 
 // Компоненты продукта
 import { ProductHeader } from '@widgets/product/productHeader';
@@ -80,8 +83,11 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     const [stableProduct, setStableProduct] = useState(null);
     const [stableSupplier, setStableSupplier] = useState(null);
     const [stableRelatedProducts, setStableRelatedProducts] = useState([]);
+    /** Нижний блок (бренд, отзывы, похожие) — после анимации перехода, чтобы не конкурировать с первым кадром. */
+    const [belowFoldReady, setBelowFoldReady] = useState(false);
     const rooms = useSelector(selectRoomsList) || [];
     const loadMoreCalledRef = useRef(false);
+    const lastPaginationScrollAtRef = useRef(0);
     const districts = useSelector(state => state.district?.districts || []);
     const userRole = currentUser?.role;
 
@@ -117,7 +123,6 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         optimisticProduct,
         isMountedRef,
         scrollViewRef,
-        scrollY,
         previousProductIdRef,
         visitedProductIdsRef,
         createSafeTimeout,
@@ -174,6 +179,27 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         setStableProduct(null);
         setStableSupplier(null);
         setStableRelatedProducts([]);
+        lastPaginationScrollAtRef.current = 0;
+    }, [productId]);
+
+    useEffect(() => {
+        setBelowFoldReady(false);
+        let delayTimer;
+        const task = InteractionManager.runAfterInteractions(() => {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    delayTimer = setTimeout(() => {
+                        if (isMountedRef.current) {
+                            setBelowFoldReady(true);
+                        }
+                    }, 120);
+                });
+            });
+        });
+        return () => {
+            task.cancel?.();
+            if (delayTimer) clearTimeout(delayTimer);
+        };
     }, [productId]);
 
     // Обработка изменения продукта
@@ -255,20 +281,12 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         }, [scrollToTop, createSafeTimeout, isMountedRef, productId])
     );
 
-    // Очистка при размонтировании
+    // Дублирует reset при выходе без goBack (редко). Без navigation.getState() в cleanup — он дорогой при pop.
     useEffect(() => {
         return () => {
-            try {
-                const currentRoute = navigation.getState()?.routes?.[navigation.getState()?.index];
-                if (currentRoute?.name !== 'ProductDetail') {
-                    dispatch(resetCurrentProduct());
-                }
-            } catch (e) {
-                // navigation state может быть недоступен при фоновом завершении
-                dispatch(resetCurrentProduct());
-            }
+            dispatch(resetCurrentProduct());
         };
-    }, [dispatch, navigation]);
+    }, [dispatch]);
 
     // Обработчики корзины
     const handleCartAdd = useCallback(async (quantity) => {
@@ -382,15 +400,6 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     const handleImageViewerClose = useCallback(() => {
         setIsImageViewerVisible(false);
     }, []);
-
-    // Обработчик репоста товара
-    const handleSharePress = useCallback(() => {
-        if (!isAuthenticated) {
-            showInfo('Требуется авторизация', 'Для отправки товара в чат необходимо войти в систему');
-            return;
-        }
-        setIsRepostModalVisible(true);
-    }, [isAuthenticated, showInfo]);
 
    
     // ============================================================================
@@ -587,30 +596,35 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 }
             }
 
-            // Отправляем товар в чат, если productId указан
+            let productIdForChatRoute = productId;
+
+            // Отправляем товар в чат, если productId указан и товар прошёл модерацию
             if (productId) {
                 try {
-                    // Загружаем продукт в Redux store для отображения в списке чатов
-                    await dispatch(fetchProductById(productId));
-                    
-                    // Отправляем товар в чат
-                    const sendResult = await dispatch(sendProduct({
-                        roomId,
-                        productId: productId
-                    }));
+                    const fetched = await dispatch(fetchProductById(productId));
+                    const loadedProduct = fetched?.payload?.data;
+                    const shareBlock = getProductChatShareBlockReason(loadedProduct || enrichedProduct);
 
-                    if (sendResult.error) {
-                        console.warn('Не удалось отправить товар в чат:', sendResult.error);
-                        // Продолжаем открывать чат даже если отправка товара не удалась
+                    if (shareBlock) {
+                        showWarning(shareBlock, { duration: 4500, position: 'top' });
+                        productIdForChatRoute = undefined;
                     } else {
-                        console.log('✅ Товар успешно отправлен в чат:', {
+                        const sendResult = await dispatch(sendProduct({
                             roomId,
-                            productId
-                        });
+                            productId: productId
+                        }));
+
+                        if (sendResult.error) {
+                            console.warn('Не удалось отправить товар в чат:', sendResult.error);
+                        } else {
+                            console.log('✅ Товар успешно отправлен в чат:', {
+                                roomId,
+                                productId
+                            });
+                        }
                     }
                 } catch (sendError) {
                     console.error('Ошибка при отправке товара в чат:', sendError);
-                    // Продолжаем открывать чат даже если отправка товара не удалась
                 }
             }
 
@@ -625,7 +639,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 roomTitle: managerName,
                 roomData: roomObj,
                 currentUserId: currentUser?.id,
-                productId: productId,
+                productId: productIdForChatRoute,
                 fromScreen: 'ProductDetail'
             });
         } catch (err) {
@@ -637,7 +651,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         } finally {
             setIsLoadingManager(false);
         }
-    }, [navigation, currentUser, showCustomError, dispatch, rooms]);
+    }, [navigation, currentUser, showCustomError, dispatch, rooms, enrichedProduct, showWarning]);
 
     // Обработчик сохранения выбранного района
     const handleDistrictSave = useCallback(async () => {
@@ -702,6 +716,26 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         return displayProduct.images;
     }, [displayProduct]);
 
+    const productShareBlockReason = useMemo(
+        () => (displayProduct ? getProductChatShareBlockReason(displayProduct) : null),
+        [displayProduct]
+    );
+
+    const handleSharePress = useCallback(() => {
+        if (!isAuthenticated) {
+            showInfo('Требуется авторизация', 'Для отправки товара в чат необходимо войти в систему');
+            return;
+        }
+        if (productShareBlockReason) {
+            showWarning(productShareBlockReason, {
+                duration: 4500,
+                position: 'top',
+            });
+            return;
+        }
+        setIsRepostModalVisible(true);
+    }, [isAuthenticated, showInfo, productShareBlockReason, showWarning]);
+
     const handleReplyToFeedback = useCallback(async (feedbackId, replyText) => {
         if (currentUser?.role !== 'SUPPLIER') {
             showWarning('Отвечать на отзывы может только поставщик');
@@ -753,14 +787,14 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         return (
             <ProductHeader
                 product={{ ...displayProduct, images: displayProductImages }}
-                scrollY={scrollY}
                 onGoBack={handleGoBack}
                 onSharePress={handleSharePress}
                 isAuthenticated={isAuthenticated}
                 onImagePress={handleImagePress}
+                shareDisabled={!!productShareBlockReason}
             />
         );
-    }, [displayProduct, displayProductImages, scrollY, handleGoBack, handleSharePress, isAuthenticated, handleImagePress]);
+    }, [displayProduct, displayProductImages, handleGoBack, handleSharePress, isAuthenticated, handleImagePress, productShareBlockReason]);
 
     const productContentComponent = useMemo(() => {
         if (!displayProduct?.id) return null;
@@ -827,7 +861,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     }, [displayProduct, handleAddToCart, selectedQuantity, handleProductUpdated, refreshData, handleAskQuestion, isLoadingManager]);
 
     const brandCardComponent = useMemo(() => (
-        activeTab === 'description' && displaySupplier ? (
+        belowFoldReady && activeTab === 'description' && displaySupplier ? (
             <View style={styles.brandCardContainer}>
                 <BrandCard
                     key={`brand-card-${displaySupplier.id}`}
@@ -836,10 +870,10 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 />
             </View>
         ) : null
-    ), [activeTab, displaySupplier, handleSupplierPress, productId, displayProduct?.supplierId]);
+    ), [belowFoldReady, activeTab, displaySupplier, handleSupplierPress, productId, displayProduct?.supplierId]);
 
     const recentFeedbacksComponent = useMemo(() => (
-        activeTab === 'description' && Array.isArray(feedbacks) && feedbacks.length > 0 ? (
+        belowFoldReady && activeTab === 'description' && Array.isArray(feedbacks) && feedbacks.length > 0 ? (
             <RecentFeedbacks
                 feedbacks={feedbacks}
                 productId={displayProduct?.id || 0}
@@ -849,7 +883,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 replyingFeedbackId={replyingFeedbackId}
             />
         ) : null
-    ), [activeTab, feedbacks, displayProduct?.id, handleViewAllReviews, canReplyAsSupplierForCurrentProduct, handleReplyToFeedback, replyingFeedbackId]);
+    ), [belowFoldReady, activeTab, feedbacks, displayProduct?.id, handleViewAllReviews, canReplyAsSupplierForCurrentProduct, handleReplyToFeedback, replyingFeedbackId]);
 
     // Объединяем похожие и остальные товары в один массив
     const allProductsForDisplay = useMemo(() => {
@@ -868,22 +902,24 @@ export const ProductDetailScreen = ({ route, navigation }) => {
 
     // Отслеживание скролла для загрузки следующей страницы
     const handleScrollWithPagination = useCallback((event) => {
-        // Вызываем оригинальный handleScroll
         handleScroll(event);
-        
-        // Проверяем, нужно ли загрузить следующую страницу
+
+        const now = Date.now();
+        if (now - lastPaginationScrollAtRef.current < 320) {
+            return;
+        }
+        lastPaginationScrollAtRef.current = now;
+
         if (hasMoreProducts && !isLoadingMoreProducts && loadMoreProducts && !loadMoreCalledRef.current) {
             const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
             const scrollPosition = contentOffset.y;
             const scrollViewHeight = layoutMeasurement.height;
             const contentHeight = contentSize.height;
-            
-            // Загружаем следующую страницу, когда пользователь прокрутил на 80% контента
+
             const threshold = contentHeight * 0.8;
             if (scrollPosition + scrollViewHeight >= threshold) {
                 loadMoreCalledRef.current = true;
                 loadMoreProducts();
-                // Сбрасываем флаг через 2 секунды
                 setTimeout(() => {
                     loadMoreCalledRef.current = false;
                 }, 2000);
@@ -899,7 +935,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     }, [isLoadingMoreProducts]);
 
     const similarProductsComponent = useMemo(() => {
-        if (!productId) return null;
+        if (!productId || !belowFoldReady) return null;
 
         const displayProducts = allProductsForDisplay.length > 0
             ? allProductsForDisplay
@@ -921,7 +957,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 hasMore={hasMoreProducts}
             />
         );
-    }, [allProductsForDisplay, stableRelatedProducts, colors, handleSimilarProductPress, productId, loadMoreProducts, isLoadingMoreProducts, hasMoreProducts]);
+    }, [allProductsForDisplay, stableRelatedProducts, colors, handleSimilarProductPress, productId, loadMoreProducts, isLoadingMoreProducts, hasMoreProducts, belowFoldReady]);
 
     // Состояния загрузки и ошибок
     if (isLoading && !displayProduct) {
@@ -985,7 +1021,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                     style={styles.contentScrollView}
                     showsVerticalScrollIndicator={false}
                     onScroll={handleScrollWithPagination}
-                    scrollEventThrottle={16}
+                    scrollEventThrottle={48}
                     contentContainerStyle={styles.scrollContent}
                     onContentSizeChange={handleContentSizeChange}
                     overScrollMode="never"

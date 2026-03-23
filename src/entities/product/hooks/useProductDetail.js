@@ -19,6 +19,22 @@ import {
 } from '@entities/supplier';
 
 /**
+ * Карточки из списков/«похожих» часто попадают в Redux без полного массива images.
+ * Если считать такой объект «кэшем», экран детали не вызывает fetch — и галерея остаётся пустой.
+ */
+const productHasDetailImages = (p) => {
+    if (!p) return false;
+    if (Array.isArray(p.images) && p.images.length > 0) return true;
+    if (p.image) return true;
+    if (p.coverImage) return true;
+    if (p.mainImage) return true;
+    if (p.thumbnail) return true;
+    if (p.imageUrl) return true;
+    if (p.previewImage) return true;
+    return false;
+};
+
+/**
  * Кастомный хук для управления данными продукта с оптимизацией ререндеринга
  * @param {number|string} productId - ID продукта для загрузки
  * @returns {Object} - Объект с данными продукта, поставщика, состоянием загрузки и ошибками
@@ -139,7 +155,11 @@ export const useProductDetail = (productId) => {
         const hasValidCache = (productState && productState.id === validProductId) ||
                              (cachedState && cachedState.id === validProductId);
 
-        if (hasValidCache) {
+        const cacheHasFullImages = hasValidCache && (
+            productHasDetailImages(productState) || productHasDetailImages(cachedState)
+        );
+
+        if (hasValidCache && cacheHasFullImages) {
             // Обновляем ref без вызова ререндера
             if (lastLoadedIdRef.current !== validProductId) {
                 lastLoadedIdRef.current = validProductId;
@@ -227,23 +247,17 @@ export const useProductDetail = (productId) => {
         }
     }, [dispatch, validProductId, isFeedbacksLoaded]);
 
-    // Основной эффект для загрузки данных
-    // УПРОЩАЕМ ЗАВИСИМОСТИ: используем только validProductId, проверку кэша делаем через refs
+    // Основной эффект для загрузки данных.
+    // Важно: при смене productId не полагаемся только на refs — в том же кадре они ещё могут
+    // указывать на предыдущий товар; для проверки кэша используем cachedProduct из селектора.
     useEffect(() => {
         if (!validProductId || !isMountedRef.current) return;
 
-        // Проверяем кэш через актуальные refs (без создания зависимостей)
-        const productState = productRef.current;
-        const cachedState = cachedProductRef.current;
-        
-        const hasCachedProduct = (productState && productState.id === validProductId) ||
-                                 (cachedState && cachedState.id === validProductId);
+        const hasCachedProduct = cachedProduct && cachedProduct.id === validProductId;
+        const cacheUsable = hasCachedProduct && productHasDetailImages(cachedProduct);
 
-        // Если это новый продукт (переход вперед), сбрасываем состояние
         if (validProductId !== lastLoadedIdRef.current) {
-            // Если продукт есть в кэше, используем его без загрузки
-            if (hasCachedProduct) {
-                // Продукт есть в кэше, очищаем состояние загрузки
+            if (cacheUsable) {
                 loadingStates.current = {
                     product: false,
                     supplier: false,
@@ -252,9 +266,7 @@ export const useProductDetail = (productId) => {
                 lastLoadedIdRef.current = validProductId;
                 setIsLoading(false);
                 setError(null);
-                // НЕ вызываем loadProductData - используем кэш
             } else {
-                // Продукта нет в кэше - загружаем
                 loadingStates.current = {
                     product: false,
                     supplier: false,
@@ -264,13 +276,7 @@ export const useProductDetail = (productId) => {
                 loadProductData();
             }
         }
-
-        // Возвращаем функцию очистки
-        return () => {
-            // Дополнительная обработка при размонтировании
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [validProductId]);
+    }, [validProductId, cachedProduct, loadProductData]);
 
     // Эффект для загрузки дополнительных данных
     useEffect(() => {

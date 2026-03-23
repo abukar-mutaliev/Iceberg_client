@@ -51,7 +51,7 @@ export const fetchProducts = createAsyncThunk(
                 (state.products.totalItems > 0 && state.products.totalItems > (state.products.items?.length || 0))
             );
             
-            if (page === 1 && !refresh && !usePublicCatalog && isCacheValid(state.products.lastFetchTime) && 
+            if (page === 1 && !refresh && isCacheValid(state.products.lastFetchTime) && 
                 state.products.items?.length > 0 && 
                 hasValidPagination &&
                 looksComplete &&

@@ -18,6 +18,7 @@ import { fetchBanners, selectActiveMainBanners, selectBannerStatus } from '@enti
 import { fetchCategories } from '@entities/category/model/slice';
 import { selectCategoriesLoading, selectCategories } from '@entities/category/model/selectors';
 import { fetchCart, useCartAvailability } from '@entities/cart';
+import productsApi from '@entities/product/api/productsApi';
 
 // UI Components
 import { Color } from '@app/styles/GlobalStyles';
@@ -37,6 +38,29 @@ const PRODUCTS_PER_PAGE = 10;
 const LOAD_MORE_THRESHOLD = 8;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 минут
 const SHUFFLE_INTERVAL = 30 * 60 * 1000; // 30 минут между перемешиваниями
+
+/**
+ * Полный список /api/products (не public) — для ADMIN/EMPLOYEE сервер отдаёт весь каталог.
+ * SUPER_ADMIN не включён: на бэкенде эта роль часто не попадает в ту же ветку, из‑за чего
+ * пропадают уже опубликованные товары. Для SUPER_ADMIN: публичный каталог + отдельная подгрузка PENDING.
+ */
+const MAIN_FULL_CATALOG_ROLES = new Set(['ADMIN', 'EMPLOYEE']);
+
+function parseProductsListResponse(response) {
+    if (response?.status === 'success' && Array.isArray(response.data)) {
+        return response.data;
+    }
+    if (Array.isArray(response?.data)) {
+        return response.data;
+    }
+    if (Array.isArray(response?.data?.data)) {
+        return response.data.data;
+    }
+    if (Array.isArray(response)) {
+        return response;
+    }
+    return [];
+}
 
 export const MainScreen = ({ navigation, route }) => {
     const dispatch = useDispatch();
@@ -60,15 +84,22 @@ export const MainScreen = ({ navigation, route }) => {
     const categoriesLoading = useSelector(selectCategoriesLoading);
     const productsError = useSelector(selectProductsError);
     const unreadCount = useSelector(state => state.notification?.unreadCount || 0);
-    const productsFetchScope = useSelector(state => state.products?.lastFetchScope || 'default');
     const categoriesError = useSelector(state => state.category?.error || null);
-    const requiresPublicCatalog = user?.role === 'SUPPLIER';
-    const hasRequiredProductsScope = !requiresPublicCatalog || productsFetchScope === 'publicCatalog';
+
+    // Гости и обычные роли — публичный каталог; админы/сотрудники — полный список (иначе PENDING пропадают после refresh)
+    const usePublicCatalogForMain = useMemo(
+        () => !MAIN_FULL_CATALOG_ROLES.has(user?.role),
+        [user?.role]
+    );
 
     // Local state
     const [isInitialLoading, setIsInitialLoading] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [shuffledProducts, setShuffledProducts] = useState([]);
+    /** Товары поставщика со статусом PENDING — показываются вместе с публичным каталогом */
+    const [supplierModerationProducts, setSupplierModerationProducts] = useState([]);
+    /** Очередь модерации для SUPER_ADMIN (публичный список + эти позиции) */
+    const [superAdminPendingProducts, setSuperAdminPendingProducts] = useState([]);
 
     // Refs
     const isMountedRef = useRef(true);
@@ -81,14 +112,89 @@ export const MainScreen = ({ navigation, route }) => {
     const lastShuffleTimeRef = useRef(0);
     const forceShuffleRef = useRef(false);
     const categoriesRetryAttemptedRef = useRef(false);
+    /** Чтобы не дергать /supplier дважды при первой загрузке (loadAllData + effect) */
+    const supplierModerationFetchedForIdRef = useRef(null);
+    /** Переключение гость↔логин или смена роли меняет источник каталога — нужен refresh */
+    const catalogSourceKeyRef = useRef(null);
+
+    const loadSupplierModerationProducts = useCallback(async () => {
+        if (user?.role !== 'SUPPLIER' || !user?.supplier?.id) {
+            supplierModerationFetchedForIdRef.current = null;
+            setSupplierModerationProducts([]);
+            return;
+        }
+        const supplierId = user.supplier.id;
+        try {
+            const response = await productsApi.getSupplierProducts(supplierId);
+            const list = parseProductsListResponse(response);
+            const pending = list.filter(
+                (p) => p && p.id && String(p.moderationStatus) === 'PENDING'
+            );
+            setSupplierModerationProducts(pending);
+            supplierModerationFetchedForIdRef.current = supplierId;
+        } catch (err) {
+            console.error('MainScreen: Ошибка загрузки товаров на модерации:', err);
+            setSupplierModerationProducts([]);
+        }
+    }, [user?.role, user?.supplier?.id]);
+
+    const loadSuperAdminPendingProducts = useCallback(async () => {
+        if (user?.role !== 'SUPER_ADMIN') {
+            setSuperAdminPendingProducts([]);
+            return;
+        }
+        try {
+            const response = await productsApi.getProducts(
+                { page: 1, limit: 200 },
+                { usePublicCatalog: false }
+            );
+            const list = parseProductsListResponse(response);
+            const pending = list.filter(
+                (p) => p && p.id && String(p.moderationStatus) === 'PENDING'
+            );
+            setSuperAdminPendingProducts(pending);
+        } catch (err) {
+            console.error('MainScreen: Ошибка загрузки очереди модерации (SUPER_ADMIN):', err);
+            setSuperAdminPendingProducts([]);
+        }
+    }, [user?.role]);
 
     // Проверка готовности данных
     const isDataReady = useMemo(() => {
-        return products?.length > 0 && 
-               hasRequiredProductsScope &&
-               activeBanners !== undefined && 
-               categories?.length > 0;
-    }, [products?.length, activeBanners, categories?.length, hasRequiredProductsScope]);
+        const hasCatalog =
+            (products?.length > 0) ||
+            (user?.role === 'SUPPLIER' && supplierModerationProducts.length > 0) ||
+            (user?.role === 'SUPER_ADMIN' && superAdminPendingProducts.length > 0);
+        return (
+            hasCatalog &&
+            activeBanners !== undefined &&
+            categories?.length > 0
+        );
+    }, [
+        products?.length,
+        activeBanners,
+        categories?.length,
+        user?.role,
+        supplierModerationProducts.length,
+        superAdminPendingProducts.length,
+    ]);
+
+    const catalogProducts = shuffledProducts.length > 0 ? shuffledProducts : products;
+    const productsForList = useMemo(() => {
+        const extras = [];
+        if (superAdminPendingProducts.length) {
+            extras.push(...superAdminPendingProducts);
+        }
+        if (supplierModerationProducts.length) {
+            extras.push(...supplierModerationProducts);
+        }
+        if (!extras.length) {
+            return catalogProducts;
+        }
+        const ids = new Set(catalogProducts.map((p) => p?.id).filter(Boolean));
+        const mergedExtras = extras.filter((p) => p?.id && !ids.has(p.id));
+        return mergedExtras.length ? [...mergedExtras, ...catalogProducts] : catalogProducts;
+    }, [catalogProducts, supplierModerationProducts, superAdminPendingProducts]);
 
     // Функция перемешивания массива (алгоритм Фишера-Йетса)
     const shuffleArray = useCallback((array) => {
@@ -203,7 +309,7 @@ export const MainScreen = ({ navigation, route }) => {
         const productsReady = products?.length > 0;
         const bannersReady = activeBanners !== undefined;
         const categoriesReady = categories?.length > 0;
-        const dataReady = productsReady && bannersReady && categoriesReady && hasRequiredProductsScope;
+        const dataReady = productsReady && bannersReady && categoriesReady;
         
         // При первой инициализации всегда загружаем данные, даже если кэш свежий
         const isFirstLoad = !isInitializedRef.current;
@@ -231,7 +337,7 @@ export const MainScreen = ({ navigation, route }) => {
                     page: 1, 
                     limit: PRODUCTS_PER_PAGE, 
                     refresh: shouldRefresh,
-                    usePublicCatalog: requiresPublicCatalog
+                    usePublicCatalog: usePublicCatalogForMain
                 })).unwrap(),
                 dispatch(fetchBanners({ 
                     type: 'MAIN', 
@@ -242,6 +348,9 @@ export const MainScreen = ({ navigation, route }) => {
                     refresh: shouldRefresh 
                 })).unwrap()
             ]);
+
+            await loadSupplierModerationProducts();
+            await loadSuperAdminPendingProducts();
 
             lastFetchTimeRef.current = Date.now();
             isInitializedRef.current = true;
@@ -256,12 +365,34 @@ export const MainScreen = ({ navigation, route }) => {
                 setIsRefreshing(false);
             }
         }
-    }, [dispatch, products?.length, activeBanners, categories?.length, shouldRefreshCache, hasRequiredProductsScope, requiresPublicCatalog]);
+    }, [dispatch, products?.length, activeBanners, categories?.length, shouldRefreshCache, loadSupplierModerationProducts, loadSuperAdminPendingProducts, usePublicCatalogForMain]);
     
     // Сохраняем стабильную ссылку на loadAllData
     useEffect(() => {
         loadAllDataRef.current = loadAllData;
     }, [loadAllData]);
+
+    useEffect(() => {
+        const key = usePublicCatalogForMain ? 'public' : 'full';
+        if (!isInitializedRef.current) {
+            catalogSourceKeyRef.current = key;
+            return;
+        }
+        if (catalogSourceKeyRef.current !== key) {
+            catalogSourceKeyRef.current = key;
+            if (loadAllDataRef.current) {
+                loadAllDataRef.current(true);
+            }
+        }
+    }, [usePublicCatalogForMain]);
+
+    // Если supplier.id появился после первой инициализации (профиль догрузился) — подгружаем товары на модерации
+    useEffect(() => {
+        if (!isInitializedRef.current) return;
+        if (user?.role !== 'SUPPLIER' || user?.supplier?.id == null) return;
+        if (supplierModerationFetchedForIdRef.current === user.supplier.id) return;
+        loadSupplierModerationProducts();
+    }, [user?.role, user?.supplier?.id, loadSupplierModerationProducts]);
 
     // Загрузка дополнительных продуктов
     const loadMoreProducts = useCallback(() => {
@@ -272,9 +403,9 @@ export const MainScreen = ({ navigation, route }) => {
         dispatch(fetchProducts({ 
             page: currentPage + 1, 
             limit: PRODUCTS_PER_PAGE,
-            usePublicCatalog: requiresPublicCatalog
+            usePublicCatalog: usePublicCatalogForMain
         }));
-    }, [dispatch, hasMore, isLoadingMore, currentPage, products?.length, requiresPublicCatalog]);
+    }, [dispatch, hasMore, isLoadingMore, currentPage, products?.length, usePublicCatalogForMain]);
 
     // Принудительное обновление (pull-to-refresh) — перемешивает товары
     const handleRefresh = useCallback(() => {
@@ -317,16 +448,6 @@ export const MainScreen = ({ navigation, route }) => {
 
         return () => clearTimeout(retryTimeout);
     }, [dispatch, categories, categoriesLoading, categoriesError]);
-
-    // При смене роли или позднем получении user — перезагружаем товары из нужного endpoint
-    useEffect(() => {
-        if (!isInitializedRef.current) return;
-        if (!hasRequiredProductsScope) {
-            if (loadAllDataRef.current) {
-                loadAllDataRef.current(true);
-            }
-        }
-    }, [hasRequiredProductsScope]);
 
     // Инициализация при монтировании
     useEffect(() => {
@@ -472,7 +593,7 @@ export const MainScreen = ({ navigation, route }) => {
                 ListHeaderComponent={renderHeader}
                 ListFooterComponent={renderFooter}
                 hideLoader={isDataReady}
-                products={shuffledProducts.length > 0 ? shuffledProducts : products}
+                products={productsForList}
                 scrollEnabled={true}
                 nestedScrollEnabled={isAndroid}
                 contentContainerStyle={{ paddingBottom: listContentPadding }}

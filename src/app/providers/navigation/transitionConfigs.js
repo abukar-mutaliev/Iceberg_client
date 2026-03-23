@@ -325,89 +325,34 @@ export const slideFromBottom = {
     cardOverlayEnabled: true,
 };
 
-// Новая анимация для стека с улучшенным эффектом глубины
-// Быстрая версия для немедленной навигации
+// Горизонтальный слайд без параллакса/scale/opacity и без анимированных теней —
+// иначе при pop с тяжёлых экранов (карточка товара) заметны подвисания на JS/GPU.
 export const cardStackTransition = {
-    cardStyleInterpolator: ({ current, next, layouts }) => {
-        const translateX = current.progress.interpolate({
-            inputRange: [0, 1],
-            outputRange: [layouts.screen.width, 0],
-            extrapolate: 'clamp',
-        });
-
-        // Эффект параллакса для предыдущего экрана
-        const prevTranslateX = next
-            ? next.progress.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0, -layouts.screen.width * 0.3],
-                extrapolate: 'clamp',
-            })
-            : 0;
-
-        const scale = next
-            ? next.progress.interpolate({
-                inputRange: [0, 1],
-                outputRange: [1, 0.88],
-                extrapolate: 'clamp',
-            })
-            : 1;
-
-        const opacity = next
-            ? next.progress.interpolate({
-                inputRange: [0, 1],
-                outputRange: [1, 0.8],
-                extrapolate: 'clamp',
-            })
-            : 1;
-
-        return {
-            cardStyle: {
-                transform: [
-                    { translateX: next ? prevTranslateX : translateX },
-                    { scale },
-                ],
-                opacity,
-                ...Platform.select({
-                    ios: {
-                        shadowOpacity: current.progress.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0, 0.35],
-                            extrapolate: 'clamp',
-                        }),
-                        shadowRadius: current.progress.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0, 15],
-                            extrapolate: 'clamp',
-                        }),
-                        shadowOffset: {
-                            width: -8,
-                            height: 0,
-                        },
-                        shadowColor: '#000',
-                    },
-                    android: {
-                        elevation: current.progress.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0, 10],
-                            extrapolate: 'clamp',
-                        }),
-                    },
-                }),
-            },
-        };
-    },
+    cardStyleInterpolator: ({ current, layouts }) => ({
+        cardStyle: {
+            transform: [
+                {
+                    translateX: current.progress.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [layouts.screen.width, 0],
+                        extrapolate: 'clamp',
+                    }),
+                },
+            ],
+        },
+    }),
     transitionSpec: {
         open: {
             animation: 'timing',
             config: {
-                duration: 250,
+                duration: 220,
                 useNativeDriver: true,
             },
         },
         close: {
             animation: 'timing',
             config: {
-                duration: 200,
+                duration: 180,
                 useNativeDriver: true,
             },
         },
@@ -415,7 +360,6 @@ export const cardStackTransition = {
     gestureEnabled: true,
     gestureDirection: 'horizontal',
     cardOverlayEnabled: true,
-    // Разрешаем прерывание анимации при навигации назад
     animationEnabled: true,
 };
 

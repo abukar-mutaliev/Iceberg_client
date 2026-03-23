@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { StatusBar, Platform, Linking, Animated, View, Text, TouchableOpacity, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NavigationContainer } from "@react-navigation/native";
-import { createStackNavigator } from "@react-navigation/stack";
+import { createStackNavigator, CardStyleInterpolators } from "@react-navigation/stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigation } from '@react-navigation/native';
@@ -563,10 +563,37 @@ const COMMON_CARD_STYLE = {
 const createScreenOptions = (options = {}) => ({
     ...slideFromRight,
     headerShown: false,
-    gestureEnabled: true,
     cardStyle: COMMON_CARD_STYLE,
     ...options,
 });
+
+const PRODUCT_DETAIL_CARD_STYLE = {
+    backgroundColor: '#ffffff',
+    ...Platform.select({
+        ios: {
+            shadowColor: '#000',
+            shadowOffset: { width: -3, height: 0 },
+            shadowOpacity: 0.3,
+            shadowRadius: 8,
+        },
+        android: {
+            elevation: 8,
+        },
+    }),
+};
+
+const createProductDetailScreenOptions = (extra = {}) => () =>
+    createScreenOptions({
+        ...cardStackTransition,
+        unmountOnBlur: false,
+        freezeOnBlur: Platform.OS !== 'ios',
+        gestureEnabled: true,
+        ...(Platform.OS === 'ios'
+            ? { cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS }
+            : {}),
+        cardStyle: PRODUCT_DETAIL_CARD_STYLE,
+        ...extra,
+    });
 
 // ============================================================================
 // ЧАСТЬ 7: Stack Navigators (упрощенные)
@@ -689,24 +716,7 @@ const ProfileStackScreen = () => (
         <ProfileStack.Screen
             name="ProductDetail"
             component={ProductDetailScreen}
-            options={createScreenOptions({ 
-                ...cardStackTransition,
-                unmountOnBlur: false,
-                cardStyle: {
-                    backgroundColor: '#ffffff',
-                    ...Platform.select({
-                        ios: {
-                            shadowColor: '#000',
-                            shadowOffset: { width: -3, height: 0 },
-                            shadowOpacity: 0.3,
-                            shadowRadius: 8,
-                        },
-                        android: {
-                            elevation: 8,
-                        },
-                    }),
-                }
-            })}
+            options={createProductDetailScreenOptions()}
         />
         <ProfileStack.Screen
             name="ProductManagement"
@@ -829,25 +839,7 @@ const CartStackScreen = () => (
         <CartStack.Screen
             name="ProductDetail"
             component={ProductDetailScreen}
-            options={createScreenOptions({ 
-                ...cardStackTransition,
-                unmountOnBlur: false,
-                freezeOnBlur: true,
-                cardStyle: {
-                    backgroundColor: '#ffffff',
-                    ...Platform.select({
-                        ios: {
-                            shadowColor: '#000',
-                            shadowOffset: { width: -3, height: 0 },
-                            shadowOpacity: 0.3,
-                            shadowRadius: 8,
-                        },
-                        android: {
-                            elevation: 8,
-                        },
-                    }),
-                }
-            })}
+            options={createProductDetailScreenOptions()}
         />
     </CartStack.Navigator>
 );
@@ -916,7 +908,15 @@ const ChatStackScreen = () => (
         <ChatStack.Screen
             name="ProductDetail"
             component={ProductDetailScreen}
-            options={{ ...cardStackTransition, headerShown: false }}
+            options={{
+                ...cardStackTransition,
+                headerShown: false,
+                freezeOnBlur: Platform.OS !== 'ios',
+                gestureEnabled: true,
+                ...(Platform.OS === 'ios'
+                    ? { cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS }
+                    : {}),
+            }}
         />
         <ChatStack.Screen
             name="SupplierScreen"
@@ -1053,25 +1053,7 @@ const AdminStackScreen = () => (
         <AdminStack.Screen
             name="ProductDetail"
             component={ProductDetailScreen}
-            options={createScreenOptions({ 
-                ...cardStackTransition,
-                unmountOnBlur: false,
-                freezeOnBlur: true,
-                cardStyle: {
-                    backgroundColor: '#ffffff',
-                    ...Platform.select({
-                        ios: {
-                            shadowColor: '#000',
-                            shadowOffset: { width: -3, height: 0 },
-                            shadowOpacity: 0.3,
-                            shadowRadius: 8,
-                        },
-                        android: {
-                            elevation: 8,
-                        },
-                    }),
-                }
-            })}
+            options={createProductDetailScreenOptions()}
         />
         <AdminStack.Screen
             name="WarehouseStatistics"
@@ -1119,7 +1101,9 @@ const MainStackScreen = () => (
             gestureEnabled: true,
             detachPreviousScreen: false,
         }}
-        detachInactiveScreens={false}
+        // Иначе при push второго ProductDetail первый экран остаётся в нативном дереве
+        // и продолжает грузить JS (скролл, FlatList похожих) — переход подвисает.
+        detachInactiveScreens={true}
     >
         <MainStack.Screen
             name="Main"
@@ -1134,24 +1118,7 @@ const MainStackScreen = () => (
         <MainStack.Screen
             name="ProductDetail"
             component={ProductDetailScreen}
-            options={createScreenOptions({ 
-                ...cardStackTransition,
-                unmountOnBlur: false,
-                cardStyle: {
-                    backgroundColor: '#ffffff',
-                    ...Platform.select({
-                        ios: {
-                            shadowColor: '#000',
-                            shadowOffset: { width: -3, height: 0 },
-                            shadowOpacity: 0.3,
-                            shadowRadius: 8,
-                        },
-                        android: {
-                            elevation: 8,
-                        },
-                    }),
-                }
-            })}
+            options={createProductDetailScreenOptions()}
             initialParams={{ fromScreen: 'MainTab' }}
         />
         <MainStack.Screen
@@ -1263,24 +1230,7 @@ const SearchStackScreen = () => (
         <SearchStack.Screen
             name="ProductDetail"
             component={ProductDetailScreen}
-            options={createScreenOptions({ 
-                ...cardStackTransition,
-                unmountOnBlur: false,
-                cardStyle: {
-                    backgroundColor: '#ffffff',
-                    ...Platform.select({
-                        ios: {
-                            shadowColor: '#000',
-                            shadowOffset: { width: -3, height: 0 },
-                            shadowOpacity: 0.3,
-                            shadowRadius: 8,
-                        },
-                        android: {
-                            elevation: 8,
-                        },
-                    }),
-                }
-            })}
+            options={createProductDetailScreenOptions()}
         />
     </SearchStack.Navigator>
 );
@@ -1485,7 +1435,14 @@ export const AppNavigator = () => {
                     <Stack.Screen
                         name="ProductDetail"
                         component={ProductDetailScreen}
-                        options={createScreenOptions({ ...cardStackTransition })}
+                        options={createScreenOptions({
+                            ...cardStackTransition,
+                            freezeOnBlur: Platform.OS !== 'ios',
+                            gestureEnabled: true,
+                            ...(Platform.OS === 'ios'
+                                ? { cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS }
+                                : {}),
+                        })}
                     />
                     {/* SupplierScreen в AppStack нужен для переходов из ChatRoom.
                        Тогда экран поставщика ложится поверх ChatRoom и back возвращает обратно в комнату. */}

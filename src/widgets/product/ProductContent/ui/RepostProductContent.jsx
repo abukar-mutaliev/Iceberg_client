@@ -23,6 +23,7 @@ import { selectProductsById } from '@entities/product/model/selectors';
 import ChatApi from '@entities/chat/api/chatApi';
 import { getImageUrl } from '@shared/api/api';
 import { debounce } from 'lodash';
+import { getProductChatShareBlockReason } from '@shared/lib/productChatShare';
 
 export const RepostProductContent = ({ product, currentUser, onClose }) => {
   const navigation = useNavigation();
@@ -41,6 +42,11 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
   const currentUserId = currentUser?.id;
   const currentUserRole = useSelector((s) => s.auth?.user?.role);
   const productsById = useSelector(selectProductsById);
+
+  const shareBlockReason = useMemo(
+    () => getProductChatShareBlockReason(product),
+    [product]
+  );
   
   // Определяем, является ли экран маленьким
   const isSmallScreen = width < 375;
@@ -272,17 +278,17 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
   // Отправка товара в существующий чат
   const handleSendToExistingChat = async (room) => {
     if (!product?.id) return;
+    if (shareBlockReason) {
+      Alert.alert('Недоступно', shareBlockReason);
+      return;
+    }
     
     setSending(true);
     try {
-      const result = await dispatch(sendProduct({
+      await dispatch(sendProduct({
         roomId: room.id,
         productId: product.id
-      }));
-
-             if (result.error) {
-         throw new Error(result.error);
-       }
+      })).unwrap();
 
        onClose();
       
@@ -305,7 +311,8 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
       });
     } catch (error) {
       console.error('Error sending product to chat:', error);
-      Alert.alert('Ошибка', 'Не удалось отправить товар в чат');
+      const msg = typeof error === 'string' ? error : (error?.message || 'Не удалось отправить товар в чат');
+      Alert.alert('Ошибка', msg);
     } finally {
       setSending(false);
     }
@@ -314,6 +321,10 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
   // Отправка товара пользователю (создание чата или отправка в существующий)
   const handleSendToUser = async (user) => {
     if (!product?.id) return;
+    if (shareBlockReason) {
+      Alert.alert('Недоступно', shareBlockReason);
+      return;
+    }
     
     setSending(true);
     try {
@@ -354,15 +365,10 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
         }
       }
 
-      // Отправляем товар
-      const result = await dispatch(sendProduct({
+      await dispatch(sendProduct({
         roomId,
         productId: product.id
-      }));
-
-             if (result.error) {
-         throw new Error(result.error);
-       }
+      })).unwrap();
 
        onClose();
       
@@ -385,7 +391,8 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
       });
     } catch (error) {
       console.error('Error sending product to user:', error);
-      Alert.alert('Ошибка', 'Не удалось отправить товар пользователю');
+      const msg = typeof error === 'string' ? error : (error?.message || 'Не удалось отправить товар пользователю');
+      Alert.alert('Ошибка', msg);
     } finally {
       setSending(false);
     }
@@ -713,7 +720,7 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
       <TouchableOpacity
         style={[styles.chatItem, adaptiveStyles.chatItem]}
         onPress={() => handleSendToExistingChat(item)}
-        disabled={sending}
+        disabled={sending || !!shareBlockReason}
       >
         <View style={[styles.avatarContainer, adaptiveStyles.avatarContainer]}>
           {avatar ? (
@@ -744,7 +751,7 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
           <TouchableOpacity
             style={[styles.sendButton, adaptiveStyles.sendButton]}
             onPress={() => handleSendToExistingChat(item)}
-            disabled={sending}
+            disabled={sending || !!shareBlockReason}
           >
             <View style={[styles.iconContainer, adaptiveStyles.iconContainer]}>
               <Icon name="send" size={adaptiveStyles.iconSize} color="#ffffff" />
@@ -775,7 +782,7 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
           item.isProductSupplier && styles.supplierItem
         ]}
         onPress={() => handleSendToUser(item)}
-        disabled={sending}
+        disabled={sending || !!shareBlockReason}
       >
         <View style={[
           styles.avatarContainer, 
@@ -827,7 +834,7 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
         <TouchableOpacity
           style={[styles.sendButton, adaptiveStyles.sendButton, item.isProductSupplier && styles.supplierSendButton]}
           onPress={() => handleSendToUser(item)}
-          disabled={sending}
+          disabled={sending || !!shareBlockReason}
         >
           <View style={[styles.iconContainer, adaptiveStyles.iconContainer]}>
             <Icon name="send" size={adaptiveStyles.iconSize} color="#ffffff" />
@@ -839,6 +846,11 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
 
   return (
     <View style={[styles.container, adaptiveStyles.container]}>
+      {shareBlockReason ? (
+        <View style={styles.shareBlockedBanner}>
+          <Text style={styles.shareBlockedText}>{shareBlockReason}</Text>
+        </View>
+      ) : null}
       {/* Информация о товаре */}
       <View style={[styles.productInfo, adaptiveStyles.productInfo]}>
         {product?.images?.[0] && (
@@ -962,6 +974,19 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
 };
 
 const styles = StyleSheet.create({
+  shareBlockedBanner: {
+    backgroundColor: '#FFF3E0',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#FFCC80',
+  },
+  shareBlockedText: {
+    fontSize: 14,
+    color: '#E65100',
+    textAlign: 'center',
+  },
   container: {
     flex: 1,
     paddingHorizontal: 20,

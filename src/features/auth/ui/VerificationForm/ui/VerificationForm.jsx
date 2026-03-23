@@ -16,7 +16,6 @@ import {
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { completeRegister, completePhoneRegister, clearError } from '@entities/auth';
-import { normalize } from "@shared/lib/normalize";
 
 const { width, height } = Dimensions.get('window');
 const isSmallDevice = height < 700;
@@ -48,7 +47,7 @@ export const VerificationForm = ({
     onBack 
 }) => {
     const codeLength = 6;
-    const resendCooldownSeconds = registrationType === 'phone' ? 120 : 300;
+    const resendCooldownSeconds = registrationType === 'phone' ? 120 : 60;
     const initialCode = new Array(codeLength).fill('');
     
     const [code, setCode] = useState(initialCode);
@@ -368,29 +367,54 @@ export const VerificationForm = ({
                 </TouchableOpacity>
 
                 {/* Дополнительные действия */}
-                <View style={styles.actionsContainer}>
-                    <TouchableOpacity style={styles.actionButton} onPress={onBack}>
-                        <Text style={styles.actionButtonText}>← Назад</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={styles.actionButton} onPress={handlePasteFullCode}>
-                        <Text style={styles.actionButtonText}>Вставить код</Text>
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity 
-                        style={styles.actionButton}
+                <View style={styles.actionsCard}>
+                    <View style={styles.actionsRow}>
+                        <TouchableOpacity
+                            style={styles.actionPill}
+                            onPress={onBack}
+                            activeOpacity={0.75}
+                        >
+                            <Text style={styles.actionPillIcon}>←</Text>
+                            <Text style={styles.actionPillLabel} numberOfLines={1}>
+                                Назад
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.actionPill}
+                            onPress={handlePasteFullCode}
+                            activeOpacity={0.75}
+                        >
+                            <Text style={styles.actionPillLabel} numberOfLines={1}>
+                                Вставить код
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                    <TouchableOpacity
+                        style={[
+                            styles.resendButton,
+                            resendTimer > 0 && styles.resendButtonDisabled,
+                        ]}
                         onPress={() => {
                             if (resendTimer > 0) return;
                             Alert.alert('Повторная отправка', 'Код будет отправлен повторно');
                             setResendTimer(resendCooldownSeconds);
                         }}
                         disabled={resendTimer > 0}
+                        activeOpacity={0.75}
                     >
-                        <Text style={styles.actionButtonText}>
-                            {resendTimer > 0
-                                ? `Отправить снова через ${formatTimer(resendTimer)}`
-                                : 'Отправить снова'}
+                        <Text
+                            style={[
+                                styles.resendButtonTitle,
+                                resendTimer > 0 && styles.resendButtonTitleMuted,
+                            ]}
+                        >
+                            {resendTimer > 0 ? 'Повторная отправка' : 'Отправить код снова'}
                         </Text>
+                        {resendTimer > 0 && (
+                            <Text style={styles.resendButtonSubtitle}>
+                                Доступно через {formatTimer(resendTimer)}
+                            </Text>
+                        )}
                     </TouchableOpacity>
                 </View>
             </View>
@@ -611,22 +635,79 @@ const styles = StyleSheet.create({
         fontSize: adaptiveSize(20),
         fontWeight: 'bold',
     },
-    actionsContainer: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
+    actionsCard: {
         width: '100%',
-        paddingHorizontal: adaptiveSize(8),
         marginBottom: adaptiveSize(24),
+        padding: adaptiveSize(14),
+        backgroundColor: '#FFFFFF',
+        borderRadius: adaptiveSize(16),
+        borderWidth: 1,
+        borderColor: '#E8EAEF',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 8,
+        elevation: 2,
     },
-    actionButton: {
+    actionsRow: {
+        flexDirection: 'row',
+        gap: adaptiveSize(10),
+        marginBottom: adaptiveSize(12),
+    },
+    actionPill: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: adaptiveSize(6),
         paddingVertical: adaptiveSize(12),
-        paddingHorizontal: adaptiveSize(16),
+        paddingHorizontal: adaptiveSize(10),
+        backgroundColor: '#F0F4FF',
+        borderRadius: adaptiveSize(12),
+        borderWidth: 1,
+        borderColor: '#D6E0FF',
     },
-    actionButtonText: {
+    actionPillIcon: {
+        fontSize: adaptiveSize(16),
+        color: '#000CFF',
+    },
+    actionPillLabel: {
+        color: '#000CFF',
+        fontSize: adaptiveSize(14),
+        fontWeight: '600',
+        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+    },
+    resendButton: {
+        width: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: adaptiveSize(14),
+        paddingHorizontal: adaptiveSize(12),
+        backgroundColor: '#FFFFFF',
+        borderRadius: adaptiveSize(12),
+        borderWidth: 1.5,
+        borderColor: '#000CFF',
+    },
+    resendButtonDisabled: {
+        backgroundColor: '#F5F6F8',
+        borderColor: '#C5CAD3',
+    },
+    resendButtonTitle: {
         color: '#000CFF',
         fontSize: adaptiveSize(15),
-        fontWeight: '600',
+        fontWeight: '700',
+        textAlign: 'center',
+        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+    },
+    resendButtonTitleMuted: {
+        color: '#4B5563',
+    },
+    resendButtonSubtitle: {
+        marginTop: adaptiveSize(4),
+        color: '#6B7280',
+        fontSize: adaptiveSize(13),
+        fontWeight: '500',
+        textAlign: 'center',
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
     },
 });

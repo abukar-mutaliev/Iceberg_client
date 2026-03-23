@@ -1,6 +1,6 @@
 import React, { useMemo, useCallback } from 'react';
 import { FontFamily, FontSize, Color, Border } from '@app/styles/GlobalStyles';
-import { View, Text, StyleSheet, FlatList, Dimensions, PixelRatio, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Dimensions, PixelRatio, ActivityIndicator, Platform } from 'react-native';
 
 // Прямой импорт компонента
 import { ProductTile } from '@entities/product/ui/ProductTile';
@@ -12,6 +12,9 @@ const normalize = (size) => {
     const newSize = size * scale;
     return Math.round(PixelRatio.roundToNearestPixel(newSize));
 };
+
+/** Внутри внешнего ScrollView FlatList с scrollEnabled=false разворачивается на всю высоту — лимит плиток снижает нагрузку при длинной ленте. */
+const MAX_SIMILAR_TILES = 32;
 
 /**
  * Оптимизированный компонент для отображения похожих продуктов и остальных товаров
@@ -29,7 +32,10 @@ export const SimilarProducts = React.memo(({
     const validProducts = useMemo(() => {
         if (!Array.isArray(products)) return [];
 
-        return products.filter(p => p && p.id && p.id !== currentProductId);
+        const filtered = products.filter(p => p && p.id && p.id !== currentProductId);
+        return filtered.length > MAX_SIMILAR_TILES
+            ? filtered.slice(0, MAX_SIMILAR_TILES)
+            : filtered;
     }, [products, currentProductId]);
 
     // Обработчик нажатия на похожий продукт
@@ -86,16 +92,6 @@ export const SimilarProducts = React.memo(({
     // Мемоизированная функция keyExtractor
     const keyExtractor = useCallback((item) => `similar-${item.id}`, []);
 
-    // Мемоизированная функция getItemLayout для лучшей производительности
-    const getItemLayout = useCallback((data, index) => {
-        const itemHeight = normalize(269) + normalize(20); // высота + margin
-        return {
-            length: itemHeight,
-            offset: itemHeight * Math.floor(index / 2), // учитываем 2 колонки
-            index,
-        };
-    }, []);
-
     const handleEndReached = useCallback(() => {
         if (hasMore && !isLoadingMore && onEndReached) {
             onEndReached();
@@ -138,17 +134,16 @@ export const SimilarProducts = React.memo(({
                 data={validProducts}
                 renderItem={renderItem}
                 keyExtractor={keyExtractor}
-                getItemLayout={getItemLayout}
                 numColumns={2}
                 columnWrapperStyle={styles.row}
                 showsVerticalScrollIndicator={false}
                 scrollEnabled={false}
                 nestedScrollEnabled={true}
                 contentContainerStyle={styles.listContentContainer}
-                initialNumToRender={6}
-                maxToRenderPerBatch={6}
-                windowSize={3}
-                removeClippedSubviews={false}
+                initialNumToRender={4}
+                maxToRenderPerBatch={4}
+                windowSize={2}
+                removeClippedSubviews={Platform.OS === 'android'}
                 updateCellsBatchingPeriod={50}
                 onEndReached={handleEndReached}
                 onEndReachedThreshold={0.5}

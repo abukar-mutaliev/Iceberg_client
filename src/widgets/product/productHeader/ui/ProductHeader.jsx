@@ -1,18 +1,16 @@
 import React, {useEffect, useMemo, useRef} from 'react';
-import {View, Animated, Text, StyleSheet, Dimensions, TouchableOpacity, FlatList} from 'react-native';
+import {View, Text, StyleSheet, Dimensions, TouchableOpacity, FlatList} from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { BackButton } from '@shared/ui/Button/BackButton';
 import { ProductImage } from '@entities/product/ui/ProductImage';
-import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
-import { FontFamily, FontSize, Color } from '@app/styles/GlobalStyles';
+import { Color } from '@app/styles/GlobalStyles';
 import { ProductFavoriteButton } from "@features/productFavorite";
 import {checkIsFavorite} from "@entities/favorites";
 import {useDispatch} from "react-redux";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-export const ProductHeader = React.memo(({ product, scrollY, onGoBack, onSharePress, isAuthenticated, onImagePress }) => {
-    const { colors } = useTheme();
+export const ProductHeader = React.memo(({ product, onGoBack, onSharePress, isAuthenticated, onImagePress, shareDisabled }) => {
     const dispatch = useDispatch();
     const checkedFavoriteRef = useRef(false);
 
@@ -32,12 +30,6 @@ export const ProductHeader = React.memo(({ product, scrollY, onGoBack, onSharePr
         };
     }, [dispatch, productId]);
 
-
-    const headerOpacity = scrollY.interpolate({
-        inputRange: [0, 200],
-        outputRange: [0, 1],
-        extrapolate: 'clamp'
-    });
 
     const safeProduct = useMemo(() => ({
         ...product,
@@ -130,11 +122,11 @@ export const ProductHeader = React.memo(({ product, scrollY, onGoBack, onSharePr
                 {/* Иконка "Поделиться" - только для авторизованных пользователей */}
                 {isAuthenticated && onSharePress && (
                     <TouchableOpacity
-                        style={styles.shareButton}
+                        style={[styles.shareButton, shareDisabled && styles.shareButtonDisabled]}
                         onPress={onSharePress}
                         activeOpacity={0.7}
                     >
-                        <Icon name="share" size={24} color={Color.purpleSoft} />
+                        <Icon name="share" size={24} color={shareDisabled ? 'rgba(145,158,238,0.45)' : Color.purpleSoft} />
                     </TouchableOpacity>
                 )}
                 
@@ -143,16 +135,6 @@ export const ProductHeader = React.memo(({ product, scrollY, onGoBack, onSharePr
                     productId={productId}
                 />
             </View>
-            <Animated.View style={[styles.floatingHeader, { opacity: headerOpacity }]}>
-                <Text style={[styles.floatingTitle, {
-                    color: Color.purpleSoft,
-                    backgroundColor: colors.theme === 'light'
-                        ? 'rgba(255, 255, 255, 0.8)'
-                        : 'rgba(30, 30, 30, 0.8)'
-                }]}>
-                    {safeProduct.name}
-                </Text>
-            </Animated.View>
         </View>
     );
 });
@@ -186,6 +168,9 @@ const styles = StyleSheet.create({
         backgroundColor: 'transparent',
         justifyContent: 'center',
         alignItems: 'center',
+    },
+    shareButtonDisabled: {
+        opacity: 0.55,
     },
     productImage: {
         width: SCREEN_WIDTH,
@@ -233,22 +218,6 @@ const styles = StyleSheet.create({
         color: "#919eee",
         fontSize: 14,
         fontWeight: '500',
-    },
-    floatingHeader: {
-        position: 'absolute',
-        top: 40,
-        left: 0,
-        right: 0,
-        alignItems: 'center',
-        zIndex: 5,
-    },
-    floatingTitle: {
-        fontFamily: FontFamily.sFProText,
-        fontSize: FontSize.size_sm,
-        fontWeight: '600',
-        paddingHorizontal: 20,
-        paddingVertical: 8,
-        borderRadius: 20,
     },
 });
 

@@ -95,6 +95,13 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
     const touchStartTime = useRef(0);
     const hasMovedRef = useRef(false);
 
+    useEffect(() => {
+        const unsub = navigation.addListener('blur', () => {
+            isNavigatingRef.current = false;
+        });
+        return unsub;
+    }, [navigation]);
+
     if (!product || typeof product !== 'object' || !product.id) {
         console.warn('ProductTile: Невалидный продукт:', product);
         return (
@@ -417,10 +424,10 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
                 previousProductId: routeParams.currentProductId || null
             });
 
-            // Сбрасываем флаг через задержку
+            // Сбрасываем флаг через задержку (короче — меньше шанс «залипания» после странного pop)
             setTimeout(() => {
                 isNavigatingRef.current = false;
-            }, 1000);
+            }, 450);
         } catch (error) {
             console.error('ProductTile: Ошибка при навигации:', error);
             isNavigatingRef.current = false;
