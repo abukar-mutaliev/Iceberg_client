@@ -165,13 +165,7 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
                         : null,
                 };
             });
-        console.log('[ChatBadgeDebug][TabBar] бейдж чата: откуда цифра', {
-            totalUnreadChats,
-            roomsWithBadge: rows?.length ?? 0,
-            rows,
-            hint:
-                'unreadShownInList — после selectRoomsList. rawUnreadByRoomId — Redux. bucketMessageCount 0 + большой raw = зависший счётчик или нет WS удаления.',
-        });
+     
     }, [rooms, totalUnreadChats, store]);
 
     // Защита от множественных нажатий

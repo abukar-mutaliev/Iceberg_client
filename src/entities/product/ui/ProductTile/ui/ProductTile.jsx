@@ -132,30 +132,46 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
 
     // Обрабатываем массив изображений
     const imageArray = useMemo(() => {
+        const isValidImageItem = (item) => {
+            if (!item) return false;
+            if (typeof item === 'string') return item.trim() !== '';
+            if (item.uri || item.url || item.path || item.src) return true;
+            return false;
+        };
+
         let images = [];
         
         if (product?.images && Array.isArray(product.images) && product.images.length > 0) {
-            images = product.images.filter(item => {
-                if (!item) return false;
-                if (typeof item === 'string') return item.trim() !== '';
-                if (item.uri || item.url || item.path || item.src) return true;
-                return false;
-            });
+            images = product.images.filter(isValidImageItem);
         }
         else if (product?.originalData?.images && Array.isArray(product.originalData.images) && product.originalData.images.length > 0) {
-            images = product.originalData.images.filter(item => {
-                if (!item) return false;
-                if (typeof item === 'string') return item.trim() !== '';
-                if (item.uri || item.url || item.path || item.src) return true;
-                return false;
-            });
+            images = product.originalData.images.filter(isValidImageItem);
         }
-        else if (product?.image) {
-            images = [product.image];
+
+        if (images.length === 0) {
+            const fallback = product?.image
+                || product?.coverImage
+                || product?.mainImage
+                || product?.thumbnail
+                || product?.imageUrl
+                || product?.previewImage
+                || product?.originalData?.image
+                || product?.originalData?.coverImage
+                || product?.originalData?.thumbnail
+                || product?.originalData?.imageUrl;
+            if (fallback) {
+                images = [fallback];
+            }
         }
         
-        return images.length > 0 ? images : [];
-    }, [product?.images, product?.originalData?.images, product?.image]);
+        return images;
+    }, [
+        product?.images, product?.originalData?.images,
+        product?.image, product?.coverImage, product?.mainImage,
+        product?.thumbnail, product?.imageUrl, product?.previewImage,
+        product?.originalData?.image, product?.originalData?.coverImage,
+        product?.originalData?.thumbnail, product?.originalData?.imageUrl,
+    ]);
 
     // Расширенный массив для бесконечной прокрутки
     const extendedImageArray = useMemo(() => {

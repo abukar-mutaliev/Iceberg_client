@@ -2652,18 +2652,7 @@ const chatSlice = createSlice({
         const hadLast = !!state.rooms.byId[roomId]?.lastMessage;
         clearRoomLastMessageIfMatches();
         bumpUnreadDownOnDelete();
-        if (__DEV__) {
-          console.log('[ChatBadgeDebug][receiveMessageDeleted]', {
-            branch: 'noBucket',
-            roomId,
-            messageId,
-            forAll,
-            hadLastMessageBefore: hadLast,
-            hasLastMessageAfter: !!state.rooms.byId[roomId]?.lastMessage,
-            unreadBefore,
-            unreadAfter: state.unreadByRoomId[roomId],
-          });
-        }
+ 
         return;
       }
       
@@ -2723,32 +2712,10 @@ const chatSlice = createSlice({
         const hadLastNf = !!state.rooms.byId[roomId]?.lastMessage;
         clearRoomLastMessageIfMatches();
         bumpUnreadDownOnDelete();
-        if (__DEV__) {
-          console.log('[ChatBadgeDebug][receiveMessageDeleted]', {
-            branch: 'messageNotInBucket',
-            roomId,
-            messageId,
-            forAll,
-            hadLastMessageBefore: hadLastNf,
-            hasLastMessageAfter: !!state.rooms.byId[roomId]?.lastMessage,
-            unreadBefore: unreadBeforeNf,
-            unreadAfter: state.unreadByRoomId[roomId],
-            bucketSize: bucket.ids.length,
-          });
-        }
+   
         return;
       }
       
-      if (__DEV__) {
-        console.log('✅ receiveMessageDeleted: Message found', {
-          messageId,
-          foundMessageKey,
-          foundMessageId: foundMessage.id,
-          foundTemporaryId: foundMessage.temporaryId,
-          roomId,
-          forAll
-        });
-      }
       
       // Если forAll === false, просто скрываем сообщение для текущего пользователя
       // Но для WebSocket событий обычно forAll === true (удаление для всех)
@@ -2760,12 +2727,7 @@ const chatSlice = createSlice({
         // Обновляем кэш, чтобы сохранить состояние скрытия
         updateMessageCache(roomId, bucket);
         
-        if (__DEV__) {
-          console.log('✅ receiveMessageDeleted: Message hidden (forAll=false)', {
-            messageId,
-            foundMessageKey
-          });
-        }
+   
         return;
       }
       

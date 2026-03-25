@@ -7,15 +7,8 @@ import {
     FlatList,
     ActivityIndicator,
     Platform,
-    Dimensions,
     InteractionManager,
 } from 'react-native';
-
-const SCREEN_HEIGHT = Dimensions.get('window').height;
-// iOS: ограничиваем высоту GPU-градиента, чтобы не переполнять видеопамять.
-// Без ограничения 3 слоя LinearGradient на 5000+ px создают ~24 МБ текстур,
-// и при сворачивании iOS убивает процесс.
-const MAX_GRADIENT_HEIGHT_IOS = SCREEN_HEIGHT * 2.5;
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { useFocusEffect } from '@react-navigation/native';
@@ -26,6 +19,7 @@ import { sendProduct, fetchRooms, hydrateRooms } from '@entities/chat/model/slic
 
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { feedbackApi } from '@entities/feedback/api/feedbackApi';
+import { prefillSupplierData } from '@entities/supplier';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { useToast } from '@shared/ui/Toast';
 import { Loader } from '@shared/ui/Loader';
@@ -83,6 +77,8 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     const [stableProduct, setStableProduct] = useState(null);
     const [stableSupplier, setStableSupplier] = useState(null);
     const [stableRelatedProducts, setStableRelatedProducts] = useState([]);
+    /** Основной контент — после завершения анимации push, чтобы JS-поток не конкурировал с анимацией. */
+    const [contentReady, setContentReady] = useState(false);
     /** Нижний блок (бренд, отзывы, похожие) — после анимации перехода, чтобы не конкурировать с первым кадром. */
     const [belowFoldReady, setBelowFoldReady] = useState(false);
     const rooms = useSelector(selectRoomsList) || [];
@@ -183,24 +179,35 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     }, [productId]);
 
     useEffect(() => {
+        setContentReady(false);
         setBelowFoldReady(false);
+        const task = InteractionManager.runAfterInteractions(() => {
+            requestAnimationFrame(() => {
+                if (isMountedRef.current) {
+                    setContentReady(true);
+                }
+            });
+        });
+        return () => task.cancel?.();
+    }, [productId]);
+
+    useEffect(() => {
+        if (!contentReady) return;
         let delayTimer;
         const task = InteractionManager.runAfterInteractions(() => {
             requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    delayTimer = setTimeout(() => {
-                        if (isMountedRef.current) {
-                            setBelowFoldReady(true);
-                        }
-                    }, 120);
-                });
+                delayTimer = setTimeout(() => {
+                    if (isMountedRef.current) {
+                        setBelowFoldReady(true);
+                    }
+                }, 80);
             });
         });
         return () => {
             task.cancel?.();
             if (delayTimer) clearTimeout(delayTimer);
         };
-    }, [productId]);
+    }, [contentReady]);
 
     // Обработка изменения продукта
     useEffect(() => {
@@ -782,7 +789,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     }, [currentUser?.role, currentSupplierId, displayProduct?.supplierId, displayProduct?.supplier?.id]);
 
     const productHeaderComponent = useMemo(() => {
-        if (!displayProduct?.id) return null;
+        if (!contentReady || !displayProduct?.id) return null;
         
         return (
             <ProductHeader
@@ -794,10 +801,10 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 shareDisabled={!!productShareBlockReason}
             />
         );
-    }, [displayProduct, displayProductImages, handleGoBack, handleSharePress, isAuthenticated, handleImagePress, productShareBlockReason]);
+    }, [contentReady, displayProduct, displayProductImages, handleGoBack, handleSharePress, isAuthenticated, handleImagePress, productShareBlockReason]);
 
     const productContentComponent = useMemo(() => {
-        if (!displayProduct?.id) return null;
+        if (!contentReady || !displayProduct?.id) return null;
         
         return (
             <ProductContent
@@ -826,6 +833,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
             />
         );
     }, [
+        contentReady,
         displayProduct,
         feedbacks,
         cartQuantity,
@@ -846,7 +854,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     ]);
 
     const productActionsComponent = useMemo(() => {
-        if (!displayProduct?.id) return null;
+        if (!contentReady || !displayProduct?.id) return null;
         
         return (
             <ProductActions
@@ -858,7 +866,15 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 isLoadingAskQuestion={isLoadingManager}
             />
         );
-    }, [displayProduct, handleAddToCart, selectedQuantity, handleProductUpdated, refreshData, handleAskQuestion, isLoadingManager]);
+    }, [contentReady, displayProduct, handleAddToCart, selectedQuantity, handleProductUpdated, refreshData, handleAskQuestion, isLoadingManager]);
+
+    const handleSupplierPressWithPrefill = useCallback(() => {
+        const suppId = displayProduct?.supplierId;
+        if (suppId && displaySupplier) {
+            dispatch(prefillSupplierData({ supplierId: suppId, supplier: displaySupplier }));
+        }
+        handleSupplierPress(productId, suppId);
+    }, [dispatch, displayProduct?.supplierId, displaySupplier, handleSupplierPress, productId]);
 
     const brandCardComponent = useMemo(() => (
         belowFoldReady && activeTab === 'description' && displaySupplier ? (
@@ -866,11 +882,11 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 <BrandCard
                     key={`brand-card-${displaySupplier.id}`}
                     supplier={displaySupplier}
-                    onSupplierPress={() => handleSupplierPress(productId, displayProduct?.supplierId)}
+                    onSupplierPress={handleSupplierPressWithPrefill}
                 />
             </View>
         ) : null
-    ), [belowFoldReady, activeTab, displaySupplier, handleSupplierPress, productId, displayProduct?.supplierId]);
+    ), [belowFoldReady, activeTab, displaySupplier, handleSupplierPressWithPrefill]);
 
     const recentFeedbacksComponent = useMemo(() => (
         belowFoldReady && activeTab === 'description' && Array.isArray(feedbacks) && feedbacks.length > 0 ? (
@@ -959,8 +975,9 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         );
     }, [allProductsForDisplay, stableRelatedProducts, colors, handleSimilarProductPress, productId, loadMoreProducts, isLoadingMoreProducts, hasMoreProducts, belowFoldReady]);
 
-    // Состояния загрузки и ошибок
-    if (isLoading && !displayProduct) {
+    // Во время анимации push показываем лёгкий лоадер, чтобы JS-поток
+    // не конкурировал с нативной анимацией (тяжёлый рендер откладывается).
+    if (!contentReady || (isLoading && !displayProduct)) {
         return (
             <View style={styles.fullScreenContainer}>
                 <SafeAreaView style={styles.safeArea} edges={['bottom', 'left', 'right']}>
@@ -1021,21 +1038,17 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                     style={styles.contentScrollView}
                     showsVerticalScrollIndicator={false}
                     onScroll={handleScrollWithPagination}
-                    scrollEventThrottle={48}
+                    scrollEventThrottle={80}
                     contentContainerStyle={styles.scrollContent}
                     onContentSizeChange={handleContentSizeChange}
                     overScrollMode="never"
                     bounces={false}
-                    removeClippedSubviews={Platform.OS === 'ios'}
+                    removeClippedSubviews={true}
                 >
                     <ScrollableBackgroundGradient
                         showOverlayGradient={true}
                         showShadowGradient={false}
-                        contentHeight={
-                            Platform.OS === 'ios'
-                                ? Math.min(contentHeight, MAX_GRADIENT_HEIGHT_IOS)
-                                : contentHeight
-                        }
+                        contentHeight={contentHeight}
                     />
 
                     <View style={styles.contentContainer}>

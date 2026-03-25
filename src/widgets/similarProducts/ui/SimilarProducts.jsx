@@ -140,17 +140,14 @@ export const SimilarProducts = React.memo(({
                 scrollEnabled={false}
                 nestedScrollEnabled={true}
                 contentContainerStyle={styles.listContentContainer}
-                initialNumToRender={4}
-                maxToRenderPerBatch={4}
-                windowSize={2}
-                removeClippedSubviews={Platform.OS === 'android'}
+                initialNumToRender={8}
+                maxToRenderPerBatch={8}
+                windowSize={21}
+                removeClippedSubviews={false}
                 updateCellsBatchingPeriod={50}
                 onEndReached={handleEndReached}
                 onEndReachedThreshold={0.5}
                 ListFooterComponent={renderFooter}
-                // Добавляем дополнительные оптимизации
-                disableVirtualization={false}
-                legacyImplementation={false}
             />
         </View>
     );

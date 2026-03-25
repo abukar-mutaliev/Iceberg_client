@@ -1,6 +1,5 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-// Импортируем напрямую из файлов, чтобы избежать циклической зависимости
 import {
     fetchSupplierWithProducts,
     fetchSupplierRating
@@ -16,27 +15,31 @@ import {
     selectSupplierProductsBySupplierId 
 } from '@entities/supplier/model/selectors';
 
+const MAX_RETRIES = 3;
+const RETRY_DELAYS = [2000, 5000, 10000];
+
 /**
- * Оптимизированный хук для управления данными поставщика
- * Убраны race conditions и упрощена логика загрузки
+ * Хук для управления данными поставщика.
+ * Мгновенно показывает закешированные данные из Redux,
+ * обновляет их в фоне и делает повторные попытки при ошибках сети.
  */
 export const useSupplierData = (supplierId) => {
     const dispatch = useDispatch();
     const [isLoading, setIsLoading] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [loadAttempted, setLoadAttempted] = useState(false);
+    const [retryCount, setRetryCount] = useState(0);
+    const retryTimerRef = useRef(null);
+    const mountedRef = useRef(true);
 
-    // Нормализуем supplierId к числу для консистентности
     const normalizedSupplierId = useMemo(() => {
         return supplierId ? Number(supplierId) : null;
     }, [supplierId]);
 
-    // Выбираем данные из Redux с нормализованным ID
     const supplier = useSelector(state => selectSupplierById(state, normalizedSupplierId));
     const suppliersLoading = useSelector(selectSuppliersLoading);
     const suppliersError = useSelector(selectSuppliersError);
 
-    // Безопасное получение продуктов через мемоизированный селектор с нормализованным ID
     const supplierProducts = useSelector(
         state => selectSupplierProductsBySupplierId(state, normalizedSupplierId),
         (left, right) => {
@@ -51,7 +54,6 @@ export const useSupplierData = (supplierId) => {
         }
     );
 
-    // Используем селектор для получения отзывов с нормализованным ID
     const allFeedbacks = useSelector(
         state => {
             if (!normalizedSupplierId) return [];
@@ -73,7 +75,6 @@ export const useSupplierData = (supplierId) => {
         }
     );
 
-    // Проверяем валидность поставщика
     const hasValidSupplier = useMemo(() => {
         return supplier && (
             supplier.role === 'SUPPLIER' ||
@@ -82,83 +83,95 @@ export const useSupplierData = (supplierId) => {
         );
     }, [supplier]);
 
-    // Функция загрузки данных поставщика
+    // Флаг: есть ли уже данные в Redux (из кеша или из prefill)
+    const hasCachedData = useMemo(() => !!supplier, [supplier]);
+
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => {
+            mountedRef.current = false;
+            if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+        };
+    }, []);
+
     const loadSupplierData = useCallback(async (force = false) => {
-        // Если нет ID, прерываем
-        if (!normalizedSupplierId) {
-            console.log('SupplierData - нет supplierId');
-            return;
-        }
+        if (!normalizedSupplierId) return;
 
-        // Защита от двойной загрузки (но не блокируем force refresh)
-        if (!force && isLoading) {
-            console.log('SupplierData - загрузка уже идет');
-            return;
-        }
+        if (!force && isLoading) return;
 
-        setIsLoading(true);
+        // Не ставим isLoading=true если данные уже есть (background refresh)
+        if (!hasCachedData) {
+            setIsLoading(true);
+        }
         setLoadAttempted(true);
 
         try {
-            console.log('🔄 SupplierData - Начало загрузки данных для:', normalizedSupplierId);
-
-            // Загружаем продукты, отзывы и рейтинг ПАРАЛЛЕЛЬНО
-            // Теперь отзывы НЕ зависят от продуктов - они загружаются напрямую с сервера
-            // Используем normalizedSupplierId для запросов (но API может принимать и строку)
             const [productsResult, feedbacksResult, ratingResult] = await Promise.allSettled([
                 dispatch(fetchSupplierWithProducts(normalizedSupplierId)).unwrap(),
                 dispatch(fetchSupplierFeedbacks(normalizedSupplierId)).unwrap(),
                 dispatch(fetchSupplierRating(normalizedSupplierId)).unwrap()
             ]);
 
-            console.log('✅ SupplierData - Все данные загружены:', {
-                supplierId: normalizedSupplierId,
-                products: productsResult.status,
-                productsCount: productsResult.status === 'fulfilled' ? productsResult.value?.products?.length : 0,
-                feedbacks: feedbacksResult.status,
-                feedbacksCount: feedbacksResult.status === 'fulfilled' ? feedbacksResult.value?.feedbacks?.length : 0,
-                rating: ratingResult.status
-            });
+            if (!mountedRef.current) return;
 
+            const anyFailed = [productsResult, feedbacksResult, ratingResult]
+                .some(r => r.status === 'rejected');
+
+            if (anyFailed) {
+                throw new Error('Partial load failure');
+            }
+
+            // Успех — сбрасываем счётчик ретраев
+            setRetryCount(0);
         } catch (error) {
-            console.error('❌ Ошибка загрузки данных поставщика:', error);
-        } finally {
-            setIsLoading(false);
-            setIsRefreshing(false);
-        }
-    }, [normalizedSupplierId, dispatch, isLoading]);
+            if (!mountedRef.current) return;
 
-    // Обработчик для pull-to-refresh
+            // Если основные данные (supplier+products) не загрузились и нет кеша — ретрай
+            const supplierStillMissing = !hasCachedData;
+            if (supplierStillMissing && retryCount < MAX_RETRIES) {
+                const delay = RETRY_DELAYS[retryCount] || RETRY_DELAYS[RETRY_DELAYS.length - 1];
+                console.warn(
+                    `⏳ Повторная попытка загрузки поставщика ${normalizedSupplierId}`,
+                    `через ${delay / 1000}с (попытка ${retryCount + 1}/${MAX_RETRIES})`
+                );
+                retryTimerRef.current = setTimeout(() => {
+                    if (mountedRef.current) {
+                        setRetryCount(prev => prev + 1);
+                        loadSupplierData(true);
+                    }
+                }, delay);
+            }
+        } finally {
+            if (mountedRef.current) {
+                setIsLoading(false);
+                setIsRefreshing(false);
+            }
+        }
+    }, [normalizedSupplierId, dispatch, isLoading, hasCachedData, retryCount]);
+
     const handleRefresh = useCallback(async () => {
-        console.log('🔄 SupplierData - Pull to refresh');
+        setRetryCount(0);
         setIsRefreshing(true);
         await loadSupplierData(true);
     }, [loadSupplierData]);
 
-    // Эффект для загрузки данных при изменении ID
     useEffect(() => {
-        console.log('📍 SupplierData - useEffect triggered:', { 
-            supplierId: normalizedSupplierId, 
-            loadAttempted,
-            hasSupplier: !!supplier,
-            hasProducts: supplierProducts.length > 0
-        });
-
-        // Сбрасываем флаг при смене ID
         if (normalizedSupplierId) {
             setLoadAttempted(false);
+            setRetryCount(0);
+            if (retryTimerRef.current) {
+                clearTimeout(retryTimerRef.current);
+                retryTimerRef.current = null;
+            }
         }
     }, [normalizedSupplierId]);
 
-    // Отдельный эффект для загрузки (чтобы не было циклических зависимостей)
     useEffect(() => {
         if (normalizedSupplierId && !loadAttempted && !isLoading) {
-            console.log('🚀 SupplierData - Запуск загрузки для:', normalizedSupplierId);
             loadSupplierData(false);
         }
     }, [normalizedSupplierId, loadAttempted, isLoading, loadSupplierData]);
 
-    // Мемоизируем количество продуктов и наличие продуктов
     const supplierProductsCount = useMemo(() =>
             supplierProducts.length,
         [supplierProducts]
@@ -169,7 +182,6 @@ export const useSupplierData = (supplierId) => {
         [supplierProductsCount]
     );
 
-    // Мемоизируем количество отзывов и наличие отзывов
     const feedbacksCount = useMemo(() =>
             allFeedbacks.length,
         [allFeedbacks]
@@ -180,33 +192,32 @@ export const useSupplierData = (supplierId) => {
         [feedbacksCount]
     );
 
-    // Проверяем состояние загрузки
+    // Показываем полноэкранный лоадер только если нет закешированных данных
     const isInitialLoading = useMemo(() =>
-            (isLoading || suppliersLoading) && !hasValidSupplier,
-        [isLoading, suppliersLoading, hasValidSupplier]
+            (isLoading || suppliersLoading) && !hasCachedData,
+        [isLoading, suppliersLoading, hasCachedData]
     );
 
-    // Проверяем наличие ошибки
+    // Ошибка показывается только когда нет данных, нет загрузки,
+    // все ретраи исчерпаны и загрузка уже была
     const hasError = useMemo(() =>
-            suppliersError || (!supplier && !suppliersLoading && !isLoading && loadAttempted),
-        [suppliersError, supplier, suppliersLoading, isLoading, loadAttempted]
+            (suppliersError || (!supplier && !suppliersLoading && !isLoading && loadAttempted))
+            && retryCount >= MAX_RETRIES,
+        [suppliersError, supplier, suppliersLoading, isLoading, loadAttempted, retryCount]
     );
 
-    // Проверка на неправильный тип пользователя
     const hasInvalidSupplierType = useMemo(() =>
             supplier && !hasValidSupplier,
         [supplier, hasValidSupplier]
     );
 
     return {
-        // Данные
         supplier,
         supplierProducts,
         allFeedbacks,
         supplierProductsCount,
         feedbacksCount,
 
-        // Состояния
         isLoading,
         isInitialLoading,
         isRefreshing,
@@ -216,8 +227,8 @@ export const useSupplierData = (supplierId) => {
         hasFeedbacks,
         hasValidSupplier,
         hasInvalidSupplierType,
+        hasCachedData,
 
-        // Действия
         loadSupplierData,
         handleRefresh
     };

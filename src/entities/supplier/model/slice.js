@@ -226,8 +226,21 @@ export const fetchSupplierWithProducts = createAsyncThunk(
 
 export const fetchSupplierRating = createAsyncThunk(
     'suppliers/fetchRating',
-    async (supplierId, { rejectWithValue }) => {
+    async (supplierId, { rejectWithValue, getState }) => {
         try {
+            const normalizedId = Number(supplierId);
+            const state = getState();
+            if (
+                state.suppliers.ratings[normalizedId] &&
+                isCacheValid(state.suppliers.lastFetchTime[`rating_${normalizedId}`])
+            ) {
+                return {
+                    supplierId: normalizedId,
+                    ...state.suppliers.ratings[normalizedId],
+                    fromCache: true,
+                };
+            }
+
             const response = await suppliersApi.getSupplierProductsForRating(supplierId);
 
             // Добавим логирование полного ответа для отладки
@@ -371,6 +384,24 @@ const suppliersSlice = createSlice({
         setSupplierRating: (state, action) => {
             const { supplierId, rating, totalFeedbacks } = action.payload;
             state.ratings[supplierId] = { rating, totalFeedbacks };
+        },
+
+        prefillSupplierData: (state, action) => {
+            const { supplierId, supplier } = action.payload || {};
+            if (!supplierId || !supplier) return;
+
+            const id = Number(supplierId);
+
+            // Не перезаписываем свежий кеш — только заполняем пустое место
+            if (state.supplierDetails[id] && isCacheValid(state.lastFetchTime[`supplier_${id}`])) {
+                return;
+            }
+
+            const { headers, ...serializable } = supplier;
+            state.supplierDetails[id] = serializable;
+            // Ставим timestamp в прошлое, чтобы при открытии экрана
+            // сразу отобразить данные, но при этом подгрузить свежие с сервера
+            state.lastFetchTime[`supplier_${id}`] = Date.now() - CACHE_EXPIRY_TIME + 30_000;
         }
     },
     extraReducers: (builder) => {
@@ -541,20 +572,21 @@ const suppliersSlice = createSlice({
             .addCase(fetchSupplierRating.pending, setPending)
             .addCase(fetchSupplierRating.fulfilled, (state, action) => {
                 state.loading = false;
-                // Извлекаем только необходимые поля, исключая несериализуемые данные
-                const { supplierId, rating, totalFeedbacks } = action.payload;
 
-                // Сохраняем только сериализуемые данные
-                state.ratings[supplierId] = { 
+                const { supplierId, rating, totalFeedbacks, fromCache } = action.payload;
+                if (fromCache) return;
+
+                const normalizedId = Number(supplierId);
+
+                state.ratings[normalizedId] = { 
                     rating: rating || 0, 
                     totalFeedbacks: totalFeedbacks || 0 
                 };
+                state.lastFetchTime[`rating_${normalizedId}`] = Date.now();
                 
-                // Убедимся, что в state.supplierDetails нет несериализуемых данных
-                if (state.supplierDetails[supplierId]) {
-                    // Удаляем HTTP заголовки, если они есть
-                    const { headers, ...serializable } = state.supplierDetails[supplierId];
-                    state.supplierDetails[supplierId] = serializable;
+                if (state.supplierDetails[normalizedId]) {
+                    const { headers, ...serializable } = state.supplierDetails[normalizedId];
+                    state.supplierDetails[normalizedId] = serializable;
                 }
             })
             .addCase(fetchSupplierRating.rejected, setRejected);
@@ -566,7 +598,8 @@ export const {
     clearSupplierError,
     setSupplierRating,
     clearRatings,
-    clearSupplierCache
+    clearSupplierCache,
+    prefillSupplierData
 } = suppliersSlice.actions;
 
 export default suppliersSlice.reducer;

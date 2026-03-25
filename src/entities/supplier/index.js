@@ -9,7 +9,8 @@ export {
     clearSupplierCache,
     setSupplierRating,
     clearRatings,
-    fetchSupplierRating
+    fetchSupplierRating,
+    prefillSupplierData
 } from './model/slice';
 
 export {

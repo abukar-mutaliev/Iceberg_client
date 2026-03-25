@@ -586,7 +586,7 @@ const createProductDetailScreenOptions = (extra = {}) => () =>
     createScreenOptions({
         ...cardStackTransition,
         unmountOnBlur: false,
-        freezeOnBlur: Platform.OS !== 'ios',
+        freezeOnBlur: true,
         gestureEnabled: true,
         ...(Platform.OS === 'ios'
             ? { cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS }

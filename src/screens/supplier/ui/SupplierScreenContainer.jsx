@@ -69,8 +69,8 @@ const SupplierScreenContainer = React.memo(({ supplierId, navigation, route }) =
         );
     }
 
-    // Показываем загрузку при первой загрузке или во время загрузки данных
-    if (isInitialLoading || isLoading) {
+    // Полноэкранный лоадер — только когда нет закешированных данных
+    if (isInitialLoading) {
         return (
             <View style={styles.container}>
                 <StaticBackgroundGradient />

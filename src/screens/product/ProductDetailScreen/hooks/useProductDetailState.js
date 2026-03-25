@@ -73,12 +73,11 @@ export const useProductDetailState = (productId) => {
     const handleContentSizeChange = useCallback((width, height) => {
         const nextHeight = Math.max((height || 0) + 100, SCREEN_HEIGHT * 3);
 
-        // Не уменьшаем фон при промежуточных перерасчетах layout,
-        // иначе нижняя часть экрана визуально "дергается".
         setContentHeight(prevHeight => {
-            if (nextHeight <= prevHeight) {
-                return prevHeight;
-            }
+            if (nextHeight <= prevHeight) return prevHeight;
+            // Обновляем только при существенном изменении (>300px),
+            // чтобы не пересоздавать GPU-текстуры градиента при каждом layout.
+            if (nextHeight - prevHeight < 300) return prevHeight;
             return nextHeight;
         });
     }, []);
