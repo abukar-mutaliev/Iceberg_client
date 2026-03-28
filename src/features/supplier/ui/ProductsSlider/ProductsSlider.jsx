@@ -39,21 +39,31 @@ const ProductCard = memo(({ item, onPress, colors }) => {
         <TouchableOpacity
             style={styles.productCard}
             onPress={handlePress}
+            activeOpacity={0.85}
         >
-            {productImage ? (
-                <Image
-                    source={productImage}
-                    style={styles.productImage}
-                    resizeMode="cover"
-                    // Параметры для оптимизации загрузки изображений
-                    progressiveRenderingEnabled={true}
-                    fadeDuration={100}
-                />
-            ) : (
-                <View style={placeholderStyle}>
-                    <Text style={{ color: colors.secondary }}>Нет фото</Text>
-                </View>
-            )}
+            <View style={styles.cardInner}>
+                {productImage ? (
+                    <View style={styles.imageWrapper}>
+                        <Image
+                            source={productImage}
+                            style={styles.blurBackground}
+                            resizeMode="cover"
+                            blurRadius={20}
+                        />
+                        <Image
+                            source={productImage}
+                            style={styles.productImage}
+                            resizeMode="contain"
+                            progressiveRenderingEnabled={true}
+                            fadeDuration={100}
+                        />
+                    </View>
+                ) : (
+                    <View style={placeholderStyle}>
+                        <Text style={{ color: colors.secondary }}>Нет фото</Text>
+                    </View>
+                )}
+            </View>
         </TouchableOpacity>
     );
 });
@@ -115,27 +125,62 @@ const styles = StyleSheet.create({
     container: {
         marginTop: SCREEN_WIDTH * 0.047,
         width: '100%',
+        paddingVertical: 0,
     },
     productsList: {
         paddingHorizontal: SCREEN_WIDTH * 0.037,
+        paddingVertical: 20,
     },
     productCard: {
         width: SCREEN_WIDTH * 0.27,
         marginHorizontal: SCREEN_WIDTH * 0.015,
         borderRadius: SCREEN_WIDTH * 0.055,
-        overflow: 'visible',
+        backgroundColor: '#F2F2F2',
+        shadowColor: 'rgba(100, 110, 220, 1)',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.22,
+        shadowRadius: 6,
+        elevation: 6,
     },
-    productImage: {
+    cardInner: {
+        borderRadius: SCREEN_WIDTH * 0.055,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: 'rgba(145, 158, 238, 0.25)',
+    },
+    imageWrapper: {
         width: '100%',
         height: SCREEN_WIDTH * 0.32,
-        borderRadius: SCREEN_WIDTH * 0.055,
+        overflow: 'hidden',
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#F2F2F2',
+    },
+    blurBackground: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: '100%',
+        height: '100%',
+        opacity: 0.9,
+    },
+    productImage: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: '100%',
+        height: '100%',
     },
     productImagePlaceholder: {
         width: '100%',
-        height: SCREEN_WIDTH * 0.35,
+        height: SCREEN_WIDTH * 0.32,
         justifyContent: 'center',
         alignItems: 'center',
-        borderRadius: SCREEN_WIDTH * 0.023,
+        borderRadius: SCREEN_WIDTH * 0.055,
     }
 });
 

@@ -98,21 +98,25 @@ export const fetchProducts = createAsyncThunk(
                         hasMore: finalHasMore
                     };
                 } else {
+                    // Нет поля pagination — определяем hasMore по количеству полученных товаров:
+                    // если вернулась полная страница (limit штук), значит данные ещё есть
+                    const inferredHasMore = products.length >= limit;
                     pagination = {
                         currentPage: page,
-                        totalPages: page,
+                        totalPages: inferredHasMore ? page + 1 : page,
                         totalItems: products.length,
-                        hasMore: false
+                        hasMore: inferredHasMore
                     };
                 }
             } else if (Array.isArray(response)) {
                 // Если ответ - массив напрямую (старый формат)
                 products = response;
+                const inferredHasMore = products.length >= limit;
                 pagination = {
                     currentPage: page,
-                    totalPages: page,
+                    totalPages: inferredHasMore ? page + 1 : page,
                     totalItems: products.length,
-                    hasMore: false
+                    hasMore: inferredHasMore
                 };
             } else {
                 // Если ответ пустой или неожиданный, используем значения по умолчанию
@@ -129,6 +133,7 @@ export const fetchProducts = createAsyncThunk(
                 data: products, 
                 pagination,
                 page,
+                limit,
                 fromCache: false,
                 requestScope
             };

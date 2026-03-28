@@ -325,6 +325,40 @@ export const slideFromBottom = {
     cardOverlayEnabled: true,
 };
 
+// Мгновенный fade-переход для цепочки товаров (похожие → похожие).
+// Используется когда navigation.replace() заменяет ProductDetail на следующий/предыдущий товар —
+// одна лёгкая fade-анимация вместо горизонтального слайда, JS-поток не конкурирует с тяжёлым рендером.
+export const productChainTransition = {
+    cardStyleInterpolator: ({ current }) => ({
+        cardStyle: {
+            opacity: current.progress.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, 1],
+                extrapolate: 'clamp',
+            }),
+        },
+    }),
+    transitionSpec: {
+        open: {
+            animation: 'timing',
+            config: {
+                duration: 130,
+                useNativeDriver: true,
+            },
+        },
+        close: {
+            animation: 'timing',
+            config: {
+                duration: 90,
+                useNativeDriver: true,
+            },
+        },
+    },
+    gestureEnabled: false,
+    animationEnabled: true,
+    cardOverlayEnabled: false,
+};
+
 // Горизонтальный слайд без параллакса/scale/opacity и без анимированных теней —
 // иначе при pop с тяжёлых экранов (карточка товара) заметны подвисания на JS/GPU.
 export const cardStackTransition = {

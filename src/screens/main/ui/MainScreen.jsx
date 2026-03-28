@@ -365,7 +365,7 @@ export const MainScreen = ({ navigation, route }) => {
                 setIsRefreshing(false);
             }
         }
-    }, [dispatch, products?.length, activeBanners, categories?.length, shouldRefreshCache, loadSupplierModerationProducts, loadSuperAdminPendingProducts, usePublicCatalogForMain]);
+    }, [dispatch, activeBanners, categories?.length, shouldRefreshCache, loadSupplierModerationProducts, loadSuperAdminPendingProducts, usePublicCatalogForMain]);
     
     // Сохраняем стабильную ссылку на loadAllData
     useEffect(() => {
@@ -405,7 +405,7 @@ export const MainScreen = ({ navigation, route }) => {
             limit: PRODUCTS_PER_PAGE,
             usePublicCatalog: usePublicCatalogForMain
         }));
-    }, [dispatch, hasMore, isLoadingMore, currentPage, products?.length, usePublicCatalogForMain]);
+    }, [dispatch, hasMore, isLoadingMore, currentPage, usePublicCatalogForMain]);
 
     // Принудительное обновление (pull-to-refresh) — перемешивает товары
     const handleRefresh = useCallback(() => {

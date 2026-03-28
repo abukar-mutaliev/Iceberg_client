@@ -31,10 +31,8 @@ export const ProductsList = ({
                                  onRetry = null
                              }) => {
     // Безопасные значения по умолчанию
-    const safeOnEndReachedThreshold = onEndReachedThreshold || 8;
     const safeIsLoadingMore = Boolean(isLoadingMore);
     const safeHasMore = Boolean(hasMore);
-    const safeHideLoader = Boolean(hideLoader);
     const productsFromStore = useSelector(selectProducts);
     const isLoading = useSelector(selectProductsLoading);
     const error = useSelector(selectProductsError);
@@ -139,14 +137,9 @@ export const ProductsList = ({
         }
     }, [safeIsLoadingMore]);
 
-    // onEndReachedThreshold - это расстояние от конца списка в единицах видимого контента (0-1)
-    // Используем фиксированное значение для надежного срабатывания
     const threshold = useMemo(() => {
-        // Если продуктов мало, используем большее значение для гарантии срабатывания
         if (!displayProducts || displayProducts.length === 0) return 0.5;
-        // Для коротких списков (до 15 элементов) используем 0.3, чтобы гарантировать срабатывание
         if (displayProducts.length <= 15) return 0.3;
-        // Для больших списков используем фиксированное значение 0.2
         return 0.2;
     }, [displayProducts?.length]);
 
@@ -161,23 +154,6 @@ export const ProductsList = ({
             {ListFooterComponent && ListFooterComponent()}
         </>
     ), [safeIsLoadingMore, ListFooterComponent]);
-
-    // Восстанавливаем позицию скролла после обновления данных
-    useEffect(() => {
-        if (flatListRef.current && displayProducts && displayProducts.length > 0) {
-            // Небольшая задержка для обеспечения корректного рендеринга
-            const timeoutId = setTimeout(() => {
-                if (flatListRef.current && scrollPositionRef.current.y > 0) {
-                    flatListRef.current.scrollToOffset({
-                        offset: scrollPositionRef.current.y,
-                        animated: false
-                    });
-                }
-            }, 50);
-
-            return () => clearTimeout(timeoutId);
-        }
-    }, [displayProducts?.length]);
 
     const renderEmptyComponent = useCallback(() => {
         if (error) {

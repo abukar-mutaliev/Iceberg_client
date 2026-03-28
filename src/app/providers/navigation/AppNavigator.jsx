@@ -115,6 +115,7 @@ import {
     modalSlideFromBottom,
     slideFromBottom,
     cardStackTransition,
+    productChainTransition,
     defaultScreenOptions,
     fullScreenModal
 } from '@app/providers/navigation/transitionConfigs';
@@ -582,18 +583,23 @@ const PRODUCT_DETAIL_CARD_STYLE = {
     }),
 };
 
-const createProductDetailScreenOptions = (extra = {}) => () =>
-    createScreenOptions({
-        ...cardStackTransition,
+const createProductDetailScreenOptions = (extra = {}) => ({ route }) => {
+    // Если пользователь идёт по цепочке похожих товаров (productHistory непустая),
+    // используем быструю fade-анимацию вместо слайда: меньше нагрузки на JS/GPU-поток
+    // и жест свайпа назад отключён (возврат через кнопку «Назад» / JS-историю).
+    const isProductChain = (route?.params?.productHistory?.length ?? 0) > 0;
+    return createScreenOptions({
+        ...(isProductChain ? productChainTransition : cardStackTransition),
         unmountOnBlur: false,
         freezeOnBlur: true,
-        gestureEnabled: true,
-        ...(Platform.OS === 'ios'
+        gestureEnabled: !isProductChain,
+        ...(Platform.OS === 'ios' && !isProductChain
             ? { cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS }
             : {}),
         cardStyle: PRODUCT_DETAIL_CARD_STYLE,
         ...extra,
     });
+};
 
 // ============================================================================
 // ЧАСТЬ 7: Stack Navigators (упрощенные)
@@ -908,15 +914,7 @@ const ChatStackScreen = () => (
         <ChatStack.Screen
             name="ProductDetail"
             component={ProductDetailScreen}
-            options={{
-                ...cardStackTransition,
-                headerShown: false,
-                freezeOnBlur: Platform.OS !== 'ios',
-                gestureEnabled: true,
-                ...(Platform.OS === 'ios'
-                    ? { cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS }
-                    : {}),
-            }}
+            options={createProductDetailScreenOptions()}
         />
         <ChatStack.Screen
             name="SupplierScreen"
@@ -1435,14 +1433,7 @@ export const AppNavigator = () => {
                     <Stack.Screen
                         name="ProductDetail"
                         component={ProductDetailScreen}
-                        options={createScreenOptions({
-                            ...cardStackTransition,
-                            freezeOnBlur: Platform.OS !== 'ios',
-                            gestureEnabled: true,
-                            ...(Platform.OS === 'ios'
-                                ? { cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS }
-                                : {}),
-                        })}
+                        options={createProductDetailScreenOptions()}
                     />
                     {/* SupplierScreen в AppStack нужен для переходов из ChatRoom.
                        Тогда экран поставщика ложится поверх ChatRoom и back возвращает обратно в комнату. */}

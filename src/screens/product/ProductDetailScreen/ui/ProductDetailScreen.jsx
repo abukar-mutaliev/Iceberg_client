@@ -171,6 +171,56 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         handleSimilarProductPress
     } = useProductDetailNavigation(navigation, fromScreen, params);
 
+    // ─── Свайп-жест назад от левого края (responder API) ────────────────────────
+    // Используем встроенный React Native responder, а не RNGH GestureDetector:
+    // GestureDetector оборачивает весь экран и на нативном уровне блокирует события
+    // до их обработки дочерними ScrollView / TouchableOpacity.
+    //
+    // Логика responder API:
+    //  • onStartShouldSetResponder → возвращает false (тапы проходят к кнопкам),
+    //    но при этом фиксирует начальную позицию касания.
+    //  • onMoveShouldSetResponder → перехватывает жест только когда это горизонтальный
+    //    свайп вправо, начавшийся у левого края (startX < 40).
+    //  • onResponderRelease → если смещение > 60px, вызывает handleGoBack().
+    //
+    // iOS: активен только в цепочке похожих товаров (нативный gesture навигатора
+    //      отключён). Android: активен всегда (стек не даёт нативного свайпа).
+    const productHistory = params?.productHistory;
+    const hasHistory = Array.isArray(productHistory) && productHistory.length > 0;
+    const enableEdgeSwipe = hasHistory || Platform.OS === 'android';
+
+    const handleGoBackRef = useRef(handleGoBack);
+    useEffect(() => {
+        handleGoBackRef.current = handleGoBack;
+    }, [handleGoBack]);
+
+    const edgeSwipeRef = useRef({ startX: 0, startY: 0 });
+
+    const onEdgeStartShouldSetResponder = useCallback((e) => {
+        // Запоминаем начало касания, но не перехватываем — тапы идут к дочерним элементам
+        edgeSwipeRef.current = {
+            startX: e.nativeEvent.pageX,
+            startY: e.nativeEvent.pageY,
+        };
+        return false;
+    }, []);
+
+    const onEdgeMoveShouldSetResponder = useCallback((e) => {
+        if (!enableEdgeSwipe) return false;
+        const dx = e.nativeEvent.pageX - edgeSwipeRef.current.startX;
+        const dy = Math.abs(e.nativeEvent.pageY - edgeSwipeRef.current.startY);
+        // Перехватываем только явный горизонтальный свайп вправо от левого края
+        return edgeSwipeRef.current.startX < 40 && dx > 15 && dx > dy * 1.5;
+    }, [enableEdgeSwipe]);
+
+    const onEdgeResponderRelease = useCallback((e) => {
+        const dx = e.nativeEvent.pageX - edgeSwipeRef.current.startX;
+        if (enableEdgeSwipe && dx > 60) {
+            handleGoBackRef.current?.();
+        }
+    }, [enableEdgeSwipe]);
+    // ────────────────────────────────────────────────────────────────────────────
+
     useEffect(() => {
         setStableProduct(null);
         setStableSupplier(null);
@@ -1031,7 +1081,13 @@ export const ProductDetailScreen = ({ route, navigation }) => {
 
     // Основной рендер
     return (
-        <View style={styles.fullScreenContainer}>
+        <View
+            style={styles.fullScreenContainer}
+            onStartShouldSetResponder={onEdgeStartShouldSetResponder}
+            onMoveShouldSetResponder={onEdgeMoveShouldSetResponder}
+            onResponderRelease={onEdgeResponderRelease}
+            onResponderTerminate={() => {}}
+        >
             <SafeAreaView style={styles.safeArea} edges={['bottom', 'left', 'right']}>
                 <ScrollView
                     ref={scrollViewRef}
