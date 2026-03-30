@@ -149,19 +149,20 @@ export const EmployeeManagementScreen = () => {
                     </View>
                 </View>
 
-                {/* Информация о складе */}
-                {item.warehouse && (
+                {/* Информация о складах */}
+                {(item.warehouses?.length > 0 || item.warehouse) && (
                     <View style={styles.warehouseContainer}>
-                        <Text style={styles.warehouseTitle}>Склад работы:</Text>
-                        <View style={styles.warehouseInfo}>
-                            <Text style={styles.warehouseName}>{item.warehouse.name}</Text>
-                            <Text style={styles.warehouseAddress}>{item.warehouse.address}</Text>
-                            {item.warehouse.district && (
-                                <Text style={styles.warehouseDistrict}>
-                                    {item.warehouse.district.name}
-                                </Text>
-                            )}
-                        </View>
+                        <Text style={styles.warehouseTitle}>
+                            Склады работы ({item.warehouses?.length || 1}):
+                        </Text>
+                        {(item.warehouses?.length > 0 ? item.warehouses : [item.warehouse]).map(w => (
+                            <View key={w.id} style={styles.warehouseChip}>
+                                <Text style={styles.warehouseName}>{w.name}</Text>
+                                {w.district && (
+                                    <Text style={styles.warehouseDistrict}>{w.district.name}</Text>
+                                )}
+                            </View>
+                        ))}
                     </View>
                 )}
 
@@ -410,28 +411,28 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
         color: Color.textPrimary,
-        marginBottom: normalize(6),
+        marginBottom: normalize(8),
     },
-    warehouseInfo: {
-        marginLeft: normalize(8),
+    warehouseChip: {
+        backgroundColor: Color.colorLightMode,
+        borderRadius: Border.radius.small,
+        paddingHorizontal: normalize(10),
+        paddingVertical: normalize(6),
+        marginBottom: normalize(4),
+        borderWidth: 1,
+        borderColor: Color.border,
     },
     warehouseName: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
         color: Color.blue2,
-        marginBottom: normalize(2),
-    },
-    warehouseAddress: {
-        fontSize: normalizeFont(FontSize.size_xs),
-        fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
-        marginBottom: normalize(2),
     },
     warehouseDistrict: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
         color: Color.textSecondary,
+        marginTop: normalize(2),
     },
     actionButtons: {
         flexDirection: 'row',

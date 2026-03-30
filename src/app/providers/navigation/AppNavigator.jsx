@@ -30,7 +30,6 @@ import { ProfileScreen } from "@/screens/profile";
 import { ProfileEdit } from "@features/profile/ui/ProfileEdit";
 import { ChangePasswordScreen, SettingsScreen, NotificationSettings } from "@features/profile";
 import { HelpCenterScreen } from "@features/help";
-import PushNotificationDiagnostic from "@shared/ui/PushNotificationDiagnostic";
 import { ProductListScreen } from "@screens/product/ProductListScreen/ProductListScreen";
 import { ProductDetailScreen } from "@screens/product/ProductDetailScreen";
 import { ProductManagementScreen } from "@screens/product/ProductManagementScreen";
@@ -105,8 +104,6 @@ import { CustomTabBar, TabBarProvider, useTabBar } from "@widgets/navigation";
 import { featureFlags } from "@shared/config/featureFlags";
 // InAppNotificationProvider больше не используется - показываем системные уведомления как в WhatsApp
 // import { InAppNotificationProvider } from '@shared/ui/InAppNotificationBanner';
-import OneSignalService from '@shared/services/OneSignalService';
-// import { useOneSignalInAppNotifications } from '@shared/hooks/useOneSignalInAppNotifications';
 
 // Transition Configs
 import {
@@ -505,7 +502,6 @@ const createNavigationFunctions = (navigation) => {
 // Компонент для инициализации InApp уведомлений - БОЛЬШЕ НЕ ИСПОЛЬЗУЕТСЯ
 // Теперь показываем системные уведомления как в WhatsApp
 // const InAppNotificationInitializer = ({ children }) => {
-//     useOneSignalInAppNotifications();
 //     return children;
 // };
 
@@ -770,14 +766,6 @@ const ProfileStackScreen = () => (
             component={NotificationSettings}
             options={createScreenOptions()}
         />
-        {/* Диагностический экран - только в dev режиме */}
-        {__DEV__ && (
-            <ProfileStack.Screen
-                name="PushNotificationDiagnostic"
-                component={PushNotificationDiagnostic}
-                options={createScreenOptions()}
-            />
-        )}
         <ProfileStack.Screen
             name="HelpCenter"
             component={HelpCenterScreen}
@@ -1099,9 +1087,14 @@ const MainStackScreen = () => (
             gestureEnabled: true,
             detachPreviousScreen: false,
         }}
-        // Иначе при push второго ProductDetail первый экран остаётся в нативном дереве
-        // и продолжает грузить JS (скролл, FlatList похожих) — переход подвисает.
-        detachInactiveScreens={true}
+        // Android: detach неактивных экранов — иначе Main остаётся в нативном дереве
+        // и конкурирует с JS при переходе на ProductDetail (FlatList, скролл).
+        // iOS: НЕ detach — иначе Main удаляется из нативной иерархии, и при возврате
+        // через Tab Press (fade-анимация productChainTransition, 90ms) iOS не успевает
+        // re-attach + layout Main до окончания анимации → Main рисуется в половину ширины.
+        // Похожие товары теперь используют replace() (один ProductDetail в стеке),
+        // поэтому оригинальная причина detach на iOS больше не актуальна.
+        detachInactiveScreens={Platform.OS === 'android'}
     >
         <MainStack.Screen
             name="Main"

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -11,147 +11,97 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
-import WarehouseService from '@entities/warehouse/api/warehouseApi';
+import { useWarehouses } from '@entities/warehouse/hooks/useWarehouses';
 import { employeeApi } from '@entities/user/api/userApi';
 import IconClose from '@shared/ui/Icon/Profile/CloseIcon';
 import IconWarehouse from '@shared/ui/Icon/Warehouse/IconWarehouse';
 import { MapPinIcon } from '@shared/ui/Icon/DistrictManagement/MapPinIcon';
 
 export const EmployeeWarehouseModal = ({ visible, employee, onClose, onSuccess }) => {
-    const [warehouses, setWarehouses] = useState([]);
-    const [isLoading, setIsLoading] = useState(false);
-    const [selectedWarehouseId, setSelectedWarehouseId] = useState(null);
+    const [selectedIds, setSelectedIds] = useState([]);
     const [isSaving, setIsSaving] = useState(false);
 
-    // Инициализация при открытии модального окна
+    const { warehouses, loading: isLoading, refreshWarehouses } = useWarehouses({ autoLoad: true });
+
     useEffect(() => {
         if (visible && employee) {
-            setSelectedWarehouseId(employee.warehouseId || null);
-            loadWarehouses();
+            // Инициализация из массива warehouses (новый формат) или warehouseId (старый)
+            const initial = employee.warehouses?.map(w => w.id) ||
+                (employee.warehouseId ? [employee.warehouseId] : []);
+            setSelectedIds(initial);
+            if (warehouses.length === 0) {
+                refreshWarehouses();
+            }
         }
     }, [visible, employee]);
 
-    // Загрузка списка складов
-    const loadWarehouses = async () => {
-        try {
-            setIsLoading(true);
-            const response = await WarehouseService.getWarehouses({ 
-                limit: 100,
-                isActive: true 
-            });
-            
-            // Обрабатываем различные форматы ответа API
-            let warehouses = [];
-            if (response.data?.warehouses) {
-                // Прямой формат: { warehouses: [...], pagination: {...} }
-                warehouses = response.data.warehouses;
-            } else if (response.data?.data?.warehouses) {
-                // Вложенный формат: { status: 'success', data: { warehouses: [...] } }
-                warehouses = response.data.data.warehouses;
-            } else if (Array.isArray(response.data?.data)) {
-                // Формат: { status: 'success', data: [...] }
-                warehouses = response.data.data;
-            } else if (Array.isArray(response.data)) {
-                // Прямой массив: [...]
-                warehouses = response.data;
-            }
-            
-            console.log('Загружены склады:', warehouses.length);
-            setWarehouses(warehouses);
-        } catch (error) {
-            console.error('Ошибка загрузки складов:', error);
-            Alert.alert('Ошибка', 'Не удалось загрузить список складов');
-        } finally {
-            setIsLoading(false);
-        }
-    };
+    const toggleWarehouse = useCallback((id) => {
+        setSelectedIds(prev =>
+            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+        );
+    }, []);
 
-    // Обработка выбора склада
-    const handleWarehouseSelect = (warehouseId) => {
-        setSelectedWarehouseId(warehouseId);
-    };
+    const handleSelectAll = () => setSelectedIds(warehouses.map(w => w.id));
+    const handleClearAll = () => setSelectedIds([]);
 
-    // Сохранение изменений
     const handleSave = async () => {
-        if (!employee || !selectedWarehouseId) return;
+        if (!employee) return;
 
         try {
             setIsSaving(true);
-            
-            // Вызываем API для обновления склада сотрудника
-            await employeeApi.updateEmployeeWarehouse(employee.id, selectedWarehouseId);
-            
+            await employeeApi.updateEmployeeWarehouse(employee.id, selectedIds);
             Alert.alert(
-                'Склад обновлен',
-                `Склад сотрудника ${employee.name} успешно изменен`,
-                [
-                    {
-                        text: 'OK',
-                        onPress: () => {
-                            onSuccess?.();
-                            onClose();
-                        }
-                    }
-                ]
+                'Склады обновлены',
+                `Назначено складов: ${selectedIds.length}`,
+                [{ text: 'OK', onPress: () => { onSuccess?.(); onClose(); } }]
             );
         } catch (error) {
-            console.error('Ошибка обновления склада:', error);
-            Alert.alert('Ошибка', 'Не удалось обновить склад сотрудника');
+            console.error('Ошибка обновления складов:', error);
+            Alert.alert('Ошибка', 'Не удалось обновить склады сотрудника');
         } finally {
             setIsSaving(false);
         }
     };
 
-    // Рендер элемента склада
     const renderWarehouseItem = ({ item }) => {
-        const isSelected = selectedWarehouseId === item.id;
-        
+        const isSelected = selectedIds.includes(item.id);
         return (
             <TouchableOpacity
-                style={[
-                    styles.warehouseItem,
-                    isSelected && styles.selectedWarehouseItem
-                ]}
-                onPress={() => handleWarehouseSelect(item.id)}
+                style={[styles.warehouseItem, isSelected && styles.selectedWarehouseItem]}
+                onPress={() => toggleWarehouse(item.id)}
+                activeOpacity={0.7}
             >
                 <View style={styles.warehouseHeader}>
-                    <View style={styles.warehouseIcon}>
-                        <IconWarehouse width={20} height={20} color={isSelected ? Color.colorLightMode : Color.blue2} />
+                    <View style={[styles.warehouseIcon, isSelected && styles.selectedWarehouseIcon]}>
+                        <IconWarehouse width={20} height={20} color={isSelected ? Color.blue2 : Color.textSecondary} />
                     </View>
                     <View style={styles.warehouseInfo}>
-                        <Text style={[
-                            styles.warehouseName,
-                            isSelected && styles.selectedWarehouseText
-                        ]}>
+                        <Text style={[styles.warehouseName, isSelected && styles.selectedWarehouseText]}>
                             {item.name}
                         </Text>
-                        <Text style={[
-                            styles.warehouseAddress,
-                            isSelected && styles.selectedWarehouseText
-                        ]}>
+                        <Text style={[styles.warehouseAddress, isSelected && styles.selectedWarehouseText]}>
                             {item.address}
                         </Text>
-                        <View style={styles.warehouseDistrict}>
-                            <MapPinIcon size={12} color={isSelected ? Color.colorLightMode : Color.textSecondary} />
-                            <Text style={[
-                                styles.districtName,
-                                isSelected && styles.selectedWarehouseText
-                            ]}>
-                                {item.district?.name}
-                            </Text>
-                        </View>
+                        {item.district?.name && (
+                            <View style={styles.warehouseDistrict}>
+                                <MapPinIcon size={12} color={isSelected ? Color.blue2 : Color.textSecondary} />
+                                <Text style={[styles.districtName, isSelected && styles.selectedDistrictText]}>
+                                    {item.district.name}
+                                </Text>
+                            </View>
+                        )}
                     </View>
-                    {isSelected && (
-                        <View style={styles.selectedIndicator}>
-                            <Text style={styles.selectedIndicatorText}>✓</Text>
-                        </View>
-                    )}
+                    <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                        {isSelected && <Text style={styles.checkboxMark}>✓</Text>}
+                    </View>
                 </View>
             </TouchableOpacity>
         );
     };
 
     if (!visible || !employee) return null;
+
+    const allSelected = warehouses.length > 0 && selectedIds.length === warehouses.length;
 
     return (
         <Modal
@@ -164,16 +114,26 @@ export const EmployeeWarehouseModal = ({ visible, employee, onClose, onSuccess }
                 {/* Заголовок */}
                 <View style={styles.header}>
                     <View style={styles.headerContent}>
-                        <Text style={styles.title}>Изменить склад</Text>
-                        <Text style={styles.subtitle}>
-                            Сотрудник: {employee.name}
-                        </Text>
+                        <Text style={styles.title}>Назначить склады</Text>
+                        <Text style={styles.subtitle}>Сотрудник: {employee.name}</Text>
                     </View>
-                    <TouchableOpacity
-                        style={styles.closeButton}
-                        onPress={onClose}
-                    >
+                    <TouchableOpacity style={styles.closeButton} onPress={onClose}>
                         <IconClose width={24} height={24} color={Color.textPrimary} />
+                    </TouchableOpacity>
+                </View>
+
+                {/* Панель выбора всех */}
+                <View style={styles.selectionBar}>
+                    <Text style={styles.selectionCount}>
+                        Выбрано: {selectedIds.length} из {warehouses.length}
+                    </Text>
+                    <TouchableOpacity
+                        onPress={allSelected ? handleClearAll : handleSelectAll}
+                        style={styles.selectAllButton}
+                    >
+                        <Text style={styles.selectAllText}>
+                            {allSelected ? 'Снять все' : 'Выбрать все'}
+                        </Text>
                     </TouchableOpacity>
                 </View>
 
@@ -191,6 +151,11 @@ export const EmployeeWarehouseModal = ({ visible, employee, onClose, onSuccess }
                             renderItem={renderWarehouseItem}
                             showsVerticalScrollIndicator={false}
                             contentContainerStyle={styles.listContainer}
+                            ListEmptyComponent={
+                                <View style={styles.emptyContainer}>
+                                    <Text style={styles.emptyText}>Склады не найдены</Text>
+                                </View>
+                            }
                         />
                     )}
                 </View>
@@ -204,14 +169,10 @@ export const EmployeeWarehouseModal = ({ visible, employee, onClose, onSuccess }
                     >
                         <Text style={styles.cancelButtonText}>Отмена</Text>
                     </TouchableOpacity>
-                    
                     <TouchableOpacity
-                        style={[
-                            styles.saveButton,
-                            (!selectedWarehouseId || isSaving) && styles.disabledButton
-                        ]}
+                        style={[styles.saveButton, isSaving && styles.disabledButton]}
                         onPress={handleSave}
-                        disabled={!selectedWarehouseId || isSaving}
+                        disabled={isSaving}
                     >
                         {isSaving ? (
                             <ActivityIndicator size="small" color={Color.colorLightMode} />
@@ -258,6 +219,33 @@ const styles = StyleSheet.create({
     closeButton: {
         padding: normalize(8),
     },
+    selectionBar: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: normalize(20),
+        paddingVertical: normalize(10),
+        backgroundColor: Color.colorLightGray,
+        borderBottomWidth: 1,
+        borderBottomColor: Color.border,
+    },
+    selectionCount: {
+        fontSize: normalizeFont(FontSize.size_sm),
+        fontFamily: FontFamily.sFProText,
+        color: Color.textSecondary,
+    },
+    selectAllButton: {
+        paddingVertical: normalize(4),
+        paddingHorizontal: normalize(10),
+        borderRadius: Border.radius.small,
+        backgroundColor: Color.blue2,
+    },
+    selectAllText: {
+        fontSize: normalizeFont(FontSize.size_sm),
+        fontFamily: FontFamily.sFProDisplay,
+        fontWeight: '600',
+        color: Color.colorLightMode,
+    },
     content: {
         flex: 1,
         paddingHorizontal: normalize(20),
@@ -274,33 +262,45 @@ const styles = StyleSheet.create({
         marginTop: normalize(8),
     },
     listContainer: {
-        paddingVertical: normalize(16),
+        paddingVertical: normalize(12),
+    },
+    emptyContainer: {
+        paddingVertical: normalize(40),
+        alignItems: 'center',
+    },
+    emptyText: {
+        fontSize: normalizeFont(FontSize.size_md),
+        fontFamily: FontFamily.sFProText,
+        color: Color.textSecondary,
     },
     warehouseItem: {
         backgroundColor: Color.colorLightMode,
         borderRadius: Border.radius.medium,
-        padding: normalize(16),
-        marginBottom: normalize(12),
-        borderWidth: 1,
+        padding: normalize(14),
+        marginBottom: normalize(10),
+        borderWidth: 1.5,
         borderColor: Color.border,
         ...Shadow.light,
     },
     selectedWarehouseItem: {
-        backgroundColor: Color.blue2,
         borderColor: Color.blue2,
+        backgroundColor: '#EBF3FF',
     },
     warehouseHeader: {
         flexDirection: 'row',
         alignItems: 'center',
     },
     warehouseIcon: {
-        width: normalize(40),
-        height: normalize(40),
-        borderRadius: normalize(20),
+        width: normalize(38),
+        height: normalize(38),
+        borderRadius: normalize(19),
         backgroundColor: Color.colorLightGray,
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: normalize(12),
+    },
+    selectedWarehouseIcon: {
+        backgroundColor: '#D6E8FF',
     },
     warehouseInfo: {
         flex: 1,
@@ -310,17 +310,21 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
         color: Color.textPrimary,
-        marginBottom: normalize(4),
+        marginBottom: normalize(2),
+    },
+    selectedWarehouseText: {
+        color: Color.blue2,
     },
     warehouseAddress: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
         color: Color.textSecondary,
-        marginBottom: normalize(4),
+        marginBottom: normalize(2),
     },
     warehouseDistrict: {
         flexDirection: 'row',
         alignItems: 'center',
+        marginTop: normalize(2),
     },
     districtName: {
         fontSize: normalizeFont(FontSize.size_xs),
@@ -328,22 +332,29 @@ const styles = StyleSheet.create({
         color: Color.textSecondary,
         marginLeft: normalize(4),
     },
-    selectedWarehouseText: {
-        color: Color.colorLightMode,
+    selectedDistrictText: {
+        color: Color.blue2,
     },
-    selectedIndicator: {
-        width: normalize(24),
-        height: normalize(24),
-        borderRadius: normalize(12),
+    checkbox: {
+        width: normalize(22),
+        height: normalize(22),
+        borderRadius: normalize(6),
+        borderWidth: 1.5,
+        borderColor: Color.border,
         backgroundColor: Color.colorLightMode,
         justifyContent: 'center',
         alignItems: 'center',
+        marginLeft: normalize(8),
     },
-    selectedIndicatorText: {
-        fontSize: normalizeFont(FontSize.size_sm),
+    checkboxSelected: {
+        borderColor: Color.blue2,
+        backgroundColor: Color.blue2,
+    },
+    checkboxMark: {
+        fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProDisplay,
-        fontWeight: '600',
-        color: Color.blue2,
+        fontWeight: '700',
+        color: Color.colorLightMode,
     },
     footer: {
         flexDirection: 'row',

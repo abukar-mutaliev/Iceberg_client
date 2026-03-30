@@ -6,7 +6,7 @@ export default {
     expo: {
         name: IS_DEV ? 'Iceberg (Dev)' : 'Iceberg',
         slug: 'iceberg',
-        version: '1.3.6',
+        version: '1.3.8',
         scheme: 'iceberg',
         icon: './assets/notification-icon.png',
         splash: {
@@ -85,12 +85,8 @@ export default {
                     mode: 'production',
                 },
             ],
-            [
-                'onesignal-expo-plugin',
-                {
-                    mode: IS_DEV ? 'development' : 'production',
-                }
-            ]
+            '@react-native-firebase/app',
+            '@react-native-firebase/messaging',
         ],
         extra: {
             eas: {
@@ -101,10 +97,7 @@ export default {
             googleMapsApiKey: 'AIzaSyDev-AMb24bvlQn3a-b4DGsItiYB6su6_E',
             yandexMapsApiKey: '17ee620d-aee1-482c-acc9-c7144fd46087',
             expoPushToken: true,
-            oneSignalAppId:
-                process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID ||
-                'a1bde379-4211-4fb9-89e2-3e94530a7041',
-            oneSignalAndroidChannelUuid: process.env.EXPO_PUBLIC_ONESIGNAL_ANDROID_CHANNEL_UUID || "084a368f-9843-40cc-91a7-cdb835b445df",
+            rustoreProjectId: process.env.EXPO_PUBLIC_RUSTORE_PROJECT_ID || 'lTkNaNfvb3nRgzw9vqtltesSJyeNgaBH',
         },
         owner: 'abuingush',
         runtimeVersion: '1.0.0',
@@ -115,9 +108,10 @@ export default {
             url: 'https://u.expo.dev/934456aa-74ef-4c35-844b-aa0c0c2899f3',
         },
         android: {
+            googleServicesFile: './google-services.json',
             package: 'com.abuingush.iceberg',
-            versionCode: 47,
-            versionName: '1.4.7',
+            versionCode: 49,
+            versionName: '1.4.9',
             icon: './assets/icon.png',
             adaptiveIcon: {
                 foregroundImage: './assets/icon.png',
@@ -165,7 +159,8 @@ export default {
             ],
         },
         ios: {
-            deploymentTarget: '15.1',  // ← Минимальная версия iOS
+            googleServicesFile: './GoogleService-Info.plist',
+            deploymentTarget: '15.1',
             icon: './assets/icon.png',
             bundleIdentifier: 'com.abuingush.iceberg',
             buildNumber: '6',
@@ -174,7 +169,7 @@ export default {
                 yandexMapsApiKey: '17ee620d-aee1-482c-acc9-c7144fd46087',
             },
             infoPlist: {
-                UIBackgroundModes: ['remote-notification'],
+                UIBackgroundModes: ['remote-notification', 'fetch'],
                 CFBundleURLTypes: [
                     {
                         CFBundleURLName: 'iceberg',

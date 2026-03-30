@@ -11,56 +11,27 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
-import WarehouseService from '@entities/warehouse/api/warehouseApi';
+import { useWarehouses } from '@entities/warehouse/hooks/useWarehouses';
 import { driverApi } from '@entities/user/api/userApi';
 import IconClose from '@shared/ui/Icon/Profile/CloseIcon';
 import IconWarehouse from '@shared/ui/Icon/Warehouse/IconWarehouse';
 import { MapPinIcon } from '@shared/ui/Icon/DistrictManagement/MapPinIcon';
 
 export const DriverWarehouseModal = ({ visible, driver, onClose, onSuccess }) => {
-    const [warehouses, setWarehouses] = useState([]);
-    const [isLoading, setIsLoading] = useState(false);
     const [selectedWarehouseId, setSelectedWarehouseId] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
+
+    const { warehouses, loading: isLoading, refreshWarehouses } = useWarehouses({ autoLoad: true });
 
     // Инициализация при открытии модального окна
     useEffect(() => {
         if (visible && driver) {
             setSelectedWarehouseId(driver.warehouseId || null);
-            loadWarehouses();
+            if (warehouses.length === 0) {
+                refreshWarehouses();
+            }
         }
     }, [visible, driver]);
-
-    // Загрузка списка складов
-    const loadWarehouses = async () => {
-        try {
-            setIsLoading(true);
-            const response = await WarehouseService.getWarehouses({ 
-                limit: 100,
-                isActive: true 
-            });
-            
-            // Обрабатываем различные форматы ответа API
-            let warehouses = [];
-            if (response.data?.warehouses) {
-                warehouses = response.data.warehouses;
-            } else if (response.data?.data?.warehouses) {
-                warehouses = response.data.data.warehouses;
-            } else if (Array.isArray(response.data?.data)) {
-                warehouses = response.data.data;
-            } else if (Array.isArray(response.data)) {
-                warehouses = response.data;
-            }
-            
-            console.log('Загружены склады для водителя:', warehouses.length);
-            setWarehouses(warehouses);
-        } catch (error) {
-            console.error('Ошибка загрузки складов:', error);
-            Alert.alert('Ошибка', 'Не удалось загрузить список складов');
-        } finally {
-            setIsLoading(false);
-        }
-    };
 
     // Обработка выбора склада
     const handleWarehouseSelect = (warehouseId) => {

@@ -24,8 +24,7 @@
         "EXPO_DEBUG": "false",
         "FORCE_SYSTEM_FONTS": "false",
         "YANDEX_MAPS_API_KEY": "17ee620d-aee1-482c-acc9-c7144fd46087",
-        "EXPO_PUBLIC_ONESIGNAL_APP_ID": "a1bde379-4211-4fb9-89e2-3e94530a7041",
-        "EXPO_PUBLIC_ONESIGNAL_ANDROID_CHANNEL_UUID": "084a368f-9843-40cc-91a7-cdb835b445df"
+        "EXPO_PUBLIC_RUSTORE_PROJECT_ID": "lTkNaNfvb3nRgzw9vqtltesSJyeNgaBH"
       },
       "channel": "standalone"
     },
@@ -75,8 +74,7 @@
         "EXPO_DEBUG": "false",
         "FORCE_SYSTEM_FONTS": "false",
         "YANDEX_MAPS_API_KEY": "17ee620d-aee1-482c-acc9-c7144fd46087",
-        "EXPO_PUBLIC_ONESIGNAL_APP_ID": "a1bde379-4211-4fb9-89e2-3e94530a7041",
-        "EXPO_PUBLIC_ONESIGNAL_ANDROID_CHANNEL_UUID": "084a368f-9843-40cc-91a7-cdb835b445df"
+        "EXPO_PUBLIC_RUSTORE_PROJECT_ID": "lTkNaNfvb3nRgzw9vqtltesSJyeNgaBH"
       },
       "channel": "preview",
       "cache": {
@@ -128,8 +126,7 @@
         "EXPO_PUSH_TOKEN_ENABLED": "true",
         "FORCE_SYSTEM_FONTS": "false",
         "YANDEX_MAPS_API_KEY": "17ee620d-aee1-482c-acc9-c7144fd46087",
-        "EXPO_PUBLIC_ONESIGNAL_APP_ID": "a1bde379-4211-4fb9-89e2-3e94530a7041",
-        "EXPO_PUBLIC_ONESIGNAL_ANDROID_CHANNEL_UUID": "084a368f-9843-40cc-91a7-cdb835b445df"
+        "EXPO_PUBLIC_RUSTORE_PROJECT_ID": "lTkNaNfvb3nRgzw9vqtltesSJyeNgaBH"
       },
       "channel": "production",
       "cache": {
@@ -154,8 +151,7 @@
         "EXPO_PUSH_TOKEN_ENABLED": "true",
         "FORCE_SYSTEM_FONTS": "true",
         "YANDEX_MAPS_API_KEY": "17ee620d-aee1-482c-acc9-c7144fd46087",
-        "EXPO_PUBLIC_ONESIGNAL_APP_ID": "a1bde379-4211-4fb9-89e2-3e94530a7041",
-        "EXPO_PUBLIC_ONESIGNAL_ANDROID_CHANNEL_UUID": "084a368f-9843-40cc-91a7-cdb835b445df"
+        "EXPO_PUBLIC_RUSTORE_PROJECT_ID": "lTkNaNfvb3nRgzw9vqtltesSJyeNgaBH"
       },
       "channel": "internal-testing"
     }

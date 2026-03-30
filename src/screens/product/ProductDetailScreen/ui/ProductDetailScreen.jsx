@@ -8,6 +8,7 @@ import {
     ActivityIndicator,
     Platform,
     InteractionManager,
+    BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
@@ -194,7 +195,12 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         handleGoBackRef.current = handleGoBack;
     }, [handleGoBack]);
 
-    const edgeSwipeRef = useRef({ startX: 0, startY: 0 });
+    // startX=999 — значение «вне зоны», чтобы onMoveShouldSetResponder не активировался
+    // случайно, пока onStartShouldSetResponder не обновит реф для конкретного касания.
+    // Важно: если дочерний элемент (кнопка) уже захватил responder, parent's
+    // onStartShouldSetResponder НЕ вызывается — поэтому начальный startX=999 гарантирует,
+    // что условие startX < 40 в onMoveShouldSetResponder будет ложным.
+    const edgeSwipeRef = useRef({ startX: 999, startY: 0 });
 
     const onEdgeStartShouldSetResponder = useCallback((e) => {
         // Запоминаем начало касания, но не перехватываем — тапы идут к дочерним элементам
@@ -215,10 +221,34 @@ export const ProductDetailScreen = ({ route, navigation }) => {
 
     const onEdgeResponderRelease = useCallback((e) => {
         const dx = e.nativeEvent.pageX - edgeSwipeRef.current.startX;
+        // После завершения жеста сбрасываем startX — следующий тап должен заново
+        // проинициализировать ref через onStartShouldSetResponder
+        edgeSwipeRef.current = { startX: 999, startY: 0 };
         if (enableEdgeSwipe && dx > 60) {
             handleGoBackRef.current?.();
         }
     }, [enableEdgeSwipe]);
+    // ────────────────────────────────────────────────────────────────────────────
+
+    // ─── Android: перехват системной кнопки/жеста «Назад» ───────────────────────
+    // На Android navigation.replace() не добавляет запись в нативный стек, поэтому
+    // системный «Назад» идёт мимо нашей логики прямо к предыдущему экрану в стеке.
+    // Подписываемся на hardwareBackPress только когда экран в фокусе; возвращаем true
+    // чтобы заблокировать поведение ОС и вместо этого вызвать handleGoBack().
+    // Используем useFocusEffect — он автоматически снимает подписку при blur.
+    useFocusEffect(
+        useCallback(() => {
+            if (Platform.OS !== 'android') return;
+
+            const onHardwareBack = () => {
+                handleGoBackRef.current?.();
+                return true; // всегда перехватываем — handleGoBack сам решит, куда идти
+            };
+
+            const sub = BackHandler.addEventListener('hardwareBackPress', onHardwareBack);
+            return () => sub.remove();
+        }, []) // пустые deps — используем ref, который всегда актуален
+    );
     // ────────────────────────────────────────────────────────────────────────────
 
     useEffect(() => {

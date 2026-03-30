@@ -56,9 +56,9 @@ export const employeeApiMethods = {
     // Получение статистики по районам
     getDistrictStats: () => employeeApi.get('/stats/districts'),
 
-    // Обновление склада сотрудника (только для админов)
-    updateEmployeeWarehouse: (employeeId, warehouseId) => 
-        employeeApi.put(`/${employeeId}/warehouse`, { warehouseId }),
+    // Обновление складов сотрудника (поддерживает несколько складов)
+    updateEmployeeWarehouse: (employeeId, warehouseIds) => 
+        employeeApi.put(`/${employeeId}/warehouse`, { warehouseIds: Array.isArray(warehouseIds) ? warehouseIds : [warehouseIds].filter(Boolean) }),
 };
 
 // API методы для работы с водителями

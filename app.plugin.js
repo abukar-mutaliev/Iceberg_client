@@ -166,55 +166,54 @@ const withAndroid15Compatibility = (config) => {
 };
 
 /**
- * Плагин для настройки App Group для OneSignal Notification Service Extension
- * Добавляет App Group в entitlements для iOS, чтобы расширение могло обмениваться данными с основным приложением
+ * Плагин для установки default notification icon через meta-data в AndroidManifest.
+ * Используется Firebase и системой Android, когда push не указывает иконку явно.
  */
-const withOneSignalAppGroup = (config) => {
-  // Используем Bundle ID с суффиксом для App Group
-  // Если этот идентификатор недоступен, попробуйте: group.com.abuingush.iceberg.shared
-  const appGroup = 'group.com.abuingush.iceberg.shared';
-  
-  // Добавляем App Group для основного приложения
-  config = withEntitlementsPlist(config, (config) => {
-    const entitlements = config.modResults;
-    
-    if (!entitlements['com.apple.security.application-groups']) {
-      entitlements['com.apple.security.application-groups'] = [];
+const withFirebaseNotificationIcon = (config) => {
+  return withAndroidManifest(config, (config) => {
+    const androidManifest = config.modResults;
+    const application = Array.isArray(androidManifest.manifest.application)
+      ? androidManifest.manifest.application[0]
+      : androidManifest.manifest.application;
+
+    if (!application) return config;
+
+    if (!application['meta-data']) {
+      application['meta-data'] = [];
     }
-    
-    if (!entitlements['com.apple.security.application-groups'].includes(appGroup)) {
-      entitlements['com.apple.security.application-groups'].push(appGroup);
+
+    const metaEntries = [
+      {
+        name: 'com.google.firebase.messaging.default_notification_icon',
+        resource: '@drawable/ic_stat_iceberg',
+      },
+      {
+        name: 'com.google.firebase.messaging.default_notification_color',
+        resource: '@color/notification_icon_color',
+      },
+    ];
+
+    for (const entry of metaEntries) {
+      const existing = application['meta-data'].find(
+        (m) => m.$?.['android:name'] === entry.name
+      );
+      if (!existing) {
+        application['meta-data'].push({
+          $: {
+            'android:name': entry.name,
+            'android:resource': entry.resource,
+          },
+        });
+      }
     }
-    
-    console.log('✅ [OneSignal App Group Plugin] Добавлен App Group для основного приложения:', appGroup);
-    
+
     return config;
   });
-  
-  // Добавляем App Group для OneSignalNotificationServiceExtension
-  config = withEntitlementsPlist(config, (config) => {
-    const entitlements = config.modResults;
-    
-    if (!entitlements['com.apple.security.application-groups']) {
-      entitlements['com.apple.security.application-groups'] = [];
-    }
-    
-    if (!entitlements['com.apple.security.application-groups'].includes(appGroup)) {
-      entitlements['com.apple.security.application-groups'].push(appGroup);
-    }
-    
-    console.log('✅ [OneSignal App Group Plugin] Добавлен App Group для расширения:', appGroup);
-    
-    return config;
-  }, { targetName: 'OneSignalNotificationServiceExtension' });
-  
-  return config;
 };
 
 /**
- * Плагин для автоматического копирования иконок уведомлений в Android проект
- * Копирует иконки из src/assets/icons/push/ в android/app/src/main/res/drawable-*
- * Это гарантирует, что иконки будут доступны даже после удаления папки android
+ * Копирует иконки уведомлений из assets/notification-icons/ в android/app/src/main/res/drawable-*.
+ * Гарантирует, что иконки переживут prebuild --clean.
  */
 const withNotificationIcons = (config) => {
   return withDangerousMod(config, [
@@ -222,43 +221,28 @@ const withNotificationIcons = (config) => {
     async (config) => {
       const projectRoot = config.modRequest.projectRoot;
       const androidResPath = path.join(projectRoot, 'android/app/src/main/res');
-      
-      // Маппинг плотностей Android к файлам
-      const densityMap = {
-        'drawable-mdpi': 'drawable-mdpi/ic_stat_.png',
-        'drawable-hdpi': 'drawable-hdpi/ic_stat_.png',
-        'drawable-xhdpi': 'drawable-xhdpi/ic_stat_.png',
-        'drawable-xxhdpi': 'drawable-xxhdpi/ic_stat_.png',
-        'drawable-xxxhdpi': 'drawable-xxxhdpi/ic_stat_.png',
-      };
+      const sourceDir = path.join(projectRoot, 'assets/notification-icons');
 
-      const sourceBasePath = path.join(projectRoot, 'src/assets/icons/push');
-      const targetIconName = 'ic_stat_iceberg.png';
+      const densities = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi'];
+      const targetNames = ['ic_stat_iceberg.png', 'notification_icon.png'];
 
-      console.log('📋 [Notification Icons Plugin] Копирование иконок уведомлений...');
+      for (const density of densities) {
+        const sourceFile = path.join(sourceDir, `ic_stat_iceberg-${density}.png`);
+        const targetDir = path.join(androidResPath, `drawable-${density}`);
 
-      for (const [folder, sourceFile] of Object.entries(densityMap)) {
-        const sourceIcon = path.join(sourceBasePath, sourceFile);
-        const targetDir = path.join(androidResPath, folder);
-        const targetFile = path.join(targetDir, targetIconName);
-
-        // Проверяем наличие исходного файла
-        if (!fs.existsSync(sourceIcon)) {
-          console.warn(`⚠️ [Notification Icons Plugin] Исходный файл не найден: ${sourceFile}`);
+        if (!fs.existsSync(sourceFile)) {
+          console.warn(`⚠️ [Notification Icons] Источник не найден: ic_stat_iceberg-${density}.png`);
           continue;
         }
 
-        // Создаем директорию, если её нет
         if (!fs.existsSync(targetDir)) {
           fs.mkdirSync(targetDir, { recursive: true });
         }
 
-        try {
-          // Копируем файл
-          fs.copyFileSync(sourceIcon, targetFile);
-          console.log(`✅ [Notification Icons Plugin] Скопировано: ${folder}/${targetIconName}`);
-        } catch (error) {
-          console.error(`❌ [Notification Icons Plugin] Ошибка при копировании в ${folder}:`, error.message);
+        for (const targetIconName of targetNames) {
+          const targetFile = path.join(targetDir, targetIconName);
+          fs.copyFileSync(sourceFile, targetFile);
+          console.log(`✅ [Notification Icons] drawable-${density}/${targetIconName} скопирован`);
         }
       }
 
@@ -326,12 +310,170 @@ post_install do |installer|${fixCode}end
   ]);
 };
 
+/**
+ * Исправление: FirebaseCoreInternal (Swift pod) зависит от GoogleUtilities,
+ * который не определяет module maps. При сборке static libraries это обязательно.
+ * Добавляем modular_headers для проблемных Firebase-зависимостей в Podfile.
+ */
+const withFirebaseModularHeaders = (config) => {
+  return withDangerousMod(config, [
+    'ios',
+    async (config) => {
+      const podfilePath = path.join(config.modRequest.platformProjectRoot, 'Podfile');
+
+      if (fs.existsSync(podfilePath)) {
+        let podfileContent = fs.readFileSync(podfilePath, 'utf8');
+
+        const marker = '# FIREBASE FIX: modular headers for GoogleUtilities';
+        if (!podfileContent.includes(marker)) {
+          const modularHeadersBlock = [
+            '',
+            marker,
+            "pod 'GoogleUtilities', :modular_headers => true",
+            "pod 'FirebaseCore', :modular_headers => true",
+            "pod 'FirebaseCoreInternal', :modular_headers => true",
+            "pod 'FirebaseCoreExtension', :modular_headers => true",
+            "pod 'FirebaseInstallations', :modular_headers => true",
+            "pod 'FirebaseMessaging', :modular_headers => true",
+            "pod 'GoogleDataTransport', :modular_headers => true",
+            "pod 'nanopb', :modular_headers => true",
+            '',
+          ].join('\n  ');
+
+          const targetRegex = /target ['"]Iceberg['"] do/;
+          const targetMatch = podfileContent.match(targetRegex);
+
+          if (targetMatch) {
+            podfileContent = podfileContent.replace(
+              targetRegex,
+              `${targetMatch[0]}\n  ${modularHeadersBlock}`
+            );
+          }
+
+          fs.writeFileSync(podfilePath, podfileContent, 'utf8');
+          console.log('✅ [Firebase Fix] Добавлены modular headers для GoogleUtilities и Firebase pods');
+        }
+      }
+
+      return config;
+    },
+  ]);
+};
+
+/**
+ * Плагин для настройки RuStore Push SDK (VKPNS) — fallback для FCM в России.
+ * Добавляет meta-data в AndroidManifest и инициализацию в MainApplication.
+ */
+const withRuStorePush = (config) => {
+  const rustoreProjectId = process.env.EXPO_PUBLIC_RUSTORE_PROJECT_ID || config?.extra?.rustoreProjectId || '';
+
+  config = withAndroidManifest(config, (config) => {
+    const androidManifest = config.modResults;
+    const application = Array.isArray(androidManifest.manifest.application)
+      ? androidManifest.manifest.application[0]
+      : androidManifest.manifest.application;
+
+    if (!application) return config;
+
+    if (!application['meta-data']) {
+      application['meta-data'] = [];
+    }
+
+    const rustoreMetaEntries = [
+      {
+        name: 'ru.rustore.sdk.pushclient.params_class',
+        value: 'com.rustorepush.RuStorePushClientParams',
+      },
+      {
+        name: 'ru.rustore.sdk.pushclient.default_notification_icon',
+        resource: '@drawable/ic_stat_iceberg',
+      },
+      {
+        name: 'ru.rustore.sdk.pushclient.default_notification_color',
+        resource: '@color/notification_icon_color',
+      },
+    ];
+
+    for (const entry of rustoreMetaEntries) {
+      const existing = application['meta-data'].find(
+        (m) => m.$?.['android:name'] === entry.name
+      );
+      if (!existing) {
+        const metaItem = { $: { 'android:name': entry.name } };
+        if (entry.resource) {
+          metaItem.$['android:resource'] = entry.resource;
+        } else if (entry.value) {
+          metaItem.$['android:value'] = entry.value;
+        }
+        application['meta-data'].push(metaItem);
+      }
+    }
+
+    console.log('✅ [RuStore Push] meta-data добавлены в AndroidManifest');
+    return config;
+  });
+
+  config = withDangerousMod(config, [
+    'android',
+    async (config) => {
+      const projectRoot = config.modRequest.projectRoot;
+      const mainAppPath = path.join(
+        projectRoot,
+        'android/app/src/main/java/com/abuingush/iceberg/MainApplication.kt'
+      );
+
+      if (!rustoreProjectId) {
+        console.warn('⚠️ [RuStore Push] EXPO_PUBLIC_RUSTORE_PROJECT_ID не задан — инициализация RuStore пропущена');
+        return config;
+      }
+
+      if (fs.existsSync(mainAppPath)) {
+        let content = fs.readFileSync(mainAppPath, 'utf8');
+        const initMarker = 'RustorePush.init';
+
+        if (!content.includes(initMarker)) {
+          const importLine = 'import com.rustorepush.RustorePush';
+          if (!content.includes(importLine)) {
+            content = content.replace(
+              /^(package .+\n)/m,
+              `$1\n${importLine}\n`
+            );
+          }
+
+          const onCreateRegex = /override\s+fun\s+onCreate\s*\(\s*\)\s*\{[^}]*super\.onCreate\(\)/;
+          const onCreateMatch = content.match(onCreateRegex);
+
+          if (onCreateMatch) {
+            content = content.replace(
+              onCreateMatch[0],
+              `${onCreateMatch[0]}\n      RustorePush.init(this, "${rustoreProjectId}")`
+            );
+            console.log('✅ [RuStore Push] Инициализация добавлена в MainApplication.onCreate()');
+          } else {
+            console.warn('⚠️ [RuStore Push] Не удалось найти onCreate в MainApplication.kt');
+          }
+
+          fs.writeFileSync(mainAppPath, content, 'utf8');
+        }
+      } else {
+        console.warn('⚠️ [RuStore Push] MainApplication.kt не найден — инициализация будет добавлена после prebuild');
+      }
+
+      return config;
+    },
+  ]);
+
+  return config;
+};
+
 module.exports = (config) => {
   config = withAndroidWindowSoftInputMode(config);
   config = withAndroid15Compatibility(config);
-  config = withOneSignalAppGroup(config);
+  config = withFirebaseNotificationIcon(config);
+  config = withFirebaseModularHeaders(config);
   config = withReactNativeMapsFix(config);
   config = withNotificationIcons(config);
+  config = withRuStorePush(config);
   return config;
 };
 

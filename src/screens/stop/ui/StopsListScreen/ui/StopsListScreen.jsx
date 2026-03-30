@@ -98,17 +98,21 @@ export const StopsListScreen = ({ navigation }) => {
         return 'Не удалось загрузить остановки. Проверьте подключение к интернету и попробуйте снова.';
     };
 
-    const loadStops = useCallback(async (districtId = selectedDistrictId, options = {}) => {
-        const { showRefreshing = false } = options;
+    // Загрузка списка без привязки к выбранному району: фильтр по району только на клиенте (filteredStops).
+    // Иначе при каждом переключении района менялись deps useFocusEffect → повторный fetch и «перезагрузка» экрана.
+    const loadStops = useCallback(async (options = {}) => {
+        const { showRefreshing = false, forceRefresh = false } = options;
 
         if (showRefreshing) {
             setRefreshing(true);
         }
 
-        dispatch(clearStopCache());
+        if (forceRefresh) {
+            dispatch(clearStopCache());
+        }
 
         try {
-            await dispatch(fetchAllStops(districtId || null)).unwrap();
+            await dispatch(fetchAllStops(null)).unwrap();
         } catch (loadError) {
             return loadError;
         } finally {
@@ -116,22 +120,22 @@ export const StopsListScreen = ({ navigation }) => {
                 setRefreshing(false);
             }
         }
-    }, [dispatch, selectedDistrictId]);
+    }, [dispatch]);
 
     useFocusEffect(
         React.useCallback(() => {
-            loadStops(selectedDistrictId);
-        }, [loadStops, selectedDistrictId])
+            loadStops();
+        }, [loadStops])
     );
 
     useFocusEffect(
         React.useCallback(() => {
             const intervalId = setInterval(() => {
-                loadStops(selectedDistrictId);
+                loadStops();
             }, 30000);
 
             return () => clearInterval(intervalId);
-        }, [loadStops, selectedDistrictId])
+        }, [loadStops])
     );
 
     useEffect(() => {
@@ -147,8 +151,8 @@ export const StopsListScreen = ({ navigation }) => {
     }, [highlightStopId, highlightedStop, navigation]);
 
     const handleRefresh = useCallback(() => {
-        loadStops(selectedDistrictId, { showRefreshing: true });
-    }, [loadStops, selectedDistrictId]);
+        loadStops({ showRefreshing: true, forceRefresh: true });
+    }, [loadStops]);
 
     const handleStopPress = (stopId) => {
         navigation.navigate('StopDetails', { stopId });

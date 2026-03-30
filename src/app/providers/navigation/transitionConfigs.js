@@ -1,6 +1,11 @@
 import { CardStyleInterpolators } from '@react-navigation/stack';
 import { Platform } from 'react-native';
 
+// iOS: закрывающая анимация productChainTransition должна быть чуть длиннее,
+// чтобы нативный слой успел сделать layout Main-экрана перед тем, как он станет виден.
+// На iOS 90 мс не хватало — Main рендерился в половину ширины.
+const PRODUCT_CHAIN_CLOSE_DURATION = Platform.OS === 'ios' ? 160 : 90;
+
 /**
  * Коллекция настраиваемых анимаций переходов для навигации с тенями
  */
@@ -349,7 +354,7 @@ export const productChainTransition = {
         close: {
             animation: 'timing',
             config: {
-                duration: 90,
+                duration: PRODUCT_CHAIN_CLOSE_DURATION,
                 useNativeDriver: true,
             },
         },

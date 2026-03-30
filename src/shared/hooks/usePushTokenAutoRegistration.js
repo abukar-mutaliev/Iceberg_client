@@ -1,9 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
-import { Platform } from 'react-native';
 import PushNotificationService from '@shared/services/PushNotificationService';
-import { useNotificationOnboardingHint } from '@shared/hooks/useNotificationOnboardingHint';
-// import { useHeadsUpNotificationPrompt } from '@shared/hooks/useHeadsUpNotificationPrompt';
 
 export const usePushTokenAutoRegistration = () => {
   const user = useSelector((s) => s.auth?.user);
@@ -18,13 +15,6 @@ export const usePushTokenAutoRegistration = () => {
       userId: user?.id || null
     };
   }, [isAuthenticated, user?.id]);
-
-  // 1️⃣ Базовый запрос разрешения на уведомления после авторизации
-  useNotificationOnboardingHint({ isAuthenticated, userId: user?.id });
-  
-  // 2️⃣ Подсказка про всплывающие уведомления при первом получении push
-  // ОТКЛЮЧЕНО: всплывающие уведомления работают
-  // useHeadsUpNotificationPrompt({ isAuthenticated });
 
   useEffect(() => {
     const register = async () => {
@@ -41,11 +31,8 @@ export const usePushTokenAutoRegistration = () => {
 
         const attemptId = ++registrationAttemptRef.current;
 
-        // Увеличиваем задержку до 3 секунд, чтобы дать время показать кастомный алерт
-        // и дождаться, пока пользователь нажмет "Разрешить" перед инициализацией OneSignal
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
-        // Если пользователь вышел или изменился — отменяем отложенную регистрацию
         const latestAuth = latestAuthRef.current;
         if (!latestAuth.isAuthenticated || latestAuth.userId !== user.id || attemptId !== registrationAttemptRef.current) {
           return;
@@ -54,13 +41,11 @@ export const usePushTokenAutoRegistration = () => {
         hasAttemptedRegistration.current = true;
 
         const success = await PushNotificationService.initializeForUser(user);
-        
+
         if (!success) {
           hasAttemptedRegistration.current = false;
         }
       } catch (e) {
-        // Временно отключены логи OneSignal
-        // console.error('❌ Push token registration error:', e.message);
         hasAttemptedRegistration.current = false;
       }
     };
@@ -73,7 +58,7 @@ export const usePushTokenAutoRegistration = () => {
       const checkToken = async () => {
         try {
           const token = PushNotificationService.getCurrentToken();
-          
+
           if (!token) {
             const latestAuth = latestAuthRef.current;
             if (!latestAuth.isAuthenticated || latestAuth.userId !== user.id) {
@@ -82,10 +67,7 @@ export const usePushTokenAutoRegistration = () => {
             hasAttemptedRegistration.current = false;
             await PushNotificationService.initializeForUser(user);
           }
-        } catch (e) {
-          // Временно отключены логи OneSignal
-          // console.error('❌ Token check error:', e.message);
-        }
+        } catch (_) {}
       };
 
       const timer = setTimeout(checkToken, 3000);
@@ -95,4 +77,3 @@ export const usePushTokenAutoRegistration = () => {
 };
 
 export default usePushTokenAutoRegistration;
-

@@ -27,6 +27,7 @@ import {
 import { selectLastActivityType } from '@entities/chat/model/selectors';
 import { setGlobalSocket, getActivityTypeCache, setActivityTypeCache } from './useChatSocketActions';
 import { playReceiveSound } from '@entities/chat/lib/receiveSound';
+import pushNotificationService from '@shared/services/PushNotificationService';
 
 const getUserDistrictIdsFromUser = (user) => {
   if (!user) return [];
@@ -720,6 +721,7 @@ export const useChatSocket = () => {
 
         socketRef.current = socket;
         setGlobalSocket(socket);
+        pushNotificationService.setupWebSocketListener(socket);
       } catch (e) {
         // console.error('Socket init error', e);
       }
@@ -730,13 +732,13 @@ export const useChatSocket = () => {
     return () => {
       isMounted = false;
       if (socketRef.current) {
-        // Удаляем все обработчики перед отключением
+        pushNotificationService.removeWebSocketListener(socketRef.current);
         socketRef.current.off('chat:reaction:added');
         socketRef.current.off('chat:reaction:removed');
         socketRef.current.off('chat:reaction:updated');
         socketRef.current.disconnect();
         socketRef.current = null;
-        setGlobalSocket(null); // Очищаем глобальную ссылку
+        setGlobalSocket(null);
       }
       joinedRoomsRef.current.clear();
     };

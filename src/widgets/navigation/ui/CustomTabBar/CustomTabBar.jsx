@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useMemo, useCallback, useState } from 'react'
 import { View, Text, Pressable, StyleSheet, Dimensions, Keyboard, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSelector, useStore } from 'react-redux';
+import { StackActions } from '@react-navigation/native';
 import { useChatRoomsBootstrap } from '@entities/chat/hooks/useChatRoomsBootstrap';
 import {
     HomeIcon,
@@ -237,13 +238,37 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
             return;
         }
 
+        if (isFocused) {
+            // Нажатие на уже активный таб.
+            // В React Navigation v7 вызов navigation.emit('tabPress') для активного таба
+            // запускает внутренние листенеры v7, которые диспатчат navigate('MainTab', {merge: true})
+            // — это трактуется как forward-push, и на iOS Main начинает анимацию slide-in справа,
+            // которая «зависает» на половине экрана (правая половина пустая).
+            // Решение: НЕ эмитим tabPress, а напрямую диспатчим popToTop в nested-стек.
+            // Это гарантирует корректную close-анимацию (ProductDetail плавно исчезает),
+            // а Main просто «размораживается» без лишней анимации.
+            const nestedState = state.routes[actualIndex]?.state;
+            if (nestedState?.routes?.length > 1) {
+                isNavigating.current = true;
+                lastPressTime.current = now;
+                navigation.dispatch({
+                    ...StackActions.popToTop(),
+                    target: nestedState.key,
+                });
+                setTimeout(() => {
+                    isNavigating.current = false;
+                }, 300);
+            }
+            return;
+        }
+
         const event = navigation.emit({
             type: 'tabPress',
             target: route.key,
             canPreventDefault: true,
         });
 
-        if (!isFocused && !event.defaultPrevented) {
+        if (!event.defaultPrevented) {
             isNavigating.current = true;
             lastPressTime.current = now;
 

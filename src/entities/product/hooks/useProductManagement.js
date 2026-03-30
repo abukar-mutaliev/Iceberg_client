@@ -271,7 +271,6 @@ export const useProductManagement = ({
         setSupplierProductsError(null);
 
         try {
-            console.log('🔄 Загружаем продукты поставщика через приватный API');
             const response = await productsApiService.getProducts({ page: 1, limit: 100 });
 
             if (response && response.status === 'success' && response.data) {
@@ -280,20 +279,12 @@ export const useProductManagement = ({
                 if (normalizeForBoxes) {
                     processedProducts = response.data.map(product => {
                         const normalized = normalizeProductData(product);
-                        console.log('📦 Нормализованный продукт поставщика:', {
-                            id: normalized?.id,
-                            name: normalized?.name,
-                            itemsPerBox: normalized?.itemsPerBox,
-                            availableBoxes: normalized?.availableBoxes,
-                            boxPrice: normalized?.boxPrice,
-                            pricePerItem: normalized?.pricePerItem
-                        });
+  
                         return normalized;
                     }).filter(Boolean);
                 }
 
                 setSupplierProducts(processedProducts);
-                console.log('✅ Продукты поставщика загружены и нормализованы:', processedProducts.length);
             } else {
                 setSupplierProducts([]);
                 console.warn('⚠️ Неожиданный формат ответа API продуктов поставщика:', response);
@@ -312,7 +303,6 @@ export const useProductManagement = ({
             return products;
         }
 
-        console.log('🔄 Нормализация общих продуктов:', products.length);
 
         const normalized = products.map(product => {
             const optimisticUpdate = optimisticUpdates.get(product.id);
@@ -320,27 +310,14 @@ export const useProductManagement = ({
 
             const normalizedProduct = normalizeProductData(productToNormalize);
 
-            if (normalizedProduct) {
-                console.log('📦 Нормализованный общий продукт:', {
-                    id: normalizedProduct.id,
-                    name: normalizedProduct.name,
-                    itemsPerBox: normalizedProduct.itemsPerBox,
-                    availableBoxes: normalizedProduct.availableBoxes,
-                    boxPrice: normalizedProduct.boxPrice,
-                    pricePerItem: normalizedProduct.pricePerItem,
-                    hasOptimisticUpdate: !!optimisticUpdate
-                });
-            }
-
             return normalizedProduct;
         }).filter(Boolean);
 
-        console.log('✅ Общие продукты нормализованы:', normalized.length);
         return normalized;
     }, [normalizeForBoxes, products, optimisticUpdates]);
 
     useEffect(() => {
-        loadData(false);
+        loadData(true);
     }, []);
 
     useEffect(() => {
@@ -353,7 +330,6 @@ export const useProductManagement = ({
         if (!autoRefresh) return;
 
         const interval = setInterval(() => {
-            console.log('🔄 Автообновление данных продуктов');
             loadData(true, false);
         }, refreshInterval);
 
@@ -364,7 +340,6 @@ export const useProductManagement = ({
         if (optimisticUpdates.size === 0) return;
 
         const timeout = setTimeout(() => {
-            console.log('🧹 Очистка оптимистичных обновлений');
             setOptimisticUpdates(new Map());
         }, 60000);
 
@@ -378,9 +353,14 @@ export const useProductManagement = ({
             }
 
             if (currentUser?.role === 'SUPPLIER') {
-                await dispatch(fetchProfile());
+                dispatch(fetchProfile());
             } else {
-                await dispatch(fetchProducts(forceRefresh));
+                dispatch(fetchProducts({
+                    page: 1,
+                    limit: 200,
+                    refresh: forceRefresh,
+                    usePublicCatalog: false
+                }));
             }
 
             setLastUpdateTime(Date.now());
@@ -440,10 +420,8 @@ export const useProductManagement = ({
         }
 
         try {
-            console.log('🔄 useProductManagement: Обновление продукта:', updatedProduct);
 
             if (enableOptimisticUpdates) {
-                console.log('⚡ Применяем оптимистичное обновление');
                 setOptimisticUpdates(prev => new Map(prev).set(updatedProduct.id, updatedProduct));
 
                 dispatch(updateProductOptimistic(updatedProduct));
@@ -451,13 +429,17 @@ export const useProductManagement = ({
 
             setTimeout(async () => {
                 try {
-                    console.log('🔄 useProductManagement: Перезагрузка данных с сервера');
 
                     if (currentUser?.role === 'SUPPLIER' && profile?.supplier?.id) {
                         await loadSupplierProducts();
                     } else {
                         dispatch(clearProductsCache());
-                        await dispatch(fetchProducts(true));
+                        dispatch(fetchProducts({
+                            page: 1,
+                            limit: 200,
+                            refresh: true,
+                            usePublicCatalog: false
+                        }));
                     }
 
                     setLastUpdateTime(Date.now());
@@ -468,7 +450,6 @@ export const useProductManagement = ({
                         return newMap;
                     });
 
-                    console.log('✅ useProductManagement: Данные успешно обновлены');
                 } catch (error) {
                     console.error('❌ useProductManagement: Ошибка перезагрузки данных:', error);
 
@@ -496,18 +477,22 @@ export const useProductManagement = ({
 
     const forceReloadData = useCallback(async () => {
         try {
-            console.log('🔄 useProductManagement: Принудительная перезагрузка данных');
 
             dispatch(clearProductsCache());
             setOptimisticUpdates(new Map());
 
             if (currentUser?.role === 'SUPPLIER') {
-                await dispatch(fetchProfile());
+                dispatch(fetchProfile());
                 if (profile?.supplier?.id) {
                     await loadSupplierProducts();
                 }
             } else {
-                await dispatch(fetchProducts(true));
+                dispatch(fetchProducts({
+                    page: 1,
+                    limit: 200,
+                    refresh: true,
+                    usePublicCatalog: false
+                }));
             }
 
             setLastUpdateTime(Date.now());
@@ -716,20 +701,6 @@ export const useProductManagement = ({
             a.supplierName.localeCompare(b.supplierName)
         );
     }, [filteredProducts]);
-
-    console.log('📊 useProductManagement - Полная статистика:', {
-        currentUserRole: currentUser?.role,
-        isSupplier: currentUser?.role === 'SUPPLIER',
-        supplierId: profile?.supplier?.id,
-        supplierProducts: supplierProducts?.length,
-        generalProducts: products?.length,
-        filteredProducts: filteredProducts?.length,
-        normalizeForBoxes,
-        enableOptimisticUpdates,
-        optimisticUpdatesCount: optimisticUpdates.size,
-        lastUpdateTime: new Date(lastUpdateTime).toLocaleTimeString(),
-        stats: getProductsStats()
-    });
 
     return {
         filteredProducts,
