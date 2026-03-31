@@ -156,7 +156,7 @@ class PushNotificationService {
             }
 
             if (Platform.OS === 'android') {
-                this._initRuStorePush();
+                this._initRuStorePushFromCache();
             }
 
             this.isInitialized = true;
@@ -258,7 +258,9 @@ class PushNotificationService {
                 }
 
                 if (Platform.OS === 'android') {
-                    this._registerRuStoreToken(deviceId);
+                    this._initRuStorePushFresh().then(() => {
+                        this._registerRuStoreToken(deviceId);
+                    });
                 }
 
                 return true;
@@ -348,36 +350,63 @@ class PushNotificationService {
         }
     }
 
-    async _initRuStorePush() {
+    async _initRuStorePushFromCache() {
         try {
-            const available = await rustorePushModule.checkAvailability();
-            this.rustoreAvailable = available;
+            const cached = await AsyncStorage.getItem('@push:rustore_available');
+            if (cached !== 'true') return;
 
-            if (!available) {
-                if (__DEV__) {
-                    console.log('[PushNotification] RuStore Push not available on this device');
+            this.rustoreAvailable = true;
+            rustorePushModule.isAvailable = true;
+            this._setupRuStoreListeners();
+        } catch (_) {}
+    }
+
+    async _initRuStorePushFresh() {
+        try {
+            const alreadyChecked = await AsyncStorage.getItem('@push:rustore_checked');
+            if (alreadyChecked) {
+                const cached = await AsyncStorage.getItem('@push:rustore_available');
+                this.rustoreAvailable = cached === 'true';
+                if (this.rustoreAvailable) {
+                    rustorePushModule.isAvailable = true;
+                    this._setupRuStoreListeners();
                 }
                 return;
             }
 
-            rustorePushModule.setupListeners({
-                onMessage: (message) => this._handleRuStoreMessage(message),
-                onOpened: (message) => this._handleRuStoreOpened(message),
-                onNewToken: async (newToken) => {
-                    this.rustoreToken = newToken;
-                    try {
-                        const deviceId = await this._getOrCreateDeviceId();
-                        await rustorePushModule.registerToken(deviceId);
-                    } catch (_) {}
-                },
-                onError: (errors) => {
-                    if (__DEV__) {
-                        console.warn('[PushNotification] RuStore error:', errors);
-                    }
-                },
-            });
+            const available = await rustorePushModule.checkAvailability();
+            this.rustoreAvailable = available;
+            await AsyncStorage.setItem('@push:rustore_checked', '1');
+            await AsyncStorage.setItem('@push:rustore_available', available ? 'true' : 'false');
 
-            const initial = await rustorePushModule.getInitialNotification();
+            if (!available) return;
+            this._setupRuStoreListeners();
+        } catch (err) {
+            if (__DEV__) {
+                console.warn('[PushNotification] RuStore init failed:', err?.message);
+            }
+        }
+    }
+
+    _setupRuStoreListeners() {
+        rustorePushModule.setupListeners({
+            onMessage: (message) => this._handleRuStoreMessage(message),
+            onOpened: (message) => this._handleRuStoreOpened(message),
+            onNewToken: async (newToken) => {
+                this.rustoreToken = newToken;
+                try {
+                    const deviceId = await this._getOrCreateDeviceId();
+                    await rustorePushModule.registerToken(deviceId);
+                } catch (_) {}
+            },
+            onError: (errors) => {
+                if (__DEV__) {
+                    console.warn('[PushNotification] RuStore error:', errors);
+                }
+            },
+        });
+
+        rustorePushModule.getInitialNotification().then((initial) => {
             if (initial?.data) {
                 const data = this._extractRuStoreData(initial);
                 if (data) {
@@ -385,15 +414,7 @@ class PushNotificationService {
                     this.handleNotificationNavigation(normalized);
                 }
             }
-
-            if (__DEV__) {
-                console.log('[PushNotification] RuStore Push initialized');
-            }
-        } catch (err) {
-            if (__DEV__) {
-                console.warn('[PushNotification] RuStore init failed:', err?.message);
-            }
-        }
+        }).catch(() => {});
     }
 
     async _registerRuStoreToken(deviceId) {
