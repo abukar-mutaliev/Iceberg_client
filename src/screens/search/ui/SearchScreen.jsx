@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useRef, useCallback} from 'react';
+import React, {useState, useEffect, useRef, useCallback, useMemo} from 'react';
 import {
     View,
     StyleSheet,
@@ -17,7 +17,8 @@ import {
     selectProductsError, resetCurrentProduct
 } from '@entities/product';
 import { Loader } from '@shared/ui/Loader';
-import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import LogoSvg from '@assets/logo/Logo';
 import { useFocusEffect } from '@react-navigation/native';
 
@@ -44,6 +45,8 @@ import {
 } from "@features/search";
 
 export const SearchScreen = ({ navigation }) => {
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
     const [filteredProducts, setFilteredProducts] = useState([]);
     const [suggestedTags, setSuggestedTags] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
@@ -390,11 +393,10 @@ export const SearchScreen = ({ navigation }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Color.colorLightMode,
-        borderRadius: 20,
+        backgroundColor: colors.background,
     },
     logoWrapper: {
         paddingHorizontal: 40,
@@ -429,7 +431,7 @@ const styles = StyleSheet.create({
         padding: 20,
     },
     errorText: {
-        color: 'red',
+        color: colors.error,
         textAlign: 'center',
         fontFamily: FontFamily.sFProText,
         fontSize: FontSize.size_md,

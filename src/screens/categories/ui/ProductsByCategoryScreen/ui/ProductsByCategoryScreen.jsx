@@ -17,12 +17,14 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
-import { LinearGradient } from 'expo-linear-gradient'; // или react-native-linear-gradient
+import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import {Color, Padding, FontFamily, FontSize, Border} from '@app/styles/GlobalStyles';
-import {ProductTile} from "@entities/product";
+import { Color, Padding, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
+import { ProductTile } from "@entities/product";
 import { AndroidShadow } from '@shared/ui/Shadow';
-import {ScrollableBackgroundGradient} from "@shared/ui/BackgroundGradient";
+import { ScrollableBackgroundGradient } from "@shared/ui/BackgroundGradient";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { ThemedStatusBar } from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
 
 // Безопасные импорты
 let selectProductsByCategory, selectProductsByCategoryLoading, selectProductsByCategoryError, fetchProductsByCategory, ProductCard;
@@ -44,7 +46,6 @@ try {
     ProductCard = null;
 }
 
-// Адаптация размеров
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const scale = SCREEN_WIDTH / 414;
 const isIOS = Platform.OS === 'ios';
@@ -54,7 +55,7 @@ const normalize = (size) => {
     return Math.round(PixelRatio.roundToNearestPixel(newSize));
 };
 
-const ModernBackArrow = ({ size = 24, color = '#fff', onPress }) => {
+const ModernBackArrow = ({ size = 24, color = '#fff', onPress, styles }) => {
     const [pressed, setPressed] = useState(false);
 
     return (
@@ -67,13 +68,12 @@ const ModernBackArrow = ({ size = 24, color = '#fff', onPress }) => {
                 { opacity: pressed ? 0.7 : 1 }
             ]}
         >
-            <Text style={[ { fontSize: size, color }]}>←</Text>
+            <Text style={[{ fontSize: size, color }]}>←</Text>
         </Pressable>
     );
 };
 
-// Компонент загрузки с анимацией
-const LoadingComponent = () => {
+const LoadingComponent = ({ styles, colors, isDark }) => {
     const spinValue = new Animated.Value(0);
     const scaleValue = new Animated.Value(1);
 
@@ -115,6 +115,10 @@ const LoadingComponent = () => {
         outputRange: ['0deg', '360deg'],
     });
 
+    const loadingGradientColors = isDark
+        ? [colors.primary, colors.primaryMuted || colors.primary]
+        : ['#b5c9fb', '#b7c4fd'];
+
     return (
         <View style={styles.loadingContainer}>
             <Animated.View
@@ -126,7 +130,7 @@ const LoadingComponent = () => {
                 ]}
             >
                 <LinearGradient
-                    colors={['#b5c9fb', '#b7c4fd']}
+                    colors={loadingGradientColors}
                     style={styles.loadingGradient}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
@@ -153,8 +157,7 @@ const LoadingComponent = () => {
     );
 };
 
-// Компонент пустого состояния
-const EmptyStateComponent = ({ categoryName, onRetry, onGoHome, navigation, bottomInset = 0 }) => {
+const EmptyStateComponent = ({ categoryName, onRetry, onGoHome, navigation, bottomInset = 0, styles, colors, isDark }) => {
     const fadeAnim = new Animated.Value(0);
     const slideAnim = new Animated.Value(30);
 
@@ -173,6 +176,13 @@ const EmptyStateComponent = ({ categoryName, onRetry, onGoHome, navigation, bott
         ]).start();
     }, []);
 
+    const accentGradient = isDark
+        ? [colors.primary, colors.primary]
+        : ['#b5c9fb', '#b7c4fd'];
+    const accentShadow = isDark
+        ? 'rgba(0, 0, 0, 0.5)'
+        : 'rgba(181, 201, 251, 0.3)';
+
     return (
         <Animated.View
             style={[
@@ -186,7 +196,7 @@ const EmptyStateComponent = ({ categoryName, onRetry, onGoHome, navigation, bott
         >
             <View style={styles.emptyContent}>
                 <AndroidShadow
-                    shadowColor="rgba(181, 201, 251, 0.3)"
+                    shadowColor={accentShadow}
                     shadowConfig={{
                         offsetX: 0,
                         offsetY: 8,
@@ -198,7 +208,7 @@ const EmptyStateComponent = ({ categoryName, onRetry, onGoHome, navigation, bott
                     style={styles.emptyIconContainer}
                 >
                     <LinearGradient
-                        colors={['#b5c9fb', '#b7c4fd']}
+                        colors={accentGradient}
                         style={styles.emptyIconGradient}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 1 }}
@@ -213,7 +223,7 @@ const EmptyStateComponent = ({ categoryName, onRetry, onGoHome, navigation, bott
 
                 <View style={styles.emptyActions}>
                     <AndroidShadow
-                        shadowColor="rgba(181, 201, 251, 0.3)"
+                        shadowColor={accentShadow}
                         shadowConfig={{
                             offsetX: 0,
                             offsetY: 6,
@@ -230,7 +240,11 @@ const EmptyStateComponent = ({ categoryName, onRetry, onGoHome, navigation, bott
                             activeOpacity={0.8}
                         >
                             <LinearGradient
-                                colors={[Color.colorLightMode, Color.colorLightMode]}
+                                colors={
+                                    isDark
+                                        ? [colors.surfaceElevated, colors.surfaceElevated]
+                                        : [Color.colorLightMode, Color.colorLightMode]
+                                }
                                 style={styles.buttonGradient}
                                 start={{ x: 0, y: 0 }}
                                 end={{ x: 1, y: 0 }}
@@ -240,7 +254,7 @@ const EmptyStateComponent = ({ categoryName, onRetry, onGoHome, navigation, bott
                     </AndroidShadow>
 
                     <AndroidShadow
-                        shadowColor="rgba(181, 201, 251, 0.2)"
+                        shadowColor={accentShadow}
                         shadowConfig={{
                             offsetX: 0,
                             offsetY: 2,
@@ -279,12 +293,15 @@ const EmptyStateComponent = ({ categoryName, onRetry, onGoHome, navigation, bott
     );
 };
 
-// Компонент ошибки
-const ErrorComponent = ({ error, onRetry }) => {
+const ErrorComponent = ({ error, onRetry, styles, colors, isDark }) => {
+    const accentGradient = isDark
+        ? [colors.primary, colors.primary]
+        : ['#b5c9fb', '#b7c4fd'];
+
     return (
         <View style={styles.errorContainer}>
             <AndroidShadow
-                shadowColor="rgba(255, 107, 107, 0.3)"
+                shadowColor={isDark ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 107, 107, 0.3)'}
                 shadowConfig={{
                     offsetX: 0,
                     offsetY: 6,
@@ -306,7 +323,7 @@ const ErrorComponent = ({ error, onRetry }) => {
             <Text style={styles.errorTitle}>Что-то пошло не так</Text>
             <Text style={styles.errorText}>{error}</Text>
             <AndroidShadow
-                shadowColor="rgba(181, 201, 251, 0.3)"
+                shadowColor={isDark ? 'rgba(0, 0, 0, 0.5)' : 'rgba(181, 201, 251, 0.3)'}
                 shadowConfig={{
                     offsetX: 0,
                     offsetY: 4,
@@ -322,7 +339,7 @@ const ErrorComponent = ({ error, onRetry }) => {
                     onPress={onRetry}
                 >
                     <LinearGradient
-                        colors={['#b5c9fb', '#b7c4fd']}
+                        colors={accentGradient}
                         style={styles.buttonGradient}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 0 }}
@@ -334,37 +351,30 @@ const ErrorComponent = ({ error, onRetry }) => {
     );
 };
 
-// Анимированная карточка продукта с использованием ProductCard или ProductTile
-// Мемоизируем компонент для предотвращения ненужных ререндеров
-const AnimatedProductCard = React.memo(({ item, onPress, index }) => {
-    // Используем useRef для сохранения анимаций между ререндерами
+const AnimatedProductCard = React.memo(({ item, onPress, index, styles }) => {
     const fadeAnimRef = React.useRef(null);
     const slideAnimRef = React.useRef(null);
     const hasAnimatedRef = React.useRef(false);
     const itemIdRef = React.useRef(null);
 
-    // Инициализируем анимации только один раз
     if (fadeAnimRef.current === null) {
-        fadeAnimRef.current = new Animated.Value(1); // Начинаем с видимости 1
-        slideAnimRef.current = new Animated.Value(0); // Начинаем с позиции 0
+        fadeAnimRef.current = new Animated.Value(1);
+        slideAnimRef.current = new Animated.Value(0);
     }
 
     const fadeAnim = fadeAnimRef.current;
     const slideAnim = slideAnimRef.current;
 
     useEffect(() => {
-        // Если это новый товар (ID изменился), сбрасываем флаг анимации
         if (itemIdRef.current !== item?.id) {
             itemIdRef.current = item?.id;
             hasAnimatedRef.current = false;
         }
 
-        // Анимируем только при первом появлении нового товара
         if (!hasAnimatedRef.current && item?.id) {
             hasAnimatedRef.current = true;
-            const delay = Math.min(index * 80, 400); // Ограничиваем задержку
+            const delay = Math.min(index * 80, 400);
 
-            // Сбрасываем значения для анимации
             fadeAnim.setValue(0);
             slideAnim.setValue(30);
 
@@ -386,8 +396,6 @@ const AnimatedProductCard = React.memo(({ item, onPress, index }) => {
 
             return () => clearTimeout(timeoutId);
         } else if (item?.id) {
-            // При обновлении существующего товара просто убеждаемся, что элемент видим
-            // НЕ сбрасываем анимацию, чтобы товары не исчезали
             if (fadeAnim._value !== 1) {
                 fadeAnim.setValue(1);
             }
@@ -397,7 +405,6 @@ const AnimatedProductCard = React.memo(({ item, onPress, index }) => {
         }
     }, [item?.id, index, fadeAnim, slideAnim]);
 
-    // Обработчик нажатия на карточку продукта
     const handleProductPress = useCallback((productId) => {
         if (onPress && productId) {
             onPress(productId);
@@ -422,7 +429,7 @@ const AnimatedProductCard = React.memo(({ item, onPress, index }) => {
                 <ProductCard
                     product={item}
                     onPress={handleProductPress}
-                    width={SCREEN_WIDTH - normalize(32)} // Полная ширина минус отступы
+                    width={SCREEN_WIDTH - normalize(32)}
                 />
             ) : (
                 <ProductTile
@@ -436,9 +443,8 @@ const AnimatedProductCard = React.memo(({ item, onPress, index }) => {
         </Animated.View>
     );
 }, (prevProps, nextProps) => {
-    // Мемоизация: обновляем только если изменился ID товара
-    return prevProps.item?.id === nextProps.item?.id && 
-           prevProps.index === nextProps.index;
+    return prevProps.item?.id === nextProps.item?.id &&
+        prevProps.index === nextProps.index;
 });
 
 export const ProductsByCategoryScreen = ({ route, navigation }) => {
@@ -446,6 +452,8 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
     const dispatch = useDispatch();
     const [refreshing, setRefreshing] = useState(false);
     const insets = useSafeAreaInsets();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     const products = useSelector((state) => selectProductsByCategory(state, categoryId));
     const isLoading = useSelector(selectProductsByCategoryLoading);
@@ -499,14 +507,12 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
     }, [dispatch, categoryId]);
 
     const handleProductPress = useCallback((product) => {
-        // Поддержка как productId, так и объекта продукта
         const productId = typeof product === 'object' && product?.id ? product.id : product;
         if (!productId) return;
 
         const numericId = typeof productId === 'string' ? parseInt(productId, 10) : productId;
         if (isNaN(numericId)) return;
 
-        // Используем прямую навигацию внутри текущего стека
         navigation.navigate('ProductDetail', {
             productId: numericId,
             fromScreen: 'ProductsByCategory'
@@ -527,16 +533,13 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
         if (!categoryId || !dispatch || !fetchProductsByCategory) {
             return;
         }
-        
+
         setRefreshing(true);
         try {
-            // Ждем завершения загрузки перед сбросом refreshing
             const result = await dispatch(fetchProductsByCategory({ categoryId, params: {}, refresh: true })).unwrap();
         } catch (error) {
             console.error('ProductsByCategory: Ошибка при обновлении:', error);
-            // Даже при ошибке сбрасываем refreshing, чтобы пользователь мог попробовать снова
         } finally {
-            // Сбрасываем refreshing только после завершения загрузки
             setRefreshing(false);
         }
     }, [dispatch, categoryId, products]);
@@ -546,59 +549,60 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
             item={item}
             index={index}
             onPress={handleProductPress}
+            styles={styles}
         />
-    ), [handleProductPress]);
+    ), [handleProductPress, styles]);
+
+    const refreshColors = useMemo(
+        () => (isDark ? [colors.primary] : ['#b5c9fb', '#b7c4fd']),
+        [isDark, colors.primary]
+    );
+    const refreshTint = isDark ? colors.primary : '#b5c9fb';
+    const refreshProgressBg = isDark ? colors.surfaceElevated : '#fff';
 
     const content = useMemo(() => {
         const hasProducts = Array.isArray(products) && products.length > 0;
 
-        // Показываем загрузку только при первой загрузке (не при обновлении)
         if (isLoading && !refreshing && !hasProducts) {
-            return <LoadingComponent />;
+            return <LoadingComponent styles={styles} colors={colors} isDark={isDark} />;
         }
 
-        // ВСЕГДА показываем список, если есть продукты, даже во время обновления
-        // Это гарантирует, что товары не пропадут
         if (hasProducts) {
-        return (
-            <FlatList
-                data={products}
-                renderItem={renderProductItem}
-                keyExtractor={(item) => {
-                    // Используем стабильный ключ на основе ID продукта
-                    const key = item?.id?.toString() || `product-${Math.random()}`;
-                    return key;
-                }}
-                numColumns={1}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={styles.productsList}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={refreshing}
-                        onRefresh={onRefresh}
-                        colors={['#b5c9fb', '#b7c4fd']}
-                        tintColor="#b5c9fb"
-                        progressBackgroundColor="#fff"
-                    />
-                }
-                removeClippedSubviews={false} // Отключаем для предотвращения проблем с обновлением
-                maxToRenderPerBatch={10}
-                updateCellsBatchingPeriod={50}
-                initialNumToRender={products.length} // Рендерим все элементы сразу
-                windowSize={5} // Увеличиваем размер окна для лучшей стабильности
-                ItemSeparatorComponent={() => <View style={styles.productSeparator} />}
-                // Добавляем extraData для принудительного обновления при изменении refreshing
-                extraData={`${refreshing}-${products.length}`}
-            />
-        );
+            return (
+                <FlatList
+                    data={products}
+                    renderItem={renderProductItem}
+                    keyExtractor={(item) => {
+                        const key = item?.id?.toString() || `product-${Math.random()}`;
+                        return key;
+                    }}
+                    numColumns={1}
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.productsList}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={refreshing}
+                            onRefresh={onRefresh}
+                            colors={refreshColors}
+                            tintColor={refreshTint}
+                            progressBackgroundColor={refreshProgressBg}
+                        />
+                    }
+                    removeClippedSubviews={false}
+                    maxToRenderPerBatch={10}
+                    updateCellsBatchingPeriod={50}
+                    initialNumToRender={products.length}
+                    windowSize={5}
+                    ItemSeparatorComponent={() => <View style={styles.productSeparator} />}
+                    extraData={`${refreshing}-${products.length}`}
+                />
+            );
         }
 
-        // Показываем ошибку только если нет продуктов и не идет обновление
         if (error && !refreshing) {
-            return <ErrorComponent error={error} onRetry={handleRetry} />;
+            return <ErrorComponent error={error} onRetry={handleRetry} styles={styles} colors={colors} isDark={isDark} />;
         }
 
-        // Показываем пустое состояние только если нет продуктов и не идет загрузка/обновление
         if (!refreshing && !isLoading) {
             return (
                 <EmptyStateComponent
@@ -607,11 +611,13 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
                     onGoHome={handleGoHome}
                     navigation={navigation}
                     bottomInset={80 + insets.bottom + normalize(16)}
+                    styles={styles}
+                    colors={colors}
+                    isDark={isDark}
                 />
             );
         }
 
-        // Во время обновления или загрузки показываем пустой список с RefreshControl
         return (
             <FlatList
                 data={[]}
@@ -621,37 +627,45 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
                     <RefreshControl
                         refreshing={refreshing || isLoading}
                         onRefresh={onRefresh}
-                        colors={['#b5c9fb', '#b7c4fd']}
-                        tintColor="#b5c9fb"
-                        progressBackgroundColor="#fff"
+                        colors={refreshColors}
+                        tintColor={refreshTint}
+                        progressBackgroundColor={refreshProgressBg}
                     />
                 }
             />
         );
-    }, [isLoading, error, products, renderProductItem, refreshing, onRefresh, handleRetry, categoryName, navigation]);
+    }, [
+        isLoading, error, products, renderProductItem, refreshing, onRefresh,
+        handleRetry, categoryName, navigation, styles, colors, isDark,
+        refreshColors, refreshTint, refreshProgressBg,
+    ]);
+
+    const headerGradientColors = isDark
+        ? [colors.surface, colors.surface]
+        : [Color.blue250, Color.purpleSoft];
+    const backArrowColor = isDark ? colors.textPrimary : '#fff';
 
     return (
         <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
-            {/* Кастомный градиентный фон */}
+            <ThemedStatusBar />
             <ScrollableBackgroundGradient
                 contentHeight={SCREEN_HEIGHT}
                 showOverlayGradient={true}
                 showShadowGradient={false}
             />
 
-            {/* Градиентный заголовок */}
             <LinearGradient
-                colors={[Color.blue250, Color.purpleSoft]}
+                colors={headerGradientColors}
                 style={styles.headerGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
             >
-                {isIOS && (
+                {isIOS && !isDark && (
                     <BlurView intensity={20} style={styles.headerBlur} />
                 )}
 
                 <View style={[styles.header, { height: normalize(70) }]}>
-                    <ModernBackArrow onPress={handleBackPress} />
+                    <ModernBackArrow onPress={handleBackPress} color={backArrowColor} styles={styles} />
 
                     <View style={styles.headerTitleContainer}>
                         <Text style={styles.headerTitle} numberOfLines={1}>
@@ -666,7 +680,6 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
                 </View>
             </LinearGradient>
 
-            {/* Контент */}
             <View style={styles.contentContainer}>
                 {content}
             </View>
@@ -674,10 +687,14 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: 'transparent',
+    },
+    headerGradient: {
+        borderBottomWidth: isDark ? 1 : 0,
+        borderBottomColor: isDark ? colors.border : 'transparent',
     },
     headerBlur: {
         position: 'absolute',
@@ -707,17 +724,17 @@ const styles = StyleSheet.create({
         fontSize: normalize(20),
         fontFamily: FontFamily?.sFProText || 'System',
         fontWeight: '700',
-        color: '#fff',
+        color: isDark ? colors.textPrimary : '#fff',
         textAlign: 'center',
-        textShadowColor: 'rgba(0, 0, 0, 0.3)',
+        textShadowColor: isDark ? 'transparent' : 'rgba(0, 0, 0, 0.3)',
         textShadowOffset: { width: 0, height: 1 },
-        textShadowRadius: 2,
+        textShadowRadius: isDark ? 0 : 2,
     },
     headerSubtitle: {
         fontSize: normalize(13),
         fontFamily: FontFamily?.sFProText || 'System',
         fontWeight: '500',
-        color: 'rgba(255, 255, 255, 0.8)',
+        color: isDark ? colors.textSecondary : 'rgba(255, 255, 255, 0.8)',
         textAlign: 'center',
         marginTop: 2,
     },
@@ -729,7 +746,6 @@ const styles = StyleSheet.create({
         backgroundColor: 'transparent',
     },
 
-    // Стили загрузки
     loadingContainer: {
         flex: 1,
         justifyContent: 'center',
@@ -752,7 +768,7 @@ const styles = StyleSheet.create({
         fontSize: normalize(18),
         fontFamily: FontFamily?.sFProText || 'System',
         fontWeight: '600',
-        color: '#333',
+        color: isDark ? colors.textPrimary : '#333',
         textAlign: 'center',
         marginBottom: 16,
     },
@@ -765,11 +781,10 @@ const styles = StyleSheet.create({
         width: 8,
         height: 8,
         borderRadius: 4,
-        backgroundColor: '#b5c9fb',
+        backgroundColor: isDark ? colors.primary : '#b5c9fb',
         marginHorizontal: 4,
     },
 
-    // Пустое состояние
     emptyContainer: {
         flex: 1,
         justifyContent: 'center',
@@ -809,14 +824,14 @@ const styles = StyleSheet.create({
     emptyTitle: {
         fontSize: normalize(24),
         fontWeight: '800',
-        color: '#333',
+        color: isDark ? colors.textPrimary : '#333',
         textAlign: 'center',
         marginBottom: 12,
         fontFamily: FontFamily?.sFProText || 'System',
     },
     emptySubtitle: {
         fontSize: normalize(16),
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         textAlign: 'center',
         marginBottom: 32,
         lineHeight: 24,
@@ -833,9 +848,8 @@ const styles = StyleSheet.create({
         marginBottom: 12,
         overflow: 'hidden',
         position: 'relative',
-        backgroundColor: 'white',
+        backgroundColor: isDark ? colors.surfaceElevated : 'white',
     },
-    // НОВЫЙ СТИЛЬ: Для активности всей области кнопки
     fullAreaButton: {
         width: '100%',
         height: '100%',
@@ -854,7 +868,7 @@ const styles = StyleSheet.create({
         backgroundColor: 'transparent',
     },
     primaryButtonText: {
-        color: Color.dark,
+        color: isDark ? colors.textPrimary : Color.dark,
         fontSize: normalize(16),
         fontWeight: '700',
         fontFamily: FontFamily?.sFProText || 'System',
@@ -864,14 +878,14 @@ const styles = StyleSheet.create({
     secondaryButton: {
         width: '100%',
         height: 52,
-        backgroundColor: '#fff',
+        backgroundColor: isDark ? colors.surface : '#fff',
         borderWidth: 2,
-        borderColor: '#b5c9fb',
+        borderColor: isDark ? colors.primary : '#b5c9fb',
         marginBottom: 12,
-        overflow: 'hidden', // Добавлено для правильного отображения
+        overflow: 'hidden',
     },
     secondaryButtonText: {
-        color: '#b5c9fb',
+        color: isDark ? colors.primary : '#b5c9fb',
         fontSize: normalize(15),
         fontWeight: '600',
         fontFamily: FontFamily?.sFProText || 'System',
@@ -879,15 +893,15 @@ const styles = StyleSheet.create({
     tertiaryButton: {
         width: '100%',
         height: 48,
-        backgroundColor: 'rgba(181, 201, 251, 0.1)',
+        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(181, 201, 251, 0.1)',
         borderRadius: 24,
         borderWidth: 1,
-        borderColor: 'rgba(181, 201, 251, 0.2)',
+        borderColor: isDark ? colors.border : 'rgba(181, 201, 251, 0.2)',
         justifyContent: 'center',
         alignItems: 'center',
     },
     tertiaryButtonText: {
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         fontSize: normalize(14),
         fontWeight: '500',
         fontFamily: FontFamily?.sFProText || 'System',
@@ -896,21 +910,20 @@ const styles = StyleSheet.create({
         width: '100%',
         paddingHorizontal: 20,
         paddingVertical: 16,
-        backgroundColor: 'rgba(181, 201, 251, 0.05)',
+        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(181, 201, 251, 0.05)',
         borderRadius: 16,
         borderLeftWidth: 4,
-        borderLeftColor: '#b5c9fb',
+        borderLeftColor: isDark ? colors.primary : '#b5c9fb',
     },
     emptyFooterText: {
         fontSize: normalize(13),
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         textAlign: 'center',
         lineHeight: 18,
         fontFamily: FontFamily?.sFProText || 'System',
         fontStyle: 'italic',
     },
 
-    // Ошибка
     errorContainer: {
         flex: 1,
         justifyContent: 'center',
@@ -939,14 +952,14 @@ const styles = StyleSheet.create({
     errorTitle: {
         fontSize: normalize(20),
         fontWeight: '700',
-        color: '#d32f2f',
+        color: colors.error,
         textAlign: 'center',
         marginBottom: 8,
         fontFamily: FontFamily?.sFProText || 'System',
     },
     errorText: {
         fontSize: normalize(16),
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         textAlign: 'center',
         marginBottom: 24,
         lineHeight: 22,
@@ -965,7 +978,6 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily?.sFProText || 'System',
     },
 
-    // Список продуктов
     productsList: {
         paddingTop: normalize(26),
         paddingBottom: normalize(100),

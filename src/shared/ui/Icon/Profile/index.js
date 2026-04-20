@@ -13,3 +13,4 @@ export { default as IconNotification } from './IconNotification';
 export { default as IconChange } from './IconChange';
 export { default as IconDelete } from './IconDelete';
 export { default as IconSupplier } from './IconSupplier';
+export { default as IconTheme } from './IconTheme';

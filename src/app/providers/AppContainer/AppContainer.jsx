@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { StatusBar, View } from 'react-native';
+import { View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { useDispatch, useSelector } from 'react-redux';
@@ -10,9 +10,11 @@ import { useOrderCountsBackground } from '@entities/order';
 import { AuthDialog } from "@entities/auth/ui/AuthDialog";
 import { usePushTokenAutoRegistration } from '@shared/hooks/usePushTokenAutoRegistration';
 import { useChatCacheInit, useChatBackgroundSync } from '@entities/chat';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import ThemedStatusBar from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
 
 // Вынесен в отдельный компонент для переиспользования
-class ErrorBoundary extends React.Component {
+class ErrorBoundaryInner extends React.Component {
     constructor(props) {
         super(props);
         this.state = { hasError: false, error: null };
@@ -32,9 +34,10 @@ class ErrorBoundary extends React.Component {
 
     render() {
         if (this.state.hasError) {
+            const { themeColors } = this.props;
             return (
-                <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }}>
-                    <StatusBar backgroundColor="#ffffff" barStyle="dark-content" />
+                <SafeAreaView style={{ flex: 1, backgroundColor: themeColors.background }}>
+                    <ThemedStatusBar />
                     <View style={{
                         flex: 1,
                         justifyContent: 'center',
@@ -42,12 +45,12 @@ class ErrorBoundary extends React.Component {
                         padding: 20
                     }}>
                         <View style={{
-                            backgroundColor: '#f5f5f5',
+                            backgroundColor: themeColors.surfaceElevated,
                             padding: 20,
                             borderRadius: 8,
                             alignItems: 'center'
                         }}>
-                            <StatusBar backgroundColor="#ffffff" barStyle="dark-content" />
+                            <ThemedStatusBar />
                         </View>
                     </View>
                 </SafeAreaView>
@@ -57,6 +60,12 @@ class ErrorBoundary extends React.Component {
         return this.props.children;
     }
 }
+
+// Обёртка, чтобы передать в классовый ErrorBoundary текущие цвета темы
+const ErrorBoundary = ({ children }) => {
+    const { colors } = useTheme();
+    return <ErrorBoundaryInner themeColors={colors}>{children}</ErrorBoundaryInner>;
+};
 
 // Хук для безопасной навигации
 const useAuthNavigation = (onNavigateToAuth) => {
@@ -160,6 +169,7 @@ export const AppContainer = ({ children, onNavigateToAuth }) => {
     const { isAuthenticated, setAuthDialogRef } = useAuth();
     const { isCartAvailable } = useCartAvailability();
     const tokens = useSelector((state) => state.auth?.tokens);
+    const { colors } = useTheme();
 
     // Кастомные хуки для разделения логики
     const { handleLogin, handleRegister } = useAuthNavigation(onNavigateToAuth);
@@ -198,13 +208,10 @@ export const AppContainer = ({ children, onNavigateToAuth }) => {
         <ErrorBoundary>
             <SafeAreaProvider>
                 <SafeAreaView
-                    style={{ flex: 1, backgroundColor: '#ffffff' }}
+                    style={{ flex: 1, backgroundColor: colors.background }}
                     edges={['top', 'right', 'left']}
                 >
-                    <StatusBar
-                        barStyle="dark-content"
-                        translucent={true}
-                    />
+                    <ThemedStatusBar />
 
                     {children}
 

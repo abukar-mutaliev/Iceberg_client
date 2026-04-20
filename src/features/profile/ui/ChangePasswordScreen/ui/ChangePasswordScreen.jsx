@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     View,
     Text,
@@ -13,7 +13,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {CommonActions, useNavigation} from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
-import { FontFamily, Border, Color } from '@app/styles/GlobalStyles';
+import { FontFamily, Border } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { ThemedStatusBar } from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
 import ArrowBackIcon from '@shared/ui/Icon/Common/ArrowBackIcon';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
 import { changePassword } from '@entities/profile';
@@ -26,6 +28,8 @@ export const ChangePasswordScreen = () => {
     const isLoading = useSelector(selectProfileLoading);
     const error = useSelector(selectProfileError);
     const { showError, showSuccess } = useCustomAlert();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
@@ -124,9 +128,10 @@ export const ChangePasswordScreen = () => {
 
     return (
         <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+            <ThemedStatusBar />
             <View style={styles.header}>
                 <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
-                    <ArrowBackIcon width={24} height={24} color="rgba(0, 12, 255, 1)" />
+                    <ArrowBackIcon width={24} height={24} color={colors.primary} />
                 </TouchableOpacity>
                 <View style={styles.titleContainer}>
                     <Text style={styles.title}>Изменение пароля</Text>
@@ -153,6 +158,8 @@ export const ChangePasswordScreen = () => {
                             onChangeText={setCurrentPassword}
                             secureTextEntry={!showCurrentPassword}
                             placeholder="Введите текущий пароль"
+                            placeholderTextColor={colors.textTertiary}
+                            keyboardAppearance={colors.keyboardAppearance}
                         />
                         <TouchableOpacity
                             onPress={() => setShowCurrentPassword(!showCurrentPassword)}
@@ -175,6 +182,8 @@ export const ChangePasswordScreen = () => {
                             onChangeText={setNewPassword}
                             secureTextEntry={!showNewPassword}
                             placeholder="Введите новый пароль"
+                            placeholderTextColor={colors.textTertiary}
+                            keyboardAppearance={colors.keyboardAppearance}
                         />
                         <TouchableOpacity
                             onPress={() => setShowNewPassword(!showNewPassword)}
@@ -197,6 +206,8 @@ export const ChangePasswordScreen = () => {
                             onChangeText={setConfirmPassword}
                             secureTextEntry={!showConfirmPassword}
                             placeholder="Подтвердите новый пароль"
+                            placeholderTextColor={colors.textTertiary}
+                            keyboardAppearance={colors.keyboardAppearance}
                         />
                         <TouchableOpacity
                             onPress={() => setShowConfirmPassword(!showConfirmPassword)}
@@ -217,7 +228,7 @@ export const ChangePasswordScreen = () => {
                         disabled={isLoading}
                     >
                         {isLoading ? (
-                            <ActivityIndicator color="#fff" />
+                            <ActivityIndicator color={colors.menuItemActiveText} />
                         ) : (
                             <Text style={styles.saveButtonText}>Сохранить</Text>
                         )}
@@ -229,10 +240,10 @@ export const ChangePasswordScreen = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#fff',
+        backgroundColor: colors.background,
     },
     header: {
         flexDirection: 'row',
@@ -256,7 +267,7 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: '500',
         fontFamily: FontFamily.sFProText,
-        color: Color.dark,
+        color: colors.textPrimary,
         textAlign: 'center',
     },
     content: {
@@ -271,24 +282,24 @@ const styles = StyleSheet.create({
     label: {
         fontSize: 14,
         fontFamily: FontFamily.sFProText,
-        color: '#333',
+        color: colors.textPrimary,
         marginBottom: 8,
     },
     inputWrapper: {
         flexDirection: 'row',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#E0E0E0',
+        borderColor: isDark ? colors.border : '#E0E0E0',
         borderRadius: Border.br_3xs,
         paddingHorizontal: 12,
         height: 50,
-        backgroundColor: '#FAFAFA',
+        backgroundColor: isDark ? colors.surfaceElevated : '#FAFAFA',
     },
     input: {
         flex: 1,
         height: '100%',
         fontFamily: FontFamily.sFProText,
-        color: "black"
+        color: colors.textPrimary,
     },
     passwordInput: {
         fontFamily: Platform.select({
@@ -303,10 +314,10 @@ const styles = StyleSheet.create({
         fontSize: 16,
     },
     errorInput: {
-        borderColor: Color.red,
+        borderColor: colors.error,
     },
     errorText: {
-        color: Color.red,
+        color: colors.error,
         fontSize: 12,
         fontFamily: FontFamily.sFProText,
         marginTop: 4,
@@ -315,14 +326,14 @@ const styles = StyleSheet.create({
         marginTop: 16,
     },
     saveButton: {
-        backgroundColor: '#3f51b5',
+        backgroundColor: colors.primary,
         borderRadius: Border.br_3xs,
         paddingVertical: 16,
         alignItems: 'center',
         justifyContent: 'center',
     },
     saveButtonText: {
-        color: '#fff',
+        color: colors.menuItemActiveText,
         fontSize: 16,
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',

@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -8,39 +9,73 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 // GPU-текстуры дальше. Остаток заливается белым (#fff) через фон View.
 const MAX_GRADIENT_HEIGHT = SCREEN_HEIGHT * 2.5;
 
-export const StaticBackgroundGradient = React.memo(() => (
-    <View style={styles.backgroundWrapper}>
-        <LinearGradient
-            style={styles.baseGradient}
-            colors={['#e4f6fc', '#e4f6fc']}
-            locations={[0, 1]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-        />
+export const StaticBackgroundGradient = React.memo(() => {
+    const { isDark, colors } = useTheme();
 
-        <LinearGradient
-            style={styles.horizontalGradient}
-            colors={['#e4f6fc', '#c3dffa', '#b5c9fb', '#b7c4fd', '#e2ddff']}
-            locations={[0, 0.26, 0.44, 0.68, 1]}
-            start={{ x: 0, y: 0.5 }}
-            end={{ x: 1, y: 0.5 }}
-        />
+    if (isDark) {
+        return (
+            <View
+                style={[
+                    styles.backgroundWrapper,
+                    { backgroundColor: colors.background },
+                ]}
+            />
+        );
+    }
 
-        <LinearGradient
-            style={styles.overlayGradient}
-            colors={['rgba(255, 255, 255, 0)', 'rgba(255, 255, 255, 0.5)', 'rgba(255, 255, 255, 0.75)', '#fff']}
-            locations={[0.43, 0.51, 0.57, 0.69]}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 1 }}
-        />
-    </View>
-));
+    return (
+        <View style={styles.backgroundWrapper}>
+            <LinearGradient
+                style={styles.baseGradient}
+                colors={['#e4f6fc', '#e4f6fc']}
+                locations={[0, 1]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+            />
+
+            <LinearGradient
+                style={styles.horizontalGradient}
+                colors={['#e4f6fc', '#c3dffa', '#b5c9fb', '#b7c4fd', '#e2ddff']}
+                locations={[0, 0.26, 0.44, 0.68, 1]}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+            />
+
+            <LinearGradient
+                style={styles.overlayGradient}
+                colors={['rgba(255, 255, 255, 0)', 'rgba(255, 255, 255, 0.5)', 'rgba(255, 255, 255, 0.75)', '#fff']}
+                locations={[0.43, 0.51, 0.57, 0.69]}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+            />
+        </View>
+    );
+});
 
 export const ScrollableBackgroundGradient = React.memo(({ contentHeight, showOverlayGradient = true, showShadowGradient = false }) => {
+    const { isDark, colors } = useTheme();
+
     const clampedHeight = Math.min(
         Math.max(contentHeight || SCREEN_HEIGHT, SCREEN_HEIGHT),
         MAX_GRADIENT_HEIGHT,
     );
+
+    if (isDark) {
+        // В тёмной теме градиент превращается в сплошную заливку — растягиваем
+        // её на весь экран, чтобы не зависеть от contentHeight списка
+        // (иначе у коротких списков снизу просвечивает фон навигатора).
+        return (
+            <View
+                style={[
+                    styles.scrollableWrapper,
+                    {
+                        height: '100%',
+                        backgroundColor: colors.background,
+                    },
+                ]}
+            />
+        );
+    }
 
     return (
         <View style={[styles.scrollableWrapper, { height: contentHeight || SCREEN_HEIGHT, backgroundColor: '#fff' }]}>

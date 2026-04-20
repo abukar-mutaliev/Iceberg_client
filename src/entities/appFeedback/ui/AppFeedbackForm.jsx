@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     View,
     Text,
@@ -8,21 +8,25 @@ import {
     Alert
 } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color, FontFamily } from '@app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import RatingStarSvg from '@shared/ui/Icon/SupplierScreenIcons/RatingStarSvg';
 import CustomButton from '@shared/ui/Button/CustomButton';
 
 /**
  * Компонент формы отзыва о приложении
  */
-export const AppFeedbackForm = ({ 
-    initialRating = 0, 
-    initialComment = '', 
-    onSubmit, 
+export const AppFeedbackForm = ({
+    initialRating = 0,
+    initialComment = '',
+    onSubmit,
     onCancel,
     submitting = false,
     onCommentFocus,
 }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     const [rating, setRating] = useState(initialRating);
     const [comment, setComment] = useState(initialComment);
     const [errors, setErrors] = useState({});
@@ -75,7 +79,7 @@ export const AppFeedbackForm = ({
                         filled={star <= rating}
                         width={32}
                         height={32}
-                        color={Color.blue2}
+                        color={colors.primary}
                         onPress={handleStarPress}
                         starValue={star}
                     />
@@ -99,7 +103,8 @@ export const AppFeedbackForm = ({
                 }}
                 onFocus={onCommentFocus}
                 placeholder="Расскажите, что вам нравится или что можно улучшить..."
-                placeholderTextColor={Color.grey7D7D7D}
+                placeholderTextColor={colors.textTertiary}
+                keyboardAppearance={colors.keyboardAppearance}
                 multiline
                 numberOfLines={5}
                 maxLength={1000}
@@ -120,7 +125,7 @@ export const AppFeedbackForm = ({
                         title="Отмена"
                         onPress={onCancel}
                         outlined={true}
-                        color={Color.grey7D7D7D}
+                        color={colors.textSecondary}
                         style={styles.cancelButton}
                     />
                 )}
@@ -128,8 +133,8 @@ export const AppFeedbackForm = ({
                     title={submitting ? "Отправка..." : "Отправить отзыв"}
                     onPress={handleSubmit}
                     outlined={false}
-                    color={Color.blue2}
-                    activeColor="#FFFFFF"
+                    color={colors.primary}
+                    activeColor={colors.menuItemActiveText}
                     disabled={submitting}
                     style={styles.submitButton}
                 />
@@ -138,14 +143,14 @@ export const AppFeedbackForm = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         padding: normalize(20),
     },
     label: {
         fontSize: normalizeFont(16),
         fontWeight: '600',
-        color: Color.colorGray_100,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(12),
     },
@@ -161,27 +166,36 @@ const styles = StyleSheet.create({
     },
     commentInput: {
         borderWidth: 1,
-        borderColor: Color.colorGainsboro,
+        // В тёмной теме фон родителя (formContainer) совпадает с inputBackground —
+        // чтобы поле не сливалось, используем основной фон темы (глубже на фон),
+        // а границу слегка подсвечиваем.
+        borderColor: isDark ? colors.border : colors.inputBorder,
         borderRadius: normalize(12),
         padding: normalize(12),
         fontSize: normalizeFont(15),
-        color: Color.colorGray_100,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         minHeight: normalize(100),
-        backgroundColor: '#fff',
+        backgroundColor: isDark ? colors.background : colors.inputBackground,
+        ...(isDark && {
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.3,
+            shadowRadius: 2,
+        }),
     },
     commentInputError: {
-        borderColor: Color.error || Color.red || '#FF3B30',
+        borderColor: colors.error,
     },
     errorText: {
         fontSize: normalizeFont(13),
-        color: Color.error || Color.red || '#FF3B30',
+        color: colors.error,
         fontFamily: FontFamily.sFProText,
         marginTop: normalize(4),
     },
     charCount: {
         fontSize: normalizeFont(12),
-        color: Color.grey7D7D7D,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginTop: normalize(4),
         textAlign: 'right',
@@ -198,4 +212,3 @@ const styles = StyleSheet.create({
         flex: 1,
     },
 });
-

@@ -20,20 +20,6 @@ import { scheduleUpdateCheck } from '@shared/lib/checkUpdate';
 
 initConsolePolyfill();
 
-// ⚠️ НЕ вызываем enableFreeze(true) глобально:
-// В react-native-screens 4.x с React Navigation 7 freeze управляется через freezeOnBlur
-// навигатора. Глобальный enableFreeze вызывает утечки памяти на iOS
-// (каждый свитч вкладки наращивает heap), после чего iOS немедленно убивает приложение
-// при переходе в фон. См. react-native-screens #2971, #1478.
-
-// Инициализируем InAppLogger для сбора логов на prod/preview
-// Логи будут доступны в PushNotificationDiagnostic экране
-console.log('[App] 🔍 InAppLogger initialized');
-// InAppLogger автоматически начинает перехватывать console.log при создании
-
-// 📝 ВАЖНО: Уведомления обрабатываются через OneSignal
-// OneSignal автоматически настраивает показ уведомлений в foreground
-// Канал уведомлений создается в OneSignalService.initialize()
 
 // 🔍 ГЛОБАЛЬНАЯ ОБРАБОТКА ОШИБОК ДЛЯ ДИАГНОСТИКИ КРАШЕЙ
 if (typeof ErrorUtils !== 'undefined') {

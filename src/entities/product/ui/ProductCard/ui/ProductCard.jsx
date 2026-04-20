@@ -10,6 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import PagerView from "react-native-pager-view";
 import { Color, Border, FontFamily, FontSize } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { useProductCard } from "../../../hooks/useProductCard";
 import { useToast } from '@shared/ui/Toast';
 import {AddToCartButton} from "@shared/ui/Cart/ui/AddToCartButton";
@@ -25,6 +26,8 @@ const isTablet = SCREEN_WIDTH >= 768;
 
 const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = false, compactImageHeight = 140 }) => {
     const { showError, showWarning } = useToast();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const {
         productId,
         productData,
@@ -758,324 +761,333 @@ const arePropsEqual = (prevProps, nextProps) => {
 
 export const ProductCard = memo(ProductCardComponent, arePropsEqual);
 
-const styles = StyleSheet.create({
-    container: {
-        height: isTablet ? 200 : (isSmallScreen ? 150 : 162),
-        borderWidth: 0.5,
-        borderColor: Color.purpleSoft,
-        borderStyle: 'solid',
-        borderRadius: Border.br_xl,
-        backgroundColor: Color.colorLightMode,
-        overflow: 'hidden',
-        position: 'relative',
-        marginBottom: isTablet ? 25 : (isSmallScreen ? 15 : 20),
-        marginHorizontal: isTablet ? 12 : (isSmallScreen ? 4 : 8),
-    },
-    imageContainer: {
-        width: 130,
-        height: '100%',
-        left: 0,
-        bottom: 0,
-        top: 0,
-        position: 'absolute',
-        borderRadius: Border.br_xl,
-        overflow: 'hidden',
-    },
-    pagerView: {
-        width: 130,
-        height: '100%',
-    },
-    slide: {
-        flex: 1,
-        width: 130,
-        height: '100%',
-    },
-    productImage: {
-        width: 130,
-        height: '100%',
-        borderRadius: Border.br_xl,
-    },
-    indicatorContainer: {
-        position: 'absolute',
-        bottom: 8,
-        width: '100%',
-        alignItems: 'center',
-        zIndex: 10,
-    },
-    contentContainer: {
-        marginLeft: 150,
-        flex: 1,
-        paddingTop: isTablet ? 20 : (isSmallScreen ? 10 : 15),
-        paddingRight: 30,
-        paddingBottom: isTablet ? 20 : (isSmallScreen ? 10 : 15),
-    },
-    titleContainer: {
-        height: isTablet ? 25 : (isSmallScreen ? 18 : 20),
-        width: "100%",
-        marginBottom: isTablet ? 6 : (isSmallScreen ? 3 : 4),
-    },
-    title: {
-        fontFamily: FontFamily.sFProText,
-        fontSize: FontSize.size_sm,
-        fontWeight: 'bold',
-        color: Color.purpleSoft,
-        textAlign: 'left',
-    },
-    descriptionContainer: {
-        marginTop: isTablet ? 8 : (isSmallScreen ? 4 : 6),
-        height: isTablet ? 50 : (isSmallScreen ? 28 : 40),
-        width: "100%",
-        marginBottom: isTablet ? 6 : (isSmallScreen ? 3 : 4),
-    },
-    description: {
-        fontFamily: FontFamily.sFProText,
-        fontSize: FontSize.size_xs,
-        fontWeight: '500',
-        color: Color.colorCornflowerblue,
-        textAlign: 'left',
-        lineHeight: isTablet ? 18 : (isSmallScreen ? 12 : 14),
-    },
-    priceContainer: {
-        width: "100%",
-        marginTop: isTablet ? 8 : (isSmallScreen ? 4 : 6),
-        flex: 1,
-        justifyContent: 'flex-end',
-    },
-    priceWrapper: {
-        flexDirection: 'row',
-        alignItems: 'baseline',
-        width: "100%",
-        marginBottom: 1,
-        flexWrap: 'wrap',
-    },
-    price: {
-        fontFamily: FontFamily.sFProText,
-        fontWeight: '600',
-        color: Color.purpleSoft,
-        textAlign: 'left',
-        fontSize: 17,
-    },
-    boxPrice: {
-        fontFamily: FontFamily.sFProText,
-        fontWeight: '500',
-        color: Color.purpleSoft,
-        textAlign: 'left',
-        fontSize: 14,
-    },
-    priceUnit: {
-        fontFamily: FontFamily.sFProText,
-        fontSize: 9,
-        fontWeight: '600',
-        color: Color.grey7D7D7D,
-        textAlign: 'left',
-        marginLeft: 4,
-        marginBottom: 2,
-    },
-    priceRow: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-    },
-    kopecks: {
-        fontFamily: FontFamily.sFProText,
-        fontWeight: '600',
-        color: Color.purpleSoft,
-        textAlign: 'left',
-        marginLeft: 2,
-        paddingTop: 2,
-    },
-    addButton: {
-        position: 'absolute',
-        right: 0,
-        bottom: 0,
-        width: isTablet ? 60 : 50,
-        height: isTablet ? 60 : 50,
-    },
-    addButtonSmall: {
-        width: 42,
-        height: 42,
-    },
-    statusBadge: {
-        position: 'absolute',
-        top: isTablet ? 10 : (isSmallScreen ? 6 : 8),
-        right: isTablet ? 10 : (isSmallScreen ? 6 : 8),
-        paddingHorizontal: isTablet ? 10 : (isSmallScreen ? 6 : 8),
-        paddingVertical: isTablet ? 5 : (isSmallScreen ? 3 : 4),
-        borderRadius: isTablet ? 14 : (isSmallScreen ? 10 : 12),
-        zIndex: 2,
-        shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 2,
+const createStyles = (colors, isDark) => {
+    // Акцентный цвет бренда для заголовков/цен. В тёмной теме используем
+    // осветлённый акцент темы, чтобы сохранить «фирменность», но с хорошим
+    // контрастом на тёмном фоне.
+    const brandAccent = isDark ? colors.primary : Color.purpleSoft;
+    const descriptionColor = isDark ? colors.textSecondary : Color.colorCornflowerblue;
+    const priceUnitColor = isDark ? colors.textTertiary : Color.grey7D7D7D;
+
+    return StyleSheet.create({
+        container: {
+            height: isTablet ? 200 : (isSmallScreen ? 150 : 162),
+            borderWidth: 0.5,
+            borderColor: isDark ? colors.border : Color.purpleSoft,
+            borderStyle: 'solid',
+            borderRadius: Border.br_xl,
+            backgroundColor: colors.cardBackground,
+            overflow: 'hidden',
+            position: 'relative',
+            marginBottom: isTablet ? 25 : (isSmallScreen ? 15 : 20),
+            marginHorizontal: isTablet ? 12 : (isSmallScreen ? 4 : 8),
         },
-        shadowOpacity: 0.1,
-        shadowRadius: 3,
-        elevation: 3,
-    },
-    statusInactive: {
-        backgroundColor: '#FF3B30',
-    },
-    statusOutOfStock: {
-        backgroundColor: "rgba(242, 243, 255, 1)",
-    },
-    statusText: {
-        fontSize: isTablet ? 12 : (isSmallScreen ? 9 : 10),
-        fontFamily: FontFamily.sFProText,
-        fontWeight: '600',
-        color: Color.purpleSoft,
-        textAlign: 'center',
-    },
-    statusTextInactive: {
-        color: '#FFFFFF',
-    },
-    statusBadgeCompact: {
-        top: 6,
-        right: 6,
-        paddingHorizontal: 6,
-        paddingVertical: 3,
-    },
-    statusTextCompact: {
-        fontSize: 9,
-    },
-    compactContainer: {
-        width: 220,
-        borderWidth: 0.5,
-        borderColor: Color.purpleSoft,
-        borderRadius: Border.br_xl,
-        backgroundColor: Color.colorLightMode,
-        overflow: 'hidden',
-    },
-    compactImageContainer: {
-        width: '100%',
-        height: 140,
-        position: 'relative',
-        backgroundColor: '#F9F9F9',
-        overflow: 'hidden',
-    },
-    compactPagerView: {
-        width: '100%',
-        height: '100%',
-    },
-    compactSlide: {
-        flex: 1,
-        width: '100%',
-        height: '100%',
-    },
-    compactProductImage: {
-        width: '100%',
-        height: '100%',
-    },
-    placeholder: {
-        width: '100%',
-        height: '100%',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    placeholderText: {
-        marginTop: 6,
-        fontSize: 11,
-        fontWeight: '600',
-        color: 'rgba(255,255,255,0.95)',
-    },
-    compactIndicatorContainer: {
-        position: 'absolute',
-        bottom: 8,
-        width: '100%',
-        alignItems: 'center',
-        zIndex: 10,
-    },
-    compactContentContainer: {
-        padding: 10,
-    },
-    compactTitle: {
-        fontFamily: FontFamily.sFProText,
-        fontSize: 14,
-        fontWeight: '600',
-        color: Color.purpleSoft,
-        marginBottom: 6,
-        lineHeight: 18,
-    },
-    compactPriceContainer: {
-        flexDirection: 'row',
-        alignItems: 'baseline',
-        marginBottom: 4,
-    },
-    compactPrice: {
-        fontFamily: FontFamily.sFProText,
-        fontSize: 16,
-        fontWeight: '700',
-        color: Color.purpleSoft,
-    },
-    compactPriceUnit: {
-        fontFamily: FontFamily.sFProText,
-        fontSize: 11,
-        fontWeight: '500',
-        color: Color.grey7D7D7D,
-        marginLeft: 4,
-    },
-    compactPriceRow: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-    },
-    compactKopecks: {
-        fontFamily: FontFamily.sFProText,
-        fontSize: 10,
-        fontWeight: '700',
-        color: Color.purpleSoft,
-        marginLeft: 2,
-        paddingTop: 2,
-    },
-    compactBoxInfo: {
-        fontFamily: FontFamily.sFProText,
-        fontSize: 11,
-        fontWeight: '500',
-        color: Color.colorCornflowerblue,
-    },
-    compactPriceInfo: {
-        fontFamily: FontFamily.sFProText,
-        fontSize: 10,
-        fontWeight: '600',
-        color: Color.blue2,
-        marginTop: 2,
-    },
-    // Стили для информации о многоуровневых ценах
-    priceInfoContainer: {
-        marginTop: isTablet ? 8 : (isSmallScreen ? 4 : 6),
-        paddingTop: isTablet ? 8 : (isSmallScreen ? 4 : 6),
-        borderTopWidth: 1,
-        borderTopColor: Color.grayLight || '#E5E5E5',
-    },
-    priceInfoRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: isTablet ? 4 : (isSmallScreen ? 2 : 3),
-    },
-    priceInfoLabel: {
-        fontFamily: FontFamily.sFProText,
-        fontSize: isTablet ? 11 : (isSmallScreen ? 9 : 10),
-        fontWeight: '500',
-        color: Color.textSecondary || Color.colorSilver_100,
-        flex: 1,
-    },
-    priceInfoValue: {
-        fontFamily: FontFamily.sFProText,
-        fontSize: isTablet ? 12 : (isSmallScreen ? 10 : 11),
-        fontWeight: '600',
-        color: Color.purpleSoft,
-        textAlign: 'right',
-    },
-    stopPriceValue: {
-        color: Color.blue2 || '#007AFF',
-    },
-    markupValue: {
-        color: '#4CAF50',
-    },
-    discountValue: {
-        color: '#4CAF50',
-    },
-    basePriceValue: {
-        color: Color.textSecondary || Color.colorSilver_100,
-        textDecorationLine: 'line-through',
-        fontSize: isTablet ? 11 : (isSmallScreen ? 9 : 10),
-    },
-});
+        imageContainer: {
+            width: 130,
+            height: '100%',
+            left: 0,
+            bottom: 0,
+            top: 0,
+            position: 'absolute',
+            borderRadius: Border.br_xl,
+            overflow: 'hidden',
+        },
+        pagerView: {
+            width: 130,
+            height: '100%',
+        },
+        slide: {
+            flex: 1,
+            width: 130,
+            height: '100%',
+        },
+        productImage: {
+            width: 130,
+            height: '100%',
+            borderRadius: Border.br_xl,
+        },
+        indicatorContainer: {
+            position: 'absolute',
+            bottom: 8,
+            width: '100%',
+            alignItems: 'center',
+            zIndex: 10,
+        },
+        contentContainer: {
+            marginLeft: 150,
+            flex: 1,
+            paddingTop: isTablet ? 20 : (isSmallScreen ? 10 : 15),
+            paddingRight: 30,
+            paddingBottom: isTablet ? 20 : (isSmallScreen ? 10 : 15),
+        },
+        titleContainer: {
+            height: isTablet ? 25 : (isSmallScreen ? 18 : 20),
+            width: "100%",
+            marginBottom: isTablet ? 6 : (isSmallScreen ? 3 : 4),
+        },
+        title: {
+            fontFamily: FontFamily.sFProText,
+            fontSize: FontSize.size_sm,
+            fontWeight: 'bold',
+            color: brandAccent,
+            textAlign: 'left',
+        },
+        descriptionContainer: {
+            marginTop: isTablet ? 8 : (isSmallScreen ? 4 : 6),
+            height: isTablet ? 50 : (isSmallScreen ? 28 : 40),
+            width: "100%",
+            marginBottom: isTablet ? 6 : (isSmallScreen ? 3 : 4),
+        },
+        description: {
+            fontFamily: FontFamily.sFProText,
+            fontSize: FontSize.size_xs,
+            fontWeight: '500',
+            color: descriptionColor,
+            textAlign: 'left',
+            lineHeight: isTablet ? 18 : (isSmallScreen ? 12 : 14),
+        },
+        priceContainer: {
+            width: "100%",
+            marginTop: isTablet ? 8 : (isSmallScreen ? 4 : 6),
+            flex: 1,
+            justifyContent: 'flex-end',
+        },
+        priceWrapper: {
+            flexDirection: 'row',
+            alignItems: 'baseline',
+            width: "100%",
+            marginBottom: 1,
+            flexWrap: 'wrap',
+        },
+        price: {
+            fontFamily: FontFamily.sFProText,
+            fontWeight: '600',
+            color: brandAccent,
+            textAlign: 'left',
+            fontSize: 17,
+        },
+        boxPrice: {
+            fontFamily: FontFamily.sFProText,
+            fontWeight: '500',
+            color: brandAccent,
+            textAlign: 'left',
+            fontSize: 14,
+        },
+        priceUnit: {
+            fontFamily: FontFamily.sFProText,
+            fontSize: 9,
+            fontWeight: '600',
+            color: priceUnitColor,
+            textAlign: 'left',
+            marginLeft: 4,
+            marginBottom: 2,
+        },
+        priceRow: {
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+        },
+        kopecks: {
+            fontFamily: FontFamily.sFProText,
+            fontWeight: '600',
+            color: brandAccent,
+            textAlign: 'left',
+            marginLeft: 2,
+            paddingTop: 2,
+        },
+        addButton: {
+            position: 'absolute',
+            right: 0,
+            bottom: 0,
+            width: isTablet ? 60 : 50,
+            height: isTablet ? 60 : 50,
+        },
+        addButtonSmall: {
+            width: 42,
+            height: 42,
+        },
+        statusBadge: {
+            position: 'absolute',
+            top: isTablet ? 10 : (isSmallScreen ? 6 : 8),
+            right: isTablet ? 10 : (isSmallScreen ? 6 : 8),
+            paddingHorizontal: isTablet ? 10 : (isSmallScreen ? 6 : 8),
+            paddingVertical: isTablet ? 5 : (isSmallScreen ? 3 : 4),
+            borderRadius: isTablet ? 14 : (isSmallScreen ? 10 : 12),
+            zIndex: 2,
+            shadowColor: '#000',
+            shadowOffset: {
+                width: 0,
+                height: 2,
+            },
+            shadowOpacity: isDark ? 0.4 : 0.1,
+            shadowRadius: 3,
+            elevation: 3,
+        },
+        statusInactive: {
+            backgroundColor: colors.error,
+        },
+        statusOutOfStock: {
+            backgroundColor: isDark ? colors.surfaceElevated : 'rgba(242, 243, 255, 1)',
+        },
+        statusText: {
+            fontSize: isTablet ? 12 : (isSmallScreen ? 9 : 10),
+            fontFamily: FontFamily.sFProText,
+            fontWeight: '600',
+            color: brandAccent,
+            textAlign: 'center',
+        },
+        statusTextInactive: {
+            color: '#FFFFFF',
+        },
+        statusBadgeCompact: {
+            top: 6,
+            right: 6,
+            paddingHorizontal: 6,
+            paddingVertical: 3,
+        },
+        statusTextCompact: {
+            fontSize: 9,
+        },
+        compactContainer: {
+            width: 220,
+            borderWidth: 0.5,
+            borderColor: isDark ? colors.border : Color.purpleSoft,
+            borderRadius: Border.br_xl,
+            backgroundColor: colors.cardBackground,
+            overflow: 'hidden',
+        },
+        compactImageContainer: {
+            width: '100%',
+            height: 140,
+            position: 'relative',
+            backgroundColor: isDark ? colors.surfaceElevated : '#F9F9F9',
+            overflow: 'hidden',
+        },
+        compactPagerView: {
+            width: '100%',
+            height: '100%',
+        },
+        compactSlide: {
+            flex: 1,
+            width: '100%',
+            height: '100%',
+        },
+        compactProductImage: {
+            width: '100%',
+            height: '100%',
+        },
+        placeholder: {
+            width: '100%',
+            height: '100%',
+            justifyContent: 'center',
+            alignItems: 'center',
+        },
+        placeholderText: {
+            marginTop: 6,
+            fontSize: 11,
+            fontWeight: '600',
+            color: 'rgba(255,255,255,0.95)',
+        },
+        compactIndicatorContainer: {
+            position: 'absolute',
+            bottom: 8,
+            width: '100%',
+            alignItems: 'center',
+            zIndex: 10,
+        },
+        compactContentContainer: {
+            padding: 10,
+        },
+        compactTitle: {
+            fontFamily: FontFamily.sFProText,
+            fontSize: 14,
+            fontWeight: '600',
+            color: brandAccent,
+            marginBottom: 6,
+            lineHeight: 18,
+        },
+        compactPriceContainer: {
+            flexDirection: 'row',
+            alignItems: 'baseline',
+            marginBottom: 4,
+        },
+        compactPrice: {
+            fontFamily: FontFamily.sFProText,
+            fontSize: 16,
+            fontWeight: '700',
+            color: brandAccent,
+        },
+        compactPriceUnit: {
+            fontFamily: FontFamily.sFProText,
+            fontSize: 11,
+            fontWeight: '500',
+            color: priceUnitColor,
+            marginLeft: 4,
+        },
+        compactPriceRow: {
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+        },
+        compactKopecks: {
+            fontFamily: FontFamily.sFProText,
+            fontSize: 10,
+            fontWeight: '700',
+            color: brandAccent,
+            marginLeft: 2,
+            paddingTop: 2,
+        },
+        compactBoxInfo: {
+            fontFamily: FontFamily.sFProText,
+            fontSize: 11,
+            fontWeight: '500',
+            color: descriptionColor,
+        },
+        compactPriceInfo: {
+            fontFamily: FontFamily.sFProText,
+            fontSize: 10,
+            fontWeight: '600',
+            color: isDark ? colors.primary : Color.blue2,
+            marginTop: 2,
+        },
+        // Стили для информации о многоуровневых ценах
+        priceInfoContainer: {
+            marginTop: isTablet ? 8 : (isSmallScreen ? 4 : 6),
+            paddingTop: isTablet ? 8 : (isSmallScreen ? 4 : 6),
+            borderTopWidth: 1,
+            borderTopColor: colors.divider,
+        },
+        priceInfoRow: {
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: isTablet ? 4 : (isSmallScreen ? 2 : 3),
+        },
+        priceInfoLabel: {
+            fontFamily: FontFamily.sFProText,
+            fontSize: isTablet ? 11 : (isSmallScreen ? 9 : 10),
+            fontWeight: '500',
+            color: colors.textSecondary,
+            flex: 1,
+        },
+        priceInfoValue: {
+            fontFamily: FontFamily.sFProText,
+            fontSize: isTablet ? 12 : (isSmallScreen ? 10 : 11),
+            fontWeight: '600',
+            color: brandAccent,
+            textAlign: 'right',
+        },
+        stopPriceValue: {
+            color: isDark ? colors.primary : (Color.blue2 || '#007AFF'),
+        },
+        markupValue: {
+            color: colors.success,
+        },
+        discountValue: {
+            color: colors.success,
+        },
+        basePriceValue: {
+            color: colors.textSecondary,
+            textDecorationLine: 'line-through',
+            fontSize: isTablet ? 11 : (isSmallScreen ? 9 : 10),
+        },
+    });
+};

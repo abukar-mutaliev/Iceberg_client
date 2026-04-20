@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
     StyleSheet,
     ScrollView,
@@ -11,6 +11,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { normalize } from '@shared/lib/normalize';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { HeaderWithBackButton } from '@shared/ui/HeaderWithBackButton';
 import { FAQSection } from '../../FAQSection';
 import { ContactSection } from '../../ContactSection';
@@ -22,6 +23,8 @@ import { AppFeedbackSection } from '../../AppFeedbackSection';
 export const HelpCenterScreen = () => {
     const navigation = useNavigation();
     const insets = useSafeAreaInsets();
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
     const [keyboardHeight, setKeyboardHeight] = useState(0);
 
     useEffect(() => {
@@ -111,10 +114,10 @@ export const HelpCenterScreen = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#fff',
+        backgroundColor: colors.background,
     },
     keyboardAvoid: {
         flex: 1,
@@ -127,7 +130,7 @@ const styles = StyleSheet.create({
     },
     divider: {
         height: normalize(1),
-        backgroundColor: '#E5E5E5',
+        backgroundColor: colors.divider,
         marginVertical: normalize(8),
     },
 });

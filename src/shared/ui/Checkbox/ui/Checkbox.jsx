@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, PixelRatio, Dimensions } from 'react-native';
 import { Svg, Rect, Path } from 'react-native-svg';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = SCREEN_WIDTH / 440;
@@ -20,6 +21,8 @@ const normalize = (size) => {
  */
 export const Checkbox = ({ selected, onPress, style }) => {
     const size = normalize(24);
+    const { colors, isDark } = useTheme();
+    const accentColor = isDark ? colors.primary : 'rgba(24, 71, 237, 1)';
 
     if (!selected) {
         return (
@@ -29,7 +32,7 @@ export const Checkbox = ({ selected, onPress, style }) => {
                         width: size,
                         height: size,
                         borderWidth: 1,
-                        borderColor: 'rgba(24, 71, 237, 1)',
+                        borderColor: accentColor,
                         borderRadius: normalize(6),
                         justifyContent: 'center',
                         alignItems: 'center',
@@ -43,7 +46,7 @@ export const Checkbox = ({ selected, onPress, style }) => {
     return (
         <View style={[{ width: size, height: size }, style]}>
             <Svg width={size} height={size} viewBox="0 0 16 16" fill="none">
-                <Rect width="16" height="16" rx="4" fill="#1847ED"/>
+                <Rect width="16" height="16" rx="4" fill={accentColor}/>
                 <Path
                     fillRule="evenodd"
                     clipRule="evenodd"
@@ -54,4 +57,3 @@ export const Checkbox = ({ selected, onPress, style }) => {
         </View>
     );
 };
-

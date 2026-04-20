@@ -1,12 +1,12 @@
-import React, {useCallback} from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, PixelRatio, Keyboard, Platform } from 'react-native';
+import React, {useCallback, useMemo} from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, PixelRatio } from 'react-native';
 import { Clock, X } from 'lucide-react-native';
 import { useDispatch, useSelector } from 'react-redux';
-import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { removeSearchQuery, selectSearchHistoryItems } from "@entities/search";
 
-// Настройка масштабирования для адаптивности
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = SCREEN_WIDTH / 440;
 
 const normalize = (size) => {
@@ -22,6 +22,8 @@ const normalizeFont = (size) => {
 export const SearchHistory = ({ onItemPress, searchInputRef }) => {
     const dispatch = useDispatch();
     const historyItems = useSelector(selectSearchHistoryItems);
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
 
     const handleItemPress = (item) => {
         if (onItemPress) {
@@ -50,7 +52,7 @@ export const SearchHistory = ({ onItemPress, searchInputRef }) => {
         <ScrollView
             style={styles.container}
             showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="always" // Важно для сохранения клавиатуры
+            keyboardShouldPersistTaps="always"
         >
             {historyItems.map((item, index) => (
                 <View
@@ -62,7 +64,7 @@ export const SearchHistory = ({ onItemPress, searchInputRef }) => {
                         onPress={() => handleItemPress(item)}
                         activeOpacity={0.7}
                     >
-                        <Clock size={normalize(18)} style={styles.historyIcon} />
+                        <Clock size={normalize(18)} color={colors.textSecondary} style={styles.historyIcon} />
                         <Text style={styles.historyText}>{item}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -77,7 +79,7 @@ export const SearchHistory = ({ onItemPress, searchInputRef }) => {
                         activeOpacity={0.7}
                     >
                         <View style={styles.removeIconContainer}>
-                            <X size={normalize(18)} color={Color.blue2} />
+                            <X size={normalize(18)} color={colors.primary} />
                         </View>
                     </TouchableOpacity>
                 </View>
@@ -86,11 +88,10 @@ export const SearchHistory = ({ onItemPress, searchInputRef }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     container: {
         marginTop: normalize(15),
         paddingHorizontal: normalize(30),
-
     },
     emptyContainer: {
         marginTop: normalize(30),
@@ -100,7 +101,7 @@ const styles = StyleSheet.create({
     emptyText: {
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(FontSize.size_md),
-        color: Color.gray,
+        color: colors.textTertiary,
         textAlign: 'center',
     },
     historyItem: {
@@ -109,23 +110,20 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingVertical: normalize(5),
         borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
+        borderBottomColor: colors.divider,
     },
     historyItemLeft: {
         flexDirection: 'row',
         alignItems: 'center',
         flex: 1,
-        color: "#86868a",
-
     },
     historyIcon: {
         marginRight: normalize(16),
-        color: "#86868a",
     },
     historyText: {
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(FontSize.size_md),
-        color: "#86868a",
+        color: colors.textSecondary,
     },
     removeButton: {
         padding: normalize(10),

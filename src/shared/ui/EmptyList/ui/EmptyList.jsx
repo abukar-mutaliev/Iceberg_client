@@ -58,7 +58,7 @@ export const EmptyList = ({
                 style={styles.icon}
             />
 
-            <Text style={[styles.title, { color: colors.text }, titleStyle]}>
+            <Text style={[styles.title, { color: colors.textPrimary }, titleStyle]}>
                 {title}
             </Text>
 

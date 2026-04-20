@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
@@ -6,13 +6,16 @@ import { ProfileAvatar } from '@entities/profile';
 import { normalize } from '@shared/lib/normalize';
 import { useAuth } from "@entities/auth/hooks/useAuth";
 import {BackButton} from "@shared/ui/Button/BackButton";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const ProfileHeader = () => {
     const navigation = useNavigation();
     const { currentUser } = useAuth();
+    const { colors } = useTheme();
     const profile = useSelector(state => state.profile.data);
 
     const componentKey = `profile-header-${currentUser?.id || 'no-user'}`;
+    const styles = useMemo(() => createStyles(colors), [colors]);
 
     const getUserFullName = () => {
         if (!profile || !currentUser) return 'Пользователь';
@@ -102,10 +105,9 @@ export const ProfileHeader = () => {
 };
 
 
-const styles = StyleSheet.create({
-    // Стили без изменений
+const createStyles = (colors) => StyleSheet.create({
     container: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.background,
         alignItems: 'center',
         paddingTop: normalize(30),
     },
@@ -118,7 +120,7 @@ const styles = StyleSheet.create({
     title: {
         fontSize: normalize(18),
         fontWeight: '500',
-        color: '#000000',
+        color: colors.textPrimary,
         marginBottom: normalize(20),
     },
     placeholder: {
@@ -131,13 +133,13 @@ const styles = StyleSheet.create({
     nameText: {
         fontSize: normalize(18),
         fontWeight: '600',
-        color: '#212121',
+        color: colors.textPrimary,
         marginTop: normalize(16),
         textAlign: 'center',
     },
     roleText: {
         fontSize: normalize(14),
-        color: '#666666',
+        color: colors.textSecondary,
         marginTop: normalize(2),
         textAlign: 'center',
     }

@@ -1,56 +1,63 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { IconRight } from '@shared/ui/Icon/Profile';
 import ButtonPressBackgroundBlue from '@shared/ui/Button/ButtonPressBackgroundBlue';
 import { normalize, normalizeFont } from '@/shared/lib/normalize';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const ProfileMenu = ({ menuItems, activeItemId, setActiveItemId }) => {
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
+
     return (
         <View style={styles.menuContainer}>
-            {menuItems.map((item, index) => (
-                <Pressable
-                    key={item.id}
-                    style={[styles.menuItem, { borderTopWidth: index === 0 ? 0.5 : 0 }]}
-                    onPress={() => {
-                        setActiveItemId(item.id);
-                        setTimeout(() => {
-                            setActiveItemId(null);
-                            item.onPress();
-                        }, 150);
-                    }}
-                >
-                    {activeItemId === item.id && <ButtonPressBackgroundBlue />}
-                    <View style={styles.menuIconContainer}>
-                        {React.cloneElement(item.icon, {
-                            color: activeItemId === item.id ? '#FFFFFF' : '#000000',
-                        })}
-                    </View>
-                    <Text
-                        style={[styles.menuItemText, activeItemId === item.id && styles.menuItemTextActive]}
+            {menuItems.map((item, index) => {
+                const isActive = activeItemId === item.id;
+                return (
+                    <Pressable
+                        key={item.id}
+                        style={[styles.menuItem, { borderTopWidth: index === 0 ? 0.5 : 0 }]}
+                        onPress={() => {
+                            setActiveItemId(item.id);
+                            setTimeout(() => {
+                                setActiveItemId(null);
+                                item.onPress();
+                            }, 150);
+                        }}
                     >
-                        {item.title}
-                    </Text>
-                    <IconRight
-                        style={styles.arrowIcon}
-                        color={activeItemId === item.id ? '#FFFFFF' : '#C8C8C8'}
-                    />
-                </Pressable>
-            ))}
+                        {isActive && <ButtonPressBackgroundBlue />}
+                        <View style={styles.menuIconContainer}>
+                            {React.cloneElement(item.icon, {
+                                color: isActive ? colors.menuItemActiveText : colors.textPrimary,
+                            })}
+                        </View>
+                        <Text
+                            style={[styles.menuItemText, isActive && styles.menuItemTextActive]}
+                        >
+                            {item.title}
+                        </Text>
+                        <IconRight
+                            style={styles.arrowIcon}
+                            color={isActive ? colors.menuItemActiveText : colors.textTertiary}
+                        />
+                    </Pressable>
+                );
+            })}
         </View>
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     menuContainer: {
         marginHorizontal: normalize(15),
-        borderColor: '#E5E5E5',
+        borderColor: colors.divider,
         borderBottomWidth: 0.5,
     },
     menuItem: {
         flexDirection: 'row',
         alignItems: 'center',
         height: normalize(70),
-        borderColor: '#E5E5E5',
+        borderColor: colors.divider,
         borderBottomWidth: 0.8,
         position: 'relative',
     },
@@ -64,11 +71,11 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(16),
         marginLeft: normalize(15),
         flex: 1,
-        color: '#000000',
+        color: colors.textPrimary,
         zIndex: 1,
     },
     menuItemTextActive: {
-        color: '#FFFFFF',
+        color: colors.menuItemActiveText,
     },
     arrowIcon: {
         marginRight: normalize(15),

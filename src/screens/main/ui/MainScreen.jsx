@@ -21,7 +21,8 @@ import { fetchCart, useCartAvailability } from '@entities/cart';
 import productsApi from '@entities/product/api/productsApi';
 
 // UI Components
-import { Color } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { ThemedStatusBar } from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
 import { Header } from "@widgets/header";
 // import { PromoBanner } from "@widgets/promoSlider";
 import { CategoriesBar } from "@widgets/categoriesBar";
@@ -71,6 +72,8 @@ export const MainScreen = ({ navigation, route }) => {
     const insets = useSafeAreaInsets();
     const tabBarHeight = 80 + insets.bottom;
     const listContentPadding = tabBarHeight + 12;
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     // Redux selectors
     const products = useSelector(selectProducts);
@@ -553,7 +556,7 @@ export const MainScreen = ({ navigation, route }) => {
 
     const renderFooter = useCallback(() => (
         <View style={styles.bottomSpacer} />
-    ), []);
+    ), [styles]);
 
     const renderSkeletonLoader = useCallback(() => (
         <View style={styles.skeletonContainer}>
@@ -568,12 +571,13 @@ export const MainScreen = ({ navigation, route }) => {
                 </View>
             ))}
         </View>
-    ), []);
+    ), [styles]);
 
     // Рендер состояний загрузки (только при первой загрузке без данных)
     if (isInitialLoading && !isDataReady) {
         return (
             <View style={styles.container}>
+                <ThemedStatusBar />
                 {renderHeader()}
                 {renderSkeletonLoader()}
             </View>
@@ -584,6 +588,7 @@ export const MainScreen = ({ navigation, route }) => {
     // а при ошибке сети / пустых данных показывает retry-кнопку вместо товаров
     return (
         <View style={styles.container}>
+            <ThemedStatusBar />
             <ProductsList
                 onProductPress={handleProductPress}
                 fromScreen="MainTab"
@@ -604,10 +609,10 @@ export const MainScreen = ({ navigation, route }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.background,
     },
     skeletonContainer: {
         paddingHorizontal: 16,
@@ -615,23 +620,23 @@ const styles = StyleSheet.create({
     },
     skeletonProductCard: {
         flexDirection: 'row',
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         borderRadius: 12,
         padding: 12,
         marginBottom: 10,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06,
+        shadowOpacity: isDark ? 0.3 : 0.06,
         shadowRadius: 4,
         elevation: 2,
         borderWidth: 1,
-        borderColor: '#f0f0f0',
+        borderColor: colors.border,
     },
     skeletonProductImage: {
         width: 64,
         height: 64,
         borderRadius: 8,
-        backgroundColor: '#eee',
+        backgroundColor: colors.surfaceElevated,
         marginRight: 12,
     },
     skeletonProductContent: {
@@ -641,21 +646,21 @@ const styles = StyleSheet.create({
     skeletonLineWide: {
         height: 14,
         width: '80%',
-        backgroundColor: '#eee',
+        backgroundColor: colors.surfaceElevated,
         borderRadius: 6,
         marginBottom: 6,
     },
     skeletonLine: {
         height: 12,
         width: '60%',
-        backgroundColor: '#eee',
+        backgroundColor: colors.surfaceElevated,
         borderRadius: 6,
         marginBottom: 10,
     },
     skeletonPrice: {
         height: 16,
         width: 90,
-        backgroundColor: '#eee',
+        backgroundColor: colors.surfaceElevated,
         borderRadius: 8,
     },
     bottomSpacer: {

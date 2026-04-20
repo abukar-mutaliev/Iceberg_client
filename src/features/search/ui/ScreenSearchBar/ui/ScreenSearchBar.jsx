@@ -1,4 +1,4 @@
-import React, {forwardRef, useEffect, useImperativeHandle, useRef, useState} from 'react';
+import React, {forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState} from 'react';
 import {
     View,
     TextInput,
@@ -12,7 +12,8 @@ import {
     Pressable
 } from 'react-native';
 import { X } from 'lucide-react-native';
-import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { AndroidShadow } from '@shared/ui/Shadow';
 
 // Настройка масштабирования для адаптивности
@@ -41,6 +42,8 @@ export const ScreenSearchBar = forwardRef(({
                                                showFullWidth = false,
                                                historyMode = false
                                            }, ref) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const inputRef = useRef(null);
     const [isInputFocused, setIsInputFocused] = useState(false);
     const componentMountedRef = useRef(true);
@@ -112,11 +115,11 @@ export const ScreenSearchBar = forwardRef(({
                 {Platform.OS === 'android' ? (
                     <AndroidShadow
                         style={{ width: '100%', height: 44 }}
-                        shadowColor="rgba(81, 90, 134, 0.2)"
+                        shadowColor={isDark ? 'rgba(0, 0, 0, 0.4)' : 'rgba(81, 90, 134, 0.2)'}
                         shadowConfig={{
                             offsetX: 0,
                             offsetY: 1,
-                            elevation: 4,
+                            elevation: isDark ? 2 : 4,
                             radius: 4,
                             opacity: 1
                         }}
@@ -129,7 +132,8 @@ export const ScreenSearchBar = forwardRef(({
                                 placeholder={placeholder}
                                 value={value}
                                 onChangeText={onChangeText}
-                                placeholderTextColor={Color.dark}
+                                placeholderTextColor={colors.textTertiary}
+                                keyboardAppearance={colors.keyboardAppearance}
                                 onFocus={handleFocus}
                                 onBlur={handleBlur}
                                 returnKeyType="search"
@@ -168,7 +172,8 @@ export const ScreenSearchBar = forwardRef(({
                                 placeholder={placeholder}
                                 value={value}
                                 onChangeText={onChangeText}
-                                placeholderTextColor={Color.dark}
+                                placeholderTextColor={colors.textTertiary}
+                                keyboardAppearance={colors.keyboardAppearance}
                                 onFocus={handleFocus}
                                 onBlur={handleBlur}
                                 returnKeyType="search"
@@ -198,7 +203,7 @@ export const ScreenSearchBar = forwardRef(({
     );
 });
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -225,24 +230,24 @@ const styles = StyleSheet.create({
         width: '100%',
         height: 44,
         borderRadius: 10,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.inputBackground,
         borderWidth: 1,
-        borderColor: 'rgba(0, 0, 0, 0.1)',
-        shadowColor: "rgba(81, 90, 134, 0.2)",
+        borderColor: isDark ? colors.border : 'rgba(0, 0, 0, 0.1)',
+        shadowColor: isDark ? '#000' : 'rgba(81, 90, 134, 0.2)',
         shadowOffset: {
             width: 0,
             height: 1
         },
         shadowRadius: 4,
-        shadowOpacity: 1,
+        shadowOpacity: isDark ? 0.3 : 1,
         justifyContent: 'center',
     },
     androidInputContainer: {
         height: 44,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.inputBackground,
         borderRadius: 10,
         borderWidth: 1,
-        borderColor: 'rgba(0, 0, 0, 0.1)',
+        borderColor: isDark ? colors.border : 'rgba(0, 0, 0, 0.1)',
     },
     iosInputContainer: {
         height: 44,
@@ -259,7 +264,7 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_sm),
         lineHeight: normalize(20),
         letterSpacing: 0,
-        color: Color.dark,
+        color: colors.textPrimary,
         height: '100%',
         minHeight: 44,
         paddingHorizontal: normalize(24),
@@ -285,9 +290,8 @@ const styles = StyleSheet.create({
         width: normalize(20),
         height: normalize(20),
         borderRadius: normalize(12),
-        backgroundColor: '#4248CD',
+        backgroundColor: isDark ? colors.primary : '#4248CD',
         justifyContent: 'center',
         alignItems: 'center',
     },
-    // cancelButton/cancelText removed
 });

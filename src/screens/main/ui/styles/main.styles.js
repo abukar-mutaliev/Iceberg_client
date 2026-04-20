@@ -1,26 +1,27 @@
 import { StyleSheet } from 'react-native';
 
-export const mainStyles = StyleSheet.create({
+export const createMainStyles = (colors) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#fff',
+        backgroundColor: colors.background,
         width: '100%',
-        margin: "auto"
+        margin: 'auto',
     },
     header: {
         paddingHorizontal: 16,
         paddingTop: 20,
         paddingBottom: 10,
-        backgroundColor: '#fff',
+        backgroundColor: colors.background,
         alignItems: 'center',
         borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
+        borderBottomColor: colors.divider,
     },
     title: {
         fontSize: 24,
         fontWeight: 'bold',
         marginVertical: 10,
         textAlign: 'center',
+        color: colors.textPrimary,
     },
     content: {
         flex: 1,
@@ -37,8 +38,8 @@ export const mainStyles = StyleSheet.create({
         padding: 20,
     },
     errorText: {
-        color: '#f44336',
+        color: colors.error,
         textAlign: 'center',
         fontSize: 16,
-    }
+    },
 });

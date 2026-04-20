@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
     View,
     Text,
@@ -15,6 +15,8 @@ import { ChevronRight } from 'lucide-react-native';
 import { FontFamily } from '@app/styles/GlobalStyles';
 import { Checkbox } from '@shared/ui/Checkbox';
 import { ScrollableBackgroundGradient } from '@shared/ui/BackgroundGradient';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { ThemedStatusBar } from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = SCREEN_WIDTH / 440;
@@ -51,6 +53,8 @@ export const QuantityFilter = ({ quantity = [], onChange }) => {
     const [modalVisible, setModalVisible] = useState(false);
     const [selectedQuantities, setSelectedQuantities] = useState(quantity);
     const [contentHeight, setContentHeight] = useState(0);
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     const handleSelectQuantity = (item) => {
         let newSelected;
@@ -85,7 +89,7 @@ export const QuantityFilter = ({ quantity = [], onChange }) => {
                 activeOpacity={0.7}
             >
                 <Text style={styles.selectorText}>Количество</Text>
-                <ChevronRight color="#000000" size={normalize(24)} />
+                <ChevronRight color={colors.textPrimary} size={normalize(24)} />
             </TouchableOpacity>
 
             <Modal
@@ -95,6 +99,7 @@ export const QuantityFilter = ({ quantity = [], onChange }) => {
                 onRequestClose={() => setModalVisible(false)}
             >
                 <View style={styles.modalContainer}>
+                    <ThemedStatusBar />
                     <ScrollableBackgroundGradient
                         contentHeight={contentHeight + 200}
                         showOverlayGradient={false}
@@ -154,11 +159,11 @@ export const QuantityFilter = ({ quantity = [], onChange }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         paddingVertical: normalize(8),
         borderTopWidth: 1,
-        borderTopColor: '#E5E5E5',
+        borderTopColor: colors.divider,
     },
     selector: {
         flexDirection: 'row',
@@ -169,10 +174,11 @@ const styles = StyleSheet.create({
     selectorText: {
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(17),
-        color: '#000000',
+        color: colors.textPrimary,
     },
     modalContainer: {
         flex: 1,
+        backgroundColor: isDark ? colors.background : 'transparent',
     },
     safeArea: {
         flex: 1,
@@ -192,13 +198,13 @@ const styles = StyleSheet.create({
     closeButtonText: {
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(16),
-        color: '#000000',
+        color: colors.textPrimary,
     },
     modalTitle: {
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(18),
         fontWeight: '500',
-        color: '#000000',
+        color: colors.textPrimary,
     },
     clearAllButton: {
         padding: normalize(5),
@@ -206,11 +212,11 @@ const styles = StyleSheet.create({
     clearAllButtonText: {
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(16),
-        color: '#86868A',
+        color: colors.textSecondary,
     },
     whiteContainer: {
         flex: 1,
-        backgroundColor: 'white',
+        backgroundColor: colors.cardBackground,
         borderRadius: normalize(12),
         marginHorizontal: normalize(16),
         marginBottom: normalize(20),
@@ -223,22 +229,22 @@ const styles = StyleSheet.create({
         paddingVertical: normalize(15),
         paddingHorizontal: normalize(16),
         borderBottomWidth: 0.5,
-        borderBottomColor: '#E5E5EA',
+        borderBottomColor: colors.divider,
     },
     quantityName: {
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(16),
-        color: '#000000',
+        color: colors.textPrimary,
     },
     emptyMessage: {
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(16),
-        color: '#86868A',
+        color: colors.textSecondary,
         textAlign: 'center',
         marginTop: normalize(20),
     },
     modalApplyButton: {
-        backgroundColor: '#5500FF',
+        backgroundColor: colors.primary,
         borderRadius: normalize(30),
         marginHorizontal: normalize(20),
         marginBottom: normalize(25),
@@ -251,7 +257,7 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(17),
         fontWeight: '500',
-        color: 'white',
+        color: colors.menuItemActiveText,
         textTransform: 'uppercase',
     }
 });

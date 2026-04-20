@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, PixelRatio } from 'react-native';
 import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = SCREEN_WIDTH / 440;
 
 const normalize = (size) => {
@@ -16,6 +17,9 @@ const normalizeFont = (size) => {
 };
 
 export const PopularTags = ({ tags, onTagPress }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     const getTagWidth = (text) => {
         const charWidth = normalize(8);
         const padding = normalize(32);
@@ -63,7 +67,7 @@ export const PopularTags = ({ tags, onTagPress }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     scrollContent: {
         paddingBottom: normalize(40)
     },
@@ -78,7 +82,7 @@ const styles = StyleSheet.create({
     title: {
         fontSize: normalizeFont(FontSize.size_md),
         textAlign: "left",
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         fontWeight: "600"
     },
@@ -89,7 +93,7 @@ const styles = StyleSheet.create({
     },
     tagBackground: {
         borderRadius: normalize(Border.br_base),
-        backgroundColor: Color.colorBlue,
+        backgroundColor: isDark ? colors.primary : Color.colorBlue,
         right: 0,
         width: "100%",
         bottom: 0,
@@ -107,7 +111,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     tagText: {
-        color: Color.colorLightMode,
+        color: '#FFFFFF',
         fontSize: normalizeFont(FontSize.size_md),
         fontWeight: "500",
         textAlign: "center",

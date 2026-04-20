@@ -3,8 +3,7 @@ import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import Text from '@shared/ui/Text/Text';
-import {BackButton} from "@shared/ui/Button/BackButton";
-import { Color } from '@app/styles/GlobalStyles'
+import { BackButton } from '@shared/ui/Button/BackButton';
 
 /**
  * Компонент заголовка с кнопкой "Назад" и дополнительными действиями
@@ -39,7 +38,7 @@ export const HeaderWithBackButton = ({
     return (
         <View style={[
             styles.container,
-            { backgroundColor: "transparent" },
+            { backgroundColor: 'transparent' },
             style
         ]}>
 
@@ -50,14 +49,14 @@ export const HeaderWithBackButton = ({
                         onPress={handleBackPress}
                         hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
                     >
-                        <BackButton name="arrow-back" size={24} color={colors.text} />
+                        <BackButton />
                     </TouchableOpacity>
                 )}
             </View>
 
             <View style={styles.titleContainer}>
                 <Text
-                    style={[styles.title, { color: Color.dark }, titleStyle]}
+                    style={[styles.title, { color: colors.textPrimary }, titleStyle]}
                     numberOfLines={1}
                 >
                     {title}

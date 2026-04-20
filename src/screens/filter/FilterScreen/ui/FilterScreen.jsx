@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     View,
     Text,
@@ -6,14 +6,14 @@ import {
     TouchableOpacity,
     ScrollView,
     Dimensions,
-    PixelRatio,
-    StatusBar
+    PixelRatio
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation, useRoute } from '@react-navigation/native';
 
 import { ScrollableBackgroundGradient } from '@shared/ui/BackgroundGradient';
+import { ThemedStatusBar } from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
 
 import { PriceRangeFilter } from './PriceRangeFilter';
 import { CategoryFilter } from './CategoryFilter';
@@ -22,6 +22,7 @@ import { RatingFilter } from './RatingFilter';
 import { QuantityFilter } from './QuantityFilter';
 
 import { FontFamily } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 import {
     setFilterCriteria,
@@ -68,6 +69,8 @@ export const FilterScreen = () => {
     const route = useRoute();
     const dispatch = useDispatch();
     const insets = useSafeAreaInsets();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     const [contentHeight, setContentHeight] = useState(0);
 
@@ -160,7 +163,7 @@ export const FilterScreen = () => {
 
     return (
         <View style={styles.container}>
-            <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent={true} />
+            <ThemedStatusBar />
 
             <ScrollableBackgroundGradient
                 contentHeight={contentHeight + 150}
@@ -253,9 +256,10 @@ export const FilterScreen = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
+        backgroundColor: isDark ? colors.background : 'transparent',
     },
     safeArea: {
         flex: 1,
@@ -274,21 +278,21 @@ const styles = StyleSheet.create({
     headerButtonText: {
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(16),
-        color: '#000000',
+        color: colors.textPrimary,
     },
     resetText: {
-        color: '#86868a',
+        color: colors.textSecondary,
     },
     headerTitle: {
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(18),
         fontWeight: '500',
-        color: '#000000',
+        color: colors.textPrimary,
         textAlign: 'center',
     },
     whiteContainer: {
         flex: 1,
-        backgroundColor: 'white',
+        backgroundColor: colors.cardBackground,
         borderRadius: normalize(12),
         marginHorizontal: normalize(16),
         paddingHorizontal: normalize(16),
@@ -303,10 +307,10 @@ const styles = StyleSheet.create({
     separator: {
         height: 0.5,
         width: '100%',
-        backgroundColor: '#D2D2D7',
+        backgroundColor: colors.divider,
     },
     applyButton: {
-        backgroundColor: '#5500ff',
+        backgroundColor: colors.primary,
         borderRadius: normalize(30),
         position: 'absolute',
         left: normalize(20),
@@ -320,7 +324,7 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(17),
         fontWeight: '500',
-        color: 'white',
+        color: colors.menuItemActiveText,
         textTransform: 'uppercase',
     }
 });

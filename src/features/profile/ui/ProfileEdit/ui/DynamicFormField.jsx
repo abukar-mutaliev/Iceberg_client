@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import DropdownArrowIcon from '@shared/ui/Icon/Profile/DropdownArrowIcon';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const DynamicFormField = ({
                                      field,
@@ -23,6 +23,8 @@ export const DynamicFormField = ({
                                      error = null,
                                      scrollViewRef,
                                  }) => {
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
 
     const [showDropdown, setShowDropdown] = useState(false);
     const [rotateAnimation] = useState(new Animated.Value(0));
@@ -223,14 +225,15 @@ export const DynamicFormField = ({
                         style={[
                             styles.input,
                             {
-                                color: editable ? '#000000' : '#A0A0A0',
+                                color: editable ? colors.textPrimary : colors.textTertiary,
                             },
                         ]}
                         value={fieldValue}
                         onChangeText={handleChangeText}
                         onFocus={field.type === 'phone' ? handlePhoneFocus : undefined}
                         placeholder={field.type === 'phone' ? '+7 (___) ___-__-__' : field.placeholder}
-                        placeholderTextColor="#A0A0A0"
+                        placeholderTextColor={colors.textTertiary}
+                        keyboardAppearance={colors.keyboardAppearance}
                         editable={editable}
                         keyboardType={field.type === 'phone' ? 'phone-pad' : (field.keyboardType || 'default')}
                         maxLength={field.type === 'phone' ? 18 : undefined}
@@ -244,8 +247,8 @@ export const DynamicFormField = ({
                         style={[
                             styles.inputWrapper,
                             {
-                                backgroundColor: editable ? '#FFFFFF' : '#f2f3ff',
-                                borderColor: editable ? '#007AFF' : '#E5E5E5',
+                                backgroundColor: editable ? colors.inputBackground : colors.surfaceSecondary,
+                                borderColor: editable ? colors.primary : colors.inputBorder,
                                 borderWidth: editable ? 1 : 0.5,
                             },
                         ]}
@@ -268,7 +271,7 @@ export const DynamicFormField = ({
                                 style={[
                                     styles.editButtonText,
                                     {
-                                        color: editable ? '#007AFF' : Color.dark,
+                                        color: editable ? colors.primary : colors.textPrimary,
                                     },
                                 ]}
                             >
@@ -299,7 +302,7 @@ export const DynamicFormField = ({
                                 style={[styles.iconDownContainer, animatedStyle]}
                             >
                                 <DropdownArrowIcon
-                                    color={showDropdown ? '#007AFF' : '#3339B0'}
+                                    color={colors.primary}
                                     width={normalize(14)}
                                     height={normalize(8)}
                                 />
@@ -355,7 +358,7 @@ export const DynamicFormField = ({
                                 style={[styles.iconDownContainer, animatedStyle]}
                             >
                                 <DropdownArrowIcon
-                                    color={showDropdown ? '#007AFF' : '#3339B0'}
+                                    color={colors.primary}
                                     width={normalize(14)}
                                     height={normalize(8)}
                                 />
@@ -432,7 +435,7 @@ export const DynamicFormField = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     fieldContainer: {
         marginHorizontal: normalize(20),
         marginBottom: normalize(20),
@@ -447,17 +450,17 @@ const styles = StyleSheet.create({
     fieldLabel: {
         fontSize: normalizeFont(16),
         fontWeight: '500',
-        color: '#000000',
+        color: colors.textPrimary,
         lineHeight: normalize(23),
     },
     requiredMark: {
-        color: '#FF0000',
+        color: colors.error,
     },
     inputWrapper: {
         borderWidth: 0.5,
-        borderColor: '#E5E5E5',
+        borderColor: colors.inputBorder,
         borderRadius: normalize(8),
-        backgroundColor: '#f2f3ff',
+        backgroundColor: colors.surfaceSecondary,
         height: normalize(50),
         flexDirection: 'row',
         alignItems: 'center',
@@ -468,7 +471,7 @@ const styles = StyleSheet.create({
         height: '100%',
         paddingHorizontal: normalize(5),
         fontSize: normalizeFont(14),
-        color: '#A0A0A0',
+        color: colors.textTertiary,
     },
     inputPressable: {
         flex: 1,
@@ -479,7 +482,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(10),
     },
     editButtonText: {
-        color: Color.dark,
+        color: colors.textPrimary,
         fontSize: normalizeFont(12),
         fontWeight: '700',
         lineHeight: normalize(20),
@@ -494,9 +497,9 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         height: normalize(50),
         borderWidth: 0.5,
-        borderColor: '#E5E5E5',
+        borderColor: colors.inputBorder,
         borderRadius: normalize(8),
-        backgroundColor: '#f2f3ff',
+        backgroundColor: colors.surfaceSecondary,
         paddingHorizontal: normalize(10),
         overflow: 'hidden',
     },
@@ -508,11 +511,11 @@ const styles = StyleSheet.create({
     },
     selectedValue: {
         fontSize: normalizeFont(16),
-        color: '#000000',
+        color: colors.textPrimary,
     },
     placeholderText: {
         fontSize: normalizeFont(16),
-        color: '#A0A0A0',
+        color: colors.textTertiary,
     },
     iconDownContainer: {
         padding: normalize(10),
@@ -526,11 +529,11 @@ const styles = StyleSheet.create({
         right: 0,
         zIndex: 2,
         borderWidth: 0.5,
-        borderColor: '#E5E5E5',
+        borderColor: colors.inputBorder,
         borderRadius: normalize(8),
-        backgroundColor: '#F5F5F7',
+        backgroundColor: colors.surfaceElevated,
         elevation: 3,
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor,
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
         shadowRadius: 2,
@@ -540,22 +543,22 @@ const styles = StyleSheet.create({
         height: normalize(41),
         paddingHorizontal: normalize(10),
         justifyContent: 'center',
-        backgroundColor: '#f2f3ff',
+        backgroundColor: colors.surfaceSecondary,
     },
     selectedOption: {
-        backgroundColor: '#007AFF',
+        backgroundColor: colors.primary,
     },
     optionText: {
         fontSize: normalizeFont(16),
-        color: '#000000',
+        color: colors.textPrimary,
         lineHeight: normalize(23),
     },
     selectedOptionText: {
-        color: '#FFFFFF',
+        color: colors.menuItemActiveText,
     },
     errorMessage: {
         fontSize: normalizeFont(12),
-        color: '#FF0000',
+        color: colors.error,
         marginTop: normalize(5),
     },
 });

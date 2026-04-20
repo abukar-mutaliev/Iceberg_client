@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
     View,
     Text,
@@ -8,8 +8,8 @@ import {
     PixelRatio
 } from 'react-native';
 import { FontFamily } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
-// Адаптивные размеры
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = SCREEN_WIDTH / 440;
 
@@ -29,13 +29,14 @@ export const PriceRangeFilter = ({
                                      onChangeMinPrice,
                                      onChangeMaxPrice
                                  }) => {
-    // Обработчик изменения минимальной цены
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     const handleMinPriceChange = (text) => {
         const value = text.replace(/[^0-9]/g, '');
         onChangeMinPrice(value ? parseInt(value, 10) : 0);
     };
 
-    // Обработчик изменения максимальной цены
     const handleMaxPriceChange = (text) => {
         const value = text.replace(/[^0-9]/g, '');
         onChangeMaxPrice(value ? parseInt(value, 10) : 0);
@@ -50,8 +51,9 @@ export const PriceRangeFilter = ({
                     value={minPrice?.toString() || ''}
                     onChangeText={handleMinPriceChange}
                     keyboardType="numeric"
+                    keyboardAppearance={colors.keyboardAppearance}
                     placeholder="45"
-                    placeholderTextColor="#ffff"
+                    placeholderTextColor={colors.textTertiary}
                 />
                 <View style={styles.separator} />
                 <TextInput
@@ -59,15 +61,16 @@ export const PriceRangeFilter = ({
                     value={maxPrice?.toString() || ''}
                     onChangeText={handleMaxPriceChange}
                     keyboardType="numeric"
+                    keyboardAppearance={colors.keyboardAppearance}
                     placeholder="180"
-                    placeholderTextColor="white"
+                    placeholderTextColor={colors.textTertiary}
                 />
             </View>
         </View>
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         marginTop: normalize(20),
         marginBottom: normalize(10),
@@ -75,7 +78,7 @@ const styles = StyleSheet.create({
     title: {
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(17),
-        color: '#000000',
+        color: colors.textPrimary,
         marginBottom: normalize(12),
         marginLeft: normalize(5),
     },
@@ -92,12 +95,15 @@ const styles = StyleSheet.create({
     input: {
         flex: 1,
         paddingHorizontal: normalize(15),
+        paddingVertical: normalize(10),
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(16),
-        color: '#000000',
+        color: colors.textPrimary,
         textAlign: 'center',
-        backgroundColor: 'rgba(218, 219, 255, 1)',
+        backgroundColor: isDark ? colors.surfaceElevated : 'rgba(218, 219, 255, 1)',
         borderRadius: normalize(10),
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     separatorContainer: {
         width: normalize(20),
@@ -107,7 +113,7 @@ const styles = StyleSheet.create({
     separatorLine: {
         width: normalize(10),
         height: 1,
-        backgroundColor: '#000',
+        backgroundColor: colors.textPrimary,
     }
 });
 

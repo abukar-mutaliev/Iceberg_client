@@ -1,9 +1,14 @@
 import * as React from "react";
+import { useMemo } from "react";
 import { View, StyleSheet, TouchableOpacity } from "react-native";
 import WarehouseInstance from "./WarehouseInstance";
 import { IconWarehouse } from "@shared/ui/Icon/Warehouse";
+import { useTheme } from "@app/providers/themeProvider/ThemeProvider";
 
 const WarehouseLocator = ({ onPress }) => {
+    const { isDark } = useTheme();
+    const styles = useMemo(() => createStyles(isDark), [isDark]);
+
     return (
         <TouchableOpacity style={styles.container} onPress={onPress}>
             <View style={styles.contentContainer}>
@@ -16,9 +21,9 @@ const WarehouseLocator = ({ onPress }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (isDark) => StyleSheet.create({
     container: {
-        backgroundColor: "#28C76F",
+        backgroundColor: isDark ? "#1F6B46" : "#28C76F",
         borderRadius: 10,
         marginHorizontal: 0,
         marginVertical: 0,
@@ -28,9 +33,11 @@ const styles = StyleSheet.create({
             width: 0,
             height: 2,
         },
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0.3 : 0.1,
         shadowRadius: 4,
         elevation: 3,
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? "rgba(40, 199, 111, 0.3)" : "transparent",
     },
     contentContainer: {
         flexDirection: "row",

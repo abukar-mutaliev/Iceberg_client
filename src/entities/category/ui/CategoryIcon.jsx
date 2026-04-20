@@ -2,6 +2,7 @@ import React from 'react';
 import { View } from 'react-native';
 import Svg, { Path, G } from 'react-native-svg';
 import {Color as GlobalColor} from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const ConeIcon = ({ style, size = 49, color = GlobalColor.categoriesIconBlue }) => {
     const scale = size / 49;
@@ -330,32 +331,35 @@ const CategoriesMenuIcon = ({ style, size = 49, color = GlobalColor.categoriesIc
     );
 };
 
-export const CategoryIcon = ({ type, style, size = 39, color = GlobalColor.categoriesIconBlue }) => {
+export const CategoryIcon = ({ type, style, size = 39, color }) => {
+    const { colors, isDark } = useTheme();
+    const resolvedColor = color ?? (isDark ? colors.primary : GlobalColor.categoriesIconBlue);
+
     switch (type) {
         case 'рожок':
-            return <ConeIcon style={style} size={size} color={color} />;
+            return <ConeIcon style={style} size={size} color={resolvedColor} />;
         case 'стаканчик':
-            return <CupIcon style={style} size={size} color={color} />;
+            return <CupIcon style={style} size={size} color={resolvedColor} />;
         case 'эскимо':
-            return <PopsicleIcon style={style} size={size} color={color} />;
+            return <PopsicleIcon style={style} size={size} color={resolvedColor} />;
 
         case 'килограммовое':
         case 'кг':
         case 'килограмовые':
-            return <KilogramIcon style={style} size={size} color={color} />;
+            return <KilogramIcon style={style} size={size} color={resolvedColor} />;
         case 'брикеты':
         case 'брикет':
-            return <BrickIcon style={style} size={size} color={color} />;
+            return <BrickIcon style={style} size={size} color={resolvedColor} />;
         case 'фруктовый лед':
         case 'фруктовый лёд':
         case 'лёд':
-            return <FruitIceIcon style={style} size={size} color={color} />;            
+            return <FruitIceIcon style={style} size={size} color={resolvedColor} />;            
         case 'рыба':
-            return <FishIcon style={style} size={size} color={color} />;
+            return <FishIcon style={style} size={size} color={resolvedColor} />;
         case 'стандартный':
-            return <DefaultIcon style={style} size={size} />;
+            return <DefaultIcon style={style} size={size} color={resolvedColor} />;
         case 'categories-menu':
-            return <CategoriesMenuIcon style={style} size={size} color={color} />;
+            return <CategoriesMenuIcon style={style} size={size} color={resolvedColor} />;
         default:
             return null;
     }

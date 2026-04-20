@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import {  StyleSheet, ScrollView, View, ActivityIndicator, Text } from 'react-native';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { StyleSheet, ScrollView, View, ActivityIndicator, Text, StatusBar } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
@@ -8,12 +8,15 @@ import { ProfileHeader } from "@widgets/ProfileHeader";
 import { fetchProfile, selectProfileLoading, selectProfile, selectProfileError, clearProfile } from '@entities/profile';
 import { normalize } from '@shared/lib/normalize';
 import { useAuth } from "@entities/auth/hooks/useAuth";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const ProfileScreen = ({ onProductPress }) => {
     const navigation = useNavigation();
     const dispatch = useDispatch();
     const insets = useSafeAreaInsets();
     const { isAuthenticated, currentUser } = useAuth();
+    const { colors } = useTheme();
+
     const isProfileLoading = useSelector(selectProfileLoading);
     const profile = useSelector(selectProfile);
     const profileError = useSelector(selectProfileError);
@@ -22,6 +25,8 @@ export const ProfileScreen = ({ onProductPress }) => {
     const profileRequestSent = useRef(false);
 
     const screenKey = `profile-screen-${currentUser?.id || 'no-user'}`;
+
+    const styles = useMemo(() => createStyles(colors), [colors]);
 
     // Очистка профиля при смене пользователя
     useEffect(() => {
@@ -73,7 +78,8 @@ export const ProfileScreen = ({ onProductPress }) => {
     if (isInitialLoading && isProfileLoading) {
         return (
             <SafeAreaView style={styles.loadingContainer} edges={['left', 'right', 'bottom']}>
-                <ActivityIndicator size="large" color="#007AFF" />
+                <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
+                <ActivityIndicator size="large" color={colors.primary} />
                 <Text style={styles.loadingText}>Загрузка профиля...</Text>
             </SafeAreaView>
         );
@@ -81,6 +87,7 @@ export const ProfileScreen = ({ onProductPress }) => {
 
     return (
         <SafeAreaView style={styles.container} key={screenKey} edges={['left', 'right', 'bottom']}>
+            <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
             <ScrollView
                 contentContainerStyle={[
                     styles.scrollContent,
@@ -102,10 +109,10 @@ export const ProfileScreen = ({ onProductPress }) => {
 };
 
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#fff',
+        backgroundColor: colors.background,
     },
     content: {
         flex: 1,
@@ -118,12 +125,12 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#fff',
+        backgroundColor: colors.background,
     },
     loadingText: {
         marginTop: normalize(10),
         fontSize: normalize(16),
-        color: '#666',
+        color: colors.textSecondary,
     },
     errorContainer: {
         flex: 1,
@@ -134,13 +141,13 @@ const styles = StyleSheet.create({
     errorText: {
         fontSize: normalize(18),
         fontWeight: '600',
-        color: '#FF3B30',
+        color: colors.error,
         textAlign: 'center',
         marginBottom: normalize(10),
     },
     errorDetails: {
         fontSize: normalize(14),
-        color: '#666',
+        color: colors.textSecondary,
         textAlign: 'center',
         lineHeight: normalize(20),
     }

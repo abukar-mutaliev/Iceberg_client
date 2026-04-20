@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { View, StyleSheet, Pressable, Text, ScrollView, Platform } from 'react-native';
 import { useSelector } from 'react-redux';
 import {
@@ -7,7 +7,8 @@ import {
     selectCategoriesError
 } from '@entities/category/model/selectors';
 import { CategoryIcon } from '@entities/category/ui/CategoryIcon';
-import { Color, Padding, Gap, FontFamily, FontSize } from '@app/styles/GlobalStyles';
+import { Padding, Gap, FontFamily, FontSize } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { AndroidShadow } from "@shared/ui/Shadow";
 import { useNavigation } from '@react-navigation/native';
 import {normalize} from "@shared/lib/normalize";
@@ -44,6 +45,8 @@ export const CategoriesBar = ({ hideLoader = true, showInitialScrollHint = false
     const isLoading = useSelector(selectCategoriesLoading);
     const error = useSelector(selectCategoriesError);
     const navigation = useNavigation();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const scrollViewRef = useRef(null);
     const hasPlayedInitialHintRef = useRef(false);
     const containerWidthRef = useRef(0);
@@ -105,6 +108,16 @@ export const CategoriesBar = ({ hideLoader = true, showInitialScrollHint = false
     }, [runInitialScrollHint]);
 
     useEffect(() => clearHintTimeouts, [clearHintTimeouts]);
+
+    const getButtonStyle = (iconType) => {
+        const baseStyle = [styles.buttonBase];
+        if (iconType === 'рожок' || iconType === 'эскимо') {
+            baseStyle.push(styles.buttonSmall);
+        } else {
+            baseStyle.push(styles.buttonLarge);
+        }
+        return baseStyle;
+    };
 
     // Показываем скелетон загрузки если категорий нет и не скрыт лоадер
     // Показываем скелетон либо при загрузке, либо если категорий нет (первая загрузка)
@@ -199,13 +212,13 @@ export const CategoriesBar = ({ hideLoader = true, showInitialScrollHint = false
                             ) : (
                                 <AndroidShadow
                                     style={styles.iconContainer}
-                                    shadowColor="rgba(51, 57, 176, 0.05)"
+                                    shadowColor={isDark ? 'rgba(0, 0, 0, 0.5)' : 'rgba(51, 57, 176, 0.05)'}
                                     shadowConfig={{
                                         offsetX: -9,
                                         offsetY: 0,
-                                        elevation: 14,
+                                        elevation: isDark ? 6 : 14,
                                         radius: 19,
-                                        opacity: 0.4
+                                        opacity: isDark ? 0.3 : 0.4
                                     }}
                                 >
                                     <View style={styles.iconWrapper}>
@@ -241,19 +254,7 @@ export const CategoriesBar = ({ hideLoader = true, showInitialScrollHint = false
     );
 };
 
-const getButtonStyle = (iconType) => {
-    const baseStyle = [styles.buttonBase];
-
-    if (iconType === 'рожок' || iconType === 'эскимо') {
-        baseStyle.push(styles.buttonSmall);
-    } else {
-        baseStyle.push(styles.buttonLarge);
-    }
-
-    return baseStyle;
-};
-
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     scrollContainer: {
         marginTop: normalize(4),
         paddingTop: Padding.p_9xs,
@@ -272,7 +273,7 @@ const styles = StyleSheet.create({
         marginHorizontal: 16,
     },
     errorText: {
-        color: 'red',
+        color: colors.error,
         fontSize: FontSize.size_xxs,
         fontFamily: FontFamily.sFProText,
     },
@@ -303,15 +304,17 @@ const styles = StyleSheet.create({
         height: 57,
         width: 65,
         borderRadius: 19,
-        backgroundColor: '#fff',
+        backgroundColor: isDark ? colors.surfaceElevated : '#fff',
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     iosShadow: {
-        shadowColor: 'rgba(51, 57, 176, 0.25)',
+        shadowColor: isDark ? '#000' : 'rgba(51, 57, 176, 0.25)',
         shadowOffset: {
             width: 0,
             height: 3,
         },
-        shadowOpacity: 0.6,
+        shadowOpacity: isDark ? 0.35 : 0.6,
         shadowRadius: 8,
     },
     iconWrapper: {
@@ -330,22 +333,21 @@ const styles = StyleSheet.create({
         marginTop: normalize(6),
         fontSize: FontSize.size_xs,
         fontFamily: FontFamily.sFProText,
-        color: Color.colorDarkslategray,
+        color: colors.textPrimary,
         textAlign: 'center',
         maxWidth: 85,
     },
-    // Стили для скелетона
     skeletonButton: {
         height: 57,
         width: 65,
         borderRadius: 19,
-        backgroundColor: '#f0f0f0',
+        backgroundColor: colors.surfaceElevated,
     },
     skeletonText: {
         marginTop: normalize(6),
         height: 12,
         width: 60,
         borderRadius: 6,
-        backgroundColor: '#f0f0f0',
+        backgroundColor: colors.surfaceElevated,
     },
 });

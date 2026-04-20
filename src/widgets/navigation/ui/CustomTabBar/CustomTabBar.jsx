@@ -19,6 +19,7 @@ import { selectRoomsList } from '@entities/chat/model/selectors';
 // Важно: используем тот же экземпляр контекста, что и экраны (иначе hideTabBar() не влияет на CustomTabBar)
 // Импортируем напрямую из контекста, чтобы избежать циклической зависимости
 import { useTabBar } from '../../context';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const { width } = Dimensions.get('window');
 
@@ -56,7 +57,11 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
     const { isCartAvailable } = useCartAvailability();
     const { currentUser } = useAuth();
     const { hideTabBar, showTabBar, isTabBarVisible } = useTabBar();
+    const { colors, isDark } = useTheme();
     const isKeyboardVisible = useKeyboardVisibility();
+
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     const getCurrentTab = useCallback(
         () => state.routes[state.index]?.name,
         [state.index, state.routes]
@@ -282,8 +287,8 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
         }
     };
 
-    const activeColor = "#3339b0";
-    const inactiveColor = "#BEBEBE";
+    const activeColor = colors.primary;
+    const inactiveColor = isDark ? colors.textTertiary : '#BEBEBE';
 
     // Определение типа иконки по имени маршрута
     const getIconComponent = (routeName, isActive) => {
@@ -362,6 +367,7 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
                             onPress={() => handleTabPress(route, visibleIndex, actualIndex)}
                             showBadge={showBadge}
                             badgeCount={displayBadgeCount}
+                            styles={styles}
                         />
                     );
                 })}
@@ -370,7 +376,7 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
     );
 };
 
-const TabItem = ({ icon, label, isActive, onPress, showBadge, badgeCount }) => {
+const TabItem = ({ icon, label, isActive, onPress, showBadge, badgeCount, styles }) => {
     return (
         <Pressable
             onPress={onPress}
@@ -402,18 +408,22 @@ const TabItem = ({ icon, label, isActive, onPress, showBadge, badgeCount }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     menuDoneWithBack: {
         borderTopLeftRadius: 10,
         borderTopRightRadius: 10,
-        backgroundColor: "#fff",
+        backgroundColor: colors.surface,
+        // В тёмной теме тень почти не видна — добавляем явную границу сверху,
+        // чтобы таббар отделялся от основного контента.
+        borderTopWidth: isDark ? StyleSheet.hairlineWidth : 0,
+        borderTopColor: colors.border,
         minHeight: 80,
         width: "100%",
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0 : 0.1,
         shadowRadius: 4,
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor,
         shadowOffset: { width: 0, height: -2 },
-        elevation: 8,
+        elevation: isDark ? 0 : 8,
         position: 'absolute',
         left: 0,
         right: 0,
@@ -452,16 +462,16 @@ const styles = StyleSheet.create({
         textAlign: "center"
     },
     activeText: {
-        color: "#3339b0"
+        color: colors.primary,
     },
     inactiveText: {
-        color: "#BEBEBE"
+        color: isDark ? colors.textTertiary : '#BEBEBE',
     },
     badge: {
         position: 'absolute',
         top: -6,
         right: -10,
-        backgroundColor: '#FF3B30',
+        backgroundColor: colors.error,
         borderRadius: 10,
         minWidth: 18,
         height: 18,
@@ -469,7 +479,9 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 2,
-        borderColor: '#fff',
+        // Рамка бейджа должна совпадать с фоном таббара,
+        // иначе бейдж будет выглядеть как приклеенный
+        borderColor: colors.surface,
     },
     badgeText: {
         color: '#fff',

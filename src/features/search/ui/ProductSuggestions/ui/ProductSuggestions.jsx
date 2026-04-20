@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, PixelRatio } from 'react-native';
 import { ChevronRight } from 'lucide-react-native';
-import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = SCREEN_WIDTH / 440;
 
 const normalize = (size) => {
@@ -17,6 +18,9 @@ const normalizeFont = (size) => {
 };
 
 export const ProductSuggestions = ({ products, searchQuery, onProductPress }) => {
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
+
     if (products.length === 0) {
         return (
             <View style={styles.noResultsContainer}>
@@ -43,14 +47,14 @@ export const ProductSuggestions = ({ products, searchQuery, onProductPress }) =>
                     }}
                 >
                     <Text style={styles.suggestionText}>{product.name}</Text>
-                    <ChevronRight size={normalize(25)} color={Color.blue2} />
+                    <ChevronRight size={normalize(25)} color={colors.primary} />
                 </TouchableOpacity>
             ))}
         </ScrollView>
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     container: {
         width: '100%',
         marginTop: normalize(1),
@@ -62,12 +66,12 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingVertical: normalize(15),
         borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
+        borderBottomColor: colors.divider,
     },
     suggestionText: {
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(FontSize.size_md),
-        color: Color.dark,
+        color: colors.textPrimary,
         flex: 1,
     },
     noResultsContainer: {
@@ -78,6 +82,6 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(FontSize.size_md),
-        color: Color.blue2,
+        color: colors.primary,
     },
 });

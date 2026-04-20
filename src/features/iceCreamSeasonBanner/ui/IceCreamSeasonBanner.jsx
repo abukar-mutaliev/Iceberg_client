@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -7,10 +7,17 @@ import {
   Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { useTheme } from "@app/providers/themeProvider/ThemeProvider";
 
 export default function IceCreamSeasonBanner() {
   const scaleAnim = useRef(new Animated.Value(0.92)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const { isDark } = useTheme();
+  const styles = useMemo(() => createStyles(isDark), [isDark]);
+
+  const gradientColors = isDark
+    ? ["#4A2F3A", "#5C4733"]
+    : ["#f4b0c4", "#fce0b8"];
 
   useEffect(() => {
     Animated.parallel([
@@ -38,7 +45,7 @@ export default function IceCreamSeasonBanner() {
       ]}
     >
       <LinearGradient
-        colors={["#f4b0c4", "#fce0b8"]}
+        colors={gradientColors}
         start={{ x: 0, y: 0.5 }}
         end={{ x: 1, y: 0.5 }}
         style={styles.gradient}
@@ -58,7 +65,7 @@ export default function IceCreamSeasonBanner() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (isDark) => StyleSheet.create({
   container: {
     marginHorizontal: 10,
     marginTop: 0,
@@ -66,7 +73,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     elevation: 4,
     shadowColor: "#000",
-    shadowOpacity: 0.1,
+    shadowOpacity: isDark ? 0.4 : 0.1,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
   },
@@ -79,6 +86,8 @@ const styles = StyleSheet.create({
     paddingRight: 18,
     borderRadius: 16,
     overflow: "hidden",
+    borderWidth: isDark ? 1 : 0,
+    borderColor: isDark ? "rgba(244, 176, 196, 0.2)" : "transparent",
   },
 
   iconWrapper: {
@@ -102,12 +111,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: "700",
-    color: "#3a2c2c",
+    color: isDark ? "#F4E3D7" : "#3a2c2c",
   },
 
   subtitle: {
     fontSize: 13,
-    color: "#5f4b4b",
+    color: isDark ? "rgba(244, 227, 215, 0.75)" : "#5f4b4b",
     marginTop: 3,
   },
 });

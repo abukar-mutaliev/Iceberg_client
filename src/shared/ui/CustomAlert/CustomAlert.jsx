@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import {
     View,
     Text,
@@ -11,35 +11,43 @@ import {
     ScrollView
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { Color, FontFamily, FontSize, Shadow, Border } from '@app/styles/GlobalStyles';
+import { Color, FontFamily, Shadow } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
-const ALERT_TYPES = {
+/**
+ * Конфигурация типов алерта. Акцентный цвет (main) и иконка стабильны
+ * между темами — это смысловые цвета (зелёный = success, красный = error и т.д.),
+ * они одинаково читаются на светлом и тёмном фоне.
+ *
+ * Внешняя подложка (outerBg) и цвета текстов/кнопок берутся из темы.
+ */
+const getAlertTypes = (colors, isDark) => ({
     success: {
         icon: 'check-circle',
         color: Color.success,
-        gradient: ['#d4edda', '#c3e6cb'],
+        outerBg: isDark ? colors.surfaceElevated : '#d4edda',
     },
     error: {
         icon: 'error',
         color: Color.error,
-        gradient: ['#f8d7da', '#f5c6cb'],
+        outerBg: isDark ? colors.surfaceElevated : '#f8d7da',
     },
     warning: {
         icon: 'warning',
         color: Color.warning,
-        gradient: ['#fff3cd', '#ffeaa7'],
+        outerBg: isDark ? colors.surfaceElevated : '#fff3cd',
     },
     info: {
         icon: 'info',
-        color: Color.purpleSoft,
-        gradient: ['#e3f2fd', '#bbdefb'],
+        color: colors.primary,
+        outerBg: isDark ? colors.surfaceElevated : '#e3f2fd',
     },
     confirm: {
         icon: 'help-outline',
         color: Color.orange,
-        gradient: ['#fff3e0', '#ffe0b2'],
+        outerBg: isDark ? colors.surfaceElevated : '#fff3e0',
     },
-};
+});
 
 export const CustomAlert = ({
     visible = false,
@@ -54,15 +62,18 @@ export const CustomAlert = ({
     customIcon = null,
 }) => {
     const { width: SCREEN_WIDTH } = useWindowDimensions();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+    const alertTypes = useMemo(() => getAlertTypes(colors, isDark), [colors, isDark]);
+
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const scaleAnim = useRef(new Animated.Value(0.8)).current;
     const slideAnim = useRef(new Animated.Value(50)).current;
 
-    const alertConfig = ALERT_TYPES[type] || ALERT_TYPES.info;
+    const alertConfig = alertTypes[type] || alertTypes.info;
 
     useEffect(() => {
         if (visible) {
-            // Анимация появления
             Animated.parallel([
                 Animated.timing(fadeAnim, {
                     toValue: 1,
@@ -82,7 +93,6 @@ export const CustomAlert = ({
                 }),
             ]).start();
 
-            // Авто-закрытие
             if (autoClose) {
                 const timer = setTimeout(() => {
                     handleClose();
@@ -90,7 +100,6 @@ export const CustomAlert = ({
                 return () => clearTimeout(timer);
             }
         } else {
-            // Анимация исчезновения
             Animated.parallel([
                 Animated.timing(fadeAnim, {
                     toValue: 0,
@@ -132,7 +141,6 @@ export const CustomAlert = ({
         }
     };
 
-    // Дефолтные кнопки если не переданы
     const defaultButtons = buttons.length > 0 ? buttons : [
         {
             text: 'OK',
@@ -156,7 +164,7 @@ export const CustomAlert = ({
                     activeOpacity={1}
                     onPress={handleClose}
                 />
-                
+
                 <Animated.View
                     style={[
                         styles.alertContainer,
@@ -171,19 +179,17 @@ export const CustomAlert = ({
                         },
                     ]}
                 >
-                    {/* Закрывающая кнопка */}
                     {showCloseButton && (
                         <TouchableOpacity
                             style={styles.closeButton}
                             onPress={handleClose}
                             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                         >
-                            <Icon name="close" size={24} color="#666" />
+                            <Icon name="close" size={24} color={colors.textSecondary} />
                         </TouchableOpacity>
                     )}
 
-                    {/* Иконка */}
-                    <View style={[styles.iconContainer, { backgroundColor: alertConfig.gradient[0] }]}>
+                    <View style={[styles.iconContainer, { backgroundColor: alertConfig.outerBg }]}>
                         <View style={[styles.iconCircle, { backgroundColor: alertConfig.color }]}>
                             <Icon
                                 name={customIcon || alertConfig.icon}
@@ -193,14 +199,12 @@ export const CustomAlert = ({
                         </View>
                     </View>
 
-                    {/* Заголовок */}
                     {title ? (
                         <Text style={styles.title}>{title}</Text>
                     ) : null}
 
-                    {/* Сообщение */}
                     {message ? (
-                        <ScrollView 
+                        <ScrollView
                             style={styles.messageScrollContainer}
                             contentContainerStyle={styles.messageScrollContent}
                             showsVerticalScrollIndicator={true}
@@ -210,7 +214,6 @@ export const CustomAlert = ({
                         </ScrollView>
                     ) : null}
 
-                    {/* Кнопки */}
                     <View style={[
                         styles.buttonsContainer,
                         defaultButtons.length > 2 && styles.buttonsContainerVertical
@@ -240,8 +243,8 @@ export const CustomAlert = ({
                                             size={20}
                                             color={
                                                 isPrimary ? '#fff' :
-                                                isDestructive ? Color.error :
-                                                Color.purpleSoft
+                                                isDestructive ? colors.error :
+                                                colors.primary
                                             }
                                             style={styles.buttonIcon}
                                         />
@@ -267,29 +270,34 @@ export const CustomAlert = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     overlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: colors.modalOverlay,
         justifyContent: 'center',
         alignItems: 'center',
         padding: 20,
     },
     alertContainer: {
-        backgroundColor: '#fff',
+        backgroundColor: colors.surface,
         borderRadius: 24,
         padding: 24,
         alignSelf: 'center',
-        ...Shadow.heavy,
+        ...(isDark
+            ? {
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: colors.border,
+              }
+            : Shadow.heavy),
         ...Platform.select({
             ios: {
-                shadowColor: '#000',
+                shadowColor: isDark ? '#000' : '#000',
                 shadowOffset: { width: 0, height: 10 },
-                shadowOpacity: 0.3,
+                shadowOpacity: isDark ? 0.6 : 0.3,
                 shadowRadius: 20,
             },
             android: {
-                elevation: 10,
+                elevation: isDark ? 0 : 10,
             },
         }),
     },
@@ -301,7 +309,7 @@ const styles = StyleSheet.create({
         width: 32,
         height: 32,
         borderRadius: 16,
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surfaceElevated,
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -321,7 +329,7 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 22,
         fontWeight: '700',
-        color: '#1a1a1a',
+        color: colors.textPrimary,
         textAlign: 'center',
         marginBottom: 12,
         fontFamily: FontFamily.sFProDisplay,
@@ -335,7 +343,7 @@ const styles = StyleSheet.create({
     },
     message: {
         fontSize: 16,
-        color: '#666',
+        color: colors.textSecondary,
         textAlign: 'center',
         lineHeight: 24,
         fontFamily: FontFamily.sFProText,
@@ -368,17 +376,17 @@ const styles = StyleSheet.create({
         flex: 0,
     },
     buttonPrimary: {
-        backgroundColor: Color.purpleSoft,
-        borderColor: Color.purpleSoft,
-        ...Shadow.button,
+        backgroundColor: colors.primary,
+        borderColor: colors.primary,
+        ...(isDark ? null : Shadow.button),
     },
     buttonCancel: {
-        backgroundColor: '#f8f9fa',
-        borderColor: '#e9ecef',
+        backgroundColor: colors.surfaceElevated,
+        borderColor: colors.border,
     },
     buttonDestructive: {
-        backgroundColor: '#fff',
-        borderColor: Color.error,
+        backgroundColor: colors.surface,
+        borderColor: colors.error,
     },
     buttonIcon: {
         marginRight: 8,
@@ -392,10 +400,9 @@ const styles = StyleSheet.create({
         color: '#fff',
     },
     buttonTextCancel: {
-        color: '#666',
+        color: colors.textSecondary,
     },
     buttonTextDestructive: {
-        color: Color.error,
+        color: colors.error,
     },
 });
-

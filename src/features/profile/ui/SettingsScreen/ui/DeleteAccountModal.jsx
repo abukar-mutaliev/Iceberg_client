@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
     View,
     Text,
@@ -12,8 +12,9 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 import { deleteProfile, selectIsProfileDeleting, selectProfileError } from '@entities/profile';
 import { logout, resetState, removeTokensFromStorage,  } from '@entities/auth';
-import { FontFamily, Color, Border } from '@app/styles/GlobalStyles';
+import { FontFamily, Border } from '@app/styles/GlobalStyles';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const DeleteAccountModal = ({ visible, onClose }) => {
     const [password, setPassword] = useState('');
@@ -22,11 +23,13 @@ const DeleteAccountModal = ({ visible, onClose }) => {
     const dispatch = useDispatch();
     const navigation = useNavigation();
     const { showSuccess } = useCustomAlert();
+    const { colors } = useTheme();
 
     const isDeleting = useSelector(selectIsProfileDeleting);
     const reduxError = useSelector(selectProfileError);
 
     const error = localError || reduxError;
+    const styles = useMemo(() => createStyles(colors), [colors]);
 
     const handleCancel = () => {
         setPassword('');
@@ -175,6 +178,7 @@ const DeleteAccountModal = ({ visible, onClose }) => {
                             if (localError) setLocalError(null);
                         }}
                         placeholder="Ваш пароль"
+                        placeholderTextColor={colors.textTertiary}
                         autoCapitalize="none"
                         editable={!isDeleting}
                     />
@@ -214,19 +218,19 @@ const DeleteAccountModal = ({ visible, onClose }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     centeredView: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(0,0,0,0.5)',
+        backgroundColor: colors.modalOverlay,
     },
     modalView: {
         width: '85%',
-        backgroundColor: 'white',
+        backgroundColor: colors.surface,
         borderRadius: Border.br_3xs,
         padding: 24,
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor,
         shadowOffset: {
             width: 0,
             height: 2,
@@ -241,12 +245,12 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         marginBottom: 16,
         textAlign: 'center',
-        color: Color.dark,
+        color: colors.textPrimary,
     },
     warningText: {
         fontFamily: FontFamily.sFProText,
         fontSize: 14,
-        color: Color.red,
+        color: colors.error,
         marginBottom: 20,
         textAlign: 'center',
     },
@@ -254,11 +258,13 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontSize: 14,
         marginBottom: 8,
-        color: Color.dark,
+        color: colors.textPrimary,
     },
     passwordInput: {
         borderWidth: 1,
-        borderColor: '#E0E0E0',
+        borderColor: colors.inputBorder,
+        backgroundColor: colors.inputBackground,
+        color: colors.textPrimary,
         borderRadius: Border.br_3xs,
         padding: 12,
         marginBottom: 16,
@@ -266,11 +272,11 @@ const styles = StyleSheet.create({
         fontSize: 14,
     },
     passwordInputError: {
-        borderColor: Color.red,
+        borderColor: colors.error,
         borderWidth: 1.5,
     },
     errorText: {
-        color: Color.red,
+        color: colors.error,
         marginBottom: 16,
         fontFamily: FontFamily.sFProText,
         fontSize: 14,
@@ -286,24 +292,24 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     cancelButton: {
-        backgroundColor: '#F0F0F0',
+        backgroundColor: colors.surfaceSecondary,
         marginRight: 8,
     },
     confirmButton: {
-        backgroundColor: Color.red,
+        backgroundColor: colors.error,
         marginLeft: 8,
     },
     disabledButton: {
-        backgroundColor: 'rgba(255, 0, 0, 0.5)',
+        opacity: 0.5,
     },
     buttonText: {
         fontFamily: FontFamily.sFProText,
         fontSize: 14,
         fontWeight: '500',
-        color: Color.dark,
+        color: colors.textPrimary,
     },
     confirmButtonText: {
-        color: 'white',
+        color: '#fff',
     },
 });
 

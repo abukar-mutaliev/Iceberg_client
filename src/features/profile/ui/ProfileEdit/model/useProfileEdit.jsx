@@ -3,6 +3,7 @@ import { Keyboard, Alert } from 'react-native';
 import { updateProfile, fetchProfile, initiateEmailBind, confirmEmailBind } from '@entities/profile';
 import { fetchAllDistricts } from '@entities/district';
 import { fetchAllWarehouses } from '@entities/warehouse';
+import { GlobalAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 
 export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
     const scrollViewRef = useRef(null);
@@ -112,7 +113,10 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
 
     const toggleFieldEditable = useCallback((fieldId) => {
         if (fieldId === 'email' && profile?.email) {
-            Alert.alert('Email уже привязан', 'Изменение email недоступно.');
+            GlobalAlert.showWarning(
+                'Email уже привязан',
+                'Изменение email недоступно.',
+            );
             return;
         }
         setEditableFields(prev => ({

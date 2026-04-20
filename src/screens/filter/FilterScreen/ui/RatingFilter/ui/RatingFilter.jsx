@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { FontFamily } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import {IconRight} from "@shared/ui/Icon/Profile";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -27,16 +28,15 @@ const normalizeFont = (size) => {
 export const RatingFilter = ({ minRating = 4.5, onChange }) => {
     const [expanded, setExpanded] = useState(false);
     const [localRating, setLocalRating] = useState(minRating);
-    // Добавим отдельное состояние для отображения во время перетаскивания
     const [displayRating, setDisplayRating] = useState(minRating);
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
 
-    // Обработчик изменения положения слайдера (во время перетаскивания)
     const handleSliding = useCallback((value) => {
         const roundedValue = Math.round(value * 10) / 10;
         setDisplayRating(roundedValue);
     }, []);
 
-    // Обработчик окончания движения слайдера
     const handleSlidingComplete = useCallback((value) => {
         const roundedValue = Math.round(value * 10) / 10;
         setLocalRating(roundedValue);
@@ -53,7 +53,7 @@ export const RatingFilter = ({ minRating = 4.5, onChange }) => {
             >
                 <Text style={styles.selectorText}>Рейтинг от {localRating}</Text>
                 <IconRight
-                    color="#000000"
+                    color={colors.textPrimary}
                     size={normalize(24)}
                     style={[
                         styles.chevron,
@@ -74,9 +74,9 @@ export const RatingFilter = ({ minRating = 4.5, onChange }) => {
                             value={localRating}
                             onValueChange={handleSliding}
                             onSlidingComplete={handleSlidingComplete}
-                            minimumTrackTintColor="#5500FF"
-                            maximumTrackTintColor="#CCCCCC"
-                            thumbTintColor="#5500FF"
+                            minimumTrackTintColor={colors.primary}
+                            maximumTrackTintColor={colors.border}
+                            thumbTintColor={colors.primary}
                         />
                         <Text style={styles.maxLabel}>5</Text>
                     </View>
@@ -87,7 +87,7 @@ export const RatingFilter = ({ minRating = 4.5, onChange }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     container: {
         paddingVertical: normalize(8),
     },
@@ -100,7 +100,7 @@ const styles = StyleSheet.create({
     selectorText: {
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(17),
-        color: '#000000',
+        color: colors.textPrimary,
     },
     chevron: {
         transform: [{ rotate: '0deg' }],
@@ -123,21 +123,21 @@ const styles = StyleSheet.create({
     minLabel: {
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(14),
-        color: '#000000',
+        color: colors.textPrimary,
         width: normalize(20),
         textAlign: 'center',
     },
     maxLabel: {
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(14),
-        color: '#000000',
+        color: colors.textPrimary,
         width: normalize(20),
         textAlign: 'center',
     },
     currentValue: {
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(14),
-        color: '#000000',
+        color: colors.textPrimary,
         textAlign: 'center',
         marginTop: normalize(5),
     }

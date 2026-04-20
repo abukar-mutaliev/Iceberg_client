@@ -3,7 +3,6 @@ import { Pressable, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from "@app/providers/themeProvider/ThemeProvider";
 import BackArrowIcon from "@shared/ui/Icon/BackArrowIcon/BackArrowIcon";
-import { Color } from '@app/styles/GlobalStyles';
 
 export const BackButton = ({ onPress, style, disabled = false }) => {
     const { colors } = useTheme();
@@ -61,7 +60,7 @@ export const BackButton = ({ onPress, style, disabled = false }) => {
             android_ripple={{ color: 'rgba(0, 0, 0, 0.1)', borderless: true }}
         >
             <BackArrowIcon
-                color={disabled ? Color.gray : Color.blue3}
+                color={disabled ? colors.textTertiary : colors.primary}
             />
         </Pressable>
     );

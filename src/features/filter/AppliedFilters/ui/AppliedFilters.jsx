@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
     View,
     Text,
@@ -12,8 +12,8 @@ import { X } from 'lucide-react-native';
 import { FontFamily } from '@app/styles/GlobalStyles';
 import { useSelector, useDispatch } from 'react-redux';
 import { selectFilterCriteria, setFilterCriteria } from '@entities/filter';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
-// Адаптивные размеры
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = SCREEN_WIDTH / 440;
 
@@ -27,7 +27,6 @@ const normalizeFont = (size) => {
     return Math.round(PixelRatio.roundToNearestPixel(newSize));
 };
 
-// Форматирование даты для отображения
 const formatDate = (date) => {
     if (!date) return '';
 
@@ -42,19 +41,18 @@ const formatDate = (date) => {
 export const AppliedFilters = () => {
     const dispatch = useDispatch();
     const filterCriteria = useSelector(selectFilterCriteria);
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
-    // Если нет активных фильтров, не отображаем компонент
     if (!filterCriteria) {
         return null;
     }
 
-    // Форматирование фильтра цены
     const getPriceFilter = () => {
         const { minPrice, maxPrice } = filterCriteria;
         const defaultMinPrice = 45;
         const defaultMaxPrice = 1800;
 
-        // Если цены по умолчанию, не отображаем фильтр
         if (minPrice === defaultMinPrice && maxPrice === defaultMaxPrice) {
             return null;
         }
@@ -74,7 +72,6 @@ export const AppliedFilters = () => {
         };
     };
 
-    // Получение всех категорий
     const getCategoryFilters = () => {
         const { categories } = filterCriteria;
 
@@ -94,7 +91,6 @@ export const AppliedFilters = () => {
         }));
     };
 
-    // Получение всех брендов
     const getBrandFilters = () => {
         const { brands } = filterCriteria;
 
@@ -114,7 +110,6 @@ export const AppliedFilters = () => {
         }));
     };
 
-    // Фильтр рейтинга
     const getRatingFilter = () => {
         const { minRating } = filterCriteria;
         const defaultRating = 4.5;
@@ -135,7 +130,6 @@ export const AppliedFilters = () => {
         };
     };
 
-    // Фильтр срока годности
     const getExpirationDateFilter = () => {
         const { expirationDate } = filterCriteria;
 
@@ -155,7 +149,6 @@ export const AppliedFilters = () => {
         };
     };
 
-    // Получение всех фильтров состава
     const getCompositionFilters = () => {
         const { compositions } = filterCriteria;
 
@@ -175,7 +168,6 @@ export const AppliedFilters = () => {
         }));
     };
 
-    // Получение всех фильтров упаковки
     const getPackagingFilters = () => {
         const { packaging } = filterCriteria;
 
@@ -195,7 +187,6 @@ export const AppliedFilters = () => {
         }));
     };
 
-    // Получение всех фильтров количества
     const getQuantityFilters = () => {
         const { quantity } = filterCriteria;
 
@@ -215,7 +206,6 @@ export const AppliedFilters = () => {
         }));
     };
 
-    // Получение всех фильтров поставщиков
     const getSupplierFilters = () => {
         const { suppliers } = filterCriteria;
 
@@ -235,7 +225,6 @@ export const AppliedFilters = () => {
         }));
     };
 
-    // Собираем все активные фильтры
     const allFilters = [
         getPriceFilter(),
         ...getCategoryFilters(),
@@ -248,7 +237,6 @@ export const AppliedFilters = () => {
         ...getSupplierFilters()
     ].filter(Boolean);
 
-    // Если нет активных фильтров, не отображаем компонент
     if (allFilters.length === 0) {
         return null;
     }
@@ -270,7 +258,7 @@ export const AppliedFilters = () => {
                         <Text style={styles.filterChipText}>
                             {filter.label}
                         </Text>
-                        <X color="#555555" size={normalize(14)} />
+                        <X color={colors.textSecondary} size={normalize(14)} />
                     </TouchableOpacity>
                 ))}
             </ScrollView>
@@ -278,13 +266,13 @@ export const AppliedFilters = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         width: '100%',
         paddingVertical: normalize(8),
-        backgroundColor: 'white',
+        backgroundColor: colors.background,
         borderBottomWidth: 1,
-        borderBottomColor: '#F0F0F0',
+        borderBottomColor: colors.divider,
     },
     scrollContent: {
         paddingHorizontal: normalize(16),
@@ -294,7 +282,7 @@ const styles = StyleSheet.create({
     filterChip: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#EFF1FE',
+        backgroundColor: isDark ? colors.surfaceElevated : '#EFF1FE',
         borderRadius: normalize(16),
         paddingHorizontal: normalize(12),
         paddingVertical: normalize(6),
@@ -303,7 +291,7 @@ const styles = StyleSheet.create({
     filterChipText: {
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(14),
-        color: '#333333',
+        color: colors.textPrimary,
         marginRight: normalize(4),
     }
 });

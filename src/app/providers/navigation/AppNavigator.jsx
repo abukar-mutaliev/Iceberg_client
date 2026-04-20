@@ -2,7 +2,8 @@
 // ЧАСТЬ 1: Imports и Constants
 // ============================================================================
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { StatusBar, Platform, Linking, Animated, View, Text, TouchableOpacity, Image } from 'react-native';
+import { Platform, Linking, Animated, View, Text, TouchableOpacity, Image } from 'react-native';
+import ThemedStatusBar from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator, CardStyleInterpolators } from "@react-navigation/stack";
@@ -1340,7 +1341,7 @@ export const AppNavigator = () => {
             linking={linkingConfig}
             onReady={() => PushNotificationService.setNavigationReady()}
         >
-            <StatusBar barStyle="dark-content" translucent={true} />
+            <ThemedStatusBar />
             <NavigationWrapper>
                 {isAuthenticated && <DeepLinkHandler />}
 

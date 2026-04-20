@@ -1,11 +1,14 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color } from '@app/styles/GlobalStyles';
-import {BackButton} from "@shared/ui/Button/BackButton";
+import { BackButton } from "@shared/ui/Button/BackButton";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const ProfileHeader = ({ title, onGoBack, onSave, isSaving = false }) => {
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
+
     return (
         <View style={styles.header}>
             <View style={styles.sideContainerLeft}>
@@ -32,7 +35,7 @@ export const ProfileHeader = ({ title, onGoBack, onSave, isSaving = false }) => 
                         <Ionicons
                             name="checkmark-sharp"
                             size={normalize(28)}
-                            color={isSaving ? Color.gray : Color.blue3}
+                            color={isSaving ? colors.textTertiary : colors.primary}
                         />
                     </TouchableOpacity>
                 ) : (
@@ -43,14 +46,14 @@ export const ProfileHeader = ({ title, onGoBack, onSave, isSaving = false }) => 
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     header: {
         height: normalize(76),
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: normalize(10),
-        backgroundColor: '#FFFFFF',
-        borderBottomColor: '#F5F5F5',
+        backgroundColor: colors.background,
+        borderBottomColor: colors.borderSubtle,
         paddingTop: normalize(25),
     },
     sideContainerLeft: {
@@ -83,16 +86,16 @@ const styles = StyleSheet.create({
     title: {
         fontSize: normalizeFont(18),
         fontWeight: '500',
-        color: '#000000',
+        color: colors.textPrimary,
         textAlign: 'center',
     },
     saveText: {
         fontSize: normalizeFont(14),
         fontWeight: '600',
-        color: '#3339b0',
+        color: colors.primary,
     },
     saveTextDisabled: {
-        color: '#999999',
+        color: colors.textTertiary,
     },
 });
 

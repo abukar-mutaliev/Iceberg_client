@@ -4,7 +4,6 @@ import {
     Text,
     StyleSheet,
     ScrollView,
-    StatusBar,
     ActivityIndicator,
     Dimensions,
     PixelRatio,
@@ -14,6 +13,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { CategoryIcon } from '@entities/category/ui/CategoryIcon';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { ThemedStatusBar } from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = SCREEN_WIDTH / 440;
@@ -37,20 +38,26 @@ const CATEGORY_ICON_MAP = {
     'Стандартный': 'стандартный'
 };
 
-// Цвета для разных категорий
-const getCardColor = (name) => {
-    if (!name || typeof name !== 'string') return '#6b5be6';
+// Цвета для разных категорий (светлая тема)
+const LIGHT_CARD_COLORS = [
+    '#6b5be6', '#ff6b6b', '#4ecdc4', '#45b7d1',
+    '#f9ca24', '#f0932b', '#eb4d4b', '#6c5ce7'
+];
 
-    const colors = [
-        '#6b5be6', '#ff6b6b', '#4ecdc4', '#45b7d1',
-        '#f9ca24', '#f0932b', '#eb4d4b', '#6c5ce7'
-    ];
+// Приглушённые цвета для тёмной темы: сохраняем цветовую идентификацию,
+// но понижаем светлоту/насыщенность, чтобы не «жгло» на графитовом фоне
+const DARK_CARD_COLORS = [
+    '#4A3F99', '#A84545', '#2F8A83', '#2F7A91',
+    '#A8891C', '#A06821', '#9C3432', '#4A3F99'
+];
 
-    const index = name.length % colors.length;
-    return colors[index];
+const getCardColor = (name, isDark) => {
+    const palette = isDark ? DARK_CARD_COLORS : LIGHT_CARD_COLORS;
+    if (!name || typeof name !== 'string') return palette[0];
+    const index = name.length % palette.length;
+    return palette[index];
 };
 
-// Простая замена BackArrowIcon без SVG
 const SimpleBackArrow = ({ size = 20, color = '#3478F6' }) => (
     <Text style={{
         fontSize: size,
@@ -62,21 +69,11 @@ const SimpleBackArrow = ({ size = 20, color = '#3478F6' }) => (
     </Text>
 );
 
-// Простая замена CategoryCard без SVG и изображений
-const SimpleCategoryCard = ({ category, onPress }) => {
-    // Безопасная проверка категории
+const SimpleCategoryCard = ({ category, onPress, styles, isDark }) => {
     if (!category || typeof category !== 'object') {
         return <View style={styles.placeholderCard} />;
     }
 
-    // Получаем первую букву названия для иконки
-    const getInitial = (name) => {
-        if (!name || typeof name !== 'string') return '?';
-        const firstChar = name.charAt(0);
-        return firstChar ? firstChar.toUpperCase() : '?';
-    };
-
-    // Безопасное получение отображаемого имени
     const getDisplayName = () => {
         if (category.name && typeof category.name === 'string') {
             return category.name;
@@ -95,7 +92,7 @@ const SimpleCategoryCard = ({ category, onPress }) => {
         <Pressable
             style={[
                 styles.categoryContainer,
-                { backgroundColor: getCardColor(categoryName) }
+                { backgroundColor: getCardColor(categoryName, isDark) }
             ]}
             onPress={() => onPress && typeof onPress === 'function' && onPress(category)}
             android_ripple={{ color: 'rgba(255, 255, 255, 0.1)' }}
@@ -115,7 +112,7 @@ const SimpleCategoryCard = ({ category, onPress }) => {
                     type={iconType}
                     style={styles.iconWrapper}
                     size={normalize(90)}
-                    color="#3b3b3b"
+                    color={isDark ? '#F0E9E0' : '#3b3b3b'}
                 />
             </View>
         </Pressable>
@@ -124,8 +121,9 @@ const SimpleCategoryCard = ({ category, onPress }) => {
 
 export const CategoriesScreen = ({ navigation }) => {
     const dispatch = useDispatch();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
-    // Безопасные селекторы с fallback значениями
     const categories = useSelector((state) => {
         try {
             const { selectCategories } = require('@entities/category/model/selectors');
@@ -208,7 +206,6 @@ export const CategoriesScreen = ({ navigation }) => {
         }
     }, [dispatch]);
 
-    // Мемоизированное разбиение категорий на ряды
     const chunkedCategories = useMemo(() => {
         if (!Array.isArray(categories)) return [];
 
@@ -225,7 +222,7 @@ export const CategoriesScreen = ({ navigation }) => {
         if (isLoading) {
             return (
                 <View style={styles.loaderContainer}>
-                    <ActivityIndicator size="large" color="#6b5be6" />
+                    <ActivityIndicator size="large" color={colors.primary} />
                     <Text style={styles.loadingText}>
                         Загрузка категорий...
                     </Text>
@@ -285,6 +282,8 @@ export const CategoriesScreen = ({ navigation }) => {
                                 key={`category-${category.id}`}
                                 category={category}
                                 onPress={handleCategoryPress}
+                                styles={styles}
+                                isDark={isDark}
                             />
                         ))}
                         {row.length < 3 && Array(3 - row.length).fill(null).map((_, i) => (
@@ -298,12 +297,13 @@ export const CategoriesScreen = ({ navigation }) => {
 
     return (
         <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+            <ThemedStatusBar />
             <View style={styles.header}>
                 <TouchableOpacity
                     style={styles.backButton}
                     onPress={handleBackPress}
                 >
-                    <SimpleBackArrow size={20} color="#3478F6"/>
+                    <SimpleBackArrow size={20} color={colors.primary} />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>
                     Категории
@@ -316,10 +316,10 @@ export const CategoriesScreen = ({ navigation }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#ffffff',
+        backgroundColor: colors.background,
     },
     header: {
         height: normalize(60),
@@ -328,7 +328,7 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingHorizontal: normalize(16),
         borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
+        borderBottomColor: colors.divider,
     },
     backButton: {
         padding: 10,
@@ -342,7 +342,7 @@ const styles = StyleSheet.create({
         fontSize: normalize(18),
         fontFamily: 'System',
         fontWeight: '600',
-        color: '#000',
+        color: colors.textPrimary,
         textAlign: 'center',
         flex: 1,
     },
@@ -367,7 +367,9 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         padding: normalize(6),
-        backgroundColor: "#6b5be6",
+        backgroundColor: isDark ? '#4A3F99' : '#6b5be6',
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
     },
     textContainer: {
         width: '100%',
@@ -381,7 +383,7 @@ const styles = StyleSheet.create({
         lineHeight: normalize(18),
         fontWeight: '700',
         fontFamily: 'System',
-        color: '#3b3b3b',
+        color: isDark ? '#F0E9E0' : '#3b3b3b',
         textAlign: 'center',
     },
     iconContainer: {
@@ -408,7 +410,7 @@ const styles = StyleSheet.create({
     loadingText: {
         marginTop: 12,
         fontSize: 14,
-        color: '#666',
+        color: colors.textSecondary,
         fontFamily: 'System',
     },
     errorContainer: {
@@ -419,7 +421,7 @@ const styles = StyleSheet.create({
     },
     errorText: {
         fontSize: normalize(16),
-        color: '#d32f2f',
+        color: colors.error,
         textAlign: 'center',
         fontFamily: 'System',
         marginBottom: 8,
@@ -427,20 +429,20 @@ const styles = StyleSheet.create({
     },
     errorSubtext: {
         fontSize: normalize(14),
-        color: '#666',
+        color: colors.textSecondary,
         textAlign: 'center',
         fontFamily: 'System',
         marginBottom: 16,
     },
     retryButton: {
-        backgroundColor: '#6b5be6',
+        backgroundColor: colors.primary,
         paddingHorizontal: 20,
         paddingVertical: 12,
         borderRadius: 8,
         elevation: 2,
     },
     retryButtonText: {
-        color: 'white',
+        color: colors.menuItemActiveText,
         fontSize: 14,
         fontWeight: '600',
         fontFamily: 'System',

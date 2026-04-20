@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
     View,
     Text,
@@ -10,7 +10,8 @@ import {
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color, FontFamily } from '@app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 import { 
     fetchMyAppFeedback, 
@@ -38,6 +39,8 @@ export const AppFeedbackSection = ({ onFeedbackFieldFocus }) => {
     const dispatch = useDispatch();
     const { currentUser } = useAuth();
     const { showSuccess, showError, showConfirm } = useCustomAlert();
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
     const feedback = useSelector(selectAppFeedback);
     const loading = useSelector(selectAppFeedbackLoading);
     const submitting = useSelector(selectAppFeedbackSubmitting);
@@ -155,7 +158,7 @@ export const AppFeedbackSection = ({ onFeedbackFieldFocus }) => {
             <View style={styles.container}>
                 <Text style={styles.sectionTitle}>Отзыв о приложении</Text>
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="small" color={Color.blue2} />
+                    <ActivityIndicator size="small" color={colors.primary} />
                     <Text style={styles.loadingText}>Загрузка...</Text>
                 </View>
             </View>
@@ -168,7 +171,7 @@ export const AppFeedbackSection = ({ onFeedbackFieldFocus }) => {
             
             {error && !loading && (
                 <View style={styles.errorContainer}>
-                    <Icon name="error-outline" size={24} color={Color.error || Color.red || '#FF3B30'} />
+                    <Icon name="error-outline" size={24} color={colors.error} />
                     <Text style={styles.errorText}>{error}</Text>
                     <TouchableOpacity
                         style={styles.retryButton}
@@ -204,7 +207,7 @@ export const AppFeedbackSection = ({ onFeedbackFieldFocus }) => {
                                         filled={star <= feedback.rating}
                                         width={20}
                                         height={20}
-                                        color={Color.blue2}
+                                        color={colors.primary}
                                     />
                                 ))}
                             </View>
@@ -216,7 +219,7 @@ export const AppFeedbackSection = ({ onFeedbackFieldFocus }) => {
                                 style={styles.actionButton}
                                 activeOpacity={0.7}
                             >
-                                <Icon name="edit" size={20} color={Color.blue2} />
+                                <Icon name="edit" size={20} color={colors.primary} />
                                 <Text style={styles.actionButtonText}>Изменить</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
@@ -224,7 +227,7 @@ export const AppFeedbackSection = ({ onFeedbackFieldFocus }) => {
                                 style={styles.actionButton}
                                 activeOpacity={0.7}
                             >
-                                <Icon name="delete" size={20} color={Color.error || Color.red || '#FF3B30'} />
+                                <Icon name="delete" size={20} color={colors.error} />
                                 <Text style={[styles.actionButtonText, styles.deleteButtonText]}>Удалить</Text>
                             </TouchableOpacity>
                         </View>
@@ -250,7 +253,7 @@ export const AppFeedbackSection = ({ onFeedbackFieldFocus }) => {
                     <Text style={styles.allFeedbacksTitle}>Отзывы других пользователей</Text>
                     {loadingAll ? (
                         <View style={styles.loadingContainer}>
-                            <ActivityIndicator size="small" color={Color.blue2} />
+                            <ActivityIndicator size="small" color={colors.primary} />
                             <Text style={styles.loadingText}>Загрузка отзывов...</Text>
                         </View>
                     ) : (
@@ -268,7 +271,7 @@ export const AppFeedbackSection = ({ onFeedbackFieldFocus }) => {
                                                         filled={star <= item.rating}
                                                         width={16}
                                                         height={16}
-                                                        color={Color.blue2}
+                                                        color={colors.primary}
                                                     />
                                                 ))}
                                             </View>
@@ -294,7 +297,7 @@ export const AppFeedbackSection = ({ onFeedbackFieldFocus }) => {
                                                     <Icon
                                                         name="delete-outline"
                                                         size={20}
-                                                        color={Color.error || Color.red || '#FF3B30'}
+                                                        color={colors.error}
                                                     />
                                                 </TouchableOpacity>
                                             )}
@@ -330,17 +333,17 @@ export const AppFeedbackSection = ({ onFeedbackFieldFocus }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     container: {
         paddingHorizontal: normalize(20),
         paddingTop: normalize(16),
         paddingBottom: normalize(24),
-        backgroundColor: '#fff',
+        backgroundColor: colors.background,
     },
     sectionTitle: {
         fontSize: normalizeFont(22),
         fontWeight: '600',
-        color: Color.colorGray_100,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(20),
     },
@@ -352,19 +355,19 @@ const styles = StyleSheet.create({
     },
     loadingText: {
         fontSize: normalizeFont(16),
-        color: Color.grey7D7D7D,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginLeft: normalize(12),
     },
     errorContainer: {
         alignItems: 'center',
         padding: normalize(20),
-        backgroundColor: Color.colorLavender || '#f5f5f5',
+        backgroundColor: colors.surfaceElevated,
         borderRadius: normalize(12),
     },
     errorText: {
         fontSize: normalizeFont(15),
-        color: Color.grey7D7D7D,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
         marginTop: normalize(12),
@@ -373,22 +376,22 @@ const styles = StyleSheet.create({
     retryButton: {
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(10),
-        backgroundColor: Color.blue2,
+        backgroundColor: colors.primary,
         borderRadius: normalize(8),
     },
     retryButtonText: {
         fontSize: normalizeFont(16),
         fontWeight: '600',
-        color: '#fff',
+        color: colors.menuItemActiveText,
         fontFamily: FontFamily.sFProText,
     },
     formContainer: {
-        backgroundColor: Color.colorLavender || '#f5f5f5',
+        backgroundColor: colors.surfaceElevated,
         borderRadius: normalize(12),
         padding: normalize(16),
     },
     feedbackContainer: {
-        backgroundColor: Color.colorLavender || '#f5f5f5',
+        backgroundColor: colors.surfaceElevated,
         borderRadius: normalize(12),
         padding: normalize(16),
     },
@@ -408,7 +411,7 @@ const styles = StyleSheet.create({
     ratingText: {
         fontSize: normalizeFont(16),
         fontWeight: '600',
-        color: Color.colorGray_100,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     actionsContainer: {
@@ -422,27 +425,27 @@ const styles = StyleSheet.create({
     },
     actionButtonText: {
         fontSize: normalizeFont(14),
-        color: Color.blue2,
+        color: colors.primary,
         fontFamily: FontFamily.sFProText,
     },
     deleteButtonText: {
-        color: Color.error || Color.red || '#FF3B30',
+        color: colors.error,
     },
     commentContainer: {
         marginTop: normalize(12),
         paddingTop: normalize(12),
         borderTopWidth: 1,
-        borderTopColor: Color.colorGainsboro,
+        borderTopColor: colors.border,
     },
     commentText: {
         fontSize: normalizeFont(15),
-        color: Color.colorGray_100,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         lineHeight: normalizeFont(22),
     },
     dateText: {
         fontSize: normalizeFont(12),
-        color: Color.grey7D7D7D,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginTop: normalize(12),
     },
@@ -450,17 +453,17 @@ const styles = StyleSheet.create({
         marginTop: normalize(24),
         paddingTop: normalize(24),
         borderTopWidth: 1,
-        borderTopColor: Color.colorGainsboro,
+        borderTopColor: colors.border,
     },
     allFeedbacksTitle: {
         fontSize: normalizeFont(18),
         fontWeight: '600',
-        color: Color.colorGray_100,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(16),
     },
     otherFeedbackItem: {
-        backgroundColor: Color.colorLavender || '#f5f5f5',
+        backgroundColor: colors.surfaceElevated,
         borderRadius: normalize(12),
         padding: normalize(16),
         marginBottom: normalize(12),
@@ -487,30 +490,30 @@ const styles = StyleSheet.create({
     otherFeedbackRatingText: {
         fontSize: normalizeFont(14),
         fontWeight: '600',
-        color: Color.colorGray_100,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     otherFeedbackDate: {
         fontSize: normalizeFont(12),
-        color: Color.grey7D7D7D,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
     },
     otherFeedbackComment: {
         fontSize: normalizeFont(15),
-        color: Color.colorGray_100,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         lineHeight: normalizeFont(22),
         marginBottom: normalize(8),
     },
     otherFeedbackUser: {
         fontSize: normalizeFont(12),
-        color: Color.grey7D7D7D,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         fontStyle: 'italic',
     },
     emptyText: {
         fontSize: normalizeFont(14),
-        color: Color.grey7D7D7D,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
         padding: normalize(20),

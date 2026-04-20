@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
     View,
     Text,
@@ -11,7 +11,8 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { useDispatch } from 'react-redux';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color, FontFamily } from '@app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 import { employeeApiMethods } from '@entities/user/api/userApi';
@@ -30,6 +31,8 @@ export const ContactSection = () => {
     const dispatch = useDispatch();
     const { currentUser } = useAuth();
     const { showError } = useCustomAlert();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     
     // Состояние для менеджера
     const [manager, setManager] = useState(null);
@@ -677,12 +680,12 @@ export const ContactSection = () => {
                 <View style={styles.buttonWrapper}>
                     {loadingManager && (
                         <View style={styles.loadingOverlay}>
-                            <ActivityIndicator size="small" color={Color.blue2} />
+                            <ActivityIndicator size="small" color={colors.primary} />
                         </View>
                     )}
                     {errorManager && !loadingManager && (
                         <View style={styles.errorBadge}>
-                            <Icon name="error-outline" size={16} color={Color.error || Color.red || '#FF3B30'} />
+                            <Icon name="error-outline" size={16} color={colors.error} />
                         </View>
                     )}
                     <CustomButton
@@ -702,8 +705,8 @@ export const ContactSection = () => {
                             }
                         }}
                         outlined={false}
-                        color={Color.blue2}
-                        activeColor="#FFFFFF"
+                        color={colors.primary}
+                        activeColor={colors.menuItemActiveText}
                         disabled={chattingManager || loadingManager || !manager}
                         style={styles.button}
                     />
@@ -718,20 +721,20 @@ export const ContactSection = () => {
                 <View style={styles.buttonWrapper}>
                     {loadingDeveloper && (
                         <View style={styles.loadingOverlay}>
-                            <ActivityIndicator size="small" color={Color.blue2} />
+                            <ActivityIndicator size="small" color={colors.primary} />
                         </View>
                     )}
                     {errorDeveloper && !loadingDeveloper && (
                         <View style={styles.errorBadge}>
-                            <Icon name="error-outline" size={16} color={Color.error || Color.red || '#FF3B30'} />
+                            <Icon name="error-outline" size={16} color={colors.error} />
                         </View>
                     )}
                     <CustomButton
                         title={loadingDeveloper ? "Поиск..." : "Разработчик"}
                         onPress={handleOpenDeveloperChat}
                         outlined={false}
-                        color={Color.blue2}
-                        activeColor="#FFFFFF"
+                        color={colors.primary}
+                        activeColor={colors.menuItemActiveText}
                         disabled={loadingDeveloper}
                         style={styles.button}
                     />
@@ -744,17 +747,17 @@ export const ContactSection = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         paddingHorizontal: normalize(20),
         paddingTop: normalize(16),
         paddingBottom: normalize(24),
-        backgroundColor: '#fff',
+        backgroundColor: colors.background,
     },
     sectionTitle: {
         fontSize: normalizeFont(22),
         fontWeight: '600',
-        color: Color.colorGray_100,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(20),
     },
@@ -771,7 +774,7 @@ const styles = StyleSheet.create({
     },
     buttonSubtext: {
         fontSize: normalizeFont(12),
-        color: Color.grey7D7D7D,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
         marginTop: normalize(6),
@@ -785,7 +788,9 @@ const styles = StyleSheet.create({
         height: normalize(53),
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(255, 255, 255, 0.7)',
+        backgroundColor: isDark
+            ? 'rgba(14, 15, 20, 0.7)'
+            : 'rgba(255, 255, 255, 0.7)',
         borderRadius: normalize(12),
         zIndex: 1,
     },
@@ -793,7 +798,7 @@ const styles = StyleSheet.create({
         position: 'absolute',
         top: normalize(-8),
         right: normalize(-8),
-        backgroundColor: '#fff',
+        backgroundColor: colors.surface,
         borderRadius: normalize(12),
         padding: normalize(4),
         zIndex: 2,
@@ -801,7 +806,7 @@ const styles = StyleSheet.create({
             ios: {
                 shadowColor: '#000',
                 shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.2,
+                shadowOpacity: isDark ? 0.5 : 0.2,
                 shadowRadius: 4,
             },
             android: {

@@ -13,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import PagerView from "react-native-pager-view";
 import { FontFamily, FontSize, Border, Color } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useDispatch } from "react-redux";
 import { AddToCartButton } from '@shared/ui/Cart/ui/AddToCartButton';
@@ -79,6 +80,8 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
     const navigation = useNavigation();
     const route = useRoute();
     const dispatch = useDispatch();
+    const { colors, isDark } = useTheme();
+    const themedStyles = useMemo(() => createThemedStyles(colors, isDark), [colors, isDark]);
     const isNavigatingRef = useRef(false);
     const lastPressTimeRef = useRef(0);
     
@@ -104,8 +107,8 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
     if (!product || typeof product !== 'object' || !product.id) {
         console.warn('ProductTile: Невалидный продукт:', product);
         return (
-            <View style={styles.errorContainer}>
-                <Text style={styles.errorText}>Нет данных</Text>
+            <View style={[styles.errorContainer, themedStyles.errorContainer]}>
+                <Text style={[styles.errorText, themedStyles.errorText]}>Нет данных</Text>
             </View>
         );
     }
@@ -494,7 +497,7 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
 
     return (
         <View
-            style={styles.container}
+            style={[styles.container, themedStyles.container]}
             testID={testID}
             accessible={true}
             accessibilityLabel={`Продукт ${productData.name}, цена ${formattedPrice.rubles} рублей ${formattedPrice.kopecks} копеек`}
@@ -502,7 +505,7 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
         >
             {/* Изображение продукта с возможностью листания - обработка тапа и свайпа */}
             <View 
-                style={styles.imageContainer}
+                style={[styles.imageContainer, themedStyles.imageContainer]}
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
@@ -535,7 +538,7 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
                                             ) : (
                                                 <ReliableImage
                                                     source={item}
-                                                    style={styles.productImage}
+                                                    style={[styles.productImage, themedStyles.productImage]}
                                                     resizeMode="cover"
                                                     onError={() => handleImageError(index % imageArray.length)}
                                                 />
@@ -547,7 +550,7 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
                     </>
                 ) : (
                     <Pressable
-                        style={styles.imageContainer}
+                        style={[styles.imageContainer, themedStyles.imageContainer]}
                         onPress={handleProductPress}
                         disabled={isNavigatingRef.current}
                         android_ripple={null}
@@ -556,7 +559,7 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
                             renderPlaceholder()
                         ) : (
                             <ReliableImage
-                                style={styles.productImage}
+                                style={[styles.productImage, themedStyles.productImage]}
                                 resizeMode="cover"
                                 source={imageArray[0]}
                                 onError={() => handleImageError(0)}
@@ -576,30 +579,30 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
             </View>
             {/* Область контента обернута в TouchableOpacity для обработки нажатий */}
             <TouchableOpacity
-                style={styles.infoContainer}
+                style={[styles.infoContainer, themedStyles.infoContainer]}
                 onPress={handleProductPress}
                 activeOpacity={0.95}
                 disabled={isNavigatingRef.current || isScrolling}
             >
-                <Text style={styles.category} numberOfLines={1}>
+                <Text style={[styles.category, themedStyles.category]} numberOfLines={1}>
                     {safeString(productData.category, 'БАСКЕТ').toUpperCase()}
                 </Text>
-                <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
+                <Text style={[styles.title, themedStyles.title]} numberOfLines={1} ellipsizeMode="tail">
                     {productData.name}
                 </Text>
                 <View style={styles.priceContainer}>
                     <View style={styles.priceRow}>
-                        <Text style={styles.price}>
+                        <Text style={[styles.price, themedStyles.title]}>
                             {formattedPrice.rubles}
                         </Text>
-                        <Text style={styles.kopecks}>
+                        <Text style={[styles.kopecks, themedStyles.title]}>
                             {formattedPrice.kopecks}
                         </Text>
-                        <Text style={styles.price}>
+                        <Text style={[styles.price, themedStyles.title]}>
                             {' ₽'}
                         </Text>
                     </View>
-                    <Text style={styles.unit}>
+                    <Text style={[styles.unit, themedStyles.category]}>
                         {isFishCategory ? '/ кг' : '/ 1 шт'}
                     </Text>
                 </View>
@@ -795,6 +798,41 @@ const styles = StyleSheet.create({
         fontSize: FontSize.size_xs,
         textAlign: 'center',
     }
+});
+
+const createThemedStyles = (colors, isDark) => StyleSheet.create({
+    container: {
+        backgroundColor: colors.cardBackground,
+        borderColor: isDark ? colors.border : Color.purpleSoft,
+        shadowColor: '#000',
+        shadowOpacity: isDark ? 0.4 : 0.1,
+    },
+    imageContainer: {
+        backgroundColor: isDark ? colors.surfaceElevated : '#f5f5f5',
+    },
+    productImage: {
+        backgroundColor: isDark ? colors.surfaceElevated : '#f5f5f5',
+    },
+    // В тёмной теме нижний блок сливается с карточкой — карточка выглядит
+    // единым тёмным блоком, а брендовый фиолетовый остаётся только для светлой.
+    infoContainer: {
+        backgroundColor: isDark ? colors.cardBackground : Color.blue2,
+    },
+    // Основной текст: название и цена.
+    title: {
+        color: isDark ? colors.textPrimary : Color.colorLightMode,
+    },
+    // Второстепенный текст: категория и единица измерения.
+    category: {
+        color: isDark ? colors.textSecondary : 'rgba(255, 255, 255, 0.7)',
+    },
+    errorContainer: {
+        backgroundColor: isDark ? colors.errorSubtle : '#ffeeee',
+        borderColor: isDark ? colors.errorBorder : '#ffaaaa',
+    },
+    errorText: {
+        color: colors.error,
+    },
 });
 
 export default ProductTile;

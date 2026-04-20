@@ -9,7 +9,8 @@ import {
     Platform
 } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color, FontFamily } from '@app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { faqData } from '../model/faqData';
 import { useAuth } from '@entities/auth/hooks/useAuth';
@@ -39,6 +40,9 @@ const layoutAnimationConfig = {
  * Компонент отдельного вопроса-ответа
  */
 const FAQItem = React.memo(({ item, isExpanded, onToggle }) => {
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
+
     const handlePress = useCallback(() => {
         LayoutAnimation.configureNext(layoutAnimationConfig);
         onToggle(item.id);
@@ -55,7 +59,7 @@ const FAQItem = React.memo(({ item, isExpanded, onToggle }) => {
                 <Icon
                     name={isExpanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
                     size={24}
-                    color={Color.blue2}
+                    color={colors.primary}
                 />
             </TouchableOpacity>
             {isExpanded && (
@@ -73,6 +77,8 @@ FAQItem.displayName = 'FAQItem';
  * Компонент категории FAQ
  */
 const FAQCategory = React.memo(({ category, expandedQuestions, onToggleQuestion }) => {
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
     const [isExpanded, setIsExpanded] = useState(false);
 
     const handleCategoryToggle = useCallback(() => {
@@ -95,7 +101,7 @@ const FAQCategory = React.memo(({ category, expandedQuestions, onToggleQuestion 
                     <Icon
                         name={category.icon || 'help-outline'}
                         size={24}
-                        color={Color.blue2}
+                        color={colors.primary}
                         style={styles.categoryIcon}
                     />
                     <Text style={styles.categoryTitle}>{category.title}</Text>
@@ -103,7 +109,7 @@ const FAQCategory = React.memo(({ category, expandedQuestions, onToggleQuestion 
                 <Icon
                     name={isExpanded ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
                     size={28}
-                    color={Color.blue2}
+                    color={colors.primary}
                 />
             </TouchableOpacity>
             {isExpanded && (
@@ -129,6 +135,8 @@ FAQCategory.displayName = 'FAQCategory';
  */
 export const FAQSection = () => {
     const { currentUser } = useAuth();
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
     const [expandedQuestions, setExpandedQuestions] = useState(new Set());
 
     const handleToggleQuestion = useCallback((questionId) => {
@@ -197,17 +205,17 @@ export const FAQSection = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     container: {
         paddingHorizontal: normalize(20),
         paddingTop: 0,
         paddingBottom: 0,
-        backgroundColor: '#fff',
+        backgroundColor: colors.background,
     },
     sectionTitle: {
         fontSize: normalizeFont(22),
         fontWeight: '600',
-        color: Color.colorGray_100,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         marginTop: 10,
         marginBottom: normalize(20),
@@ -222,15 +230,15 @@ const styles = StyleSheet.create({
     },
     emptyText: {
         fontSize: normalizeFont(16),
-        color: Color.grey7D7D7D,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
     },
     categoryContainer: {
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         borderRadius: normalize(12),
         borderWidth: 1,
-        borderColor: Color.colorGainsboro,
+        borderColor: colors.border,
         overflow: 'hidden',
     },
     categoryHeader: {
@@ -238,7 +246,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: normalize(16),
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
     },
     categoryHeaderLeft: {
         flexDirection: 'row',
@@ -251,7 +259,7 @@ const styles = StyleSheet.create({
     categoryTitle: {
         fontSize: normalizeFont(18),
         fontWeight: '600',
-        color: Color.colorGray_100,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         flex: 1,
     },
@@ -259,11 +267,11 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(16),
         paddingBottom: normalize(12),
         borderTopWidth: 1,
-        borderTopColor: Color.colorGainsboro,
+        borderTopColor: colors.border,
     },
     faqItemContainer: {
         marginTop: normalize(12),
-        backgroundColor: Color.colorLavender,
+        backgroundColor: colors.surfaceElevated,
         borderRadius: normalize(8),
         overflow: 'hidden',
     },
@@ -276,7 +284,7 @@ const styles = StyleSheet.create({
     faqQuestion: {
         fontSize: normalizeFont(16),
         fontWeight: '500',
-        color: Color.colorGray_100,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         flex: 1,
         marginRight: normalize(12),
@@ -289,7 +297,7 @@ const styles = StyleSheet.create({
     },
     faqAnswer: {
         fontSize: normalizeFont(15),
-        color: Color.grey7D7D7D,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         lineHeight: normalizeFont(22),
     },

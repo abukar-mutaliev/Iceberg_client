@@ -21,13 +21,15 @@ import { ErrorMessage } from '@shared/ui/ErrorMessage';
 import Text from '@shared/ui/Text/Text';
 import { ScrollableBackgroundGradient } from '@shared/ui/BackgroundGradient';
 import { BackButton } from '@shared/ui/Button/BackButton';
-import { Color, FontFamily, FontSize, CommonStyles } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize, CommonStyles } from '@app/styles/GlobalStyles';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export const FavouritesScreen = ({ navigation }) => {
     const dispatch = useDispatch();
-    const { colors } = useTheme();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     const { isAuthenticated, authDialog } = useAuth();
 
     const products = useSelector(selectProducts);
@@ -184,14 +186,13 @@ export const FavouritesScreen = ({ navigation }) => {
                 />
             </View>
         );
-    }, [handleProductPress]);
+    }, [handleProductPress, styles]);
 
     if (!isAuthenticated) {
         return (
             <View style={[styles.container, { backgroundColor: colors.background }]}>
-                {/* Заголовок как в StopsListScreen */}
                 <View style={styles.header}>
-                                    <BackButton onPress={() => navigation.goBack()} />
+                    <BackButton onPress={() => navigation.goBack()} />
 
                     <View style={styles.headerTitleContainer}>
                         <Text style={styles.headerTitle}>
@@ -204,14 +205,14 @@ export const FavouritesScreen = ({ navigation }) => {
 
                 <ScrollableBackgroundGradient contentHeight={1000} />
                 <View style={styles.centerContainer}>
-                    <Text style={[styles.authText, { color: colors.dark }]}>
+                    <Text style={[styles.authText, { color: colors.textPrimary }]}>
                         Для доступа к избранным товарам необходимо авторизоваться
                     </Text>
                     <TouchableOpacity
                         style={[styles.authButton, { backgroundColor: colors.primary }]}
                         onPress={handleAuthPress}
                     >
-                        <Text style={[styles.authButtonText, { color: colors.text }]}>
+                        <Text style={[styles.authButtonText, { color: colors.menuItemActiveText }]}>
                             Войти или зарегистрироваться
                         </Text>
                     </TouchableOpacity>
@@ -221,10 +222,14 @@ export const FavouritesScreen = ({ navigation }) => {
     }
 
     return (
-        <View style={[styles.container, { backgroundColor: 'transparent' }]}>
+        <View
+            style={[
+                styles.container,
+                { backgroundColor: isDark ? colors.background : 'transparent' },
+            ]}
+        >
             <ScrollableBackgroundGradient contentHeight={contentHeight} />
 
-            {/* Заголовок как в StopsListScreen */}
             <View style={styles.header}>
                 <BackButton onPress={() => navigation.goBack()} />
 
@@ -256,7 +261,12 @@ export const FavouritesScreen = ({ navigation }) => {
                     contentContainerStyle={styles.listContainer}
                     showsVerticalScrollIndicator={false}
                     refreshControl={
-                        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+                        <RefreshControl
+                            refreshing={refreshing}
+                            onRefresh={handleRefresh}
+                            tintColor={colors.primary}
+                            colors={[colors.primary]}
+                        />
                     }
                     ListEmptyComponent={
                         loading ? (
@@ -270,7 +280,7 @@ export const FavouritesScreen = ({ navigation }) => {
                                 icon="heart-outline"
                                 buttonText="Перейти к каталогу"
                                 onButtonPress={() => navigation.navigate('CatalogModal', { fromScreen: 'Favourites' })}
-                                titleStyle={{ color: '#000000' }} // или { color: 'black' }
+                                titleStyle={{ color: colors.textPrimary }}
                             />
                         )
                     }
@@ -282,20 +292,21 @@ export const FavouritesScreen = ({ navigation }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         ...CommonStyles.container,
-        overflow: "hidden",
+        overflow: 'hidden',
         flex: 1,
     },
-    // Стили заголовка как в StopsListScreen
     header: {
         ...CommonStyles.flexRow,
         alignItems: 'center',
         justifyContent: 'flex-start',
         paddingVertical: 5,
-        backgroundColor: "rgba(255,255,255,0.5)",
-},
+        backgroundColor: isDark
+            ? 'rgba(26, 28, 36, 0.5)'
+            : 'rgba(255, 255, 255, 0.5)',
+    },
     backButton: {
         padding: 15,
         width: 50,
@@ -310,7 +321,7 @@ const styles = StyleSheet.create({
     headerTitle: {
         fontSize: FontSize.size_lg,
         fontWeight: '500',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
         letterSpacing: 0.9,
@@ -318,7 +329,7 @@ const styles = StyleSheet.create({
     headerSubtitle: {
         fontSize: FontSize.size_sm,
         fontWeight: '400',
-        color: Color.gray,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
         marginTop: 2,
@@ -361,4 +372,4 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '600',
     },
-})
+});

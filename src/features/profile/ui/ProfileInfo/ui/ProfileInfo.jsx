@@ -25,13 +25,17 @@ import CustomButton from "@shared/ui/Button/CustomButton";
 import { useAuth } from "@entities/auth/hooks/useAuth";
 import PushNotificationService from "@shared/services/PushNotificationService";
 import { GlobalAlert } from '@shared/ui/CustomAlert';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const ProfileInfo = ({ onProductPress }) => {
     const navigation = useNavigation();
     const dispatch = useDispatch();
+    const { colors } = useTheme();
     const isLoading = useSelector(selectProfileLoading);
     const profileError = useSelector(selectProfileError);
     const profile = useSelector(selectProfile);
+
+    const styles = useMemo(() => createStyles(colors), [colors]);
 
     // Используем хук useAuth для получения данных авторизации
     const { isAuthenticated, currentUser, logout } = useAuth();
@@ -205,7 +209,7 @@ export const ProfileInfo = ({ onProductPress }) => {
     if (isLoading) {
         return (
             <View style={styles.centered}>
-                <ActivityIndicator size="large" color="#007AFF" />
+                <ActivityIndicator size="large" color={colors.primary} />
                 <Text style={styles.loadingText}>Загрузка профиля...</Text>
             </View>
         );
@@ -278,41 +282,44 @@ export const ProfileInfo = ({ onProductPress }) => {
             )}
 
             <View style={styles.menuContainer}>
-                {menuItems.map((item) => (
-                    <TouchableOpacity
-                        key={item.id}
-                        style={[
-                            styles.menuItem,
-                            activeItemId === item.id && styles.activeMenuItem
-                        ]}
-                        onPress={() => handleMenuItemPress(item.id, item.onPress)}
-                    >
-                        <View style={styles.menuItemIcon}>
-                            {React.isValidElement(item.icon)
-                                ? React.cloneElement(item.icon, {
-                                    color: activeItemId === item.id ? '#fff' : undefined
-                                })
-                                : item.icon
-                            }
-                        </View>
-                        <View style={styles.menuItemTextContainer}>
-                            <Text style={[
-                                styles.menuItemText,
-                                activeItemId === item.id && styles.activeMenuItemText
-                            ]}>
-                                {item.title}
-                            </Text>
-                            {item.badgeCount > 0 && (
-                                <View style={styles.menuBadge}>
-                                    <Text style={styles.menuBadgeText}>
-                                        {item.badgeCount > 99 ? '99+' : String(item.badgeCount)}
-                                    </Text>
-                                </View>
-                            )}
-                        </View>
-                        <IconRight color={activeItemId === item.id ? '#fff' : undefined} />
-                    </TouchableOpacity>
-                ))}
+                {menuItems.map((item) => {
+                    const isActive = activeItemId === item.id;
+                    return (
+                        <TouchableOpacity
+                            key={item.id}
+                            style={[
+                                styles.menuItem,
+                                isActive && styles.activeMenuItem
+                            ]}
+                            onPress={() => handleMenuItemPress(item.id, item.onPress)}
+                        >
+                            <View style={styles.menuItemIcon}>
+                                {React.isValidElement(item.icon)
+                                    ? React.cloneElement(item.icon, {
+                                        color: isActive ? colors.menuItemActiveText : colors.textPrimary
+                                    })
+                                    : item.icon
+                                }
+                            </View>
+                            <View style={styles.menuItemTextContainer}>
+                                <Text style={[
+                                    styles.menuItemText,
+                                    isActive && styles.activeMenuItemText
+                                ]}>
+                                    {item.title}
+                                </Text>
+                                {item.badgeCount > 0 && (
+                                    <View style={styles.menuBadge}>
+                                        <Text style={styles.menuBadgeText}>
+                                            {item.badgeCount > 99 ? '99+' : String(item.badgeCount)}
+                                        </Text>
+                                    </View>
+                                )}
+                            </View>
+                            <IconRight color={isActive ? colors.menuItemActiveText : colors.textTertiary} />
+                        </TouchableOpacity>
+                    );
+                })}
             </View>
 
             {/* Кнопки для разных ролей */}
@@ -390,11 +397,10 @@ export const ProfileInfo = ({ onProductPress }) => {
     );
 };
 
-const styles = StyleSheet.create({
-    // Существующие стили
+const createStyles = (colors) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.background,
     },
     centered: {
         flex: 1,
@@ -405,16 +411,16 @@ const styles = StyleSheet.create({
     menuContainer: {
         marginTop: normalize(16),
         marginHorizontal: normalize(20),
-        borderColor: '#E5E5E5',
+        borderColor: colors.divider,
         borderBottomWidth: 0.5,
     },
     menuItem: {
         flexDirection: 'row',
         alignItems: 'center',
         paddingVertical: normalize(15),
-        borderColor: '#E5E5E5',
+        borderColor: colors.divider,
         borderBottomWidth: 0.5,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.background,
         position: 'relative',
         paddingHorizontal: normalize(10),
     },
@@ -431,11 +437,11 @@ const styles = StyleSheet.create({
     },
     menuItemText: {
         fontSize: normalizeFont(16),
-        color: '#222222',
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     menuBadge: {
-        backgroundColor: '#FF3B30',
+        backgroundColor: colors.error,
         borderRadius: normalize(10),
         minWidth: normalize(20),
         height: normalize(20),
@@ -451,12 +457,12 @@ const styles = StyleSheet.create({
         textAlign: 'center',
     },
     activeMenuItem: {
-        backgroundColor: Color.blue2,
+        backgroundColor: colors.menuItemActive,
         width: '100%',
         paddingHorizontal: normalize(10),
     },
     activeMenuItemText: {
-        color: '#fff',
+        color: colors.menuItemActiveText,
     },
     buttonContainer: {
         marginTop: normalize(20),
@@ -474,20 +480,20 @@ const styles = StyleSheet.create({
     loginMessage: {
         fontSize: normalizeFont(16),
         textAlign: 'center',
-        color: '#666',
+        color: colors.textSecondary,
     },
     loginLink: {
-        color: '#007AFF',
+        color: colors.primary,
         fontWeight: 'bold',
         textDecorationLine: 'underline',
     },
     loadingText: {
         fontSize: normalizeFont(14),
-        color: '#666',
+        color: colors.textSecondary,
         marginTop: normalize(10),
     },
     error: {
-        color: 'red',
+        color: colors.error,
         fontSize: normalizeFont(16),
         textAlign: 'center',
         marginBottom: normalize(20),
@@ -498,24 +504,24 @@ const styles = StyleSheet.create({
         borderRadius: normalize(12),
         padding: normalize(14),
         borderWidth: 1,
-        borderColor: '#FFD6D6',
-        backgroundColor: '#FFF5F5',
+        borderColor: colors.errorBorder,
+        backgroundColor: colors.errorSubtle,
     },
     recoveryTitle: {
         fontSize: normalizeFont(16),
         fontWeight: '700',
-        color: '#B42318',
+        color: colors.error,
         marginBottom: normalize(6),
     },
     recoveryText: {
         fontSize: normalizeFont(13),
-        color: '#7A2E2E',
+        color: colors.textPrimary,
         lineHeight: normalize(18),
     },
     recoveryHint: {
         marginTop: normalize(8),
         fontSize: normalizeFont(12),
-        color: '#5E5E5E',
+        color: colors.textSecondary,
         lineHeight: normalize(17),
     },
     recoveryButtons: {
@@ -534,10 +540,10 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(12),
         paddingVertical: normalize(10),
         borderRadius: normalize(10),
-        backgroundColor: '#F3F6FF',
+        backgroundColor: colors.surfaceSecondary,
     },
     recoveryNoticeText: {
-        color: '#445372',
+        color: colors.textSecondary,
         fontSize: normalizeFont(12),
         lineHeight: normalize(16),
     },

@@ -12,6 +12,7 @@ import { useProfileEdit } from "./model/useProfileEdit";
 import {selectDistrictLoading, selectDistrictsForDropdown} from "@entities/district";
 import {selectWarehouseLoading, selectWarehousesForDropdown} from "@entities/warehouse";
 import { useAuth } from "@entities/auth/hooks/useAuth";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const ProfileEdit = () => {
     const navigation = useNavigation();
@@ -19,6 +20,8 @@ export const ProfileEdit = () => {
     const profile = useSelector(selectProfile);
     const isLoading = useSelector(selectProfileLoading);
     const { currentUser } = useAuth();
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
     const insets = useSafeAreaInsets();
     const isAndroid = Platform.OS === 'android';
     const tabBarHeight = 80 + insets.bottom;
@@ -159,7 +162,7 @@ export const ProfileEdit = () => {
 
         return (
             <View style={styles.centered}>
-                <ActivityIndicator size="large" color="#007AFF" />
+                <ActivityIndicator size="large" color={colors.primary} />
                 <Text style={[styles.loadingText, { fontSize: normalizeFont(14) }]}>
                     {loadingText}
                 </Text>
@@ -245,6 +248,8 @@ export const ProfileEdit = () => {
                             }}
                             keyboardType="number-pad"
                             placeholder="000000"
+                            placeholderTextColor={colors.textTertiary}
+                            keyboardAppearance={colors.keyboardAppearance}
                             maxLength={6}
                         />
 
@@ -276,29 +281,30 @@ export const ProfileEdit = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.background,
         paddingBottom: normalize(0),
     },
     headerAvatarContainer: {
         width: '100%',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.background,
     },
     centered: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
         padding: 20,
+        backgroundColor: colors.background,
     },
     loadingText: {
         marginTop: 10,
         fontSize: 14,
-        color: '#666666',
+        color: colors.textSecondary,
     },
     errorText: {
-        color: 'red',
+        color: colors.error,
         textAlign: 'center',
     },
     profileImageContainer: {
@@ -317,11 +323,11 @@ const styles = StyleSheet.create({
     profileName: {
         fontSize: 18,
         fontWeight: '500',
-        color: '#000000',
+        color: colors.textPrimary,
     },
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.4)',
+        backgroundColor: colors.modalOverlay,
         justifyContent: 'center',
         alignItems: 'center',
         padding: normalize(20),
@@ -329,26 +335,28 @@ const styles = StyleSheet.create({
     modalContent: {
         width: '100%',
         maxWidth: normalize(360),
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.surface,
         borderRadius: normalize(16),
         padding: normalize(20),
     },
     modalTitle: {
         fontSize: normalizeFont(18),
         fontWeight: '700',
-        color: '#000',
+        color: colors.textPrimary,
         textAlign: 'center',
         marginBottom: normalize(8),
     },
     modalSubtitle: {
         fontSize: normalizeFont(14),
-        color: '#666',
+        color: colors.textSecondary,
         textAlign: 'center',
         marginBottom: normalize(16),
     },
     codeInput: {
         borderWidth: 1,
-        borderColor: '#E5E5E5',
+        borderColor: colors.inputBorder,
+        backgroundColor: colors.inputBackground,
+        color: colors.textPrimary,
         borderRadius: normalize(8),
         paddingVertical: normalize(10),
         paddingHorizontal: normalize(12),
@@ -358,22 +366,22 @@ const styles = StyleSheet.create({
         marginBottom: normalize(10),
     },
     modalError: {
-        color: '#FF0000',
+        color: colors.error,
         textAlign: 'center',
         marginBottom: normalize(10),
         fontSize: normalizeFont(12),
     },
     modalButton: {
-        backgroundColor: '#000cff',
+        backgroundColor: colors.primary,
         borderRadius: normalize(24),
         paddingVertical: normalize(12),
         alignItems: 'center',
     },
     modalButtonDisabled: {
-        backgroundColor: '#d3d3d3',
+        backgroundColor: colors.surfaceSecondary,
     },
     modalButtonText: {
-        color: '#FFFFFF',
+        color: colors.menuItemActiveText,
         fontSize: normalizeFont(16),
         fontWeight: '600',
     },
@@ -382,7 +390,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     modalCancelText: {
-        color: '#3339b0',
+        color: colors.primary,
         fontSize: normalizeFont(14),
         fontWeight: '600',
     },

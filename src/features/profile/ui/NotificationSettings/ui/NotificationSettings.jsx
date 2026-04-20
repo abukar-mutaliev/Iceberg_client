@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
@@ -15,7 +15,9 @@ import {
 } from '@entities/notification/model/slice';
 import { NotificationSettingItem } from './NotificationSettingItem';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { FontFamily, Border, Color } from '@app/styles/GlobalStyles';
+import { FontFamily, Border } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { ThemedStatusBar } from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
 import ArrowBackIcon from '@shared/ui/Icon/Common/ArrowBackIcon';
 import { useToast } from '@shared/ui/Toast';
 import { useGlobalAlert } from '@shared/ui/CustomAlert';
@@ -27,6 +29,8 @@ export const NotificationSettings = () => {
     const tabBarHeight = normalize(80) + insets.bottom;
     const { showSuccess, showError } = useToast();
     const { showConfirm, showAlert } = useGlobalAlert();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     const settings = useSelector(selectNotificationSettings);
     const isLoading = useSelector(selectNotificationLoading);
@@ -210,13 +214,14 @@ export const NotificationSettings = () => {
 
     return (
         <View style={styles.container}>
+            <ThemedStatusBar />
             {/* Заголовок */}
             <View style={styles.header}>
                 <TouchableOpacity
                     style={styles.backButton}
                     onPress={handleGoBack}
                 >
-                    <ArrowBackIcon width={24} height={24} color="rgba(0, 12, 255, 1)" />
+                    <ArrowBackIcon width={24} height={24} color={colors.primary} />
                 </TouchableOpacity>
                 <Text style={styles.title}>Центр уведомлений</Text>
             </View>
@@ -283,10 +288,10 @@ export const NotificationSettings = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#fff',
+        backgroundColor: colors.background,
     },
     header: {
         flexDirection: 'row',
@@ -294,7 +299,7 @@ const styles = StyleSheet.create({
         paddingVertical: normalize(16),
         paddingHorizontal: normalize(16),
         borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
+        borderBottomColor: colors.divider,
     },
     backButton: {
         padding: normalize(8),
@@ -304,7 +309,7 @@ const styles = StyleSheet.create({
         fontWeight: '500',
         fontFamily: FontFamily.sFProText,
         marginLeft: normalize(24),
-        color: Color.dark,
+        color: colors.textPrimary,
     },
     content: {
         flex: 1,
@@ -319,7 +324,7 @@ const styles = StyleSheet.create({
     },
     description: {
         fontSize: normalizeFont(14),
-        color: '#666',
+        color: colors.textSecondary,
         lineHeight: normalize(20),
         textAlign: 'center',
     },
@@ -337,12 +342,12 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     saveButton: {
-        backgroundColor: Color.blue2,
+        backgroundColor: colors.primary,
     },
     resetButton: {
         backgroundColor: 'transparent',
         borderWidth: 1,
-        borderColor: Color.red,
+        borderColor: colors.error,
     },
     disabledButton: {
         opacity: 0.5,
@@ -352,19 +357,21 @@ const styles = StyleSheet.create({
         fontWeight: '500',
     },
     saveButtonText: {
-        color: '#fff',
+        color: colors.menuItemActiveText,
     },
     resetButtonText: {
-        color: Color.red,
+        color: colors.error,
     },
     errorContainer: {
         padding: normalize(16),
-        backgroundColor: '#ffebee',
+        backgroundColor: isDark ? colors.errorSubtle : '#ffebee',
         borderRadius: Border.br_3xs,
         marginBottom: normalize(16),
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.errorBorder : 'transparent',
     },
     errorText: {
-        color: Color.red,
+        color: colors.error,
         fontSize: normalizeFont(14),
         textAlign: 'center',
     },

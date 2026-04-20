@@ -6,8 +6,6 @@ import {
     FlatList,
     Dimensions,
     PixelRatio,
-    StatusBar,
-    Platform,
     TouchableOpacity,
     ActivityIndicator
 } from 'react-native';
@@ -18,6 +16,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { ScreenSearchBar } from '@features/search/ui/ScreenSearchBar';
 import { Border, FontFamily } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { ThemedStatusBar } from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
 import { FilterIcon } from '@shared/ui/Icon/SearchIcons/FilterIcon';
 import { AppliedFilters } from '@features/filter/AppliedFilters';
 
@@ -61,6 +61,8 @@ export const SearchResultsScreen = () => {
     const dispatch = useDispatch();
     const insets = useSafeAreaInsets();
     const tabBarHeight = 80 + insets.bottom;
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     const searchQuery = route.params?.searchQuery || '';
     const filterApplied = route.params?.filterApplied || false;
@@ -216,23 +218,38 @@ export const SearchResultsScreen = () => {
     if (isProductsLoading || isLoading) {
         return (
             <View style={[styles.container, styles.loadingContainer]}>
-                <ActivityIndicator size="large" color="#5500FF" />
+                <ActivityIndicator size="large" color={colors.primary} />
             </View>
         );
     }
 
+    const renderHeaderBackground = (children) => {
+        if (isDark) {
+            return (
+                <View style={[styles.gradient, styles.darkHeaderBackground]}>
+                    {children}
+                </View>
+            );
+        }
+        return (
+            <LinearGradient
+                style={styles.gradient}
+                colors={['#e4f6fc', '#c3dffa', '#b5c9fb', '#b7c4fd', '#e2ddff']}
+                locations={[0, 0.26, 0.44, 0.68, 1]}
+                start={{ x: 0, y: 0.5 }}
+                end={{ x: 1, y: 0.5 }}
+            >
+                {children}
+            </LinearGradient>
+        );
+    };
+
     return (
         <View style={styles.container}>
-            <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent={true} />
+            <ThemedStatusBar />
 
             <View style={styles.headerSection}>
-                <LinearGradient
-                    style={styles.gradient}
-                    colors={['#e4f6fc', '#c3dffa', '#b5c9fb', '#b7c4fd', '#e2ddff']}
-                    locations={[0, 0.26, 0.44, 0.68, 1]}
-                    start={{ x: 0, y: 0.5 }}
-                    end={{ x: 1, y: 0.5 }}
-                >
+                {renderHeaderBackground(
                     <SafeAreaView style={styles.safeAreaHeader} edges={['left', 'right']}>
                         <View style={styles.header}>
                             <TouchableOpacity
@@ -252,7 +269,7 @@ export const SearchResultsScreen = () => {
                                 <FilterIcon
                                     width={normalize(24)}
                                     height={normalize(24)}
-                                    color={isFilterActive ? "#6a3cf7" : "#000000"}
+                                    color={isFilterActive ? colors.primary : colors.textPrimary}
                                 />
                                 {isFilterActive && (
                                     <View style={styles.filterActiveIndicator} />
@@ -273,7 +290,7 @@ export const SearchResultsScreen = () => {
                             />
                         </View>
                     </SafeAreaView>
-                </LinearGradient>
+                )}
             </View>
 
             {/* Отображение примененных фильтров */}
@@ -337,10 +354,10 @@ export const SearchResultsScreen = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: 'white',
+        backgroundColor: colors.background,
     },
     loadingContainer: {
         justifyContent: 'center',
@@ -354,6 +371,11 @@ const styles = StyleSheet.create({
     gradient: {
         width: '100%',
         paddingBottom: normalize(24),
+    },
+    darkHeaderBackground: {
+        backgroundColor: colors.surface,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
     },
     safeAreaHeader: {
         width: '100%',
@@ -377,7 +399,7 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(22),
         fontWeight: '700',
-        color: '#000000',
+        color: colors.textPrimary,
         flex: 1,
         textAlign: 'center',
     },
@@ -396,7 +418,7 @@ const styles = StyleSheet.create({
         width: normalize(8),
         height: normalize(8),
         borderRadius: normalize(4),
-        backgroundColor: '#6a3cf7',
+        backgroundColor: colors.primary,
     },
     searchBarContainer: {
         paddingHorizontal: normalize(26),
@@ -408,7 +430,7 @@ const styles = StyleSheet.create({
     contentWrapper: {
         flex: 1,
         minHeight: 0,
-        backgroundColor: 'white',
+        backgroundColor: colors.background,
         zIndex: 0,
         paddingTop: normalize(15),
     },
@@ -429,7 +451,7 @@ const styles = StyleSheet.create({
         marginBottom: normalize(20),
         borderRadius: normalize(Border.br_xl),
         overflow: 'hidden',
-        backgroundColor: 'white',
+        backgroundColor: colors.cardBackground,
     },
     emptyResultsContainer: {
         flex: 1,
@@ -441,19 +463,19 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(18),
         fontWeight: '600',
-        color: '#000000',
+        color: colors.textPrimary,
         textAlign: 'center',
         marginBottom: normalize(8),
     },
     emptyResultsHint: {
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(16),
-        color: '#666666',
+        color: colors.textSecondary,
         textAlign: 'center',
         marginBottom: normalize(24),
     },
     resetFiltersButton: {
-        backgroundColor: '#EFF1FE',
+        backgroundColor: isDark ? colors.surfaceElevated : '#EFF1FE',
         borderRadius: normalize(25),
         paddingVertical: normalize(12),
         paddingHorizontal: normalize(24),
@@ -462,7 +484,7 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontSize: normalizeFont(16),
         fontWeight: '600',
-        color: '#6a3cf7',
+        color: colors.primary,
     }
 });
 

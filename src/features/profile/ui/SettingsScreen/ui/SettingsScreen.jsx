@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity} from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 
-import { FontFamily, Border, Color } from '@app/styles/GlobalStyles';
+import { FontFamily, Border } from '@app/styles/GlobalStyles';
 
 import ArrowBackIcon from '@shared/ui/Icon/Common/ArrowBackIcon';
 import NotificationIcon from '@shared/ui/Icon/Profile/IconNotification';
@@ -12,14 +12,14 @@ import ChangeIcon from '@shared/ui/Icon/Profile/IconChange';
 import DeleteIcon from '@shared/ui/Icon/Profile/IconDelete';
 import RightArrowIcon from '@shared/ui/Icon/Common/IconRight';
 import DeleteAccountModal from './DeleteAccountModal';
-import {clearError, selectIsProfileDeleting, selectProfileError} from "@entities/profile";
-// Импортируем напрямую из компонента, чтобы избежать циклической зависимости
-import { NotificationSettings } from "../../NotificationSettings/ui/NotificationSettings";
-import PushNotificationIcon from '@shared/ui/Icon/Profile/IconNotification';
+import ThemeSettingsSection from './ThemeSettingsSection';
+import { clearError, selectIsProfileDeleting, selectProfileError } from "@entities/profile";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const SettingsScreen = () => {
     const navigation = useNavigation();
     const dispatch = useDispatch();
+    const { colors } = useTheme();
 
     const [isPasswordPressed, setIsPasswordPressed] = useState(false);
     const [isNotificationPressed, setIsNotificationPressed] = useState(false);
@@ -27,6 +27,8 @@ export const SettingsScreen = () => {
     const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
 
     const isDeleting = useSelector(selectIsProfileDeleting);
+
+    const styles = useMemo(() => createStyles(colors), [colors]);
 
     useEffect(() => {
         return () => {
@@ -79,7 +81,9 @@ export const SettingsScreen = () => {
         setIsDeleteModalVisible(true);
     };
 
-
+    const disabledIconColor = isDeleting
+        ? 'rgba(124, 127, 232, 0.5)'
+        : colors.primary;
 
     return (
         <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
@@ -89,18 +93,21 @@ export const SettingsScreen = () => {
                     onPress={handleGoBack}
                     disabled={isDeleting}
                 >
-                    <ArrowBackIcon width={24} height={24} color={isDeleting ? "rgba(0, 12, 255, 0.5)" : "rgba(0, 12, 255, 1)"} />
+                    <ArrowBackIcon width={24} height={24} color={disabledIconColor} />
                 </TouchableOpacity>
                 <Text style={styles.title}>Настройки</Text>
             </View>
 
 
             <View style={styles.content}>
+                {/* Переключатель темы (рендерится только при включённом фичефлаге) */}
+                <ThemeSettingsSection />
+
                 {/* Центр уведомлений */}
                 <TouchableOpacity
                     style={[
                         styles.menuItem,
-                        isNotificationPressed && styles.blueMenuItem,
+                        isNotificationPressed && styles.activeMenuItem,
                         isDeleting && styles.disabledMenuItem
                     ]}
                     onPress={handleNotificationSettings}
@@ -111,12 +118,12 @@ export const SettingsScreen = () => {
                         <NotificationIcon
                             width={20}
                             height={20}
-                            color={isNotificationPressed ? "#fff" : "#000"}
+                            color={isNotificationPressed ? colors.menuItemActiveText : colors.textPrimary}
                         />
                     </View>
                     <Text style={[
                         styles.menuItemText,
-                        isNotificationPressed && styles.whiteText
+                        isNotificationPressed && styles.activeText
                     ]}>
                         Настройки уведомлений
                     </Text>
@@ -124,49 +131,17 @@ export const SettingsScreen = () => {
                         style={styles.rightIcon}
                         width={8}
                         height={15}
-                        color={isNotificationPressed ? "#fff" : "#333"}
+                        color={isNotificationPressed ? colors.menuItemActiveText : colors.textTertiary}
                     />
                 </TouchableOpacity>
 
-                {/* Диагностика Push-уведомлений - только в dev режиме */}
-                {__DEV__ && (
-                    <TouchableOpacity
-                        style={[
-                            styles.menuItem,
-                            isPushDiagnosticPressed && styles.blueMenuItem,
-                            isDeleting && styles.disabledMenuItem
-                        ]}
-                        onPress={handlePushDiagnostic}
-                        activeOpacity={isDeleting ? 1 : 0.7}
-                        disabled={isDeleting}
-                    >
-                        <View style={styles.iconContainer}>
-                            <NotificationIcon
-                                width={20}
-                                height={20}
-                                color={isPushDiagnosticPressed ? "#fff" : "#FF6B35"}
-                            />
-                        </View>
-                        <Text style={[
-                            styles.menuItemText,
-                            isPushDiagnosticPressed && styles.whiteText
-                        ]}>
-                            Диагностика Push-уведомлений
-                        </Text>
-                        <RightArrowIcon
-                            style={styles.rightIcon}
-                            width={8}
-                            height={15}
-                            color={isPushDiagnosticPressed ? "#fff" : "#333"}
-                        />
-                    </TouchableOpacity>
-                )}
+           
 
                 {/* Мой пароль */}
                 <TouchableOpacity
                     style={[
                         styles.menuItem,
-                        isPasswordPressed && styles.blueMenuItem,
+                        isPasswordPressed && styles.activeMenuItem,
                         isDeleting && styles.disabledMenuItem
                     ]}
                     onPress={handlePasswordChange}
@@ -177,12 +152,12 @@ export const SettingsScreen = () => {
                         <ChangeIcon
                             width={20}
                             height={20}
-                            color={isPasswordPressed ? "#fff" : "#333"}
+                            color={isPasswordPressed ? colors.menuItemActiveText : colors.textPrimary}
                         />
                     </View>
                     <Text style={[
                         styles.menuItemText,
-                        isPasswordPressed && styles.whiteText
+                        isPasswordPressed && styles.activeText
                     ]}>
                         Мой пароль
                     </Text>
@@ -190,7 +165,7 @@ export const SettingsScreen = () => {
                         style={styles.rightIcon}
                         width={8}
                         height={15}
-                        color={isPasswordPressed ? "#fff" : "#333"}
+                        color={isPasswordPressed ? colors.menuItemActiveText : colors.textTertiary}
                     />
                 </TouchableOpacity>
 
@@ -223,10 +198,10 @@ export const SettingsScreen = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#fff',
+        backgroundColor: colors.background,
     },
     header: {
         flexDirection: 'row',
@@ -242,7 +217,7 @@ const styles = StyleSheet.create({
         fontWeight: '500',
         fontFamily: FontFamily.sFProText,
         marginLeft: 24,
-        color: Color.dark,
+        color: colors.textPrimary,
     },
     content: {
         flex: 1,
@@ -252,18 +227,21 @@ const styles = StyleSheet.create({
     menuItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#fff',
+        backgroundColor: colors.surface,
         marginBottom: 16,
         paddingVertical: 16,
         paddingHorizontal: 16,
         borderRadius: Border.br_3xs,
-        borderWidth: 0.1,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: colors.border,
     },
-    blueMenuItem: {
-        backgroundColor: '#3f51b5',
+    activeMenuItem: {
+        backgroundColor: colors.primary,
+        borderColor: colors.primary,
     },
     deleteMenuItem: {
-        backgroundColor: Color.red,
+        backgroundColor: colors.error,
+        borderColor: colors.error,
         justifyContent: 'center',
         paddingHorizontal: 75,
     },
@@ -271,7 +249,7 @@ const styles = StyleSheet.create({
         opacity: 0.5,
     },
     disabledDeleteMenuItem: {
-        backgroundColor: 'rgba(255, 0, 0, 0.5)',
+        opacity: 0.5,
     },
     iconContainer: {
         width: 30,
@@ -282,9 +260,10 @@ const styles = StyleSheet.create({
         marginLeft: 16,
         fontSize: 16,
         fontFamily: FontFamily.sFProText,
+        color: colors.textPrimary,
     },
-    whiteText: {
-        color: '#fff',
+    activeText: {
+        color: colors.menuItemActiveText,
     },
     deleteText: {
         color: '#fff',
@@ -292,7 +271,6 @@ const styles = StyleSheet.create({
     rightIcon: {
         marginLeft: 8,
     },
-
 });
 
 export default SettingsScreen;

@@ -1,7 +1,8 @@
-import React from 'react';
-import { View, Text, StyleSheet, Switch } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet, Switch, Platform } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color, Border } from '@app/styles/GlobalStyles';
+import { Border } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const NotificationSettingItem = ({
     title,
@@ -10,6 +11,9 @@ export const NotificationSettingItem = ({
     onValueChange,
     disabled = false
 }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     return (
         <View style={styles.container}>
             <View style={styles.content}>
@@ -24,23 +28,28 @@ export const NotificationSettingItem = ({
                     onValueChange={onValueChange}
                     disabled={disabled}
                     trackColor={{
-                        false: '#767577',
-                        true: Color.blue2
+                        false: isDark ? colors.surfaceElevated : '#767577',
+                        true: colors.primary
                     }}
-                    thumbColor={value ? '#FFFFFF' : '#f4f3f4'}
-                    ios_backgroundColor="#3e3e3e"
+                    thumbColor={
+                        Platform.OS === 'android'
+                            ? (value ? colors.menuItemActiveText : (isDark ? colors.textSecondary : '#f4f3f4'))
+                            : undefined
+                    }
+                    ios_backgroundColor={isDark ? colors.surfaceElevated : '#3e3e3e'}
                 />
             </View>
         </View>
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         marginBottom: normalize(8),
         borderRadius: Border.br_3xs,
-        borderWidth: 0.1,
+        borderWidth: isDark ? 1 : 0.1,
+        borderColor: isDark ? colors.border : 'transparent',
         overflow: 'hidden'
     },
     content: {
@@ -57,12 +66,12 @@ const styles = StyleSheet.create({
     title: {
         fontSize: normalizeFont(16),
         fontWeight: '500',
-        color: '#000',
+        color: colors.textPrimary,
         marginBottom: normalize(4)
     },
     description: {
         fontSize: normalizeFont(14),
-        color: '#666',
+        color: colors.textSecondary,
         lineHeight: normalize(18)
     }
 });
