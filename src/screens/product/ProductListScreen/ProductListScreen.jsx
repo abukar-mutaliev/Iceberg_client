@@ -8,7 +8,6 @@ import {
     TouchableOpacity,
     RefreshControl,
     ActivityIndicator,
-    Image,
     Platform
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -20,9 +19,7 @@ import { deleteProduct } from '@entities/product';
 import { useProductManagement } from '@entities/product/hooks/useProductManagement';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { CustomSliderIndicator } from '@shared/ui/CustomSliderIndicator';
-import { formatImageUrl } from '@shared/api/api';
-
-const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
+import { ReliableImage, Placeholder as ImagePlaceholder } from '@shared/ui/ReliableImage';
 
 export const ProductListScreen = () => {
     const dispatch = useDispatch();
@@ -74,24 +71,6 @@ export const ProductListScreen = () => {
         }));
     }, []);
 
-    const getImageSource = useCallback((item) => {
-        if (typeof item === 'string') {
-            const url = formatImageUrl(item);
-            return url ? { uri: url } : placeholderImage;
-        } else if (item && typeof item === 'object') {
-            if (item.uri) {
-                const url = formatImageUrl(item.uri);
-                return url ? { uri: url } : placeholderImage;
-            }
-            const imageUrl = item.url || item.uri || item.path || item.src;
-            if (imageUrl) {
-                const url = formatImageUrl(imageUrl);
-                return url ? { uri: url } : placeholderImage;
-            }
-        }
-        return placeholderImage;
-    }, []);
-
     const getProductImages = useCallback((product) => {
         let images = [];
         
@@ -122,15 +101,7 @@ export const ProductListScreen = () => {
         const totalItems = stockBoxes * itemsPerBox;
 
         const renderPlaceholder = () => (
-            <LinearGradient
-                colors={['#dfe7ff', '#cdd6ff', '#bfc7ff']}
-                style={styles.placeholder}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-            >
-                <Icon name="image" size={28} color="rgba(255,255,255,0.95)" />
-                <Text style={styles.placeholderText}>Нет фото</Text>
-            </LinearGradient>
+            <ImagePlaceholder style={styles.placeholder} iconSize={28} text="Нет фото" />
         );
 
         return (
@@ -151,7 +122,6 @@ export const ProductListScreen = () => {
                             keyboardDismissMode="on-drag"
                         >
                             {imageArray.map((imageItem, index) => {
-                                const imageSource = getImageSource(imageItem);
                                 const errorKey = `${productId}-${index}`;
                                 const hasError = loadingErrors[errorKey];
 
@@ -164,11 +134,10 @@ export const ProductListScreen = () => {
                                         {hasError ? (
                                             renderPlaceholder()
                                         ) : (
-                                            <Image
-                                                source={imageSource}
+                                            <ReliableImage
+                                                source={imageItem}
                                                 style={styles.productImage}
                                                 resizeMode="cover"
-                                                defaultSource={placeholderImage}
                                                 onError={() => handleImageError(productId, index)}
                                             />
                                         )}
@@ -177,11 +146,10 @@ export const ProductListScreen = () => {
                             })}
                         </PagerView>
                     ) : imageArray.length === 1 ? (
-                        <Image
+                        <ReliableImage
                             style={styles.productImage}
                             resizeMode="cover"
-                            source={imageArray.length > 0 ? getImageSource(imageArray[0]) : placeholderImage}
-                            defaultSource={placeholderImage}
+                            source={imageArray[0]}
                             onError={() => handleImageError(productId, 0)}
                         />
                     ) : (

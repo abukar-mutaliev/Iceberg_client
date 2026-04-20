@@ -257,30 +257,28 @@ export const Composer = memo(({
     if (disabled) return;
     
     try {
-      // Проверяем разрешение ПЕРЕД открытием VoiceRecorder
-      const { status: currentStatus } = await Audio.getPermissionsAsync();
-      
-      if (currentStatus === 'granted') {
-        // Разрешение есть - открываем VoiceRecorder
+      const currentPermission = await Audio.getPermissionsAsync();
+
+      if (currentPermission.granted) {
         setIsRecording(true);
-      } else if (currentStatus === 'undetermined') {
-        // Первый запрос - запрашиваем разрешение
-        const permission = await Audio.requestPermissionsAsync();
-        if (permission.granted) {
-          // Разрешение получено - открываем VoiceRecorder
-          setIsRecording(true);
-        } else {
-          // Пользователь отказал - показываем модальное окно настроек
-          console.log('🔔 Composer: Пользователь отказал от разрешения микрофона');
-          setPermissionType('microphone');
-          setPermissionModalVisible(true);
-        }
-      } else {
-        // Разрешение denied или restricted - показываем модальное окно настроек
-        console.log('🔔 Composer: Разрешение микрофона отклонено, показываем настройки');
-        setPermissionType('microphone');
-        setPermissionModalVisible(true);
+        return;
       }
+
+      // Для Expo / Android getPermissionsAsync может вернуть устаревший статус.
+      // Повторно синхронизируем разрешение через requestPermissionsAsync перед показом модалки.
+      const permission = await Audio.requestPermissionsAsync();
+      if (permission.granted) {
+        setIsRecording(true);
+        return;
+      }
+
+      console.log('🔔 Composer: Нет доступа к микрофону', {
+        currentStatus: currentPermission.status,
+        requestedStatus: permission.status,
+        canAskAgain: permission.canAskAgain,
+      });
+      setPermissionType('microphone');
+      setPermissionModalVisible(true);
     } catch (error) {
       console.error('Ошибка при проверке разрешения микрофона:', error);
     }
@@ -369,6 +367,14 @@ export const Composer = memo(({
   const inputPlaceholder = useMemo(() => {
     return files.length > 0 ? "Подпись..." : "Сообщение";
   }, [files.length]);
+
+  const inputStyle = useMemo(() => (
+    [
+      styles.input,
+      files.length > 0 && styles.inputWithAttachments,
+      disabled && styles.inputDisabled,
+    ]
+  ), [files.length, disabled]);
   
   // ============ RENDER ============
   
@@ -420,13 +426,14 @@ export const Composer = memo(({
             {/* Text Input */}
             <TextInput
               ref={textInputRef}
-              style={[styles.input, disabled && styles.inputDisabled]}
+              style={inputStyle}
               placeholder={inputPlaceholder}
               value={text}
               onChangeText={handleChangeText}
               onBlur={typing.handleBlur}
               onFocus={keyboard.handleInputFocus}
               multiline
+              scrollEnabled={true}
               placeholderTextColor="#999999"
               editable={!disabled}
             />
@@ -568,6 +575,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
     color: '#000000',
+    textAlignVertical: 'top',
+  },
+  inputWithAttachments: {
+    maxHeight: 84,
   },
   inputDisabled: {
     opacity: 0.5,

@@ -413,7 +413,7 @@ export const AdminPanelScreen = () => {
                     <AdminSection title="Управление пользователями">
                         <AdminMenuItem
                             icon={<IconUser color={Color.blue2} />}
-                            title="Список пользователей"
+                            title="Пользователи и права"
                             onPress={handleUsersManagementPress}
                         />
                         <AdminMenuItem

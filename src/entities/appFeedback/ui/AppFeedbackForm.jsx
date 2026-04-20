@@ -20,7 +20,8 @@ export const AppFeedbackForm = ({
     initialComment = '', 
     onSubmit, 
     onCancel,
-    submitting = false 
+    submitting = false,
+    onCommentFocus,
 }) => {
     const [rating, setRating] = useState(initialRating);
     const [comment, setComment] = useState(initialComment);
@@ -96,6 +97,7 @@ export const AppFeedbackForm = ({
                         setErrors(prev => ({ ...prev, comment: null }));
                     }
                 }}
+                onFocus={onCommentFocus}
                 placeholder="Расскажите, что вам нравится или что можно улучшить..."
                 placeholderTextColor={Color.grey7D7D7D}
                 multiline

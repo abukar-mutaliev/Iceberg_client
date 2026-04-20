@@ -39,7 +39,7 @@ export const adminApi = {
 
   // Создание администратора
   async createAdmin(data) {
-    return createProtectedRequest('post', '/api/admin/create-admin', data);
+    return createProtectedRequest('post', '/api/admin/admins', data);
   },
 
   // Создание сотрудника

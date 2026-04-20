@@ -22,6 +22,12 @@ import { useCustomAlert } from '@shared/ui/CustomAlert';
 import { adminApi } from '@entities/admin/api/adminApi';
 import { districtApi } from '@entities/district/api/districtApi';
 import CustomButton from '@shared/ui/Button/CustomButton';
+import { ProcessingRoleAssignment } from '@entities/admin/ui/ProcessingRoleAssignment';
+import {
+    PROCESSING_ROLES,
+    PROCESSING_ROLE_LABELS,
+    PROCESSING_ROLE_DESCRIPTIONS
+} from '@entities/admin/lib/constants';
 
 const STATUS_LABELS = {
     PENDING: 'На рассмотрении',
@@ -41,9 +47,15 @@ const ROLE_LABELS = {
     SUPPLIER: 'Поставщик'
 };
 
+const EMPLOYEE_PROCESSING_ROLE_OPTIONS = Object.values(PROCESSING_ROLES).map((value) => ({
+    value,
+    label: PROCESSING_ROLE_LABELS[value] || value,
+    description: PROCESSING_ROLE_DESCRIPTIONS[value] || ''
+}));
+
 export const StaffApplicationsScreen = () => {
     const navigation = useNavigation();
-    const { showError, showSuccess, showAlert } = useCustomAlert();
+    const { showError, showSuccess } = useCustomAlert();
     
     const [applications, setApplications] = useState([]);
     const [statistics, setStatistics] = useState({});
@@ -56,7 +68,7 @@ export const StaffApplicationsScreen = () => {
     // Модальное окно одобрения
     const [approveModalVisible, setApproveModalVisible] = useState(false);
     const [selectedApplication, setSelectedApplication] = useState(null);
-    const [position, setPosition] = useState('');
+    const [selectedProcessingRole, setSelectedProcessingRole] = useState(null);
     const [selectedWarehouse, setSelectedWarehouse] = useState(null);
     const [selectedDistricts, setSelectedDistricts] = useState([]);
     const [warehouses, setWarehouses] = useState([]);
@@ -68,6 +80,7 @@ export const StaffApplicationsScreen = () => {
     const [rejectionReason, setRejectionReason] = useState('');
     
     // Модальные окна для выбора
+    const [processingRoleSelectVisible, setProcessingRoleSelectVisible] = useState(false);
     const [warehouseSelectVisible, setWarehouseSelectVisible] = useState(false);
     const [districtsSelectVisible, setDistrictsSelectVisible] = useState(false);
 
@@ -144,10 +157,11 @@ export const StaffApplicationsScreen = () => {
 
     const handleOpenApprove = (application) => {
         setSelectedApplication(application);
-        setPosition('');
+        setSelectedProcessingRole(null);
         setSelectedWarehouse(null);
         // Устанавливаем районы из заявки, если они есть
         setSelectedDistricts(application.districts || []);
+        setProcessingRoleSelectVisible(false);
         setApproveModalVisible(true);
     };
 
@@ -157,10 +171,24 @@ export const StaffApplicationsScreen = () => {
         setRejectModalVisible(true);
     };
 
+    const loadApprovedEmployeeId = async (userId) => {
+        const userRes = await adminApi.getUserById(userId);
+        const user = userRes?.data?.data?.user
+            || userRes?.data?.user
+            || userRes?.user
+            || userRes?.data;
+
+        return user?.employee?.id || user?.profile?.id || null;
+    };
+
     const handleApprove = async () => {
         const requestData = {};
 
         if (selectedApplication.desiredRole === 'EMPLOYEE') {
+            if (!selectedProcessingRole) {
+                showError('Ошибка', 'Необходимо выбрать должность сотрудника');
+                return;
+            }
             if (!selectedWarehouse) {
                 showError('Ошибка', 'Необходимо выбрать склад работы');
                 return;
@@ -171,7 +199,6 @@ export const StaffApplicationsScreen = () => {
             }
             requestData.warehouseId = selectedWarehouse.id;
             requestData.districts = selectedDistricts.map(d => d.id);
-            if (position) requestData.position = position;
         }
 
         if (selectedApplication.desiredRole === 'DRIVER') {
@@ -188,6 +215,24 @@ export const StaffApplicationsScreen = () => {
         try {
             setIsSubmitting(true);
             await adminApi.approveStaffApplication(selectedApplication.id, requestData);
+
+            if (selectedApplication.desiredRole === 'EMPLOYEE' && selectedProcessingRole) {
+                try {
+                    const employeeId = await loadApprovedEmployeeId(selectedApplication.user?.id);
+
+                    if (!employeeId) {
+                        throw new Error('Не удалось получить ID сотрудника после одобрения заявки');
+                    }
+
+                    await adminApi.assignProcessingRole(employeeId, selectedProcessingRole);
+                } catch (roleError) {
+                    console.error('Ошибка назначения должности после одобрения заявки:', roleError);
+                    showError(
+                        'Заявка одобрена частично',
+                        'Сотрудник создан, но должность не была назначена. Ее можно назначить позже в разделе "Должности сотрудников".'
+                    );
+                }
+            }
             
             showSuccess(
                 'Заявка одобрена!',
@@ -195,6 +240,7 @@ export const StaffApplicationsScreen = () => {
             );
             
             setApproveModalVisible(false);
+            setProcessingRoleSelectVisible(false);
             await loadData();
         } catch (error) {
             console.error('Ошибка одобрения заявки:', error);
@@ -242,6 +288,10 @@ export const StaffApplicationsScreen = () => {
             }
         });
     };
+
+    const selectedProcessingRoleOption = EMPLOYEE_PROCESSING_ROLE_OPTIONS.find(
+        (role) => role.value === selectedProcessingRole
+    );
 
     // Рендер карточки заявки
     const renderApplicationCard = ({ item }) => {
@@ -405,13 +455,15 @@ export const StaffApplicationsScreen = () => {
                         {selectedApplication?.desiredRole === 'EMPLOYEE' && (
                             <>
                                 <View style={styles.inputContainer}>
-                                    <Text style={styles.inputLabel}>Должность</Text>
-                                    <TextInput
-                                        style={styles.textInput}
-                                        value={position}
-                                        onChangeText={setPosition}
-                                        placeholder="Введите должность"
-                                    />
+                                    <Text style={styles.inputLabel}>Должность *</Text>
+                                    <TouchableOpacity
+                                        style={styles.selectButton}
+                                        onPress={() => setProcessingRoleSelectVisible(true)}
+                                    >
+                                        <Text style={selectedProcessingRole ? styles.selectButtonTextSelected : styles.selectButtonText}>
+                                            {selectedProcessingRoleOption?.label || 'Выберите должность'}
+                                        </Text>
+                                    </TouchableOpacity>
                                 </View>
 
                                 <View style={styles.inputContainer}>
@@ -718,6 +770,21 @@ export const StaffApplicationsScreen = () => {
             {renderRejectModal()}
             {renderWarehouseSelectModal()}
             {renderDistrictsSelectModal()}
+            <ProcessingRoleAssignment
+                employee={selectedApplication ? {
+                    id: selectedApplication.id,
+                    name: selectedApplication.user?.client?.name || 'Пользователь',
+                    email: selectedApplication.user?.email || ''
+                } : null}
+                onAssign={(_, processingRole) => {
+                    setSelectedProcessingRole(processingRole);
+                    setProcessingRoleSelectVisible(false);
+                }}
+                onCancel={() => setProcessingRoleSelectVisible(false)}
+                visible={processingRoleSelectVisible}
+                loading={isSubmitting}
+                roleOptions={EMPLOYEE_PROCESSING_ROLE_OPTIONS}
+            />
         </SafeAreaView>
     );
 };

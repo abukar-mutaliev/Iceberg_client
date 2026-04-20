@@ -12,7 +12,6 @@ import {
   Modal,
   FlatList,
   Animated,
-  ActionSheetIOS,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -26,7 +25,6 @@ import Constants from 'expo-constants';
 
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
 
 import { getImageUrl } from '@shared/api/api';
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
@@ -43,7 +41,7 @@ const ViewerOverlay = ({
   currentIndex,
 }) => {
   const insets = useSafeAreaInsets();
-  const { showError, showSuccess, showAlert } = useCustomAlert();
+  const { showError, showSuccess } = useCustomAlert();
 
   const [menuVisible, setMenuVisible] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -54,82 +52,66 @@ const ViewerOverlay = ({
     setMenuVisible(false);
   }, [currentIndex]);
 
+  const getTempImagePath = useCallback((sourceUri) => {
+    const cleanUri = sourceUri.split('?')[0];
+    const match = cleanUri.match(/\.(jpg|jpeg|png|webp|gif|heic|heif)$/i);
+    const extension = match ? match[0].toLowerCase() : '.jpg';
+    return `${FileSystem.cacheDirectory}img_${Date.now()}${extension}`;
+  }, []);
+
+  const prepareImageForSaving = useCallback(async (sourceUri) => {
+    if (sourceUri.startsWith('file://')) {
+      return { localUri: sourceUri, shouldCleanup: false };
+    }
+
+    const filePath = getTempImagePath(sourceUri);
+    const downloadResult = await FileSystem.downloadAsync(sourceUri, filePath);
+
+    if (!downloadResult?.uri) {
+      throw new Error('Не удалось загрузить изображение');
+    }
+
+    return { localUri: downloadResult.uri, shouldCleanup: true };
+  }, [getTempImagePath]);
+
+  const cleanupTempFile = useCallback(async (fileUri, shouldCleanup) => {
+    if (!shouldCleanup || !fileUri?.startsWith('file://')) {
+      return;
+    }
+
+    try {
+      await FileSystem.deleteAsync(fileUri, { idempotent: true });
+    } catch (cleanupError) {
+      console.log('Ошибка очистки временного файла:', cleanupError);
+    }
+  }, []);
+
+  const ensureGalleryPermission = useCallback(async () => {
+    const currentPermission = await MediaLibrary.getPermissionsAsync(true, ['photo']);
+
+    if (currentPermission.granted) {
+      return currentPermission;
+    }
+
+    return MediaLibrary.requestPermissionsAsync(true, ['photo']);
+  }, []);
+
   const saveImage = async () => {
+    let preparedImage = null;
+
     try {
       setLoading(true);
       setMenuVisible(false);
 
-      let localUri = uri;
-
-      if (!uri.startsWith('file://')) {
-        const file = FileSystem.cacheDirectory + `img_${Date.now()}.jpg`;
-        const { uri: downloaded } = await FileSystem.downloadAsync(uri, file);
-        localUri = downloaded;
-      }
-
-      if (await Sharing.isAvailableAsync()) {
-        if (Platform.OS === 'ios') {
-          ActionSheetIOS.showActionSheetWithOptions(
-            {
-              title: 'Изображение',
-              message: 'Выберите действие',
-              options: ['Поделиться', 'Сохранить', 'Отмена'],
-              cancelButtonIndex: 2,
-            },
-            async (buttonIndex) => {
-              if (buttonIndex === 0) {
-                try {
-                  await Sharing.shareAsync(localUri, {
-                    mimeType: 'image/jpeg',
-                    dialogTitle: 'Сохранить изображение',
-                  });
-                } catch (shareError) {
-                  console.error('Ошибка шаринга:', shareError);
-                  showError('Ошибка', 'Не удалось поделиться изображением');
-                }
-              }
-              if (buttonIndex === 1) {
-                await saveToGallery(localUri);
-              }
-            }
-          );
-        } else {
-          showAlert({
-            type: 'info',
-            title: 'Изображение',
-            message: 'Выберите действие',
-            buttons: [
-              { 
-                text: 'Поделиться', 
-                onPress: async () => {
-                  try {
-                    await Sharing.shareAsync(localUri, {
-                      mimeType: 'image/jpeg',
-                      dialogTitle: 'Сохранить изображение'
-                    });
-                  } catch (shareError) {
-                    console.error('Ошибка шаринга:', shareError);
-                    showError('Ошибка', 'Не удалось поделиться изображением');
-                  }
-                }
-              },
-              {
-                text: 'Сохранить',
-                onPress: async () => {
-                  await saveToGallery(localUri);
-                },
-              },
-              { text: 'Отмена', style: 'cancel' },
-            ]
-          });
-        }
-      } else {
-        await saveToGallery(localUri);
-      }
+      preparedImage = await prepareImageForSaving(uri);
+      await saveToGallery(preparedImage.localUri);
     } catch (error) {
       console.error('Ошибка обработки изображения:', error);
       showError('Ошибка', 'Не удалось обработать изображение');
     } finally {
+      if (preparedImage) {
+        await cleanupTempFile(preparedImage.localUri, preparedImage.shouldCleanup);
+      }
       setLoading(false);
     }
   };
@@ -138,7 +120,7 @@ const ViewerOverlay = ({
   const headerHeight = 56 + safeTop;
   const menuTop = headerHeight;
 
-  const saveToGallery = async (fileUri) => {
+  const saveToGallery = useCallback(async (fileUri) => {
     try {
       if (Constants.appOwnership === 'expo') {
         showError(
@@ -148,7 +130,7 @@ const ViewerOverlay = ({
         return;
       }
 
-      const { status } = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
+      const { status } = await ensureGalleryPermission();
 
       if (status !== 'granted') {
         showError(
@@ -165,31 +147,27 @@ const ViewerOverlay = ({
         throw new Error('Временный файл не найден');
       }
 
-      let asset;
       try {
-        asset = await MediaLibrary.createAssetAsync(fileUri);
-      } catch (error1) {
+        await MediaLibrary.saveToLibraryAsync(fileUri);
+      } catch (saveError) {
         try {
-          asset = await MediaLibrary.createAssetAsync(fileUri, {
-            mediaType: 'photo',
-            album: 'Iceberg App'
-          });
-        } catch (error2) {
-          try {
-            asset = await MediaLibrary.saveToLibraryAsync(fileUri);
-          } catch (error3) {
-            throw new Error('Все методы сохранения недоступны');
+          const asset = await MediaLibrary.createAssetAsync(fileUri);
+
+          if (Platform.OS === 'android') {
+            const album = await MediaLibrary.getAlbumAsync('Iceberg App');
+
+            if (album) {
+              await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
+            } else {
+              await MediaLibrary.createAlbumAsync('Iceberg App', asset, false);
+            }
           }
+        } catch (assetError) {
+          throw assetError || saveError || new Error('Все методы сохранения недоступны');
         }
       }
 
       showSuccess('Успешно', 'Изображение сохранено в галерею');
-
-      try {
-        await FileSystem.deleteAsync(fileUri);
-      } catch (cleanupError) {
-        console.log('Ошибка очистки временного файла:', cleanupError);
-      }
     } catch (error) {
       console.error('Ошибка сохранения в галерею:', error);
 
@@ -208,14 +186,8 @@ const ViewerOverlay = ({
       }
 
       showError('Ошибка', errorMessage);
-
-      try {
-        await FileSystem.deleteAsync(fileUri);
-      } catch (cleanupError) {
-        console.log('Ошибка очистки временного файла:', cleanupError);
-      }
     }
-  };
+  }, [ensureGalleryPermission, showError, showSuccess]);
 
   return (
     <>

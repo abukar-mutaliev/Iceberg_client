@@ -346,7 +346,9 @@ export const useComposerSend = ({
     
     if (currentFiles.length > 0) {
       sendImageMessages(currentFiles, currentText);
+      return;
     }
+
     if (currentText.length > 0) {
       sendTextMessage(currentText);
     }

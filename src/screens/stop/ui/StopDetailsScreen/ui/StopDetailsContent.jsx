@@ -365,13 +365,13 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
     const [isCreatingChat, setIsCreatingChat] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const isSuperAdmin = !!user?.admin?.isSuperAdmin;
-    const isOwnedStop = !!(
-        isSuperAdmin ||
+    const isAdminOrEmployee = ['ADMIN', 'EMPLOYEE'].includes(user?.role) || isSuperAdmin;
+    const isDriverOwnedStop = !!(
         (user?.id && stop?.driver?.userId === user.id) ||
         (user?.driver?.id && stop?.driverId === user.driver.id)
     );
-    const canEdit = isOwnedStop && (['DRIVER', 'ADMIN', 'EMPLOYEE'].includes(user?.role) || isSuperAdmin);
-    const canDelete = isOwnedStop && (['DRIVER', 'ADMIN'].includes(user?.role) || isSuperAdmin);
+    const canEdit = isAdminOrEmployee || (user?.role === 'DRIVER' && isDriverOwnedStop);
+    const canDelete = isAdminOrEmployee || (user?.role === 'DRIVER' && isDriverOwnedStop);
     const isAuthenticated = !!user;
     
     // Определяем, запущено ли приложение в Expo Go
@@ -584,18 +584,19 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
 
     const openNativeMaps = () => {
         const { latitude, longitude } = mapCoordinates;
-        const address = stop.address || 'Остановка';
+        const label = encodeURIComponent(stop.address || 'Остановка');
+        const coordinates = `${latitude},${longitude}`;
 
         const url = Platform.select({
-            ios: `maps://app?daddr=${latitude},${longitude}&dirflg=d&saddr=Current%20Location`,
-            android: `geo:${latitude},${longitude}?q=${encodeURIComponent(address)}`
+            ios: `maps://app?daddr=${coordinates}&dirflg=d&saddr=Current%20Location`,
+            android: `geo:0,0?q=${coordinates}(${label})`
         });
 
         Linking.canOpenURL(url).then(supported => {
             if (supported) {
                 Linking.openURL(url);
             } else {
-                const webUrl = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+                const webUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(coordinates)}`;
                 Linking.openURL(webUrl);
             }
         }).catch(err => {

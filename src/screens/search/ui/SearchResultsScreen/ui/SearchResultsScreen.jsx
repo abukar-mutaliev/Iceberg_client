@@ -11,7 +11,7 @@ import {
     TouchableOpacity,
     ActivityIndicator
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -59,6 +59,8 @@ export const SearchResultsScreen = () => {
     const navigation = useNavigation();
     const route = useRoute();
     const dispatch = useDispatch();
+    const insets = useSafeAreaInsets();
+    const tabBarHeight = 80 + insets.bottom;
 
     const searchQuery = route.params?.searchQuery || '';
     const filterApplied = route.params?.filterApplied || false;
@@ -290,12 +292,17 @@ export const SearchResultsScreen = () => {
                     </View>
                 ) : filteredProducts.length > 0 ? (
                     <FlatList
+                        style={styles.list}
                         data={filteredProducts}
                         renderItem={renderItem}
                         keyExtractor={(item) => item.id?.toString() || Math.random().toString()}
                         numColumns={NUM_COLUMNS}
-                        contentContainerStyle={styles.listContent}
+                        contentContainerStyle={[
+                            styles.listContent,
+                            { paddingBottom: tabBarHeight + normalize(20) }
+                        ]}
                         showsVerticalScrollIndicator={false}
+                        scrollIndicatorInsets={{ bottom: tabBarHeight }}
                         columnWrapperStyle={styles.columnWrapper}
                         extraData={forceUpdate}
                     />
@@ -400,13 +407,16 @@ const styles = StyleSheet.create({
     },
     contentWrapper: {
         flex: 1,
+        minHeight: 0,
         backgroundColor: 'white',
         zIndex: 0,
         paddingTop: normalize(15),
     },
+    list: {
+        flex: 1,
+    },
     listContent: {
         paddingTop: normalize(24),
-        paddingBottom: normalize(20),
     },
     columnWrapper: {
         justifyContent: 'flex-start',

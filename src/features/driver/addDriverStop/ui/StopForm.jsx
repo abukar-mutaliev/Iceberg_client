@@ -606,8 +606,12 @@ export const StopForm = memo(({
 
             const startDateTime = getFullStartDateTime();
             const endDateTime = getFullEndDateTime();
-            const startTimeIso = toLocalISOString(startDateTime);
-            const endTimeIso = toLocalISOString(endDateTime);
+            const startTimeIso = scheduleEnabled
+                ? toLocalISOString(startDateTime)
+                : startDateTime.toISOString();
+            const endTimeIso = scheduleEnabled
+                ? toLocalISOString(endDateTime)
+                : endDateTime.toISOString();
 
             const stopData = {
                 address,

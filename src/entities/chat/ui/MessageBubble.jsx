@@ -451,6 +451,12 @@ const BubbleContainer = ({
             activeOpacity={canPress ? 0.7 : 1}
             disabled={false}
         >
+            {isSelectionMode && isSelected && (
+                <View
+                    pointerEvents="none"
+                    style={styles.selectedMessageBackground}
+                />
+            )}
             {text && (
                 <MeasureText
                     text={text}
@@ -2454,10 +2460,12 @@ export const MessageBubble = memo(({
 const styles = StyleSheet.create({
     messageContainer: {
         flexDirection: 'row',
-        marginVertical: 1,
+        marginVertical: 0,
         alignItems: 'flex-start',
         marginHorizontal: -8,
         paddingHorizontal: 16,
+        paddingVertical: 2,
+        position: 'relative',
     },
     pollContainer: {
         padding: 8,
@@ -2575,10 +2583,15 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-start',
     },
     selectedMessageContainer: {
-        backgroundColor: 'rgba(191,191,191,0.5)',
-        marginHorizontal: -8,
-        paddingHorizontal: 16,
-        paddingVertical: 4,
+    },
+    selectedMessageBackground: {
+        position: 'absolute',
+        top: 1,
+        bottom: 1,
+        left: 0,
+        right: 0,
+        backgroundColor: 'rgba(37, 211, 102, 0.18)',
+        borderRadius: 0,
     },
 
     // Аватар ВВЕРХУ

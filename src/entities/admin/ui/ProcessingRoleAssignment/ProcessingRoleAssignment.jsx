@@ -22,10 +22,21 @@ export const ProcessingRoleAssignment = ({
   onAssign, 
   onCancel, 
   visible, 
-  loading = false 
+  loading = false,
+  roleOptions = null
 }) => {
   const [selectedRole, setSelectedRole] = useState(null);
   const { showAlert } = useCustomAlert();
+
+  const resolvedRoleOptions = Array.isArray(roleOptions) && roleOptions.length > 0
+    ? roleOptions
+    : Object.values(PROCESSING_ROLES)
+        .filter(role => role !== 'QUALITY_CHECKER')
+        .map((role) => ({
+          value: role,
+          label: PROCESSING_ROLE_LABELS[role],
+          description: PROCESSING_ROLE_DESCRIPTIONS[role]
+        }));
 
   const handleRoleSelect = (role) => {
     setSelectedRole(role);
@@ -73,12 +84,13 @@ export const ProcessingRoleAssignment = ({
     onCancel();
   };
 
-  const renderRoleOption = (role, index) => {
+  const renderRoleOption = (roleOption, index) => {
+    const role = roleOption?.value;
     const isSelected = selectedRole === role;
-    const label = PROCESSING_ROLE_LABELS[role];
-    const icon = PROCESSING_ROLE_ICONS[role];
-    const color = PROCESSING_ROLE_COLORS[role];
-    const description = PROCESSING_ROLE_DESCRIPTIONS[role];
+    const label = roleOption?.label || PROCESSING_ROLE_LABELS[role] || role;
+    const icon = PROCESSING_ROLE_ICONS[role] || '👤';
+    const color = PROCESSING_ROLE_COLORS[role] || '#007bff';
+    const description = roleOption?.description || PROCESSING_ROLE_DESCRIPTIONS[role] || '';
 
     return (
       <TouchableOpacity
@@ -142,9 +154,7 @@ export const ProcessingRoleAssignment = ({
             showsVerticalScrollIndicator={true}
             nestedScrollEnabled={true}
           >
-            {Object.values(PROCESSING_ROLES)
-              .filter(role => role !== 'QUALITY_CHECKER') // Убираем контроллера качества
-              .map((role, index) => renderRoleOption(role, index))}
+            {resolvedRoleOptions.map((roleOption, index) => renderRoleOption(roleOption, index))}
           </ScrollView>
 
           <View style={styles.footer}>

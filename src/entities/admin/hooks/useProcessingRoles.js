@@ -10,7 +10,13 @@ import {
 
 export const useProcessingRoles = () => {
   const dispatch = useDispatch();
-  const userRole = useSelector(state => state.auth?.user?.role);
+  const currentUser = useSelector(state => state.auth?.user);
+  const userRole = currentUser?.role;
+  const isSuperAdmin = userRole === 'ADMIN' && Boolean(
+    currentUser?.admin?.isSuperAdmin ||
+    currentUser?.profile?.isSuperAdmin ||
+    currentUser?.isSuperAdmin
+  );
   
   // Состояние из Redux
   const employees = useSelector(state => state.processingRoles.employees);
@@ -23,10 +29,10 @@ export const useProcessingRoles = () => {
 
   // Проверка прав доступа  
   const accessRights = useMemo(() => ({
-    canViewProcessingRoles: userRole === 'ADMIN',
-    canAssignProcessingRoles: userRole === 'ADMIN', // Только суперадмин может назначать должности
-    isSuperAdmin: userRole === 'ADMIN' // В реальном приложении нужно проверять isSuperAdmin
-  }), [userRole]);
+    canViewProcessingRoles: isSuperAdmin,
+    canAssignProcessingRoles: isSuperAdmin,
+    isSuperAdmin
+  }), [isSuperAdmin]);
 
   // Загрузка сотрудников с должностями
   const loadEmployees = useCallback(async (options = {}) => {
@@ -89,6 +95,7 @@ export const useProcessingRoles = () => {
       QUALITY_CHECKER: 0,
       COURIER: 0,
       SUPERVISOR: 0,
+      MANAGER: 0,
       UNASSIGNED: 0
     };
 

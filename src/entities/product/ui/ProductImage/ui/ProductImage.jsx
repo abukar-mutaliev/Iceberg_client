@@ -1,20 +1,18 @@
-import React, {useRef, useState} from "react";
-import {Dimensions, Image, StyleSheet, View, Text, TouchableOpacity} from "react-native";
+import React, {useRef, useState, useCallback, useEffect} from "react";
+import {Dimensions, StyleSheet, View, Text, TouchableOpacity} from "react-native";
 import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import PagerView from "react-native-pager-view";
 import {CustomSliderIndicator} from "@shared/ui/CustomSliderIndicator";
-
-// Fallback для defaultSource, когда нужен Image placeholder
-const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
+import { ReliableImage } from '@shared/ui/ReliableImage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export const ProductImage = ({ images, style, onImagePress }) => {
-    // Улучшена обработка изображений
     const [loadingError, setLoadingError] = useState({});
     const [activeIndex, setActiveIndex] = useState(0);
     const pagerRef = useRef(null);
+    const prevImagesKeyRef = useRef(null);
 
     let imageArray = [];
 
@@ -28,40 +26,47 @@ export const ProductImage = ({ images, style, onImagePress }) => {
         }
     }
 
+    const imagesKey = imageArray.map(i => (typeof i === 'string' ? i : i?.uri || '')).join('|');
+    useEffect(() => {
+        if (prevImagesKeyRef.current !== null && prevImagesKeyRef.current !== imagesKey) {
+            setLoadingError({});
+            setActiveIndex(0);
+        }
+        prevImagesKeyRef.current = imagesKey;
+    }, [imagesKey]);
 
-    const handlePageSelected = (event) => {
+    const handlePageSelected = useCallback((event) => {
         const newIndex = event.nativeEvent.position;
         setActiveIndex(newIndex);
-    };
+    }, []);
 
-    const goToPrevious = () => {
+    const goToPrevious = useCallback(() => {
         if (pagerRef.current && activeIndex > 0) {
             const targetIndex = activeIndex - 1;
             pagerRef.current.setPage(targetIndex);
             setActiveIndex(targetIndex);
         }
-    };
+    }, [activeIndex]);
 
-    const goToNext = () => {
+    const goToNext = useCallback(() => {
         if (pagerRef.current && activeIndex < imageArray.length - 1) {
             const targetIndex = activeIndex + 1;
             pagerRef.current.setPage(targetIndex);
             setActiveIndex(targetIndex);
         }
-    };
+    }, [activeIndex, imageArray.length]);
 
-    const handleImageError = (index) => {
-        console.error(`Error loading image at index ${index}`);
+    const handleImageError = useCallback((index) => {
         setLoadingError(prev => ({...prev, [index]: true}));
-    };
+    }, []);
 
-    const handleImagePress = (index) => {
+    const handleImagePress = useCallback((index) => {
         if (onImagePress && imageArray.length > 0) {
             onImagePress(imageArray, index);
         }
-    };
+    }, [onImagePress, imageArray]);
 
-    const Placeholder = ({ style: placeholderStyle }) => (
+    const PlaceholderComponent = useCallback(({ style: placeholderStyle }) => (
         <View style={[styles.placeholderContainer, placeholderStyle]}>
             <LinearGradient
                 colors={['#dfe7ff', '#cdd6ff', '#bfc7ff']}
@@ -73,14 +78,10 @@ export const ProductImage = ({ images, style, onImagePress }) => {
                 <Text style={styles.placeholderText}>Нет фото</Text>
             </LinearGradient>
         </View>
-    );
+    ), []);
 
     const renderImages = () => {
         return imageArray.map((item, index) => {
-            const imageSource = typeof item === 'string'
-                ? { uri: item }
-                : item;
-                
             return (
                 <View key={`image-${index}`} style={styles.slide}>
                     <TouchableOpacity
@@ -89,20 +90,23 @@ export const ProductImage = ({ images, style, onImagePress }) => {
                         onPress={() => handleImagePress(index)}
                     >
                         {loadingError[index] ? (
-                            <Placeholder />
+                            <PlaceholderComponent />
                         ) : (
                             <View style={styles.blurWrapper}>
-                                <Image
-                                    source={imageSource}
+                                <ReliableImage
+                                    source={item}
                                     style={styles.blurBackground}
                                     resizeMode="cover"
                                     blurRadius={20}
+                                    showPlaceholder={false}
+                                    fadeDuration={0}
                                 />
-                                <Image
-                                    source={imageSource}
+                                <ReliableImage
+                                    source={item}
                                     style={styles.fullImage}
                                     resizeMode="contain"
-                                    defaultSource={placeholderImage}
+                                    showPlaceholder={false}
+                                    fadeDuration={0}
                                     onError={() => handleImageError(index)}
                                 />
                             </View>
@@ -116,7 +120,7 @@ export const ProductImage = ({ images, style, onImagePress }) => {
     if (imageArray.length === 0) {
         return (
             <View style={[styles.container, style]}>
-                <Placeholder style={styles.slide} />
+                <PlaceholderComponent style={styles.slide} />
             </View>
         );
     }

@@ -2,7 +2,6 @@ import React, { useCallback, useMemo, useRef, useState, useEffect } from 'react'
 import {
     View,
     Text,
-    Image,
     StyleSheet,
     TouchableOpacity,
     Pressable,
@@ -18,7 +17,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { useDispatch } from "react-redux";
 import { AddToCartButton } from '@shared/ui/Cart/ui/AddToCartButton';
 import { CustomSliderIndicator } from '@shared/ui/CustomSliderIndicator';
-import { formatImageUrl } from '@shared/api/api';
+import { ReliableImage, Placeholder as ImagePlaceholder, normalizeImageSource } from '@shared/ui/ReliableImage';
 
 const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
 
@@ -277,15 +276,7 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
     }, []);
 
     const renderPlaceholder = useCallback(() => (
-        <LinearGradient
-            colors={['#dfe7ff', '#cdd6ff', '#bfc7ff']}
-            style={styles.placeholder}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-        >
-            <Icon name="image" size={28} color="rgba(255,255,255,0.95)" />
-            <Text style={styles.placeholderText}>Нет фото</Text>
-        </LinearGradient>
+        <ImagePlaceholder style={styles.placeholder} iconSize={28} text="Нет фото" />
     ), []);
 
     // Очистка timeout при размонтировании
@@ -298,21 +289,7 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
     }, []);
 
     const getImageSource = useCallback((item) => {
-        if (typeof item === 'string') {
-            const url = formatImageUrl(item);
-            return url ? { uri: url } : placeholderImage;
-        } else if (item && typeof item === 'object') {
-            if (item.uri) {
-                const url = formatImageUrl(item.uri);
-                return url ? { uri: url } : placeholderImage;
-            }
-            const imageUrl = item.url || item.uri || item.path || item.src;
-            if (imageUrl) {
-                const url = formatImageUrl(imageUrl);
-                return url ? { uri: url } : placeholderImage;
-            }
-        }
-        return placeholderImage;
+        return normalizeImageSource(item) || placeholderImage;
     }, []);
 
     const productData = useMemo(() => {
@@ -547,7 +524,6 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
                             keyboardDismissMode="on-drag"
                         >
                                 {extendedImageArray.map((item, index) => {
-                                    const imageSource = getImageSource(item);
                                     return (
                                         <View 
                                             key={`image-${index}`} 
@@ -557,11 +533,10 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
                                             {loadingError[index % imageArray.length] ? (
                                                 renderPlaceholder()
                                             ) : (
-                                                <Image
-                                                    source={imageSource}
+                                                <ReliableImage
+                                                    source={item}
                                                     style={styles.productImage}
                                                     resizeMode="cover"
-                                                    defaultSource={placeholderImage}
                                                     onError={() => handleImageError(index % imageArray.length)}
                                                 />
                                             )}
@@ -580,11 +555,10 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
                         {imageArray.length === 0 || loadingError[0] ? (
                             renderPlaceholder()
                         ) : (
-                            <Image
+                            <ReliableImage
                                 style={styles.productImage}
                                 resizeMode="cover"
-                                source={getImageSource(imageArray[0])}
-                                defaultSource={placeholderImage}
+                                source={imageArray[0]}
                                 onError={() => handleImageError(0)}
                             />
                         )}
@@ -671,20 +645,11 @@ ProductTile.displayName = 'ProductTile';
 function getProductImage(product) {
     try {
         if (product?.images && Array.isArray(product.images) && product.images.length > 0) {
-            const imageUrl = product.images[0];
-            if (imageUrl && typeof imageUrl === 'string' && imageUrl.trim()) {
-                return { uri: imageUrl.trim() };
-            }
+            return normalizeImageSource(product.images[0]) || placeholderImage;
         }
-
         if (product?.image) {
-            if (typeof product.image === 'string' && product.image.trim()) {
-                return { uri: product.image.trim() };
-            } else if (typeof product.image === 'object' && product.image !== null) {
-                return product.image;
-            }
+            return normalizeImageSource(product.image) || placeholderImage;
         }
-
         return placeholderImage;
     } catch (error) {
         console.warn('Ошибка при получении изображения продукта:', error);

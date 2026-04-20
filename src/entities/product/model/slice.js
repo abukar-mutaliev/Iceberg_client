@@ -245,11 +245,13 @@ export const fetchProductById = createAsyncThunk(
 
 export const createProductChunked = createAsyncThunk(
     'products/createProductChunked',
-    async ({ formData, images, onProgress }, { rejectWithValue }) => {
+    async ({ formData, images, preuploadedUrls, preuploadedImagesMap, onProgress }, { rejectWithValue }) => {
         try {
             const result = await ProductsService.createProductChunked({
                 formData,
-                images
+                images,
+                preuploadedUrls,
+                preuploadedImagesMap
             }, onProgress);
 
             if (result.status === 'error') {

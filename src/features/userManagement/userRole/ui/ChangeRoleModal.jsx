@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Modal, FlatList, Animated, ScrollView, KeyboardAvoidingView, Platform, Dimensions, Keyboard } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Modal, FlatList, Animated, ScrollView, KeyboardAvoidingView, Platform, Dimensions, Keyboard, Switch } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
 import CustomButton from '@shared/ui/Button/CustomButton';
@@ -384,6 +384,8 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
             existingName = user.admin.name;
         } else if (user.driver?.name) {
             existingName = user.driver.name;
+        } else if (user.supplier?.contactPerson) {
+            existingName = user.supplier.contactPerson;
         }
         
         // Сначала проверяем телефон пользователя (из таблицы User - телефон регистрации)
@@ -428,7 +430,13 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
     // При открытии модального окна сбрасываем выбранную роль и инициализируем данные
     useEffect(() => {
         if (visible && user) {
-            setSelectedRole('');
+            const existingIsSuperAdmin = Boolean(
+                user.profile?.isSuperAdmin ||
+                user.admin?.isSuperAdmin ||
+                user.isSuperAdmin
+            );
+
+            setSelectedRole(user.role === 'ADMIN' ? 'ADMIN' : '');
             setFieldErrors({});
             const existingData = getUserExistingData();
             // Очищаем "Не указано" из телефона и адреса, чтобы поля ввода были пустыми
@@ -438,7 +446,10 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
             if (existingData.address && existingData.address.toLowerCase() === 'не указано') {
                 existingData.address = '';
             }
-            setUserData(existingData);
+            setUserData({
+                ...existingData,
+                isSuperAdmin: existingIsSuperAdmin
+            });
             setSelectedWarehouse(null);
             setSelectedEmployeeDistricts([]);
             
@@ -490,7 +501,7 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
         { value: 'EMPLOYEE', label: 'Сотрудник' },
         { value: 'SUPPLIER', label: 'Поставщик' },
         { value: 'DRIVER', label: 'Водитель' }
-    ].filter(role => !user || role.value !== user.role);
+    ].filter(role => !user || role.value !== user.role || role.value === 'ADMIN');
 
     // Обработчик изменения данных пользователя
     const handleUserDataChange = (key, value) => {
@@ -571,6 +582,19 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
             case 'ADMIN':
                 return (
                     <>
+                        {!hasExistingName && (
+                            <>
+                                <Text style={styles.modalLabel}>Имя администратора:</Text>
+                                <TextInput
+                                    style={styles.modalInput}
+                                    value={userData.name || ''}
+                                    onChangeText={(text) => handleUserDataChange('name', text)}
+                                    placeholder="Введите имя администратора"
+                                />
+                                {fieldErrors.name && <Text style={styles.fieldError}>{fieldErrors.name}</Text>}
+                            </>
+                        )}
+
                         {!hasExistingPhone && (
                             <>
                                 <Text style={styles.modalLabel}>Телефон:</Text>
@@ -584,6 +608,21 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                                 {fieldErrors.phone && <Text style={styles.fieldError}>{fieldErrors.phone}</Text>}
                             </>
                         )}
+
+                        <View style={styles.switchContainer}>
+                            <View style={styles.switchTextContainer}>
+                                <Text style={styles.modalLabel}>Права суперадминистратора</Text>
+                                <Text style={styles.switchHint}>
+                                    Даёт полный доступ к управлению администраторами, ролями и чувствительными настройками
+                                </Text>
+                            </View>
+                            <Switch
+                                value={Boolean(userData.isSuperAdmin)}
+                                onValueChange={(value) => handleUserDataChange('isSuperAdmin', value)}
+                                trackColor={{ false: '#767577', true: Color.blue2 }}
+                                thumbColor={userData.isSuperAdmin ? '#fff' : '#f4f3f4'}
+                            />
+                        </View>
                     </>
                 );
             case 'CLIENT':
@@ -883,6 +922,10 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                 data.contactPerson = userData.contactPerson.trim();
             }
         }
+
+        if (selectedRole === 'ADMIN') {
+            data.isSuperAdmin = Boolean(userData.isSuperAdmin);
+        }
         
         console.log('[ChangeRoleModal] prepareSubmitData результат:', { selectedRole, data, selectedProcessingRole });
         return data;
@@ -1142,6 +1185,22 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         color: Color.activeBlue,
         fontStyle: 'italic',
+    },
+    switchContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: normalize(16),
+    },
+    switchTextContainer: {
+        flex: 1,
+        paddingRight: normalize(12),
+    },
+    switchHint: {
+        fontSize: normalizeFont(FontSize.size_xs),
+        fontFamily: FontFamily.sFProText,
+        color: Color.textSecondary,
+        lineHeight: normalize(16),
     },
     modalActions: {
         flexDirection: 'row',

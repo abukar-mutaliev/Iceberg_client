@@ -297,10 +297,15 @@ export const VoiceRecorder = ({ onSend, onCancel, roomId }) => {
     isStartingRef.current = true;
     
     try {
-      // Разрешение уже проверено в Composer, здесь просто убеждаемся что оно есть
-      const { status: currentStatus } = await Audio.getPermissionsAsync();
-      
-      if (currentStatus !== 'granted') {
+      const currentPermission = await Audio.getPermissionsAsync();
+      let hasPermission = currentPermission.granted;
+
+      if (!hasPermission) {
+        const requestedPermission = await Audio.requestPermissionsAsync();
+        hasPermission = requestedPermission.granted;
+      }
+
+      if (!hasPermission) {
         console.error('VoiceRecorder открылся без разрешения микрофона!');
         onCancel();
         return;

@@ -22,13 +22,11 @@ const VoiceMessageIcon = React.memo(() => (
     </View>
 ));
 
-// Исправленный компонент для отображения галочек статуса сообщения
+// Отображение статуса в списке должно совпадать с пузырьком сообщения.
 const StatusTicks = React.memo(({status}) => {
-    // Нормализуем статус для правильной обработки
     const normalizedStatus = status?.toUpperCase?.() || status;
 
-    // Исправленная логика - проверяем оба варианта
-    if (normalizedStatus === 'READ' || normalizedStatus === 'read') {
+    if (normalizedStatus === 'READ') {
         return (
             <View style={styles.ticksContainer}>
                 <Text style={[styles.tick, styles.tickRead]}>✓</Text>
@@ -36,18 +34,11 @@ const StatusTicks = React.memo(({status}) => {
             </View>
         );
     }
-    if (normalizedStatus === 'DELIVERED' || normalizedStatus === 'delivered') {
+    if (normalizedStatus === 'DELIVERED' || normalizedStatus === 'SENT') {
         return (
             <View style={styles.ticksContainer}>
                 <Text style={styles.tick}>✓</Text>
                 <Text style={styles.tick}>✓</Text>
-            </View>
-        );
-    }
-    if (normalizedStatus === 'SENT') {
-        return (
-            <View style={styles.ticksContainer}>
-                <Text style={[styles.tick]}>✓</Text>
             </View>
         );
     }
@@ -727,19 +718,19 @@ export const ChatListScreen = ({navigation}) => {
         let messageStatus = 'SENT'; // По умолчанию
 
         if (lastMessage) {
+            const normalizedLastMessageStatus = lastMessage.status?.toUpperCase?.();
+
             // Логика определения статуса по приоритету:
             // READ (синие галочки) -> DELIVERED (серые галочки) -> SENT (одна серая галочка)
             if (lastMessage.readAt ||
-                lastMessage.status?.toLowerCase() === 'read' ||
-                lastMessage.status?.toUpperCase() === 'READ') {
+                normalizedLastMessageStatus === 'READ') {
                 messageStatus = 'READ';
             } else if (lastMessage.deliveredAt ||
-                lastMessage.status?.toLowerCase() === 'delivered' ||
-                lastMessage.status?.toUpperCase() === 'DELIVERED') {
+                normalizedLastMessageStatus === 'DELIVERED') {
                 messageStatus = 'DELIVERED';
-            } else if (lastMessage.status) {
+            } else if (normalizedLastMessageStatus) {
                 // Используем статус из сообщения, нормализуя к верхнему регистру
-                messageStatus = lastMessage.status.toUpperCase();
+                messageStatus = normalizedLastMessageStatus;
             }
         }
 

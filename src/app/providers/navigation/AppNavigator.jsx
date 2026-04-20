@@ -14,6 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useNotifications } from "@entities/notification";
 import PushNotificationService from '@shared/services/PushNotificationService';
 import { useAuth } from "@entities/auth/hooks/useAuth";
+import { selectIsAuthenticated } from "@entities/auth/model/selectors";
 import { navigationRef } from '@shared/utils/NavigationRef';
 
 // Redux Actions
@@ -1320,7 +1321,7 @@ export const MainTabNavigator = () => (
 // ============================================================================
 
 export const AppNavigator = () => {
-    const { isAuthenticated } = useSelector((state) => state.auth);
+    const isAuthenticated = useSelector(selectIsAuthenticated);
     useFavoritesCleanup(isAuthenticated);
     useDeepLinking();
 

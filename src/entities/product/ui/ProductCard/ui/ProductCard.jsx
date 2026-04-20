@@ -5,7 +5,7 @@
 // 4. Добавлены необходимые пропсы в PagerView для корректной работы
 
 import React, { memo, useCallback, useMemo, useRef, useState, useEffect } from 'react';
-import { View, Text, Image, StyleSheet, Pressable, Dimensions, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Dimensions, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import PagerView from "react-native-pager-view";
@@ -14,10 +14,8 @@ import { useProductCard } from "../../../hooks/useProductCard";
 import { useToast } from '@shared/ui/Toast';
 import {AddToCartButton} from "@shared/ui/Cart/ui/AddToCartButton";
 import {CustomSliderIndicator} from "@shared/ui/CustomSliderIndicator";
-import { formatImageUrl } from '@shared/api/api';
+import { ReliableImage, Placeholder as ImagePlaceholder } from '@shared/ui/ReliableImage';
 import * as navigation from "@shared/utils/NavigationRef";
-
-const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const isSmallScreen = SCREEN_WIDTH < 360;
@@ -312,15 +310,7 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
     }, []);
 
     const renderPlaceholder = useCallback((style) => (
-        <LinearGradient
-            colors={['#dfe7ff', '#cdd6ff', '#bfc7ff']}
-            style={[styles.placeholder, style]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-        >
-            <Icon name="image" size={24} color="rgba(255,255,255,0.95)" />
-            <Text style={styles.placeholderText}>Нет фото</Text>
-        </LinearGradient>
+        <ImagePlaceholder style={style} iconSize={24} text="Нет фото" />
     ), []);
 
     // Очистка timeout при размонтировании
@@ -332,23 +322,7 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
         };
     }, []);
 
-    const getImageSource = useCallback((item) => {
-        if (typeof item === 'string') {
-            const url = formatImageUrl(item);
-            return url ? { uri: url } : placeholderImage;
-        } else if (item && typeof item === 'object') {
-            if (item.uri) {
-                const url = formatImageUrl(item.uri);
-                return url ? { uri: url } : placeholderImage;
-            }
-            const imageUrl = item.url || item.uri || item.path || item.src;
-            if (imageUrl) {
-                const url = formatImageUrl(imageUrl);
-                return url ? { uri: url } : placeholderImage;
-            }
-        }
-        return placeholderImage;
-    }, []);
+    // getImageSource is no longer needed — ReliableImage normalizes sources internally
     
     const isActive = productData.isActive !== false;
     const availableBoxes = productData.availableBoxes || 0;
@@ -474,7 +448,6 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                             keyboardDismissMode="on-drag"
                         >
                             {extendedImageArray.map((item, index) => {
-                                const imageSource = getImageSource(item);
                                 return (
                                     <View 
                                         key={`compact-image-${index}`} 
@@ -484,11 +457,10 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                                     {loadingError[index % imageArray.length] ? (
                                         renderPlaceholder(styles.compactProductImage)
                                     ) : (
-                                            <Image
-                                                source={imageSource}
+                                            <ReliableImage
+                                                source={item}
                                                 style={styles.compactProductImage}
                                                 resizeMode="cover"
-                                                defaultSource={placeholderImage}
                                                 onError={() => handleImageError(index % imageArray.length)}
                                             />
                                         )}
@@ -497,11 +469,10 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                             })}
                         </PagerView>
                     ) : imageArray.length === 1 ? (
-                        <Image
+                        <ReliableImage
                             style={styles.compactProductImage}
                             resizeMode="cover"
-                            source={imageArray.length > 0 ? getImageSource(imageArray[0]) : (productData.image || placeholderImage)}
-                            defaultSource={placeholderImage}
+                            source={imageArray[0] || productData.image}
                             onError={() => handleImageError(0)}
                         />
                     ) : (
@@ -584,7 +555,6 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                         keyboardDismissMode="on-drag"
                     >
                         {extendedImageArray.map((item, index) => {
-                            const imageSource = getImageSource(item);
                             return (
                                 <View 
                                     key={`image-${index}`} 
@@ -594,11 +564,10 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                                     {loadingError[index % imageArray.length] ? (
                                         renderPlaceholder([styles.productImage, { width: adaptiveStyles.imageWidth }])
                                     ) : (
-                                        <Image
-                                            source={imageSource}
+                                        <ReliableImage
+                                            source={item}
                                             style={styles.productImage}
                                             resizeMode="cover"
-                                            defaultSource={placeholderImage}
                                             onError={() => handleImageError(index % imageArray.length)}
                                         />
                                     )}
@@ -607,11 +576,10 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                         })}
                     </PagerView>
                 ) : imageArray.length === 1 ? (
-                    <Image
+                    <ReliableImage
                         style={[styles.productImage, { width: adaptiveStyles.imageWidth }]}
                         resizeMode="cover"
-                        source={imageArray.length > 0 ? getImageSource(imageArray[0]) : (productData.image || placeholderImage)}
-                        defaultSource={placeholderImage}
+                        source={imageArray[0] || productData.image}
                         onError={() => handleImageError(0)}
                     />
                 ) : (

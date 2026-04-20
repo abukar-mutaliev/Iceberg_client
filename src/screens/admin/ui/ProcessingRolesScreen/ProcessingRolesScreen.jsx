@@ -246,7 +246,7 @@ export const ProcessingRolesScreen = () => {
     return (
       <View style={styles.accessDeniedContainer}>
         <Text style={styles.accessDeniedText}>
-          У вас нет прав для просмотра должностей сотрудников
+          Только суперадминистратор может просматривать и назначать должности сотрудников
         </Text>
       </View>
     );

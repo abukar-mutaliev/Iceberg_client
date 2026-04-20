@@ -1,1 +1,1 @@
-export { StopCard } from './ui/StopCard';
+export { StopCard, isStopActive } from './ui/StopCard';

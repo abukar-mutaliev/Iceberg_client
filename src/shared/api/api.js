@@ -441,11 +441,29 @@ const handleRefreshToken = async (error, originalRequest) => {
         return Promise.reject(error);
     }
 
+    // Prevent infinite retry loops: if we already retried this request, don't refresh again
+    if (originalRequest._retry) {
+        return Promise.reject(error);
+    }
+
+    // Check if tokens were already refreshed by another path (request interceptor
+    // or refreshAccessToken). Compare the token that failed with the current stored token.
+    const failedToken = originalRequest.headers?.['Authorization']?.replace('Bearer ', '');
+    if (failedToken) {
+        const currentTokens = await getStoredTokens();
+        if (currentTokens?.accessToken && currentTokens.accessToken !== failedToken && isTokenValid(currentTokens.accessToken)) {
+            originalRequest._retry = true;
+            originalRequest.headers['Authorization'] = `Bearer ${currentTokens.accessToken}`;
+            return api(originalRequest);
+        }
+    }
+
     if (isRefreshing) {
         return new Promise((resolve, reject) => {
             failedQueue.push({ resolve, reject });
         })
             .then((token) => {
+                originalRequest._retry = true;
                 originalRequest.headers['Authorization'] = `Bearer ${token}`;
                 return api(originalRequest);
             })
@@ -481,6 +499,7 @@ const handleRefreshToken = async (error, originalRequest) => {
 
         processQueue(null, newTokens.accessToken);
 
+        originalRequest._retry = true;
         originalRequest.headers['Authorization'] = `Bearer ${newTokens.accessToken}`;
 
         return api(originalRequest);
@@ -489,8 +508,6 @@ const handleRefreshToken = async (error, originalRequest) => {
 
         processQueue(refreshError, null);
 
-        // При сетевой ошибке НЕ сбрасываем авторизацию — токены на сервере
-        // могут быть ещё валидны, просто сеть недоступна
         if (isNetworkError(refreshError)) {
             return Promise.reject(Object.assign(refreshError, {
                 isNetworkError: true,
@@ -557,7 +574,6 @@ api.interceptors.request.use(async (config) => {
                     }
 
                     if (!refreshExpired) {
-                        // Если токен уже обновляется, ждем завершения
                         if (isRefreshing) {
                             return new Promise((resolve, reject) => {
                                 failedQueue.push({ resolve, reject });
@@ -581,12 +597,16 @@ api.interceptors.request.use(async (config) => {
                         } catch (refreshError) {
                             console.error('❌ [API REQUEST] Failed to refresh token proactively:', refreshError.message);
                             processQueue(refreshError, null);
+                            // Don't send request with expired token — it would trigger
+                            // a 401 → handleRefreshToken with an already-rotated refresh token.
+                            // Network errors are retriable; 401/403 mean the token is truly dead.
+                            if (!isNetworkError(refreshError)) {
+                                return Promise.reject(refreshError);
+                            }
                             config.headers.Authorization = `Bearer ${tokens.accessToken}`;
                         } finally {
                             isRefreshing = false;
                         }
-                    } else {
-                        config.headers.Authorization = `Bearer ${tokens.accessToken}`;
                     }
                 } else {
                     // Токен валидный, используем его

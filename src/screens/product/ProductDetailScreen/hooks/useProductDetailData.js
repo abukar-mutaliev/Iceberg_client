@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
+import { InteractionManager } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { 
     selectSimilarProducts,
@@ -87,24 +88,23 @@ export const useProductDetailData = (productId, isMountedRef, createSafeTimeout,
         }
     });
 
-    // Загрузка категорий
+    // Загрузка категорий и товаров — откладываем до завершения анимации перехода
     useEffect(() => {
-        if (!categories || categories.length === 0) {
-            dispatch(fetchCategories());
-        }
-    }, [dispatch, categories]);
-
-    // Загрузка остальных товаров при монтировании (только если товаров нет в store)
-    useEffect(() => {
-        if (productId && (!allProducts || allProducts.length < 10)) {
-            dispatch(fetchProducts({
-                page: 1,
-                limit: 20,
-                refresh: false,
-                usePublicCatalog: lastFetchScope === 'publicCatalog',
-            }));
-        }
-    }, [productId, dispatch, allProducts?.length, lastFetchScope]);
+        const task = InteractionManager.runAfterInteractions(() => {
+            if (!categories || categories.length === 0) {
+                dispatch(fetchCategories());
+            }
+            if (productId && (!allProducts || allProducts.length < 10)) {
+                dispatch(fetchProducts({
+                    page: 1,
+                    limit: 20,
+                    refresh: false,
+                    usePublicCatalog: lastFetchScope === 'publicCatalog',
+                }));
+            }
+        });
+        return () => task.cancel?.();
+    }, [productId, dispatch, categories?.length, allProducts?.length, lastFetchScope]);
 
     // Функция загрузки следующей страницы товаров
     const loadMoreProducts = useCallback(() => {

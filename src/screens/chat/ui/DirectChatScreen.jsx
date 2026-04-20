@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useMemo } from 'react';
-import { View, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, StyleSheet, KeyboardAvoidingView, Platform, LayoutAnimation, UIManager } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Composer } from '@entities/chat/ui/Composer/Composer';
 import { ChatBackground } from '@entities/chat/ui/ChatBackground';
@@ -19,6 +19,35 @@ import { useChatReactions } from '../hooks/useChatReactions';
 import { useChatSelection } from '../hooks/useChatSelection';
 
 const MESSAGE_DELETE_WINDOW_HOURS = 48;
+const MESSAGE_DELETE_MODAL_CLOSE_DELAY_MS = 140;
+const MESSAGE_DELETE_ANIMATION_DELAY_MS = 320;
+const MESSAGE_DELETE_LAYOUT_ANIMATION = LayoutAnimation.create(
+  220,
+  LayoutAnimation.Types.easeInEaseOut,
+  LayoutAnimation.Properties.opacity
+);
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+const addIdsToSet = (prev, ids) => {
+  const next = new Set(prev);
+  ids.forEach((id) => {
+    if (id !== null && id !== undefined) {
+      next.add(id);
+    }
+  });
+  return next;
+};
+
+const removeIdsFromSet = (prev, ids) => {
+  const next = new Set(prev);
+  ids.forEach((id) => {
+    next.delete(id);
+  });
+  return next;
+};
 
 export const DirectChatScreen = ({ route, navigation }) => {
   const {
@@ -63,6 +92,8 @@ export const DirectChatScreen = ({ route, navigation }) => {
   const [replyTo, setReplyTo] = useState(null);
   const [animatedPaddingTop, setAnimatedPaddingTop] = useState(0);
   const [composerHeight, setComposerHeight] = useState(56);
+  const [deletingMessageIds, setDeletingMessageIds] = useState(new Set());
+  const [hiddenMessageIds, setHiddenMessageIds] = useState(new Set());
   
   // ============ REFS ============
   const flatListRef = useRef(null);
@@ -157,6 +188,31 @@ export const DirectChatScreen = ({ route, navigation }) => {
     handleCloseReactionPicker(true);
     handleCloseFullEmojiPicker();
   }, [clearSelection, handleCloseReactionPicker, handleCloseFullEmojiPicker]);
+
+  const startOptimisticDelete = useCallback((messageIds) => {
+    if (!messageIds.length) return;
+
+    setDeletingMessageIds((prev) => addIdsToSet(prev, messageIds));
+    setPressedMessageId((prev) => (messageIds.includes(prev) ? null : prev));
+    setHighlightedMessageId((prev) => (messageIds.includes(prev) ? null : prev));
+    setReplyTo((prev) => (prev && messageIds.includes(prev.id) ? null : prev));
+  }, []);
+
+  const restoreOptimisticDelete = useCallback((messageIds) => {
+    if (!messageIds.length) return;
+
+    LayoutAnimation.configureNext(MESSAGE_DELETE_LAYOUT_ANIMATION);
+    setDeletingMessageIds((prev) => removeIdsFromSet(prev, messageIds));
+    setHiddenMessageIds((prev) => removeIdsFromSet(prev, messageIds));
+  }, []);
+
+  const handleDeleteAnimationEnd = useCallback((messageId) => {
+    if (!messageId) return;
+
+    LayoutAnimation.configureNext(MESSAGE_DELETE_LAYOUT_ANIMATION);
+    setDeletingMessageIds((prev) => removeIdsFromSet(prev, [messageId]));
+    setHiddenMessageIds((prev) => addIdsToSet(prev, [messageId]));
+  }, []);
   
   const lifecycle = useChatLifecycle({
     roomId,
@@ -258,12 +314,33 @@ export const DirectChatScreen = ({ route, navigation }) => {
   }, [selectedMessages, messageToForward, rooms, navigation, actions, clearSelectionAndCloseReactions, closeForwardModal]);
   
   const handleDeleteSelectedMessages = useCallback(async (forAll) => {
-    const success = await actions.handleDeleteMessages(messagesToDelete, forAll);
-    if (success) {
-      closeDeleteMessageModal();
-      clearSelectionAndCloseReactions();
+    const messageIds = messagesToDelete.map((message) => message?.id).filter(Boolean);
+
+    closeDeleteMessageModal();
+    clearSelectionAndCloseReactions();
+
+    if (messageIds.length === 0) return;
+
+    await new Promise((resolve) => setTimeout(resolve, MESSAGE_DELETE_MODAL_CLOSE_DELAY_MS));
+    startOptimisticDelete(messageIds);
+    await new Promise((resolve) => setTimeout(resolve, MESSAGE_DELETE_ANIMATION_DELAY_MS));
+
+    const result = await actions.handleDeleteMessages(messagesToDelete, forAll);
+    if (result?.failedIds?.length) {
+      restoreOptimisticDelete(result.failedIds);
     }
-  }, [messagesToDelete, actions, clearSelectionAndCloseReactions, closeDeleteMessageModal]);
+
+    if (!result?.successCount && !result?.failedIds?.length) {
+      restoreOptimisticDelete(messageIds);
+    }
+  }, [
+    messagesToDelete,
+    actions,
+    clearSelectionAndCloseReactions,
+    closeDeleteMessageModal,
+    restoreOptimisticDelete,
+    startOptimisticDelete,
+  ]);
   
   const handleReply = useCallback((message) => {
     if (canSendMessages) setReplyTo(message);
@@ -548,6 +625,8 @@ export const DirectChatScreen = ({ route, navigation }) => {
             highlightedMessageId={highlightedMessageId}
             pressedMessageId={pressedMessageId}
             retryingMessages={retryingMessages}
+            deletingMessageIds={deletingMessageIds}
+            hiddenMessageIds={hiddenMessageIds}
             canDeleteMessage={actions.canDeleteMessage}
             partnerAvatar={partnerAvatar}
             roomType={roomData?.type}
@@ -575,6 +654,7 @@ export const DirectChatScreen = ({ route, navigation }) => {
             onSenderNamePress={handleSenderNamePress}
             onDismissKeyboard={dismissKeyboard}
             flatListRef={flatListRef}
+            onDeleteAnimationEnd={handleDeleteAnimationEnd}
           />
           
           <KeyboardAvoidingView

@@ -163,7 +163,7 @@ const AppInitializer = ({children}) => {
     useChatSocket();
 
     // Отслеживаем переход приложения в фон / возврат из фона
-    // При возврате из фона проверяем токены
+    // При возврате из фона синхронизируем токены и проверяем их валидность
     useEffect(() => {
         const subscription = AppState.addEventListener('change', (nextAppState) => {
             if (
@@ -172,6 +172,9 @@ const AppInitializer = ({children}) => {
             ) {
                 (async () => {
                     try {
+                        // AsyncStorage is the source of truth for tokens (the API layer
+                        // writes here on every refresh). Redux Persist may have stale data
+                        // if the app was killed before it could flush.
                         const tokens = await authService.getStoredTokens();
                         if (!tokens?.refreshToken) return;
 
@@ -184,9 +187,16 @@ const AppInitializer = ({children}) => {
                         }
 
                         const isAccessValid = tokens.accessToken && authService.isTokenValid(tokens.accessToken);
-                        if (!isAccessValid) {
-                            // Access token истёк — refreshAccessToken содержит retry-логику
-                            // и не удалит токены при сетевой ошибке
+                        if (isAccessValid) {
+                            // Access token is still valid — just sync Redux in case it's stale
+                            dispatch({
+                                type: 'auth/setTokens',
+                                payload: {
+                                    accessToken: tokens.accessToken,
+                                    refreshToken: tokens.refreshToken
+                                }
+                            });
+                        } else {
                             const refreshed = await authService.refreshAccessToken();
                             if (refreshed?.accessToken) {
                                 dispatch({
@@ -197,12 +207,11 @@ const AppInitializer = ({children}) => {
                                     }
                                 });
                             }
-                            // Если refreshed === null (сетевая ошибка), НЕ сбрасываем auth.
-                            // Следующий API-вызов попробует обновить через interceptor.
+                            // refreshed === null means network error; don't reset auth —
+                            // the next API call will retry via interceptor.
                         }
                     } catch (e) {
                         console.warn('⚠️ App resume: token check failed:', e?.message);
-                        // НЕ сбрасываем auth при ошибке — может быть просто нет сети
                     }
                 })();
             }
@@ -293,14 +302,20 @@ const AppInitializer = ({children}) => {
                         console.log('✅ App: Tokens refreshed on init');
                         syncRedux(refreshed);
                     } else {
-                        // refreshed === null: сетевая ошибка или другая проблема.
-                        // Проверяем — может interceptor уже обновил.
+                        // refreshed === null: network error or server issue.
+                        // Check if interceptor already updated tokens.
                         const latest = await authService.getStoredTokens();
                         if (latest?.accessToken && authService.isTokenValid(latest.accessToken)) {
                             syncRedux(latest);
+                        } else if (latest?.refreshToken && authService.isTokenValid(latest.refreshToken)) {
+                            // Access token still expired but refresh token valid — sync to Redux
+                            // so isAuthenticated stays true. The interceptor will refresh
+                            // the access token on the next API request.
+                            dispatch({
+                                type: 'auth/setTokens',
+                                payload: { accessToken: latest.accessToken, refreshToken: latest.refreshToken }
+                            });
                         }
-                        // Если нет — НЕ сбрасываем auth. Следующий API-запрос
-                        // попробует обновить через interceptor с retry.
                     }
                 }
 

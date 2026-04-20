@@ -148,7 +148,15 @@ export const useChatActions = ({
   }, [dispatch, roomId, showConfirm]);
   
   const handleDeleteMessages = useCallback(async (messagesToDelete, forAll) => {
-    if (!Array.isArray(messagesToDelete) || messagesToDelete.length === 0) return false;
+    if (!Array.isArray(messagesToDelete) || messagesToDelete.length === 0) {
+      return {
+        ok: false,
+        successIds: [],
+        failedIds: [],
+        successCount: 0,
+        failCount: 0,
+      };
+    }
     
     const normalizedMessages = messagesToDelete
       .map(msgOrId => {
@@ -158,7 +166,15 @@ export const useChatActions = ({
       })
       .filter(Boolean);
     
-    if (normalizedMessages.length === 0) return false;
+    if (normalizedMessages.length === 0) {
+      return {
+        ok: false,
+        successIds: [],
+        failedIds: [],
+        successCount: 0,
+        failCount: 0,
+      };
+    }
 
     try {
       if (forAll) {
@@ -168,7 +184,13 @@ export const useChatActions = ({
         
         if (!canDeleteAll) {
           showError('Ошибка', 'Недостаточно прав для удаления этих сообщений у всех');
-          return false;
+          return {
+            ok: false,
+            successIds: [],
+            failedIds: normalizedMessages.map((msg) => msg.id).filter(Boolean),
+            successCount: 0,
+            failCount: normalizedMessages.length,
+          };
         }
       }
       
@@ -181,8 +203,22 @@ export const useChatActions = ({
         }
       }
       
-      const successCount = results.filter(r => r?.type?.endsWith('/fulfilled')).length;
-      const failCount = results.length - successCount;
+      const successIds = [];
+      const failedIds = [];
+
+      results.forEach((result, index) => {
+        const messageId = normalizedMessages[index]?.id;
+        if (!messageId) return;
+
+        if (result?.type?.endsWith('/fulfilled')) {
+          successIds.push(messageId);
+        } else {
+          failedIds.push(messageId);
+        }
+      });
+
+      const successCount = successIds.length;
+      const failCount = failedIds.length;
 
       // КРИТИЧНО: Принудительная синхронизация после удаления
       // Это гарантирует, что кэш обновится с актуальными данными сервера
@@ -202,11 +238,23 @@ export const useChatActions = ({
         showWarning('Частичное удаление', `Удалено: ${successCount}, не удалось: ${failCount}`);
       }
       
-      return true;
+      return {
+        ok: failCount === 0 && successCount > 0,
+        successIds,
+        failedIds,
+        successCount,
+        failCount,
+      };
     } catch (error) {
       console.error('Ошибка при удалении:', error);
       showError('Ошибка', 'Не удалось удалить сообщения');
-      return false;
+      return {
+        ok: false,
+        successIds: [],
+        failedIds: normalizedMessages.map((msg) => msg.id).filter(Boolean),
+        successCount: 0,
+        failCount: normalizedMessages.length,
+      };
     }
   }, [dispatch, currentUserId, roomId, showWarning, showError, isSuperAdmin, isAdmin, canDeleteForAll, messages]);
   

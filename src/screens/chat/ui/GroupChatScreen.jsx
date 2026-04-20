@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useMemo, useEffect } from 'react';
-import { View, StyleSheet, KeyboardAvoidingView, Platform, Text } from 'react-native';
+import { View, StyleSheet, KeyboardAvoidingView, Platform, Text, LayoutAnimation, UIManager } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from 'react-redux';
 import { ChatBackground } from '@entities/chat/ui/ChatBackground';
@@ -20,6 +20,36 @@ import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 import { selectIsProductDeleted } from '@entities/product/model/selectors';
 import { useChatSocketActions } from '@entities/chat/hooks/useChatSocketActions';
 import PushNotificationService from '@shared/services/PushNotificationService';
+
+const MESSAGE_DELETE_MODAL_CLOSE_DELAY_MS = 140;
+const MESSAGE_DELETE_ANIMATION_DELAY_MS = 320;
+const MESSAGE_DELETE_LAYOUT_ANIMATION = LayoutAnimation.create(
+  220,
+  LayoutAnimation.Types.easeInEaseOut,
+  LayoutAnimation.Properties.opacity
+);
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+const addIdsToSet = (prev, ids) => {
+  const next = new Set(prev);
+  ids.forEach((id) => {
+    if (id !== null && id !== undefined) {
+      next.add(id);
+    }
+  });
+  return next;
+};
+
+const removeIdsFromSet = (prev, ids) => {
+  const next = new Set(prev);
+  ids.forEach((id) => {
+    next.delete(id);
+  });
+  return next;
+};
 
 export const GroupChatScreen = ({ route, navigation }) => {
   const {
@@ -89,6 +119,8 @@ export const GroupChatScreen = ({ route, navigation }) => {
   const [replyTo, setReplyTo] = useState(null);
   const [animatedPaddingTop, setAnimatedPaddingTop] = useState(0);
   const [composerHeight, setComposerHeight] = useState(56);
+  const [deletingMessageIds, setDeletingMessageIds] = useState(new Set());
+  const [hiddenMessageIds, setHiddenMessageIds] = useState(new Set());
   
   // Действия для групп
   const actions = useGroupChatActions({
@@ -145,6 +177,12 @@ export const GroupChatScreen = ({ route, navigation }) => {
     handleCloseFullEmojiPicker,
     handleFullEmojiSelect,
   } = reactions;
+
+  const clearSelectionAndCloseReactions = useCallback(() => {
+    clearSelection();
+    handleCloseReactionPicker(true);
+    handleCloseFullEmojiPicker();
+  }, [clearSelection, handleCloseReactionPicker, handleCloseFullEmojiPicker]);
   
   // ============ LIFECYCLE ============
   const lifecycle = useChatLifecycle({
@@ -164,6 +202,31 @@ export const GroupChatScreen = ({ route, navigation }) => {
     isLoadingMoreRef,
   });
   const { loadMoreMessages } = lifecycle;
+
+  const startOptimisticDelete = useCallback((messageIds) => {
+    if (!messageIds.length) return;
+
+    setDeletingMessageIds((prev) => addIdsToSet(prev, messageIds));
+    setPressedMessageId((prev) => (messageIds.includes(prev) ? null : prev));
+    setHighlightedMessageId((prev) => (messageIds.includes(prev) ? null : prev));
+    setReplyTo((prev) => (prev && messageIds.includes(prev.id) ? null : prev));
+  }, []);
+
+  const restoreOptimisticDelete = useCallback((messageIds) => {
+    if (!messageIds.length) return;
+
+    LayoutAnimation.configureNext(MESSAGE_DELETE_LAYOUT_ANIMATION);
+    setDeletingMessageIds((prev) => removeIdsFromSet(prev, messageIds));
+    setHiddenMessageIds((prev) => removeIdsFromSet(prev, messageIds));
+  }, []);
+
+  const handleDeleteAnimationEnd = useCallback((messageId) => {
+    if (!messageId) return;
+
+    LayoutAnimation.configureNext(MESSAGE_DELETE_LAYOUT_ANIMATION);
+    setDeletingMessageIds((prev) => removeIdsFromSet(prev, [messageId]));
+    setHiddenMessageIds((prev) => addIdsToSet(prev, [messageId]));
+  }, []);
   
   // ============ CALLBACKS (определяем перед useChatNavigation) ============
   
@@ -298,12 +361,33 @@ export const GroupChatScreen = ({ route, navigation }) => {
   }, [selectedMessages, messageToForward, rooms, navigation, actions, clearSelection, closeForwardModal]);
   
   const handleDeleteSelectedMessages = useCallback(async (forAll) => {
-    const success = await actions.handleDeleteMessages(messagesToDelete, forAll);
-    if (success) {
-      closeDeleteMessageModal();
-      clearSelection();
+    const messageIds = messagesToDelete.map((message) => message?.id).filter(Boolean);
+
+    closeDeleteMessageModal();
+    clearSelectionAndCloseReactions();
+
+    if (messageIds.length === 0) return;
+
+    await new Promise((resolve) => setTimeout(resolve, MESSAGE_DELETE_MODAL_CLOSE_DELAY_MS));
+    startOptimisticDelete(messageIds);
+    await new Promise((resolve) => setTimeout(resolve, MESSAGE_DELETE_ANIMATION_DELAY_MS));
+
+    const result = await actions.handleDeleteMessages(messagesToDelete, forAll);
+    if (result?.failedIds?.length) {
+      restoreOptimisticDelete(result.failedIds);
     }
-  }, [messagesToDelete, actions, clearSelection, closeDeleteMessageModal]);
+
+    if (!result?.successCount && !result?.failedIds?.length) {
+      restoreOptimisticDelete(messageIds);
+    }
+  }, [
+    messagesToDelete,
+    actions,
+    clearSelectionAndCloseReactions,
+    closeDeleteMessageModal,
+    restoreOptimisticDelete,
+    startOptimisticDelete,
+  ]);
   
   const handleReply = useCallback((message) => {
     if (canSendMessages) setReplyTo(message);
@@ -522,6 +606,8 @@ export const GroupChatScreen = ({ route, navigation }) => {
             highlightedMessageId={highlightedMessageId}
             pressedMessageId={pressedMessageId}
             retryingMessages={retryingMessages}
+            deletingMessageIds={deletingMessageIds}
+            hiddenMessageIds={hiddenMessageIds}
             canDeleteMessage={actions.canDeleteMessage}
             partnerAvatar={null}
             roomType={roomData?.type}
@@ -548,6 +634,7 @@ export const GroupChatScreen = ({ route, navigation }) => {
             onSenderNamePress={handleSenderNamePress}
             onDismissKeyboard={dismissKeyboard}
             flatListRef={flatListRef}
+            onDeleteAnimationEnd={handleDeleteAnimationEnd}
           />
           
           <KeyboardAvoidingView

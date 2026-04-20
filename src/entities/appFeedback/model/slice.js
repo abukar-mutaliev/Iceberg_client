@@ -244,10 +244,21 @@ const appFeedbackSlice = createSlice({
                 state.submitting = true;
                 state.error = null;
             })
-            .addCase(deleteAppFeedback.fulfilled, (state) => {
+            .addCase(deleteAppFeedback.fulfilled, (state, action) => {
                 state.submitting = false;
-                state.feedback = null;
-                state.lastFetchTime = null;
+                const deletedId = action.payload?.id;
+                if (deletedId != null) {
+                    state.allFeedbacks = (state.allFeedbacks || []).filter(
+                        (f) => f.id !== deletedId
+                    );
+                    if (state.feedback?.id === deletedId) {
+                        state.feedback = null;
+                        state.lastFetchTime = null;
+                    }
+                } else {
+                    state.feedback = null;
+                    state.lastFetchTime = null;
+                }
             })
             .addCase(deleteAppFeedback.rejected, (state, action) => {
                 state.submitting = false;

@@ -1,5 +1,13 @@
-import React from 'react';
-import { StyleSheet, ScrollView, View, BackHandler } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+    StyleSheet,
+    ScrollView,
+    View,
+    BackHandler,
+    Platform,
+    Keyboard,
+    KeyboardAvoidingView,
+} from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { normalize } from '@shared/lib/normalize';
@@ -14,6 +22,22 @@ import { AppFeedbackSection } from '../../AppFeedbackSection';
 export const HelpCenterScreen = () => {
     const navigation = useNavigation();
     const insets = useSafeAreaInsets();
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+    useEffect(() => {
+        const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+        const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+        const onShow = (e) => {
+            setKeyboardHeight(e.endCoordinates?.height ?? 0);
+        };
+        const onHide = () => setKeyboardHeight(0);
+        const subShow = Keyboard.addListener(showEvt, onShow);
+        const subHide = Keyboard.addListener(hideEvt, onHide);
+        return () => {
+            subShow.remove();
+            subHide.remove();
+        };
+    }, []);
 
     const handleBackPress = React.useCallback(() => {
         if (navigation.canGoBack()) {
@@ -40,26 +64,49 @@ export const HelpCenterScreen = () => {
         }, [handleBackPress])
     );
 
+    const scrollPaddingBottom =
+        insets.bottom +
+        normalize(120) +
+        (Platform.OS === 'android' ? keyboardHeight : 0);
+
+    const scrollRef = React.useRef(null);
+
+    const handleFeedbackFieldFocus = React.useCallback(() => {
+        requestAnimationFrame(() => {
+            scrollRef.current?.scrollToEnd({ animated: true });
+        });
+    }, []);
+
     return (
         <SafeAreaView style={styles.container} edges={['left', 'right']}>
             <HeaderWithBackButton
                 title="Центр помощи"
                 onBackPress={handleBackPress}
             />
-            <ScrollView
-                style={styles.scrollView}
-                contentContainerStyle={[
-                    styles.scrollContent,
-                    { paddingBottom: insets.bottom + normalize(120) },
-                ]}
-                showsVerticalScrollIndicator={false}
+            <KeyboardAvoidingView
+                style={styles.keyboardAvoid}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                enabled={Platform.OS === 'ios'}
+                keyboardVerticalOffset={0}
             >
-                <FAQSection />
-                <View style={styles.divider} />
-                <ContactSection />
-                <View style={styles.divider} />
-                <AppFeedbackSection />
-            </ScrollView>
+                <ScrollView
+                    ref={scrollRef}
+                    style={styles.scrollView}
+                    contentContainerStyle={[
+                        styles.scrollContent,
+                        { paddingBottom: scrollPaddingBottom },
+                    ]}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="on-drag"
+                >
+                    <FAQSection />
+                    <View style={styles.divider} />
+                    <ContactSection />
+                    <View style={styles.divider} />
+                    <AppFeedbackSection onFeedbackFieldFocus={handleFeedbackFieldFocus} />
+                </ScrollView>
+            </KeyboardAvoidingView>
         </SafeAreaView>
     );
 };
@@ -68,6 +115,9 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#fff',
+    },
+    keyboardAvoid: {
+        flex: 1,
     },
     scrollView: {
         flex: 1,

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { View, StyleSheet, Pressable, Text, ScrollView, Platform } from 'react-native';
 import { useSelector } from 'react-redux';
 import {
@@ -39,11 +39,72 @@ const CATEGORY_ORDER = [
     'Рыба'
 ];
 
-export const CategoriesBar = ({ hideLoader = true }) => {
+export const CategoriesBar = ({ hideLoader = true, showInitialScrollHint = false }) => {
     const categories = useSelector(selectCategories);
     const isLoading = useSelector(selectCategoriesLoading);
     const error = useSelector(selectCategoriesError);
     const navigation = useNavigation();
+    const scrollViewRef = useRef(null);
+    const hasPlayedInitialHintRef = useRef(false);
+    const containerWidthRef = useRef(0);
+    const contentWidthRef = useRef(0);
+    const hintTimeoutsRef = useRef([]);
+
+    const clearHintTimeouts = useCallback(() => {
+        hintTimeoutsRef.current.forEach(clearTimeout);
+        hintTimeoutsRef.current = [];
+    }, []);
+
+    const runInitialScrollHint = useCallback(() => {
+        if (
+            !showInitialScrollHint ||
+            hasPlayedInitialHintRef.current ||
+            isLoading ||
+            error ||
+            categories.length === 0
+        ) {
+            return;
+        }
+
+        const maxOffset = contentWidthRef.current - containerWidthRef.current;
+        if (maxOffset <= 24) {
+            return;
+        }
+
+        hasPlayedInitialHintRef.current = true;
+        clearHintTimeouts();
+
+        const hintDistance = Math.min(
+            Math.max(containerWidthRef.current * 0.35, 48),
+            Math.min(maxOffset, 96)
+        );
+
+        const forwardTimeout = setTimeout(() => {
+            scrollViewRef.current?.scrollTo({ x: hintDistance, animated: true });
+        }, 450);
+
+        const backwardTimeout = setTimeout(() => {
+            scrollViewRef.current?.scrollTo({ x: 0, animated: true });
+        }, 1250);
+
+        hintTimeoutsRef.current = [forwardTimeout, backwardTimeout];
+    }, [categories.length, clearHintTimeouts, error, isLoading, showInitialScrollHint]);
+
+    const handleLayout = useCallback((event) => {
+        containerWidthRef.current = event.nativeEvent.layout.width;
+        runInitialScrollHint();
+    }, [runInitialScrollHint]);
+
+    const handleContentSizeChange = useCallback((width) => {
+        contentWidthRef.current = width;
+        runInitialScrollHint();
+    }, [runInitialScrollHint]);
+
+    useEffect(() => {
+        runInitialScrollHint();
+    }, [runInitialScrollHint]);
+
+    useEffect(() => clearHintTimeouts, [clearHintTimeouts]);
 
     // Показываем скелетон загрузки если категорий нет и не скрыт лоадер
     // Показываем скелетон либо при загрузке, либо если категорий нет (первая загрузка)
@@ -105,9 +166,12 @@ export const CategoriesBar = ({ hideLoader = true }) => {
 
     return (
         <ScrollView
+            ref={scrollViewRef}
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.scrollContainer}
+            onLayout={handleLayout}
+            onContentSizeChange={handleContentSizeChange}
         >
             {categoriesWithLink.map((category) => {
                 const iconType = category.isCategoriesLink

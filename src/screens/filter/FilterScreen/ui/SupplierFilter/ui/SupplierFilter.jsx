@@ -11,7 +11,7 @@ import {
     TextInput,
     Platform
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronRight } from 'lucide-react-native';
 import { FontFamily } from '@app/styles/GlobalStyles';
 import { Checkbox } from '@shared/ui/Checkbox';
@@ -36,6 +36,7 @@ export const SupplierFilter = ({ suppliers = [], onChange, products = [] }) => {
     const [availableSuppliers, setAvailableSuppliers] = useState([]);
     const [selectedSuppliers, setSelectedSuppliers] = useState(suppliers);
     const [contentHeight, setContentHeight] = useState(0);
+    const insets = useSafeAreaInsets();
 
     useEffect(() => {
         if (products && products.length > 0) {
@@ -148,38 +149,50 @@ export const SupplierFilter = ({ suppliers = [], onChange, products = [] }) => {
                             </TouchableOpacity>
                         </View>
 
-                        <View style={styles.whiteContainer}>
-                            <FlatList
-                                data={filteredSuppliers}
-                                keyExtractor={(item) => item.id.toString()}
-                                renderItem={({ item }) => (
-                                    <TouchableOpacity
-                                        style={styles.supplierItem}
-                                        onPress={() => handleSelectSupplier(item)}
-                                        activeOpacity={0.7}
-                                    >
-                                        <View style={styles.supplierInfo}>
-                                            <Text style={styles.supplierName}>{item.name}</Text>
-                                            {item.contactPerson ? (
-                                                <Text style={styles.supplierContact}>{item.contactPerson}</Text>
-                                            ) : null}
-                                        </View>
-                                        <Checkbox
-                                            selected={selectedSuppliers.some(s => s.id === item.id)}
-                                        />
-                                    </TouchableOpacity>
-                                )}
-                                onContentSizeChange={onContentSizeChange}
-                                ListEmptyComponent={() => (
-                                    <Text style={styles.emptyMessage}>Продавцы не найдены</Text>
-                                )}
-                            />
-                            <TouchableOpacity
-                                style={styles.modalApplyButton}
-                                onPress={handleApplySuppliers}
-                            >
-                                <Text style={styles.modalApplyButtonText}>ПРИМЕНИТЬ</Text>
-                            </TouchableOpacity>
+                        <View
+                            style={[
+                                styles.whiteContainer,
+                                { marginBottom: Math.max(normalize(8), insets.bottom) }
+                            ]}
+                        >
+                            <View style={styles.listContainer}>
+                                <FlatList
+                                    style={styles.list}
+                                    data={filteredSuppliers}
+                                    keyExtractor={(item) => item.id.toString()}
+                                    contentContainerStyle={styles.listContent}
+                                    scrollIndicatorInsets={{ bottom: normalize(12) }}
+                                    renderItem={({ item }) => (
+                                        <TouchableOpacity
+                                            style={styles.supplierItem}
+                                            onPress={() => handleSelectSupplier(item)}
+                                            activeOpacity={0.7}
+                                        >
+                                            <View style={styles.supplierInfo}>
+                                                <Text style={styles.supplierName}>{item.name}</Text>
+                                                {item.contactPerson ? (
+                                                    <Text style={styles.supplierContact}>{item.contactPerson}</Text>
+                                                ) : null}
+                                            </View>
+                                            <Checkbox
+                                                selected={selectedSuppliers.some(s => s.id === item.id)}
+                                            />
+                                        </TouchableOpacity>
+                                    )}
+                                    onContentSizeChange={onContentSizeChange}
+                                    ListEmptyComponent={() => (
+                                        <Text style={styles.emptyMessage}>Продавцы не найдены</Text>
+                                    )}
+                                />
+                            </View>
+                            <View style={styles.footer}>
+                                <TouchableOpacity
+                                    style={styles.modalApplyButton}
+                                    onPress={handleApplySuppliers}
+                                >
+                                    <Text style={styles.modalApplyButtonText}>ПРИМЕНИТЬ</Text>
+                                </TouchableOpacity>
+                            </View>
                         </View>
                     </SafeAreaView>
                 </View>
@@ -278,8 +291,22 @@ const styles = StyleSheet.create({
         backgroundColor: 'white',
         borderRadius: normalize(12),
         marginHorizontal: normalize(16),
-        marginBottom: normalize(20),
         overflow: 'hidden',
+    },
+    listContainer: {
+        flex: 1,
+        minHeight: 0,
+    },
+    list: {
+        flex: 1,
+    },
+    listContent: {
+        paddingBottom: normalize(12),
+    },
+    footer: {
+        paddingTop: normalize(10),
+        paddingBottom: normalize(8),
+        backgroundColor: 'white',
     },
     supplierItem: {
         flexDirection: 'row',

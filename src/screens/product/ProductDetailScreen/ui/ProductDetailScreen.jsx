@@ -559,10 +559,14 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         enrichedProduct?.id
     ]);
 
-    // Загрузка районов при монтировании, если их нет
+    // Загрузка районов — откладываем до завершения анимации перехода,
+    // чтобы не конкурировать с JS-потоком во время навигации
     useEffect(() => {
         if (districts.length === 0) {
-            dispatch(fetchAllDistricts());
+            const task = InteractionManager.runAfterInteractions(() => {
+                dispatch(fetchAllDistricts());
+            });
+            return () => task.cancel?.();
         }
     }, [dispatch, districts.length]);
 

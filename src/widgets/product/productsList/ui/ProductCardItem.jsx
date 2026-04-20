@@ -42,13 +42,12 @@ export const ProductCardItem = memo(({ product, onProductPress, fromScreen }) =>
 
     if (!prevProduct || !nextProduct) return false;
 
-    // Проверяем основные поля продукта
     return (
         prevProduct.id === nextProduct.id &&
         prevProduct.title === nextProduct.title &&
         prevProduct.price === nextProduct.price &&
         prevProduct.description === nextProduct.description &&
-        JSON.stringify(prevProduct.image) === JSON.stringify(nextProduct.image) &&
+        prevProduct.image?.uri === nextProduct.image?.uri &&
         prevProduct.originalData?.isActive === nextProduct.originalData?.isActive &&
         prevProduct.originalData?.stockQuantity === nextProduct.originalData?.stockQuantity
     );

@@ -28,8 +28,9 @@ export const StopDetailsScreen = ({ navigation }) => {
     const isSuperAdmin = useSelector(state => !!state.auth?.user?.admin?.isSuperAdmin);
     const userId = useSelector(state => state.auth?.user?.id);
     const userDriverId = useSelector(state => state.auth?.user?.driver?.id);
+    const currentStop = localStop || stop;
 
-    const stopStatus = (stop?.status || 'SCHEDULED').toUpperCase();
+    const stopStatus = (currentStop?.status || 'SCHEDULED').toUpperCase();
     const isAdminOrEmployee = userRole === 'ADMIN' || userRole === 'EMPLOYEE' || isSuperAdmin;
     const isDriver = userRole === 'DRIVER';
     const [isLifecycleLoading, setIsLifecycleLoading] = useState(false);
@@ -219,16 +220,16 @@ export const StopDetailsScreen = ({ navigation }) => {
         );
     }
 
-    const stopOwnerUserId = (localStop || stop)?.driver?.userId;
-    const stopOwnerDriverId = (localStop || stop)?.driverId;
-    const isOwnedStop = !!(
-        isSuperAdmin ||
+    const stopOwnerUserId = currentStop?.driver?.userId;
+    const stopOwnerDriverId = currentStop?.driverId;
+    const isDriverOwnedStop = !!(
         (userId && stopOwnerUserId === userId) ||
         (userDriverId && stopOwnerDriverId === userDriverId)
     );
+    const canManageStopLifecycle = isAdminOrEmployee || (isDriver && isDriverOwnedStop);
 
     // Показываем контент остановки
-    const lifecycleSection = (isOwnedStop && (isDriver || isAdminOrEmployee)) && (
+    const lifecycleSection = canManageStopLifecycle && (
         <View style={styles.lifecycleSection}>
             <Text style={styles.lifecycleTitle}>Статус остановки</Text>
             <View style={styles.lifecycleActions}>

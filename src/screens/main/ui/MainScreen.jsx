@@ -517,12 +517,13 @@ export const MainScreen = ({ navigation, route }) => {
         ])
     );
 
-    // Обработчики
     const handleProductPress = useCallback((product) => {
         const productId = typeof product === 'object' && product?.id ? product.id : product;
-        navigation.navigate('ProductDetail', {
-            productId,
-            fromScreen: 'MainTab'
+        requestAnimationFrame(() => {
+            navigation.navigate('ProductDetail', {
+                productId,
+                fromScreen: 'MainTab'
+            });
         });
     }, [navigation]);
 
@@ -541,7 +542,7 @@ export const MainScreen = ({ navigation, route }) => {
         <>
             <Header navigation={navigation} />
             {/* <PromoBanner hideLoader={isDataReady} /> */}
-            <CategoriesBar hideLoader={false} />
+            <CategoriesBar hideLoader={false} showInitialScrollHint />
             <LocatorsSlider 
                 onDriverPress={handleDriverLocatorPress}
                 onWarehousePress={handleWarehouseLocatorPress}

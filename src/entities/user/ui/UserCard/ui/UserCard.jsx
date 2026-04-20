@@ -140,7 +140,7 @@ export const UserCard = ({ user, onEdit, onDelete, onRoleChange, onProcessingRol
                 {canChangeRole && (
                     <TouchableOpacity style={styles.actionButton} onPress={() => onRoleChange(user)}>
                         <IconAdmin width={18} height={18} color={Color.blue2} />
-                        <Text style={styles.actionText}>Роль</Text>
+                        <Text style={styles.actionText}>{user.role === 'ADMIN' ? 'Права' : 'Роль'}</Text>
                     </TouchableOpacity>
                 )}
                 

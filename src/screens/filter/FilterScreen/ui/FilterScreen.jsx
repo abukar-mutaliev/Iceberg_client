@@ -7,8 +7,7 @@ import {
     ScrollView,
     Dimensions,
     PixelRatio,
-    StatusBar,
-    Platform
+    StatusBar
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
@@ -21,7 +20,6 @@ import { CategoryFilter } from './CategoryFilter';
 import { BrandFilter } from './BrandFilter';
 import { RatingFilter } from './RatingFilter';
 import { QuantityFilter } from './QuantityFilter';
-import { SupplierFilter } from './SupplierFilter';
 
 import { FontFamily } from '@app/styles/GlobalStyles';
 
@@ -31,7 +29,14 @@ import {
     selectFilterCriteria
 } from '@entities/filter';
 
-import { selectProducts } from '@entities/product';
+import {
+    fetchProducts,
+    selectProducts,
+    selectProductsCurrentPage,
+    selectProductsHasMore,
+    selectProductsLoading,
+    selectProductsLoadingMore
+} from '@entities/product';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const scale = SCREEN_WIDTH / 440;
@@ -46,6 +51,18 @@ const normalizeFont = (size) => {
     return Math.round(PixelRatio.roundToNearestPixel(newSize));
 };
 
+const buildFilterCriteria = (criteria = {}) => ({
+    minPrice: criteria.minPrice ?? 45,
+    maxPrice: criteria.maxPrice ?? 1800,
+    categories: criteria.categories ?? [],
+    brands: criteria.brands ?? [],
+    minRating: criteria.minRating ?? 4.5,
+    compositions: criteria.compositions ?? [],
+    packaging: criteria.packaging ?? [],
+    quantity: criteria.quantity ?? [],
+    suppliers: [],
+});
+
 export const FilterScreen = () => {
     const navigation = useNavigation();
     const route = useRoute();
@@ -56,18 +73,12 @@ export const FilterScreen = () => {
 
     const filterCriteria = useSelector(selectFilterCriteria);
     const products = useSelector(selectProducts);
+    const currentPage = useSelector(selectProductsCurrentPage);
+    const hasMoreProducts = useSelector(selectProductsHasMore);
+    const isProductsLoading = useSelector(selectProductsLoading);
+    const isProductsLoadingMore = useSelector(selectProductsLoadingMore);
 
-    const [localFilterCriteria, setLocalFilterCriteria] = useState({
-        minPrice: 45,
-        maxPrice: 1800,
-        categories: [],
-        brands: [],
-        minRating: 4.5,
-        compositions: [],
-        packaging: [],
-        quantity: [],
-        suppliers: [],
-    });
+    const [localFilterCriteria, setLocalFilterCriteria] = useState(buildFilterCriteria());
 
     const searchQuery = route.params?.searchQuery || '';
     const fromScreen = route.params?.fromScreen || 'SearchResults';
@@ -75,26 +86,42 @@ export const FilterScreen = () => {
 
     useEffect(() => {
         if (resetFilters) {
-            const defaultFilters = {
+            const defaultFilters = buildFilterCriteria({
                 minPrice: 0,
                 maxPrice: 0,
-                categories: [],
-                brands: [],
-                minRating: 4.5,
-                compositions: [],
-                packaging: [],
-                quantity: [],
-                suppliers: [],
-            };
+            });
             setLocalFilterCriteria(defaultFilters);
 
             if (route?.params?.resetFilters) {
                 navigation.setParams({ resetFilters: false });
             }
         } else if (filterCriteria) {
-            setLocalFilterCriteria({ ...filterCriteria });
+            setLocalFilterCriteria(buildFilterCriteria(filterCriteria));
         }
     }, [resetFilters, filterCriteria, navigation, route?.params?.resetFilters]);
+
+    useEffect(() => {
+        if (!products.length && !isProductsLoading && !isProductsLoadingMore) {
+            dispatch(fetchProducts());
+        }
+    }, [dispatch, products.length, isProductsLoading, isProductsLoadingMore]);
+
+    useEffect(() => {
+        if (!products.length) {
+            return;
+        }
+
+        if (hasMoreProducts && !isProductsLoading && !isProductsLoadingMore) {
+            dispatch(fetchProducts({ page: currentPage + 1 }));
+        }
+    }, [
+        dispatch,
+        products.length,
+        hasMoreProducts,
+        currentPage,
+        isProductsLoading,
+        isProductsLoadingMore
+    ]);
 
     const handleFilterChange = (filterName, value) => {
         setLocalFilterCriteria(prev => {
@@ -111,23 +138,12 @@ export const FilterScreen = () => {
     };
 
     const handleReset = () => {
-        const resetFilters = {
-            minPrice: 45,
-            maxPrice: 1800,
-            categories: [],
-            brands: [],
-            minRating: 4.5,
-            compositions: [],
-            packaging: [],
-            quantity: [],
-            suppliers: [],
-        };
+        const resetFilters = buildFilterCriteria();
         setLocalFilterCriteria(resetFilters);
     };
 
     const handleApplyFilters = () => {
-
-        dispatch(setFilterCriteria(localFilterCriteria));
+        dispatch(setFilterCriteria(buildFilterCriteria(localFilterCriteria)));
 
         dispatch(saveFilters());
 
@@ -152,7 +168,7 @@ export const FilterScreen = () => {
             />
 
             <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
-                <View style={styles.header}>
+                <View style={[styles.header, { paddingTop: insets.top + normalize(4) }]}>
                     <TouchableOpacity
                         style={styles.headerButton}
                         onPress={handleClose}
@@ -222,14 +238,6 @@ export const FilterScreen = () => {
                         />
 
                         {/* Разделительная линия */}
-                        <View style={styles.separator} />
-
-                        {/* Фильтр по продавцам */}
-                        <SupplierFilter
-                            suppliers={localFilterCriteria.suppliers}
-                            onChange={(value) => handleFilterChange('suppliers', value)}
-                            products={products}
-                        />
                     </ScrollView>
                 </View>
             </SafeAreaView>
@@ -257,7 +265,6 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingTop: Platform.OS === 'ios' ? normalize(15) : normalize(45),
         paddingBottom: normalize(15),
         paddingHorizontal: normalize(20),
     },
@@ -284,7 +291,6 @@ const styles = StyleSheet.create({
         backgroundColor: 'white',
         borderRadius: normalize(12),
         marginHorizontal: normalize(16),
-        marginBottom: normalize(20),
         paddingHorizontal: normalize(16),
         paddingVertical: normalize(10),
     },

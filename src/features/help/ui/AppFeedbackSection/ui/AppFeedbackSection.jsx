@@ -29,12 +29,14 @@ import { AppFeedbackForm } from '@entities/appFeedback/ui/AppFeedbackForm';
 import CustomButton from '@shared/ui/Button/CustomButton';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import RatingStarSvg from '@shared/ui/Icon/SupplierScreenIcons/RatingStarSvg';
+import { useAuth } from '@entities/auth/hooks/useAuth';
 
 /**
  * Компонент секции отзывов о приложении
  */
-export const AppFeedbackSection = () => {
+export const AppFeedbackSection = ({ onFeedbackFieldFocus }) => {
     const dispatch = useDispatch();
+    const { currentUser } = useAuth();
     const { showSuccess, showError, showConfirm } = useCustomAlert();
     const feedback = useSelector(selectAppFeedback);
     const loading = useSelector(selectAppFeedbackLoading);
@@ -45,6 +47,14 @@ export const AppFeedbackSection = () => {
 
     const [isEditing, setIsEditing] = useState(false);
     const [showForm, setShowForm] = useState(false);
+
+    const isSuperAdmin =
+        currentUser?.role === 'ADMIN' &&
+        Boolean(
+            currentUser?.admin?.isSuperAdmin ||
+                currentUser?.profile?.isSuperAdmin ||
+                currentUser?.isSuperAdmin
+        );
 
     // Загрузка отзыва при монтировании
     useEffect(() => {
@@ -124,6 +134,22 @@ export const AppFeedbackSection = () => {
         );
     };
 
+    const handleDeleteOtherFeedback = (item) => {
+        showConfirm(
+            'Удалить отзыв?',
+            'Удалить этот отзыв пользователя? Действие необратимо.',
+            async () => {
+                try {
+                    await dispatch(deleteAppFeedback(item.id)).unwrap();
+                    showSuccess('Успешно', 'Отзыв удалён');
+                } catch (err) {
+                    showError('Ошибка', err || 'Не удалось удалить отзыв');
+                }
+            },
+            () => {}
+        );
+    };
+
     if (loading) {
         return (
             <View style={styles.container}>
@@ -162,6 +188,7 @@ export const AppFeedbackSection = () => {
                         onSubmit={handleSubmit}
                         onCancel={feedback && !isEditing ? handleCancel : undefined}
                         submitting={submitting}
+                        onCommentFocus={onFeedbackFieldFocus}
                     />
                 </View>
             )}
@@ -249,13 +276,29 @@ export const AppFeedbackSection = () => {
                                                 {item.rating}/5
                                             </Text>
                                         </View>
-                                        <Text style={styles.otherFeedbackDate}>
-                                            {new Date(item.createdAt).toLocaleDateString('ru-RU', {
-                                                year: 'numeric',
-                                                month: 'short',
-                                                day: 'numeric'
-                                            })}
-                                        </Text>
+                                        <View style={styles.otherFeedbackHeaderRight}>
+                                            <Text style={styles.otherFeedbackDate}>
+                                                {new Date(item.createdAt).toLocaleDateString('ru-RU', {
+                                                    year: 'numeric',
+                                                    month: 'short',
+                                                    day: 'numeric'
+                                                })}
+                                            </Text>
+                                            {isSuperAdmin && (
+                                                <TouchableOpacity
+                                                    onPress={() => handleDeleteOtherFeedback(item)}
+                                                    style={styles.otherFeedbackDeleteBtn}
+                                                    activeOpacity={0.7}
+                                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                                >
+                                                    <Icon
+                                                        name="delete-outline"
+                                                        size={20}
+                                                        color={Color.error || Color.red || '#FF3B30'}
+                                                    />
+                                                </TouchableOpacity>
+                                            )}
+                                        </View>
                                     </View>
                                     {item.comment && (
                                         <Text style={styles.otherFeedbackComment}>
@@ -427,6 +470,14 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         marginBottom: normalize(8),
+    },
+    otherFeedbackHeaderRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: normalize(8),
+    },
+    otherFeedbackDeleteBtn: {
+        padding: normalize(4),
     },
     otherFeedbackRating: {
         flexDirection: 'row',

@@ -70,7 +70,7 @@ const getTimezoneOffsetString = () => {
 
 const parseScheduleData = (schedule) => {
   if (!schedule) {
-    return { daysOfWeek: [], enabled: false };
+    return { daysOfWeek: [], enabled: false, startTime: null, endTime: null, timezone: null };
   }
 
   let scheduleObj = schedule;
@@ -79,18 +79,71 @@ const parseScheduleData = (schedule) => {
     try {
       scheduleObj = JSON.parse(schedule);
     } catch (error) {
-      return { daysOfWeek: [], enabled: false };
+      return { daysOfWeek: [], enabled: false, startTime: null, endTime: null, timezone: null };
     }
   }
 
   if (Array.isArray(scheduleObj)) {
-    return { daysOfWeek: scheduleObj, enabled: scheduleObj.length > 0 };
+    return {
+      daysOfWeek: scheduleObj,
+      enabled: scheduleObj.length > 0,
+      startTime: null,
+      endTime: null,
+      timezone: null
+    };
   }
 
   const days = Array.isArray(scheduleObj?.daysOfWeek) ? scheduleObj.daysOfWeek : [];
   const enabled = typeof scheduleObj?.enabled === 'boolean' ? scheduleObj.enabled : days.length > 0;
+  const startTime = typeof scheduleObj?.startTime === 'string' ? scheduleObj.startTime : null;
+  const endTime = typeof scheduleObj?.endTime === 'string' ? scheduleObj.endTime : null;
+  const timezone = scheduleObj?.timezone ?? null;
 
-  return { daysOfWeek: days, enabled };
+  return { daysOfWeek: days, enabled, startTime, endTime, timezone };
+};
+
+const parseDateTimeValue = (value, fallbackDate = null) => {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return new Date(value);
+  }
+
+  if (!value) {
+    return fallbackDate ? new Date(fallbackDate) : null;
+  }
+
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed;
+  }
+
+  return fallbackDate ? new Date(fallbackDate) : null;
+};
+
+const parseTimeString = (value) => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const [hoursPart, minutesPart] = value.split(':');
+  const hours = Number(hoursPart);
+  const minutes = Number(minutesPart);
+
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return null;
+  }
+
+  return { hours, minutes };
+};
+
+const applyTimeToDate = (baseDate, timeValue, fallbackDate = new Date()) => {
+  const time = parseTimeString(timeValue);
+  if (!time) {
+    return parseDateTimeValue(baseDate, fallbackDate) || new Date(fallbackDate);
+  }
+
+  const nextDate = parseDateTimeValue(baseDate, fallbackDate) || new Date(fallbackDate);
+  nextDate.setHours(time.hours, time.minutes, 0, 0);
+  return nextDate;
 };
 
 export const EditStopForm = ({ 
@@ -192,6 +245,7 @@ export const EditStopForm = ({
   const initialSchedule = useMemo(() => parseScheduleData(stopData?.schedule), [stopData?.schedule]);
   const [scheduleDays, setScheduleDays] = useState(initialSchedule.daysOfWeek);
   const [scheduleEnabled, setScheduleEnabled] = useState(initialSchedule.enabled);
+  const timeFieldsTouchedRef = useRef(false);
 
   useEffect(() => {
     setSelectedDriver(stopData?.driverId || stopData?.driver?.id || null);
@@ -233,20 +287,27 @@ export const EditStopForm = ({
     showError: showAlertError
   } = useCustomAlert();
 
-  const [startDate, setStartDate] = useState(
-      stopData && stopData.startTime ? new Date(stopData.startTime) : new Date()
-  );
-  const [startTime, setStartTime] = useState(
-      stopData && stopData.startTime ? new Date(stopData.startTime) : new Date()
-  );
-  const [endDate, setEndDate] = useState(
-      stopData && stopData.endTime ? new Date(stopData.endTime) : new Date()
-  );
-  const [endTime, setEndTime] = useState(
-      stopData && stopData.endTime
-          ? new Date(stopData.endTime)
-          : new Date(new Date().getTime() + 2 * 60 * 60 * 1000)
-  );
+  const initialStartDateTime = useMemo(() => {
+    const baseStart = parseDateTimeValue(stopData?.startTime, new Date()) || new Date();
+    if (initialSchedule.enabled && initialSchedule.startTime) {
+      return applyTimeToDate(baseStart, initialSchedule.startTime, baseStart);
+    }
+    return baseStart;
+  }, [stopData?.startTime, initialSchedule.enabled, initialSchedule.startTime]);
+
+  const initialEndDateTime = useMemo(() => {
+    const fallbackEnd = new Date(new Date().getTime() + 2 * 60 * 60 * 1000);
+    const baseEnd = parseDateTimeValue(stopData?.endTime, fallbackEnd) || fallbackEnd;
+    if (initialSchedule.enabled && initialSchedule.endTime) {
+      return applyTimeToDate(baseEnd, initialSchedule.endTime, baseEnd);
+    }
+    return baseEnd;
+  }, [stopData?.endTime, initialSchedule.enabled, initialSchedule.endTime]);
+
+  const [startDate, setStartDate] = useState(initialStartDateTime);
+  const [startTime, setStartTime] = useState(initialStartDateTime);
+  const [endDate, setEndDate] = useState(initialEndDateTime);
+  const [endTime, setEndTime] = useState(initialEndDateTime);
 
   const [photoWasChanged, setPhotoWasChanged] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -287,6 +348,17 @@ export const EditStopForm = ({
     setScheduleDays(nextSchedule.daysOfWeek);
     setScheduleEnabled(nextSchedule.enabled);
   }, [stopData?.schedule]);
+
+  useEffect(() => {
+    if (timeFieldsTouchedRef.current) {
+      return;
+    }
+
+    setStartDate(initialStartDateTime);
+    setStartTime(initialStartDateTime);
+    setEndDate(initialEndDateTime);
+    setEndTime(initialEndDateTime);
+  }, [initialStartDateTime, initialEndDateTime]);
   
   // Мониторим открытие и закрытие клавиатуры
   useEffect(() => {
@@ -392,6 +464,7 @@ export const EditStopForm = ({
   };
 
   const onStartDateChange = (date) => {
+    timeFieldsTouchedRef.current = true;
     logData('Изменение даты начала', date);
     setStartDate(date);
     if (date > endDate) {
@@ -401,6 +474,7 @@ export const EditStopForm = ({
   };
 
   const onStartTimeChange = (time) => {
+    timeFieldsTouchedRef.current = true;
     logData('Изменение времени начала', time);
     setStartTime(time);
     if (
@@ -418,6 +492,7 @@ export const EditStopForm = ({
   };
 
   const onEndDateChange = (date) => {
+    timeFieldsTouchedRef.current = true;
     logData('Изменение даты окончания', date);
     if (date < startDate) {
       setErrors(prev => ({...prev, endTime: 'Дата окончания не может быть раньше даты начала'}));
@@ -428,13 +503,19 @@ export const EditStopForm = ({
   };
 
   const onEndTimeChange = (time) => {
+    timeFieldsTouchedRef.current = true;
     logData('Изменение времени окончания', time);
+    const isSameDay =
+      startDate.getDate() === endDate.getDate() &&
+      startDate.getMonth() === endDate.getMonth() &&
+      startDate.getFullYear() === endDate.getFullYear();
+
     if (
-        startDate.getDate() === endDate.getDate() &&
-        startDate.getMonth() === endDate.getMonth() &&
-        startDate.getFullYear() === endDate.getFullYear() &&
-        time.getHours() < startTime.getHours() ||
-        (time.getHours() === startTime.getHours() && time.getMinutes() < startTime.getMinutes())
+        isSameDay &&
+        (
+          time.getHours() < startTime.getHours() ||
+          (time.getHours() === startTime.getHours() && time.getMinutes() < startTime.getMinutes())
+        )
     ) {
       setErrors(prev => ({...prev, endTime: 'Время окончания не может быть раньше времени начала'}));
       return;
@@ -769,8 +850,12 @@ export const EditStopForm = ({
 
     const startDateTime = getFullStartDateTime();
     const endDateTime = getFullEndDateTime();
-    const startTimeIso = toLocalISOString(startDateTime);
-    const endTimeIso = toLocalISOString(endDateTime);
+    const startTimeIso = scheduleEnabled
+      ? toLocalISOString(startDateTime)
+      : startDateTime.toISOString();
+    const endTimeIso = scheduleEnabled
+      ? toLocalISOString(endDateTime)
+      : endDateTime.toISOString();
 
     const photoForSubmit = preparePhotoForSubmit();
 

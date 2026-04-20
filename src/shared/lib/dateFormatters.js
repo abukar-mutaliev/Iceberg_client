@@ -47,8 +47,18 @@ export const formatDateTime = (dateString) => {
     return `${time}, ${formattedDate}`;
 };
 
+const isDateToday = (date) => {
+    const now = new Date();
+    return (
+        date.getFullYear() === now.getFullYear() &&
+        date.getMonth() === now.getMonth() &&
+        date.getDate() === now.getDate()
+    );
+};
+
 /**
- * Форматирует временной диапазон
+ * Форматирует временной диапазон.
+ * Если дата совпадает с сегодняшней — показывает «Сегодня» вместо числа.
  * @param {string} startTime - Начальное время
  * @param {string} endTime - Конечное время
  * @returns {string} Отформатированный временной диапазон
@@ -65,8 +75,8 @@ export const formatTimeRange = (startTime, endTime) => {
     const startTimeStr = formatTime(startTime);
     const endTimeStr = formatTime(endTime);
 
-    const startDateStr = formatDate(startTime);
-    const endDateStr = formatDate(endTime);
+    const startDateStr = isDateToday(startDate) ? 'Сегодня' : formatDate(startTime);
+    const endDateStr   = isDateToday(endDate)   ? 'Сегодня' : formatDate(endTime);
 
     if (startDateStr === endDateStr) {
         return `${startTimeStr} - ${endTimeStr}, ${startDateStr}`;

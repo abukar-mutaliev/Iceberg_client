@@ -7,10 +7,9 @@ import {
     Dimensions,
     PixelRatio,
     Modal,
-    TextInput,
-    Platform
+    TextInput
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronRight } from 'lucide-react-native';
 import { FontFamily, Color } from '@app/styles/GlobalStyles';
 import { useEffect, useState } from "react";
@@ -37,6 +36,7 @@ export const CategoryFilter = ({ categories = [], onChange, products = [] }) => 
     const [availableCategories, setAvailableCategories] = useState([]);
     const [selectedCategories, setSelectedCategories] = useState(categories);
     const [contentHeight, setContentHeight] = useState(0);
+    const insets = useSafeAreaInsets();
 
     useEffect(() => {
         if (products && products.length > 0) {
@@ -117,8 +117,8 @@ export const CategoryFilter = ({ categories = [], onChange, products = [] }) => 
                         showOverlayGradient={false}
                     />
 
-                    <SafeAreaView style={styles.safeArea}>
-                        <View style={styles.modalHeader}>
+                    <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
+                        <View style={[styles.modalHeader, { paddingTop: insets.top + normalize(4) }]}>
                             <TouchableOpacity
                                 onPress={() => setModalVisible(false)}
                                 style={styles.closeButton}
@@ -156,35 +156,47 @@ export const CategoryFilter = ({ categories = [], onChange, products = [] }) => 
                             </TouchableOpacity>
                         </View>
 
-                        <View style={styles.whiteContainer}>
-                            <FlatList
-                                data={filteredCategories}
-                                keyExtractor={(item) => item.id.toString()}
-                                renderItem={({ item }) => (
-                                    <TouchableOpacity
-                                        style={styles.categoryItem}
-                                        onPress={() => handleSelectCategory(item)}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Text style={styles.categoryName}>
-                                            {item.name}
-                                        </Text>
-                                        <Checkbox
-                                            selected={selectedCategories.some(cat => cat.id === item.id)}
-                                        />
-                                    </TouchableOpacity>
-                                )}
-                                onContentSizeChange={onContentSizeChange}
-                                ListEmptyComponent={() => (
-                                    <Text style={styles.emptyMessage}>Категории не найдены</Text>
-                                )}
-                            />
-                            <TouchableOpacity
-                                style={styles.modalApplyButton}
-                                onPress={handleApplyCategories}
-                            >
-                                <Text style={styles.modalApplyButtonText}>ПРИМЕНИТЬ</Text>
-                            </TouchableOpacity>
+                        <View
+                            style={[
+                                styles.whiteContainer,
+                                { marginBottom: Math.max(normalize(8), insets.bottom) }
+                            ]}
+                        >
+                            <View style={styles.listContainer}>
+                                <FlatList
+                                    style={styles.list}
+                                    data={filteredCategories}
+                                    keyExtractor={(item) => item.id.toString()}
+                                    contentContainerStyle={styles.listContent}
+                                    scrollIndicatorInsets={{ bottom: normalize(12) }}
+                                    renderItem={({ item }) => (
+                                        <TouchableOpacity
+                                            style={styles.categoryItem}
+                                            onPress={() => handleSelectCategory(item)}
+                                            activeOpacity={0.7}
+                                        >
+                                            <Text style={styles.categoryName}>
+                                                {item.name}
+                                            </Text>
+                                            <Checkbox
+                                                selected={selectedCategories.some(cat => cat.id === item.id)}
+                                            />
+                                        </TouchableOpacity>
+                                    )}
+                                    onContentSizeChange={onContentSizeChange}
+                                    ListEmptyComponent={() => (
+                                        <Text style={styles.emptyMessage}>Категории не найдены</Text>
+                                    )}
+                                />
+                            </View>
+                            <View style={styles.footer}>
+                                <TouchableOpacity
+                                    style={styles.modalApplyButton}
+                                    onPress={handleApplyCategories}
+                                >
+                                    <Text style={styles.modalApplyButtonText}>ПРИМЕНИТЬ</Text>
+                                </TouchableOpacity>
+                            </View>
                         </View>
 
                     </SafeAreaView>
@@ -222,7 +234,6 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: normalize(16),
-        paddingTop: Platform.OS === 'ios' ? normalize(15) : normalize(45),
         paddingBottom: normalize(15),
     },
     closeButton: {
@@ -283,8 +294,22 @@ const styles = StyleSheet.create({
         backgroundColor: 'white',
         borderRadius: normalize(12),
         marginHorizontal: normalize(16),
-        marginBottom: normalize(20),
         overflow: 'hidden',
+    },
+    listContainer: {
+        flex: 1,
+        minHeight: 0,
+    },
+    list: {
+        flex: 1,
+    },
+    listContent: {
+        paddingBottom: normalize(12),
+    },
+    footer: {
+        paddingTop: normalize(10),
+        paddingBottom: normalize(8),
+        backgroundColor: 'white',
     },
     categoryItem: {
         flexDirection: 'row',

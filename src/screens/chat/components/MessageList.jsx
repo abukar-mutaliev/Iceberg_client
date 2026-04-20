@@ -1,10 +1,53 @@
-import React, { useCallback, useRef, useMemo, memo, useState } from 'react';
-import { FlatList, View, Text, StyleSheet, TouchableWithoutFeedback } from 'react-native';
+import React, { useCallback, useRef, useMemo, memo, useState, useEffect } from 'react';
+import { FlatList, View, Text, StyleSheet, TouchableWithoutFeedback, Animated, Easing } from 'react-native';
 import { SwipeableMessageBubble } from '@entities/chat';
 
 // Константы
 const LOAD_MORE_THRESHOLD = 2000;
 const HEADER_OFFSET = 64;
+const TELEGRAM_DELETE_FADE_DURATION = 220;
+const TELEGRAM_DELETE_COLLAPSE_DURATION = 300;
+
+const getDayKey = (dateLike) => {
+  const date = dateLike ? new Date(dateLike) : null;
+  if (!date || Number.isNaN(date.getTime())) return 'unknown';
+
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+};
+
+const formatDateLabel = (dateLike) => {
+  const date = dateLike ? new Date(dateLike) : null;
+  if (!date || Number.isNaN(date.getTime())) return 'Без даты';
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  if (target.getTime() === today.getTime()) return 'Сегодня';
+  if (target.getTime() === yesterday.getTime()) return 'Вчера';
+
+  return date.toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+};
+
+const DateSeparator = memo(({ label }) => (
+  <View style={styles.dateSeparatorContainer}>
+    <View style={styles.dateSeparatorChip}>
+      <Text style={styles.dateSeparatorText}>{label}</Text>
+    </View>
+  </View>
+));
+
+DateSeparator.displayName = 'DateSeparator';
 
 /**
  * Оптимизированный компонент одного сообщения
@@ -43,46 +86,209 @@ const MessageItem = memo(({
   activeSwipeId,
   onSwipeStart,
   onSwipeEnd,
+  isDeleting,
+  onDeleteAnimationEnd,
 }) => {
   const shouldReset = activeSwipeId !== null && activeSwipeId !== item.id;
+  const [measuredHeight, setMeasuredHeight] = useState(0);
+  const opacityAnim = useRef(new Animated.Value(1)).current;
+  const scaleXAnim = useRef(new Animated.Value(1)).current;
+  const scaleYAnim = useRef(new Animated.Value(1)).current;
+  const translateXAnim = useRef(new Animated.Value(0)).current;
+  const translateYAnim = useRef(new Animated.Value(0)).current;
+  const heightAnim = useRef(new Animated.Value(0)).current;
+  const animationRef = useRef(null);
+  const animationCycleRef = useRef(0);
+  const deleteAnimationTriggeredRef = useRef(false);
+
+  const handleLayout = useCallback((event) => {
+    const nextHeight = Math.ceil(event?.nativeEvent?.layout?.height || 0);
+    if (!nextHeight || nextHeight === measuredHeight) return;
+
+    setMeasuredHeight(nextHeight);
+    if (!deleteAnimationTriggeredRef.current) {
+      heightAnim.setValue(nextHeight);
+    }
+  }, [heightAnim, measuredHeight]);
+
+  useEffect(() => {
+    if (isDeleting) {
+      if (deleteAnimationTriggeredRef.current) return;
+
+      animationCycleRef.current += 1;
+      const animationCycle = animationCycleRef.current;
+      deleteAnimationTriggeredRef.current = true;
+      animationRef.current?.stop?.();
+      animationRef.current = Animated.parallel([
+        Animated.timing(opacityAnim, {
+          toValue: 0,
+          duration: TELEGRAM_DELETE_FADE_DURATION,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleXAnim, {
+          toValue: 0.97,
+          duration: TELEGRAM_DELETE_FADE_DURATION,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleYAnim, {
+          toValue: 0.86,
+          duration: TELEGRAM_DELETE_FADE_DURATION,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateXAnim, {
+          toValue: 10,
+          duration: TELEGRAM_DELETE_FADE_DURATION,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(translateYAnim, {
+          toValue: -6,
+          duration: TELEGRAM_DELETE_FADE_DURATION,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(heightAnim, {
+          toValue: 0,
+          duration: TELEGRAM_DELETE_COLLAPSE_DURATION,
+          easing: Easing.inOut(Easing.cubic),
+          useNativeDriver: false,
+        }),
+      ], {
+        stopTogether: false,
+      });
+      if (!measuredHeight) {
+        heightAnim.setValue(1);
+      }
+      animationRef.current.start(({ finished }) => {
+        if (
+          finished &&
+          animationCycleRef.current === animationCycle &&
+          deleteAnimationTriggeredRef.current
+        ) {
+          onDeleteAnimationEnd?.(item.id);
+        }
+      });
+      return;
+    }
+
+    animationCycleRef.current += 1;
+    animationRef.current?.stop?.();
+    deleteAnimationTriggeredRef.current = false;
+    animationRef.current = Animated.parallel([
+      Animated.timing(opacityAnim, {
+        toValue: 1,
+        duration: 160,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleXAnim, {
+        toValue: 1,
+        duration: 160,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.timing(scaleYAnim, {
+        toValue: 1,
+        duration: 160,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateXAnim, {
+        toValue: 0,
+        duration: 160,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateYAnim, {
+        toValue: 0,
+        duration: 160,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.timing(heightAnim, {
+        toValue: measuredHeight || 0,
+        duration: 170,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: false,
+      }),
+    ]);
+    animationRef.current.start();
+  }, [
+    isDeleting,
+    item.id,
+    measuredHeight,
+    onDeleteAnimationEnd,
+    opacityAnim,
+    scaleXAnim,
+    scaleYAnim,
+    translateXAnim,
+    translateYAnim,
+    heightAnim,
+  ]);
 
   return (
-    <SwipeableMessageBubble
-      message={item}
-      currentUserId={currentUserId}
-      onOpenProduct={onOpenProduct}
-      onOpenStop={onOpenStop}
-      onOpenWarehouse={onOpenWarehouse}
-      onOpenContact={onOpenContact}
-      onImagePress={onImagePress}
-      incomingAvatarUri={partnerAvatar}
-      isSelectionMode={isSelectionMode}
-      isSelected={selectedMessages.has(item.id)}
-      isHighlighted={highlightedMessageId === item.id}
-      isPressed={pressedMessageId === item.id}
-      isContextMenuActive={false}
-      hasContextMenu={false}
-      canDelete={canDeleteMessage(item)}
-      onToggleSelection={onToggleSelection}
-      onPress={onPress}
-      onLongPress={onLongPress}
-      onRetryMessage={onRetryMessage}
-      onCancelMessage={onCancelMessage}
-      isRetrying={isRetrying}
-      onAvatarPress={onAvatarPress}
-      onContactDriver={onContactDriver}
-      onReply={onReply}
-      onReplyPress={onReplyPress}
-      onAddReaction={onAddReaction}
-      onShowReactionPicker={onShowReactionPicker}
-      roomType={roomType}
-      participants={participants}
-      participantsById={participantsById}
-      onSenderNamePress={onSenderNamePress}
-      onSwipeStart={onSwipeStart}
-      onSwipeEnd={onSwipeEnd}
-      shouldReset={shouldReset}
-    />
+    <Animated.View
+      onLayout={handleLayout}
+      style={[
+        styles.messageDeleteAnimation,
+        measuredHeight > 0 || isDeleting ? { height: heightAnim } : null,
+        {
+          overflow: 'hidden',
+        },
+      ]}
+    >
+      <Animated.View
+        style={{
+          opacity: opacityAnim,
+          transform: [
+            { translateX: translateXAnim },
+            { translateY: translateYAnim },
+            { scaleX: scaleXAnim },
+            { scaleY: scaleYAnim },
+          ],
+        }}
+      >
+        <SwipeableMessageBubble
+          message={item}
+          currentUserId={currentUserId}
+          onOpenProduct={onOpenProduct}
+          onOpenStop={onOpenStop}
+          onOpenWarehouse={onOpenWarehouse}
+          onOpenContact={onOpenContact}
+          onImagePress={onImagePress}
+          incomingAvatarUri={partnerAvatar}
+          isSelectionMode={isSelectionMode}
+          isSelected={selectedMessages.has(item.id)}
+          isHighlighted={highlightedMessageId === item.id}
+          isPressed={pressedMessageId === item.id}
+          isContextMenuActive={false}
+          hasContextMenu={false}
+          canDelete={canDeleteMessage(item)}
+          onToggleSelection={onToggleSelection}
+          onPress={onPress}
+          onLongPress={onLongPress}
+          onRetryMessage={onRetryMessage}
+          onCancelMessage={onCancelMessage}
+          isRetrying={isRetrying}
+          onAvatarPress={onAvatarPress}
+          onContactDriver={onContactDriver}
+          onReply={onReply}
+          onReplyPress={onReplyPress}
+          onAddReaction={onAddReaction}
+          onShowReactionPicker={onShowReactionPicker}
+          roomType={roomType}
+          participants={participants}
+          participantsById={participantsById}
+          onSenderNamePress={onSenderNamePress}
+          onSwipeStart={onSwipeStart}
+          onSwipeEnd={onSwipeEnd}
+          shouldReset={shouldReset}
+        />
+      </Animated.View>
+    </Animated.View>
   );
 }, (prevProps, nextProps) => {
   // Кастомная функция сравнения для оптимизации
@@ -96,7 +302,8 @@ const MessageItem = memo(({
     prevProps.pressedMessageId === nextProps.pressedMessageId &&
     prevProps.isRetrying === nextProps.isRetrying &&
     prevProps.item.status === nextProps.item.status &&
-    prevProps.activeSwipeId === nextProps.activeSwipeId
+    prevProps.activeSwipeId === nextProps.activeSwipeId &&
+    prevProps.isDeleting === nextProps.isDeleting
   );
 });
 
@@ -115,6 +322,8 @@ export const MessageList = memo(({
   highlightedMessageId,
   pressedMessageId,
   retryingMessages,
+  deletingMessageIds = new Set(),
+  hiddenMessageIds = new Set(),
   canDeleteMessage,
   partnerAvatar,
   roomType,
@@ -143,9 +352,40 @@ export const MessageList = memo(({
   onSenderNamePress,
   onDismissKeyboard,
   flatListRef,
+  onDeleteAnimationEnd,
 }) => {
   const isLoadingMoreRef = useRef(false);
   const [activeSwipeId, setActiveSwipeId] = useState(null);
+  const visibleMessages = useMemo(
+    () => messages.filter((message) => !hiddenMessageIds.has(message.id)),
+    [messages, hiddenMessageIds]
+  );
+  const listItems = useMemo(() => {
+    const items = [];
+
+    visibleMessages.forEach((message, index) => {
+      const messageId = message?.id ?? message?.temporaryId ?? index;
+      const currentDayKey = getDayKey(message?.createdAt);
+      const nextMessage = visibleMessages[index + 1];
+      const nextDayKey = getDayKey(nextMessage?.createdAt);
+
+      items.push({
+        type: 'message',
+        key: `message-${messageId}`,
+        message,
+      });
+
+      if (!nextMessage || currentDayKey !== nextDayKey) {
+        items.push({
+          type: 'date-separator',
+          key: `date-${currentDayKey}-${messageId}`,
+          label: formatDateLabel(message?.createdAt),
+        });
+      }
+    });
+
+    return items;
+  }, [visibleMessages]);
 
   // Обработчик начала свайпа
   const handleSwipeStart = useCallback((messageId) => {
@@ -186,11 +426,16 @@ export const MessageList = memo(({
   
   // Рендер элемента списка
   const renderItem = useCallback(({item}) => {
-    const isRetrying = item.temporaryId ? retryingMessages.has(item.temporaryId) : false;
+    if (item.type === 'date-separator') {
+      return <DateSeparator label={item.label} />;
+    }
+
+    const message = item.message;
+    const isRetrying = message.temporaryId ? retryingMessages.has(message.temporaryId) : false;
     
     return (
       <MessageItem
-        item={item}
+        item={message}
         currentUserId={currentUserId}
         isSelectionMode={isSelectionMode}
         selectedMessages={selectedMessages}
@@ -201,9 +446,9 @@ export const MessageList = memo(({
         roomType={roomType}
         participants={participants}
         participantsById={participantsById}
-        onPress={() => onPress?.(item.id)}
-        onLongPress={(position) => onLongPress?.(item.id, position)}
-        onToggleSelection={() => onToggleSelection?.(item.id)}
+        onPress={() => onPress?.(message.id)}
+        onLongPress={(position) => onLongPress?.(message.id, position)}
+        onToggleSelection={() => onToggleSelection?.(message.id)}
         onOpenProduct={onOpenProduct}
         onOpenStop={onOpenStop}
         onOpenWarehouse={onOpenWarehouse}
@@ -211,17 +456,19 @@ export const MessageList = memo(({
         onImagePress={onImagePress}
         onAvatarPress={onAvatarPress}
         onContactDriver={onContactDriver}
-        onReply={() => onReply?.(item)}
-        onReplyPress={() => onReplyPress?.(item)}
-        onAddReaction={(emoji) => onAddReaction?.(item.id, emoji)}
-        onShowReactionPicker={(position) => onShowReactionPicker?.(item.id, position)}
-        onRetryMessage={() => onRetryMessage?.(item)}
-        onCancelMessage={() => onCancelMessage?.(item)}
+        onReply={() => onReply?.(message)}
+        onReplyPress={() => onReplyPress?.(message)}
+        onAddReaction={(emoji) => onAddReaction?.(message.id, emoji)}
+        onShowReactionPicker={(position) => onShowReactionPicker?.(message.id, position)}
+        onRetryMessage={() => onRetryMessage?.(message)}
+        onCancelMessage={() => onCancelMessage?.(message)}
         isRetrying={isRetrying}
         onSenderNamePress={onSenderNamePress}
         activeSwipeId={activeSwipeId}
         onSwipeStart={handleSwipeStart}
         onSwipeEnd={handleSwipeEnd}
+        isDeleting={deletingMessageIds.has(message.id)}
+        onDeleteAnimationEnd={onDeleteAnimationEnd}
       />
     );
   }, [
@@ -254,14 +501,14 @@ export const MessageList = memo(({
     onCancelMessage,
     onSenderNamePress,
     activeSwipeId,
+    deletingMessageIds,
     handleSwipeStart,
     handleSwipeEnd,
+    onDeleteAnimationEnd,
   ]);
   
   // Стабильный keyExtractor
-  const keyExtractor = useCallback((item) => 
-    item.temporaryId ? `temp_${item.temporaryId}` : `msg_${item.id}`,
-  []);
+  const keyExtractor = useCallback((item) => item.key, []);
   
   // extraData для контроля ре-рендеров
   const extraData = useMemo(() => ({
@@ -270,18 +517,24 @@ export const MessageList = memo(({
     highlightedId: highlightedMessageId,
     pressedId: pressedMessageId,
     activeSwipeId,
+    deletingCount: deletingMessageIds.size,
+    hiddenCount: hiddenMessageIds.size,
     // Хэш реакций для обнаружения изменений
-    reactionsHash: messages.map(m => `${m.id}:${m._reactionsUpdated || 0}`).join(',')
+    reactionsHash: visibleMessages.map(m => `${m.id}:${m._reactionsUpdated || 0}`).join(','),
+    separatorCount: listItems.length - visibleMessages.length,
   }), [
     isSelectionMode,
     selectedMessages.size,
     highlightedMessageId,
     pressedMessageId,
     activeSwipeId,
-    messages
+    deletingMessageIds.size,
+    hiddenMessageIds.size,
+    visibleMessages,
+    listItems.length,
   ]);
   
-  if (!loading && (!messages || messages.length === 0)) {
+  if (!loading && (!visibleMessages || visibleMessages.length === 0)) {
     return (
       <View style={styles.emptyState}>
         <Text style={styles.emptyStateText}>Начните общение</Text>
@@ -293,7 +546,7 @@ export const MessageList = memo(({
     <TouchableWithoutFeedback onPress={onDismissKeyboard}>
       <FlatList
         ref={flatListRef}
-        data={messages}
+        data={listItems}
         extraData={extraData}
         inverted
         keyExtractor={keyExtractor}
@@ -335,5 +588,28 @@ const styles = StyleSheet.create({
   emptyStateText: {
     fontSize: 16,
     color: '#999',
+  },
+  dateSeparatorContainer: {
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  dateSeparatorChip: {
+    backgroundColor: 'rgba(241, 247, 251, 0.96)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 1,
+    elevation: 1,
+  },
+  dateSeparatorText: {
+    fontSize: 12,
+    color: '#54656F',
+    fontWeight: '500',
+  },
+  messageDeleteAnimation: {
+    overflow: 'hidden',
   },
 });

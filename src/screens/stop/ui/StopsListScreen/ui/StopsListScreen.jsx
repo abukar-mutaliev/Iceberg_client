@@ -14,7 +14,7 @@ import {
     fetchAllStops,
     clearStopCache,
 } from '@entities/stop';
-import { StopCard } from "@entities/driver/ui/StopCard";
+import { StopCard, isStopActive } from "@entities/driver/ui/StopCard";
 import { BackButton } from "@shared/ui/Button/BackButton";
 import { InteractiveMap } from "@shared/ui/InteractiveMapIngushetia";
 import { SearchIcon } from "@shared/ui/Icon/SearchIcon";
@@ -211,18 +211,84 @@ export const StopsListScreen = ({ navigation }) => {
         );
     };
 
-    // Фильтрация остановок по району и поисковому запросу
+    // Привилегированные роли видят все остановки; остальные — только актуальные
+    const isPrivilegedUser = userRole === 'ADMIN' || userRole === 'EMPLOYEE' || userRole === 'DRIVER';
+
+    const isTodayStop = (stop) => {
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        const todayEnd   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+        const start = stop.startTime ? new Date(stop.startTime) : null;
+        const end   = stop.endTime   ? new Date(stop.endTime)   : null;
+
+        if (!start && !end) return false;
+        // Начинается сегодня
+        if (start && start >= todayStart && start <= todayEnd) return true;
+        // Заканчивается сегодня
+        if (end && end >= todayStart && end <= todayEnd) return true;
+        // Начата раньше, но ещё не закончилась (проходит через сегодня)
+        if (start && end && start < todayStart && end > todayEnd) return true;
+
+        return false;
+    };
+
+    // Время стоянки ещё не прошло (endTime в будущем или отсутствует)
+    const isNotExpired = (stop) => {
+        if (!stop.endTime) return true;
+        return new Date(stop.endTime) > new Date();
+    };
+
+    // Фильтрация остановок по дате, времени, району и поисковому запросу
     const filteredStops = safeStops.filter(stop => {
+        // Клиенты видят только сегодняшние остановки, у которых ещё не прошло время
+        if (!isPrivilegedUser && (!isTodayStop(stop) || !isNotExpired(stop))) return false;
+
         // Фильтр по району
-        const districtFilter = selectedDistrictId 
-            ? stop.districtId === selectedDistrictId 
+        const districtFilter = selectedDistrictId
+            ? stop.districtId === selectedDistrictId
             : true;
-        
+
         // Фильтр по поисковому запросу
         const searchFilter = isAddressMatch(stop.address, debouncedSearchQuery);
-        
+
         return districtFilter && searchFilter;
     });
+
+    // Сортировка для клиентов:
+    //   1. Активные сейчас («На месте») — первые
+    //   2. Предстоящие сегодня — по возрастанию startTime
+    //   3. Уже прошедшие сегодня — в конце, по убыванию endTime (недавно закончившиеся ближе к верху)
+    // Для привилегированных пользователей порядок остаётся серверным (по startTime asc).
+    const sortedStops = isPrivilegedUser
+        ? filteredStops
+        : [...filteredStops].sort((a, b) => {
+            const aActive = isStopActive(a) ? 0 : 1;
+            const bActive = isStopActive(b) ? 0 : 1;
+
+            // Активные — вперёд
+            if (aActive !== bActive) return aActive - bActive;
+
+            const now = new Date();
+            const aEnd = a.endTime ? new Date(a.endTime) : null;
+            const bEnd = b.endTime ? new Date(b.endTime) : null;
+            const aStart = a.startTime ? new Date(a.startTime) : null;
+            const bStart = b.startTime ? new Date(b.startTime) : null;
+
+            const aExpired = aEnd && aEnd < now;
+            const bExpired = bEnd && bEnd < now;
+
+            // Прошедшие — в конец
+            if (aExpired !== bExpired) return aExpired ? 1 : -1;
+
+            // Среди прошедших: недавно завершившиеся первее (убывание endTime)
+            if (aExpired && bExpired) {
+                return (bEnd?.getTime() ?? 0) - (aEnd?.getTime() ?? 0);
+            }
+
+            // Среди предстоящих: по возрастанию startTime
+            return (aStart?.getTime() ?? 0) - (bStart?.getTime() ?? 0);
+        });
 
     const errorMessage = getErrorMessage(error);
 
@@ -334,13 +400,13 @@ export const StopsListScreen = ({ navigation }) => {
                             </TouchableOpacity>
                         </View>
                     </View>
-                ) : filteredStops.length === 0 && !loading ? (
+                ) : sortedStops.length === 0 && !loading ? (
                     <EmptyState
                         message={getEmptyMessage()}
                     />
                 ) : (
                     <View style={styles.locationsList}>
-                        {filteredStops.map((stop) => (
+                        {sortedStops.map((stop) => (
                             <View style={styles.stopCardWrapper} key={stop.id}>
                                 <View style={styles.stopCardInner}>
                                     <StopCard

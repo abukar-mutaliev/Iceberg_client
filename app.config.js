@@ -6,7 +6,7 @@ export default {
     expo: {
         name: IS_DEV ? 'Iceberg (Dev)' : 'Iceberg',
         slug: 'iceberg',
-        version: '1.3.8',
+        version: '1.4.0',
         scheme: 'iceberg',
         icon: './assets/notification-icon.png',
         splash: {
@@ -51,7 +51,7 @@ export default {
             ...(IS_DEV || IS_PREVIEW ? ['expo-dev-client'] : []),
             './app.plugin.js',
             [
-                'expo-build-properties',  // ← УБРАЛИ ЛИШНИЕ СКОБКИ
+                'expo-build-properties',
                 {
                     android: {
                         minSdkVersion: 24,
@@ -68,12 +68,6 @@ export default {
                     },
                     ios: {
                         deploymentTarget: '15.1',
-                        // Временно отключаем useFrameworks для preview из-за проблем с react-native-maps
-                        // react-native-maps имеет проблемы совместимости с useFrameworks: 'static'
-                        // Для production можно включить обратно, если обновить react-native-maps
-                        // ...(IS_PREVIEW && {
-                        //     useFrameworks: 'static',
-                        // }),
                     },
                 },
             ],
@@ -110,8 +104,8 @@ export default {
         android: {
             googleServicesFile: './google-services.json',
             package: 'com.abuingush.iceberg',
-            versionCode: 49,
-            versionName: '1.4.9',
+            versionCode: 51,
+            versionName: '1.5.1',
             icon: './assets/icon.png',
             adaptiveIcon: {
                 foregroundImage: './assets/icon.png',
@@ -130,6 +124,7 @@ export default {
                 'RECEIVE_BOOT_COMPLETED',
                 'VIBRATE',
                 'WAKE_LOCK',
+                'RECORD_AUDIO',
                 'POST_NOTIFICATIONS',
                 'INTERNET',
                 'ACCESS_NETWORK_STATE',
@@ -139,6 +134,7 @@ export default {
                 'android.permission.RECEIVE_BOOT_COMPLETED',
                 'android.permission.VIBRATE',
                 'android.permission.WAKE_LOCK',
+                'android.permission.RECORD_AUDIO',
                 'android.permission.POST_NOTIFICATIONS',
                 'android.permission.INTERNET',
                 'android.permission.ACCESS_NETWORK_STATE',

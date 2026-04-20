@@ -11,7 +11,7 @@ import {
     TextInput,
     Platform
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronRight } from 'lucide-react-native';
 import { FontFamily } from '@app/styles/GlobalStyles';
 import { Checkbox } from '@shared/ui/Checkbox';
@@ -37,6 +37,7 @@ export const BrandFilter = ({ brands = [], onChange, products = [] }) => {
     const [availableBrands, setAvailableBrands] = useState([]);
     const [selectedBrands, setSelectedBrands] = useState(brands);
     const [contentHeight, setContentHeight] = useState(0);
+    const insets = useSafeAreaInsets();
 
     // Получаем доступные бренды (поставщиков) из продуктов
     useEffect(() => {
@@ -154,38 +155,50 @@ export const BrandFilter = ({ brands = [], onChange, products = [] }) => {
                             </TouchableOpacity>
                         </View>
 
-                        <View style={styles.whiteContainer}>
-                            <FlatList
-                                data={filteredBrands}
-                                keyExtractor={(item) => item.id.toString()}
-                                renderItem={({ item }) => (
-                                    <TouchableOpacity
-                                        style={styles.brandItem}
-                                        onPress={() => handleSelectBrand(item)}
-                                        activeOpacity={0.7}
-                                    >
-                                        <View style={styles.brandInfo}>
-                                            <Text style={styles.brandName}>{item.name}</Text>
-                                            {item.contactPerson ? (
-                                                <Text style={styles.brandContact}>{item.contactPerson}</Text>
-                                            ) : null}
-                                        </View>
-                                        <Checkbox
-                                            selected={selectedBrands.some(b => b.id === item.id)}
-                                        />
-                                    </TouchableOpacity>
-                                )}
-                                onContentSizeChange={onContentSizeChange}
-                                ListEmptyComponent={() => (
-                                    <Text style={styles.emptyMessage}>Бренды не найдены</Text>
-                                )}
-                            />
-                            <TouchableOpacity
-                                style={styles.modalApplyButton}
-                                onPress={handleApplyBrands}
-                            >
-                                <Text style={styles.modalApplyButtonText}>ПРИМЕНИТЬ</Text>
-                            </TouchableOpacity>
+                        <View
+                            style={[
+                                styles.whiteContainer,
+                                { marginBottom: Math.max(normalize(8), insets.bottom) }
+                            ]}
+                        >
+                            <View style={styles.listContainer}>
+                                <FlatList
+                                    style={styles.list}
+                                    data={filteredBrands}
+                                    keyExtractor={(item) => item.id.toString()}
+                                    contentContainerStyle={styles.listContent}
+                                    scrollIndicatorInsets={{ bottom: normalize(12) }}
+                                    renderItem={({ item }) => (
+                                        <TouchableOpacity
+                                            style={styles.brandItem}
+                                            onPress={() => handleSelectBrand(item)}
+                                            activeOpacity={0.7}
+                                        >
+                                            <View style={styles.brandInfo}>
+                                                <Text style={styles.brandName}>{item.name}</Text>
+                                                {item.contactPerson ? (
+                                                    <Text style={styles.brandContact}>{item.contactPerson}</Text>
+                                                ) : null}
+                                            </View>
+                                            <Checkbox
+                                                selected={selectedBrands.some(b => b.id === item.id)}
+                                            />
+                                        </TouchableOpacity>
+                                    )}
+                                    onContentSizeChange={onContentSizeChange}
+                                    ListEmptyComponent={() => (
+                                        <Text style={styles.emptyMessage}>Бренды не найдены</Text>
+                                    )}
+                                />
+                            </View>
+                            <View style={styles.footer}>
+                                <TouchableOpacity
+                                    style={styles.modalApplyButton}
+                                    onPress={handleApplyBrands}
+                                >
+                                    <Text style={styles.modalApplyButtonText}>ПРИМЕНИТЬ</Text>
+                                </TouchableOpacity>
+                            </View>
                         </View>
                     </SafeAreaView>
                 </View>
@@ -284,8 +297,22 @@ const styles = StyleSheet.create({
         backgroundColor: 'white',
         borderRadius: normalize(12),
         marginHorizontal: normalize(16),
-        marginBottom: normalize(20),
         overflow: 'hidden',
+    },
+    listContainer: {
+        flex: 1,
+        minHeight: 0,
+    },
+    list: {
+        flex: 1,
+    },
+    listContent: {
+        paddingBottom: normalize(12),
+    },
+    footer: {
+        paddingTop: normalize(10),
+        paddingBottom: normalize(8),
+        backgroundColor: 'white',
     },
     brandItem: {
         flexDirection: 'row',

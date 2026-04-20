@@ -717,6 +717,9 @@ async ({ roomId, voice, temporaryId, replyToId, retryCount = 0 }, { rejectWithVa
         if (replyToId) {
           form.append('replyToId', replyToId.toString());
         }
+        if (temporaryId) {
+          form.append('temporaryId', temporaryId);
+        }
         
         // Добавляем waveform как JSON строку
         if (voice.waveform && Array.isArray(voice.waveform)) {
@@ -2074,6 +2077,36 @@ const chatSlice = createSlice({
           }
           return;
         }
+
+        if (message.type === 'VOICE') {
+          const messageTime = message.createdAt ? new Date(message.createdAt).getTime() : Date.now();
+          const hasOptimisticVoiceMessage = bucket.ids.some(id => {
+            const msg = bucket.byId[id];
+            if (!msg?.isOptimistic || msg?.type !== 'VOICE') return false;
+
+            const hasVoiceAttachment = Array.isArray(msg.attachments) &&
+              msg.attachments.some(att => att?.type === 'VOICE');
+            if (!hasVoiceAttachment) return false;
+
+            if (message.temporaryId && msg.temporaryId === message.temporaryId) {
+              return true;
+            }
+
+            const msgTime = new Date(msg.createdAt || msg.timestamp || 0).getTime();
+            return Number.isFinite(msgTime) && Math.abs(messageTime - msgTime) < 15000;
+          });
+
+          if (hasOptimisticVoiceMessage) {
+            if (__DEV__) {
+              console.log('⏳ receiveSocketMessage: Waiting for fulfilled handler to process own voice message', {
+                messageId: message.id,
+                roomId,
+                temporaryId: message.temporaryId || null,
+              });
+            }
+            return;
+          }
+        }
         
         // КРИТИЧНО: Проверяем наличие оптимистичного (временного) сообщения
         // Если есть временное сообщение того же типа с похожим содержимым, НЕ добавляем WebSocket сообщение
@@ -3376,9 +3409,7 @@ const chatSlice = createSlice({
           updateMessageCache(roomId, state.messages[roomId]);
         })
         .addCase(sendImages.fulfilled, (state, action) => {
-          // Работаем как sendVoice.fulfilled - обновляем оптимистичное сообщение прямо здесь
           const payload = action.payload;
-          // Поддерживаем оба формата: { message, temporaryId } и просто message
           const message = payload?.message || payload;
           const temporaryId = payload?.temporaryId || action.meta?.arg?.temporaryId;
           const roomId = message?.roomId;
@@ -3386,63 +3417,71 @@ const chatSlice = createSlice({
           if (!roomId || !message || !message.id) return;
           
           ensureRoomBucket(state, roomId);
-          
-          // Проверяем, не существует ли уже сообщение с таким id (пришло через WebSocket)
-          const messageAlreadyExists = state.messages[roomId].byId[message.id];
-          
-          // Если использовались оптимистичные обновления, находим и удаляем временное сообщение
-          if (temporaryId && state.messages[roomId]) {
-            let foundMessageKey = null;
-            
-            if (state.messages[roomId].byId[temporaryId]) {
-              foundMessageKey = temporaryId;
-            } else {
-              for (const messageId of state.messages[roomId].ids) {
-                const msg = state.messages[roomId].byId[messageId];
-                if (msg?.temporaryId === temporaryId) {
-                  foundMessageKey = messageId;
-                  break;
-                }
-              }
-            }
-            
-            if (foundMessageKey) {
-              // Удаляем временное сообщение
-              delete state.messages[roomId].byId[foundMessageKey];
-              const tempIndex = state.messages[roomId].ids.indexOf(foundMessageKey);
-              if (tempIndex >= 0) {
-                state.messages[roomId].ids.splice(tempIndex, 1);
-              }
-              
-              // Если сообщение уже пришло через WebSocket, просто удаляем временное и выходим
-              if (messageAlreadyExists) {
-                if (state.rooms.byId[roomId]?.lastMessage?.temporaryId === temporaryId || 
-                    state.rooms.byId[roomId]?.lastMessage?.id === foundMessageKey) {
-                  const createdAt = message?.createdAt || new Date().toISOString();
-                  const roomUpdate = { 
-                    id: roomId, 
-                    updatedAt: createdAt, 
-                    lastMessage: message 
-                  };
-                  upsertRooms(state, [roomUpdate]);
-                }
-                
-                updateMessageCache(roomId, state.messages[roomId]);
-                return;
+
+          const bucket = state.messages[roomId];
+          const existingMessage = bucket.byId[message.id];
+          let foundMessageKey = null;
+
+          if (temporaryId && bucket.byId[temporaryId]) {
+            foundMessageKey = temporaryId;
+          } else if (temporaryId) {
+            for (const currentMessageId of bucket.ids) {
+              const currentMessage = bucket.byId[currentMessageId];
+              if (currentMessage?.temporaryId === temporaryId) {
+                foundMessageKey = currentMessageId;
+                break;
               }
             }
           }
-          
-          // Если сообщение уже существует (пришло через WebSocket), не добавляем дубликат
-          if (messageAlreadyExists) {
-            return;
+
+          const optimisticMessage = foundMessageKey ? bucket.byId[foundMessageKey] : null;
+          const mergedMessage = {
+            ...(optimisticMessage || {}),
+            ...(existingMessage || {}),
+            ...message,
+            id: message.id,
+            temporaryId:
+              optimisticMessage?.temporaryId ||
+              existingMessage?.temporaryId ||
+              temporaryId ||
+              null,
+            attachments:
+              message.attachments?.length > 0
+                ? message.attachments
+                : (optimisticMessage?.attachments || existingMessage?.attachments || []),
+            isOptimistic: false,
+            status: message.status || existingMessage?.status || 'SENT',
+          };
+
+          if (foundMessageKey && foundMessageKey !== message.id) {
+            delete bucket.byId[foundMessageKey];
           }
-          
-          // Добавляем новое сообщение
-          const createdAt = message?.createdAt || new Date().toISOString();
-          upsertRooms(state, [{ id: roomId, updatedAt: createdAt, lastMessage: message }]);
-          upsertMessagesDesc(state.messages[roomId], [message]);
-          updateMessageCache(roomId, state.messages[roomId]);
+
+          bucket.byId[message.id] = mergedMessage;
+
+          if (foundMessageKey) {
+            const tempIndex = bucket.ids.indexOf(foundMessageKey);
+            if (tempIndex >= 0) {
+              bucket.ids[tempIndex] = message.id;
+            }
+          }
+
+          if (!bucket.ids.includes(message.id)) {
+            bucket.ids.push(message.id);
+          }
+
+          bucket.ids = [...new Set(bucket.ids)];
+          bucket.ids.sort((a, b) => {
+            const ma = bucket.byId[a];
+            const mb = bucket.byId[b];
+            const maTime = ma?.createdAt ? new Date(ma.createdAt).getTime() : 0;
+            const mbTime = mb?.createdAt ? new Date(mb.createdAt).getTime() : 0;
+            return mbTime - maTime;
+          });
+
+          const createdAt = mergedMessage?.createdAt || new Date().toISOString();
+          upsertRooms(state, [{ id: roomId, updatedAt: createdAt, lastMessage: mergedMessage }]);
+          updateMessageCache(roomId, bucket);
         })
         .addCase(sendPoll.fulfilled, (state, action) => {
           // Работаем как sendVoice.fulfilled - обновляем оптимистичное сообщение
@@ -3513,9 +3552,7 @@ const chatSlice = createSlice({
           updateMessageCache(roomId, state.messages[roomId]);
         })
         .addCase(sendVoice.fulfilled, (state, action) => {
-          // Работаем как sendText.fulfilled - обновляем оптимистичное сообщение прямо здесь
           const payload = action.payload;
-          // Поддерживаем оба формата: { message, temporaryId } и просто message
           const message = payload?.message || payload;
           const temporaryId = payload?.temporaryId || action.meta?.arg?.temporaryId;
           const roomId = message?.roomId;
@@ -3523,63 +3560,71 @@ const chatSlice = createSlice({
           if (!roomId || !message || !message.id) return;
           
           ensureRoomBucket(state, roomId);
-          
-          // Проверяем, не существует ли уже сообщение с таким id (пришло через WebSocket)
-          const messageAlreadyExists = state.messages[roomId].byId[message.id];
-          
-          // Если использовались оптимистичные обновления, находим и удаляем временное сообщение
-          if (temporaryId && state.messages[roomId]) {
-            let foundMessageKey = null;
-            
-            if (state.messages[roomId].byId[temporaryId]) {
-              foundMessageKey = temporaryId;
-            } else {
-              for (const messageId of state.messages[roomId].ids) {
-                const msg = state.messages[roomId].byId[messageId];
-                if (msg?.temporaryId === temporaryId) {
-                  foundMessageKey = messageId;
-                  break;
-                }
-              }
-            }
-            
-            if (foundMessageKey) {
-              // Удаляем временное сообщение
-              delete state.messages[roomId].byId[foundMessageKey];
-              const tempIndex = state.messages[roomId].ids.indexOf(foundMessageKey);
-              if (tempIndex >= 0) {
-                state.messages[roomId].ids.splice(tempIndex, 1);
-              }
-              
-              // Если сообщение уже пришло через WebSocket, просто удаляем временное и выходим
-              if (messageAlreadyExists) {
-                if (state.rooms.byId[roomId]?.lastMessage?.temporaryId === temporaryId || 
-                    state.rooms.byId[roomId]?.lastMessage?.id === foundMessageKey) {
-                  const createdAt = message?.createdAt || new Date().toISOString();
-                  const roomUpdate = { 
-                    id: roomId, 
-                    updatedAt: createdAt, 
-                    lastMessage: message 
-                  };
-                  upsertRooms(state, [roomUpdate]);
-                }
-                
-                updateMessageCache(roomId, state.messages[roomId]);
-                return;
+
+          const bucket = state.messages[roomId];
+          const existingMessage = bucket.byId[message.id];
+          let foundMessageKey = null;
+
+          if (temporaryId && bucket.byId[temporaryId]) {
+            foundMessageKey = temporaryId;
+          } else if (temporaryId) {
+            for (const currentMessageId of bucket.ids) {
+              const currentMessage = bucket.byId[currentMessageId];
+              if (currentMessage?.temporaryId === temporaryId) {
+                foundMessageKey = currentMessageId;
+                break;
               }
             }
           }
-          
-          // Если сообщение уже существует (пришло через WebSocket), не добавляем дубликат
-          if (messageAlreadyExists) {
-            return;
+
+          const optimisticMessage = foundMessageKey ? bucket.byId[foundMessageKey] : null;
+          const mergedMessage = {
+            ...(optimisticMessage || {}),
+            ...(existingMessage || {}),
+            ...message,
+            id: message.id,
+            temporaryId:
+              optimisticMessage?.temporaryId ||
+              existingMessage?.temporaryId ||
+              temporaryId ||
+              null,
+            attachments:
+              message.attachments?.length > 0
+                ? message.attachments
+                : (optimisticMessage?.attachments || existingMessage?.attachments || []),
+            isOptimistic: false,
+            status: message.status || existingMessage?.status || 'SENT',
+          };
+
+          if (foundMessageKey && foundMessageKey !== message.id) {
+            delete bucket.byId[foundMessageKey];
           }
-          
-          // Добавляем новое сообщение
-          const createdAt = message?.createdAt || new Date().toISOString();
-          upsertRooms(state, [{ id: roomId, updatedAt: createdAt, lastMessage: message }]);
-          upsertMessagesDesc(state.messages[roomId], [message]);
-          updateMessageCache(roomId, state.messages[roomId]);
+
+          bucket.byId[message.id] = mergedMessage;
+
+          if (foundMessageKey) {
+            const tempIndex = bucket.ids.indexOf(foundMessageKey);
+            if (tempIndex >= 0) {
+              bucket.ids[tempIndex] = message.id;
+            }
+          }
+
+          if (!bucket.ids.includes(message.id)) {
+            bucket.ids.push(message.id);
+          }
+
+          bucket.ids = [...new Set(bucket.ids)];
+          bucket.ids.sort((a, b) => {
+            const ma = bucket.byId[a];
+            const mb = bucket.byId[b];
+            const maTime = ma?.createdAt ? new Date(ma.createdAt).getTime() : 0;
+            const mbTime = mb?.createdAt ? new Date(mb.createdAt).getTime() : 0;
+            return mbTime - maTime;
+          });
+
+          const createdAt = mergedMessage?.createdAt || new Date().toISOString();
+          upsertRooms(state, [{ id: roomId, updatedAt: createdAt, lastMessage: mergedMessage }]);
+          updateMessageCache(roomId, bucket);
         })
         .addCase(sendProduct.fulfilled, (state, action) => {
           const message = action.payload?.message || action.payload;

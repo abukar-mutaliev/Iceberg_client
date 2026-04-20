@@ -121,13 +121,10 @@ export const ProfileEdit = () => {
     }, [isDistrictsNeeded, districts, districtsLoading, loadDistricts, isWarehousesNeeded, warehouses, warehousesLoading, loadWarehouses]);
 
     const isFormReady = useMemo(() => {
-        if (!profile || isLoading) return false;
-        const needsDistricts = userType === 'driver' || userType === 'client' || userType === 'employee';
-        const needsWarehouses = userType === 'employee';
-        const districtsReady = !needsDistricts || (districts && districts.length > 0);
-        const warehousesReady = !needsWarehouses || (warehouses && warehouses.length > 0);
-        return districtsReady && warehousesReady && !districtsLoading && !warehousesLoading;
-    }, [profile, isLoading, userType, districts, districtsLoading, warehouses, warehousesLoading]);
+        // Форма редактирования не должна блокироваться только потому,
+        // что справочники районов/складов пустые или еще не успели загрузиться.
+        return Boolean(profile) && !isLoading;
+    }, [profile, isLoading]);
 
     const formInitialValues = useMemo(() => {
         if (!isFormReady) return null;
@@ -156,10 +153,9 @@ export const ProfileEdit = () => {
     }, [userType, districts, warehouses]);
 
     if (!isFormReady || !formInitialValues) {
-        const loadingText = isLoading ? 'Загрузка профиля...' :
-            districtsLoading ? 'Загрузка районов...' :
-                warehousesLoading ? 'Загрузка складов...' :
-                    'Подготовка данных...';
+        const loadingText = isLoading
+            ? 'Загрузка профиля...'
+            : 'Подготовка данных...';
 
         return (
             <View style={styles.centered}>
