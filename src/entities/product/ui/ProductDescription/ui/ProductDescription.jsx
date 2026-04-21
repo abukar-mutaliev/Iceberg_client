@@ -1,18 +1,23 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { FontFamily, Color } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { HighlightChange } from '@shared/ui/HighlightChange/HighlightChange';
+
 export const ProductDescription = ({ shortDescription, fullDescription }) => {
+    const { colors, isDark } = useTheme();
+    const shortColor = isDark ? (colors?.primary || Color.purpleSoft) : Color.purpleSoft;
+    const fullColor = colors?.textPrimary || Color.dark;
 
     return (
         <View style={styles.container}>
             <HighlightChange value={shortDescription}>
-                <Text style={[styles.shortDescription, { color: Color.purpleSoft }]}>
+                <Text style={[styles.shortDescription, { color: shortColor }]}>
                     {shortDescription}
                 </Text>
             </HighlightChange>
             <HighlightChange value={fullDescription}>
-                <Text style={[styles.fullDescription, { color: Color.dark }]}>
+                <Text style={[styles.fullDescription, { color: fullColor }]}>
                     {fullDescription}
                 </Text>
             </HighlightChange>

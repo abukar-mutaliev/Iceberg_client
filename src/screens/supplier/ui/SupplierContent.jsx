@@ -33,7 +33,8 @@ const SupplierContent = React.memo(({
     const renderCount = useRef(0);
     const dataLogged = useRef(false);
 
-    const { colors } = useTheme();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const scrollViewRef = useRef(null);
     const dispatch = useDispatch();
     
@@ -365,14 +366,16 @@ const SupplierContent = React.memo(({
     );
 });
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
         width: '100%',
         height: '100%',
+        backgroundColor: isDark ? colors.background : 'transparent',
     },
     contentScrollView: {
         flex: 1,
+        backgroundColor: isDark ? colors.background : 'transparent',
     },
     scrollContent: {
         paddingBottom: SCREEN_WIDTH * 0.50,
@@ -393,7 +396,6 @@ const styles = StyleSheet.create({
     noProductsText: {
         fontSize: SCREEN_WIDTH * 0.037,
     },
-    // Карточки возвратов
     returnCardsContainer: {
         flexDirection: 'row',
         gap: 12,
@@ -410,14 +412,14 @@ const styles = StyleSheet.create({
         minHeight: 120,
     },
     returnCardStagnant: {
-        backgroundColor: 'rgba(255, 149, 0, 0.1)',
+        backgroundColor: isDark ? 'rgba(255, 149, 0, 0.16)' : 'rgba(255, 149, 0, 0.1)',
         borderWidth: 1,
-        borderColor: 'rgba(255, 149, 0, 0.3)',
+        borderColor: isDark ? 'rgba(255, 149, 0, 0.45)' : 'rgba(255, 149, 0, 0.3)',
     },
     returnCardReturns: {
-        backgroundColor: 'rgba(106, 90, 224, 0.1)',
+        backgroundColor: isDark ? 'rgba(115, 125, 255, 0.18)' : 'rgba(106, 90, 224, 0.1)',
         borderWidth: 1,
-        borderColor: 'rgba(106, 90, 224, 0.3)',
+        borderColor: isDark ? 'rgba(115, 125, 255, 0.45)' : 'rgba(106, 90, 224, 0.3)',
     },
     returnCardPressed: {
         opacity: 0.7,
@@ -430,13 +432,13 @@ const styles = StyleSheet.create({
     returnCardTitle: {
         fontSize: 14,
         fontWeight: '700',
-        color: Color.textPrimary,
+        color: colors.textPrimary || Color.textPrimary,
         textAlign: 'center',
         marginBottom: 4,
     },
     returnCardDescription: {
         fontSize: 11,
-        color: Color.textSecondary,
+        color: colors.textSecondary || Color.textSecondary,
         textAlign: 'center',
         lineHeight: 14,
     },

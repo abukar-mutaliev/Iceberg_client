@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
     Animated,
     Dimensions,
@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import CloseIcon from "@shared/ui/Icon/Profile/CloseIcon";
 import { Color, FontFamily } from "@app/styles/GlobalStyles";
+import { useTheme } from "@app/providers/themeProvider/ThemeProvider";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -42,6 +43,8 @@ export const ReusableModal = ({
                                   disableSwipe = false,
                                   fullScreenOnKeyboard = false,
                               }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const [keyboardVisible, setKeyboardVisible] = useState(false);
     const [isClosing, setIsClosing] = useState(false);
     const [showModal, setShowModal] = useState(visible);
@@ -193,7 +196,7 @@ export const ReusableModal = ({
                 activeOpacity={0.7}
                 hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
             >
-                <CloseIcon size={12} color="#000" />
+                <CloseIcon size={12} color={isDark ? colors.textPrimary : '#000'} />
             </TouchableOpacity>
         </View>
     );
@@ -256,10 +259,10 @@ export const ReusableModal = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: "rgba(0, 0, 0, 0.4)",
+        backgroundColor: isDark ? "rgba(0, 0, 0, 0.6)" : "rgba(0, 0, 0, 0.4)",
         justifyContent: "flex-end",
     },
     modalOverlay: {
@@ -268,7 +271,7 @@ const styles = StyleSheet.create({
     },
     modalContent: {
         width: "100%",
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.surface : Color.colorLightMode,
         borderTopLeftRadius: 16,
         borderTopRightRadius: 16,
         overflow: "hidden",
@@ -278,7 +281,7 @@ const styles = StyleSheet.create({
             width: 0,
             height: -2,
         },
-        shadowOpacity: 0.25,
+        shadowOpacity: isDark ? 0.5 : 0.25,
         shadowRadius: 3.84,
         // Тень для Android
         elevation: 5,
@@ -289,13 +292,14 @@ const styles = StyleSheet.create({
         alignItems: "center",
         justifyContent: "center",
         borderBottomWidth: 0.5,
-        borderBottomColor: "#EBEBF0",
+        borderBottomColor: isDark ? colors.divider : "#EBEBF0",
         paddingTop: 10,
+        backgroundColor: isDark ? colors.surface : Color.colorLightMode,
     },
     headerTitle: {
         fontWeight: "600",
         fontSize: 16,
-        color: Color.dark,
+        color: isDark ? colors.textPrimary : Color.dark,
         fontFamily: FontFamily.sFProText,
     },
     closeButton: {
@@ -307,6 +311,7 @@ const styles = StyleSheet.create({
     },
       contentContainer: {
     flex: 1,
+    backgroundColor: isDark ? colors.surface : 'transparent',
   },
     loadingContainer: {
         flex: 1,

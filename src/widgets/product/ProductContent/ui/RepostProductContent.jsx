@@ -24,12 +24,15 @@ import ChatApi from '@entities/chat/api/chatApi';
 import { getImageUrl } from '@shared/api/api';
 import { debounce } from 'lodash';
 import { getProductChatShareBlockReason } from '@shared/lib/productChatShare';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const RepostProductContent = ({ product, currentUser, onClose }) => {
   const navigation = useNavigation();
   const dispatch = useDispatch();
   const { isAuthenticated } = useAuth();
   const { width } = useWindowDimensions();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   
   const [activeTab, setActiveTab] = useState('chats'); 
   const [searchQuery, setSearchQuery] = useState('');
@@ -266,14 +269,16 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
 
   const renderAvatarPlaceholder = useCallback((style, content) => (
     <LinearGradient
-      colors={['#dfe7ff', '#cdd6ff', '#bfc7ff']}
+      colors={isDark
+        ? ['#3B3F5B', '#2F3350', '#262A42']
+        : ['#dfe7ff', '#cdd6ff', '#bfc7ff']}
       style={[styles.avatarPlaceholderBase, style]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
     >
       {content}
     </LinearGradient>
-  ), []);
+  ), [isDark, styles.avatarPlaceholderBase]);
 
   // Отправка товара в существующий чат
   const handleSendToExistingChat = async (room) => {
@@ -929,14 +934,15 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
           <TextInput
             style={[styles.searchInput, adaptiveStyles.searchInput]}
             placeholder="Поиск по имени или компании..."
-            placeholderTextColor="#999999"
+            placeholderTextColor={isDark ? colors.textTertiary : '#999999'}
+            keyboardAppearance={isDark ? 'dark' : 'light'}
             value={searchQuery}
             onChangeText={handleSearchChange}
             autoCapitalize="none"
             autoCorrect={false}
           />
           {searching && (
-            <ActivityIndicator size="small" color="#075E54" style={styles.searchLoader} />
+            <ActivityIndicator size="small" color={isDark ? colors.primary : '#075E54'} style={styles.searchLoader} />
           )}
           
           <View style={styles.listContainer}>
@@ -965,7 +971,7 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
       {/* Индикатор загрузки при отправке */}
       {sending && (
         <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#075E54" />
+          <ActivityIndicator size="large" color={isDark ? colors.primary : '#075E54'} />
           <Text style={[styles.loadingText, adaptiveStyles.loadingText]}>Отправляем товар...</Text>
         </View>
       )}
@@ -973,35 +979,37 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   shareBlockedBanner: {
-    backgroundColor: '#FFF3E0',
+    backgroundColor: isDark ? 'rgba(255, 152, 0, 0.14)' : '#FFF3E0',
     borderRadius: 10,
     padding: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#FFCC80',
+    borderColor: isDark ? 'rgba(255, 152, 0, 0.45)' : '#FFCC80',
   },
   shareBlockedText: {
     fontSize: 14,
-    color: '#E65100',
+    color: isDark ? '#FFB74D' : '#E65100',
     textAlign: 'center',
   },
   container: {
     flex: 1,
     paddingHorizontal: 20,
+    backgroundColor: 'transparent',
   },
   productInfo: {
     flexDirection: 'row',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: isDark ? colors.divider : '#e0e0e0',
   },
   productImage: {
     width: 50,
     height: 50,
     borderRadius: 8,
     marginRight: 10,
+    backgroundColor: isDark ? colors.surface : 'transparent',
   },
   productDetails: {
     flex: 1,
@@ -1010,18 +1018,18 @@ const styles = StyleSheet.create({
   productName: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#000000',
+    color: colors.textPrimary,
     marginBottom: 4,
   },
   productPrice: {
     fontSize: 14,
-    color: '#666666',
+    color: colors.textSecondary,
   },
   tabContainer: {
     flexDirection: 'row',
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: isDark ? colors.divider : '#e0e0e0',
   },
   tab: {
     flex: 1,
@@ -1031,9 +1039,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginHorizontal: 4,
     paddingHorizontal: 8,
+    backgroundColor: isDark ? colors.surface : 'transparent',
   },
   activeTab: {
-    backgroundColor: '#075E54',
+    backgroundColor: isDark ? colors.primary : '#075E54',
   },
   tabTextContainer: {
     flex: 1,
@@ -1049,7 +1058,7 @@ const styles = StyleSheet.create({
   },
   tabText: {
     fontSize: 14,
-    color: '#666666',
+    color: colors.textSecondary,
     fontWeight: '500',
     textAlign: 'center',
     includeFontPadding: false,
@@ -1075,10 +1084,13 @@ const styles = StyleSheet.create({
   searchInput: {
     marginVertical: 12,
     height: 40,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: isDark ? colors.inputBackground : '#f5f5f5',
     borderRadius: 20,
     paddingHorizontal: 16,
     fontSize: 16,
+    color: colors.textPrimary,
+    borderWidth: isDark ? 1 : 0,
+    borderColor: isDark ? colors.inputBorder : 'transparent',
   },
   searchLoader: {
     alignSelf: 'center',
@@ -1093,7 +1105,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingRight: 4,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: isDark ? colors.borderSubtle : '#f0f0f0',
   },
   chatInfo: {
     flex: 1,
@@ -1101,19 +1113,19 @@ const styles = StyleSheet.create({
   chatTitle: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#000000',
+    color: colors.textPrimary,
     marginBottom: 4,
   },
   chatPreview: {
     fontSize: 14,
-    color: '#666666',
+    color: colors.textSecondary,
   },
   chatMeta: {
     alignItems: 'flex-end',
   },
   chatTime: {
     fontSize: 12,
-    color: '#999999',
+    color: colors.textTertiary,
     marginBottom: 4,
   },
   userItem: {
@@ -1123,19 +1135,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingRight: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: isDark ? colors.borderSubtle : '#f0f0f0',
     position: 'relative',
   },
   supplierItem: {
-    backgroundColor: '#FFF3E0',
+    backgroundColor: isDark ? 'rgba(255, 152, 0, 0.14)' : '#FFF3E0',
     borderLeftWidth: 4,
-    borderLeftColor: '#FF9800',
+    borderLeftColor: isDark ? '#FFB74D' : '#FF9800',
     borderRadius: 8,
     marginVertical: 4,
     elevation: 3,
-    shadowColor: '#FF9800',
+    shadowColor: isDark ? '#000' : '#FF9800',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: isDark ? 0.4 : 0.2,
     shadowRadius: 4,
   },
   avatarContainer: {
@@ -1143,7 +1155,7 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 20,
     overflow: 'hidden',
-    backgroundColor: '#E0E0E0',
+    backgroundColor: isDark ? colors.surfaceElevated : '#E0E0E0',
     marginRight: 10,
   },
   avatar: {
@@ -1155,25 +1167,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   placeholderAvatar: {
-    backgroundColor: '#E8E8E8',
+    backgroundColor: isDark ? colors.surfaceElevated : '#E8E8E8',
     justifyContent: 'center',
     alignItems: 'center',
   },
   supplierAvatarContainer: {
     borderWidth: 0,
-    borderColor: '#FF9800',
+    borderColor: isDark ? '#FFB74D' : '#FF9800',
   },
   avatarPlaceholder: {
     width: 40,
     height: 40,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#075E54',
+    backgroundColor: isDark ? colors.primary : '#075E54',
   },
   supplierAvatar: {
-    backgroundColor: '#FF9800',
+    backgroundColor: isDark ? '#B26A00' : '#FF9800',
     borderWidth: 2,
-    borderColor: '#F57C00',
+    borderColor: isDark ? '#8C5200' : '#F57C00',
   },
   avatarPlaceholderText: {
     fontSize: 20,
@@ -1186,31 +1198,31 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#000000',
+    color: colors.textPrimary,
     marginBottom: 2,
   },
   supplierName: {
-    color: '#E65100',
+    color: isDark ? '#FFB74D' : '#E65100',
     fontWeight: '700',
     fontSize: 17,
   },
   userSubtitle: {
     fontSize: 14,
-    color: '#666666',
+    color: colors.textSecondary,
     marginBottom: 2,
   },
   supplierSubtitle: {
-    color: '#FF6F00',
+    color: isDark ? '#FFA726' : '#FF6F00',
     fontWeight: '600',
     fontSize: 13,
   },
   existingChatText: {
     fontSize: 12,
-    color: '#4CAF50',
+    color: isDark ? '#6EE7A0' : '#4CAF50',
   },
   sendButton: {
     borderRadius: 18,
-    backgroundColor: '#075E54',
+    backgroundColor: isDark ? colors.primary : '#075E54',
     width: 36,
     height: 36,
     alignItems: 'center',
@@ -1223,11 +1235,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   supplierSendButton: {
-    backgroundColor: '#FF9800',
+    backgroundColor: isDark ? '#B26A00' : '#FF9800',
     elevation: 3,
-    shadowColor: '#FF9800',
+    shadowColor: isDark ? '#000' : '#FF9800',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
+    shadowOpacity: isDark ? 0.5 : 0.3,
     shadowRadius: 3,
   },
   emptyContainer: {
@@ -1238,7 +1250,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: '#999999',
+    color: colors.textTertiary,
     textAlign: 'center',
   },
   loadingOverlay: {
@@ -1247,13 +1259,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundColor: isDark ? 'rgba(14, 15, 20, 0.85)' : 'rgba(255, 255, 255, 0.9)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   loadingText: {
     marginTop: 12,
     fontSize: 16,
-    color: '#075E54',
+    color: isDark ? colors.textPrimary : '#075E54',
   },
 });

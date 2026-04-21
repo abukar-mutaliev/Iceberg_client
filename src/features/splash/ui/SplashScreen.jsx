@@ -5,11 +5,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Text from '@shared/ui/Text/Text';
 import { SafeFonts } from '@shared/lib/fontUtils';
 import PushNotificationService from '@shared/services/PushNotificationService';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const HAS_SEEN_WELCOME_KEY = '@iceberg/hasSeenWelcome';
 
 export const SplashScreen = () => {
     const navigation = useNavigation();
+    const { colors, isDark } = useTheme();
 
     const [logoScale] = useState(new Animated.Value(1));
     const [logoPosition] = useState(new Animated.Value(70));
@@ -43,13 +45,13 @@ export const SplashScreen = () => {
                 <View style={{ 
                     width: 250, 
                     height: 213, 
-                    backgroundColor: '#3339B0',
+                    backgroundColor: isDark ? colors.primary : '#3339B0',
                     borderRadius: 20,
                     justifyContent: 'center',
                     alignItems: 'center',
-                    shadowColor: '#3339B0',
+                    shadowColor: isDark ? '#000' : '#3339B0',
                     shadowOffset: { width: 0, height: 8 },
-                    shadowOpacity: 0.3,
+                    shadowOpacity: isDark ? 0.5 : 0.3,
                     shadowRadius: 16,
                     elevation: 8,
                 }}>
@@ -141,11 +143,14 @@ export const SplashScreen = () => {
         };
     }, [navigation, logoScale, logoPosition, textOpacity, textPosition, height]);
 
+    const titleColor = isDark ? colors.textPrimary : '#3339B0';
+    const titleShadowColor = isDark ? 'rgba(0, 0, 0, 0.6)' : '#3339B0';
+
     return (
         <View
             style={{
                 flex: 1,
-                backgroundColor: 'white',
+                backgroundColor: isDark ? colors.background : 'white',
                 justifyContent: 'center',
                 alignItems: 'center',
             }}
@@ -178,14 +183,14 @@ export const SplashScreen = () => {
                     style={{
                         fontSize: 26,
                         fontWeight: '600',
-                        color: '#3339B0',
+                        color: titleColor,
                         textAlign: 'center',
                         fontFamily: SafeFonts.BezierSans,
                         letterSpacing: 0.5,
                         lineHeight: 34,
-                        shadowColor: '#3339B0',
+                        shadowColor: titleShadowColor,
                         shadowOffset: { width: 0, height: 2 },
-                        shadowOpacity: 0.1,
+                        shadowOpacity: isDark ? 0.4 : 0.1,
                         shadowRadius: 4,
                         elevation: 2,
                     }}

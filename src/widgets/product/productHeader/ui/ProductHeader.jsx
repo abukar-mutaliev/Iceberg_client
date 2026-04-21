@@ -4,6 +4,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { BackButton } from '@shared/ui/Button/BackButton';
 import { ProductImage } from '@entities/product/ui/ProductImage';
 import { Color } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { ProductFavoriteButton } from "@features/productFavorite";
 import {checkIsFavorite} from "@entities/favorites";
 import {useDispatch} from "react-redux";
@@ -12,6 +13,8 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export const ProductHeader = React.memo(({ product, onGoBack, onSharePress, isAuthenticated, onImagePress, shareDisabled }) => {
     const dispatch = useDispatch();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const checkedFavoriteRef = useRef(false);
 
 
@@ -126,7 +129,15 @@ export const ProductHeader = React.memo(({ product, onGoBack, onSharePress, isAu
                         onPress={onSharePress}
                         activeOpacity={0.7}
                     >
-                        <Icon name="share" size={24} color={shareDisabled ? 'rgba(145,158,238,0.45)' : Color.purpleSoft} />
+                        <Icon
+                            name="share"
+                            size={24}
+                            color={
+                                shareDisabled
+                                    ? (isDark ? 'rgba(255,255,255,0.35)' : 'rgba(145,158,238,0.45)')
+                                    : (isDark ? colors.primary : Color.purpleSoft)
+                            }
+                        />
                     </TouchableOpacity>
                 )}
                 
@@ -139,7 +150,7 @@ export const ProductHeader = React.memo(({ product, onGoBack, onSharePress, isAu
     );
 });
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         position: 'relative',
         width: SCREEN_WIDTH,
@@ -182,7 +193,7 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         height: 50,
-        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+        backgroundColor: isDark ? 'rgba(28, 30, 38, 0.92)' : 'rgba(255, 255, 255, 0.9)',
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
         zIndex: 5,
@@ -215,7 +226,7 @@ const styles = StyleSheet.create({
         flexShrink: 0,
     },
     categoryTitle: {
-        color: "#919eee",
+        color: isDark ? colors.primary : '#919eee',
         fontSize: 14,
         fontWeight: '500',
     },

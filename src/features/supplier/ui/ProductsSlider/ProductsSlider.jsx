@@ -9,27 +9,48 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 /**
  * Оптимизированный компонент карточки продукта с мемоизацией
  */
-const ProductCard = memo(({ item, onPress, colors }) => {
+const ProductCard = memo(({ item, onPress, colors, isDark }) => {
     if (!item || !item.id) return null;
 
-    // Определяем тип продукта
     const isSimpleProduct = !item.hasOwnProperty('images') && !item.hasOwnProperty('price');
 
-    // Получаем изображение продукта
     const productImage = useMemo(() => {
         if (isSimpleProduct) return null;
         return item.images && item.images.length > 0 ? { uri: item.images[0] } : null;
     }, [item.images, isSimpleProduct]);
 
-    // Получаем имя продукта
     const productName = item.name || 'Без названия';
 
-    // Обработчик нажатия на продукт
     const handlePress = useCallback(() => {
         onPress(item.id);
     }, [item.id, onPress]);
 
-    // Определяем стили для placeholder изображения
+    const cardStyle = useMemo(() => [
+        styles.productCard,
+        {
+            backgroundColor: isDark ? colors.surface : '#F2F2F2',
+            shadowColor: isDark ? '#000' : 'rgba(100, 110, 220, 1)',
+            shadowOpacity: isDark ? 0.4 : 0.22,
+        },
+    ], [colors, isDark]);
+
+    const cardInnerStyle = useMemo(() => [
+        styles.cardInner,
+        {
+            borderColor: isDark ? colors.divider : 'rgba(145, 158, 238, 0.25)',
+        },
+    ], [colors, isDark]);
+
+    const imageWrapperStyle = useMemo(() => [
+        styles.imageWrapper,
+        { backgroundColor: isDark ? colors.surface : '#F2F2F2' },
+    ], [colors, isDark]);
+
+    const blurBackgroundStyle = useMemo(() => [
+        styles.blurBackground,
+        { opacity: isDark ? 0.55 : 0.9 },
+    ], [isDark]);
+
     const placeholderStyle = useMemo(() => [
         styles.productImagePlaceholder,
         { backgroundColor: colors.background }
@@ -37,19 +58,20 @@ const ProductCard = memo(({ item, onPress, colors }) => {
 
     return (
         <TouchableOpacity
-            style={styles.productCard}
+            style={cardStyle}
             onPress={handlePress}
             activeOpacity={0.85}
         >
-            <View style={styles.cardInner}>
+            <View style={cardInnerStyle}>
                 {productImage ? (
-                    <View style={styles.imageWrapper}>
+                    <View style={imageWrapperStyle}>
                         <Image
                             source={productImage}
-                            style={styles.blurBackground}
+                            style={blurBackgroundStyle}
                             resizeMode="cover"
                             blurRadius={20}
                         />
+                        {isDark && <View style={styles.blurDarkOverlay} pointerEvents="none" />}
                         <Image
                             source={productImage}
                             style={styles.productImage}
@@ -60,7 +82,7 @@ const ProductCard = memo(({ item, onPress, colors }) => {
                     </View>
                 ) : (
                     <View style={placeholderStyle}>
-                        <Text style={{ color: colors.secondary }}>Нет фото</Text>
+                        <Text style={{ color: colors.secondary || colors.textSecondary }}>Нет фото</Text>
                     </View>
                 )}
             </View>
@@ -76,9 +98,8 @@ const ProductsSlider = memo(({
                                  onProductPress = () => {},
                                  showRating = false
                              }) => {
-    const { colors } = useTheme();
+    const { colors, isDark } = useTheme();
 
-    // Проверяем наличие продуктов
     const hasProducts = useMemo(() =>
             Array.isArray(products) && products.length > 0,
         [products]
@@ -86,7 +107,6 @@ const ProductsSlider = memo(({
 
     if (!hasProducts) return null;
 
-    // Мемоизируем список карточек продуктов
     const productCards = useMemo(() =>
             products.map((item) => (
                 <ProductCard
@@ -94,9 +114,10 @@ const ProductsSlider = memo(({
                     item={item}
                     onPress={onProductPress}
                     colors={colors}
+                    isDark={isDark}
                 />
             )),
-        [products, onProductPress, colors]
+        [products, onProductPress, colors, isDark]
     );
 
     return (
@@ -165,6 +186,14 @@ const styles = StyleSheet.create({
         width: '100%',
         height: '100%',
         opacity: 0.9,
+    },
+    blurDarkOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.35)',
     },
     productImage: {
         position: 'absolute',

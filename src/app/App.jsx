@@ -1,5 +1,5 @@
 import React, {useEffect, useRef, useState} from 'react';
-import {View, Text, Button, StyleSheet, Image, AppState, Platform} from 'react-native';
+import {View, Text, Button, StyleSheet, Image, AppState, Appearance, Platform} from 'react-native';
 import {AppNavigator} from '@app/providers/navigation/AppNavigator';
 import * as Font from 'expo-font';
 import {AppProviders} from './providers';
@@ -17,6 +17,8 @@ import {useChatSocket} from '@entities/chat/hooks/useChatSocket';
 import {ToastContainer} from '@shared/ui/Toast';
 import InAppLogger from '@shared/services/InAppLogger';
 import { scheduleUpdateCheck } from '@shared/lib/checkUpdate';
+import { isDarkThemeEnabled, darkPalette, lightPalette } from '@app/styles/themeConfig';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 initConsolePolyfill();
 
@@ -75,11 +77,37 @@ if (typeof global !== 'undefined') {
 class ErrorBoundary extends React.Component {
     constructor(props) {
         super(props);
-        this.state = { hasError: false, error: null, errorInfo: null };
+        this.state = {
+            hasError: false,
+            error: null,
+            errorInfo: null,
+            colorScheme: Appearance.getColorScheme?.() || 'light',
+        };
+        this._appearanceSubscription = null;
     }
 
     static getDerivedStateFromError(error) {
         return { hasError: true, error };
+    }
+
+    componentDidMount() {
+        // Подписка на системную тему: ErrorBoundary находится вне ThemeProvider,
+        // поэтому используем системную схему для фолбэка.
+        try {
+            this._appearanceSubscription = Appearance.addChangeListener(({ colorScheme }) => {
+                this.setState({ colorScheme: colorScheme || 'light' });
+            });
+        } catch (e) {
+            // Не критично
+        }
+    }
+
+    componentWillUnmount() {
+        try {
+            this._appearanceSubscription?.remove?.();
+        } catch (e) {
+            // Не критично
+        }
     }
 
     componentDidCatch(error, errorInfo) {
@@ -116,14 +144,17 @@ class ErrorBoundary extends React.Component {
 
     render() {
         if (this.state.hasError) {
+            const isDark = isDarkThemeEnabled && this.state.colorScheme === 'dark';
+            const palette = isDark ? darkPalette : lightPalette;
             return (
-                <View style={styles.errorContainer}>
-                    <Text style={styles.errorTitle}>Что-то пошло не так!</Text>
-                    <Text style={styles.errorText}>
+                <View style={[styles.errorContainer, { backgroundColor: palette.background }]}>
+                    <Text style={[styles.errorTitle, { color: palette.error }]}>Что-то пошло не так!</Text>
+                    <Text style={[styles.errorText, { color: palette.textSecondary }]}>
                         {this.state.error?.message || 'Произошла ошибка в приложении'}
                     </Text>
                     <Button
                         title="Перезагрузить приложение"
+                        color={palette.primary}
                         onPress={() => this.setState({ hasError: false, error: null, errorInfo: null })}
                     />
                 </View>
@@ -138,7 +169,8 @@ const AppInitializer = ({children}) => {
     const [error, setError] = useState(null);
     const hasInitialized = useRef(false);
     const appState = useRef(AppState.currentState);
-    
+    const { colors } = useTheme();
+
     // Хуки вызываются безусловно (правило React hooks)
     // Защита от ошибок добавлена в useEffect и внутри самих хуков
     const auth = useAuth();
@@ -326,10 +358,11 @@ const AppInitializer = ({children}) => {
 
     if (error) {
         return (
-            <View style={styles.errorContainer}>
-                <Text style={styles.errorText}>{error}</Text>
+            <View style={[styles.errorContainer, { backgroundColor: colors.background }]}>
+                <Text style={[styles.errorText, { color: colors.textSecondary }]}>{error}</Text>
                 <Button
                     title="Повторить"
+                    color={colors.primary}
                     onPress={() => {
                         setError(null);
                         hasInitialized.current = false;

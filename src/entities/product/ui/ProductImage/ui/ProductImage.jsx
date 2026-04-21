@@ -1,14 +1,17 @@
-import React, {useRef, useState, useCallback, useEffect} from "react";
+import React, {useRef, useState, useCallback, useEffect, useMemo} from "react";
 import {Dimensions, StyleSheet, View, Text, TouchableOpacity} from "react-native";
 import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import PagerView from "react-native-pager-view";
 import {CustomSliderIndicator} from "@shared/ui/CustomSliderIndicator";
 import { ReliableImage } from '@shared/ui/ReliableImage';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export const ProductImage = ({ images, style, onImagePress }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const [loadingError, setLoadingError] = useState({});
     const [activeIndex, setActiveIndex] = useState(0);
     const pagerRef = useRef(null);
@@ -101,6 +104,7 @@ export const ProductImage = ({ images, style, onImagePress }) => {
                                     showPlaceholder={false}
                                     fadeDuration={0}
                                 />
+                                {isDark && <View style={styles.blurDarkOverlay} pointerEvents="none" />}
                                 <ReliableImage
                                     source={item}
                                     style={styles.fullImage}
@@ -167,14 +171,14 @@ export const ProductImage = ({ images, style, onImagePress }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         width: SCREEN_WIDTH,
         height: 350,
         overflow: 'hidden',
         margin: 0,
         padding: 0,
-        backgroundColor: '#F2F2F2',
+        backgroundColor: isDark ? colors.surface : '#F2F2F2',
     },
     pagerView: {
         flex: 1,
@@ -202,7 +206,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         overflow: 'hidden',
-        backgroundColor: '#F2F2F2',
+        backgroundColor: isDark ? colors.surface : '#F2F2F2',
     },
     blurBackground: {
         position: 'absolute',
@@ -212,7 +216,15 @@ const styles = StyleSheet.create({
         bottom: 0,
         width: '100%',
         height: '100%',
-        opacity: 0.9,
+        opacity: isDark ? 0.55 : 0.9,
+    },
+    blurDarkOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.35)',
     },
     fullImage: {
         position: 'absolute',

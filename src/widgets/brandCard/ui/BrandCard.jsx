@@ -9,8 +9,9 @@ import {SupplierRatingFromRedux} from "@entities/supplier";
 import { getImageUrl } from '@shared/api/api';
 
 export const BrandCard = ({ supplier, onSupplierPress }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
-    // Проверка на существование supplier и его полей
     if (!supplier) {
         return null;
     }
@@ -54,13 +55,19 @@ export const BrandCard = ({ supplier, onSupplierPress }) => {
             <LinearGradient
                 style={styles.gradient}
                 locations={[0, 0.99]}
-                colors={['rgba(250, 254, 252, 0)', 'rgba(51, 57, 176, 0.05)']}
+                colors={isDark
+                    ? ['rgba(255,255,255,0)', 'rgba(115,125,255,0.08)']
+                    : ['rgba(250, 254, 252, 0)', 'rgba(51, 57, 176, 0.05)']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
             />
 
             <View style={styles.brandNameContainer}>
-                <Text style={[styles.brandName, { color: Color.purpleSoft }]} numberOfLines={1} ellipsizeMode="tail">
+                <Text
+                    style={[styles.brandName, { color: isDark ? colors.primary : Color.purpleSoft }]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                >
                     {companyName}
                 </Text>
             </View>
@@ -94,16 +101,16 @@ export const BrandCard = ({ supplier, onSupplierPress }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         borderRadius: normalize(20),
-        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+        backgroundColor: isDark ? colors.surface : 'rgba(255, 255, 255, 0.9)',
         borderStyle: 'solid',
-        borderColor: '#c1fff4',
+        borderColor: isDark ? colors.divider : '#c1fff4',
         borderTopWidth: 1,
-        borderRightWidth: 0.2,
+        borderRightWidth: isDark ? 1 : 0.2,
         borderBottomWidth: 1,
-        borderLeftWidth: 0.2,
+        borderLeftWidth: isDark ? 1 : 0.2,
         width: '100%',
         overflow: 'hidden',
         height: normalize(118),
@@ -149,25 +156,24 @@ const styles = StyleSheet.create({
         height: normalize(82),
         borderRadius: normalize(10),
     },
-    // Стили специально для placeholder'а
     placeholderContainer: {
         position: 'absolute',
         top: '50%',
-        marginTop: normalize(-41), // Половина высоты (82/2 = 41) для центрирования
+        marginTop: normalize(-41),
         left: normalize(16),
         width: normalize(145),
         height: normalize(82),
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#E8F4FF',
+        backgroundColor: isDark ? colors.surfaceElevated : '#E8F4FF',
         borderRadius: normalize(10),
         borderWidth: 2,
-        borderColor: '#C1E7FF',
+        borderColor: isDark ? colors.divider : '#C1E7FF',
     },
     placeholderText: {
         fontSize: normalizeFont(48),
         fontWeight: '700',
-        color: '#5E9FD8',
+        color: isDark ? colors.primary : '#5E9FD8',
         fontFamily: FontFamily.SFProDisplayBold,
     },
 });

@@ -39,7 +39,8 @@ export const ProductContent = React.memo(({
                                               onReplySubmit = null,
                                               replyingFeedbackId = null,
                                           }) => {
-    const { colors } = useTheme();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const [feedbacksHeight, setFeedbacksHeight] = useState(600);
     const [isAvatarsExpanded, setIsAvatarsExpanded] = useState(false);
 
@@ -119,7 +120,7 @@ export const ProductContent = React.memo(({
             <View style={[
                 styles.container,
                 {
-                    backgroundColor: 'white',
+                    backgroundColor: isDark ? colors.surface : 'white',
                     paddingBottom: activeTab === 'description' ? 16 : 0
                 }
             ]}>
@@ -235,7 +236,7 @@ export const ProductContent = React.memo(({
     );
 });
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     mainContainer: {
         flex: 1,
     },
@@ -254,12 +255,12 @@ const styles = StyleSheet.create({
         overflow: 'visible',
     },
     descriptionContainer: {
-        backgroundColor: 'white',
+        backgroundColor: isDark ? colors.surface : 'white',
         borderRadius: 10,
         marginBottom: 16,
     },
     description: {
-        backgroundColor: 'white',
+        backgroundColor: isDark ? colors.surface : 'white',
     },
     feedbacksContainer: {
         position: 'relative',

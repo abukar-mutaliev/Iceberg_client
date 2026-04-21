@@ -63,7 +63,8 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     const productId = Number.isFinite(parsedProductId) ? parsedProductId : null;
     const fromScreen = params.fromScreen;
     const dispatch = useDispatch();
-    const { colors } = useTheme();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const { isAuthenticated, currentUser } = useAuth();
     const { showError, showWarning, showSuccess } = useToast();
     const { showError: showCustomError, showInfo } = useCustomAlert();
@@ -1080,7 +1081,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 <SafeAreaView style={styles.safeArea} edges={['bottom', 'left', 'right']}>
                     <StaticBackgroundGradient />
                     <View style={styles.errorContainer}>
-                        <Text style={[styles.errorText, { color: Color.dark }]}>
+                        <Text style={styles.errorText}>
                             Произошла ошибка: {error}
                         </Text>
                         <TouchableOpacity 
@@ -1197,7 +1198,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                     </Text>
                     {availableDistrictsForChat.length === 0 ? (
                         <View style={styles.districtLoadingContainer}>
-                            <ActivityIndicator size="small" color={Color.blue2} />
+                            <ActivityIndicator size="small" color={isDark ? colors.primary : Color.blue2} />
                             <Text style={styles.districtLoadingText}>Загрузка районов...</Text>
                         </View>
                     ) : (
@@ -1252,12 +1253,13 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     fullScreenContainer: {
         flex: 1,
         width: '100%',
         height: '100%',
-        paddingBottom: 0
+        paddingBottom: 0,
+        backgroundColor: isDark ? colors.background : 'transparent',
     },
     safeArea: {
         flex: 1,
@@ -1283,6 +1285,7 @@ const styles = StyleSheet.create({
     errorText: {
         fontSize: 16,
         textAlign: 'center',
+        color: colors.textPrimary,
     },
     brandCardContainer: {
         paddingHorizontal: 16,
@@ -1290,23 +1293,24 @@ const styles = StyleSheet.create({
     },
     retryButton: {
         padding: 10,
-        backgroundColor: Color.blue2,
+        backgroundColor: isDark ? colors.primary : Color.blue2,
         borderRadius: 5,
         marginTop: 20,
     },
     retryButtonText: {
         fontSize: 16,
         fontWeight: 'bold',
-        color: 'white',
+        color: '#FFFFFF',
         textAlign: 'center',
     },
     districtModalContent: {
         flex: 1,
         padding: 16,
+        backgroundColor: isDark ? colors.background : 'transparent',
     },
     districtModalText: {
         fontSize: 14,
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         marginBottom: 16,
         textAlign: 'center',
@@ -1320,7 +1324,7 @@ const styles = StyleSheet.create({
     districtLoadingText: {
         marginTop: 12,
         fontSize: 14,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
     },
     districtList: {
@@ -1330,16 +1334,16 @@ const styles = StyleSheet.create({
     districtItem: {
         padding: 16,
         borderBottomWidth: 1,
-        borderBottomColor: '#E5E5E5',
-        backgroundColor: '#FFFFFF',
+        borderBottomColor: isDark ? colors.divider : '#E5E5E5',
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
     },
     districtItemSelected: {
-        backgroundColor: Color.blue2,
+        backgroundColor: isDark ? colors.primary : Color.blue2,
     },
     districtItemText: {
         fontSize: 16,
         fontWeight: '500',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     districtItemTextSelected: {
@@ -1347,12 +1351,12 @@ const styles = StyleSheet.create({
     },
     districtItemDescription: {
         fontSize: 14,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginTop: 4,
     },
     districtSaveButton: {
-        backgroundColor: Color.blue2,
+        backgroundColor: isDark ? colors.primary : Color.blue2,
         borderRadius: 8,
         paddingVertical: 12,
         paddingHorizontal: 20,
@@ -1361,7 +1365,7 @@ const styles = StyleSheet.create({
         marginTop: 16,
     },
     districtSaveButtonDisabled: {
-        backgroundColor: '#CCCCCC',
+        backgroundColor: isDark ? colors.surfaceElevated : '#CCCCCC',
         opacity: 0.6,
     },
     districtSaveButtonText: {

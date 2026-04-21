@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, StyleSheet, TouchableOpacity, Image, Dimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Text from '@shared/ui/Text/Text';
 import LinesIceCream from './assets/LinesIceCream.png';
 import { SafeFonts, getSafePlatformFont } from '@shared/lib/fontUtils';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const { width, height } = Dimensions.get('window');
 
@@ -17,6 +18,9 @@ const adaptiveSize = (baseSize) => {
 };
 
 export const WelcomeScreen = ({ navigation }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     const handleStart = async () => {
         try {
             await AsyncStorage.setItem('@iceberg/hasSeenWelcome', 'true');
@@ -107,10 +111,10 @@ export const WelcomeScreen = ({ navigation }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#738aff',
+        backgroundColor: isDark ? colors.background : '#738aff',
         elevation: 10,
         overflow: 'hidden',
         justifyContent: 'center',
@@ -119,6 +123,7 @@ const styles = StyleSheet.create({
     icon: {
         width: '71%',
         marginTop: 130,
+        opacity: isDark ? 0.75 : 1,
     },
     textContainer: {
         position: 'absolute',
@@ -128,13 +133,13 @@ const styles = StyleSheet.create({
     },
     title: {
         fontFamily: SafeFonts.BezierSans,
-        color: '#fff',
+        color: isDark ? colors.textPrimary : '#fff',
         textAlign: 'center',
     },
     subtitle: {
         fontFamily: SafeFonts.BezierSans,
         fontWeight: '500',
-        color: '#fff',
+        color: isDark ? colors.textSecondary : '#fff',
         textAlign: 'center',
     },
     button: {
@@ -142,14 +147,14 @@ const styles = StyleSheet.create({
         alignSelf: 'center',
         paddingHorizontal: 20,
         paddingVertical: 10,
-        backgroundColor: '#fff',
+        backgroundColor: isDark ? colors.primary : '#fff',
         borderWidth: 1,
-        borderColor: '#fff',
+        borderColor: isDark ? colors.primary : '#fff',
         elevation: 6,
-        shadowColor: 'rgba(51, 57, 176, 0.05)',
+        shadowColor: isDark ? '#000' : 'rgba(51, 57, 176, 0.05)',
         shadowOffset: { width: 0, height: 3 },
         shadowRadius: 6,
-        shadowOpacity: 1,
+        shadowOpacity: isDark ? 0.4 : 1,
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -157,7 +162,7 @@ const styles = StyleSheet.create({
         fontFamily: getSafePlatformFont('SFProText'),
         fontWeight: '500',
         textTransform: 'uppercase',
-        color: '#3339B0',
+        color: isDark ? '#FFFFFF' : '#3339B0',
         textAlign: 'center',
     },
 });

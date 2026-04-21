@@ -1,10 +1,14 @@
 import React from 'react';
 import { View, Pressable, Text, StyleSheet } from 'react-native';
 import { FontFamily, FontSize } from '@app/styles/GlobalStyles';
-import {useTheme} from "@react-navigation/native";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const TabsContainer = ({ tabs, activeTab, onTabChange }) => {
-    const { colors } = useTheme();
+    const { colors, isDark } = useTheme();
+
+    const activeColor = colors.textPrimary;
+    const inactiveColor = colors.textTertiary || colors.textSecondary;
+    const indicatorBgColor = isDark ? (colors.divider || '#444') : '#ddd';
 
     return (
         <View style={styles.container}>
@@ -17,7 +21,7 @@ export const TabsContainer = ({ tabs, activeTab, onTabChange }) => {
                     <Text
                         style={[
                             styles.tabText,
-                            { color: activeTab === tab.id ? colors.text : colors.border }
+                            { color: activeTab === tab.id ? activeColor : inactiveColor }
                         ]}
                     >
                         {tab.title}
@@ -25,7 +29,7 @@ export const TabsContainer = ({ tabs, activeTab, onTabChange }) => {
                 </Pressable>
             ))}
             <View style={styles.indicatorContainer}>
-                <View style={[styles.indicatorBackground, { backgroundColor: colors.theme === 'light' ? '#ddd' : '#444' }]} />
+                <View style={[styles.indicatorBackground, { backgroundColor: indicatorBgColor }]} />
                 <View
                     style={[
                         styles.indicator,

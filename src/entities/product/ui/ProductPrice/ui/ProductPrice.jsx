@@ -69,6 +69,9 @@ export const ProductPrice = ({ price, weight, product }) => {
         ? `/ 1 коробка (${itemsPerBox} шт.)` 
         : '/ 1 коробка';
 
+    const primaryTextColor = colors?.textPrimary || Color.dark;
+    const secondaryTextColor = colors?.textSecondary || Color.grey7D7D7D;
+
     return (
         <View style={styles.container}>
             <View style={styles.priceContainer}>
@@ -76,23 +79,23 @@ export const ProductPrice = ({ price, weight, product }) => {
                     <View style={styles.priceRow}>
                         <Text
                             ref={priceTextRef}
-                            style={[styles.priceText, { color: Color.dark }]}
+                            style={[styles.priceText, { color: primaryTextColor }]}
                         >
                             {rubles}
                         </Text>
                         <Text
-                            style={[styles.kopecksText, { color: Color.dark }]}
+                            style={[styles.kopecksText, { color: primaryTextColor }]}
                         >
                             {kopecks}
                         </Text>
                         <Text
-                            style={[styles.currencyText, { color: Color.dark }]}
+                            style={[styles.currencyText, { color: primaryTextColor }]}
                         >
                             {' ₽'}
                         </Text>
                     </View>
                 </HighlightChange>
-                <Text style={[styles.unitText, { color: Color.grey7D7D7D }]}>
+                <Text style={[styles.unitText, { color: secondaryTextColor }]}>
                     {unitText}
                 </Text>
             </View>
@@ -101,21 +104,19 @@ export const ProductPrice = ({ price, weight, product }) => {
                 <HighlightChange value={price} style={styles.priceHighlight}>
                     <Text
                         ref={priceTextRef}
-                        style={[styles.boxPriceText, { color: Color.dark }]}
+                        style={[styles.boxPriceText, { color: primaryTextColor }]}
                     >
                         {formatPrice(normalizedBoxPrice)}
                     </Text>
                 </HighlightChange>
-                <Text style={[styles.boxUnitText, { color: Color.grey7D7D7D }]}>
+                <Text style={[styles.boxUnitText, { color: secondaryTextColor }]}>
                     {boxUnitText}
                 </Text>
             </View>
 
-       
-
             {weight ? (
                 <HighlightChange value={weight} style={styles.weightHighlight}>
-                    <Text style={[styles.weightText, { color: Color.grey7D7D7D }]}>
+                    <Text style={[styles.weightText, { color: secondaryTextColor }]}>
                         ~ {weight} грамм
                     </Text>
                 </HighlightChange>

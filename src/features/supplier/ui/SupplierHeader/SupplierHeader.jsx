@@ -99,7 +99,11 @@ export const SupplierHeader = React.memo(({
                 </TouchableOpacity>
 
                 <View style={styles.supplierInfoContainer}>
-                    <Text style={styles.supplierName} numberOfLines={2} ellipsizeMode="tail">
+                    <Text
+                        style={[styles.supplierName, { color: colors.textPrimary }]}
+                        numberOfLines={2}
+                        ellipsizeMode="tail"
+                    >
                         {supplierName}
                     </Text>
                     <View style={styles.ratingContainer}>
@@ -107,11 +111,11 @@ export const SupplierHeader = React.memo(({
                             supplierId={supplier.id}
                             showCount={false}
                             starSize={SCREEN_WIDTH * 0.015}
-                            textColor="#5e00ff"
+                            textColor={colors.primary || '#5e00ff'}
                             textStyle={styles.ratingText}
                         />
 
-                        <Text style={styles.productsText}>
+                        <Text style={[styles.productsText, { color: colors.textSecondary }]}>
                             {productsCountText}
                         </Text>
                     </View>
