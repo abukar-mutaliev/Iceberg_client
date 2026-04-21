@@ -26,6 +26,7 @@ import { useToast } from '@shared/ui/Toast';
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 import ChatApi from '@entities/chat/api/chatApi';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
     const dispatch = useDispatch();
@@ -35,6 +36,8 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
     const { showSuccess } = useToast();
     const { showAlert, showError: showErrorAlert } = useCustomAlert();
     const insets = useSafeAreaInsets();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const [sending, setSending] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState([]);
@@ -48,6 +51,10 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
     const expandedHeight = Math.round(Math.min(screenHeight - insets.top, screenHeight * 0.92));
     const collapsedTranslateY = Math.max(0, expandedHeight - collapsedHeight);
     const closeTranslateY = screenHeight;
+
+    const accentColor = isDark ? colors.primary : Color.purpleSoft;
+    const mutedIconColor = isDark ? colors.textTertiary : '#8696A0';
+    const disabledIconColor = isDark ? 'rgba(255,255,255,0.2)' : '#D0D0D0';
 
     useEffect(() => {
         if (visible) {
@@ -186,7 +193,6 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
         })
     ).current;
 
-    // Поиск пользователей
     useEffect(() => {
         const searchUsers = async () => {
             if (!searchQuery || searchQuery.trim().length < 2) {
@@ -199,15 +205,13 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
             try {
                 const response = await ChatApi.searchUsers(searchQuery, 50);
                 const users = response?.data?.users || response?.data?.data?.users || [];
-                
-                // Фильтруем текущего пользователя и поставщиков
+
                 const filteredUsers = users.filter(u => u.id !== currentUserId && u.role !== 'SUPPLIER');
                 setSearchResults(filteredUsers);
             } catch (error) {
                 console.error('Error searching users:', error);
                 setSearchResults([]);
-                
-                // Показываем ошибку через CustomAlert, если это не просто сетевая ошибка
+
                 if (error?.response?.status && error.response.status !== 500) {
                     showErrorAlert(
                         'Ошибка поиска',
@@ -270,9 +274,7 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
         return room?.id ? `Комната ${room.id}` : 'Чат';
     }, [currentUserId]);
 
-    // Получение аватара чата
     const getChatAvatar = useCallback((room) => {
-        // Для групп и каналов
         if (room?.type === 'GROUP' || room?.type === 'BROADCAST') {
             if (room?.avatar) {
                 const avatar = room.avatar;
@@ -284,7 +286,6 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
             return null;
         }
 
-        // Для личных чатов - аватар собеседника
         if (room?.type === 'DIRECT' && room?.participants && Array.isArray(room.participants) && currentUserId) {
             const partner = room.participants.find(p => {
                 const participantId = p?.userId ?? p?.user?.id;
@@ -293,10 +294,10 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
 
             if (partner) {
                 const partnerUser = partner.user || partner;
-                const avatar = partnerUser?.avatar || 
-                              partnerUser?.profile?.avatar || 
-                              partnerUser?.image;
-                
+                const avatar = partnerUser?.avatar ||
+                    partnerUser?.profile?.avatar ||
+                    partnerUser?.image;
+
                 if (avatar) {
                     if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
                         return avatar;
@@ -309,7 +310,6 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
         return null;
     }, [currentUserId]);
 
-    // Получение имени пользователя
     const getUserDisplayName = useCallback((user) => {
         if (user?.role === 'SUPPLIER') {
             return user.supplier?.companyName || user.companyName || user.name || user.email;
@@ -317,7 +317,6 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
         return user.name || user.profile?.name || user.email;
     }, []);
 
-    // Получение аватара пользователя
     const getUserAvatar = useCallback((user) => {
         const avatar = user?.avatar || user?.profile?.avatar || user?.image;
         if (avatar) {
@@ -329,23 +328,20 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
         return null;
     }, []);
 
-    // Фильтрация комнат: исключаем каналы и закрытые группы (если пользователь не админ)
     const filteredRooms = useMemo(() => {
         if (!rooms || !Array.isArray(rooms)) {
             return [];
         }
-        
+
         return rooms.filter(room => {
             if (!room || !room.id) {
                 return false;
             }
 
-            // Скрываем PRODUCT чаты (чаты с поставщиками по товарам)
             if (room?.type === 'PRODUCT') {
                 return false;
             }
 
-            // Скрываем DIRECT чаты с поставщиками
             if (room?.type === 'DIRECT' && Array.isArray(room?.participants)) {
                 const hasSupplier = room.participants.some(p => {
                     const user = p?.user || p;
@@ -353,8 +349,7 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
                 });
                 if (hasSupplier) return false;
             }
-            
-            // Для каналов (BROADCAST): показываем только админам, водителям и сотрудникам
+
             if (room?.type === 'BROADCAST') {
                 const allowedRoles = ['ADMIN', 'DRIVER', 'EMPLOYEE'];
                 if (currentUserRole && allowedRoles.includes(currentUserRole)) {
@@ -362,12 +357,10 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
                 }
                 return false;
             }
-            
-            // Проверяем, является ли группа закрытой (isLocked может быть true, 1, или строкой "true")
+
             const isLocked = room?.isLocked === true || room?.isLocked === 1 || room?.isLocked === 'true' || String(room?.isLocked).toLowerCase() === 'true';
-            
+
             if (isLocked) {
-                // Админы и системные админы могут видеть все закрытые группы
                 if (currentUserRole === 'ADMIN' || currentUserRole === 'SYSADMIN') {
                     if (__DEV__) {
                         console.log('ShareStopModal: Showing locked room for admin', {
@@ -378,15 +371,13 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
                     }
                     return true;
                 }
-                
-                // Проверяем, является ли пользователь администратором группы
+
                 if (room?.participants && Array.isArray(room.participants) && room.participants.length > 0) {
                     const currentParticipant = room.participants.find(p => {
                         const participantId = p?.userId ?? p?.user?.id;
                         return participantId === currentUserId;
                     });
-                    
-                    // Логирование для отладки
+
                     if (__DEV__) {
                         console.log('ShareStopModal: Checking locked room', {
                             roomId: room.id,
@@ -402,8 +393,7 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
                             }))
                         });
                     }
-                    
-                    // Показываем только если пользователь является админом или владельцем группы
+
                     if (currentParticipant?.role === 'ADMIN' || currentParticipant?.role === 'OWNER') {
                         if (__DEV__) {
                             console.log('ShareStopModal: Showing locked room for admin/owner', {
@@ -415,8 +405,7 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
                         return true;
                     }
                 }
-                
-                // В остальных случаях скрываем закрытую группу
+
                 if (__DEV__) {
                     console.log('ShareStopModal: Hiding locked room', {
                         roomId: room.id,
@@ -427,25 +416,21 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
                 }
                 return false;
             }
-            
+
             return true;
         });
     }, [rooms, currentUserId, currentUserRole]);
 
-    // Проверка, может ли пользователь отправлять сообщения в комнату
     const canSendToRoom = useCallback((room) => {
-        // Личные чаты всегда доступны
         if (room?.type === 'DIRECT') {
             return true;
         }
 
-        // Для каналов (BROADCAST): разрешаем админам, водителям и сотрудникам отправлять остановки
         if (room?.type === 'BROADCAST') {
             const allowedRoles = ['ADMIN', 'DRIVER', 'EMPLOYEE'];
             if (currentUserRole && allowedRoles.includes(currentUserRole)) {
                 return true;
             }
-            // Также проверяем, является ли пользователь администратором комнаты
             if (room?.participants && Array.isArray(room.participants)) {
                 const currentParticipant = room.participants.find(p => {
                     const participantId = p?.userId ?? p?.user?.id;
@@ -458,31 +443,25 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
             return false;
         }
 
-        // Если комната не заблокирована, доступна всем
         if (!room?.isLocked) {
             return true;
         }
 
-        // Если комната заблокирована, проверяем права
-        // Админы и системные админы могут отправлять везде
         if (currentUserRole === 'ADMIN' || currentUserRole === 'SYSADMIN') {
             return true;
         }
 
-        // Проверяем, является ли пользователь администратором комнаты
         if (room?.participants && Array.isArray(room.participants)) {
             const currentParticipant = room.participants.find(p => {
                 const participantId = p?.userId ?? p?.user?.id;
                 return participantId === currentUserId;
             });
-            
-            // Проверяем роль участника (ADMIN или OWNER)
+
             if (currentParticipant?.role === 'ADMIN' || currentParticipant?.role === 'OWNER') {
                 return true;
             }
         }
 
-        // В остальных случаях - нельзя отправлять
         return false;
     }, [currentUserId, currentUserRole]);
 
@@ -499,13 +478,11 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
             onClose();
         } catch (error) {
             console.error('Error sharing stop:', error);
-            
-            // Обрабатываем ошибку через Toast (не показываем алерт для закрытых групп)
-            const errorMessage = typeof error === 'string' ? error : 
-                                error?.message || 
-                                'Не удалось отправить остановку';
-            
-            // Только для неожиданных ошибок показываем алерт
+
+            const errorMessage = typeof error === 'string' ? error :
+                error?.message ||
+                'Не удалось отправить остановку';
+
             if (!errorMessage.includes('закрыта') && !errorMessage.includes('Только администраторы')) {
                 showErrorAlert(
                     'Ошибка отправки',
@@ -521,7 +498,6 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
                     ]
                 );
             } else {
-                // Закрываем модальное окно даже если не показываем алерт
                 onClose();
             }
         } finally {
@@ -529,7 +505,6 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
         }
     }, [dispatch, stopId, onClose, sending, showSuccess, showErrorAlert]);
 
-    // Обработка выбора пользователя из поиска
     const handleUserPress = useCallback(async (user) => {
         if (sending) return;
 
@@ -537,7 +512,6 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
             setSending(true);
             Keyboard.dismiss();
 
-            // Создаем FormData для создания прямого чата
             const formData = new FormData();
             formData.append('type', 'DIRECT');
             formData.append('title', user.name || user.email);
@@ -547,7 +521,6 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
             const room = result;
 
             if (room && room.id) {
-                // Отправляем остановку в созданный чат
                 await dispatch(sendStop({ roomId: room.id, stopId })).unwrap();
                 showSuccess('Остановка отправлена пользователю', {
                     duration: 2000,
@@ -557,11 +530,11 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
             }
         } catch (error) {
             console.error('Error creating chat and sharing stop:', error);
-            
-            const errorMessage = typeof error === 'string' ? error : 
-                                error?.message || 
-                                'Не удалось создать чат или отправить остановку';
-            
+
+            const errorMessage = typeof error === 'string' ? error :
+                error?.message ||
+                'Не удалось создать чат или отправить остановку';
+
             showErrorAlert(
                 'Ошибка',
                 errorMessage,
@@ -598,8 +571,8 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
             >
                 <View style={styles.avatarContainer}>
                     {avatar ? (
-                        <Image 
-                            source={{ uri: avatar }} 
+                        <Image
+                            source={{ uri: avatar }}
                             style={[
                                 styles.avatar,
                                 !isAccessible && styles.avatarDisabled
@@ -608,16 +581,16 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
                         />
                     ) : (
                         <View style={[
-                            styles.avatar, 
+                            styles.avatar,
                             styles.placeholderAvatar,
                             !isAccessible && styles.avatarDisabled
                         ]}>
                             {item.type === 'BROADCAST' ? (
-                                <Icon name="campaign" size={20} color={isAccessible ? "#8696A0" : "#D0D0D0"} />
+                                <Icon name="campaign" size={20} color={isAccessible ? mutedIconColor : disabledIconColor} />
                             ) : item.type === 'GROUP' ? (
-                                <Icon name="group" size={20} color={isAccessible ? "#8696A0" : "#D0D0D0"} />
+                                <Icon name="group" size={20} color={isAccessible ? mutedIconColor : disabledIconColor} />
                             ) : (
-                                <Icon name="person" size={20} color={isAccessible ? "#8696A0" : "#D0D0D0"} />
+                                <Icon name="person" size={20} color={isAccessible ? mutedIconColor : disabledIconColor} />
                             )}
                         </View>
                     )}
@@ -631,7 +604,7 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
                             {title}
                         </Text>
                         {isLocked && (
-                            <Icon name="lock" size={16} color="#D0D0D0" style={styles.lockIcon} />
+                            <Icon name="lock" size={16} color={disabledIconColor} style={styles.lockIcon} />
                         )}
                     </View>
                     <Text style={[
@@ -644,7 +617,7 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
                 </View>
             </TouchableOpacity>
         );
-    }, [getChatTitle, getChatAvatar, handleShareToRoom, sending, canSendToRoom]);
+    }, [getChatTitle, getChatAvatar, handleShareToRoom, sending, canSendToRoom, styles, mutedIconColor, disabledIconColor]);
 
     const renderUser = useCallback(({ item }) => {
         const name = getUserDisplayName(item);
@@ -658,28 +631,28 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
             >
                 <View style={styles.avatarContainer}>
                     {avatar ? (
-                        <Image 
-                            source={{ uri: avatar }} 
+                        <Image
+                            source={{ uri: avatar }}
                             style={styles.avatar}
                             resizeMode="cover"
                         />
                     ) : (
                         <View style={[styles.avatar, styles.placeholderAvatar]}>
-                            <Icon name="person" size={20} color="#8696A0" />
+                            <Icon name="person" size={20} color={mutedIconColor} />
                         </View>
                     )}
                 </View>
                 <View style={styles.roomInfo}>
                     <Text style={styles.roomTitle} numberOfLines={1}>{name}</Text>
                     <Text style={styles.roomType} numberOfLines={1}>
-                        {item.role === 'SUPPLIER' ? 'Поставщик' : 
-                         item.role === 'DRIVER' ? 'Водитель' :
-                         item.role === 'EMPLOYEE' ? 'Сотрудник' : 'Пользователь'}
+                        {item.role === 'SUPPLIER' ? 'Поставщик' :
+                            item.role === 'DRIVER' ? 'Водитель' :
+                                item.role === 'EMPLOYEE' ? 'Сотрудник' : 'Пользователь'}
                     </Text>
                 </View>
             </TouchableOpacity>
         );
-    }, [getUserDisplayName, getUserAvatar, handleUserPress, sending]);
+    }, [getUserDisplayName, getUserAvatar, handleUserPress, sending, styles, mutedIconColor]);
 
     const availableHeight = Math.max(
         0,
@@ -740,35 +713,35 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
                         </View>
                     )}
 
-                    {/* Поле поиска */}
                     <View style={styles.searchContainer}>
-                        <Icon name="search" size={20} color="#8696A0" style={styles.searchIcon} />
+                        <Icon name="search" size={20} color={mutedIconColor} style={styles.searchIcon} />
                         <TextInput
                             style={styles.searchInput}
                             placeholder="Поиск пользователей..."
                             value={searchQuery}
                             onChangeText={setSearchQuery}
                             editable={!sending}
-                            placeholderTextColor="#8696A0"
+                            placeholderTextColor={mutedIconColor}
+                            keyboardAppearance={colors.keyboardAppearance}
                         />
                         {searchQuery.length > 0 && (
-                            <TouchableOpacity 
+                            <TouchableOpacity
                                 onPress={() => setSearchQuery('')}
                                 style={styles.clearButton}
                             >
-                                <Icon name="close" size={20} color="#8696A0" />
+                                <Icon name="close" size={20} color={mutedIconColor} />
                             </TouchableOpacity>
                         )}
                     </View>
 
                     {sending ? (
                         <View style={styles.loadingContainer}>
-                            <ActivityIndicator size="large" color={Color.purpleSoft} />
+                            <ActivityIndicator size="large" color={accentColor} />
                             <Text style={styles.loadingText}>Отправка...</Text>
                         </View>
                     ) : searching ? (
                         <View style={styles.loadingContainer}>
-                            <ActivityIndicator size="large" color={Color.purpleSoft} />
+                            <ActivityIndicator size="large" color={accentColor} />
                             <Text style={styles.loadingText}>Поиск...</Text>
                         </View>
                     ) : searchQuery.length >= 2 ? (
@@ -803,10 +776,10 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: isDark ? 'rgba(0, 0, 0, 0.7)' : 'rgba(0, 0, 0, 0.5)',
         justifyContent: 'flex-end',
     },
     backdropTouchable: {
@@ -817,10 +790,16 @@ const styles = StyleSheet.create({
         bottom: 0,
     },
     modalContent: {
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.surface : Color.colorLightMode,
         borderTopLeftRadius: Border.br_xl,
         borderTopRightRadius: Border.br_xl,
         paddingBottom: 20,
+        ...(isDark && {
+            borderTopWidth: 1,
+            borderLeftWidth: 1,
+            borderRightWidth: 1,
+            borderColor: colors.border,
+        }),
     },
     dragHandleContainer: {
         paddingTop: 8,
@@ -831,7 +810,7 @@ const styles = StyleSheet.create({
         width: 44,
         height: 5,
         borderRadius: 3,
-        backgroundColor: '#D8D8D8',
+        backgroundColor: isDark ? '#4A4E5C' : '#D8D8D8',
     },
     modalHeader: {
         flexDirection: 'row',
@@ -839,36 +818,36 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         padding: 16,
         borderBottomWidth: 1,
-        borderBottomColor: '#E5E5E5',
+        borderBottomColor: isDark ? colors.divider : '#E5E5E5',
     },
     modalTitle: {
         fontSize: FontSize.size_lg,
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
     },
     closeButton: {
         fontSize: 24,
-        color: Color.colorSilver_100,
+        color: isDark ? colors.textSecondary : Color.colorSilver_100,
         fontWeight: '300',
     },
     stopPreview: {
         padding: 16,
-        backgroundColor: '#F9F9F9',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F9F9F9',
         borderBottomWidth: 1,
-        borderBottomColor: '#E5E5E5',
+        borderBottomColor: isDark ? colors.divider : '#E5E5E5',
     },
     stopAddress: {
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
-        color: Color.purpleSoft,
+        color: isDark ? colors.primary : Color.purpleSoft,
         marginBottom: 4,
     },
     stopDistrict: {
         fontSize: FontSize.size_sm,
         fontFamily: FontFamily.sFProText,
-        color: Color.colorCornflowerblue,
+        color: isDark ? colors.textSecondary : Color.colorCornflowerblue,
     },
     roomsList: {
         padding: 8,
@@ -878,9 +857,9 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: 16,
         paddingVertical: 8,
-        backgroundColor: '#F9F9F9',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F9F9F9',
         borderBottomWidth: 1,
-        borderBottomColor: '#E5E5E5',
+        borderBottomColor: isDark ? colors.divider : '#E5E5E5',
     },
     searchIcon: {
         marginRight: 8,
@@ -889,7 +868,7 @@ const styles = StyleSheet.create({
         flex: 1,
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
-        color: Color.dark,
+        color: colors.textPrimary,
         padding: 8,
     },
     clearButton: {
@@ -900,11 +879,11 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         padding: 16,
         borderBottomWidth: 1,
-        borderBottomColor: '#F0F0F0',
+        borderBottomColor: isDark ? colors.divider : '#F0F0F0',
     },
     roomItemDisabled: {
         opacity: 0.5,
-        backgroundColor: '#FAFAFA',
+        backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : '#FAFAFA',
     },
     avatarContainer: {
         marginRight: 12,
@@ -918,7 +897,7 @@ const styles = StyleSheet.create({
         opacity: 0.5,
     },
     placeholderAvatar: {
-        backgroundColor: '#E8E8E8',
+        backgroundColor: isDark ? colors.surfaceElevated : '#E8E8E8',
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -935,7 +914,7 @@ const styles = StyleSheet.create({
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         flex: 1,
     },
     lockIcon: {
@@ -944,10 +923,10 @@ const styles = StyleSheet.create({
     roomType: {
         fontSize: FontSize.size_sm,
         fontFamily: FontFamily.sFProText,
-        color: Color.colorSilver_100,
+        color: colors.textSecondary,
     },
     textDisabled: {
-        color: '#B0B0B0',
+        color: isDark ? 'rgba(255,255,255,0.35)' : '#B0B0B0',
     },
     emptyContainer: {
         padding: 40,
@@ -956,13 +935,13 @@ const styles = StyleSheet.create({
     emptyText: {
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
-        color: Color.colorSilver_100,
+        color: colors.textSecondary,
         textAlign: 'center',
     },
     emptyHint: {
         fontSize: FontSize.size_sm,
         fontFamily: FontFamily.sFProText,
-        color: Color.colorSilver_100,
+        color: colors.textTertiary,
         marginTop: 8,
         textAlign: 'center',
     },
@@ -974,7 +953,6 @@ const styles = StyleSheet.create({
         marginTop: 12,
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
-        color: Color.colorCornflowerblue,
+        color: isDark ? colors.textSecondary : Color.colorCornflowerblue,
     },
 });
-

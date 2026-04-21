@@ -18,6 +18,7 @@ import { updateWarehouse } from '@entities/warehouse/model/slice';
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 import { loadUserProfile } from '@entities/auth/model/slice';
 import { ShareWarehouseModal } from './ShareWarehouseModal';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 // Функция для геокодирования адреса через Nominatim
 const geocodeAddress = async (address, districtName = '') => {
@@ -72,6 +73,8 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
     const dispatch = useDispatch();
     const user = useSelector(selectUser);
     const { showSuccess, showError } = useCustomAlert();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const insets = useSafeAreaInsets();
     const defaultCoords = { latitude: 43.172837, longitude: 44.811913 };
     const [mapCoordinates, setMapCoordinates] = useState(defaultCoords);
@@ -95,6 +98,8 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
     const isExpoGo = Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
     const isAuthenticated = !!user;
     const hasMaintenance = !!warehouse?.maintenanceMode;
+    const accentColor = isDark ? colors.primary : Color.blue2;
+    const shareIconColor = isDark ? colors.primary : Color.purpleSoft;
     
     // Проверяем, является ли пользователь суперадмином
     // Используем ту же логику, что и в других экранах (DirectChatScreen, useGroupChatData)
@@ -348,7 +353,7 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
                         onPress={handleSharePress}
                         activeOpacity={0.7}
                     >
-                        <Icon name="share" size={24} color={Color.purpleSoft} />
+                        <Icon name="share" size={24} color={shareIconColor} />
                     </TouchableOpacity>
                 ) : (
                     <TouchableOpacity
@@ -356,7 +361,7 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
                         onPress={handleSharePress}
                         activeOpacity={0.7}
                     >
-                        <Icon name="share" size={24} color={Color.purpleSoft} />
+                        <Icon name="share" size={24} color={shareIconColor} />
                     </TouchableOpacity>
                 )}
             </View>
@@ -371,7 +376,7 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
                                 onPress={handleCopyAddress}
                                 activeOpacity={0.7}
                             >
-                                <Icon name="content-copy" size={18} color={Color.blue2} />
+                                <Icon name="content-copy" size={18} color={accentColor} />
                             </TouchableOpacity>
                         )}
                     </View>
@@ -386,7 +391,7 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
                     />
                 ) : (
                     <View style={styles.photoPlaceholder}>
-                        <Icon name="warehouse" size={64} color={Color.blue2} />
+                        <Icon name="warehouse" size={64} color={accentColor} />
                         <Text style={styles.photoPlaceholderText}>Изображение склада</Text>
                     </View>
                 )}
@@ -422,7 +427,7 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
                                     onPress={handleCopyAddress}
                                     activeOpacity={0.7}
                                 >
-                                    <Icon name="content-copy" size={14} color={Color.blue2} />
+                                    <Icon name="content-copy" size={14} color={accentColor} />
                                 </TouchableOpacity>
                             )}
                         </View>
@@ -630,7 +635,7 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
                     </View>
                     {(isGeocoding || (!mapLoaded && !mapError && !isExpoGo)) ? (
                         <View style={styles.mapLoadingContainer}>
-                            <ActivityIndicator size="small" color={Color.blue2} />
+                            <ActivityIndicator size="small" color={accentColor} />
                             <Text style={styles.mapLoadingText}>
                                 {isGeocoding ? 'Определяем местоположение...' : 'Загружаем карту...'}
                             </Text>
@@ -638,7 +643,7 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
                     ) : (isExpoGo || mapError) ? (
                         <View style={styles.mapFallbackContainer}>
                             <View style={styles.mapFallbackContent}>
-                                <Icon name="map" size={48} color={Color.blue2} />
+                                <Icon name="map" size={48} color={accentColor} />
                                 <Text style={styles.mapFallbackTitle}>
                                     {isExpoGo ? 'Карта недоступна в Expo Go' : 'Карта не загрузилась'}
                                 </Text>
@@ -723,7 +728,7 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
                             onPress={handleEditPress}
                             activeOpacity={0.7}
                         >
-                            <Icon name="edit" size={18} color="#fff" style={styles.editIcon} />
+                            <Icon name="edit" size={18} color={Color.colorLightMode} style={styles.editIcon} />
                             <Text style={styles.editButtonText}>Редактировать склад</Text>
                         </TouchableOpacity>
                     </View>
@@ -759,17 +764,17 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.background,
     },
     scrollContent: {
         paddingBottom: 20,
     },
     errorText: {
         fontSize: FontSize.size_md,
-        color: 'red',
+        color: colors.error,
         textAlign: 'center',
         marginTop: 50,
         fontFamily: FontFamily.sFProText || "system",
@@ -797,7 +802,7 @@ const styles = StyleSheet.create({
     warehouseName: {
         fontSize: FontSize.size_md,
         fontWeight: '500',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText || "system",
         textAlign: 'center',
     },
@@ -816,7 +821,7 @@ const styles = StyleSheet.create({
         flex: 1,
         fontSize: FontSize.size_lg,
         fontFamily: FontFamily.sFProText || "system",
-        color: Color.dark,
+        color: colors.textPrimary,
         letterSpacing: 0.9,
         minWidth: 0,
     },
@@ -824,11 +829,11 @@ const styles = StyleSheet.create({
         width: 32,
         height: 32,
         borderRadius: 16,
-        backgroundColor: '#E8F0FE',
+        backgroundColor: isDark ? 'rgba(115, 125, 255, 0.12)' : '#E8F0FE',
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#D0E0F0',
+        borderColor: isDark ? 'rgba(115, 125, 255, 0.3)' : '#D0E0F0',
         flexShrink: 0,
         marginTop: 2,
     },
@@ -837,17 +842,17 @@ const styles = StyleSheet.create({
         height: 250,
         borderRadius: 8,
         marginBottom: 16,
-        backgroundColor: '#f2f2f2',
+        backgroundColor: isDark ? colors.surfaceElevated : '#f2f2f2',
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#e0e0e0',
+        borderColor: isDark ? colors.border : '#e0e0e0',
         borderStyle: 'dashed',
     },
     photoPlaceholderText: {
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
-        color: '#999',
+        color: colors.textTertiary,
         marginTop: 8,
     },
     warehouseImage: {
@@ -855,7 +860,7 @@ const styles = StyleSheet.create({
         height: 250,
         borderRadius: 8,
         marginBottom: 16,
-        backgroundColor: '#f2f2f2',
+        backgroundColor: isDark ? colors.surfaceElevated : '#f2f2f2',
     },
     infoSection: {
         marginTop: 16,
@@ -870,7 +875,7 @@ const styles = StyleSheet.create({
     infoLabel: {
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
-        color: Color.blue2,
+        color: isDark ? colors.primary : Color.blue2,
         letterSpacing: 0.8,
     },
     infoValueContainer: {
@@ -885,7 +890,7 @@ const styles = StyleSheet.create({
         flex: 1,
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
-        color: Color.dark,
+        color: colors.textPrimary,
         letterSpacing: 0.8,
         minWidth: 0,
     },
@@ -893,11 +898,11 @@ const styles = StyleSheet.create({
         width: 28,
         height: 28,
         borderRadius: 14,
-        backgroundColor: '#E8F0FE',
+        backgroundColor: isDark ? 'rgba(115, 125, 255, 0.12)' : '#E8F0FE',
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#D0E0F0',
+        borderColor: isDark ? 'rgba(115, 125, 255, 0.3)' : '#D0E0F0',
         flexShrink: 0,
         marginTop: 2,
     },
@@ -908,13 +913,13 @@ const styles = StyleSheet.create({
         alignSelf: 'flex-start',
     },
     statusActive: {
-        backgroundColor: '#E8F5E9',
+        backgroundColor: isDark ? 'rgba(46, 143, 74, 0.18)' : '#E8F5E9',
     },
     statusInactive: {
-        backgroundColor: '#FFEBEE',
+        backgroundColor: isDark ? 'rgba(198, 40, 40, 0.18)' : '#FFEBEE',
     },
     statusMaintenance: {
-        backgroundColor: '#FFF3E0',
+        backgroundColor: isDark ? 'rgba(239, 108, 0, 0.18)' : '#FFF3E0',
     },
     statusText: {
         fontSize: FontSize.size_sm,
@@ -922,13 +927,13 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     statusTextActive: {
-        color: '#2E7D32',
+        color: isDark ? '#4ADE80' : '#2E7D32',
     },
     statusTextInactive: {
-        color: '#C62828',
+        color: isDark ? '#FF7B72' : '#C62828',
     },
     statusTextMaintenance: {
-        color: '#EF6C00',
+        color: isDark ? '#FFB86B' : '#EF6C00',
     },
     mapContainer: {
         height: 250,
@@ -936,7 +941,7 @@ const styles = StyleSheet.create({
         marginTop: 16,
         borderRadius: 8,
         overflow: 'hidden',
-        backgroundColor: '#f0f0f0',
+        backgroundColor: isDark ? colors.surfaceElevated : '#f0f0f0',
     },
     mapWrapper: {
         flex: 1,
@@ -954,7 +959,7 @@ const styles = StyleSheet.create({
     mapTitle: {
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
-        color: Color.dark,
+        color: colors.textPrimary,
         fontWeight: '500',
     },
     map: {
@@ -984,7 +989,7 @@ const styles = StyleSheet.create({
         flex: 1,
         height: 44,
         borderRadius: 8,
-        backgroundColor: Color.blue2,
+        backgroundColor: isDark ? colors.primary : Color.blue2,
         justifyContent: 'center',
         alignItems: 'center',
         flexDirection: 'row',
@@ -1003,25 +1008,25 @@ const styles = StyleSheet.create({
         height: 250,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#f0f0f0',
+        backgroundColor: isDark ? colors.surfaceElevated : '#f0f0f0',
         borderRadius: 8,
         gap: 8,
     },
     mapLoadingText: {
         fontSize: FontSize.size_md,
-        color: '#3B43A2',
+        color: isDark ? colors.textSecondary : '#3B43A2',
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
     },
     geocodingErrorText: {
         fontSize: FontSize.size_xs,
-        color: '#ff6b6b',
+        color: colors.error,
         fontFamily: FontFamily.sFProText,
         marginTop: 4,
     },
     mapFallbackContainer: {
         height: 250,
-        backgroundColor: '#f0f0f0',
+        backgroundColor: isDark ? colors.surfaceElevated : '#f0f0f0',
         borderRadius: 8,
         justifyContent: 'center',
         alignItems: 'center',
@@ -1034,7 +1039,7 @@ const styles = StyleSheet.create({
     mapFallbackTitle: {
         fontSize: FontSize.size_md,
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         marginTop: 12,
         marginBottom: 8,
@@ -1042,7 +1047,7 @@ const styles = StyleSheet.create({
     },
     mapFallbackText: {
         fontSize: FontSize.size_sm,
-        color: '#666',
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
         marginBottom: 20,
@@ -1051,7 +1056,7 @@ const styles = StyleSheet.create({
     mapFallbackButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: Color.blue2,
+        backgroundColor: isDark ? colors.primary : Color.blue2,
         paddingHorizontal: 20,
         paddingVertical: 12,
         borderRadius: 8,
@@ -1066,7 +1071,7 @@ const styles = StyleSheet.create({
     autoManageStatusText: {
         fontSize: FontSize.size_xs,
         fontFamily: FontFamily.sFProText,
-        color: '#666',
+        color: colors.textSecondary,
         marginLeft: 8,
         fontStyle: 'italic',
     },
@@ -1074,12 +1079,12 @@ const styles = StyleSheet.create({
         marginTop: 16,
         paddingTop: 16,
         borderTopWidth: 1,
-        borderTopColor: '#e0e0e0',
+        borderTopColor: isDark ? colors.border : '#e0e0e0',
     },
     workingHoursTitle: {
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
-        color: Color.blue2,
+        color: isDark ? colors.primary : Color.blue2,
         fontWeight: '600',
         marginBottom: 12,
         letterSpacing: 0.8,
@@ -1094,14 +1099,14 @@ const styles = StyleSheet.create({
     workingHoursDay: {
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
-        color: Color.dark,
+        color: colors.textPrimary,
         flex: 1,
         letterSpacing: 0.8,
     },
     workingHoursTime: {
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
-        color: Color.dark,
+        color: colors.textPrimary,
         fontWeight: '500',
         letterSpacing: 0.8,
     },

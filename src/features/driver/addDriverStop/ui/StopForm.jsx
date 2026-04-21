@@ -29,6 +29,7 @@ import { StopProductsSelector } from './StopProductsSelector';
 import { FormSection, FormField, FormDivider } from './FormField';
 import { FormProgressBar } from './FormProgressIndicator';
 import { FormHint, QuickAction, QuickActionsGroup, InfoBanner } from './FormQuickActions';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const WEEK_DAYS = [
     { label: 'Пн', value: 1 },
@@ -82,6 +83,8 @@ export const StopForm = memo(({
     const dispatch = useDispatch();
     const navigation = useNavigation();
     const route = useRoute();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const scrollViewRef = useRef(null);
     const commentInputRef = useRef(null);
     const commentInputYPosition = useRef(0);
@@ -1073,7 +1076,8 @@ export const StopForm = memo(({
                                 logData('Изменен адрес', text);
                             }}
                             placeholder="Введите адрес"
-                            placeholderTextColor="#999"
+                            placeholderTextColor={isDark ? colors.textTertiary : '#999'}
+                            keyboardAppearance={isDark ? 'dark' : 'light'}
                         />
                         <View style={[styles.inputUnderline, errors.address ? styles.underlineError : null]}/>
                     </FormField>
@@ -1116,7 +1120,8 @@ export const StopForm = memo(({
                                 logData('Изменена модель транспорта', text);
                             }}
                             placeholder="LADA Largus"
-                            placeholderTextColor="#999"
+                            placeholderTextColor={isDark ? colors.textTertiary : '#999'}
+                            keyboardAppearance={isDark ? 'dark' : 'light'}
                         />
                         <View style={[styles.inputUnderline, errors.truckModel ? styles.underlineError : null]}/>
                     </FormField>
@@ -1135,7 +1140,8 @@ export const StopForm = memo(({
                                 logData('Изменен номер транспорта', text);
                             }}
                             placeholder="А001АА 06"
-                            placeholderTextColor="#999"
+                            placeholderTextColor={isDark ? colors.textTertiary : '#999'}
+                            keyboardAppearance={isDark ? 'dark' : 'light'}
                             autoCapitalize="characters"
                         />
                         <View style={[styles.inputUnderline, errors.truckNumber ? styles.underlineError : null]}/>
@@ -1276,7 +1282,8 @@ export const StopForm = memo(({
                                     }
                                 }}
                                 placeholder="Введите дополнительную информацию"
-                                placeholderTextColor="#999"
+                                placeholderTextColor={isDark ? colors.textTertiary : '#999'}
+                                keyboardAppearance={isDark ? 'dark' : 'light'}
                                 multiline
                                 numberOfLines={4}
                                 textAlignVertical="top"
@@ -1364,7 +1371,7 @@ export const StopForm = memo(({
     );
 });
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     formContainer: {
         padding: normalize(20),
         paddingBottom: normalize(30),
@@ -1372,7 +1379,7 @@ const styles = StyleSheet.create({
     },
     section: {
         marginBottom: normalize(28),
-        backgroundColor: '#fff',
+        backgroundColor: isDark ? colors.surface : '#fff',
         borderRadius: 12,
         padding: normalize(16),
         shadowColor: '#000',
@@ -1380,14 +1387,18 @@ const styles = StyleSheet.create({
             width: 0,
             height: 1,
         },
-        shadowOpacity: 0.05,
+        shadowOpacity: isDark ? 0.3 : 0.05,
         shadowRadius: 2,
         elevation: 2,
+        ...(isDark && {
+            borderWidth: 1,
+            borderColor: colors.divider,
+        }),
     },
     sectionTitle: {
         fontSize: normalizeFont(17),
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         marginBottom: normalize(16),
         fontFamily: FontFamily.sFProText,
     },
@@ -1397,23 +1408,21 @@ const styles = StyleSheet.create({
     label: {
         fontSize: normalizeFont(15),
         fontWeight: '500',
-        color: Color.dark,
-        opacity: 0.6,
+        color: colors.textSecondary,
         marginBottom: normalize(8),
         fontFamily: FontFamily.sFProText,
     },
     sublabel: {
         fontSize: normalizeFont(14),
         fontWeight: '500',
-        color: Color.dark,
-        opacity: 0.6,
+        color: colors.textSecondary,
         marginBottom: normalize(8),
         fontFamily: FontFamily.sFProText,
     },
     input: {
         height: normalize(44),
         fontSize: normalizeFont(FontSize.size_sm),
-        color: Color.dark,
+        color: colors.textPrimary,
         paddingVertical: normalize(8),
         paddingHorizontal: 0,
         fontFamily: FontFamily.sFProText,
@@ -1425,10 +1434,13 @@ const styles = StyleSheet.create({
         height: normalize(100),
         textAlignVertical: 'top',
         paddingTop: normalize(8),
+        backgroundColor: isDark ? colors.surfaceElevated : 'transparent',
+        borderRadius: isDark ? 8 : 0,
+        paddingHorizontal: isDark ? normalize(12) : 0,
     },
     inputUnderline: {
         height: 1,
-        backgroundColor: '#E5E5EA',
+        backgroundColor: isDark ? colors.divider : '#E5E5EA',
         marginTop: normalize(4),
     },
     underlineError: {
@@ -1449,21 +1461,21 @@ const styles = StyleSheet.create({
     },
     scheduleToggleLabel: {
         fontSize: normalizeFont(14),
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     scheduleToggle: {
         paddingHorizontal: normalize(14),
         paddingVertical: normalize(6),
         borderRadius: 14,
-        backgroundColor: '#E5E5EA',
+        backgroundColor: isDark ? colors.surfaceElevated : '#E5E5EA',
     },
     scheduleToggleActive: {
-        backgroundColor: '#3B43A2',
+        backgroundColor: colors.primary,
     },
     scheduleToggleText: {
         fontSize: normalizeFont(12),
-        color: '#6B7280',
+        color: isDark ? colors.textSecondary : '#6B7280',
         fontFamily: FontFamily.sFProText,
     },
     scheduleToggleTextActive: {
@@ -1480,16 +1492,16 @@ const styles = StyleSheet.create({
         width: normalize(36),
         height: normalize(36),
         borderRadius: normalize(18),
-        backgroundColor: '#F3F4F6',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F3F4F6',
         alignItems: 'center',
         justifyContent: 'center',
     },
     scheduleDayButtonActive: {
-        backgroundColor: '#3B43A2',
+        backgroundColor: colors.primary,
     },
     scheduleDayText: {
         fontSize: normalizeFont(12),
-        color: '#6B7280',
+        color: isDark ? colors.textSecondary : '#6B7280',
         fontFamily: FontFamily.sFProText,
     },
     scheduleDayTextActive: {
@@ -1510,27 +1522,27 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     submitButton: {
-        backgroundColor: '#3B43A2',
+        backgroundColor: colors.primary,
         height: normalize(52),
         borderRadius: 12,
         justifyContent: 'center',
         alignItems: 'center',
         marginTop: normalize(8),
-        shadowColor: '#3B43A2',
+        shadowColor: colors.primary,
         shadowOffset: {
             width: 0,
             height: 4,
         },
-        shadowOpacity: 0.3,
+        shadowOpacity: isDark ? 0.5 : 0.3,
         shadowRadius: 8,
         elevation: 5,
     },
     disabledButton: {
-        backgroundColor: '#a0a0a0',
+        backgroundColor: isDark ? colors.surfaceElevated : '#a0a0a0',
         shadowOpacity: 0.1,
     },
     submitButtonText: {
-        color: Color.colorLightMode,
+        color: '#FFFFFF',
         fontSize: normalizeFont(17),
         fontWeight: '600',
         fontFamily: FontFamily.sFProText,
@@ -1543,13 +1555,13 @@ const styles = StyleSheet.create({
     },
     // Стили для блока повторной отправки
     retryContainer: {
-        backgroundColor: '#FFF3CD',
+        backgroundColor: isDark ? 'rgba(255, 193, 7, 0.12)' : '#FFF3CD',
         borderRadius: 12,
         padding: normalize(20),
         marginBottom: normalize(16),
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#FFC107',
+        borderColor: isDark ? 'rgba(255, 193, 7, 0.35)' : '#FFC107',
     },
     retryIconContainer: {
         marginBottom: normalize(12),
@@ -1560,14 +1572,14 @@ const styles = StyleSheet.create({
     retryTitle: {
         fontSize: normalizeFont(17),
         fontWeight: '600',
-        color: '#856404',
+        color: isDark ? '#FFD166' : '#856404',
         marginBottom: normalize(8),
         textAlign: 'center',
         fontFamily: FontFamily.sFProText,
     },
     retryMessage: {
         fontSize: normalizeFont(14),
-        color: '#856404',
+        color: isDark ? '#FFD166' : '#856404',
         textAlign: 'center',
         marginBottom: normalize(16),
         fontFamily: FontFamily.sFProText,
@@ -1586,18 +1598,18 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     cancelButton: {
-        backgroundColor: '#fff',
+        backgroundColor: isDark ? colors.surface : '#fff',
         borderWidth: 1.5,
-        borderColor: '#856404',
+        borderColor: isDark ? '#FFD166' : '#856404',
     },
     cancelButtonText: {
         fontSize: normalizeFont(15),
         fontWeight: '600',
-        color: '#856404',
+        color: isDark ? '#FFD166' : '#856404',
         fontFamily: FontFamily.sFProText,
     },
     retryActionButton: {
-        backgroundColor: '#3B43A2',
+        backgroundColor: colors.primary,
     },
     retryButtonText: {
         fontSize: normalizeFont(15),

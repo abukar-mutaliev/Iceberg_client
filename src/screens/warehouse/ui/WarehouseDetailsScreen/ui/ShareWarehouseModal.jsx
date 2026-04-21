@@ -26,6 +26,7 @@ import { useToast } from '@shared/ui/Toast';
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 import ChatApi from '@entities/chat/api/chatApi';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const ShareWarehouseModal = ({ visible, onClose, warehouseId, warehouse }) => {
     const dispatch = useDispatch();
@@ -35,6 +36,8 @@ export const ShareWarehouseModal = ({ visible, onClose, warehouseId, warehouse }
     const { showSuccess } = useToast();
     const { showAlert, showError: showErrorAlert } = useCustomAlert();
     const insets = useSafeAreaInsets();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const [sending, setSending] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState([]);
@@ -48,6 +51,9 @@ export const ShareWarehouseModal = ({ visible, onClose, warehouseId, warehouse }
     const expandedHeight = Math.round(Math.min(screenHeight - insets.top, screenHeight * 0.92));
     const collapsedTranslateY = Math.max(0, expandedHeight - collapsedHeight);
     const closeTranslateY = screenHeight;
+    const accentColor = isDark ? colors.primary : Color.purpleSoft;
+    const mutedIconColor = isDark ? colors.textTertiary : '#8696A0';
+    const disabledIconColor = isDark ? 'rgba(255,255,255,0.2)' : '#D0D0D0';
 
     const animateTo = useCallback((toValue, onEnd) => {
         Animated.timing(translateY, {
@@ -99,8 +105,10 @@ export const ShareWarehouseModal = ({ visible, onClose, warehouseId, warehouse }
     const modalHeightRef = useRef(expandedHeight);
 
     useEffect(() => {
-        modalHeightRef.current = modalHeight;
-    }, [modalHeight]);
+        const availableHeight = Math.max(0, screenHeight - keyboardHeight - insets.top);
+        const height = isKeyboardVisible ? Math.min(expandedHeight, availableHeight) : expandedHeight;
+        modalHeightRef.current = height;
+    }, [screenHeight, keyboardHeight, insets.top, expandedHeight, isKeyboardVisible]);
 
     const isDragArea = useCallback((y0) => {
         const modalTop = screenHeight - modalHeightRef.current + currentTranslateY.current;
@@ -532,11 +540,11 @@ export const ShareWarehouseModal = ({ visible, onClose, warehouseId, warehouse }
                             !isAccessible && styles.avatarDisabled
                         ]}>
                             {item.type === 'BROADCAST' ? (
-                                <Icon name="campaign" size={20} color={isAccessible ? "#8696A0" : "#D0D0D0"} />
+                                <Icon name="campaign" size={20} color={isAccessible ? mutedIconColor : disabledIconColor} />
                             ) : item.type === 'GROUP' ? (
-                                <Icon name="group" size={20} color={isAccessible ? "#8696A0" : "#D0D0D0"} />
+                                <Icon name="group" size={20} color={isAccessible ? mutedIconColor : disabledIconColor} />
                             ) : (
-                                <Icon name="person" size={20} color={isAccessible ? "#8696A0" : "#D0D0D0"} />
+                                <Icon name="person" size={20} color={isAccessible ? mutedIconColor : disabledIconColor} />
                             )}
                         </View>
                     )}
@@ -550,7 +558,7 @@ export const ShareWarehouseModal = ({ visible, onClose, warehouseId, warehouse }
                             {title}
                         </Text>
                         {isLocked && (
-                            <Icon name="lock" size={16} color="#D0D0D0" style={styles.lockIcon} />
+                            <Icon name="lock" size={16} color={disabledIconColor} style={styles.lockIcon} />
                         )}
                     </View>
                     <Text style={[
@@ -563,7 +571,7 @@ export const ShareWarehouseModal = ({ visible, onClose, warehouseId, warehouse }
                 </View>
             </TouchableOpacity>
         );
-    }, [getChatTitle, getChatAvatar, handleShareToRoom, sending, canSendToRoom]);
+    }, [getChatTitle, getChatAvatar, handleShareToRoom, sending, canSendToRoom, styles, mutedIconColor, disabledIconColor]);
 
     const renderUser = useCallback(({ item }) => {
         const name = getUserDisplayName(item);
@@ -584,7 +592,7 @@ export const ShareWarehouseModal = ({ visible, onClose, warehouseId, warehouse }
                         />
                     ) : (
                         <View style={[styles.avatar, styles.placeholderAvatar]}>
-                            <Icon name="person" size={20} color="#8696A0" />
+                            <Icon name="person" size={20} color={mutedIconColor} />
                         </View>
                     )}
                 </View>
@@ -598,7 +606,7 @@ export const ShareWarehouseModal = ({ visible, onClose, warehouseId, warehouse }
                 </View>
             </TouchableOpacity>
         );
-    }, [getUserDisplayName, getUserAvatar, handleUserPress, sending]);
+    }, [getUserDisplayName, getUserAvatar, handleUserPress, sending, styles, mutedIconColor]);
 
     const availableHeight = Math.max(
         0,
@@ -669,21 +677,22 @@ export const ShareWarehouseModal = ({ visible, onClose, warehouseId, warehouse }
 
                     {/* Поле поиска */}
                     <View style={styles.searchContainer}>
-                        <Icon name="search" size={20} color="#8696A0" style={styles.searchIcon} />
+                        <Icon name="search" size={20} color={mutedIconColor} style={styles.searchIcon} />
                         <TextInput
                             style={styles.searchInput}
                             placeholder="Поиск пользователей..."
                             value={searchQuery}
                             onChangeText={setSearchQuery}
                             editable={!sending}
-                            placeholderTextColor="#8696A0"
+                            placeholderTextColor={mutedIconColor}
+                            keyboardAppearance={colors.keyboardAppearance}
                         />
                         {searchQuery.length > 0 && (
                             <TouchableOpacity 
                                 onPress={() => setSearchQuery('')}
                                 style={styles.clearButton}
                             >
-                                <Icon name="close" size={20} color="#8696A0" />
+                                <Icon name="close" size={20} color={mutedIconColor} />
                             </TouchableOpacity>
                         )}
                     </View>
@@ -691,12 +700,12 @@ export const ShareWarehouseModal = ({ visible, onClose, warehouseId, warehouse }
                     <View style={styles.listContainer}>
                         {sending ? (
                             <View style={styles.loadingContainer}>
-                                <ActivityIndicator size="large" color={Color.purpleSoft} />
+                                <ActivityIndicator size="large" color={accentColor} />
                                 <Text style={styles.loadingText}>Отправка...</Text>
                             </View>
                         ) : searching ? (
                             <View style={styles.loadingContainer}>
-                                <ActivityIndicator size="large" color={Color.purpleSoft} />
+                                <ActivityIndicator size="large" color={accentColor} />
                                 <Text style={styles.loadingText}>Поиск...</Text>
                             </View>
                         ) : searchQuery.length >= 2 ? (
@@ -736,10 +745,10 @@ export const ShareWarehouseModal = ({ visible, onClose, warehouseId, warehouse }
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: isDark ? 'rgba(0, 0, 0, 0.7)' : 'rgba(0, 0, 0, 0.5)',
         justifyContent: 'flex-end',
     },
     backdropTouchable: {
@@ -753,11 +762,17 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-end',
     },
     modalContent: {
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.surface : Color.colorLightMode,
         borderTopLeftRadius: Border.br_xl,
         borderTopRightRadius: Border.br_xl,
         paddingBottom: 20,
         flexDirection: 'column',
+        ...(isDark && {
+            borderTopWidth: 1,
+            borderLeftWidth: 1,
+            borderRightWidth: 1,
+            borderColor: colors.border,
+        }),
     },
     dragHandleContainer: {
         paddingTop: 8,
@@ -768,7 +783,7 @@ const styles = StyleSheet.create({
         width: 44,
         height: 5,
         borderRadius: 3,
-        backgroundColor: '#D8D8D8',
+        backgroundColor: isDark ? '#4A4E5C' : '#D8D8D8',
     },
     modalHeader: {
         flexDirection: 'row',
@@ -776,42 +791,42 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         padding: 16,
         borderBottomWidth: 1,
-        borderBottomColor: '#E5E5E5',
+        borderBottomColor: isDark ? colors.divider : '#E5E5E5',
     },
     modalTitle: {
         fontSize: FontSize.size_lg,
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
     },
     closeButton: {
         fontSize: 24,
-        color: Color.colorSilver_100,
+        color: isDark ? colors.textSecondary : Color.colorSilver_100,
         fontWeight: '300',
     },
     warehousePreview: {
         padding: 16,
-        backgroundColor: '#F9F9F9',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F9F9F9',
         borderBottomWidth: 1,
-        borderBottomColor: '#E5E5E5',
+        borderBottomColor: isDark ? colors.divider : '#E5E5E5',
     },
     warehouseName: {
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
-        color: Color.purpleSoft,
+        color: isDark ? colors.primary : Color.purpleSoft,
         marginBottom: 4,
     },
     warehouseAddress: {
         fontSize: FontSize.size_sm,
         fontFamily: FontFamily.sFProText,
-        color: Color.colorCornflowerblue,
+        color: isDark ? colors.textSecondary : Color.colorCornflowerblue,
         marginBottom: 2,
     },
     warehouseDistrict: {
         fontSize: FontSize.size_sm,
         fontFamily: FontFamily.sFProText,
-        color: Color.colorCornflowerblue,
+        color: isDark ? colors.textSecondary : Color.colorCornflowerblue,
     },
     listContainer: {
         flex: 1,
@@ -828,9 +843,9 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: 16,
         paddingVertical: 8,
-        backgroundColor: '#F9F9F9',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F9F9F9',
         borderBottomWidth: 1,
-        borderBottomColor: '#E5E5E5',
+        borderBottomColor: isDark ? colors.divider : '#E5E5E5',
     },
     searchIcon: {
         marginRight: 8,
@@ -839,7 +854,7 @@ const styles = StyleSheet.create({
         flex: 1,
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
-        color: Color.dark,
+        color: colors.textPrimary,
         padding: 8,
     },
     clearButton: {
@@ -850,11 +865,11 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         padding: 16,
         borderBottomWidth: 1,
-        borderBottomColor: '#F0F0F0',
+        borderBottomColor: isDark ? colors.divider : '#F0F0F0',
     },
     roomItemDisabled: {
         opacity: 0.5,
-        backgroundColor: '#FAFAFA',
+        backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : '#FAFAFA',
     },
     avatarContainer: {
         marginRight: 12,
@@ -868,7 +883,7 @@ const styles = StyleSheet.create({
         opacity: 0.5,
     },
     placeholderAvatar: {
-        backgroundColor: '#E8E8E8',
+        backgroundColor: isDark ? colors.surfaceElevated : '#E8E8E8',
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -885,7 +900,7 @@ const styles = StyleSheet.create({
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         flex: 1,
     },
     lockIcon: {
@@ -894,10 +909,10 @@ const styles = StyleSheet.create({
     roomType: {
         fontSize: FontSize.size_sm,
         fontFamily: FontFamily.sFProText,
-        color: Color.colorSilver_100,
+        color: colors.textSecondary,
     },
     textDisabled: {
-        color: '#B0B0B0',
+        color: isDark ? 'rgba(255,255,255,0.35)' : '#B0B0B0',
     },
     emptyContainer: {
         padding: 40,
@@ -906,13 +921,13 @@ const styles = StyleSheet.create({
     emptyText: {
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
-        color: Color.colorSilver_100,
+        color: colors.textSecondary,
         textAlign: 'center',
     },
     emptyHint: {
         fontSize: FontSize.size_sm,
         fontFamily: FontFamily.sFProText,
-        color: Color.colorSilver_100,
+        color: colors.textTertiary,
         marginTop: 8,
         textAlign: 'center',
     },
@@ -924,6 +939,6 @@ const styles = StyleSheet.create({
         marginTop: 12,
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
-        color: Color.colorCornflowerblue,
+        color: isDark ? colors.textSecondary : Color.colorCornflowerblue,
     },
 });

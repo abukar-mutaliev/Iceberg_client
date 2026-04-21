@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { View, Text, TouchableOpacity, Modal, FlatList, StyleSheet, TextInput, Animated } from 'react-native';
 import { FontFamily, FontSize, Color, Border } from '@app/styles/GlobalStyles';
 import { logData } from '@shared/lib/logger';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const DistrictPicker = ({
                                    districts,
@@ -12,12 +13,13 @@ export const DistrictPicker = ({
                                    setShowDistrictPicker,
                                    error
                                }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const [searchText, setSearchText] = useState('');
     const [filteredDistricts, setFilteredDistricts] = useState(districts);
     const [modalVisible, setModalVisible] = useState(false);
     const slideAnimation = useRef(new Animated.Value(0)).current;
 
-    // Handle modal visibility with animation
     useEffect(() => {
         if (showDistrictPicker) {
             setModalVisible(true);
@@ -37,13 +39,11 @@ export const DistrictPicker = ({
         }
     }, [showDistrictPicker]);
 
-    // Calculate animation values
     const translateY = slideAnimation.interpolate({
         inputRange: [0, 1],
         outputRange: [300, 0]
     });
 
-    // Обновление списка районов при изменении поиска или списка районов
     useEffect(() => {
         if (!searchText) {
             setFilteredDistricts(districts);
@@ -57,14 +57,12 @@ export const DistrictPicker = ({
         setFilteredDistricts(filtered);
     }, [searchText, districts]);
 
-    // Найти название выбранного района
     const selectedDistrictName = React.useMemo(() => {
         if (!selectedDistrict) return 'Выберите район';
         const district = districts.find(d => d.id === selectedDistrict);
         return district ? district.name : 'Выберите район';
     }, [selectedDistrict, districts]);
 
-    // Обработчик выбора района
     const handleSelect = (districtId) => {
         setSelectedDistrict(districtId);
         setShowDistrictPicker(false);
@@ -137,7 +135,8 @@ export const DistrictPicker = ({
                                 placeholder="Поиск района..."
                                 value={searchText}
                                 onChangeText={setSearchText}
-                                placeholderTextColor="#999"
+                                placeholderTextColor={isDark ? colors.textTertiary : '#999'}
+                                keyboardAppearance={isDark ? 'dark' : 'light'}
                             />
                         </View>
 
@@ -183,7 +182,7 @@ export const DistrictPicker = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         marginBottom: normalize(20),
         width: '100%',
@@ -191,8 +190,8 @@ const styles = StyleSheet.create({
     label: {
         fontSize: normalizeFont(15),
         fontWeight: '600',
-        color: Color.dark,
-        opacity: 0.4,
+        color: colors.textPrimary,
+        opacity: isDark ? 0.85 : 0.4,
         marginBottom: 0,
         fontFamily: FontFamily.sFProText,
     },
@@ -205,18 +204,18 @@ const styles = StyleSheet.create({
     },
     pickerButtonText: {
         fontSize: normalizeFont(FontSize.size_xs),
-        color: '#999',
+        color: isDark ? colors.textTertiary : '#999',
         fontFamily: FontFamily.sFProText,
     },
     pickerButtonTextError: {
         color: '#FF3B30',
     },
     selectedText: {
-        color: Color.dark,
+        color: colors.textPrimary,
     },
     inputUnderline: {
         height: 1,
-        backgroundColor: '#000',
+        backgroundColor: isDark ? colors.divider : '#000',
         marginTop: 0,
     },
     underlineError: {
@@ -245,9 +244,11 @@ const styles = StyleSheet.create({
     modalContent: {
         width: '90%',
         maxHeight: '80%',
-        backgroundColor: 'white',
+        backgroundColor: isDark ? colors.surface : 'white',
         borderRadius: Border.br_3xs,
         overflow: 'hidden',
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     header: {
         flexDirection: 'row',
@@ -255,52 +256,54 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         padding: normalize(16),
         borderBottomWidth: 1,
-        borderBottomColor: '#eee',
+        borderBottomColor: isDark ? colors.divider : '#eee',
     },
     modalTitle: {
         fontSize: normalizeFont(18),
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     closeButton: {
         padding: normalize(5),
     },
     closeButtonText: {
-        color: Color.main,
+        color: isDark ? colors.primary : Color.main,
         fontSize: normalizeFont(16),
         fontFamily: FontFamily.sFProText,
     },
     searchContainer: {
         padding: normalize(10),
         borderBottomWidth: 1,
-        borderBottomColor: '#eee',
+        borderBottomColor: isDark ? colors.divider : '#eee',
     },
     searchInput: {
         height: normalize(50),
         borderWidth: 1,
-        borderColor: '#ddd',
+        borderColor: isDark ? colors.border : '#ddd',
         borderRadius: Border.br_3xs,
         paddingHorizontal: normalize(10),
         fontFamily: FontFamily.sFProText,
+        color: colors.textPrimary,
+        backgroundColor: isDark ? colors.surfaceElevated : 'transparent',
     },
     districtItem: {
         padding: normalize(15),
         borderBottomWidth: 1,
-        borderBottomColor: '#eee',
+        borderBottomColor: isDark ? colors.divider : '#eee',
     },
     selectedItem: {
-        backgroundColor: Color.main,
+        backgroundColor: isDark ? colors.primary : Color.main,
     },
     districtName: {
         fontSize: normalizeFont(16),
         fontWeight: '500',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     districtDescription: {
         fontSize: normalizeFont(14),
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         marginTop: normalize(4),
         fontFamily: FontFamily.sFProText,
     },
@@ -313,7 +316,7 @@ const styles = StyleSheet.create({
     },
     emptyText: {
         fontSize: normalizeFont(16),
-        color: '#999',
+        color: isDark ? colors.textTertiary : '#999',
         fontFamily: FontFamily.sFProText,
     },
 });

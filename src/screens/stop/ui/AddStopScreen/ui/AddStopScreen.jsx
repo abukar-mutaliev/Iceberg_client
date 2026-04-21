@@ -6,6 +6,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import * as Location from 'expo-location';
 
 import { Color, FontFamily } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { ThemedStatusBar } from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
 import {
     selectDriverError,
     selectDriverLoading,
@@ -39,7 +41,10 @@ const MapContent = React.memo(({
     onDetectLocation,
     isLocationLoading,
     onMapReady
-}) => (
+}) => {
+    const { colors, isDark } = useTheme();
+    const mapStyles = useMemo(() => createMapStyles(colors, isDark), [colors, isDark]);
+    return (
     <View style={mapStyles.container}>
         <MapView
             ref={mapRef}
@@ -107,7 +112,8 @@ const MapContent = React.memo(({
             </View>
         )}
     </View>
-));
+    );
+});
 
 export const AddStopScreen = ({ navigation, route }) => {
     const prevRouteParamsRef = useRef(null);
@@ -116,6 +122,9 @@ export const AddStopScreen = ({ navigation, route }) => {
     const lastUpdateTime = useRef(0);
 
     const dispatch = useDispatch();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
+    const mapStyles = useMemo(() => createMapStyles(colors, isDark), [colors, isDark]);
     const { showAlert, showWarning, showError } = useCustomAlert();
     const isLoading = useSelector(selectDriverLoading);
     const isDistrictLoading = useSelector(selectDistrictLoading);
@@ -482,7 +491,8 @@ export const AddStopScreen = ({ navigation, route }) => {
     }
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+            <ThemedStatusBar />
             <AddStopHeader />
             <ScrollView 
                 style={styles.scrollView}
@@ -536,10 +546,10 @@ export const AddStopScreen = ({ navigation, route }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.background,
     },
     scrollView: {
         flex: 1,
@@ -549,7 +559,7 @@ const styles = StyleSheet.create({
     },
 });
 
-const mapStyles = StyleSheet.create({
+const createMapStyles = (colors, isDark) => StyleSheet.create({
     modalContainer: {
         padding: 0,
     },
@@ -580,7 +590,7 @@ const mapStyles = StyleSheet.create({
             width: 0,
             height: 2,
         },
-        shadowOpacity: 0.15,
+        shadowOpacity: isDark ? 0.4 : 0.15,
         shadowRadius: 3.84,
         elevation: 5,
     },
@@ -588,12 +598,12 @@ const mapStyles = StyleSheet.create({
         backgroundColor: Color.success,
     },
     cancelButton: {
-        backgroundColor: '#ffffff',
+        backgroundColor: isDark ? colors.surface : '#ffffff',
         borderWidth: 1.5,
         borderColor: Color.success,
     },
     buttonDisabled: {
-        backgroundColor: '#cccccc',
+        backgroundColor: isDark ? colors.surfaceElevated : '#cccccc',
         opacity: 0.6,
     },
     buttonText: {
@@ -625,19 +635,19 @@ const mapStyles = StyleSheet.create({
         position: 'absolute',
         top: 16,
         right: 16,
-        backgroundColor: '#ffffff',
+        backgroundColor: isDark ? colors.surface : '#ffffff',
         paddingVertical: 10,
         paddingHorizontal: 12,
         borderRadius: 10,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
+        shadowOpacity: isDark ? 0.4 : 0.2,
         shadowRadius: 3,
         elevation: 4,
         zIndex: 10,
     },
     myLocationButtonText: {
-        color: '#000',
+        color: isDark ? colors.textPrimary : '#000',
         fontFamily: FontFamily.sFProText,
         fontSize: 12,
         fontWeight: '600',

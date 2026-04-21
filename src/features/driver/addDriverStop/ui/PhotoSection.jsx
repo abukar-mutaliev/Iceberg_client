@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, Platform, Linking } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -6,8 +6,11 @@ import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { logData } from '@shared/lib/logger';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const PhotoSection = React.forwardRef(({ photo, setPhoto, error }, ref) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const { showAlert, showWarning, showError, hideAlert } = useCustomAlert();
     const [pendingAction, setPendingAction] = useState(null);
     const runAfterAlertClose = (callback) => {
@@ -300,7 +303,7 @@ export const PhotoSection = React.forwardRef(({ photo, setPhoto, error }, ref) =
     );
 });
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     photoSection: {
         marginBottom: normalize(10),
         width: '100%',
@@ -308,8 +311,8 @@ const styles = StyleSheet.create({
     label: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontWeight: '600',
-        color: Color.dark,
-        opacity: 0.4,
+        color: colors.textPrimary,
+        opacity: isDark ? 0.85 : 0.4,
         marginBottom: normalize(6),
         fontFamily: FontFamily.sFProText,
     },
@@ -317,9 +320,11 @@ const styles = StyleSheet.create({
         height: normalize(160),
         borderRadius: normalize(8),
         overflow: 'hidden',
-        backgroundColor: '#f5f5f5',
+        backgroundColor: isDark ? colors.surfaceElevated : '#f5f5f5',
         justifyContent: 'center',
         alignItems: 'center',
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     photoPickerButtonError: {
         borderColor: '#FF3B30',
@@ -336,7 +341,7 @@ const styles = StyleSheet.create({
     },
     photoPlaceholderText: {
         marginTop: normalize(10),
-        color: '#999',
+        color: isDark ? colors.textTertiary : '#999',
         fontSize: normalizeFont(13),
     },
     photoPlaceholderTextError: {

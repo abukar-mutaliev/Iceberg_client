@@ -2,16 +2,16 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { Color, FontFamily } from '@app/styles/GlobalStyles';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
-/**
- * Индикатор прогресса заполнения формы
- * Показывает пользователю, сколько обязательных полей заполнено
- */
-export const FormProgressIndicator = ({ 
-    totalFields, 
+export const FormProgressIndicator = ({
+    totalFields,
     filledFields,
-    style 
+    style
 }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     const progress = useMemo(() => {
         return totalFields > 0 ? (filledFields / totalFields) * 100 : 0;
     }, [totalFields, filledFields]);
@@ -39,9 +39,9 @@ export const FormProgressIndicator = ({
                 <Text style={styles.title}>Заполнение формы</Text>
                 <Text style={styles.percentage}>{Math.round(progress)}%</Text>
             </View>
-            
+
             <View style={styles.progressBarContainer}>
-                <Animated.View 
+                <Animated.View
                     style={[
                         styles.progressBar,
                         {
@@ -51,10 +51,10 @@ export const FormProgressIndicator = ({
                             }),
                             backgroundColor: progressColor,
                         }
-                    ]} 
+                    ]}
                 />
             </View>
-            
+
             <Text style={styles.info}>
                 {filledFields} из {totalFields} обязательных полей заполнено
             </Text>
@@ -62,10 +62,10 @@ export const FormProgressIndicator = ({
     );
 };
 
-/**
- * Компактная версия индикатора прогресса (только полоса)
- */
 export const FormProgressBar = ({ totalFields, filledFields, style }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     const progress = useMemo(() => {
         return totalFields > 0 ? (filledFields / totalFields) * 100 : 0;
     }, [totalFields, filledFields]);
@@ -80,26 +80,28 @@ export const FormProgressBar = ({ totalFields, filledFields, style }) => {
     return (
         <View style={[styles.compactContainer, style]}>
             <View style={styles.compactBarContainer}>
-                <View 
+                <View
                     style={[
                         styles.compactBar,
                         {
                             width: `${progress}%`,
                             backgroundColor: progressColor,
                         }
-                    ]} 
+                    ]}
                 />
             </View>
         </View>
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
-        backgroundColor: '#F8F8F8',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F8F8F8',
         borderRadius: 12,
         padding: normalize(16),
         marginBottom: normalize(16),
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     header: {
         flexDirection: 'row',
@@ -110,18 +112,18 @@ const styles = StyleSheet.create({
     title: {
         fontSize: normalizeFont(15),
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     percentage: {
         fontSize: normalizeFont(15),
         fontWeight: '700',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     progressBarContainer: {
         height: normalize(8),
-        backgroundColor: '#E5E5EA',
+        backgroundColor: isDark ? colors.divider : '#E5E5EA',
         borderRadius: normalize(4),
         overflow: 'hidden',
         marginBottom: normalize(8),
@@ -132,7 +134,7 @@ const styles = StyleSheet.create({
     },
     info: {
         fontSize: normalizeFont(13),
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         fontFamily: FontFamily.sFProText,
     },
     compactContainer: {
@@ -140,7 +142,7 @@ const styles = StyleSheet.create({
     },
     compactBarContainer: {
         height: normalize(4),
-        backgroundColor: '#E5E5EA',
+        backgroundColor: isDark ? colors.divider : '#E5E5EA',
         borderRadius: normalize(2),
         overflow: 'hidden',
     },
@@ -149,13 +151,3 @@ const styles = StyleSheet.create({
         borderRadius: normalize(2),
     },
 });
-
-
-
-
-
-
-
-
-
-

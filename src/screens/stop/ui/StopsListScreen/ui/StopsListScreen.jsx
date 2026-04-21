@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl, TextInput, BackHandler, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
@@ -21,6 +21,8 @@ import { SearchIcon } from "@shared/ui/Icon/SearchIcon";
 import CloseIcon from "@shared/ui/Icon/Profile/CloseIcon";
 import { navigationRef } from '@shared/utils/NavigationRef';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { ThemedStatusBar } from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
 
 export const StopsListScreen = ({ navigation }) => {
     const dispatch = useDispatch();
@@ -28,6 +30,8 @@ export const StopsListScreen = ({ navigation }) => {
     const insets = useSafeAreaInsets();
     const tabBarHeight = 80 + insets.bottom;
     const scrollBottomPadding = tabBarHeight + 40;
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     const { districtId: routeDistrictId, districtName: routeDistrictName, highlightStopId, fromScreen } = route.params || {};
 
@@ -41,7 +45,6 @@ export const StopsListScreen = ({ navigation }) => {
         highlightStopId ? selectStopById(state, highlightStopId) : null
     );
 
-    // Проверка доступа к добавлению остановок (только для админов и водителей)
     const canAddStop = userRole === 'ADMIN' || userRole === 'DRIVER';
 
     const [refreshing, setRefreshing] = useState(false);
@@ -98,8 +101,6 @@ export const StopsListScreen = ({ navigation }) => {
         return 'Не удалось загрузить остановки. Проверьте подключение к интернету и попробуйте снова.';
     };
 
-    // Загрузка списка без привязки к выбранному району: фильтр по району только на клиенте (filteredStops).
-    // Иначе при каждом переключении района менялись deps useFocusEffect → повторный fetch и «перезагрузка» экрана.
     const loadStops = useCallback(async (options = {}) => {
         const { showRefreshing = false, forceRefresh = false } = options;
 
@@ -172,11 +173,10 @@ export const StopsListScreen = ({ navigation }) => {
         setSearchQuery(text);
     };
 
-    // Debounce поискового запроса
     useEffect(() => {
         const timer = setTimeout(() => {
             setDebouncedSearchQuery(searchQuery);
-        }, 300); // 300ms задержка
+        }, 300);
 
         return () => clearTimeout(timer);
     }, [searchQuery]);
@@ -186,32 +186,25 @@ export const StopsListScreen = ({ navigation }) => {
         setDebouncedSearchQuery('');
     };
 
-    // Улучшенная функция поиска
     const isAddressMatch = (address, query) => {
         const normalizedAddress = String(address || '').toLowerCase().trim();
         const normalizedQuery = String(query || '').toLowerCase().trim();
-        
-        // Если запрос пустой, показываем все
+
         if (normalizedQuery === '') return true;
-        
-        // Проверяем точное включение
+
         if (normalizedAddress.includes(normalizedQuery)) return true;
-        
-        // Убираем лишние пробелы из запроса
+
         const cleanQuery = normalizedQuery.replace(/\s+/g, ' ').trim();
         if (normalizedAddress.includes(cleanQuery)) return true;
-        
-        // Проверяем слова отдельно
+
         const queryWords = cleanQuery.split(' ').filter(word => word.length > 0);
         const addressWords = normalizedAddress.split(' ').filter(word => word.length > 0);
-        
-        // Если все слова запроса содержатся в адресе
-        return queryWords.every(queryWord => 
+
+        return queryWords.every(queryWord =>
             addressWords.some(addressWord => addressWord.includes(queryWord))
         );
     };
 
-    // Привилегированные роли видят все остановки; остальные — только актуальные
     const isPrivilegedUser = userRole === 'ADMIN' || userRole === 'EMPLOYEE' || userRole === 'DRIVER';
 
     const isTodayStop = (stop) => {
@@ -223,50 +216,36 @@ export const StopsListScreen = ({ navigation }) => {
         const end   = stop.endTime   ? new Date(stop.endTime)   : null;
 
         if (!start && !end) return false;
-        // Начинается сегодня
         if (start && start >= todayStart && start <= todayEnd) return true;
-        // Заканчивается сегодня
         if (end && end >= todayStart && end <= todayEnd) return true;
-        // Начата раньше, но ещё не закончилась (проходит через сегодня)
         if (start && end && start < todayStart && end > todayEnd) return true;
 
         return false;
     };
 
-    // Время стоянки ещё не прошло (endTime в будущем или отсутствует)
     const isNotExpired = (stop) => {
         if (!stop.endTime) return true;
         return new Date(stop.endTime) > new Date();
     };
 
-    // Фильтрация остановок по дате, времени, району и поисковому запросу
     const filteredStops = safeStops.filter(stop => {
-        // Клиенты видят только сегодняшние остановки, у которых ещё не прошло время
         if (!isPrivilegedUser && (!isTodayStop(stop) || !isNotExpired(stop))) return false;
 
-        // Фильтр по району
         const districtFilter = selectedDistrictId
             ? stop.districtId === selectedDistrictId
             : true;
 
-        // Фильтр по поисковому запросу
         const searchFilter = isAddressMatch(stop.address, debouncedSearchQuery);
 
         return districtFilter && searchFilter;
     });
 
-    // Сортировка для клиентов:
-    //   1. Активные сейчас («На месте») — первые
-    //   2. Предстоящие сегодня — по возрастанию startTime
-    //   3. Уже прошедшие сегодня — в конце, по убыванию endTime (недавно закончившиеся ближе к верху)
-    // Для привилегированных пользователей порядок остаётся серверным (по startTime asc).
     const sortedStops = isPrivilegedUser
         ? filteredStops
         : [...filteredStops].sort((a, b) => {
             const aActive = isStopActive(a) ? 0 : 1;
             const bActive = isStopActive(b) ? 0 : 1;
 
-            // Активные — вперёд
             if (aActive !== bActive) return aActive - bActive;
 
             const now = new Date();
@@ -278,15 +257,12 @@ export const StopsListScreen = ({ navigation }) => {
             const aExpired = aEnd && aEnd < now;
             const bExpired = bEnd && bEnd < now;
 
-            // Прошедшие — в конец
             if (aExpired !== bExpired) return aExpired ? 1 : -1;
 
-            // Среди прошедших: недавно завершившиеся первее (убывание endTime)
             if (aExpired && bExpired) {
                 return (bEnd?.getTime() ?? 0) - (aEnd?.getTime() ?? 0);
             }
 
-            // Среди предстоящих: по возрастанию startTime
             return (aStart?.getTime() ?? 0) - (bStart?.getTime() ?? 0);
         });
 
@@ -322,25 +298,29 @@ export const StopsListScreen = ({ navigation }) => {
         navigation.navigate('AddStop');
     };
 
+    const loaderAccent = isDark ? colors.primary : Color.purpleSoft;
+    const iconMuted = isDark ? colors.textSecondary : Color.gray;
+
     const renderSearchBar = () => (
         <View style={styles.searchContainer}>
             <View style={styles.searchInputContainer}>
-                <SearchIcon size={20} color={Color.gray} style={styles.searchIcon} />
+                <SearchIcon size={20} color={iconMuted} style={styles.searchIcon} />
                 <TextInput
                     style={styles.searchInput}
                     placeholder="Поиск по адресу..."
-                    placeholderTextColor={Color.gray}
+                    placeholderTextColor={isDark ? colors.textTertiary : Color.gray}
                     value={searchQuery}
                     onChangeText={handleSearchChange}
                     autoCapitalize="none"
                     autoCorrect={false}
+                    keyboardAppearance={colors.keyboardAppearance}
                 />
                 {searchQuery.length > 0 && (
                     <TouchableOpacity
                         style={styles.clearButton}
                         onPress={clearSearch}
                     >
-                        <CloseIcon width={16} height={16} color={Color.gray} />
+                        <CloseIcon width={16} height={16} color={iconMuted} />
                     </TouchableOpacity>
                 )}
             </View>
@@ -351,9 +331,9 @@ export const StopsListScreen = ({ navigation }) => {
         if (loading && !refreshing && safeStops.length === 0) {
             return (
                 <View style={styles.centerContainer}>
-                    <Loader 
+                    <Loader
                         type="youtube"
-                        color={Color.purpleSoft}
+                        color={loaderAccent}
                     />
                 </View>
             );
@@ -370,8 +350,9 @@ export const StopsListScreen = ({ navigation }) => {
                     <RefreshControl
                         refreshing={refreshing}
                         onRefresh={handleRefresh}
-                        colors={[Color.purpleSoft]}
-                        tintColor={Color.purpleSoft}
+                        colors={[loaderAccent]}
+                        tintColor={loaderAccent}
+                        progressBackgroundColor={isDark ? colors.surfaceElevated : '#fff'}
                     />
                 }
             >
@@ -387,7 +368,7 @@ export const StopsListScreen = ({ navigation }) => {
                     <View style={styles.errorSection}>
                         <View style={styles.errorCard}>
                             <View style={styles.errorIconWrap}>
-                                <Ionicons name="cloud-offline-outline" size={28} color={Color.purpleSoft} />
+                                <Ionicons name="cloud-offline-outline" size={28} color={loaderAccent} />
                             </View>
                             <Text style={styles.errorTitle}>Не удалось загрузить остановки</Text>
                             <Text style={styles.errorText}>{errorMessage}</Text>
@@ -425,16 +406,13 @@ export const StopsListScreen = ({ navigation }) => {
 
     const handleGoBack = React.useCallback(() => {
         if (fromScreen === 'AdminPanel') {
-            // Возвращаемся в AdminPanel через корневой навигатор
             try {
-                // Используем navigationRef для доступа к корневому навигатору
                 if (navigationRef.current) {
                     navigationRef.current.navigate('Admin', {
                         screen: 'AdminPanel'
                     });
-                    return true; // Важно для BackHandler - говорит что мы обработали событие
+                    return true;
                 } else {
-                    // Fallback - пробуем через родительский навигатор
                     const parentNav = navigation.getParent()?.getParent();
                     if (parentNav) {
                         parentNav.navigate('Admin', {
@@ -451,13 +429,11 @@ export const StopsListScreen = ({ navigation }) => {
                 return true;
             }
         } else {
-            // Обычная навигация назад
             navigation.goBack();
             return true;
         }
     }, [fromScreen, navigation]);
 
-    // Нативная кнопка «Назад» на Android (жест или аппаратная кнопка)
     useFocusEffect(
         React.useCallback(() => {
             if (Platform.OS !== 'android') return undefined;
@@ -471,15 +447,11 @@ export const StopsListScreen = ({ navigation }) => {
         }, [handleGoBack])
     );
 
-    // Перехватываем жест назад и программную навигацию (для iOS)
     useEffect(() => {
         const unsubscribe = navigation.addListener('beforeRemove', (e) => {
-            // Если мы пришли из AdminPanel и происходит попытка навигации назад
             if (fromScreen === 'AdminPanel') {
-                // Предотвращаем стандартное действие
                 e.preventDefault();
-                
-                // Выполняем нашу кастомную навигацию
+
                 handleGoBack();
             }
         });
@@ -489,6 +461,7 @@ export const StopsListScreen = ({ navigation }) => {
 
     return (
         <View style={styles.container}>
+            <ThemedStatusBar />
             <View style={styles.header}>
                 <TouchableOpacity
                     style={styles.backButton}
@@ -509,7 +482,11 @@ export const StopsListScreen = ({ navigation }) => {
                         onPress={handleAddStop}
                         activeOpacity={0.7}
                     >
-                        <Ionicons name="add" size={24} color={Color.blue3} />
+                        <Ionicons
+                            name="add"
+                            size={24}
+                            color={isDark ? colors.primary : Color.blue3}
+                        />
                     </TouchableOpacity>
                 ) : (
                     <View style={styles.backButton} />
@@ -521,15 +498,15 @@ export const StopsListScreen = ({ navigation }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         ...CommonStyles.container,
         flex: 1,
-        backgroundColor: '#f6f7fb',
+        backgroundColor: isDark ? colors.background : '#f6f7fb',
     },
     centerContainer: {
         flex: 1,
-        ...CommonStyles.centered
+        ...CommonStyles.centered,
     },
     header: {
         ...CommonStyles.flexRow,
@@ -538,7 +515,7 @@ const styles = StyleSheet.create({
         paddingTop: 10,
         paddingBottom: 8,
         paddingHorizontal: 8,
-        backgroundColor: '#f6f7fb',
+        backgroundColor: isDark ? colors.background : '#f6f7fb',
     },
     backButton: {
         padding: 10,
@@ -554,7 +531,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         borderRadius: 12,
-        backgroundColor: '#eef2ff',
+        backgroundColor: isDark ? colors.surfaceElevated : '#eef2ff',
     },
     headerTitleContainer: {
         flex: 1,
@@ -564,7 +541,7 @@ const styles = StyleSheet.create({
     headerTitle: {
         fontSize: FontSize.size_lg,
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
         letterSpacing: 0.4,
@@ -579,17 +556,19 @@ const styles = StyleSheet.create({
         marginHorizontal: 16,
         marginTop: 0,
         borderRadius: 16,
-        backgroundColor: '#ffffff',
+        backgroundColor: isDark ? colors.cardBackground : '#ffffff',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.08,
+        shadowOpacity: isDark ? 0.35 : 0.08,
         shadowRadius: 10,
         elevation: 3,
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     mapCardInner: {
         borderRadius: 16,
         overflow: 'hidden',
-        backgroundColor: '#ffffff',
+        backgroundColor: isDark ? colors.cardBackground : '#ffffff',
     },
     searchContainer: {
         paddingHorizontal: 16,
@@ -599,18 +578,18 @@ const styles = StyleSheet.create({
     searchInputContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#ffffff',
+        backgroundColor: isDark ? colors.cardBackground : '#ffffff',
         borderRadius: 16,
         paddingHorizontal: 14,
         paddingVertical: 12,
         borderWidth: 1,
-        borderColor: '#e8eaf3',
+        borderColor: isDark ? colors.border : '#e8eaf3',
         shadowColor: '#000',
         shadowOffset: {
             width: 0,
             height: 1,
         },
-        shadowOpacity: 0.06,
+        shadowOpacity: isDark ? 0.3 : 0.06,
         shadowRadius: 6,
         elevation: 2,
     },
@@ -620,7 +599,7 @@ const styles = StyleSheet.create({
     searchInput: {
         flex: 1,
         fontSize: FontSize.size_md,
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         paddingVertical: 0,
     },
@@ -634,21 +613,23 @@ const styles = StyleSheet.create({
     },
     errorCard: {
         alignItems: 'center',
-        backgroundColor: '#ffffff',
+        backgroundColor: isDark ? colors.cardBackground : '#ffffff',
         borderRadius: 16,
         paddingHorizontal: 20,
         paddingVertical: 24,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.08,
+        shadowOpacity: isDark ? 0.35 : 0.08,
         shadowRadius: 10,
         elevation: 3,
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     errorIconWrap: {
         width: 56,
         height: 56,
         borderRadius: 16,
-        backgroundColor: '#f3f0ff',
+        backgroundColor: isDark ? colors.surfaceElevated : '#f3f0ff',
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: 14,
@@ -656,14 +637,14 @@ const styles = StyleSheet.create({
     errorTitle: {
         fontSize: FontSize.size_lg,
         fontWeight: '700',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
         marginBottom: 8,
     },
     errorText: {
         fontSize: FontSize.size_md,
-        color: Color.gray,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
         lineHeight: 22,
@@ -672,7 +653,7 @@ const styles = StyleSheet.create({
     retryButton: {
         minWidth: 180,
         borderRadius: 12,
-        backgroundColor: Color.purpleSoft,
+        backgroundColor: isDark ? colors.primary : Color.purpleSoft,
         paddingHorizontal: 20,
         paddingVertical: 14,
         justifyContent: 'center',
@@ -692,23 +673,25 @@ const styles = StyleSheet.create({
     stopCardWrapper: {
         marginBottom: 12,
         borderRadius: 16,
-        backgroundColor: '#ffffff',
+        backgroundColor: isDark ? colors.cardBackground : '#ffffff',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06,
+        shadowOpacity: isDark ? 0.3 : 0.06,
         shadowRadius: 8,
         elevation: 2,
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     stopCardInner: {
         borderRadius: 16,
         overflow: 'hidden',
-        backgroundColor: '#ffffff',
+        backgroundColor: isDark ? colors.cardBackground : '#ffffff',
     },
     filterContainer: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        backgroundColor: '#eef4ff',
+        backgroundColor: isDark ? colors.surfaceElevated : '#eef4ff',
         paddingHorizontal: 14,
         paddingVertical: 10,
         borderRadius: 12,
@@ -718,12 +701,12 @@ const styles = StyleSheet.create({
     filterText: {
         fontSize: FontSize.size_md,
         fontWeight: '600',
-        color: '#2b3a67',
+        color: isDark ? colors.textPrimary : '#2b3a67',
         fontFamily: FontFamily.sFProText,
         flex: 1,
     },
     resetFilterButton: {
-        backgroundColor: '#4f46e5',
+        backgroundColor: isDark ? colors.primary : '#4f46e5',
         paddingHorizontal: 12,
         paddingVertical: 6,
         borderRadius: 8,
@@ -735,17 +718,17 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
     },
     stopsInfo: {
-        backgroundColor: '#f0f9ff',
+        backgroundColor: isDark ? colors.surfaceElevated : '#f0f9ff',
         paddingHorizontal: 16,
         paddingVertical: 12,
         borderBottomWidth: 1,
-        borderBottomColor: '#e0e7ff',
+        borderBottomColor: isDark ? colors.border : '#e0e7ff',
         marginBottom: 8,
     },
     stopsInfoText: {
         fontSize: FontSize.size_md,
         fontWeight: '500',
-        color: '#1e40af',
+        color: isDark ? colors.primary : '#1e40af',
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
     },

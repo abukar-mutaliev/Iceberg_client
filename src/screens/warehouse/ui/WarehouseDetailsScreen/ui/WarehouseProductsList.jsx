@@ -10,9 +10,12 @@ import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { ProductTile } from '@entities/product/ui/ProductTile';
 import { selectDeletedProductIds } from '@entities/product/model/selectors';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const WarehouseProductsList = ({ warehouseId, products, loading }) => {
     const deletedProductIds = useSelector(selectDeletedProductIds);
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     const deletedProductIdSet = useMemo(() => {
         if (!Array.isArray(deletedProductIds) || deletedProductIds.length === 0) {
@@ -94,7 +97,7 @@ export const WarehouseProductsList = ({ warehouseId, products, loading }) => {
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color={Color.blue2} />
+                <ActivityIndicator size="small" color={isDark ? colors.primary : Color.blue2} />
                 <Text style={styles.loadingText}>Загрузка товаров...</Text>
             </View>
         );
@@ -145,7 +148,7 @@ export const WarehouseProductsList = ({ warehouseId, products, loading }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         marginTop: normalize(16),
         marginBottom: normalize(16),
@@ -154,13 +157,13 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(18),
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         marginBottom: normalize(12),
     },
     hint: {
         fontSize: normalizeFont(14),
         fontFamily: FontFamily.sFProText,
-        color: Color.gray,
+        color: colors.textSecondary,
         fontStyle: 'italic',
         textAlign: 'center',
         paddingVertical: normalize(16),
@@ -175,7 +178,7 @@ const styles = StyleSheet.create({
         marginLeft: normalize(8),
         fontSize: normalizeFont(14),
         fontFamily: FontFamily.sFProText,
-        color: Color.gray,
+        color: colors.textSecondary,
     },
     productsContainer: {
         paddingBottom: normalize(8),

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Animated, TouchableOpacity } from 'react-native
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { FontFamily, Color, Border } from '@app/styles/GlobalStyles';
 import { AndroidShadow } from '@shared/ui/Shadow/ui/AndroidShadow';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const Toast = ({
   message,
@@ -15,6 +16,7 @@ export const Toast = ({
   actionText,
   onActionPress,
 }) => {
+  const { isDark } = useTheme();
   const [isVisible, setIsVisible] = useState(true);
   const slideAnim = useRef(new Animated.Value(position === 'top' ? -100 : 100)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
@@ -63,34 +65,79 @@ export const Toast = ({
   };
 
   const getToastConfig = () => {
+    if (isDark) {
+      switch (type) {
+        case 'success':
+          return {
+            backgroundColor: '#1F6B46',
+            borderColor: 'rgba(52, 199, 89, 0.35)',
+            icon: '✓',
+            textColor: '#E8F6EE',
+          };
+        case 'error':
+          return {
+            backgroundColor: '#7A2320',
+            borderColor: 'rgba(255, 80, 70, 0.4)',
+            icon: '✕',
+            textColor: '#FDECEA',
+          };
+        case 'warning':
+          return {
+            backgroundColor: '#5C4733',
+            borderColor: 'rgba(255, 204, 0, 0.45)',
+            icon: '⚠',
+            textColor: '#FFE7A6',
+          };
+        case 'info':
+          return {
+            backgroundColor: '#2A2F55',
+            borderColor: 'rgba(115, 125, 255, 0.45)',
+            icon: 'ℹ',
+            textColor: '#E3E6FF',
+          };
+        default:
+          return {
+            backgroundColor: '#2A2F55',
+            borderColor: 'rgba(115, 125, 255, 0.45)',
+            icon: 'ℹ',
+            textColor: '#E3E6FF',
+          };
+      }
+    }
+
     switch (type) {
       case 'success':
         return {
           backgroundColor: Color.success,
+          borderColor: 'transparent',
           icon: '✓',
           textColor: '#FFFFFF',
         };
       case 'error':
         return {
           backgroundColor: Color.error,
+          borderColor: 'transparent',
           icon: '✕',
           textColor: '#FFFFFF',
         };
       case 'warning':
         return {
           backgroundColor: Color.warning,
+          borderColor: 'transparent',
           icon: '⚠',
           textColor: '#000000',
         };
       case 'info':
         return {
           backgroundColor: Color.primary,
+          borderColor: 'transparent',
           icon: 'ℹ',
           textColor: '#FFFFFF',
         };
       default:
         return {
           backgroundColor: Color.primary,
+          borderColor: 'transparent',
           icon: 'ℹ',
           textColor: '#FFFFFF',
         };
@@ -114,17 +161,26 @@ export const Toast = ({
     >
       <AndroidShadow
         style={styles.toastContainer}
-        shadowColor="rgba(51, 57, 176, 0.15)"
+        shadowColor={isDark ? 'rgba(0, 0, 0, 0.6)' : 'rgba(51, 57, 176, 0.15)'}
         shadowConfig={{
           offsetX: 0,
           offsetY: 2,
           elevation: 6,
           radius: 4,
-          opacity: 0.3
+          opacity: isDark ? 0.5 : 0.3
         }}
         borderRadius={10}
       >
-        <View style={[styles.toast, { backgroundColor: config.backgroundColor }]}>
+        <View
+          style={[
+            styles.toast,
+            {
+              backgroundColor: config.backgroundColor,
+              borderWidth: isDark ? 1 : 0,
+              borderColor: config.borderColor,
+            },
+          ]}
+        >
           <View style={styles.content}>
             <Text style={styles.icon}>{icon || config.icon}</Text>
             <Text style={[styles.message, { color: config.textColor }]}>

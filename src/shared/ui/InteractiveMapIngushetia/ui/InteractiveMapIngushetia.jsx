@@ -25,6 +25,7 @@ import { useSelector } from 'react-redux';
 import { selectDistrictsWithStats } from "@entities/district/model/selectors";
 import { Color } from "@app/styles/GlobalStyles";
 import { Loader } from "@shared/ui/Loader";
+import { useTheme } from "@app/providers/themeProvider/ThemeProvider";
 
 // Базовая ширина для дизайна (эталон)
 const BASE_DESIGN_WIDTH = 400;
@@ -38,8 +39,9 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
     const [selectedRegion, setSelectedRegion] = useState(null);
     const [showInfo, setShowInfo] = useState(false);
 
-    // Используем useWindowDimensions для адаптивности при изменении ориентации
     const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     // Адаптивные коэффициенты масштабирования
     const scaleUI = useMemo(() => {
@@ -50,7 +52,6 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
     // Коэффициент масштабирования для позиций районов (основан на ширине)
     const scaleDistricts = useMemo(() => {
         const scale = screenWidth / BASE_DESIGN_WIDTH;
-        // Ограничиваем масштабирование для сохранения пропорций
         return Math.max(MIN_SCALE, Math.min(scale, MAX_SCALE));
     }, [screenWidth]);
 
@@ -73,7 +74,6 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
         loadDistricts();
     }, [loadDistricts]);
 
-    // Маппинг по названиям районов (более надежный)
     const nameToLocalMapping = {
         'Малгобекский район': 'malgobek',
         'Назрановский район': 'nazran',
@@ -102,7 +102,6 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
     const getRegionInfo = () => {
         const regionInfo = {};
 
-        // Если есть данные с сервера, используем их
         if (districtsWithStats && districtsWithStats.length > 0) {
             districtsWithStats.forEach(district => {
                 const localKey = nameToLocalMapping[district.name];
@@ -122,7 +121,6 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
                 }
             });
         } else {
-            // Если данных нет (ошибка или загрузка), показываем базовые названия
             Object.entries(defaultDistrictNames).forEach(([key, name]) => {
                 regionInfo[key] = {
                     id: null,
@@ -164,36 +162,32 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
     // - zIndex - порядок слоев (больше = выше, перекрывает нижние)
     // - hitSlop - дополнительная область для нажатия (в пикселях)
     // ==========================================
-    
+
     const districtConfig = {
-        // Малгобекский район - верхний левый угол карты
         malgobek: {
-            position: { left: 105, top: 0 }, // Позиция от левого верхнего угла
-            size: { width: 148, height: 128 }, // Фиксированные размеры в пикселях
-            zIndex: 2, // Слой отображения (меньше = ниже)
-            hitSlop: 10, // Дополнительная область для нажатия
+            position: { left: 105, top: 0 },
+            size: { width: 148, height: 128 },
+            zIndex: 2,
+            hitSlop: 10,
             borderRadius: 8,
         },
-        
-        // Назрановский район - центр-верх карты
+
         nazran: {
             position: { left: 152, top: 93.5 },
             size: { width: 140, height: 140 },
-            zIndex: 5, // Выше остальных (перекрывает соседние)
+            zIndex: 5,
             hitSlop: 0,
             borderRadius: 10,
         },
-        
-        // Сунженский район - правый верх карты (высокий)
+
         sunzha: {
-            position: { right: 50, top: 49 }, // Используем right вместо left
+            position: { right: 50, top: 49 },
             size: { width: 116, height: 302 },
-            zIndex: 1, // Самый нижний слой
+            zIndex: 1,
             hitSlop: 0,
             borderRadius: 12,
         },
-        
-        // Пригородный район - центр карты
+
         prigorodny: {
             position: { left: 147, top: 129 },
             size: { width: 130, height: 237 },
@@ -201,8 +195,7 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
             hitSlop: 0,
             borderRadius: 8,
         },
-        
-        // Джейрахский район - нижняя часть карты (широкий)
+
         dzheirakhsky: {
             position: { left: 144, top: 311 },
             size: { width: 192, height: 144 },
@@ -212,19 +205,16 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
         },
     };
 
-    // Адаптивные размеры и позиции районов (генерируются из конфигурации)
     const districts = useMemo(() => {
-        // Функция для создания стиля района из конфигурации
         const createDistrictStyle = (config) => {
             const { position, size, zIndex, hitSlop, borderRadius } = config;
             const hitSlopValue = hitSlop * scaleDistricts;
-            
+
             const style = {
                 position: 'absolute',
                 zIndex,
             };
-            
-            // Обрабатываем left/right/top позиции - масштабируем единообразно
+
             if (position.left !== undefined) {
                 style.left = position.left * scaleDistricts;
             }
@@ -237,10 +227,9 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
             if (position.bottom !== undefined) {
                 style.bottom = position.bottom * scaleDistricts;
             }
-            
+
             return {
                 style,
-                // Масштабируем размеры так же, как и позиции - для сохранения пропорций
                 width: size.width * scaleDistricts,
                 height: size.height * scaleDistricts,
                 hitSlop: {
@@ -352,7 +341,6 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
         };
     });
 
-    // Функции для управления зумом
     const zoomIn = () => {
         scale.value = withSpring(Math.min(scale.value + 0.5, 3));
         savedScale.value = scale.value;
@@ -455,7 +443,7 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
 
     const renderLegend = () => {
         const hasData = districtsWithStats && districtsWithStats.length > 0;
-        
+
         return (
             <View style={styles.legend}>
                 <Text style={styles.legendTitle}>Районы Ингушетии:</Text>
@@ -508,15 +496,14 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
 
     const renderLoadingState = () => (
         <View style={styles.loadingContainer}>
-            <Loader 
+            <Loader
                 type="youtube"
-                color={Color.purpleSoft}
+                color={isDark ? colors.primary : Color.purpleSoft}
             />
             <Text style={styles.loadingText}>Загрузка данных районов...</Text>
         </View>
     );
 
-    // Адаптивные стили на основе текущих размеров экрана
     const adaptiveStyles = useMemo(() => ({
         sideControls: {
             ...styles.sideControls,
@@ -561,19 +548,16 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
             ...styles.bottomPanel,
             minHeight: screenHeight * 0.25,
         },
-    }), [screenWidth, screenHeight, scaleUI]);
+    }), [screenWidth, screenHeight, scaleUI, styles]);
 
     return (
         <SafeAreaView style={styles.container}>
-            {/* Заголовок без кнопок управления */}
             <View style={styles.header}>
             </View>
 
-            {/* Карта с боковыми кнопками управления */}
             <View style={styles.mapContainer}>
                 {isLoading && renderLoadingState()}
 
-                {/* Боковые кнопки управления */}
                 <View style={adaptiveStyles.sideControls} pointerEvents="box-none">
                     <Pressable style={adaptiveStyles.sideControlButton} onPress={zoomIn}>
                         <Text style={adaptiveStyles.sideControlButtonText}>+</Text>
@@ -609,7 +593,6 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
                     </Animated.View>
                 </GestureDetector>
 
-                {/* Инструкция */}
                 {!showInfo && !isLoading && (
                     <View style={adaptiveStyles.instruction}>
                         <Text style={adaptiveStyles.instructionText}>
@@ -619,7 +602,6 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
                 )}
             </View>
 
-            {/* Нижняя панель с информацией или легендой */}
             <View style={adaptiveStyles.bottomPanel}>
                 <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
                     {showInfo ? renderInfoPanel() : renderLegend()}
@@ -629,10 +611,10 @@ export const InteractiveMap = ({ onDistrictSelect }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f0f9ff',
+        backgroundColor: isDark ? colors.background : '#f0f9ff',
     },
     header: {
         paddingHorizontal: 16,
@@ -645,7 +627,7 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 20,
         fontWeight: 'bold',
-        color: '#1f2937',
+        color: colors.textPrimary,
         textAlign: 'center',
         marginBottom: 12,
     },
@@ -654,12 +636,12 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         position: 'relative',
-        backgroundColor: '#f0f9ff',
+        backgroundColor: isDark ? colors.background : '#f0f9ff',
     },
     sideControls: {
         position: 'absolute',
         zIndex: 100,
-        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        backgroundColor: isDark ? 'rgba(37, 40, 54, 0.95)' : 'rgba(255, 255, 255, 0.95)',
         borderRadius: 12,
         elevation: 6,
         shadowColor: '#000',
@@ -667,11 +649,11 @@ const styles = StyleSheet.create({
             width: 0,
             height: 3,
         },
-        shadowOpacity: 0.15,
+        shadowOpacity: isDark ? 0.4 : 0.15,
         shadowRadius: 6,
     },
     sideControlButton: {
-        backgroundColor: '#3b82f6',
+        backgroundColor: isDark ? colors.primary : '#3b82f6',
         borderRadius: 8,
         alignItems: 'center',
         justifyContent: 'center',
@@ -681,7 +663,7 @@ const styles = StyleSheet.create({
             width: 0,
             height: 1,
         },
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0.3 : 0.1,
         shadowRadius: 2,
     },
     sideControlButtonText: {
@@ -689,7 +671,7 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
     },
     sideResetButton: {
-        backgroundColor: '#6b7280',
+        backgroundColor: isDark ? '#4A4E5C' : '#6b7280',
     },
     sideResetButtonText: {
         color: '#ffffff',
@@ -707,7 +689,9 @@ const styles = StyleSheet.create({
     },
     instruction: {
         position: 'absolute',
-        backgroundColor: 'rgba(59, 130, 246, 0.9)',
+        backgroundColor: isDark
+            ? 'rgba(73, 82, 191, 0.85)'
+            : 'rgba(59, 130, 246, 0.9)',
         borderRadius: 8,
     },
     instructionText: {
@@ -716,9 +700,9 @@ const styles = StyleSheet.create({
         fontWeight: '500',
     },
     bottomPanel: {
-        backgroundColor: '#f9fafb',
+        backgroundColor: isDark ? colors.surface : '#f9fafb',
         borderTopWidth: 1,
-        borderTopColor: '#e5e7eb',
+        borderTopColor: isDark ? colors.border : '#e5e7eb',
     },
     scrollContent: {
         padding: 16,
@@ -741,13 +725,13 @@ const styles = StyleSheet.create({
     regionTitle: {
         fontSize: 18,
         fontWeight: 'bold',
-        color: '#1f2937',
+        color: colors.textPrimary,
         marginBottom: 6,
         textAlign: 'center',
     },
     regionDescription: {
         fontSize: 14,
-        color: '#6b7280',
+        color: colors.textSecondary,
         textAlign: 'center',
         marginBottom: 12,
         lineHeight: 20,
@@ -757,7 +741,7 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         width: '100%',
-        backgroundColor: '#f9fafb',
+        backgroundColor: isDark ? colors.surfaceElevated : '#f9fafb',
         paddingHorizontal: 12,
         paddingVertical: 8,
         borderRadius: 6,
@@ -766,11 +750,11 @@ const styles = StyleSheet.create({
     infoLabel: {
         fontSize: 14,
         fontWeight: '500',
-        color: '#6b7280',
+        color: colors.textSecondary,
     },
     infoValue: {
         fontSize: 14,
-        color: '#1f2937',
+        color: colors.textPrimary,
         fontWeight: '600',
     },
     colorInfo: {
@@ -783,14 +767,14 @@ const styles = StyleSheet.create({
         height: 20,
         borderRadius: 4,
         borderWidth: 1,
-        borderColor: '#d1d5db',
+        borderColor: isDark ? colors.border : '#d1d5db',
     },
     colorText: {
         fontSize: 12,
-        color: '#6b7280',
+        color: colors.textSecondary,
     },
     showAllButton: {
-        backgroundColor: Color.blue2,
+        backgroundColor: isDark ? colors.primary : Color.blue2,
         paddingHorizontal: 24,
         paddingVertical: 12,
         borderRadius: 6,
@@ -810,12 +794,12 @@ const styles = StyleSheet.create({
     legendTitle: {
         fontSize: 16,
         fontWeight: 'bold',
-        color: '#1f2937',
+        color: colors.textPrimary,
         marginBottom: 6,
     },
     legendSubtitle: {
         fontSize: 12,
-        color: '#6b7280',
+        color: colors.textSecondary,
         marginBottom: 12,
         lineHeight: 16,
     },
@@ -827,40 +811,40 @@ const styles = StyleSheet.create({
         paddingVertical: 10,
         paddingHorizontal: 8,
         borderRadius: 8,
-        backgroundColor: '#f9fafb',
+        backgroundColor: isDark ? colors.surfaceElevated : '#f9fafb',
     },
     legendItemSelected: {
-        backgroundColor: '#dbeafe',
+        backgroundColor: isDark ? 'rgba(115, 125, 255, 0.18)' : '#dbeafe',
         borderWidth: 1,
-        borderColor: '#3b82f6',
+        borderColor: isDark ? colors.primary : '#3b82f6',
     },
     legendColor: {
         width: 16,
         height: 16,
         borderRadius: 4,
         borderWidth: 1,
-        borderColor: '#d1d5db',
+        borderColor: isDark ? colors.border : '#d1d5db',
     },
     legendTextContainer: {
         flex: 1,
     },
     legendText: {
         fontSize: 14,
-        color: '#374151',
+        color: colors.textPrimary,
         fontWeight: '500',
     },
     legendTextSelected: {
-        color: '#1f2937',
+        color: colors.textPrimary,
         fontWeight: '600',
     },
     legendStopsCount: {
         fontSize: 12,
-        color: '#6b7280',
+        color: colors.textSecondary,
         marginTop: 2,
     },
     legendCount: {
         fontSize: 12,
-        color: '#6b7280',
+        color: colors.textSecondary,
         fontWeight: '500',
     },
     loadingContainer: {
@@ -869,7 +853,9 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(255, 255, 255, 0.8)',
+        backgroundColor: isDark
+            ? 'rgba(14, 15, 20, 0.75)'
+            : 'rgba(255, 255, 255, 0.8)',
         justifyContent: 'center',
         alignItems: 'center',
         zIndex: 1000,
@@ -877,7 +863,7 @@ const styles = StyleSheet.create({
     loadingText: {
         marginTop: 16,
         fontSize: 16,
-        color: '#6b7280',
+        color: colors.textSecondary,
         fontWeight: '500',
     },
     errorContainer: {
@@ -889,19 +875,19 @@ const styles = StyleSheet.create({
     errorTitle: {
         fontSize: 20,
         fontWeight: 'bold',
-        color: '#ef4444',
+        color: colors.error,
         marginBottom: 12,
         textAlign: 'center',
     },
     errorMessage: {
         fontSize: 16,
-        color: '#6b7280',
+        color: colors.textSecondary,
         textAlign: 'center',
         marginBottom: 24,
         lineHeight: 24,
     },
     retryButton: {
-        backgroundColor: '#3b82f6',
+        backgroundColor: isDark ? colors.primary : '#3b82f6',
         paddingHorizontal: 24,
         paddingVertical: 12,
         borderRadius: 8,
@@ -912,12 +898,12 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     legendItemDisabled: {
-        backgroundColor: '#f9fafb',
+        backgroundColor: isDark ? colors.surfaceElevated : '#f9fafb',
         borderWidth: 1,
-        borderColor: '#d1d5db',
+        borderColor: isDark ? colors.border : '#d1d5db',
     },
     legendTextDisabled: {
-        color: '#6b7280',
+        color: colors.textSecondary,
         fontWeight: '500',
     },
-})
+});

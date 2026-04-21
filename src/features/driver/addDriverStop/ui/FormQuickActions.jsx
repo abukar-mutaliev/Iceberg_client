@@ -1,12 +1,13 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Color, FontFamily } from '@app/styles/GlobalStyles';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
-/**
- * Компонент подсказки для пользователя
- */
 export const FormHint = ({ icon, title, description, onPress, style }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     const content = (
         <View style={[styles.hintContainer, style]}>
             {icon && <View style={styles.iconContainer}>{icon}</View>}
@@ -24,8 +25,8 @@ export const FormHint = ({ icon, title, description, onPress, style }) => {
 
     if (onPress) {
         return (
-            <TouchableOpacity 
-                activeOpacity={0.7} 
+            <TouchableOpacity
+                activeOpacity={0.7}
                 onPress={onPress}
                 style={styles.hintTouchable}
             >
@@ -37,10 +38,10 @@ export const FormHint = ({ icon, title, description, onPress, style }) => {
     return content;
 };
 
-/**
- * Компонент быстрого действия (кнопка-ярлык)
- */
 export const QuickAction = ({ icon, label, onPress, variant = 'default', style }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     const variantStyles = {
         default: styles.quickActionDefault,
         primary: styles.quickActionPrimary,
@@ -56,7 +57,7 @@ export const QuickAction = ({ icon, label, onPress, variant = 'default', style }
     };
 
     return (
-        <TouchableOpacity 
+        <TouchableOpacity
             style={[styles.quickAction, variantStyles[variant], style]}
             onPress={onPress}
             activeOpacity={0.7}
@@ -69,10 +70,10 @@ export const QuickAction = ({ icon, label, onPress, variant = 'default', style }
     );
 };
 
-/**
- * Контейнер для группы быстрых действий
- */
 export const QuickActionsGroup = ({ children, title, style }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     return (
         <View style={[styles.quickActionsGroup, style]}>
             {title && <Text style={styles.groupTitle}>{title}</Text>}
@@ -83,17 +84,17 @@ export const QuickActionsGroup = ({ children, title, style }) => {
     );
 };
 
-/**
- * Информационный баннер
- */
-export const InfoBanner = ({ 
-    type = 'info', 
-    title, 
-    message, 
-    onClose, 
+export const InfoBanner = ({
+    type = 'info',
+    title,
+    message,
+    onClose,
     action,
-    style 
+    style
 }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     const typeStyles = {
         info: styles.bannerInfo,
         success: styles.bannerSuccess,
@@ -117,11 +118,11 @@ export const InfoBanner = ({
                     {message && <Text style={styles.bannerMessage}>{message}</Text>}
                 </View>
             </View>
-            
+
             {(action || onClose) && (
                 <View style={styles.bannerActions}>
                     {action && (
-                        <TouchableOpacity 
+                        <TouchableOpacity
                             onPress={action.onPress}
                             style={styles.bannerAction}
                             activeOpacity={0.7}
@@ -130,7 +131,7 @@ export const InfoBanner = ({
                         </TouchableOpacity>
                     )}
                     {onClose && (
-                        <TouchableOpacity 
+                        <TouchableOpacity
                             onPress={onClose}
                             style={styles.bannerClose}
                             activeOpacity={0.7}
@@ -144,17 +145,18 @@ export const InfoBanner = ({
     );
 };
 
-const styles = StyleSheet.create({
-    // Hint styles
+const createStyles = (colors, isDark) => StyleSheet.create({
     hintContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#F8F9FA',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F8F9FA',
         borderRadius: 12,
         padding: normalize(14),
         marginBottom: normalize(12),
         borderLeftWidth: 3,
-        borderLeftColor: '#3B43A2',
+        borderLeftColor: isDark ? colors.primary : '#3B43A2',
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     hintTouchable: {
         marginBottom: normalize(12),
@@ -168,13 +170,13 @@ const styles = StyleSheet.create({
     hintTitle: {
         fontSize: normalizeFont(15),
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(2),
     },
     hintDescription: {
         fontSize: normalizeFont(13),
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         fontFamily: FontFamily.sFProText,
         lineHeight: normalize(18),
     },
@@ -183,18 +185,17 @@ const styles = StyleSheet.create({
     },
     arrowText: {
         fontSize: normalizeFont(24),
-        color: '#999',
+        color: isDark ? colors.textTertiary : '#999',
         fontWeight: '300',
     },
 
-    // Quick Action styles
     quickActionsGroup: {
         marginBottom: normalize(16),
     },
     groupTitle: {
         fontSize: normalizeFont(13),
         fontWeight: '600',
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         fontFamily: FontFamily.sFProText,
         textTransform: 'uppercase',
         marginBottom: normalize(10),
@@ -214,20 +215,20 @@ const styles = StyleSheet.create({
         borderWidth: 1,
     },
     quickActionDefault: {
-        backgroundColor: '#fff',
-        borderColor: '#E5E5EA',
+        backgroundColor: isDark ? colors.surfaceElevated : '#fff',
+        borderColor: isDark ? colors.border : '#E5E5EA',
     },
     quickActionPrimary: {
-        backgroundColor: '#3B43A2',
-        borderColor: '#3B43A2',
+        backgroundColor: isDark ? colors.primary : '#3B43A2',
+        borderColor: isDark ? colors.primary : '#3B43A2',
     },
     quickActionSuccess: {
-        backgroundColor: '#34C759',
-        borderColor: '#34C759',
+        backgroundColor: isDark ? '#2E8F4A' : '#34C759',
+        borderColor: isDark ? '#2E8F4A' : '#34C759',
     },
     quickActionWarning: {
-        backgroundColor: '#FF9500',
-        borderColor: '#FF9500',
+        backgroundColor: isDark ? '#C26F00' : '#FF9500',
+        borderColor: isDark ? '#C26F00' : '#FF9500',
     },
     quickActionIcon: {
         marginRight: normalize(8),
@@ -238,7 +239,7 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
     },
     quickActionTextDefault: {
-        color: Color.dark,
+        color: colors.textPrimary,
     },
     quickActionTextPrimary: {
         color: '#fff',
@@ -250,7 +251,6 @@ const styles = StyleSheet.create({
         color: '#fff',
     },
 
-    // Banner styles
     banner: {
         borderRadius: 12,
         padding: normalize(14),
@@ -260,24 +260,24 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
     },
     bannerInfo: {
-        backgroundColor: '#E3F2FD',
+        backgroundColor: isDark ? 'rgba(33, 150, 243, 0.15)' : '#E3F2FD',
         borderLeftWidth: 3,
-        borderLeftColor: '#2196F3',
+        borderLeftColor: isDark ? '#4EA8E6' : '#2196F3',
     },
     bannerSuccess: {
-        backgroundColor: '#E8F5E9',
+        backgroundColor: isDark ? 'rgba(76, 175, 80, 0.15)' : '#E8F5E9',
         borderLeftWidth: 3,
-        borderLeftColor: '#4CAF50',
+        borderLeftColor: isDark ? '#5FC984' : '#4CAF50',
     },
     bannerWarning: {
-        backgroundColor: '#FFF3E0',
+        backgroundColor: isDark ? 'rgba(255, 152, 0, 0.15)' : '#FFF3E0',
         borderLeftWidth: 3,
-        borderLeftColor: '#FF9800',
+        borderLeftColor: isDark ? '#FFB74D' : '#FF9800',
     },
     bannerError: {
-        backgroundColor: '#FFEBEE',
+        backgroundColor: isDark ? 'rgba(244, 67, 54, 0.15)' : '#FFEBEE',
         borderLeftWidth: 3,
-        borderLeftColor: '#F44336',
+        borderLeftColor: isDark ? '#EF5350' : '#F44336',
     },
     bannerContent: {
         flex: 1,
@@ -294,13 +294,13 @@ const styles = StyleSheet.create({
     bannerTitle: {
         fontSize: normalizeFont(15),
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(2),
     },
     bannerMessage: {
         fontSize: normalizeFont(13),
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         fontFamily: FontFamily.sFProText,
         lineHeight: normalize(18),
     },
@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
     bannerActionText: {
         fontSize: normalizeFont(13),
         fontWeight: '600',
-        color: '#3B43A2',
+        color: isDark ? colors.primary : '#3B43A2',
         fontFamily: FontFamily.sFProText,
     },
     bannerClose: {
@@ -325,16 +325,6 @@ const styles = StyleSheet.create({
     },
     bannerCloseText: {
         fontSize: normalizeFont(18),
-        color: '#999',
+        color: isDark ? colors.textTertiary : '#999',
     },
 });
-
-
-
-
-
-
-
-
-
-

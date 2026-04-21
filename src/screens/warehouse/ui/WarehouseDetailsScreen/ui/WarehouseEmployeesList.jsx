@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
     View,
     Text,
@@ -13,9 +13,12 @@ import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { ProfileAvatar } from '@entities/profile/ui/ProfileAvatar';
 import { getImageUrl } from '@shared/api/api';
 import { PROCESSING_ROLE_LABELS } from '@entities/admin/lib/constants';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const WarehouseEmployeesList = ({ warehouseId, employees, loading, error }) => {
     const navigation = useNavigation();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     
     // Логирование для отладки
     useEffect(() => {
@@ -38,7 +41,7 @@ export const WarehouseEmployeesList = ({ warehouseId, employees, loading, error 
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color={Color.blue2} />
+                <ActivityIndicator size="small" color={isDark ? colors.primary : Color.blue2} />
                 <Text style={styles.loadingText}>Загрузка сотрудников...</Text>
             </View>
         );
@@ -148,7 +151,7 @@ export const WarehouseEmployeesList = ({ warehouseId, employees, loading, error 
                                     <Text style={styles.employeePhone}>{userPhone}</Text>
                                 )}
                             </View>
-                            <Icon name="chevron-right" size={24} color={Color.blue2} />
+                            <Icon name="chevron-right" size={24} color={isDark ? colors.primary : Color.blue2} />
                         </TouchableOpacity>
                     );
                 })}
@@ -157,7 +160,7 @@ export const WarehouseEmployeesList = ({ warehouseId, employees, loading, error 
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         marginTop: normalize(16),
         marginBottom: normalize(16),
@@ -166,13 +169,13 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(18),
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         marginBottom: normalize(12),
     },
     hint: {
         fontSize: normalizeFont(14),
         fontFamily: FontFamily.sFProText,
-        color: Color.gray,
+        color: colors.textSecondary,
         fontStyle: 'italic',
         textAlign: 'center',
         paddingVertical: normalize(16),
@@ -187,7 +190,7 @@ const styles = StyleSheet.create({
         marginLeft: normalize(8),
         fontSize: normalizeFont(14),
         fontFamily: FontFamily.sFProText,
-        color: Color.gray,
+        color: colors.textSecondary,
     },
     errorContainer: {
         paddingVertical: normalize(16),
@@ -195,7 +198,7 @@ const styles = StyleSheet.create({
     errorText: {
         fontSize: normalizeFont(14),
         fontFamily: FontFamily.sFProText,
-        color: Color.error || '#ff0000',
+        color: colors.error,
         textAlign: 'center',
     },
     employeesContainer: {
@@ -204,11 +207,11 @@ const styles = StyleSheet.create({
     employeeItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#F8F9FA',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F8F9FA',
         borderRadius: 12,
         padding: normalize(16),
         borderWidth: 1,
-        borderColor: '#E8EAED',
+        borderColor: isDark ? colors.border : '#E8EAED',
     },
     employeeAvatarContainer: {
         marginRight: normalize(12),
@@ -220,18 +223,18 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(16),
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         marginBottom: normalize(4),
     },
     employeePosition: {
         fontSize: normalizeFont(14),
         fontFamily: FontFamily.sFProText,
-        color: Color.blue2,
+        color: isDark ? colors.primary : Color.blue2,
         marginBottom: normalize(2),
     },
     employeePhone: {
         fontSize: normalizeFont(13),
         fontFamily: FontFamily.sFProText,
-        color: '#666',
+        color: colors.textSecondary,
     },
 });

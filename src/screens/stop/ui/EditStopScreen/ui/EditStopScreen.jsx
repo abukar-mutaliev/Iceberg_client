@@ -35,10 +35,15 @@ import { parseCoordinates } from '@/shared/lib/coordinatesHelper';
 import { EditStopHeader } from './EditStopHeader';
 import { ReusableModal } from '@shared/ui/Modal';
 import MapView, { Marker } from 'react-native-maps';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { ThemedStatusBar } from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
 
 export const EditStopScreen = ({ route, navigation }) => {
     const dispatch = useDispatch();
     const { stopId, selectedLocation, addressString, timestamp, navId } = route.params || {};
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+    const mapStyles = useMemo(() => createMapStyles(colors, isDark), [colors, isDark]);
 
     const lastParamsRef = useRef({ selectedLocation, addressString, timestamp, navId });
     const prevLocationRef = useRef(selectedLocation);
@@ -71,7 +76,7 @@ export const EditStopScreen = ({ route, navigation }) => {
         if (hasChanged && selectedLocation && selectedLocation !== prevLocationRef.current) {
             try {
                 const parsedCoords = parseCoordinates(selectedLocation);
-                
+
                 if (parsedCoords) {
                     const formattedLocation = `${parsedCoords.latitude},${parsedCoords.longitude}`;
                     setCurrentLocation(formattedLocation);
@@ -90,7 +95,7 @@ export const EditStopScreen = ({ route, navigation }) => {
             prevLocationRef.current = selectedLocation;
 
             setLocationChanged(true);
-            
+
             setFormKey(`edit-stop-form-${stopId}-${Date.now()}`);
         }
     }, [selectedLocation, addressString, timestamp, navId, stopId]);
@@ -137,7 +142,6 @@ export const EditStopScreen = ({ route, navigation }) => {
         return base;
     }, [stopWithProducts, stopData]);
 
-    // Загружаем товары отдельно если их нет в stopData
     useEffect(() => {
         const loadStopProducts = async () => {
             if (stopData && stopId && (!stopData.products || stopData.products.length === 0)) {
@@ -166,7 +170,6 @@ export const EditStopScreen = ({ route, navigation }) => {
         }
     }, [stopData, stopId]);
 
-    // Подгружаем график, если данные пришли из публичного списка без schedule
     useEffect(() => {
         if (!stopId || !stopData) {
             return;
@@ -229,7 +232,6 @@ export const EditStopScreen = ({ route, navigation }) => {
         }
     }, [dispatch, isAdminOrEmployee, allDrivers.length]);
 
-    // Инициализация locationData из stopData
     useEffect(() => {
         if (stopData?.mapLocation && (!locationData.mapLocation || locationData.mapLocation === '')) {
             try {
@@ -289,7 +291,6 @@ export const EditStopScreen = ({ route, navigation }) => {
         }
     }, []);
 
-    // Обработка параметров маршрута
     useEffect(() => {
         if (selectedLocation && selectedLocation !== prevLocationRef.current) {
             handleLocationUpdate(selectedLocation);
@@ -344,7 +345,6 @@ export const EditStopScreen = ({ route, navigation }) => {
         return dispatch(updateStop({ stopId, stopData: formData }))
             .unwrap()
             .then(async (result) => {
-                // Обновляем данные остановок после успешного сохранения
                 dispatch(clearStopCache());
                 await dispatch(fetchAllStops());
                 return result;
@@ -426,19 +426,17 @@ export const EditStopScreen = ({ route, navigation }) => {
         }];
     }
 
-    const MapContent = React.memo(({ 
-        locationData, 
-        setLocationData, 
-        handleMapCancel, 
-        handleLocationConfirm 
+    const MapContent = React.memo(({
+        locationData,
+        setLocationData,
+        handleMapCancel,
+        handleLocationConfirm
     }) => {
-        // Используем useRef чтобы избежать повторных рендеров
         const mapRef = useRef(null);
         const regionUpdateTimeoutRef = useRef(null);
-        
+
         return (
             <View style={mapStyles.container}>
-                {/* Кнопка "Назад" в левом верхнем углу */}
                 <TouchableOpacity
                     style={mapStyles.backButton}
                     onPress={handleMapCancel}
@@ -464,29 +462,29 @@ export const EditStopScreen = ({ route, navigation }) => {
                     )}
                 </MapView>
 
-            <View style={mapStyles.buttonContainer}>
-                <TouchableOpacity
-                    style={[mapStyles.button, mapStyles.cancelButton]}
-                    onPress={handleMapCancel}
-                    activeOpacity={0.7}
-                >
-                    <Text style={[mapStyles.buttonText, mapStyles.cancelButtonText]}>Отмена</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                    style={[mapStyles.button, mapStyles.confirmButton, !locationData.markerPosition && mapStyles.buttonDisabled]}
-                    onPress={() => {
-                        if (locationData.markerPosition) {
-                            const coordinates = `${locationData.markerPosition.latitude},${locationData.markerPosition.longitude}`;
-                            handleLocationConfirm(coordinates);
-                        }
-                    }}
-                    disabled={!locationData.markerPosition}
-                    activeOpacity={0.7}
-                >
-                    <Text style={mapStyles.buttonText}>Подтвердить</Text>
-                </TouchableOpacity>
-            </View>
+                <View style={mapStyles.buttonContainer}>
+                    <TouchableOpacity
+                        style={[mapStyles.button, mapStyles.cancelButton]}
+                        onPress={handleMapCancel}
+                        activeOpacity={0.7}
+                    >
+                        <Text style={[mapStyles.buttonText, mapStyles.cancelButtonText]}>Отмена</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[mapStyles.button, mapStyles.confirmButton, !locationData.markerPosition && mapStyles.buttonDisabled]}
+                        onPress={() => {
+                            if (locationData.markerPosition) {
+                                const coordinates = `${locationData.markerPosition.latitude},${locationData.markerPosition.longitude}`;
+                                handleLocationConfirm(coordinates);
+                            }
+                        }}
+                        disabled={!locationData.markerPosition}
+                        activeOpacity={0.7}
+                    >
+                        <Text style={mapStyles.buttonText}>Подтвердить</Text>
+                    </TouchableOpacity>
+                </View>
 
                 {!locationData.markerPosition && (
                     <View style={mapStyles.hintContainer}>
@@ -498,9 +496,10 @@ export const EditStopScreen = ({ route, navigation }) => {
     });
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+            <ThemedStatusBar />
             <EditStopHeader />
-            <ScrollView 
+            <ScrollView
                 style={styles.scrollView}
                 contentContainerStyle={styles.scrollContent}
                 keyboardShouldPersistTaps="handled"
@@ -557,7 +556,7 @@ export const EditStopScreen = ({ route, navigation }) => {
                                         onPress={() => confirmAction('Пропустить остановку', 'Остановка не будет показана в канале маршрутов.', 'skip')}
                                         disabled={isLifecycleLoading}
                                     >
-                                        <Text style={styles.lifecycleButtonText}>Пропустить</Text>
+                                        <Text style={styles.lifecycleWarningText}>Пропустить</Text>
                                     </TouchableOpacity>
                                 </>
                             )}
@@ -577,7 +576,7 @@ export const EditStopScreen = ({ route, navigation }) => {
                                             onPress={() => confirmAction('Отменить остановку', 'Остановка будет отменена и удалена из канала.', 'cancel')}
                                             disabled={isLifecycleLoading}
                                         >
-                                            <Text style={styles.lifecycleButtonText}>Отменить</Text>
+                                            <Text style={styles.lifecycleDangerText}>Отменить</Text>
                                         </TouchableOpacity>
                                     )}
                                 </>
@@ -589,7 +588,7 @@ export const EditStopScreen = ({ route, navigation }) => {
                                     onPress={() => confirmAction('Отменить остановку', 'Остановка будет отменена и удалена из канала.', 'cancel')}
                                     disabled={isLifecycleLoading}
                                 >
-                                    <Text style={styles.lifecycleButtonText}>Отменить</Text>
+                                    <Text style={styles.lifecycleDangerText}>Отменить</Text>
                                 </TouchableOpacity>
                             )}
                         </View>
@@ -604,7 +603,7 @@ export const EditStopScreen = ({ route, navigation }) => {
                 height={80}
                 additionalStyles={mapStyles.modalContainer}
             >
-                <MapContent 
+                <MapContent
                     locationData={locationData}
                     setLocationData={setLocationData}
                     handleMapCancel={handleMapCancel}
@@ -615,10 +614,10 @@ export const EditStopScreen = ({ route, navigation }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.background,
     },
     scrollView: {
         flex: 1,
@@ -634,7 +633,7 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
-        color: '#000',
+        color: colors.textPrimary,
         marginBottom: 12,
     },
     lifecycleActions: {
@@ -647,20 +646,20 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         borderRadius: 10,
         borderWidth: 1,
-        borderColor: '#E0E0E0',
-        backgroundColor: '#FFFFFF',
+        borderColor: isDark ? colors.border : '#E0E0E0',
+        backgroundColor: isDark ? colors.surfaceElevated : '#FFFFFF',
     },
     lifecyclePrimary: {
-        backgroundColor: Color.success,
-        borderColor: Color.success,
+        backgroundColor: isDark ? '#2E8F4A' : Color.success,
+        borderColor: isDark ? '#2E8F4A' : Color.success,
     },
     lifecycleWarning: {
-        backgroundColor: '#FFF3E0',
-        borderColor: '#FFB74D',
+        backgroundColor: isDark ? 'rgba(255, 183, 77, 0.15)' : '#FFF3E0',
+        borderColor: isDark ? 'rgba(255, 183, 77, 0.5)' : '#FFB74D',
     },
     lifecycleDanger: {
-        backgroundColor: '#FFEBEE',
-        borderColor: '#EF5350',
+        backgroundColor: isDark ? 'rgba(239, 83, 80, 0.15)' : '#FFEBEE',
+        borderColor: isDark ? 'rgba(239, 83, 80, 0.6)' : '#EF5350',
     },
     lifecycleDisabled: {
         opacity: 0.6,
@@ -669,7 +668,19 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
         fontSize: 14,
-        color: '#424242',
+        color: isDark ? colors.textPrimary : '#424242',
+    },
+    lifecycleWarningText: {
+        fontFamily: FontFamily.sFProText,
+        fontWeight: '600',
+        fontSize: 14,
+        color: isDark ? '#FFB74D' : '#424242',
+    },
+    lifecycleDangerText: {
+        fontFamily: FontFamily.sFProText,
+        fontWeight: '600',
+        fontSize: 14,
+        color: isDark ? '#EF5350' : '#424242',
     },
     lifecycleButtonTextPrimary: {
         fontFamily: FontFamily.sFProText,
@@ -679,13 +690,14 @@ const styles = StyleSheet.create({
     },
 });
 
-const mapStyles = StyleSheet.create({
+const createMapStyles = (colors, isDark) => StyleSheet.create({
     modalContainer: {
         padding: 0,
     },
     container: {
         flex: 1,
         position: 'relative',
+        backgroundColor: colors.background,
     },
     backButton: {
         position: 'absolute',
@@ -697,7 +709,7 @@ const mapStyles = StyleSheet.create({
         width: 40,
         height: 40,
         borderRadius: 20,
-        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        backgroundColor: isDark ? 'rgba(37, 40, 54, 0.95)' : 'rgba(255, 255, 255, 0.95)',
         justifyContent: 'center',
         alignItems: 'center',
         shadowColor: '#000',
@@ -705,13 +717,15 @@ const mapStyles = StyleSheet.create({
             width: 0,
             height: 2,
         },
-        shadowOpacity: 0.25,
+        shadowOpacity: isDark ? 0.4 : 0.25,
         shadowRadius: 3.84,
         elevation: 5,
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     backButtonText: {
         fontSize: 24,
-        color: '#333',
+        color: isDark ? colors.textPrimary : '#333',
         fontWeight: '600',
     },
     map: {
@@ -737,20 +751,20 @@ const mapStyles = StyleSheet.create({
             width: 0,
             height: 2,
         },
-        shadowOpacity: 0.15,
+        shadowOpacity: isDark ? 0.35 : 0.15,
         shadowRadius: 3.84,
         elevation: 5,
     },
     confirmButton: {
-        backgroundColor: Color.success,
+        backgroundColor: isDark ? '#2E8F4A' : Color.success,
     },
     cancelButton: {
-        backgroundColor: '#ffffff',
+        backgroundColor: isDark ? colors.surfaceElevated : '#ffffff',
         borderWidth: 1.5,
-        borderColor: Color.success,
+        borderColor: isDark ? '#2E8F4A' : Color.success,
     },
     buttonDisabled: {
-        backgroundColor: '#cccccc',
+        backgroundColor: isDark ? '#3A3D4A' : '#cccccc',
         opacity: 0.6,
     },
     buttonText: {
@@ -760,17 +774,19 @@ const mapStyles = StyleSheet.create({
         fontSize: 16,
     },
     cancelButtonText: {
-        color: Color.success,
+        color: isDark ? '#5FC984' : Color.success,
     },
     hintContainer: {
         position: 'absolute',
         top: 70,
         left: 20,
         right: 20,
-        backgroundColor: 'rgba(0, 0, 0, 0.75)',
+        backgroundColor: isDark ? 'rgba(14, 15, 20, 0.85)' : 'rgba(0, 0, 0, 0.75)',
         padding: 12,
         borderRadius: 8,
         alignItems: 'center',
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     hintText: {
         color: 'white',

@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { View, Text, TouchableOpacity, Modal, FlatList, StyleSheet, TextInput, Animated } from 'react-native';
 import { FontFamily, FontSize, Color, Border } from '@app/styles/GlobalStyles';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const DriverPicker = ({
                                  drivers,
@@ -11,12 +12,13 @@ export const DriverPicker = ({
                                  setShowDriverPicker,
                                  error
                              }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const [searchText, setSearchText] = useState('');
     const [filteredDrivers, setFilteredDrivers] = useState(drivers);
     const [modalVisible, setModalVisible] = useState(false);
     const slideAnimation = useRef(new Animated.Value(0)).current;
 
-    // Handle modal visibility with animation
     useEffect(() => {
         if (showDriverPicker) {
             setModalVisible(true);
@@ -36,13 +38,11 @@ export const DriverPicker = ({
         }
     }, [showDriverPicker]);
 
-    // Calculate animation values
     const translateY = slideAnimation.interpolate({
         inputRange: [0, 1],
         outputRange: [300, 0]
     });
 
-    // Обновление списка водителей при изменении поиска или списка водителей
     useEffect(() => {
         if (!searchText) {
             setFilteredDrivers(drivers);
@@ -56,14 +56,12 @@ export const DriverPicker = ({
         setFilteredDrivers(filtered);
     }, [searchText, drivers]);
 
-    // Найти имя выбранного водителя
     const selectedDriverName = React.useMemo(() => {
         if (!selectedDriver) return 'Выберите водителя';
         const driver = drivers.find(d => d.id === selectedDriver);
         return driver ? driver.name : 'Выберите водителя';
     }, [selectedDriver, drivers]);
 
-    // Обработчик выбора водителя
     const handleSelect = (driverId) => {
         setSelectedDriver(driverId);
         setShowDriverPicker(false);
@@ -135,7 +133,8 @@ export const DriverPicker = ({
                                 placeholder="Поиск водителя..."
                                 value={searchText}
                                 onChangeText={setSearchText}
-                                placeholderTextColor="#999"
+                                placeholderTextColor={isDark ? colors.textTertiary : '#999'}
+                                keyboardAppearance={isDark ? 'dark' : 'light'}
                             />
                         </View>
 
@@ -181,7 +180,7 @@ export const DriverPicker = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         marginBottom: normalize(0),
         width: '100%',
@@ -189,8 +188,8 @@ const styles = StyleSheet.create({
     label: {
         fontSize: normalizeFont(15),
         fontWeight: '600',
-        color: Color.dark,
-        opacity: 0.4,
+        color: colors.textPrimary,
+        opacity: isDark ? 0.85 : 0.4,
         marginBottom: 0,
         fontFamily: FontFamily.sFProText,
     },
@@ -203,18 +202,18 @@ const styles = StyleSheet.create({
     },
     pickerButtonText: {
         fontSize: normalizeFont(FontSize.size_xs),
-        color: '#999',
+        color: isDark ? colors.textTertiary : '#999',
         fontFamily: FontFamily.sFProText,
     },
     pickerButtonTextError: {
         color: '#FF3B30',
     },
     selectedText: {
-        color: Color.dark,
+        color: colors.textPrimary,
     },
     inputUnderline: {
         height: 1,
-        backgroundColor: '#000',
+        backgroundColor: isDark ? colors.divider : '#000',
         marginTop: 0,
     },
     underlineError: {
@@ -243,9 +242,11 @@ const styles = StyleSheet.create({
     modalContent: {
         width: '90%',
         maxHeight: '80%',
-        backgroundColor: 'white',
+        backgroundColor: isDark ? colors.surface : 'white',
         borderRadius: Border.br_3xs,
         overflow: 'hidden',
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     header: {
         flexDirection: 'row',
@@ -253,52 +254,54 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         padding: normalize(16),
         borderBottomWidth: 1,
-        borderBottomColor: '#eee',
+        borderBottomColor: isDark ? colors.divider : '#eee',
     },
     modalTitle: {
         fontSize: normalizeFont(18),
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     closeButton: {
         padding: normalize(5),
     },
     closeButtonText: {
-        color: Color.main,
+        color: isDark ? colors.primary : Color.main,
         fontSize: normalizeFont(16),
         fontFamily: FontFamily.sFProText,
     },
     searchContainer: {
         padding: normalize(10),
         borderBottomWidth: 1,
-        borderBottomColor: '#eee',
+        borderBottomColor: isDark ? colors.divider : '#eee',
     },
     searchInput: {
         height: normalize(50),
         borderWidth: 1,
-        borderColor: '#ddd',
+        borderColor: isDark ? colors.border : '#ddd',
         borderRadius: Border.br_3xs,
         paddingHorizontal: normalize(10),
         fontFamily: FontFamily.sFProText,
+        color: colors.textPrimary,
+        backgroundColor: isDark ? colors.surfaceElevated : 'transparent',
     },
     driverItem: {
         padding: normalize(15),
         borderBottomWidth: 1,
-        borderBottomColor: '#eee',
+        borderBottomColor: isDark ? colors.divider : '#eee',
     },
     selectedItem: {
-        backgroundColor: Color.main,
+        backgroundColor: isDark ? colors.primary : Color.main,
     },
     driverName: {
         fontSize: normalizeFont(16),
         fontWeight: '500',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     driverPhone: {
         fontSize: normalizeFont(14),
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         marginTop: normalize(4),
         fontFamily: FontFamily.sFProText,
     },
@@ -311,7 +314,7 @@ const styles = StyleSheet.create({
     },
     emptyText: {
         fontSize: normalizeFont(16),
-        color: '#999',
+        color: isDark ? colors.textTertiary : '#999',
         fontFamily: FontFamily.sFProText,
     },
 });

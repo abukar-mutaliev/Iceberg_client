@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import IconRight from "@shared/ui/Icon/Common/IconRight";
 import { formatTimeRange } from '@shared/lib/dateFormatters';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const isSameDay = (left, right) => {
     if (!(left instanceof Date) || isNaN(left.getTime()) || !(right instanceof Date) || isNaN(right.getTime())) {
@@ -120,6 +121,8 @@ export const isStopActive = (stop) => {
 export const StopCard = ({ stop, onPress }) => {
     const active = isStopActive(stop);
     const displayTimes = getDisplayTimesForStop(stop);
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     return (
         <TouchableOpacity
@@ -139,12 +142,15 @@ export const StopCard = ({ stop, onPress }) => {
                     )}
                 </View>
             </View>
-            <IconRight style={styles.iconRight} />
+            <IconRight
+                style={styles.iconRight}
+                color={isDark ? colors.textSecondary : '#333'}
+            />
         </TouchableOpacity>
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     locationItem: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -154,8 +160,8 @@ const styles = StyleSheet.create({
         paddingVertical: 5,
         height: 'auto',
         borderBottomWidth: 0.5,
-        borderBottomColor: Color.colorLavender,
-        backgroundColor: Color.colorLightMode,
+        borderBottomColor: isDark ? colors.divider : Color.colorLavender,
+        backgroundColor: isDark ? colors.cardBackground : Color.colorLightMode,
     },
     timeRow: {
         flexDirection: 'row',
@@ -170,21 +176,21 @@ const styles = StyleSheet.create({
     addressText: {
         fontSize: FontSize.size_lg,
         fontWeight: '500',
-        color: Color.dark,
+        color: isDark ? colors.textPrimary : Color.dark,
         fontFamily: FontFamily.sFProText,
         marginBottom: 4,
         letterSpacing: 0.9,
     },
     timeText: {
         fontSize: FontSize.size_md,
-        color: Color.grey7D7D7D,
+        color: isDark ? colors.textSecondary : Color.grey7D7D7D,
         fontFamily: FontFamily.sFProDisplay,
         letterSpacing: 0.9,
         marginBottom: 0,
         flexShrink: 1,
     },
     onPlaceBadge: {
-        backgroundColor: '#34C759',
+        backgroundColor: isDark ? '#2E8F4A' : '#34C759',
         paddingHorizontal: 8,
         paddingVertical: 3,
         borderRadius: 10,
@@ -197,7 +203,7 @@ const styles = StyleSheet.create({
     },
     descriptionText: {
         fontSize: FontSize.size_sm,
-        color: '#333',
+        color: isDark ? colors.textSecondary : '#333',
         fontFamily: FontFamily.sFProDisplay,
         marginBottom: 4,
         fontStyle: 'italic',
@@ -205,12 +211,12 @@ const styles = StyleSheet.create({
     },
     truckText: {
         fontSize: FontSize.size_sm,
-        color: Color.grey7D7D7D,
+        color: isDark ? colors.textSecondary : Color.grey7D7D7D,
         fontFamily: FontFamily.sFProDisplay,
         marginBottom: 2,
     },
     activeLabel: {
-        backgroundColor: Color.purpleSoft,
+        backgroundColor: isDark ? colors.primary : Color.purpleSoft,
         paddingHorizontal: 8,
         paddingVertical: 3,
         borderRadius: 4,

@@ -33,6 +33,7 @@ import { FormSection, FormField } from '@features/driver/addDriverStop/ui/FormFi
 import { FormProgressBar } from '@features/driver/addDriverStop/ui/FormProgressIndicator';
 import { FormHint, InfoBanner } from '@features/driver/addDriverStop/ui/FormQuickActions';
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const WEEK_DAYS = [
   { label: 'Пн', value: 1 },
@@ -161,7 +162,9 @@ export const EditStopForm = ({
   setIsLocationLoading: externalSetIsLocationLoading,
   addressFromMap: externalAddressFromMap
 }) => {
-  
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   // Вспомогательные функции объявляем до использования
   const processInitialPhoto = (photoData) => {
     if (!photoData) return null;
@@ -1053,7 +1056,8 @@ export const EditStopForm = ({
               logData('Изменен адрес', text);
             }}
             placeholder="Введите адрес"
-            placeholderTextColor="#999"
+            placeholderTextColor={isDark ? colors.textTertiary : '#999'}
+            keyboardAppearance={isDark ? 'dark' : 'light'}
           />
           <View style={[styles.inputUnderline, errors.address ? styles.underlineError : null]}/>
         </FormField>
@@ -1093,7 +1097,8 @@ export const EditStopForm = ({
               logData('Изменена модель транспорта', text);
             }}
             placeholder="LADA Largus"
-            placeholderTextColor="#999"
+            placeholderTextColor={isDark ? colors.textTertiary : '#999'}
+            keyboardAppearance={isDark ? 'dark' : 'light'}
           />
           <View style={[styles.inputUnderline, errors.truckModel ? styles.underlineError : null]}/>
         </FormField>
@@ -1112,8 +1117,9 @@ export const EditStopForm = ({
               logData('Изменен номер транспорта', text);
             }}
             placeholder="А001АА 06"
-            placeholderTextColor="#999"
+            placeholderTextColor={isDark ? colors.textTertiary : '#999'}
             autoCapitalize="characters"
+            keyboardAppearance={isDark ? 'dark' : 'light'}
           />
           <View style={[styles.inputUnderline, errors.truckNumber ? styles.underlineError : null]}/>
         </FormField>
@@ -1254,10 +1260,11 @@ export const EditStopForm = ({
                 }
               }}
               placeholder="Введите дополнительную информацию"
-              placeholderTextColor="#999"
+              placeholderTextColor={isDark ? colors.textTertiary : '#999'}
               multiline
               numberOfLines={4}
               textAlignVertical="top"
+              keyboardAppearance={isDark ? 'dark' : 'light'}
             />
           </View>
           <View style={styles.inputUnderline}/>
@@ -1409,15 +1416,15 @@ export const EditStopForm = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   modalOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.65)' : 'rgba(0, 0, 0, 0.4)',
   },
   modalContent: {
     width: '100%',
-    backgroundColor: Color.colorLightMode,
+    backgroundColor: isDark ? colors.surface : Color.colorLightMode,
     borderTopLeftRadius: 8,
     borderTopRightRadius: 8,
     zIndex: 10,
@@ -1425,6 +1432,7 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+    backgroundColor: colors.background,
   },
   formContainer: {
     padding: normalize(20),
@@ -1459,23 +1467,23 @@ const styles = StyleSheet.create({
   label: {
     fontSize: normalizeFont(15),
     fontWeight: '600',
-    color: Color.dark,
-    opacity: 0.4,
+    color: colors.textPrimary,
+    opacity: isDark ? 0.85 : 0.4,
     marginBottom: 0,
     fontFamily: FontFamily.sFProText,
   },
   sublabel: {
     fontSize: normalizeFont(14),
     fontWeight: '500',
-    color: Color.dark,
-    opacity: 0.6,
+    color: colors.textPrimary,
+    opacity: isDark ? 0.75 : 0.6,
     marginBottom: normalize(8),
     fontFamily: FontFamily.sFProText,
   },
   input: {
     height: normalize(44),
     fontSize: normalizeFont(FontSize.size_sm),
-    color: Color.dark,
+    color: colors.textPrimary,
     paddingVertical: normalize(8),
     paddingHorizontal: 0,
     fontFamily: FontFamily.sFProText,
@@ -1487,10 +1495,15 @@ const styles = StyleSheet.create({
     height: normalize(100),
     textAlignVertical: 'top',
     paddingTop: normalize(8),
+    paddingHorizontal: isDark ? normalize(12) : 0,
+    backgroundColor: isDark ? colors.surfaceElevated : 'transparent',
+    borderRadius: isDark ? 10 : 0,
+    borderWidth: isDark ? 1 : 0,
+    borderColor: isDark ? colors.border : 'transparent',
   },
   inputUnderline: {
     height: 1,
-    backgroundColor: '#E5E5EA',
+    backgroundColor: isDark ? colors.divider : '#E5E5EA',
     marginTop: normalize(4),
   },
   underlineError: {
@@ -1514,21 +1527,24 @@ const styles = StyleSheet.create({
   },
   scheduleToggleLabel: {
     fontSize: normalizeFont(13),
-    color: Color.dark,
+    color: colors.textPrimary,
     fontFamily: FontFamily.sFProText,
   },
   scheduleToggle: {
     paddingHorizontal: normalize(12),
     paddingVertical: normalize(4),
     borderRadius: 12,
-    backgroundColor: '#E5E5EA',
+    backgroundColor: isDark ? colors.surfaceElevated : '#E5E5EA',
+    borderWidth: isDark ? 1 : 0,
+    borderColor: isDark ? colors.border : 'transparent',
   },
   scheduleToggleActive: {
-    backgroundColor: '#3B43A2',
+    backgroundColor: isDark ? colors.primary : '#3B43A2',
+    borderColor: isDark ? colors.primary : 'transparent',
   },
   scheduleToggleText: {
     fontSize: normalizeFont(11),
-    color: '#6B7280',
+    color: isDark ? colors.textSecondary : '#6B7280',
     fontFamily: FontFamily.sFProText,
   },
   scheduleToggleTextActive: {
@@ -1544,16 +1560,19 @@ const styles = StyleSheet.create({
     width: normalize(30),
     height: normalize(30),
     borderRadius: normalize(15),
-    backgroundColor: '#F3F4F6',
+    backgroundColor: isDark ? colors.surfaceElevated : '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: isDark ? 1 : 0,
+    borderColor: isDark ? colors.border : 'transparent',
   },
   scheduleDayButtonActive: {
-    backgroundColor: '#3B43A2',
+    backgroundColor: isDark ? colors.primary : '#3B43A2',
+    borderColor: isDark ? colors.primary : 'transparent',
   },
   scheduleDayText: {
     fontSize: normalizeFont(11),
-    color: '#6B7280',
+    color: isDark ? colors.textSecondary : '#6B7280',
     fontFamily: FontFamily.sFProText,
   },
   scheduleDayTextActive: {
@@ -1573,7 +1592,7 @@ const styles = StyleSheet.create({
   },
   dateTimeText: {
     fontSize: normalizeFont(FontSize.size_sm),
-    color: Color.dark,
+    color: colors.textPrimary,
     fontFamily: FontFamily.sFProText,
   },
   timeContainer: {
@@ -1587,10 +1606,10 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: normalizeFont(FontSize.size_sm),
     fontWeight: '600',
-    color: Color.dark,
+    color: colors.textPrimary,
     marginBottom: normalize(10),
     fontFamily: FontFamily.sFProText,
-    opacity: 0.4,
+    opacity: isDark ? 0.85 : 0.4,
   },
   timeRow: {
     flexDirection: 'row',
@@ -1604,24 +1623,24 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   submitButton: {
-    backgroundColor: '#3B43A2',
+    backgroundColor: isDark ? colors.primary : '#3B43A2',
     height: normalize(52),
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: normalize(8),
     marginBottom: normalize(30),
-    shadowColor: '#3B43A2',
+    shadowColor: isDark ? '#000' : '#3B43A2',
     shadowOffset: {
       width: 0,
       height: 4,
     },
-    shadowOpacity: 0.3,
+    shadowOpacity: isDark ? 0.4 : 0.3,
     shadowRadius: 6,
     elevation: 5,
   },
   disabledButton: {
-    backgroundColor: '#a0a0a0',
+    backgroundColor: isDark ? '#3A3D4A' : '#a0a0a0',
   },
   submitButtonText: {
     color: Color.colorLightMode,
@@ -1635,15 +1654,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: normalize(10),
   },
-  // Стили для блока повторной отправки
   retryContainer: {
-    backgroundColor: '#FFF3CD',
+    backgroundColor: isDark ? 'rgba(255, 193, 7, 0.12)' : '#FFF3CD',
     borderRadius: 12,
     padding: normalize(20),
     marginBottom: normalize(16),
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#FFC107',
+    borderColor: isDark ? 'rgba(255, 193, 7, 0.5)' : '#FFC107',
   },
   retryIconContainer: {
     marginBottom: normalize(12),
@@ -1654,18 +1672,18 @@ const styles = StyleSheet.create({
   retryTitle: {
     fontSize: normalizeFont(17),
     fontWeight: '600',
-    color: '#856404',
+    color: isDark ? '#FFB74D' : '#856404',
     marginBottom: normalize(8),
     textAlign: 'center',
     fontFamily: FontFamily.sFProText,
   },
   retryMessage: {
     fontSize: normalizeFont(14),
-    color: '#856404',
+    color: isDark ? '#FFB74D' : '#856404',
     textAlign: 'center',
     marginBottom: normalize(16),
     fontFamily: FontFamily.sFProText,
-    opacity: 0.8,
+    opacity: isDark ? 0.9 : 0.8,
   },
   retryButtonsRow: {
     flexDirection: 'row',
@@ -1680,18 +1698,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cancelButton: {
-    backgroundColor: '#fff',
+    backgroundColor: isDark ? colors.surfaceElevated : '#fff',
     borderWidth: 1.5,
-    borderColor: '#856404',
+    borderColor: isDark ? '#FFB74D' : '#856404',
   },
   cancelButtonText: {
     fontSize: normalizeFont(15),
     fontWeight: '600',
-    color: '#856404',
+    color: isDark ? '#FFB74D' : '#856404',
     fontFamily: FontFamily.sFProText,
   },
   retryActionButton: {
-    backgroundColor: '#3B43A2',
+    backgroundColor: isDark ? colors.primary : '#3B43A2',
   },
   retryButtonText: {
     fontSize: normalizeFont(15),

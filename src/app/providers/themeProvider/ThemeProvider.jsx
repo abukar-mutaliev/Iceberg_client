@@ -129,3 +129,4 @@ export const useThemedStyles = (factory) => {
     const { colors } = useTheme();
     return useMemo(() => StyleSheet.create(factory(colors)), [colors, factory]);
 };
+

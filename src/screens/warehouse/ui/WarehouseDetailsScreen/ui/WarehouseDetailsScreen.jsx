@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useFocusEffect } from '@react-navigation/native';
@@ -8,11 +8,15 @@ import { WarehouseDetailsContent } from './WarehouseDetailsContent';
 import { LoadingState } from '@shared/ui/states/LoadingState';
 import { ErrorState } from '@shared/ui/states/ErrorState';
 import { fetchWarehouses } from '@entities/warehouse/model/slice';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { ThemedStatusBar } from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
 
 export const WarehouseDetailsScreen = ({ navigation }) => {
     const route = useRoute();
     const dispatch = useDispatch();
     const { warehouseId } = route.params || {};
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
 
     const [isLoadingWarehouses, setIsLoadingWarehouses] = useState(false);
     const [retryCount, setRetryCount] = useState(0);
@@ -127,6 +131,7 @@ export const WarehouseDetailsScreen = ({ navigation }) => {
     // Показываем контент склада
     return (
         <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+            <ThemedStatusBar />
             <WarehouseDetailsContent 
                 warehouse={warehouse} 
                 warehouseProducts={warehouseProducts}
@@ -138,9 +143,9 @@ export const WarehouseDetailsScreen = ({ navigation }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#fff',
+        backgroundColor: colors.background,
     },
 });

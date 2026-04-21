@@ -9,13 +9,14 @@ import { selectUser } from '@entities/auth/model/selectors';
 import { formatTimeRange, formatTime, formatDate } from "@shared/lib/dateFormatters";
 import { getImageUrl } from '@shared/api/api';
 import { logData } from '@shared/lib/logger';
-import {BackButton} from "@shared/ui/Button/BackButton";
+import { BackButton } from "@shared/ui/Button/BackButton";
 import { StopProductsList } from '@entities/stop/ui/StopProductsList';
 import { ShareStopModal } from './ShareStopModal';
 import ChatApi from '@entities/chat/api/chatApi';
 import { selectRoomsList } from '@entities/chat/model/selectors';
 import { useToast } from '@shared/ui/Toast';
 import { deleteStop } from '@entities/stop';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
 
@@ -26,19 +27,15 @@ const getPhotoUrl = (photoPath) => {
         return photoPath.uri;
     }
 
-    // Всегда используем getImageUrl для нормализации URL (включая замену старых IP-адресов)
-    // getImageUrl умеет обрабатывать как относительные, так и полные URL
     return getImageUrl(photoPath);
 };
 
-// Функция для геокодирования адреса через Nominatim
 const geocodeAddress = async (address, districtName = '') => {
     if (!address || !address.trim()) {
         return null;
     }
 
     try {
-        // Формируем запрос с учетом района для лучшей точности
         let query = address.trim();
         if (districtName) {
             query = `${query}, ${districtName}, Республика Ингушетия, Россия`;
@@ -47,12 +44,12 @@ const geocodeAddress = async (address, districtName = '') => {
         }
 
         const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1&accept-language=ru`;
-        
+
         logData('Геокодирование адреса остановки', { address, query, url });
 
         const response = await fetch(url, {
             headers: {
-                'User-Agent': 'IcebergApp/1.0 (Delivery service)' // Nominatim требует User-Agent
+                'User-Agent': 'IcebergApp/1.0 (Delivery service)'
             }
         });
 
@@ -68,7 +65,7 @@ const geocodeAddress = async (address, districtName = '') => {
                 longitude: parseFloat(results[0].lon),
                 displayName: results[0].display_name
             };
-            
+
             logData('Адрес успешно геокодирован', result);
             return result;
         }
@@ -81,14 +78,12 @@ const geocodeAddress = async (address, districtName = '') => {
     }
 };
 
-// Безопасная функция для парсинга координат (fallback)
 const parseMapLocation = (mapLocation) => {
     if (!mapLocation) {
         return null;
     }
 
     try {
-        // Если это уже объект с координатами
         if (typeof mapLocation === 'object' && mapLocation.latitude && mapLocation.longitude) {
             const lat = parseFloat(mapLocation.latitude);
             const lng = parseFloat(mapLocation.longitude);
@@ -97,17 +92,14 @@ const parseMapLocation = (mapLocation) => {
             }
         }
 
-        // Если это строка
         if (typeof mapLocation === 'string') {
             const trimmed = mapLocation.trim();
 
-            // Пробуем парсить как JSON
             if ((trimmed.startsWith('{') && trimmed.endsWith('}')) ||
                 (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
                 try {
                     const parsed = JSON.parse(trimmed);
 
-                    // Если это массив [lat, lng]
                     if (Array.isArray(parsed) && parsed.length >= 2) {
                         const lat = parseFloat(parsed[0]);
                         const lng = parseFloat(parsed[1]);
@@ -116,7 +108,6 @@ const parseMapLocation = (mapLocation) => {
                         }
                     }
 
-                    // Если это объект с latitude/longitude
                     if (parsed && typeof parsed === 'object') {
                         const lat = parseFloat(parsed.latitude || parsed.lat);
                         const lng = parseFloat(parsed.longitude || parsed.lng);
@@ -129,7 +120,6 @@ const parseMapLocation = (mapLocation) => {
                 }
             }
 
-            // Пробуем формат "lat,lng"
             if (trimmed.includes(',')) {
                 const parts = trimmed.split(',');
                 if (parts.length >= 2) {
@@ -141,7 +131,6 @@ const parseMapLocation = (mapLocation) => {
                 }
             }
 
-            // Пробуем извлечь координаты с помощью регулярного выражения
             const regex = /latitude"?:\s*(-?\d+\.?\d*),?\s*"?longitude"?:\s*(-?\d+\.?\d*)/i;
             const match = trimmed.match(regex);
             if (match && match[1] && match[2]) {
@@ -271,7 +260,6 @@ const getDisplayTimesForStop = (stop) => {
     return { startTime: stop.startTime, endTime: stop.endTime };
 };
 
-// Функция для понятного форматирования времени стоянки
 const formatStopTime = (startTime, endTime) => {
     if (!startTime || !endTime) return null;
 
@@ -287,7 +275,6 @@ const formatStopTime = (startTime, endTime) => {
     const startDayLabel = getRelativeDayLabel(startDate);
     const endDayLabel = getRelativeDayLabel(endDate);
 
-    // Проверяем, находится ли водитель на стоянке сейчас
     const now = new Date();
     const isActive = now >= startDate && now <= endDate;
 
@@ -309,6 +296,8 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
     const user = useSelector(selectUser);
     const rooms = useSelector(selectRoomsList);
     const { showSuccess, showError } = useToast();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const defaultCoords = { latitude: 43.172837, longitude: 44.811913 };
     const [mapCoordinates, setMapCoordinates] = useState(defaultCoords);
     const [mapLoaded, setMapLoaded] = useState(false);
@@ -332,7 +321,6 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
         const startDate = new Date(stop.startTime);
         const endDate = new Date(stop.endTime);
 
-        // Если следующая остановка уже рассчитана на сервере и еще не наступила - показываем ее
         if (startDate >= now || endDate >= now) {
             return { startTime: stop.startTime, endTime: stop.endTime };
         }
@@ -373,20 +361,17 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
     const canEdit = isAdminOrEmployee || (user?.role === 'DRIVER' && isDriverOwnedStop);
     const canDelete = isAdminOrEmployee || (user?.role === 'DRIVER' && isDriverOwnedStop);
     const isAuthenticated = !!user;
-    
-    // Определяем, запущено ли приложение в Expo Go
+
     const isExpoGo = Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
-    
-    // Данные о водителе
+
     const driver = stop?.driver;
     const hasDriverInfo = driver && (driver.name || driver.phone);
     const canCallDriver = !!driver?.phone && user?.id !== driver?.userId;
     const canChatWithDriver = isAuthenticated && hasDriverInfo && user?.id !== driver?.userId;
-    
-    // Проверяем существование чата с водителем
+
     const existingChatWithDriver = React.useMemo(() => {
         if (!user?.id || !driver?.userId) return null;
-        
+
         return rooms.find(room => {
             if (room.type !== 'DIRECT') return false;
             return room.participants?.some(participant => {
@@ -396,6 +381,8 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
         });
     }, [rooms, user?.id, driver?.userId]);
 
+    const accentColor = isDark ? colors.primary : Color.blue2;
+    const shareIconColor = isDark ? colors.primary : Color.purpleSoft;
 
     if (!stop) {
         return (
@@ -436,7 +423,6 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                                 duration: 2000,
                                 position: 'top'
                             });
-                            // Возвращаемся назад после небольшой задержки для отображения уведомления
                             setTimeout(() => {
                                 navigation.goBack();
                             }, 500);
@@ -458,7 +444,6 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
 
     const handleSharePress = () => {
         if (!isAuthenticated) {
-            // Без алертов — сразу на авторизацию
             goToAuth('login');
             return;
         }
@@ -469,13 +454,12 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
         setShareModalVisible(false);
     };
 
-    // Функция для копирования адреса
     const handleCopyAddress = () => {
         if (!stop?.address) {
             Alert.alert('Ошибка', 'Адрес не указан');
             return;
         }
-        
+
         Clipboard.setString(stop.address);
         showSuccess('Адрес скопирован', {
             duration: 2000,
@@ -483,19 +467,18 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
         });
     };
 
-    // Функция для звонка водителю
     const handleCallDriver = () => {
         if (!driver?.phone) {
             Alert.alert('Ошибка', 'Номер телефона водителя не указан');
             return;
         }
-        
+
         const phoneNumber = driver.phone.replace(/[^0-9+]/g, '');
         const phoneUrl = Platform.select({
             ios: `tel:${phoneNumber}`,
             android: `tel:${phoneNumber}`
         });
-        
+
         Linking.canOpenURL(phoneUrl)
             .then(supported => {
                 if (supported) {
@@ -510,22 +493,19 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
             });
     };
 
-    // Функция для открытия чата с водителем
     const handleChatWithDriver = async () => {
         if (!isAuthenticated) {
-            // Без алертов — сразу на авторизацию
             goToAuth('login');
             return;
         }
-        
+
         if (!driver?.userId) {
             Alert.alert('Ошибка', 'Информация о водителе недоступна');
             return;
         }
-        
+
         const driverName = driver.name || 'Водитель';
-        
-        // Если чат уже существует, переходим в него
+
         if (existingChatWithDriver) {
             const rootNavigation =
                 navigation?.getParent?.('AppStack') ||
@@ -541,19 +521,18 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
             });
             return;
         }
-        
-        // Создаем новый чат
+
         setIsCreatingChat(true);
-        
+
         try {
             const formData = new FormData();
             formData.append('type', 'DIRECT');
             formData.append('title', driverName);
             formData.append('members', JSON.stringify([driver.userId]));
-            
+
             const response = await ChatApi.createRoom(formData);
             const room = response?.data?.room || response?.data;
-            
+
             if (room?.id) {
                 const rootNavigation =
                     navigation?.getParent?.('AppStack') ||
@@ -605,35 +584,30 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
         });
     };
 
-
-
     useEffect(() => {
         if (!stop) {
             return;
         }
 
-        // Сбрасываем состояние загрузки при изменении остановки
         setMapLoaded(false);
         setGeocodingError(null);
 
         const loadCoordinates = async () => {
-            // Сначала пробуем использовать mapLocation если есть
             const parsedCoords = parseMapLocation(stop.mapLocation);
-            
+
             if (parsedCoords) {
                 setMapCoordinates(parsedCoords);
                 setMapLoaded(true);
                 return;
             }
 
-            // Если mapLocation нет или невалидна, используем геокодирование адреса
             if (stop.address && stop.address.trim()) {
                 setIsGeocoding(true);
-                
+
                 try {
                     const districtName = stop.district?.name || '';
                     const geocoded = await geocodeAddress(stop.address, districtName);
-                    
+
                     if (geocoded) {
                         setMapCoordinates({
                             latitude: geocoded.latitude,
@@ -642,7 +616,6 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                         setMapLoaded(true);
                         logData('Координаты получены через геокодирование', geocoded);
                     } else {
-                        // Если геокодирование не удалось, используем координаты по умолчанию
                         setMapCoordinates(defaultCoords);
                         setMapLoaded(true);
                         setGeocodingError('Не удалось определить координаты адреса');
@@ -657,7 +630,6 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                     setIsGeocoding(false);
                 }
             } else {
-                // Если адреса нет, используем координаты по умолчанию
                 setMapCoordinates(defaultCoords);
                 setMapLoaded(true);
             }
@@ -685,7 +657,9 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                     <RefreshControl
                         refreshing={refreshing}
                         onRefresh={onRefresh}
-                        tintColor={Color.blue2}
+                        tintColor={accentColor}
+                        colors={[accentColor]}
+                        progressBackgroundColor={isDark ? colors.surfaceElevated : '#fff'}
                     />
                 ) : undefined
             }
@@ -709,7 +683,7 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                         style={styles.shareIconButton}
                         onPress={handleSharePress}
                     >
-                        <Icon name="share" size={24} color={Color.purpleSoft} />
+                        <Icon name="share" size={24} color={shareIconColor} />
                     </TouchableOpacity>
                 ) : (
                     <TouchableOpacity
@@ -717,7 +691,7 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                         onPress={handleSharePress}
                         activeOpacity={0.7}
                     >
-                        <Icon name="share" size={24} color={Color.purpleSoft} />
+                        <Icon name="share" size={24} color={shareIconColor} />
                     </TouchableOpacity>
                 )}
             </View>
@@ -732,7 +706,7 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                                 onPress={handleCopyAddress}
                                 activeOpacity={0.7}
                             >
-                                <Icon name="content-copy" size={18} color={Color.blue2} />
+                                <Icon name="content-copy" size={18} color={accentColor} />
                             </TouchableOpacity>
                         )}
                     </View>
@@ -744,7 +718,6 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                             <Text style={styles.dateTime}>Время не указано</Text>
                         ) : (
                             <View style={styles.timeInfoContainer}>
-                                {/* Блок о том, что водитель сейчас на стоянке */}
                                 {timeInfo.isActive && (
                                     <View style={styles.activeStopBanner}>
                                         <View style={styles.activeStopContent}>
@@ -763,12 +736,11 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                                         </View>
                                     </View>
                                 )}
-                                
-                                {/* Показываем детальное время только если водитель НЕ на стоянке */}
+
                                 {!timeInfo.isActive && (
                                     <View style={styles.timeRow}>
                                         <View style={styles.timeIconContainer}>
-                                            <Icon name="schedule" size={22} color={Color.blue2} />
+                                            <Icon name="schedule" size={22} color={accentColor} />
                                         </View>
                                         <View style={styles.timeTextContainer}>
                                             <Text style={styles.timeLabel}>Следующая остановка:</Text>
@@ -847,7 +819,7 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                                     onPress={handleCopyAddress}
                                     activeOpacity={0.7}
                                 >
-                                    <Icon name="content-copy" size={14} color={Color.blue2} />
+                                    <Icon name="content-copy" size={14} color={accentColor} />
                                 </TouchableOpacity>
                             )}
                         </View>
@@ -862,13 +834,12 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                     </View>
                 )}
 
-                {/* Блок информации о водителе и связь с ним */}
                 {hasDriverInfo && (
                     <View style={styles.driverSection}>
                         <Text style={styles.driverSectionTitle}>Связь с водителем</Text>
                         <View style={styles.driverHeader}>
                             <View style={styles.driverIconContainer}>
-                                <Icon name="local-shipping" size={24} color={Color.blue2} />
+                                <Icon name="local-shipping" size={24} color={accentColor} />
                             </View>
                             <View style={styles.driverInfo}>
                                 <Text style={styles.driverName}>{driver.name || 'Водитель'}</Text>
@@ -877,8 +848,7 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                                 )}
                             </View>
                         </View>
-                        
-                        {/* Кнопки связи с водителем */}
+
                         {hasDriverInfo && (
                             <View style={styles.driverActions}>
                                 {driver.phone && (
@@ -935,7 +905,7 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                     </View>
                     {(isGeocoding || (!mapLoaded && !mapError && !isExpoGo)) ? (
                         <View style={styles.mapLoadingContainer}>
-                            <ActivityIndicator size="small" color={Color.blue2} />
+                            <ActivityIndicator size="small" color={accentColor} />
                             <Text style={styles.mapLoadingText}>
                                 {isGeocoding ? 'Определяем местоположение...' : 'Загружаем карту...'}
                             </Text>
@@ -943,12 +913,12 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                     ) : (isExpoGo || mapError) ? (
                         <View style={styles.mapFallbackContainer}>
                             <View style={styles.mapFallbackContent}>
-                                <Icon name="map" size={48} color={Color.blue2} />
+                                <Icon name="map" size={48} color={accentColor} />
                                 <Text style={styles.mapFallbackTitle}>
                                     {isExpoGo ? 'Карта недоступна в Expo Go' : 'Карта не загрузилась'}
                                 </Text>
                                 <Text style={styles.mapFallbackText}>
-                                    {isExpoGo 
+                                    {isExpoGo
                                         ? 'Откройте местоположение в нативном приложении карт'
                                         : 'Нажмите кнопку ниже, чтобы открыть местоположение в нативном приложении карт'
                                     }
@@ -1012,18 +982,6 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                     )}
                 </View>
 
-                {/* Отображение товаров остановки */}
-                {/* <StopProductsList
-                    stopId={stop.id}
-                    isActive={
-                        stop.startTime &&
-                        stop.endTime &&
-                        new Date(stop.startTime) <= new Date() &&
-                        new Date() <= new Date(stop.endTime)
-                    }
-                    refreshKey={stop.updatedAt || stop.createdAt}
-                /> */}
-
                 {(canEdit || canDelete) && (
                     <View style={styles.actionButtonsContainer}>
                         {canEdit && (
@@ -1055,7 +1013,6 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                 )}
             </View>
 
-            {/* Модальное окно для выбора чата */}
             <ShareStopModal
                 visible={shareModalVisible}
                 onClose={handleCloseShareModal}
@@ -1066,17 +1023,17 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.background,
     },
     scrollContent: {
         paddingBottom: 20,
     },
     errorText: {
         fontSize: FontSize.size_md,
-        color: 'red',
+        color: colors.error,
         textAlign: 'center',
         marginTop: 50,
         fontFamily: FontFamily.sFProText || "system",
@@ -1104,7 +1061,7 @@ const styles = StyleSheet.create({
     districtName: {
         fontSize: FontSize.size_md,
         fontWeight: '500',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText || "system",
         textAlign: 'center',
     },
@@ -1123,7 +1080,7 @@ const styles = StyleSheet.create({
         flex: 1,
         fontSize: FontSize.size_lg,
         fontFamily: FontFamily.sFProText || "system",
-        color: Color.dark,
+        color: colors.textPrimary,
         letterSpacing: 0.9,
         minWidth: 0,
     },
@@ -1131,26 +1088,26 @@ const styles = StyleSheet.create({
         width: 32,
         height: 32,
         borderRadius: 16,
-        backgroundColor: '#E8F0FE',
+        backgroundColor: isDark ? 'rgba(115, 125, 255, 0.12)' : '#E8F0FE',
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#D0E0F0',
+        borderColor: isDark ? 'rgba(115, 125, 255, 0.3)' : '#D0E0F0',
         flexShrink: 0,
         marginTop: 2,
     },
     dateTimeContainer: {
         marginBottom: 16,
-        backgroundColor: '#F8F9FA',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F8F9FA',
         borderRadius: 12,
         padding: 16,
         borderWidth: 1,
-        borderColor: '#E8EAED',
+        borderColor: isDark ? colors.border : '#E8EAED',
     },
     dateTime: {
         fontSize: FontSize.size_lg,
         fontFamily: FontFamily.sFProText || "system",
-        color: Color.dark,
+        color: colors.textPrimary,
         lineHeight: 30,
     },
     timeInfoContainer: {
@@ -1165,7 +1122,7 @@ const styles = StyleSheet.create({
         width: 32,
         height: 32,
         borderRadius: 16,
-        backgroundColor: '#E8F0FE',
+        backgroundColor: isDark ? 'rgba(115, 125, 255, 0.12)' : '#E8F0FE',
         justifyContent: 'center',
         alignItems: 'center',
         marginTop: 2,
@@ -1176,32 +1133,32 @@ const styles = StyleSheet.create({
     timeLabel: {
         fontSize: FontSize.size_sm,
         fontFamily: FontFamily.sFProText || "system",
-        color: '#666',
+        color: colors.textSecondary,
         marginBottom: 4,
         fontWeight: '500',
     },
     timeValue: {
         fontSize: FontSize.size_lg,
         fontFamily: FontFamily.sFProText || "system",
-        color: Color.dark,
+        color: colors.textPrimary,
         fontWeight: '600',
         lineHeight: 24,
     },
     timeDate: {
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText || "system",
-        color: Color.blue2,
+        color: isDark ? colors.primary : Color.blue2,
         marginTop: 8,
         textAlign: 'center',
         fontWeight: '500',
     },
     activeStopBanner: {
-        backgroundColor: '#34C759',
+        backgroundColor: isDark ? '#2E8F4A' : '#34C759',
         borderRadius: 12,
         padding: 16,
         marginBottom: 16,
         borderWidth: 2,
-        borderColor: '#30B050',
+        borderColor: isDark ? '#246B39' : '#30B050',
     },
     activeStopContent: {
         flexDirection: 'row',
@@ -1244,17 +1201,17 @@ const styles = StyleSheet.create({
         height: 250,
         borderRadius: 8,
         marginBottom: 16,
-        backgroundColor: '#f2f2f2',
+        backgroundColor: isDark ? colors.surfaceElevated : '#f2f2f2',
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#e0e0e0',
+        borderColor: isDark ? colors.border : '#e0e0e0',
         borderStyle: 'dashed',
     },
     photoPlaceholderText: {
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
-        color: '#999',
+        color: colors.textTertiary,
     },
     infoSection: {
         marginTop: 16,
@@ -1272,7 +1229,7 @@ const styles = StyleSheet.create({
     infoLabel: {
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
-        color: Color.blue2,
+        color: isDark ? colors.primary : Color.blue2,
         letterSpacing: 0.8,
     },
     infoValueContainer: {
@@ -1287,7 +1244,7 @@ const styles = StyleSheet.create({
         flex: 1,
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
-        color: Color.dark,
+        color: colors.textPrimary,
         letterSpacing: 0.8,
         minWidth: 0,
     },
@@ -1295,11 +1252,11 @@ const styles = StyleSheet.create({
         width: 28,
         height: 28,
         borderRadius: 14,
-        backgroundColor: '#E8F0FE',
+        backgroundColor: isDark ? 'rgba(115, 125, 255, 0.12)' : '#E8F0FE',
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#D0E0F0',
+        borderColor: isDark ? 'rgba(115, 125, 255, 0.3)' : '#D0E0F0',
         flexShrink: 0,
         marginTop: 2,
     },
@@ -1310,7 +1267,7 @@ const styles = StyleSheet.create({
     description: {
         fontSize: 14,
         fontFamily: FontFamily.sFProText,
-        color: Color.dark,
+        color: colors.textPrimary,
         letterSpacing: 0.7,
         lineHeight: 17,
     },
@@ -1318,7 +1275,7 @@ const styles = StyleSheet.create({
         marginTop: 8,
         fontSize: 13,
         fontFamily: FontFamily.sFProText,
-        color: Color.colorCornflowerblue,
+        color: isDark ? colors.primary : Color.colorCornflowerblue,
         lineHeight: 16,
     },
     mapContainer: {
@@ -1326,7 +1283,7 @@ const styles = StyleSheet.create({
         marginBottom: 16,
         borderRadius: 8,
         overflow: 'hidden',
-        backgroundColor: '#f0f0f0',
+        backgroundColor: isDark ? colors.surfaceElevated : '#f0f0f0',
     },
     mapWrapper: {
         flex: 1,
@@ -1347,13 +1304,13 @@ const styles = StyleSheet.create({
     mapTitle: {
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
-        color: Color.dark,
+        color: colors.textPrimary,
         fontWeight: '500',
     },
     mapSubtitle: {
         fontSize: FontSize.size_xs,
         fontFamily: FontFamily.sFProText,
-        color: '#666',
+        color: colors.textSecondary,
         marginTop: 2,
     },
     map: {
@@ -1381,7 +1338,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
     },
     editButton: {
-        backgroundColor: Color.blue2,
+        backgroundColor: isDark ? colors.primary : Color.blue2,
     },
     editButtonText: {
         color: Color.colorLightMode,
@@ -1390,7 +1347,7 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
     },
     deleteButton: {
-        backgroundColor: '#FF3B30',
+        backgroundColor: isDark ? '#C4392F' : '#FF3B30',
     },
     deleteButtonText: {
         color: Color.colorLightMode,
@@ -1406,25 +1363,25 @@ const styles = StyleSheet.create({
         height: 250,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#f0f0f0',
+        backgroundColor: isDark ? colors.surfaceElevated : '#f0f0f0',
         borderRadius: 8,
         gap: 8,
     },
     mapLoadingText: {
         fontSize: FontSize.size_md,
-        color: '#3B43A2',
+        color: isDark ? colors.textSecondary : '#3B43A2',
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
     },
     geocodingErrorText: {
         fontSize: FontSize.size_xs,
-        color: '#ff6b6b',
+        color: colors.error,
         fontFamily: FontFamily.sFProText,
         marginTop: 4,
     },
     mapFallbackContainer: {
         height: 250,
-        backgroundColor: '#f0f0f0',
+        backgroundColor: isDark ? colors.surfaceElevated : '#f0f0f0',
         borderRadius: 8,
         justifyContent: 'center',
         alignItems: 'center',
@@ -1437,7 +1394,7 @@ const styles = StyleSheet.create({
     mapFallbackTitle: {
         fontSize: FontSize.size_md,
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         marginTop: 12,
         marginBottom: 8,
@@ -1445,7 +1402,7 @@ const styles = StyleSheet.create({
     },
     mapFallbackText: {
         fontSize: FontSize.size_sm,
-        color: '#666',
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
         marginBottom: 20,
@@ -1454,7 +1411,7 @@ const styles = StyleSheet.create({
     mapFallbackButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: Color.blue2,
+        backgroundColor: isDark ? colors.primary : Color.blue2,
         paddingHorizontal: 20,
         paddingVertical: 12,
         borderRadius: 8,
@@ -1466,19 +1423,18 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         fontFamily: FontFamily.sFProText,
     },
-    // Стили для блока водителя
     driverSection: {
-        backgroundColor: '#F8F9FA',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F8F9FA',
         borderRadius: 12,
         padding: 16,
         marginBottom: 16,
         borderWidth: 1,
-        borderColor: '#E8EAED',
+        borderColor: isDark ? colors.border : '#E8EAED',
     },
     driverSectionTitle: {
         fontSize: FontSize.size_md,
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         marginBottom: 12,
     },
@@ -1490,7 +1446,7 @@ const styles = StyleSheet.create({
         width: 48,
         height: 48,
         borderRadius: 24,
-        backgroundColor: '#E8F0FE',
+        backgroundColor: isDark ? 'rgba(115, 125, 255, 0.12)' : '#E8F0FE',
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: 12,
@@ -1501,13 +1457,13 @@ const styles = StyleSheet.create({
     driverName: {
         fontSize: FontSize.size_md,
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         marginBottom: 2,
     },
     driverPhone: {
         fontSize: FontSize.size_sm,
-        color: '#666',
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
     },
     driverActions: {
@@ -1525,7 +1481,7 @@ const styles = StyleSheet.create({
         gap: 8,
     },
     callButton: {
-        backgroundColor: '#34C759',
+        backgroundColor: isDark ? '#2E8F4A' : '#34C759',
     },
     callButtonText: {
         color: '#fff',
@@ -1534,7 +1490,7 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
     },
     chatButton: {
-        backgroundColor: Color.blue2,
+        backgroundColor: isDark ? colors.primary : Color.blue2,
     },
     chatButtonText: {
         color: '#fff',

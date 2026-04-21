@@ -1,12 +1,12 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
-/**
- * Компонент секции формы
- */
 export const FormSection = ({ title, subtitle, children, style }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     return (
         <View style={[styles.section, style]}>
             {title && <Text style={styles.sectionTitle}>{title}</Text>}
@@ -16,17 +16,16 @@ export const FormSection = ({ title, subtitle, children, style }) => {
     );
 };
 
-/**
- * Компонент поля формы
- */
-export const FormField = ({ 
-    label, 
-    required, 
-    hint, 
-    error, 
-    children, 
-    style 
+export const FormField = ({
+    label,
+    required,
+    hint,
+    error,
+    children,
+    style
 }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     return (
         <View style={[styles.fieldContainer, style]}>
             {label && (
@@ -46,17 +45,16 @@ export const FormField = ({
     );
 };
 
-/**
- * Разделитель между полями
- */
 export const FormDivider = ({ style }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     return <View style={[styles.divider, style]} />;
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     section: {
         marginBottom: normalize(5),
-        backgroundColor: '#fff',
+        backgroundColor: isDark ? colors.surface : '#fff',
         borderRadius: 12,
         padding: normalize(10),
         shadowColor: '#000',
@@ -64,20 +62,22 @@ const styles = StyleSheet.create({
             width: 0,
             height: 1,
         },
-        shadowOpacity: 0.05,
+        shadowOpacity: isDark ? 0 : 0.05,
         shadowRadius: 2,
-        elevation: 2,
+        elevation: isDark ? 0 : 2,
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     sectionTitle: {
         fontSize: normalizeFont(17),
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         marginBottom: normalize(8),
         fontFamily: FontFamily.sFProText,
     },
     sectionSubtitle: {
         fontSize: normalizeFont(13),
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         marginBottom: normalize(16),
         fontFamily: FontFamily.sFProText,
     },
@@ -90,8 +90,8 @@ const styles = StyleSheet.create({
     label: {
         fontSize: normalizeFont(15),
         fontWeight: '500',
-        color: Color.dark,
-        opacity: 0.8,
+        color: colors.textPrimary,
+        opacity: isDark ? 1 : 0.8,
         fontFamily: FontFamily.sFProText,
     },
     required: {
@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
     },
     hint: {
         fontSize: normalizeFont(12),
-        color: '#999',
+        color: isDark ? colors.textTertiary : '#999',
         marginTop: normalize(4),
         fontFamily: FontFamily.sFProText,
     },
@@ -111,17 +111,7 @@ const styles = StyleSheet.create({
     },
     divider: {
         height: 1,
-        backgroundColor: '#E5E5EA',
+        backgroundColor: isDark ? colors.divider : '#E5E5EA',
         marginVertical: normalize(16),
     },
 });
-
-
-
-
-
-
-
-
-
-

@@ -28,23 +28,42 @@ export const AndroidShadow = ({
                                   borderRadius = 10,
                                   iosProps = {}
                               }) => {
-    // Извлекаем borderRadius из стиля, если он есть
+    // Извлекаем borderRadius / backgroundColor / border из стиля, если они заданы снаружи
+    // На Android это нужно, чтобы темизированный фон/рамка корректно применялись к внутреннему content-слою,
+    // иначе его захардкоженный белый фон перекрывает тему.
     let finalBorderRadius = borderRadius;
-    if (style && typeof style === 'object') {
+    let overriddenBackgroundColor;
+    let overriddenBorderWidth;
+    let overriddenBorderColor;
+
+    const extractFromStyleObject = (obj) => {
+        if (!obj || typeof obj !== 'object') return;
+        if (obj.borderRadius !== undefined) finalBorderRadius = obj.borderRadius;
+        if (obj.backgroundColor !== undefined) overriddenBackgroundColor = obj.backgroundColor;
+        if (obj.borderWidth !== undefined) overriddenBorderWidth = obj.borderWidth;
+        if (obj.borderColor !== undefined) overriddenBorderColor = obj.borderColor;
+    };
+
+    if (style) {
         if (Array.isArray(style)) {
-            // Если style - массив, ищем borderRadius в последнем объекте (приоритет)
-            for (let i = style.length - 1; i >= 0; i--) {
-                if (style[i] && style[i].borderRadius !== undefined) {
-                    finalBorderRadius = style[i].borderRadius;
-                    break;
-                }
-            }
-        } else if (style.borderRadius !== undefined) {
-            finalBorderRadius = style.borderRadius;
+            style.forEach(extractFromStyleObject);
+        } else {
+            extractFromStyleObject(style);
         }
     }
 
     if (Platform.OS === 'android') {
+        const contentOverrides = { borderRadius: finalBorderRadius };
+        if (overriddenBackgroundColor !== undefined) {
+            contentOverrides.backgroundColor = overriddenBackgroundColor;
+        }
+        if (overriddenBorderWidth !== undefined) {
+            contentOverrides.borderWidth = overriddenBorderWidth;
+        }
+        if (overriddenBorderColor !== undefined) {
+            contentOverrides.borderColor = overriddenBorderColor;
+        }
+
         return (
             <View style={[styles.container, style]}>
                 {/* Основная тень */}
@@ -63,10 +82,7 @@ export const AndroidShadow = ({
                 ]} />
 
                 {/* Контент */}
-                <View style={[
-                    styles.content,
-                    { borderRadius: finalBorderRadius }
-                ]}>
+                <View style={[styles.content, contentOverrides]}>
                     {children}
                 </View>
             </View>

@@ -488,11 +488,11 @@ export default function App() {
                         <SafePersistGate>
                             <AppContent/>
                         </SafePersistGate>
+                        {/* ToastContainer внутри AppProviders для доступа к ThemeContext. */}
+                        {/* Благодаря max z-index он всё равно отображается поверх всех модальных окон. */}
+                        <ToastContainer/>
                     </AppProviders>
                 </SafeAreaProvider>
-                {/* ToastContainer на самом верхнем уровне для отображения поверх всех модальных окон */}
-                {/* CustomAlertContainer теперь внутри AppProviders для доступа к контексту */}
-                <ToastContainer/>
             </GestureHandlerRootView>
         </ErrorBoundary>
     );

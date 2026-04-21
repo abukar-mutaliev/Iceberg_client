@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, memo, useCallback } from 'react';
+import React, { useEffect, useRef, memo, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Image, Platform, Linking } from 'react-native';
 import * as Location from 'expo-location';
 import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
@@ -8,6 +8,7 @@ import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { normalizeCoordinates } from '@/shared/lib/coordinatesHelper';
 import { useToast } from '@shared/ui/Toast';
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const LocationInput = memo(({
                                      mapLocation,
@@ -18,6 +19,8 @@ export const LocationInput = memo(({
                                      error,
                                      setAddress
                                    }) => {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { showSuccess, showError } = useToast();
   const { showAlert, showWarning } = useCustomAlert();
   const [locationPermissionStatus, setLocationPermissionStatus] = React.useState(null);
@@ -248,7 +251,7 @@ export const LocationInput = memo(({
             <Ionicons
                 name="location"
                 size={normalize(20)}
-                color={error ? "#FF3B30" : (hasValidCoords ? "#28a745" : "#3B43A2")}
+                color={error ? "#FF3B30" : (hasValidCoords ? "#28a745" : (isDark ? colors.primary : "#3B43A2"))}
                 style={styles.locationIcon}
             />
             <TextInput
@@ -263,7 +266,9 @@ export const LocationInput = memo(({
                   });
                 }}
                 placeholder="Введите координаты (широта, долгота)"
+                placeholderTextColor={isDark ? colors.textTertiary : '#999'}
                 editable={!isLocationLoading}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
             />
             {isLocationLoading && (
                 <ActivityIndicator
@@ -374,20 +379,20 @@ export const LocationInput = memo(({
   );
 });
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     marginBottom: normalize(20),
   },
   label: {
     fontSize: normalizeFont(FontSize.size_sm),
     fontWeight: '600',
-    color: Color.dark,
-    opacity: 0.4,
+    color: colors.textPrimary,
+    opacity: isDark ? 0.85 : 0.4,
     marginBottom: normalize(10),
     fontFamily: FontFamily.sFProText,
   },
   locationCard: {
-    backgroundColor: '#f7f7f7',
+    backgroundColor: isDark ? colors.surfaceElevated : '#f7f7f7',
     borderRadius: normalize(8),
     padding: normalize(12),
     shadowColor: "#000",
@@ -395,9 +400,11 @@ const styles = StyleSheet.create({
       width: 0,
       height: normalize(2),
     },
-    shadowOpacity: 0.08,
+    shadowOpacity: isDark ? 0 : 0.08,
     shadowRadius: normalize(3),
-    elevation: normalize(3),
+    elevation: isDark ? 0 : normalize(3),
+    borderWidth: isDark ? 1 : 0,
+    borderColor: isDark ? colors.border : 'transparent',
   },
   locationCardError: {
     shadowColor: "#FF3B30",
@@ -422,7 +429,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: normalize(60),
     fontSize: normalizeFont(FontSize.size_md),
-    color: Color.dark,
+    color: colors.textPrimary,
     fontFamily: FontFamily.sFProText,
   },
   inputError: {
@@ -432,21 +439,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: 'rgba(40, 167, 69, 0.1)',
+    backgroundColor: isDark ? 'rgba(76, 175, 80, 0.18)' : 'rgba(40, 167, 69, 0.1)',
     borderRadius: normalize(6),
     padding: normalize(8),
     marginBottom: normalize(8),
   },
   previewText: {
     fontSize: normalizeFont(12),
-    color: '#28a745',
+    color: isDark ? '#5FC984' : '#28a745',
     fontWeight: '500',
     flex: 1,
   },
   previewToggle: {
     paddingHorizontal: normalize(8),
     paddingVertical: normalize(4),
-    backgroundColor: '#28a745',
+    backgroundColor: isDark ? '#2E8F4A' : '#28a745',
     borderRadius: normalize(4),
   },
   previewToggleText: {
@@ -458,18 +465,18 @@ const styles = StyleSheet.create({
     marginTop: normalize(12),
     borderRadius: normalize(8),
     overflow: 'hidden',
-    backgroundColor: 'white',
+    backgroundColor: isDark ? colors.surfaceElevated : 'white',
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: isDark ? colors.border : '#e0e0e0',
   },
   miniMapTitle: {
     fontSize: normalizeFont(12),
     fontWeight: '500',
-    color: Color.dark,
+    color: colors.textPrimary,
     padding: normalize(8),
-    backgroundColor: '#f8f9fa',
+    backgroundColor: isDark ? colors.surface : '#f8f9fa',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: isDark ? colors.border : '#e0e0e0',
   },
   miniMapWrapper: {
     position: 'relative',
@@ -506,7 +513,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: '#E0E0E0',
+    backgroundColor: isDark ? colors.divider : '#E0E0E0',
     marginBottom: normalize(10),
   },
   locationButtonsContainer: {
@@ -514,7 +521,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   locationButton: {
-    backgroundColor: '#3B43A2',
+    backgroundColor: isDark ? colors.primary : '#3B43A2',
     paddingHorizontal: normalize(15),
     paddingVertical: normalize(10),
     borderRadius: normalize(6),
@@ -533,26 +540,26 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.sFProText,
   },
   disabledButton: {
-    backgroundColor: '#a0a0a0',
+    backgroundColor: isDark ? '#3A3D4A' : '#a0a0a0',
   },
   hintsContainer: {
     marginTop: normalize(12),
     padding: normalize(10),
-    backgroundColor: 'rgba(51, 57, 176, 0.05)',
+    backgroundColor: isDark ? 'rgba(92, 108, 255, 0.12)' : 'rgba(51, 57, 176, 0.05)',
     borderRadius: normalize(6),
     borderLeftWidth: 3,
-    borderLeftColor: '#3B43A2',
+    borderLeftColor: isDark ? colors.primary : '#3B43A2',
   },
   hintsTitle: {
     fontSize: normalizeFont(12),
     fontWeight: '600',
-    color: '#3B43A2',
+    color: isDark ? colors.primary : '#3B43A2',
     marginBottom: normalize(4),
     fontFamily: FontFamily.sFProText,
   },
   hintText: {
     fontSize: normalizeFont(11),
-    color: '#666',
+    color: isDark ? colors.textSecondary : '#666',
     marginBottom: normalize(2),
     fontFamily: FontFamily.sFProText,
   },

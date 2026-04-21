@@ -1,4 +1,4 @@
-import React, {useState, useRef, useEffect} from 'react';
+import React, {useState, useRef, useEffect, useMemo} from 'react';
 import {
     View,
     Text,
@@ -12,8 +12,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {Color, FontFamily, FontSize} from '@app/styles/GlobalStyles';
 import {normalize, normalizeFont} from '@shared/lib/normalize';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const CustomDatePicker = ({date, onDateChange, visible, onCancel}) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const [internalVisible, setInternalVisible] = useState(false);
     const [tempDate, setTempDate] = useState(date);
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -69,7 +72,6 @@ export const CustomDatePicker = ({date, onDateChange, visible, onCancel}) => {
     const generateDays = () => {
         const days = [];
         const currentDate = new Date();
-        // Генерируем дни на 30 дней вперед от текущей даты
         for (let i = 0; i < 30; i++) {
             const newDate = new Date(currentDate);
             newDate.setDate(currentDate.getDate() + i);
@@ -109,7 +111,7 @@ export const CustomDatePicker = ({date, onDateChange, visible, onCancel}) => {
                         editable={false}
                         pointerEvents="none"
                         placeholder="Выберите дату"
-                        placeholderTextColor={Color.dark + '80'}
+                        placeholderTextColor={isDark ? colors.textTertiary : (Color.dark + '80')}
                     />
                 </TouchableOpacity>
             )}
@@ -171,6 +173,8 @@ export const CustomDatePicker = ({date, onDateChange, visible, onCancel}) => {
 };
 
 export const CustomTimePicker = ({date, onTimeChange, visible, onCancel}) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const [internalVisible, setInternalVisible] = useState(false);
     const [tempDate, setTempDate] = useState(date);
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -186,12 +190,10 @@ export const CustomTimePicker = ({date, onTimeChange, visible, onCancel}) => {
         }
     }, [visible]);
 
-    // Обновляем временную дату при изменении даты извне
     useEffect(() => {
         setTempDate(date);
     }, [date]);
 
-    // Функция для запуска анимации фона
     const animateBackground = (toValue, duration = 300) => {
         Animated.timing(fadeAnim, {
             toValue,
@@ -200,7 +202,6 @@ export const CustomTimePicker = ({date, onTimeChange, visible, onCancel}) => {
         }).start();
     };
 
-    // Функция для анимации слайда контента
     const animateSlide = (toValue, duration = 300) => {
         Animated.timing(slideAnim, {
             toValue,
@@ -209,20 +210,17 @@ export const CustomTimePicker = ({date, onTimeChange, visible, onCancel}) => {
         }).start();
     };
 
-    // Открытие модального окна с анимацией фона и слайда
     const openModal = () => {
         setInternalVisible(true);
         animateBackground(1);
         animateSlide(0);
     };
 
-    // Закрытие модального окна с анимацией фона и слайда
     const closeModal = () => {
         animateBackground(0, 200);
         animateSlide(300, 200);
         setTimeout(() => {
             setInternalVisible(false);
-            // Вызываем внешний обработчик закрытия, если он предоставлен
             if (onCancel && typeof onCancel === 'function') {
                 onCancel();
             }
@@ -260,7 +258,7 @@ export const CustomTimePicker = ({date, onTimeChange, visible, onCancel}) => {
                         editable={false}
                         pointerEvents="none"
                         placeholder="Выберите время"
-                        placeholderTextColor={Color.dark}
+                        placeholderTextColor={isDark ? colors.textTertiary : Color.dark}
                     />
                 </TouchableOpacity>
             )}
@@ -351,29 +349,29 @@ export const CustomTimePicker = ({date, onTimeChange, visible, onCancel}) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     datePickerInput: {
         height: normalize(30),
-        backgroundColor: '#FFFFFF',
+        backgroundColor: 'transparent',
         borderRadius: 8,
         paddingVertical: normalize(5),
         paddingLeft: 0,
         paddingRight: 0,
         borderColor: 'transparent',
         fontSize: normalizeFont(FontSize.size_xs),
-        color: Color.dark || '#000',
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     timePickerInput: {
         height: normalize(30),
-        backgroundColor: '#FFFFFF',
+        backgroundColor: 'transparent',
         borderRadius: 8,
         paddingVertical: normalize(5),
         paddingLeft: 0,
         paddingRight: 0,
         borderColor: 'transparent',
         fontSize: normalizeFont(FontSize.size_xs),
-        color: Color.dark || '#000',
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     modalContainer: {
@@ -381,11 +379,13 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-end',
     },
     modalContent: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
         padding: 20,
         maxHeight: '80%',
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     modalHeader: {
         flexDirection: 'row',
@@ -396,12 +396,12 @@ const styles = StyleSheet.create({
     modalTitle: {
         fontSize: normalizeFont(FontSize.size_lg) || 18,
         fontWeight: '600',
-        color: Color.dark || '#000',
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     closeButton: {
         fontSize: normalizeFont(FontSize.size_md) || 16,
-        color: '#007AFF',
+        color: isDark ? colors.primary : '#007AFF',
         fontFamily: FontFamily.sFProText,
     },
     daysList: {
@@ -410,19 +410,19 @@ const styles = StyleSheet.create({
     dayItem: {
         paddingVertical: 12,
         borderBottomWidth: 1,
-        borderBottomColor: '#E0E0E0',
+        borderBottomColor: isDark ? colors.divider : '#E0E0E0',
     },
     selectedDay: {
-        backgroundColor: '#E8F5E9',
+        backgroundColor: isDark ? 'rgba(92, 108, 255, 0.18)' : '#E8F5E9',
     },
     dayText: {
         fontSize: normalizeFont(FontSize.size_md) || 16,
-        color: Color.dark || '#000',
+        color: colors.textPrimary,
         textAlign: 'center',
         fontFamily: FontFamily.sFProText,
     },
     selectedDayText: {
-        color: Color.blue2 || '#007AFF',
+        color: isDark ? colors.primary : (Color.blue2 || '#007AFF'),
         fontWeight: '600',
     },
     timePickerContainer: {
@@ -437,7 +437,7 @@ const styles = StyleSheet.create({
     timeColumnTitle: {
         fontSize: normalizeFont(FontSize.size_md) || 16,
         fontWeight: '500',
-        color: Color.dark || '#000',
+        color: colors.textPrimary,
         textAlign: 'center',
         marginBottom: 10,
         fontFamily: FontFamily.sFProText,
@@ -450,19 +450,19 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     selectedTime: {
-        backgroundColor: '#E8F5E9',
+        backgroundColor: isDark ? 'rgba(92, 108, 255, 0.18)' : '#E8F5E9',
     },
     timeText: {
         fontSize: normalizeFont(FontSize.size_lg) || 18,
-        color: Color.dark || '#000',
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     selectedTimeText: {
-        color: Color.blue2 || '#007AFF',
+        color: isDark ? colors.primary : (Color.blue2 || '#007AFF'),
         fontWeight: '600',
     },
     confirmButton: {
-        backgroundColor: Color.blue3 || '#3B43A2',
+        backgroundColor: isDark ? colors.primary : (Color.blue3 || '#3B43A2'),
         borderRadius: 8,
         paddingVertical: 15,
         alignItems: 'center',
@@ -479,7 +479,7 @@ const styles = StyleSheet.create({
     },
     modalSubtitle: {
         fontSize: normalizeFont(FontSize.size_sm) || 14,
-        color: Color.dark || '#000',
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         opacity: 0.7,
         marginTop: 2,

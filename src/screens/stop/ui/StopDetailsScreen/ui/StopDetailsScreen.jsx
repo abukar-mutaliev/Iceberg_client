@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Alert, BackHandler, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useFocusEffect } from '@react-navigation/native';
@@ -10,11 +10,15 @@ import { ErrorState } from '@shared/ui/states/ErrorState';
 import IceCreamTruckIcon from '@shared/ui/Icon/MainScreen/IceCreamTruckIcon';
 import { Color } from '@app/styles/GlobalStyles';
 import { selectStopById, selectStops, fetchAllStops, clearStopCache, fetchDriverStops, activateStop, skipStop, completeStop, cancelStop } from "@entities/stop";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { ThemedStatusBar } from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
 
 export const StopDetailsScreen = ({ navigation }) => {
     const route = useRoute();
     const dispatch = useDispatch();
     const { stopId } = route.params || {};
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     const [isLoadingStops, setIsLoadingStops] = useState(false);
     const [retryCount, setRetryCount] = useState(0);
@@ -36,7 +40,6 @@ export const StopDetailsScreen = ({ navigation }) => {
     const [isLifecycleLoading, setIsLifecycleLoading] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
 
-    // Функция для ручной загрузки данных
     const loadStopsData = React.useCallback(async () => {
         setIsLoadingStops(true);
 
@@ -50,14 +53,12 @@ export const StopDetailsScreen = ({ navigation }) => {
         }
     }, [dispatch]);
 
-    // Загрузка данных при монтировании только если данных нет
     useEffect(() => {
         const loadStopsImmediately = async () => {
             if (!stopId) {
                 return;
             }
 
-            // Если данные уже есть, не перезагружаем
             if (allStops.length > 0) {
                 return;
             }
@@ -73,15 +74,11 @@ export const StopDetailsScreen = ({ navigation }) => {
         }
     }, [stop]);
 
-    // Фокус на экране - дополнительная проверка и перезагрузка после редактирования
     useFocusEffect(
         React.useCallback(() => {
-            // Загружаем данные только если остановка не найдена и данных нет
             if (!stop && stopId && !isLoadingStops && allStops.length === 0) {
                 loadStopsData();
             }
-            // НЕ перезагружаем данные автоматически при каждом фокусе - это вызывает бесконечные запросы
-            // Перезагрузка происходит только через useEffect при монтировании
         }, [stopId, stop, isLoadingStops, allStops.length, loadStopsData])
     );
 
@@ -94,7 +91,6 @@ export const StopDetailsScreen = ({ navigation }) => {
         navigation.goBack();
     }, [navigation]);
 
-    // Нативная кнопка «Назад» на Android (жест или аппаратная кнопка)
     useEffect(() => {
         if (Platform.OS !== 'android') return;
         const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -170,16 +166,14 @@ export const StopDetailsScreen = ({ navigation }) => {
         ]);
     }, [runLifecycleAction]);
 
-    // Показываем загрузку если данные загружаются
     if (isLoading || isLoadingStops) {
         return <LoadingState />;
     }
 
-    // Если нет stopId в параметрах
     if (!stopId) {
         return (
             <ErrorState
-                icon={<IceCreamTruckIcon width={64} height={64} fill={Color.blue2} />}
+                icon={<IceCreamTruckIcon width={64} height={64} fill={isDark ? colors.primary : Color.blue2} />}
                 title="Остановка не найдена"
                 message="Не указан идентификатор остановки"
                 onRetry={handleGoBack}
@@ -188,7 +182,6 @@ export const StopDetailsScreen = ({ navigation }) => {
         );
     }
 
-    // Если остановка все еще не найдена после загрузки
     if (!stop && stopId) {
         const errorMessage = allStops.length === 0
             ? "Не удалось загрузить данные остановок"
@@ -196,7 +189,7 @@ export const StopDetailsScreen = ({ navigation }) => {
 
         return (
             <ErrorState
-                icon={<IceCreamTruckIcon width={64} height={64} fill={Color.blue2} />}
+                icon={<IceCreamTruckIcon width={64} height={64} fill={isDark ? colors.primary : Color.blue2} />}
                 title="Остановка недоступна"
                 message={errorMessage}
                 onRetry={handleRetry}
@@ -207,11 +200,10 @@ export const StopDetailsScreen = ({ navigation }) => {
         );
     }
 
-    // Если есть общая ошибка
     if (error) {
         return (
             <ErrorState
-                icon={<IceCreamTruckIcon width={64} height={64} fill={Color.blue2} />}
+                icon={<IceCreamTruckIcon width={64} height={64} fill={isDark ? colors.primary : Color.blue2} />}
                 title="Ошибка загрузки"
                 message={error}
                 onRetry={handleGoBack}
@@ -228,21 +220,20 @@ export const StopDetailsScreen = ({ navigation }) => {
     );
     const canManageStopLifecycle = isAdminOrEmployee || (isDriver && isDriverOwnedStop);
 
-    // Показываем контент остановки
     const lifecycleSection = canManageStopLifecycle && (
         <View style={styles.lifecycleSection}>
             <Text style={styles.lifecycleTitle}>Статус остановки</Text>
             <View style={styles.lifecycleActions}>
                 {stopStatus === 'SCHEDULED' && (
                     <>
-                       
+
                         <TouchableOpacity
                             style={[styles.lifecycleButton, styles.lifecycleWarning, isLifecycleLoading && styles.lifecycleDisabled]}
                             onPress={() => confirmAction('Пропустить остановку', 'Остановка не будет показана в канале маршрутов.', 'skip')}
                             disabled={isLifecycleLoading}
                         >
                             <Text
-                                style={styles.lifecycleButtonText}
+                                style={styles.lifecycleWarningText}
                                 numberOfLines={1}
                                 ellipsizeMode="tail"
                             >
@@ -274,7 +265,7 @@ export const StopDetailsScreen = ({ navigation }) => {
                                 disabled={isLifecycleLoading}
                             >
                                 <Text
-                                    style={styles.lifecycleButtonText}
+                                    style={styles.lifecycleDangerText}
                                     numberOfLines={1}
                                     ellipsizeMode="tail"
                                 >
@@ -292,7 +283,7 @@ export const StopDetailsScreen = ({ navigation }) => {
                         disabled={isLifecycleLoading}
                     >
                         <Text
-                            style={styles.lifecycleButtonText}
+                            style={styles.lifecycleDangerText}
                             numberOfLines={1}
                             ellipsizeMode="tail"
                         >
@@ -306,6 +297,7 @@ export const StopDetailsScreen = ({ navigation }) => {
 
     return (
         <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+            <ThemedStatusBar />
             <StopDetailsContent
                 stop={localStop || stop}
                 navigation={navigation}
@@ -317,10 +309,10 @@ export const StopDetailsScreen = ({ navigation }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#fff',
+        backgroundColor: colors.background,
     },
     lifecycleSection: {
         paddingTop: 8,
@@ -329,7 +321,7 @@ const styles = StyleSheet.create({
     lifecycleTitle: {
         fontSize: 14,
         fontWeight: '600',
-        color: '#000',
+        color: colors.textPrimary,
         marginBottom: 8,
     },
     lifecycleActions: {
@@ -345,20 +337,20 @@ const styles = StyleSheet.create({
         paddingHorizontal: 10,
         borderRadius: 8,
         borderWidth: 1,
-        borderColor: '#E0E0E0',
-        backgroundColor: '#FFFFFF',
+        borderColor: isDark ? colors.border : '#E0E0E0',
+        backgroundColor: isDark ? colors.surfaceElevated : '#FFFFFF',
     },
     lifecyclePrimary: {
-        backgroundColor: '#2E7D32',
-        borderColor: '#2E7D32',
+        backgroundColor: isDark ? '#2E7D32' : '#2E7D32',
+        borderColor: isDark ? '#2E7D32' : '#2E7D32',
     },
     lifecycleWarning: {
-        backgroundColor: '#FFF3E0',
-        borderColor: '#FFB74D',
+        backgroundColor: isDark ? 'rgba(255, 183, 77, 0.15)' : '#FFF3E0',
+        borderColor: isDark ? 'rgba(255, 183, 77, 0.5)' : '#FFB74D',
     },
     lifecycleDanger: {
-        backgroundColor: '#FFEBEE',
-        borderColor: '#EF5350',
+        backgroundColor: isDark ? 'rgba(239, 83, 80, 0.15)' : '#FFEBEE',
+        borderColor: isDark ? 'rgba(239, 83, 80, 0.6)' : '#EF5350',
     },
     lifecycleDisabled: {
         opacity: 0.6,
@@ -366,7 +358,19 @@ const styles = StyleSheet.create({
     lifecycleButtonText: {
         fontWeight: '600',
         fontSize: 12,
-        color: '#424242',
+        color: isDark ? colors.textPrimary : '#424242',
+        textAlign: 'center',
+    },
+    lifecycleWarningText: {
+        fontWeight: '600',
+        fontSize: 12,
+        color: isDark ? '#FFB74D' : '#424242',
+        textAlign: 'center',
+    },
+    lifecycleDangerText: {
+        fontWeight: '600',
+        fontSize: 12,
+        color: isDark ? '#EF5350' : '#424242',
         textAlign: 'center',
     },
     lifecycleButtonTextPrimary: {
