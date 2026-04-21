@@ -61,6 +61,7 @@
     "expo-linear-gradient": "~15.0.8",
     "expo-location": "~19.0.8",
     "expo-media-library": "~18.2.1",
+    "expo-navigation-bar": "~5.0.10",
     "expo-notifications": "~0.32.15",
     "expo-sharing": "~14.0.8",
     "expo-sqlite": "~16.0.10",
@@ -68,6 +69,7 @@
     "expo-updates": "~29.0.15",
     "lodash": "^4.17.21",
     "lucide-react-native": "^0.503.0",
+    "patch-package": "^8.0.1",
     "prop-types": "^15.8.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -94,8 +96,7 @@
     "redux": "^5.0.0",
     "redux-logger": "^3.0.6",
     "redux-persist": "^6.0.0",
-    "socket.io-client": "^4.8.1",
-    "patch-package": "^8.0.1"
+    "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
     "@babel/core": "^7.26.0",

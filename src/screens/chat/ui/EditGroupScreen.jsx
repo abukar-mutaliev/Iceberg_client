@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -19,8 +19,12 @@ import ChatApi from '@entities/chat/api/chatApi';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const EditGroupScreen = ({ route, navigation }) => {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const { roomId } = route.params;
   const dispatch = useDispatch();
   const { showError, showAlert } = useCustomAlert();
@@ -507,6 +511,8 @@ export const EditGroupScreen = ({ route, navigation }) => {
                 value={groupName}
                 onChangeText={setGroupName}
                 placeholder="Введите название группы"
+                placeholderTextColor={isDark ? colors.textTertiary : undefined}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
                 maxLength={100}
               />
             </View>
@@ -518,6 +524,8 @@ export const EditGroupScreen = ({ route, navigation }) => {
                 value={groupDescription}
                 onChangeText={setGroupDescription}
                 placeholder="Введите описание группы"
+                placeholderTextColor={isDark ? colors.textTertiary : undefined}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
                 multiline
                 maxLength={500}
               />
@@ -529,10 +537,10 @@ export const EditGroupScreen = ({ route, navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background : '#FFFFFF',
   },
   header: {
     flexDirection: 'row',
@@ -541,25 +549,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
+    borderBottomColor: isDark ? colors.divider : '#E5E5E5',
+    backgroundColor: isDark ? colors.surface : '#FFFFFF',
   },
   backButton: {
     padding: 8,
   },
   backButtonText: {
     fontSize: 24,
-    color: '#007AFF',
+    color: isDark ? colors.primary : '#007AFF',
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#000000',
+    color: isDark ? colors.textPrimary : '#000000',
     flex: 1,
     textAlign: 'center',
     marginHorizontal: 16,
   },
   saveButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: isDark ? colors.primary : '#007AFF',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
@@ -567,7 +576,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   saveButtonDisabled: {
-    backgroundColor: '#C7C7CC',
+    backgroundColor: isDark ? colors.border : '#C7C7CC',
   },
   saveButtonText: {
     color: '#FFFFFF',
@@ -582,7 +591,7 @@ const styles = StyleSheet.create({
   },
   scrollViewContent: {
     padding: 16,
-    paddingBottom: 100, // Увеличиваем нижний отступ для клавиатуры
+    paddingBottom: 100,
   },
   content: {
     flex: 1,
@@ -598,7 +607,7 @@ const styles = StyleSheet.create({
     borderRadius: 60,
     overflow: 'hidden',
     borderWidth: 2,
-    borderColor: '#E5E5E5',
+    borderColor: isDark ? colors.border : '#E5E5E5',
     borderStyle: 'dashed',
   },
   avatarImageContainer: {
@@ -664,7 +673,7 @@ const styles = StyleSheet.create({
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F8F8F8',
+    backgroundColor: isDark ? colors.surfaceElevated : '#F8F8F8',
   },
   avatarPlaceholderText: {
     fontSize: 32,
@@ -672,7 +681,7 @@ const styles = StyleSheet.create({
   },
   avatarPlaceholderSubtext: {
     fontSize: 12,
-    color: '#666666',
+    color: isDark ? colors.textSecondary : '#666666',
     textAlign: 'center',
   },
   formSection: {
@@ -684,22 +693,23 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#333333',
+    color: isDark ? colors.textPrimary : '#333333',
     marginBottom: 8,
   },
   textInput: {
     borderWidth: 1,
-    borderColor: '#E5E5E5',
+    borderColor: isDark ? colors.border : '#E5E5E5',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 12,
     fontSize: 16,
-    backgroundColor: '#FFFFFF',
+    color: isDark ? colors.textPrimary : '#000000',
+    backgroundColor: isDark ? colors.inputBackground : '#FFFFFF',
   },
   descriptionInput: {
     height: 100,
     textAlignVertical: 'top',
-    paddingBottom: 20, // Дополнительный отступ снизу для текста
+    paddingBottom: 20,
   },
 });
 

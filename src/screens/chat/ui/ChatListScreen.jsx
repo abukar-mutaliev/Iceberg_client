@@ -14,16 +14,17 @@ import {getImageUrl} from '@shared/api/api';
 import {IconDelivery} from '@shared/ui/Icon/Profile/IconDelivery';
 import IconWarehouse from '@shared/ui/Icon/Warehouse/IconWarehouse';
 import {Ionicons} from '@expo/vector-icons';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 // Компонент для отображения иконки голосового сообщения
-const VoiceMessageIcon = React.memo(() => (
+const VoiceMessageIcon = React.memo(({ styles, iconColor }) => (
     <View style={styles.voiceIconContainer}>
-        <Ionicons name="mic" size={16} color="#8696A0" />
+        <Ionicons name="mic" size={16} color={iconColor} />
     </View>
 ));
 
 // Отображение статуса в списке должно совпадать с пузырьком сообщения.
-const StatusTicks = React.memo(({status}) => {
+const StatusTicks = React.memo(({status, styles}) => {
     const normalizedStatus = status?.toUpperCase?.() || status;
 
     if (normalizedStatus === 'READ') {
@@ -110,6 +111,9 @@ export const ChatListScreen = ({navigation}) => {
     const { showTabBar } = useTabBar();
     const insets = useSafeAreaInsets();
     const tabBarHeight = 80 + insets.bottom;
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+    const mutedIconColor = isDark ? colors.textSecondary : '#8696A0';
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [timeTick, setTimeTick] = useState(Date.now());
     const rooms = useSelector(selectRoomsList) || [];
@@ -656,12 +660,14 @@ export const ChatListScreen = ({navigation}) => {
         const avatarUri = getRoomAvatar(item);
         // Последнее сообщение для строки: селектор может отдать только serverLastMessage
         const lastMessageRaw = item.lastMessage ?? item.serverLastMessage;
-        // STOP из чужих районов / просроченные — не в превью и без бейджа (как в useGroupChatData / selectors)
-        const isFilteredByDistrict = (item.type === 'GROUP' || item.type === 'BROADCAST') &&
+        // STOP из чужих районов / просроченные — не в превью и без бейджа.
+        // Правила применяются ТОЛЬКО к каналам (BROADCAST). В обычных групповых
+        // чатах (GROUP) остановка всегда отображается в превью и считается в unread.
+        const isFilteredByDistrict = item.type === 'BROADCAST' &&
             lastMessageRaw?.type === 'STOP' &&
             userDistrictIds.length > 0 &&
             !isStopInUserDistrict(lastMessageRaw, userDistrictIds);
-        const isExpiredStop = (item.type === 'GROUP' || item.type === 'BROADCAST') &&
+        const isExpiredStop = item.type === 'BROADCAST' &&
             lastMessageRaw?.type === 'STOP' &&
             isStopMessageExpired(lastMessageRaw, timeTick);
         // Канал «Маршруты» (BROADCAST): служебные SYSTEM в превью списка не показываем
@@ -750,7 +756,9 @@ export const ChatListScreen = ({navigation}) => {
             } else if (lastMessage.type === 'PRODUCT') {
                 messageContent = 'Товар';
             } else if (lastMessage.type === 'STOP') {
-                if (isStopMessageExpired(lastMessage, timeTick)) {
+                // Просрочку применяем только к каналам (BROADCAST). В обычных
+                // групповых чатах STOP — обычное сообщение и всегда показывается.
+                if (item.type === 'BROADCAST' && isStopMessageExpired(lastMessage, timeTick)) {
                     messageContent = 'Сообщение';
                 } else {
                     isStopMessage = true;
@@ -840,12 +848,12 @@ export const ChatListScreen = ({navigation}) => {
                         {/* Показываем галочки слева от сообщения для своих сообщений (но не для системных) */}
                         {lastMessage && isOwnMessage && lastMessage.type !== 'SYSTEM' && (
                             <View style={styles.statusContainerLeft}>
-                                <StatusTicks status={messageStatus}/>
+                                <StatusTicks status={messageStatus} styles={styles}/>
                             </View>
                         )}
                         {isStopMessage ? (
                             <View style={styles.stopPreviewContainer}>
-                                <IconDelivery width={14} height={14} color="#8696A0" style={styles.stopIcon} />
+                                <IconDelivery width={14} height={14} color={mutedIconColor} style={styles.stopIcon} />
                                 <Text style={[
                                     styles.preview,
                                     lastMessage && isOwnMessage && styles.previewWithStatus
@@ -853,7 +861,7 @@ export const ChatListScreen = ({navigation}) => {
                             </View>
                         ) : isWarehouseMessage ? (
                             <View style={styles.warehousePreviewContainer}>
-                                <IconWarehouse width={14} height={14} color="#8696A0" style={styles.warehouseIcon} />
+                                <IconWarehouse width={14} height={14} color={mutedIconColor} style={styles.warehouseIcon} />
                                 <Text style={[
                                     styles.preview,
                                     lastMessage && isOwnMessage && styles.previewWithStatus
@@ -861,7 +869,7 @@ export const ChatListScreen = ({navigation}) => {
                             </View>
                         ) : isVoiceMessage ? (
                             <View style={styles.voiceMessageContainer}>
-                                <VoiceMessageIcon />
+                                <VoiceMessageIcon styles={styles} iconColor={mutedIconColor} />
                                 <Text style={[
                                     styles.preview,
                                     lastMessage && isOwnMessage && styles.previewWithStatus
@@ -869,7 +877,7 @@ export const ChatListScreen = ({navigation}) => {
                             </View>
                         ) : isContactMessage ? (
                             <View style={styles.contactMessageContainer}>
-                                <Ionicons name="person" size={16} color="#8696A0" style={styles.contactIcon} />
+                                <Ionicons name="person" size={16} color={mutedIconColor} style={styles.contactIcon} />
                                 <Text style={[
                                     styles.preview,
                                     lastMessage && isOwnMessage && styles.previewWithStatus
@@ -890,7 +898,7 @@ export const ChatListScreen = ({navigation}) => {
                 )}
             </TouchableOpacity>
         );
-    }, [getChatTitle, getRoomAvatar, openRoom, currentUserId, userDistrictIds, timeTick]);
+    }, [getChatTitle, getRoomAvatar, openRoom, currentUserId, userDistrictIds, timeTick, styles, mutedIconColor]);
 
     const keyExtractor = useCallback((item) => {
         // Безопасное извлечение ключа с обработкой undefined/null
@@ -904,15 +912,15 @@ export const ChatListScreen = ({navigation}) => {
         index,
     }), []);
 
-    const SeparatorComponent = useCallback(() => <View style={styles.separator}/>, []);
+    const SeparatorComponent = useCallback(() => <View style={styles.separator}/>, [styles]);
 
     const EmptyComponent = useCallback(() => (
         !loading ? (
             <View style={{paddingVertical: 40, alignItems: 'center'}}>
-                <Text style={{color: '#8696A0'}}>Чатов пока нет</Text>
+                <Text style={{color: isDark ? colors.textSecondary : '#8696A0'}}>Чатов пока нет</Text>
             </View>
         ) : null
-    ), [loading]);
+    ), [loading, isDark, colors.textSecondary]);
 
     const showTopLoader = loading && !isRefreshing;
 
@@ -949,8 +957,9 @@ export const ChatListScreen = ({navigation}) => {
                     <RefreshControl
                         refreshing={isRefreshing}
                         onRefresh={handleRefresh}
-                        colors={['#007AFF']}
-                        tintColor="#007AFF"
+                        colors={[isDark ? colors.primary : '#007AFF']}
+                        tintColor={isDark ? colors.primary : '#007AFF'}
+                        progressBackgroundColor={isDark ? colors.surface : undefined}
                     />
                 }
                 contentContainerStyle={[styles.listContainer, { paddingBottom: tabBarHeight }]}
@@ -967,17 +976,17 @@ export const ChatListScreen = ({navigation}) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.background : '#FFFFFF',
     },
     listContainer: {
         paddingVertical: 0,
     },
     separator: {
         height: 1,
-        backgroundColor: '#E5E5E5',
+        backgroundColor: isDark ? colors.divider : '#E5E5E5',
         marginLeft: 68,
     },
     item: {
@@ -985,21 +994,21 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: 16,
         paddingVertical: 12,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.background : '#FFFFFF',
         minHeight: 72,
     },
     avatar: {
         width: 50,
         height: 50,
         borderRadius: 25,
-        backgroundColor: '#DDD',
+        backgroundColor: isDark ? colors.surfaceElevated : '#DDD',
         marginRight: 12,
         shadowColor: '#000',
         shadowOffset: {
             width: 0,
             height: 1,
         },
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0.3 : 0.1,
         shadowRadius: 2,
         elevation: 2,
     },
@@ -1007,12 +1016,12 @@ const styles = StyleSheet.create({
         width: 50,
         height: 50,
         borderRadius: 25,
-        backgroundColor: '#DDD',
+        backgroundColor: isDark ? colors.surfaceElevated : '#DDD',
         marginRight: 12,
         overflow: 'hidden',
         shadowColor: '#000',
         shadowOffset: {width: 0, height: 1},
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0.3 : 0.1,
         shadowRadius: 2,
         elevation: 2,
     },
@@ -1022,21 +1031,21 @@ const styles = StyleSheet.create({
     },
     avatarPlaceholder: {
         flex: 1,
-        backgroundColor: '#DDD',
+        backgroundColor: isDark ? colors.surfaceElevated : '#DDD',
         justifyContent: 'center',
         alignItems: 'center',
     },
     groupPlaceholderText: {
         fontSize: 20,
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
     },
     productPlaceholderText: {
         fontSize: 18,
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
     },
     userPlaceholderText: {
         fontSize: 18,
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
     },
     textContainer: {
         flex: 1,
@@ -1050,23 +1059,23 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 16,
         fontWeight: '500',
-        color: '#000000',
+        color: isDark ? colors.textPrimary : '#000000',
         maxWidth: '75%',
         lineHeight: 22,
     },
     preview: {
         fontSize: 14,
-        color: '#8696A0',
+        color: isDark ? colors.textSecondary : '#8696A0',
         lineHeight: 20,
         maxWidth: '80%',
     },
     time: {
         fontSize: 12,
-        color: '#8696A0',
+        color: isDark ? colors.textTertiary : '#8696A0',
         lineHeight: 16,
     },
     badge: {
-        backgroundColor: '#25D366',
+        backgroundColor: isDark ? '#1F8A4F' : '#25D366',
         paddingHorizontal: 6,
         paddingVertical: 2,
         borderRadius: 10,
@@ -1133,43 +1142,43 @@ const styles = StyleSheet.create({
     },
     tick: {
         fontSize: 10,
-        color: '#8696A0',
+        color: isDark ? colors.textTertiary : '#8696A0',
         fontWeight: '700',
         lineHeight: 14,
         marginRight: -3,
     },
     tickRead: {
-        color: '#4FC3F7',
+        color: isDark ? '#6BB6FF' : '#4FC3F7',
     },
     connectionIndicator: {
-        backgroundColor: '#FFF3CD',
+        backgroundColor: isDark ? 'rgba(255, 193, 7, 0.14)' : '#FFF3CD',
         paddingHorizontal: 16,
         paddingVertical: 12,
         borderBottomWidth: 1,
-        borderBottomColor: '#FFEAA7',
+        borderBottomColor: isDark ? 'rgba(255, 193, 7, 0.35)' : '#FFEAA7',
         borderLeftWidth: 4,
-        borderLeftColor: '#FF7675',
+        borderLeftColor: isDark ? '#FF7675' : '#FF7675',
     },
     connectionWarning: {
         fontSize: 13,
         fontWeight: '500',
-        color: '#856404',
+        color: isDark ? '#FFD24A' : '#856404',
         lineHeight: 18,
     },
     connectionDetails: {
         fontSize: 11,
-        color: '#856404',
+        color: isDark ? '#FFD24A' : '#856404',
         marginTop: 4,
         opacity: 0.8,
     },
     topLoader: {
         height: 4,
-        backgroundColor: '#EAF2FF',
+        backgroundColor: isDark ? colors.surface : '#EAF2FF',
         justifyContent: 'center',
     },
     topLoaderBar: {
         height: 2,
-        backgroundColor: '#007AFF',
+        backgroundColor: isDark ? colors.primary : '#007AFF',
         marginHorizontal: 16,
         borderRadius: 1,
         opacity: 0.8,

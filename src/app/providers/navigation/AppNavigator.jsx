@@ -4,6 +4,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Platform, Linking, Animated, View, Text, TouchableOpacity, Image } from 'react-native';
 import ThemedStatusBar from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator, CardStyleInterpolators } from "@react-navigation/stack";
@@ -841,7 +842,9 @@ const CartStackScreen = () => (
 );
 
 // Chat Stack Navigator
-const ChatStackScreen = () => (
+const ChatStackScreen = () => {
+    const { colors, isDark } = useTheme();
+    return (
     <ChatStack.Navigator
         id="ChatStack"
         screenOptions={{
@@ -862,14 +865,16 @@ const ChatStackScreen = () => (
                 // поэтому явно убираем headerStatusBarHeight и центрируем контейнер.
                 headerStatusBarHeight: 0,
                 headerStyle: {
-                    backgroundColor: '#FFFFFF',
-                    elevation: 4,
-                    shadowOpacity: 0.1,
+                    backgroundColor: isDark ? colors.surface : '#FFFFFF',
+                    elevation: isDark ? 0 : 4,
+                    shadowOpacity: isDark ? 0 : 0.1,
                     height: 56,
+                    borderBottomWidth: isDark ? 1 : 0,
+                    borderBottomColor: isDark ? colors.divider : 'transparent',
                 },
                 headerTitle: () => <ChatListHeader navigation={navigation} />,
                 headerLeft: () => null,
-                headerTintColor: '#000000',
+                headerTintColor: isDark ? colors.textPrimary : '#000000',
                 cardOverlayEnabled: false,
             })}
         />
@@ -912,7 +917,8 @@ const ChatStackScreen = () => (
             options={createScreenOptions()}
         />
     </ChatStack.Navigator>
-);
+    );
+};
 
 // Admin Stack Navigator
 const AdminStackScreen = () => (
@@ -1323,6 +1329,7 @@ export const MainTabNavigator = () => (
 
 export const AppNavigator = () => {
     const isAuthenticated = useSelector(selectIsAuthenticated);
+    const { colors, isDark } = useTheme();
     useFavoritesCleanup(isAuthenticated);
     useDeepLinking();
 
@@ -1609,16 +1616,20 @@ export const AppNavigator = () => {
                                                     activeOpacity={0.6}
                                                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                                                 >
-                                                    <Text style={{ fontSize: 28, color: '#000000', fontWeight: '300' }}>‹</Text>
+                                                    <Text style={{ fontSize: 28, color: isDark ? colors.textPrimary : '#000000', fontWeight: '300' }}>‹</Text>
                                                 </TouchableOpacity>
                                             ),
                                             headerStyle: {
-                                                backgroundColor: '#FFFFFF',
+                                                backgroundColor: isDark ? colors.surface : '#FFFFFF',
                                                 height: 56,
+                                                elevation: isDark ? 0 : undefined,
+                                                shadowOpacity: isDark ? 0 : undefined,
+                                                borderBottomWidth: isDark ? 1 : 0,
+                                                borderBottomColor: isDark ? colors.divider : 'transparent',
                                             },
-                                            headerTintColor: '#000000',
+                                            headerTintColor: isDark ? colors.textPrimary : '#000000',
                                             gestureEnabled: true,
-                                            cardStyle: { backgroundColor: '#ffffff' },
+                                            cardStyle: { backgroundColor: isDark ? colors.background : '#ffffff' },
                                         })}
                                     />
                                     {/* Профиль пользователя из чата должен открываться в корневом AppStack,
@@ -1636,6 +1647,12 @@ export const AppNavigator = () => {
                                         options={({ route, navigation }) => {
                                             const params = route?.params || {};
                                             const roomTitle = params.roomTitle || 'Чат';
+                                            // Тёма-aware фон карточки и хедера: без этого в dark-режиме
+                                            // во время slide-анимации видна белая "вспышка" под чатом,
+                                            // пока ChatBackground (ImageBackground) ещё декодирует PNG.
+                                            const headerBg = isDark ? colors.surface : '#FFFFFF';
+                                            const cardBg = isDark ? colors.background : '#ffffff';
+                                            const tint = isDark ? colors.textPrimary : '#000000';
 
                                             return {
                                                 ...slideFromRight,
@@ -1645,13 +1662,6 @@ export const AppNavigator = () => {
                                                 headerTransparent: false,
                                                 headerStatusBarHeight: 0,
                                                 keyboardHandlingEnabled: false,
-                                                headerStyle: {
-                                                    backgroundColor: '#FFFFFF',
-                                                    height: 64,
-                                                    elevation: 0,
-                                                    shadowOpacity: 0,
-                                                    borderBottomWidth: 0,
-                                                },
                                                 headerLeft: () => (
                                                     <TouchableOpacity
                                                         onPress={() => {
@@ -1698,25 +1708,26 @@ export const AppNavigator = () => {
                                                     >
                                                         <Text style={{
                                                             fontSize: 32,
-                                                            color: '#000000',
+                                                            color: tint,
                                                             fontWeight: '300',
                                                             lineHeight: 32,
                                                         }}>‹</Text>
                                                     </TouchableOpacity>
                                                 ),
                                                 gestureEnabled: true,
-                                                cardStyle: { backgroundColor: '#ffffff' },
-                                                headerTransparent: false,
-                                                headerStatusBarHeight: 0,
-                                                keyboardHandlingEnabled: false,
+                                                cardStyle: { backgroundColor: cardBg },
                                                 headerStyle: {
-                                                    backgroundColor: '#FFFFFF',
+                                                    backgroundColor: headerBg,
                                                     height: 64,
                                                     elevation: 0,
                                                     shadowOpacity: 0,
-                                                    borderBottomWidth: 0,
+                                                    borderBottomWidth: isDark ? 1 : 0,
+                                                    borderBottomColor: isDark ? colors.divider : 'transparent',
                                                 },
-                                                headerTintColor: '#000000',
+                                                headerTintColor: tint,
+                                                headerTitleStyle: {
+                                                    color: tint,
+                                                },
                                                 headerBackTitleVisible: false,
                                             };
                                         }}
@@ -1729,15 +1740,20 @@ export const AppNavigator = () => {
                                             headerShown: true,
                                             title: 'Поиск чатов',
                                             gestureEnabled: true,
-                                            cardStyle: { backgroundColor: '#ffffff' },
+                                            cardStyle: { backgroundColor: isDark ? colors.background : '#ffffff' },
                                             headerStatusBarHeight: 0,
                                             headerStyle: {
-                                                backgroundColor: '#FFFFFF',
+                                                backgroundColor: isDark ? colors.surface : '#FFFFFF',
                                                 height: 56,
+                                                elevation: isDark ? 0 : undefined,
+                                                shadowOpacity: isDark ? 0 : undefined,
+                                                borderBottomWidth: isDark ? 1 : 0,
+                                                borderBottomColor: isDark ? colors.divider : 'transparent',
                                             },
                                             headerTitleStyle: {
                                                 fontSize: 18,
                                                 fontWeight: '500',
+                                                color: isDark ? colors.textPrimary : '#000000',
                                             },
                                             headerTitleAlign: 'center',
                                             headerLeftContainerStyle: {
@@ -1765,10 +1781,10 @@ export const AppNavigator = () => {
                                                     activeOpacity={0.6}
                                                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                                                 >
-                                                    <Text style={{ fontSize: 28, color: '#000000', fontWeight: '300', lineHeight: 28 }}>‹</Text>
+                                                    <Text style={{ fontSize: 28, color: isDark ? colors.textPrimary : '#000000', fontWeight: '300', lineHeight: 28 }}>‹</Text>
                                                 </TouchableOpacity>
                                             ),
-                                            headerTintColor: '#000000',
+                                            headerTintColor: isDark ? colors.textPrimary : '#000000',
                                         })}
                                     />
                                     <Stack.Screen

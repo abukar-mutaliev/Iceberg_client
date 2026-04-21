@@ -3,6 +3,7 @@ import { Animated, View, StyleSheet } from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { MessageBubble } from './MessageBubble';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const SWIPE_THRESHOLD = 80; // Минимальная дистанция свайпа для триггера (увеличено для предотвращения случайных срабатываний)
 const MAX_TRANSLATE = 100; // Максимальное смещение при свайпе
@@ -22,6 +23,7 @@ export const SwipeableMessageBubble = ({
   onOpenContact,
   ...props 
 }) => {
+  const { colors, isDark } = useTheme();
   const translateX = useRef(new Animated.Value(0)).current;
   const currentTranslateX = useRef(0);
   const isResetting = useRef(false);
@@ -129,7 +131,7 @@ export const SwipeableMessageBubble = ({
           }
         ]}
       >
-        <Ionicons name="arrow-undo" size={24} color="#007AFF" />
+        <Ionicons name="arrow-undo" size={24} color={isDark ? colors.primary : '#007AFF'} />
       </Animated.View>
 
       <PanGestureHandler

@@ -15,6 +15,7 @@ import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
 import { getBaseUrl, getImageUrl } from '@shared/api/api';
 import { audioManager } from '../../lib/audioManager';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 // ============================================================================
 // УТИЛИТЫ И КОНСТАНТЫ
@@ -74,7 +75,13 @@ const generateWaveform = (attachment, length = 40) => {
 // КОМПОНЕНТЫ
 // ============================================================================
 
+const useVoiceStyles = () => {
+  const { colors, isDark } = useTheme();
+  return useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+};
+
 const StatusTicks = memo(({ status }) => {
+  const styles = useVoiceStyles();
   const getTicksForStatus = () => {
     switch (status) {
       case 'SENDING':
@@ -912,6 +919,8 @@ const useAudioPlayer = (audioUri, cachedPath, messageId, onPlaybackStatusUpdate,
 // ============================================================================
 
 const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, status }) => {
+  const styles = useVoiceStyles();
+  const { colors, isDark } = useTheme();
   // Защита от undefined/null attachment
   if (!attachment || typeof attachment !== 'object') {
     if (__DEV__) {
@@ -1648,18 +1657,21 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
             <View style={styles.waveformBars}>
               {waveformData.map((height, i) => {
                 const barPosition = (i / waveformData.length) * 100;
-                
+
+                const unplayedColor = isOwnMessage
+                  ? (isDark ? 'rgba(255, 255, 255, 0.45)' : 'rgba(9, 94, 84, 0.3)')
+                  : (isDark ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.2)');
+                const playedColor = isOwnMessage
+                  ? (isDark ? '#FFFFFF' : '#095E54')
+                  : (isDark ? '#25D366' : '#25D366');
+
                 const backgroundColor = progressAnim.interpolate({
                   inputRange: [
                     Math.max(0, barPosition - 3),
                     barPosition,
                     Math.min(100, barPosition + 1)
                   ],
-                  outputRange: [
-                    isOwnMessage ? 'rgba(9, 94, 84, 0.3)' : 'rgba(0, 0, 0, 0.2)',
-                    isOwnMessage ? '#095E54' : '#25D366',
-                    isOwnMessage ? '#095E54' : '#25D366'
-                  ],
+                  outputRange: [unplayedColor, playedColor, playedColor],
                   extrapolate: 'clamp'
                 });
                 
@@ -1700,7 +1712,11 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               {playbackRate === 1.0 ? (
-                <Ionicons name="speedometer-outline" size={12} color={isOwnMessage ? '#095E54' : '#25D366'} />
+                <Ionicons
+                  name="speedometer-outline"
+                  size={12}
+                  color={isOwnMessage ? (isDark ? '#FFFFFF' : '#095E54') : '#25D366'}
+                />
               ) : (
                 <Text style={[
                   styles.playbackRate,
@@ -1731,7 +1747,7 @@ CachedVoice.displayName = 'CachedVoice';
 // СТИЛИ
 // ============================================================================
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1837,10 +1853,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   speedButtonOwn: {
-    backgroundColor: 'rgba(9, 94, 84, 0.1)',
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.18)' : 'rgba(9, 94, 84, 0.1)',
   },
   speedButtonOther: {
-    backgroundColor: 'rgba(37, 211, 102, 0.1)',
+    backgroundColor: isDark ? 'rgba(37, 211, 102, 0.22)' : 'rgba(37, 211, 102, 0.1)',
   },
   duration: {
     fontSize: 11,
@@ -1850,10 +1866,10 @@ const styles = StyleSheet.create({
     lineHeight: 13,
   },
   durationOwn: {
-    color: '#3C3C43',
+    color: isDark ? '#E9EDEF' : '#3C3C43',
   },
   durationOther: {
-    color: '#3C3C43',
+    color: isDark ? colors.textPrimary : '#3C3C43',
   },
   playbackRate: {
     fontSize: 10,
@@ -1869,12 +1885,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   playbackRateOwn: {
-    color: '#095E54',
-    backgroundColor: 'rgba(9, 94, 84, 0.15)',
+    color: isDark ? '#FFFFFF' : '#095E54',
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(9, 94, 84, 0.15)',
   },
   playbackRateOther: {
     color: '#25D366',
-    backgroundColor: 'rgba(37, 211, 102, 0.15)',
+    backgroundColor: isDark ? 'rgba(37, 211, 102, 0.25)' : 'rgba(37, 211, 102, 0.15)',
   },
   timeAndStatus: {
     flexDirection: 'row',
@@ -1886,7 +1902,7 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     fontVariant: ['tabular-nums'],
     letterSpacing: 0.3,
-    color: '#8696A0',
+    color: isDark ? colors.textSecondary : '#8696A0',
     marginRight: 3,
     lineHeight: 13,
   },
@@ -1900,7 +1916,7 @@ const styles = StyleSheet.create({
   },
   tick: {
     fontSize: 12,
-    color: '#8696A0',
+    color: isDark ? colors.textSecondary : '#8696A0',
     fontWeight: '600',
     lineHeight: 11,
     position: 'absolute',

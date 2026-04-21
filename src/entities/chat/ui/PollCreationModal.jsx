@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,8 +12,12 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const PollCreationModal = ({ visible, onClose, onSubmit }) => {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const [question, setQuestion] = useState('');
   const [options, setOptions] = useState(['', '']);
   const [allowMultiple, setAllowMultiple] = useState(false);
@@ -79,7 +83,7 @@ export const PollCreationModal = ({ visible, onClose, onSubmit }) => {
           {/* Заголовок */}
           <View style={styles.header}>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={24} color="#333" />
+              <Ionicons name="close" size={24} color={isDark ? colors.textPrimary : '#333'} />
             </TouchableOpacity>
             <Text style={styles.title}>Создание опроса</Text>
             <View style={styles.placeholder} />
@@ -107,7 +111,8 @@ export const PollCreationModal = ({ visible, onClose, onSubmit }) => {
                   onChangeText={setQuestion}
                   multiline
                   maxLength={200}
-                  placeholderTextColor="#999"
+                  placeholderTextColor={isDark ? colors.textTertiary : '#999'}
+                  keyboardAppearance={isDark ? 'dark' : 'light'}
                   editable={true}
                   selectTextOnFocus={false}
                 />
@@ -124,7 +129,8 @@ export const PollCreationModal = ({ visible, onClose, onSubmit }) => {
                       value={option}
                       onChangeText={(value) => handleOptionChange(index, value)}
                       maxLength={100}
-                      placeholderTextColor="#999"
+                      placeholderTextColor={isDark ? colors.textTertiary : '#999'}
+                      keyboardAppearance={isDark ? 'dark' : 'light'}
                       editable={true}
                       selectTextOnFocus={false}
                     />
@@ -147,8 +153,8 @@ export const PollCreationModal = ({ visible, onClose, onSubmit }) => {
                   <Switch
                     value={allowMultiple}
                     onValueChange={setAllowMultiple}
-                    trackColor={{ false: '#E0E0E0', true: '#075E54' }}
-                    thumbColor={allowMultiple ? '#fff' : '#f4f3f4'}
+                    trackColor={{ false: isDark ? colors.border : '#E0E0E0', true: isDark ? colors.primary : '#075E54' }}
+                    thumbColor={allowMultiple ? '#fff' : isDark ? colors.surfaceElevated : '#f4f3f4'}
                   />
                 </View>
               </View>
@@ -172,14 +178,14 @@ export const PollCreationModal = ({ visible, onClose, onSubmit }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.7)' : 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
   },
   container: {
-    backgroundColor: '#fff',
+    backgroundColor: isDark ? colors.surface : '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     height: '90%',
@@ -196,7 +202,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    borderBottomColor: isDark ? colors.divider : '#E0E0E0',
   },
   closeButton: {
     width: 40,
@@ -207,7 +213,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#333',
+    color: isDark ? colors.textPrimary : '#333',
   },
   placeholder: {
     width: 40,
@@ -226,21 +232,21 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#075E54',
+    color: isDark ? colors.primary : '#075E54',
     marginBottom: 12,
   },
   questionInput: {
-    backgroundColor: '#F5F5F5',
+    backgroundColor: isDark ? colors.inputBackground : '#F5F5F5',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 16,
-    color: '#333',
+    color: isDark ? colors.textPrimary : '#333',
     minHeight: 80,
     maxHeight: 150,
     textAlignVertical: 'top',
     borderWidth: 1,
-    borderColor: '#075E54',
+    borderColor: isDark ? colors.primary : '#075E54',
     ...Platform.select({
       ios: {
         paddingTop: 12,
@@ -258,14 +264,14 @@ const styles = StyleSheet.create({
   },
   optionInput: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: isDark ? colors.inputBackground : '#F5F5F5',
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 16,
-    color: '#333',
+    color: isDark ? colors.textPrimary : '#333',
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: isDark ? colors.border : '#E0E0E0',
     minHeight: 44,
     ...Platform.select({
       ios: {
@@ -291,7 +297,7 @@ const styles = StyleSheet.create({
   addOptionText: {
     marginLeft: 8,
     fontSize: 16,
-    color: '#075E54',
+    color: isDark ? colors.primary : '#075E54',
     fontWeight: '500',
   },
   switchRow: {
@@ -302,26 +308,26 @@ const styles = StyleSheet.create({
   },
   switchLabel: {
     fontSize: 16,
-    color: '#333',
+    color: isDark ? colors.textPrimary : '#333',
   },
   footer: {
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: Platform.OS === 'ios' ? 34 : 20,
     borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
+    borderTopColor: isDark ? colors.divider : '#E0E0E0',
   },
   submitButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#075E54',
+    backgroundColor: isDark ? colors.primary : '#075E54',
     borderRadius: 25,
     paddingVertical: 14,
     paddingHorizontal: 24,
   },
   submitButtonDisabled: {
-    backgroundColor: '#E0E0E0',
+    backgroundColor: isDark ? colors.border : '#E0E0E0',
   },
   submitButtonText: {
     color: '#fff',

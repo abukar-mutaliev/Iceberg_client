@@ -1,6 +1,7 @@
-import React from 'react';
+import React, {useMemo} from 'react';
 import {View, Text, TouchableOpacity, StyleSheet, Modal, Pressable, ScrollView, Dimensions} from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import {useTheme} from '@app/providers/themeProvider/ThemeProvider';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -8,6 +9,8 @@ const SCREEN_WIDTH = Dimensions.get('window').width;
  * Компонент для выбора эмодзи реакции
  */
 export const ReactionPicker = ({visible, onClose, onEmojiSelect, onShowMoreEmojis, position}) => {
+    const {colors, isDark} = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     // Популярные эмодзи для реакций (как в WhatsApp)
     const emojis = ['👍', '❤️', '😂', '😮', '😢', '🙏', '👏', '🔥'];
     
@@ -83,7 +86,7 @@ export const ReactionPicker = ({visible, onClose, onEmojiSelect, onShowMoreEmoji
                             onPress={handleShowMore}
                             activeOpacity={0.7}
                         >
-                            <Icon name="plus-circle" size={26} color="#666" />
+                            <Icon name="plus-circle" size={26} color={isDark ? colors.textSecondary : '#666'} />
                         </TouchableOpacity>
                     )}
                 </View>
@@ -92,7 +95,7 @@ export const ReactionPicker = ({visible, onClose, onEmojiSelect, onShowMoreEmoji
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     overlay: {
         flex: 1,
         backgroundColor: 'rgba(0, 0, 0, 0.3)',
@@ -107,7 +110,7 @@ const styles = StyleSheet.create({
     },
     container: {
         position: 'relative',
-        backgroundColor: 'white',
+        backgroundColor: isDark ? colors.surfaceElevated : 'white',
         borderRadius: 30,
         paddingVertical: 6,
         paddingHorizontal: 4,
@@ -117,9 +120,11 @@ const styles = StyleSheet.create({
             width: 0,
             height: 2,
         },
-        shadowOpacity: 0.25,
+        shadowOpacity: isDark ? 0.5 : 0.25,
         shadowRadius: 3.84,
         elevation: 5,
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     scrollView: {
         flexGrow: 0,
@@ -152,7 +157,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         borderRadius: 20,
-        backgroundColor: '#f0f0f0',
+        backgroundColor: isDark ? colors.surface : '#f0f0f0',
     },
 });
 

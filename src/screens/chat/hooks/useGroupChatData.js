@@ -35,10 +35,13 @@ export const useGroupChatData = (roomId) => {
   
   // ============ COMPUTED VALUES ============
   
-  // Районы пользователя для фильтрации
+  // Районы пользователя для фильтрации.
+  // Логи убраны из useMemo — выполняется на каждый ре-рендер, где меняется
+  // currentUser (довольно часто), и в dev-режиме каждый console.log тормозит
+  // JS-поток, из-за чего чат "подвисал" на Android при открытии.
   const userDistrictIds = useMemo(() => {
     if (!currentUser) return [];
-    
+
     const role = currentUser.role;
     if (role === 'CLIENT') {
       const clientDistrictId =
@@ -46,27 +49,16 @@ export const useGroupChatData = (roomId) => {
         currentUser.client?.district?.id ??
         null;
       if (clientDistrictId != null && clientDistrictId !== '') {
-        if (__DEV__) {
-          console.log('[useGroupChatData] userDistrictIds for CLIENT', {
-            role,
-            districtId: clientDistrictId,
-          });
-        }
         return [clientDistrictId];
       }
     }
-    
+
     if ((role === 'EMPLOYEE' || role === 'DRIVER') && currentUser[role.toLowerCase()]?.districts) {
       return currentUser[role.toLowerCase()].districts
         .map(d => d?.id || d)
         .filter(id => id != null);
     }
-    
-    if (__DEV__) {
-      console.log('[useGroupChatData] userDistrictIds EMPTY', {
-        role, hasClient: !!currentUser.client, clientDistrictId: currentUser.client?.districtId
-      });
-    }
+
     return [];
   }, [currentUser]);
   
@@ -74,10 +66,15 @@ export const useGroupChatData = (roomId) => {
   const messages = useMemo(() => {
     const sourceMessages = (reduxMessages?.length > 0 ? reduxMessages : cachedMessages) || [];
     if (!sourceMessages.length) return [];
-    
+
     const now = new Date(timeTick);
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    
+
+    // Фильтры по району/сроку остановки применяются только к каналам (BROADCAST).
+    // В обычных групповых чатах STOP должен отображаться у всех участников вне
+    // зависимости от их района и времени окончания остановки.
+    const isBroadcastRoom = String(roomData?.type || '').toUpperCase() === 'BROADCAST';
+
     // Дедупликация по ID для предотвращения дубликатов
     const seenIds = new Set();
     const uniqueMessages = sourceMessages.filter(msg => {
@@ -86,7 +83,7 @@ export const useGroupChatData = (roomId) => {
       seenIds.add(msgId);
       return true;
     });
-    
+
     // Фильтрация сообщений
     return uniqueMessages.filter(msg => {
       let stopData = null;
@@ -128,9 +125,15 @@ export const useGroupChatData = (roomId) => {
           return false;
         }
 
+        // В обычных групповых чатах (GROUP) не скрываем STOP ни по району,
+        // ни по истечении времени — это просто пересланное сообщение.
+        if (!isBroadcastRoom) {
+          return true;
+        }
+
         // Проверка времени остановки - сообщение исчезает после окончания остановки
         let stopEndTime = null;
-        
+
         // Пробуем получить endTime из связанного объекта stop
         if (stopData?.endTime) {
           stopEndTime = new Date(stopData.endTime);
@@ -138,55 +141,57 @@ export const useGroupChatData = (roomId) => {
           // Если endTime нет, используем startTime как время окончания
           stopEndTime = new Date(stopData.startTime);
         }
-        
+
         // Если время остановки прошло, сообщение исчезает
         if (stopEndTime && stopEndTime < now) {
           return false;
         }
-        
-        // Фильтрация по району (только для STOP сообщений)
+
+        // Фильтрация по району (только для BROADCAST)
         if (!userDistrictIds.length) return true;
-        
+
         let stopDistrictId = stopData?.districtId;
-        
+
         if (!stopDistrictId) {
           return false;
         }
-        
-        const normalizedStopId = typeof stopDistrictId === 'string' 
-          ? parseInt(stopDistrictId, 10) 
+
+        const normalizedStopId = typeof stopDistrictId === 'string'
+          ? parseInt(stopDistrictId, 10)
           : stopDistrictId;
-        
+
         return userDistrictIds.some(userId => {
-          const normalizedUserId = typeof userId === 'string' 
-            ? parseInt(userId, 10) 
+          const normalizedUserId = typeof userId === 'string'
+            ? parseInt(userId, 10)
             : userId;
           return normalizedUserId === normalizedStopId;
         });
       }
-      
-      // Фильтрация PRODUCT сообщений - исчезают через 7 дней
+
+      // Фильтрация PRODUCT сообщений - исчезают через 7 дней (только в каналах)
       if (msg.type === 'PRODUCT') {
+        if (!isBroadcastRoom) return true;
         const messageCreatedAt = msg?.createdAt ? new Date(msg.createdAt) : null;
         if (messageCreatedAt && messageCreatedAt < sevenDaysAgo) {
           return false;
         }
         return true;
       }
-      
-      // Фильтрация WAREHOUSE сообщений - исчезают через 7 дней
+
+      // Фильтрация WAREHOUSE сообщений - исчезают через 7 дней (только в каналах)
       if (msg.type === 'WAREHOUSE') {
+        if (!isBroadcastRoom) return true;
         const messageCreatedAt = msg?.createdAt ? new Date(msg.createdAt) : null;
         if (messageCreatedAt && messageCreatedAt < sevenDaysAgo) {
           return false;
         }
         return true;
       }
-      
+
       // Остальные типы сообщений проходят без фильтрации
       return true;
     });
-  }, [reduxMessages, cachedMessages, userDistrictIds, roomData?.purpose, timeTick]);
+  }, [reduxMessages, cachedMessages, userDistrictIds, roomData?.type, roomData?.purpose, timeTick]);
   
   // Предзагрузка медиа
   useMediaPreload(roomId, messages);

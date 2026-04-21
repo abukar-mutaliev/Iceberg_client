@@ -2,6 +2,7 @@ import React, {useState, useMemo, useRef, useEffect} from 'react';
 import {View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView, Pressable, Animated, Dimensions, KeyboardAvoidingView, Platform} from 'react-native';
 import {PanGestureHandler, State} from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import {useTheme} from '@app/providers/themeProvider/ThemeProvider';
 
 /**
  * Компонент для отображения реакций на сообщение
@@ -15,6 +16,8 @@ export const MessageReactions = ({
     style,
     inline = false
 }) => {
+    const {colors, isDark} = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const [detailsVisible, setDetailsVisible] = useState(false);
     const [selectedEmoji, setSelectedEmoji] = useState(null);
     
@@ -287,7 +290,7 @@ export const MessageReactions = ({
                                     style={styles.closeButton}
                                     onPress={closeDetails}
                                 >
-                                    <Icon name="close" size={24} color="#667781" />
+                                    <Icon name="close" size={24} color={isDark ? colors.textSecondary : '#667781'} />
                                 </TouchableOpacity>
                             </View>
                         
@@ -371,7 +374,7 @@ export const MessageReactions = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -380,7 +383,7 @@ const styles = StyleSheet.create({
     reactionsBubble: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surfaceElevated : '#FFFFFF',
         borderRadius: 18,
         paddingHorizontal: 5,
         paddingVertical: 3,
@@ -391,11 +394,11 @@ const styles = StyleSheet.create({
             width: 0,
             height: 1,
         },
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0.4 : 0.1,
         shadowRadius: 2,
         elevation: 2,
         borderWidth: 0.5,
-        borderColor: 'rgba(0, 0, 0, 0.08)',
+        borderColor: isDark ? colors.border : 'rgba(0, 0, 0, 0.08)',
     },
     reactionsBubbleInline: {
         // Для отображения внутри пузырька - убираем тень и границу
@@ -449,7 +452,7 @@ const styles = StyleSheet.create({
     count: {
         fontSize: 11,
         marginLeft: 4,
-        color: '#667781',
+        color: isDark ? colors.textSecondary : '#667781',
         fontWeight: '600',
         minWidth: 14,
         textAlign: 'center',
@@ -464,7 +467,7 @@ const styles = StyleSheet.create({
         zIndex: 9999, // Высокий zIndex чтобы модальное окно было поверх всего
     },
     modalContent: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
         width: '100%',
@@ -482,7 +485,7 @@ const styles = StyleSheet.create({
         width: 40,
         height: 4,
         borderRadius: 2,
-        backgroundColor: '#C4C4C4',
+        backgroundColor: isDark ? colors.border : '#C4C4C4',
     },
     modalHeader: {
         flexDirection: 'row',
@@ -491,19 +494,19 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
         paddingVertical: 16,
         borderBottomWidth: 1,
-        borderBottomColor: '#E9EDEF',
+        borderBottomColor: isDark ? colors.divider : '#E9EDEF',
     },
     modalTitle: {
         fontSize: 18,
         fontWeight: '500',
-        color: '#111B21',
+        color: isDark ? colors.textPrimary : '#111B21',
     },
     closeButton: {
         padding: 4,
     },
     reactionsTabs: {
         borderBottomWidth: 1,
-        borderBottomColor: '#E9EDEF',
+        borderBottomColor: isDark ? colors.divider : '#E9EDEF',
         paddingVertical: 12,
     },
     reactionsTabsContent: {
@@ -520,10 +523,10 @@ const styles = StyleSheet.create({
         height: 40,
         borderRadius: 20,
         marginRight: 8,
-        backgroundColor: '#F0F2F5',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F0F2F5',
     },
     reactionTabActive: {
-        backgroundColor: '#D9FDD3',
+        backgroundColor: isDark ? 'rgba(37, 211, 102, 0.22)' : '#D9FDD3',
     },
     reactionTabEmoji: {
         fontSize: 22,
@@ -532,7 +535,7 @@ const styles = StyleSheet.create({
     reactionTabCount: {
         fontSize: 13,
         fontWeight: '500',
-        color: '#667781',
+        color: isDark ? colors.textSecondary : '#667781',
     },
     reactionTabCountActive: {
         color: '#00A884',
@@ -551,7 +554,7 @@ const styles = StyleSheet.create({
         width: 48,
         height: 48,
         borderRadius: 24,
-        backgroundColor: '#DFE5E9',
+        backgroundColor: isDark ? colors.surfaceElevated : '#DFE5E9',
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: 12,
@@ -559,7 +562,7 @@ const styles = StyleSheet.create({
     avatarText: {
         fontSize: 18,
         fontWeight: '500',
-        color: '#54656F',
+        color: isDark ? colors.textPrimary : '#54656F',
     },
     userInfo: {
         flex: 1,
@@ -570,13 +573,13 @@ const styles = StyleSheet.create({
     },
     userName: {
         fontSize: 16,
-        color: '#111B21',
+        color: isDark ? colors.textPrimary : '#111B21',
         fontWeight: '400',
         marginBottom: 2,
     },
     deleteHint: {
         fontSize: 13,
-        color: '#667781',
+        color: isDark ? colors.textSecondary : '#667781',
         fontWeight: '400',
     },
     userReactionEmoji: {

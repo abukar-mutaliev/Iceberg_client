@@ -7,7 +7,7 @@ import React, {
     useRef,
     useState,
 } from 'react';
-import { useColorScheme, StyleSheet } from 'react-native';
+import { useColorScheme, StyleSheet, Appearance, AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
     isDarkThemeEnabled,
@@ -38,11 +38,56 @@ const normalizeMode = (value) => {
     return defaultMode;
 };
 
+/**
+ * На Android `useColorScheme()` нередко возвращает устаревшее/null-значение
+ * до тех пор, пока не произойдёт перерисовка, а `Appearance.getColorScheme()` —
+ * даёт актуальный системный режим сразу. Поэтому используем Appearance как
+ * основной источник и подписываемся на его события вручную.
+ */
+const readSystemScheme = () => {
+    try {
+        return Appearance.getColorScheme() || 'light';
+    } catch (_) {
+        return 'light';
+    }
+};
+
 export const ThemeProvider = ({ children }) => {
-    const systemScheme = useColorScheme();
+    // Хук (держим для iOS/совместимости), но полагаемся больше на Appearance.
+    const rnColorScheme = useColorScheme();
+    const [systemScheme, setSystemScheme] = useState(readSystemScheme);
     const [mode, setMode] = useState(defaultMode);
     const [isHydrated, setIsHydrated] = useState(false);
     const hydratedRef = useRef(false);
+
+    // Подписка на реальные изменения системной темы + синхронизация при возврате
+    // приложения из фона (Android иногда не присылает событие вовремя).
+    useEffect(() => {
+        const sync = () => setSystemScheme(readSystemScheme());
+        sync();
+
+        const appearanceSub = Appearance.addChangeListener(({ colorScheme }) => {
+            setSystemScheme(colorScheme || 'light');
+        });
+
+        const appStateSub = AppState.addEventListener('change', (state) => {
+            if (state === 'active') {
+                sync();
+            }
+        });
+
+        return () => {
+            appearanceSub?.remove?.();
+            appStateSub?.remove?.();
+        };
+    }, []);
+
+    // Если хук всё же даёт значение — используем его как подсказку.
+    useEffect(() => {
+        if (rnColorScheme && rnColorScheme !== systemScheme) {
+            setSystemScheme(rnColorScheme);
+        }
+    }, [rnColorScheme, systemScheme]);
 
     useEffect(() => {
         if (hydratedRef.current) return;

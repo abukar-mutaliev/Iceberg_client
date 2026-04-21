@@ -2,10 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, Platform, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-/**
- * Модальное окно для информирования пользователя о необходимости разрешения
- * Соответствует требованиям Apple: только информация и кнопка "Открыть настройки"
- */
+
 export const PermissionInfoModal = ({ visible, onClose, type = 'photos' }) => {
   const handleOpenSettings = async () => {
     try {

@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet, Dimensions, Keyboard, Platform } fro
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSelector, useStore } from 'react-redux';
 import { StackActions } from '@react-navigation/native';
+import { BlurView } from 'expo-blur';
 import { useChatRoomsBootstrap } from '@entities/chat/hooks/useChatRoomsBootstrap';
 import {
     HomeIcon,
@@ -59,8 +60,9 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
     const { hideTabBar, showTabBar, isTabBarVisible } = useTabBar();
     const { colors, isDark } = useTheme();
     const isKeyboardVisible = useKeyboardVisibility();
+    const isAndroid = Platform.OS === 'android';
 
-    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+    const styles = useMemo(() => createStyles(colors, isDark, isAndroid), [colors, isDark, isAndroid]);
 
     const getCurrentTab = useCallback(
         () => state.routes[state.index]?.name,
@@ -289,6 +291,8 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
 
     const activeColor = colors.primary;
     const inactiveColor = isDark ? colors.textTertiary : '#BEBEBE';
+    const blurTint = isDark ? 'dark' : 'light';
+    const blurIntensity = isDark ? 72 : 60;
 
     // Определение типа иконки по имени маршрута
     const getIconComponent = (routeName, isActive) => {
@@ -346,6 +350,13 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
                 { paddingBottom: insets.bottom, height: tabBarHeight }
             ]}
         >
+            <BlurView
+                intensity={blurIntensity}
+                tint={blurTint}
+                experimentalBlurMethod="dimezisBlurView"
+                style={StyleSheet.absoluteFill}
+            />
+            <View pointerEvents="none" style={styles.glassOverlay} />
             <View style={styles.iconMenuHomeParent}>
                 {visibleRoutes.map((route, visibleIndex) => {
                     const actualIndex = state.routes.findIndex(r => r.key === route.key);
@@ -408,27 +419,32 @@ const TabItem = ({ icon, label, isActive, onPress, showBadge, badgeCount, styles
     );
 };
 
-const createStyles = (colors, isDark) => StyleSheet.create({
+const createStyles = (colors, isDark, isAndroid) => StyleSheet.create({
     menuDoneWithBack: {
         borderTopLeftRadius: 10,
         borderTopRightRadius: 10,
-        backgroundColor: colors.surface,
-        // В тёмной теме тень почти не видна — добавляем явную границу сверху,
-        // чтобы таббар отделялся от основного контента.
-        borderTopWidth: isDark ? StyleSheet.hairlineWidth : 0,
-        borderTopColor: colors.border,
+        backgroundColor: 'transparent',
+        overflow: 'hidden',
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.55)',
         minHeight: 80,
         width: "100%",
-        shadowOpacity: isDark ? 0 : 0.1,
-        shadowRadius: 4,
+        shadowOpacity: isDark ? 0.28 : 0.12,
+        shadowRadius: 14,
         shadowColor: colors.shadowColor,
-        shadowOffset: { width: 0, height: -2 },
-        elevation: isDark ? 0 : 8,
+        shadowOffset: { width: 0, height: -6 },
+        elevation: isDark ? 0 : 10,
         position: 'absolute',
         left: 0,
         right: 0,
         bottom: 0,
         zIndex: 999,
+    },
+    glassOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: isAndroid
+            ? (isDark ? 'rgba(26, 28, 36, 0.42)' : 'rgba(255, 255, 255, 0.50)')
+            : (isDark ? 'rgba(26, 28, 36, 0.62)' : 'rgba(255, 255, 255, 0.72)'),
     },
     iconMenuHomeParent: {
         flexDirection: "row",

@@ -10,6 +10,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+
+const useEmojiStyles = () => {
+  const { colors, isDark } = useTheme();
+  return useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+};
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const EMOJI_PICKER_HEIGHT = 300;
@@ -165,6 +171,8 @@ export const FullEmojiPicker = React.memo(({
   onClose,
   onEmojiSelect,
 }) => {
+  const styles = useEmojiStyles();
+  const { colors, isDark } = useTheme();
   const [selectedCategory, setSelectedCategory] = useState('Смайлики и люди');
   const [recentEmojis, setRecentEmojis] = useState([]);
   const flatListRef = useRef(null);
@@ -270,6 +278,7 @@ export const FullEmojiPicker = React.memo(({
               key={`${item.id}-${index}`}
               emoji={emoji}
               onPress={handleEmojiSelect}
+              styles={styles}
             />
           ))}
         </View>
@@ -277,7 +286,7 @@ export const FullEmojiPicker = React.memo(({
     }
     
     return null;
-  }, [handleEmojiSelect]);
+  }, [handleEmojiSelect, styles]);
 
   const keyExtractor = useCallback((item) => item.id, []);
 
@@ -379,7 +388,7 @@ export const FullEmojiPicker = React.memo(({
               <Ionicons
                 name={iconName}
                 size={24}
-                color={isSelected ? '#00A884' : '#8696A0'}
+                color={isSelected ? '#00A884' : (isDark ? colors.textSecondary : '#8696A0')}
               />
             </TouchableOpacity>
           );
@@ -390,7 +399,7 @@ export const FullEmojiPicker = React.memo(({
 });
 
 // Мемоизированный компонент кнопки эмодзи
-const EmojiButton = React.memo(({ emoji, onPress }) => {
+const EmojiButton = React.memo(({ emoji, onPress, styles }) => {
   const handlePress = useCallback(() => {
     onPress(emoji);
   }, [emoji, onPress]);
@@ -406,12 +415,12 @@ const EmojiButton = React.memo(({ emoji, onPress }) => {
   );
 });
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     height: EMOJI_PICKER_HEIGHT,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.surface : '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: '#E4E6EB',
+    borderTopColor: isDark ? colors.divider : '#E4E6EB',
     overflow: 'hidden',
   },
   hidden: {
@@ -420,11 +429,11 @@ const styles = StyleSheet.create({
     opacity: 0,
   },
   topBar: {
-    backgroundColor: '#F0F2F5',
+    backgroundColor: isDark ? colors.surfaceElevated : '#F0F2F5',
     paddingTop: 8,
     paddingBottom: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#E4E6EB',
+    borderBottomColor: isDark ? colors.divider : '#E4E6EB',
     height: 48,
     justifyContent: 'center',
     width: '100%',
@@ -449,11 +458,11 @@ const styles = StyleSheet.create({
     minWidth: 60,
   },
   categoryTabSelected: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.surface : '#FFFFFF',
   },
   categoryTabText: {
     fontSize: 13,
-    color: '#8696A0',
+    color: isDark ? colors.textSecondary : '#8696A0',
     fontWeight: '500',
     flexShrink: 0,
   },
@@ -471,7 +480,7 @@ const styles = StyleSheet.create({
   categoryTitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#8696A0',
+    color: isDark ? colors.textSecondary : '#8696A0',
     textTransform: 'uppercase',
   },
   emojiRow: {
@@ -492,11 +501,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    backgroundColor: '#F0F2F5',
+    backgroundColor: isDark ? colors.surfaceElevated : '#F0F2F5',
     paddingVertical: 8,
     paddingHorizontal: 4,
     borderTopWidth: 1,
-    borderTopColor: '#E4E6EB',
+    borderTopColor: isDark ? colors.divider : '#E4E6EB',
     minHeight: 48,
   },
   bottomBarItem: {
@@ -507,6 +516,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   bottomBarItemSelected: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.surface : '#FFFFFF',
   },
 });

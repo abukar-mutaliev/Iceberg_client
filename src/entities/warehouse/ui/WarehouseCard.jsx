@@ -3,6 +3,12 @@ import { View, Text, Image, StyleSheet, Pressable } from 'react-native';
 import { Color, Border, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { getImageUrl } from '@shared/api/api';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+
+const useWarehouseStyles = () => {
+    const { colors, isDark } = useTheme();
+    return useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+};
 
 // Как в WarehouseDetailsContent: getImageUrl(warehouse.image) + Image
 const getImageUrlForWarehouse = (imagePath) => {
@@ -15,6 +21,8 @@ const getImageUrlForWarehouse = (imagePath) => {
 };
 
 const WarehouseCardComponent = ({ warehouse, onPress, width, compact = true }) => {
+    const styles = useWarehouseStyles();
+    const { colors, isDark } = useTheme();
     const [imageError, setImageError] = useState(false);
 
     if (!warehouse || !warehouse.id) {
@@ -107,7 +115,7 @@ const WarehouseCardComponent = ({ warehouse, onPress, width, compact = true }) =
                            />
                 ) : (
                     <View style={styles.placeholderContainer}>
-                        <Icon name="warehouse" size={48} color={Color.blue2} />
+                        <Icon name="warehouse" size={48} color={isDark ? colors.primary : Color.blue2} />
                     </View>
                 )}
                 {!isActive && (
@@ -134,7 +142,7 @@ const WarehouseCardComponent = ({ warehouse, onPress, width, compact = true }) =
                 {/* Адрес */}
                 {warehouse.address && (
                     <View style={styles.addressContainer}>
-                        <Icon name="location-on" size={14} color={Color.blue2} style={styles.addressIcon} />
+                        <Icon name="location-on" size={14} color={isDark ? colors.primary : Color.blue2} style={styles.addressIcon} />
                         <Text style={styles.addressText} numberOfLines={2} ellipsizeMode="tail">
                             {warehouse.address}
                         </Text>
@@ -144,14 +152,14 @@ const WarehouseCardComponent = ({ warehouse, onPress, width, compact = true }) =
                 {/* График работы на сегодня */}
                 {getTodaySchedule ? (
                     <View style={styles.deliveryRadiusContainer}>
-                        <Icon name="access-time" size={14} color={Color.purpleSoft} style={styles.radiusIcon} />
+                        <Icon name="access-time" size={14} color={isDark ? colors.textSecondary : Color.purpleSoft} style={styles.radiusIcon} />
                         <Text style={styles.deliveryRadiusText}>
                             Сегодня: {getTodaySchedule}
                         </Text>
                     </View>
                 ) : warehouse.workingHours && Array.isArray(warehouse.workingHours) && warehouse.workingHours.length > 0 ? (
                     <View style={styles.deliveryRadiusContainer}>
-                        <Icon name="access-time" size={14} color={Color.purpleSoft} style={styles.radiusIcon} />
+                        <Icon name="access-time" size={14} color={isDark ? colors.textSecondary : Color.purpleSoft} style={styles.radiusIcon} />
                         <Text style={styles.deliveryRadiusText}>
                             График работы настроен
                         </Text>
@@ -193,20 +201,20 @@ const arePropsEqual = (prevProps, nextProps) => {
 
 export const WarehouseCard = memo(WarehouseCardComponent, arePropsEqual);
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     compactContainer: {
         width: 250,
         borderWidth: 0.5,
-        borderColor: Color.blue2,
+        borderColor: isDark ? colors.border : Color.blue2,
         borderRadius: Border.br_xl,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.surfaceElevated : Color.colorLightMode,
         overflow: 'hidden',
     },
     compactImageContainer: {
         width: '100%',
         height: 150,
         position: 'relative',
-        backgroundColor: '#F9F9F9',
+        backgroundColor: isDark ? colors.surface : '#F9F9F9',
     },
     compactWarehouseImage: {
         width: '100%',
@@ -217,7 +225,7 @@ const styles = StyleSheet.create({
         height: '100%',
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#E8F0FE',
+        backgroundColor: isDark ? colors.surface : '#E8F0FE',
     },
     statusBadge: {
         position: 'absolute',
@@ -249,14 +257,14 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontSize: 11,
         fontWeight: '600',
-        color: Color.blue2,
+        color: isDark ? colors.primary : Color.blue2,
         marginBottom: 6,
     },
     compactTitle: {
         fontFamily: FontFamily.sFProText,
         fontSize: 16,
         fontWeight: '700',
-        color: Color.purpleSoft,
+        color: isDark ? colors.textPrimary : Color.purpleSoft,
         marginBottom: 8,
         lineHeight: 20,
     },
@@ -274,7 +282,7 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontSize: 13,
         fontWeight: '500',
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         lineHeight: 18,
     },
     deliveryRadiusContainer: {
@@ -290,7 +298,7 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontSize: 12,
         fontWeight: '500',
-        color: Color.purpleSoft,
+        color: isDark ? colors.textSecondary : Color.purpleSoft,
     },
     statusContainer: {
         flexDirection: 'row',
@@ -302,10 +310,10 @@ const styles = StyleSheet.create({
         gap: 6,
     },
     statusActive: {
-        backgroundColor: '#E8F5E9',
+        backgroundColor: isDark ? 'rgba(76, 175, 80, 0.18)' : '#E8F5E9',
     },
     statusInactive: {
-        backgroundColor: '#FFEBEE',
+        backgroundColor: isDark ? 'rgba(244, 67, 54, 0.18)' : '#FFEBEE',
     },
     statusIndicator: {
         width: 8,
@@ -322,12 +330,12 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontSize: 12,
         fontWeight: '600',
-        color: '#2E7D32',
+        color: isDark ? '#81C784' : '#2E7D32',
     },
     statusTextInactive: {
         fontFamily: FontFamily.sFProText,
         fontSize: 12,
         fontWeight: '600',
-        color: '#C62828',
+        color: isDark ? '#EF5350' : '#C62828',
     },
 });

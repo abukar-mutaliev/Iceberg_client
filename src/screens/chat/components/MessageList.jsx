@@ -1,6 +1,12 @@
 import React, { useCallback, useRef, useMemo, memo, useState, useEffect } from 'react';
-import { FlatList, View, Text, StyleSheet, TouchableWithoutFeedback, Animated, Easing } from 'react-native';
+import { FlatList, View, Text, StyleSheet, TouchableWithoutFeedback, Animated, Easing, Platform } from 'react-native';
 import { SwipeableMessageBubble } from '@entities/chat';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+
+const useListStyles = () => {
+  const { colors, isDark } = useTheme();
+  return useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+};
 
 // Константы
 const LOAD_MORE_THRESHOLD = 2000;
@@ -39,13 +45,16 @@ const formatDateLabel = (dateLike) => {
   });
 };
 
-const DateSeparator = memo(({ label }) => (
-  <View style={styles.dateSeparatorContainer}>
-    <View style={styles.dateSeparatorChip}>
-      <Text style={styles.dateSeparatorText}>{label}</Text>
+const DateSeparator = memo(({ label }) => {
+  const styles = useListStyles();
+  return (
+    <View style={styles.dateSeparatorContainer}>
+      <View style={styles.dateSeparatorChip}>
+        <Text style={styles.dateSeparatorText}>{label}</Text>
+      </View>
     </View>
-  </View>
-));
+  );
+});
 
 DateSeparator.displayName = 'DateSeparator';
 
@@ -89,6 +98,7 @@ const MessageItem = memo(({
   isDeleting,
   onDeleteAnimationEnd,
 }) => {
+  const styles = useListStyles();
   const shouldReset = activeSwipeId !== null && activeSwipeId !== item.id;
   const [measuredHeight, setMeasuredHeight] = useState(0);
   const opacityAnim = useRef(new Animated.Value(1)).current;
@@ -100,6 +110,7 @@ const MessageItem = memo(({
   const animationRef = useRef(null);
   const animationCycleRef = useRef(0);
   const deleteAnimationTriggeredRef = useRef(false);
+  const wasDeletingRef = useRef(false);
 
   const handleLayout = useCallback((event) => {
     const nextHeight = Math.ceil(event?.nativeEvent?.layout?.height || 0);
@@ -112,12 +123,19 @@ const MessageItem = memo(({
   }, [heightAnim, measuredHeight]);
 
   useEffect(() => {
+    // Анимация "удаления" (fade + collapse) — запускается ТОЛЬКО при переходе
+    // из обычного состояния в isDeleting. Анимация "восстановления" запускается
+    // лишь при отмене удаления (было isDeleting -> стало false).
+    // Раньше восстановление запускалось при каждом монтировании элемента,
+    // что давало 6 параллельных Animated.timing на каждое сообщение при
+    // первом открытии чата — это и создавало заметный рывок.
     if (isDeleting) {
       if (deleteAnimationTriggeredRef.current) return;
 
       animationCycleRef.current += 1;
       const animationCycle = animationCycleRef.current;
       deleteAnimationTriggeredRef.current = true;
+      wasDeletingRef.current = true;
       animationRef.current?.stop?.();
       animationRef.current = Animated.parallel([
         Animated.timing(opacityAnim, {
@@ -174,9 +192,20 @@ const MessageItem = memo(({
       return;
     }
 
+    // Мы НЕ в состоянии удаления.
+    deleteAnimationTriggeredRef.current = false;
+
+    // На первом монтировании ничего анимировать не нужно — значения уже
+    // инициализированы в "нормальном" состоянии (opacity=1, scale=1, translate=0).
+    // Высоту проставит handleLayout. Запускаем восстановление ТОЛЬКО если
+    // прежде было удаление (т.е. это отмена удаления).
+    if (!wasDeletingRef.current) {
+      return;
+    }
+
+    wasDeletingRef.current = false;
     animationCycleRef.current += 1;
     animationRef.current?.stop?.();
-    deleteAnimationTriggeredRef.current = false;
     animationRef.current = Animated.parallel([
       Animated.timing(opacityAnim, {
         toValue: 1,
@@ -354,6 +383,7 @@ export const MessageList = memo(({
   flatListRef,
   onDeleteAnimationEnd,
 }) => {
+  const styles = useListStyles();
   const isLoadingMoreRef = useRef(false);
   const [activeSwipeId, setActiveSwipeId] = useState(null);
   const visibleMessages = useMemo(
@@ -557,14 +587,17 @@ export const MessageList = memo(({
         onScrollBeginDrag={onDismissKeyboard}
         onScrollEndDrag={checkAndLoadMore}
         onMomentumScrollEnd={checkAndLoadMore}
-        scrollEventThrottle={200}
+        scrollEventThrottle={32}
         contentContainerStyle={listContentStyle}
-        initialNumToRender={10}
-        windowSize={5}
-        maxToRenderPerBatch={5}
-        updateCellsBatchingPeriod={100}
+        initialNumToRender={12}
+        windowSize={9}
+        maxToRenderPerBatch={8}
+        updateCellsBatchingPeriod={50}
         legacyImplementation={false}
-        removeClippedSubviews={false}
+        // На Android removeClippedSubviews значительно снижает нагрузку
+        // GPU/JS при наличии десятков и более сообщений. На iOS включение
+        // этого флага известно конфликтами с gesture-handler, держим false.
+        removeClippedSubviews={Platform.OS === 'android'}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         onScrollToIndexFailed={onScrollToIndexFailed}
@@ -575,7 +608,7 @@ export const MessageList = memo(({
 
 MessageList.displayName = 'MessageList';
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   listContent: {
     paddingHorizontal: 8,
     paddingTop: 5,
@@ -587,26 +620,26 @@ const styles = StyleSheet.create({
   },
   emptyStateText: {
     fontSize: 16,
-    color: '#999',
+    color: isDark ? colors.textSecondary : '#999',
   },
   dateSeparatorContainer: {
     alignItems: 'center',
     paddingVertical: 8,
   },
   dateSeparatorChip: {
-    backgroundColor: 'rgba(241, 247, 251, 0.96)',
+    backgroundColor: isDark ? 'rgba(26, 28, 36, 0.92)' : 'rgba(241, 247, 251, 0.96)',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 5,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
+    shadowOpacity: isDark ? 0.25 : 0.08,
     shadowRadius: 1,
     elevation: 1,
   },
   dateSeparatorText: {
     fontSize: 12,
-    color: '#54656F',
+    color: isDark ? colors.textSecondary : '#54656F',
     fontWeight: '500',
   },
   messageDeleteAnimation: {

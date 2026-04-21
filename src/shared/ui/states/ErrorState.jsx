@@ -1,6 +1,8 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { ThemedStatusBar } from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
 
 /**
  * Компонент для отображения состояния ошибки
@@ -22,8 +24,12 @@ export const ErrorState = ({
     icon,
     title
 }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     return (
         <View style={styles.errorContainer}>
+            <ThemedStatusBar />
             <View style={styles.card}>
                 {!!icon && <View style={styles.iconContainer}>{icon}</View>}
                 {!!title && <Text style={styles.titleText}>{title}</Text>}
@@ -49,42 +55,54 @@ export const ErrorState = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     errorContainer: {
         flex: 1,
         padding: 20,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#F6F7FB'
+        backgroundColor: colors.background,
     },
     card: {
         width: '100%',
         maxWidth: 420,
         padding: 20,
         borderRadius: 16,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.surface,
         alignItems: 'center',
-        shadowColor: '#1C1C1E',
-        shadowOpacity: 0.08,
-        shadowRadius: 12,
-        shadowOffset: { width: 0, height: 6 },
-        elevation: 3
+        ...Platform.select({
+            ios: {
+                shadowColor: '#1C1C1E',
+                shadowOpacity: isDark ? 0.35 : 0.08,
+                shadowRadius: 12,
+                shadowOffset: { width: 0, height: 6 },
+            },
+            android: {
+                elevation: 3,
+            },
+        }),
+        ...(isDark && {
+            borderWidth: 1,
+            borderColor: colors.border,
+        }),
     },
     iconContainer: {
-        marginBottom: 12
+        marginBottom: 12,
     },
     titleText: {
-        color: Color.dark,
-        fontSize: 16,
+        color: colors.textPrimary,
+        fontSize: FontSize.size_md || 16,
+        fontFamily: FontFamily.sFProText,
         fontWeight: '600',
         marginBottom: 6,
-        textAlign: 'center'
+        textAlign: 'center',
     },
     errorText: {
-        color: Color.textSecondary,
-        fontSize: 14,
+        color: colors.textSecondary,
+        fontSize: FontSize.size_sm || 14,
+        fontFamily: FontFamily.sFProText,
         marginBottom: 16,
-        textAlign: 'center'
+        textAlign: 'center',
     },
     buttonsContainer: {
         width: '100%',
@@ -92,16 +110,17 @@ const styles = StyleSheet.create({
         gap: 10,
     },
     retryButton: {
-        backgroundColor: Color.blue2,
+        backgroundColor: colors.primary,
         paddingHorizontal: 20,
         paddingVertical: 8,
         borderRadius: 8,
-        width: '100%'
+        width: '100%',
     },
     retryButtonText: {
-        color: 'white',
+        color: colors.textInverse,
+        fontFamily: FontFamily.sFProText,
         fontWeight: '600',
-        textAlign: 'center'
+        textAlign: 'center',
     },
     secondaryButton: {
         backgroundColor: 'transparent',
@@ -109,12 +128,13 @@ const styles = StyleSheet.create({
         paddingVertical: 8,
         borderRadius: 8,
         borderWidth: 1,
-        borderColor: Color.blue2,
-        width: '100%'
+        borderColor: colors.primary,
+        width: '100%',
     },
     secondaryButtonText: {
-        color: Color.blue2,
+        color: colors.primary,
+        fontFamily: FontFamily.sFProText,
         fontWeight: '600',
-        textAlign: 'center'
-    }
+        textAlign: 'center',
+    },
 });

@@ -2,6 +2,7 @@ import React, { useRef, useState, useCallback, useMemo, useEffect } from 'react'
 import { View, StyleSheet, KeyboardAvoidingView, Platform, Text, LayoutAnimation, UIManager } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from 'react-redux';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { ChatBackground } from '@entities/chat/ui/ChatBackground';
 import { Composer } from '@entities/chat/ui/Composer/Composer';
 import { TypingIndicator } from '@entities/chat';
@@ -61,6 +62,7 @@ export const GroupChatScreen = ({ route, navigation }) => {
   // ============ HOOKS ============
   const store = useStore();
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
   const { showError, showWarning, showConfirm } = useCustomAlert();
   const { emitActiveRoom } = useChatSocketActions();
   
@@ -283,51 +285,24 @@ export const GroupChatScreen = ({ route, navigation }) => {
     isAdmin, // Передаем напрямую для надежной проверки
   });
 
-  // Отладочная информация для суперадмина
-  useEffect(() => {
-    if (__DEV__ && isSelectionMode) {
-      console.log('[GroupChatScreen] Selection mode debug', {
-        isSuperAdmin,
-        isAdmin,
-        selectedCount: selectedMessages.size,
-        messagesCount: messages.length,
-      });
-    }
-  }, [isSelectionMode, isSuperAdmin, isAdmin, selectedMessages.size, messages.length]);
-  
   // ============ NOTIFICATION MANAGEMENT ============
-  
-  // Очистка push-уведомлений при открытии группового чата
+
+  // Очистка push-уведомлений при открытии группового чата.
+  // ВНИМАНИЕ: setActiveChatRoomId/cleanup здесь дублирует useChatLifecycle.
+  // Оставляем для обратной совместимости, но БЕЗ логов — иначе в dev-режиме
+  // RN мост Metro задерживает JS-поток при каждом открытии чата.
   useEffect(() => {
-    const clearNotifications = async () => {
-      try {
-        if (!roomId) return;
-        
-        // Устанавливаем активный чат для подавления будущих уведомлений
-        PushNotificationService.setActiveChatRoomId(roomId);
-        
-        // Очищаем существующие уведомления для этого чата
-        await PushNotificationService.clearChatNotifications(roomId);
-        
-        if (__DEV__) {
-          console.log('[GroupChatScreen] ✅ Уведомления очищены', { roomId });
-        }
-      } catch (error) {
-        if (__DEV__) {
-          console.warn('[GroupChatScreen] ⚠️ Ошибка при очистке уведомлений:', error?.message);
-        }
+    if (!roomId) return;
+
+    PushNotificationService.setActiveChatRoomId(roomId);
+    PushNotificationService.clearChatNotifications(roomId).catch((error) => {
+      if (__DEV__) {
+        console.warn('[GroupChatScreen] ⚠️ Ошибка при очистке уведомлений:', error?.message);
       }
-    };
-    
-    clearNotifications();
-    
-    // Очищаем активный чат при размонтировании
+    });
+
     return () => {
       PushNotificationService.setActiveChatRoomId(null);
-      
-      if (__DEV__) {
-        console.log('[GroupChatScreen] 🔄 Сброшен активный чат', { roomId });
-      }
     };
   }, [roomId]);
   
@@ -567,9 +542,9 @@ export const GroupChatScreen = ({ route, navigation }) => {
   
   const systemBarStyle = useMemo(() => ({
     height: insets.bottom,
-    backgroundColor: '#ffffff',
+    backgroundColor: isDark ? colors.background : '#ffffff',
     width: '100%',
-  }), [insets.bottom]);
+  }), [insets.bottom, isDark, colors.background]);
   
   const canDeleteForAllSelected = useMemo(() => {
     if (!messagesToDelete?.length) return false;
@@ -661,11 +636,28 @@ export const GroupChatScreen = ({ route, navigation }) => {
                 <TypingIndicator roomId={roomId} bottomOffset={typingIndicatorBottomOffset} />
               </View>
             ) : (
-              <View style={styles.lockedChat}>
+              <View
+                style={[
+                  styles.lockedChat,
+                  isDark && {
+                    backgroundColor: colors.surface,
+                    borderTopColor: colors.divider,
+                  },
+                ]}
+              >
                 <View style={styles.lockedMessage}>
-                  <Ionicons name="lock-closed" size={20} color="#999" />
-                  <Text style={styles.lockedText}>
-                    {roomData?.type === 'BROADCAST' 
+                  <Ionicons
+                    name="lock-closed"
+                    size={20}
+                    color={isDark ? colors.textSecondary : '#999'}
+                  />
+                  <Text
+                    style={[
+                      styles.lockedText,
+                      isDark && { color: colors.textSecondary },
+                    ]}
+                  >
+                    {roomData?.type === 'BROADCAST'
                       ? 'Только администраторы могут отправлять сообщения.'
                       : 'Только администраторы могут отправлять сообщения.'}
                   </Text>

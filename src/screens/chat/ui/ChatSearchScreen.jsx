@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { 
   View, 
   Text, 
@@ -21,12 +21,15 @@ import ChatApi from '@entities/chat/api/chatApi';
 import { ContactPicker } from '@entities/chat/ui/ContactPicker/ContactPicker';
 import { PermissionInfoModal } from '@entities/chat/ui/Composer/components/PermissionInfoModal';
 import { debounce } from 'lodash';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const ChatSearchScreen = () => {
   const navigation = useNavigation();
   const dispatch = useDispatch();
   const currentUser = useSelector(state => state?.auth?.user);
-  
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -318,6 +321,8 @@ export const ChatSearchScreen = () => {
         <TextInput
           style={styles.searchInput}
           placeholder="Поиск по имени, компании или группе..."
+          placeholderTextColor={isDark ? colors.textTertiary : '#999999'}
+          keyboardAppearance={isDark ? 'dark' : 'light'}
           value={searchQuery}
           onChangeText={handleSearchChange}
           autoFocus
@@ -325,7 +330,7 @@ export const ChatSearchScreen = () => {
           autoCorrect={false}
         />
         {searching && (
-          <ActivityIndicator size="small" color="#075E54" style={styles.searchLoader} />
+          <ActivityIndicator size="small" color={isDark ? colors.primary : '#075E54'} style={styles.searchLoader} />
         )}
       </View>
 
@@ -387,7 +392,7 @@ export const ChatSearchScreen = () => {
       {/* Индикатор загрузки при создании чата */}
       {loading && (
         <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#075E54" />
+          <ActivityIndicator size="large" color={isDark ? colors.primary : '#075E54'} />
         </View>
       )}
 
@@ -401,27 +406,30 @@ export const ChatSearchScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: isDark ? colors.background : '#ffffff',
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: isDark ? colors.surface : '#f5f5f5',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: isDark ? colors.divider : '#e0e0e0',
   },
   searchInput: {
     flex: 1,
     height: 45,
-    backgroundColor: '#ffffff',
+    backgroundColor: isDark ? colors.inputBackground : '#ffffff',
     borderRadius: 20,
     paddingHorizontal: 16,
     fontSize: 16,
+    color: isDark ? colors.textPrimary : '#000000',
+    borderWidth: isDark ? 1 : 0,
+    borderColor: isDark ? colors.divider : 'transparent',
   },
   searchLoader: {
     marginLeft: 12,
@@ -430,9 +438,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: isDark ? colors.surface : '#f5f5f5',
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: isDark ? colors.divider : '#e0e0e0',
     gap: 12,
   },
   actionButton: {
@@ -445,7 +453,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   createGroupButton: {
-    backgroundColor: '#075E54',
+    backgroundColor: isDark ? colors.primary : '#075E54',
   },
   createGroupButtonText: {
     color: '#ffffff',
@@ -453,7 +461,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   inviteButton: {
-    backgroundColor: '#25D366',
+    backgroundColor: isDark ? '#1F6F43' : '#25D366',
   },
   inviteIcon: {
     marginRight: 6,
@@ -472,14 +480,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: isDark ? colors.divider : '#f0f0f0',
+    backgroundColor: isDark ? colors.background : 'transparent',
   },
   avatarContainer: {
     width: 50,
     height: 50,
     borderRadius: 25,
     overflow: 'hidden',
-    backgroundColor: '#E0E0E0',
+    backgroundColor: isDark ? colors.surface : '#E0E0E0',
   },
   avatar: {
     width: 50,
@@ -490,7 +499,7 @@ const styles = StyleSheet.create({
     height: 50,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#075E54',
+    backgroundColor: isDark ? colors.primary : '#075E54',
   },
   avatarPlaceholderText: {
     fontSize: 20,
@@ -504,22 +513,22 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#000000',
+    color: isDark ? colors.textPrimary : '#000000',
   },
   userSubtitle: {
     fontSize: 14,
-    color: '#666666',
+    color: isDark ? colors.textSecondary : '#666666',
     marginTop: 2,
   },
   existingChatBadge: {
-    backgroundColor: '#E8F5E9',
+    backgroundColor: isDark ? 'rgba(76, 175, 80, 0.18)' : '#E8F5E9',
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
   },
   existingChatText: {
     fontSize: 12,
-    color: '#4CAF50',
+    color: isDark ? '#7DC97F' : '#4CAF50',
   },
   emptyContainer: {
     flex: 1,
@@ -529,12 +538,12 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: '#999999',
+    color: isDark ? colors.textSecondary : '#999999',
     textAlign: 'center',
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.55)' : 'rgba(0, 0, 0, 0.3)',
     justifyContent: 'center',
     alignItems: 'center',
   },

@@ -18,8 +18,12 @@ import * as Contacts from 'expo-contacts';
 import ChatApi from '@entities/chat/api/chatApi';
 import { useSelector } from 'react-redux';
 import { getImageUrl } from '@shared/api/api';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const ContactPicker = ({ visible, onClose, onSelect, initialMode = 'app' }) => {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const mutedIconColor = isDark ? colors.textSecondary : '#8696A0';
   const [searchQuery, setSearchQuery] = useState('');
   const [users, setUsers] = useState([]);
   const [deviceContacts, setDeviceContacts] = useState([]);
@@ -276,10 +280,10 @@ export const ContactPicker = ({ visible, onClose, onSelect, initialMode = 'app' 
             )}
           </View>
         </View>
-        <Ionicons name="chevron-forward" size={20} color="#8696A0" />
+        <Ionicons name="chevron-forward" size={20} color={mutedIconColor} />
       </TouchableOpacity>
     );
-  }, [getUserDisplayName, getUserRole, getUserAvatar, handleSelectContact]);
+  }, [getUserDisplayName, getUserRole, getUserAvatar, handleSelectContact, styles, mutedIconColor]);
 
   // Рендер элемента списка контактов устройства
   const renderDeviceContactItem = useCallback(({ item }) => {
@@ -306,7 +310,7 @@ export const ContactPicker = ({ visible, onClose, onSelect, initialMode = 'app' 
         <Ionicons name="logo-whatsapp" size={24} color="#25D366" />
       </TouchableOpacity>
     );
-  }, [sendWhatsAppInvite]);
+  }, [sendWhatsAppInvite, styles]);
 
   // Получаем отфильтрованные контакты устройства
   const filteredDeviceContacts = useMemo(() => {
@@ -329,7 +333,7 @@ export const ContactPicker = ({ visible, onClose, onSelect, initialMode = 'app' 
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={24} color="#000" />
+              <Ionicons name="close" size={24} color={isDark ? colors.textPrimary : '#000'} />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>
               {mode === 'app' ? 'Отправить контакт' : 'Пригласить друга'}
@@ -359,7 +363,7 @@ export const ContactPicker = ({ visible, onClose, onSelect, initialMode = 'app' 
 
           {/* Search Input */}
           <View style={styles.searchContainer}>
-            <Ionicons name="search" size={20} color="#8696A0" style={styles.searchIcon} />
+            <Ionicons name="search" size={20} color={mutedIconColor} style={styles.searchIcon} />
             <TextInput
               style={styles.searchInput}
               placeholder={
@@ -369,14 +373,15 @@ export const ContactPicker = ({ visible, onClose, onSelect, initialMode = 'app' 
               }
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholderTextColor="#8696A0"
+              placeholderTextColor={mutedIconColor}
+              keyboardAppearance={isDark ? 'dark' : 'light'}
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="default"
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-                <Ionicons name="close-circle" size={20} color="#8696A0" />
+                <Ionicons name="close-circle" size={20} color={mutedIconColor} />
               </TouchableOpacity>
             )}
           </View>
@@ -384,7 +389,7 @@ export const ContactPicker = ({ visible, onClose, onSelect, initialMode = 'app' 
           {/* List */}
           {isLoading ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#00A884" />
+              <ActivityIndicator size="large" color={isDark ? colors.primary : '#00A884'} />
             </View>
           ) : listData.length > 0 ? (
             <FlatList
@@ -400,17 +405,17 @@ export const ContactPicker = ({ visible, onClose, onSelect, initialMode = 'app' 
             />
           ) : mode === 'app' && searchQuery.length >= 2 ? (
             <View style={styles.emptyContainer}>
-              <Ionicons name="person-outline" size={48} color="#8696A0" />
+              <Ionicons name="person-outline" size={48} color={mutedIconColor} />
               <Text style={styles.emptyText}>Пользователи не найдены</Text>
             </View>
           ) : mode === 'device' && searchQuery.length >= 1 ? (
             <View style={styles.emptyContainer}>
-              <Ionicons name="person-outline" size={48} color="#8696A0" />
+              <Ionicons name="person-outline" size={48} color={mutedIconColor} />
               <Text style={styles.emptyText}>Контакты не найдены</Text>
             </View>
           ) : (
             <View style={styles.emptyContainer}>
-              <Ionicons name="search-outline" size={48} color="#8696A0" />
+              <Ionicons name="search-outline" size={48} color={mutedIconColor} />
               <Text style={styles.emptyText}>
                 {mode === 'app' 
                   ? 'Введите имя или email для поиска' 
@@ -424,14 +429,14 @@ export const ContactPicker = ({ visible, onClose, onSelect, initialMode = 'app' 
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.7)' : 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
   },
   modalContainer: {
-    backgroundColor: '#fff',
+    backgroundColor: isDark ? colors.surface : '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     height: '80%',
@@ -444,7 +449,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    borderBottomColor: isDark ? colors.divider : '#E0E0E0',
   },
   closeButton: {
     width: 40,
@@ -458,12 +463,12 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#000',
+    color: isDark ? colors.textPrimary : '#000',
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F0F2F5',
+    backgroundColor: isDark ? colors.inputBackground : '#F0F2F5',
     borderRadius: 10,
     marginHorizontal: 16,
     marginTop: 16,
@@ -477,7 +482,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 16,
-    color: '#000',
+    color: isDark ? colors.textPrimary : '#000',
     paddingVertical: 0,
   },
   clearButton: {
@@ -496,7 +501,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F2F5',
+    borderBottomColor: isDark ? colors.divider : '#F0F2F5',
   },
   userInfo: {
     flexDirection: 'row',
@@ -507,13 +512,13 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#E0E0E0',
+    backgroundColor: isDark ? colors.surfaceElevated : '#E0E0E0',
   },
   avatarPlaceholder: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#E0E0E0',
+    backgroundColor: isDark ? colors.surfaceElevated : '#E0E0E0',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -527,12 +532,12 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#000',
+    color: isDark ? colors.textPrimary : '#000',
     marginBottom: 2,
   },
   userRole: {
     fontSize: 14,
-    color: '#8696A0',
+    color: isDark ? colors.textSecondary : '#8696A0',
   },
   loadingContainer: {
     flex: 1,
@@ -547,7 +552,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: '#8696A0',
+    color: isDark ? colors.textSecondary : '#8696A0',
     marginTop: 16,
   },
   modeToggleContainer: {
@@ -555,7 +560,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 12,
     marginBottom: 8,
-    backgroundColor: '#F0F2F5',
+    backgroundColor: isDark ? colors.inputBackground : '#F0F2F5',
     borderRadius: 8,
     padding: 4,
   },
@@ -567,20 +572,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modeToggleActive: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.surfaceElevated : '#FFFFFF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
+    shadowOpacity: isDark ? 0.3 : 0.1,
     shadowRadius: 2,
     elevation: 2,
   },
   modeToggleText: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#8696A0',
+    color: isDark ? colors.textSecondary : '#8696A0',
   },
   modeToggleTextActive: {
-    color: '#000',
+    color: isDark ? colors.textPrimary : '#000',
     fontWeight: '600',
   },
 });

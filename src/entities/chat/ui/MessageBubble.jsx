@@ -15,10 +15,24 @@ import ChatApi from '@entities/chat/api/chatApi';
 import {selectIsProductDeleted, selectProductById, selectCurrentProduct} from '@entities/product/model/selectors';
 import {fetchProductById} from '@entities/product/model/slice';
 import {PROCESSING_ROLE_LABELS} from '@entities/admin/lib/constants';
+import {useTheme} from '@app/providers/themeProvider/ThemeProvider';
+
+// ============= ТЕМИЗАЦИЯ СТИЛЕЙ =============
+
+const useMessageStyles = () => {
+    const {colors, isDark} = useTheme();
+    return useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+};
+
+const useMutedIconColor = () => {
+    const {colors, isDark} = useTheme();
+    return isDark ? colors.textSecondary : '#8696A0';
+};
 
 // ============= ВСПОМОГАТЕЛЬНЫЕ КОМПОНЕНТЫ =============
 
 const Avatar = ({uri, onPress}) => {
+    const styles = useMessageStyles();
     const imageSource = uri ? {uri} : null;
 
     return (
@@ -40,6 +54,7 @@ const Avatar = ({uri, onPress}) => {
 };
 
 const StatusTicks = memo(({status}) => {
+    const styles = useMessageStyles();
     if (status === 'SENDING') {
         return (
             <View style={styles.ticksContainer}>
@@ -130,6 +145,8 @@ const PollMessage = memo(({
     onSenderNamePress = null,
     isForwarded = false
 }) => {
+    const styles = useMessageStyles();
+    const mutedIconColor = useMutedIconColor();
     const [poll, setPoll] = useState(message.poll || null);
     const [isVoting, setIsVoting] = useState(false);
 
@@ -277,7 +294,7 @@ const PollMessage = memo(({
                     <Text style={styles.pollQuestion}>{poll.question}</Text>
                     
                     <View style={styles.pollHeader}>
-                        <Ionicons name="chatbubbles" size={16} color="#666" style={styles.pollHeaderIcon} />
+                        <Ionicons name="chatbubbles" size={16} color={mutedIconColor} style={styles.pollHeaderIcon} />
                         <Text style={styles.pollHeaderText}>
                             {poll.allowMultiple ? 'Выберите один или несколько вариантов' : 'Выберите один вариант'}
                         </Text>
@@ -338,7 +355,7 @@ const PollMessage = memo(({
                     
                     {totalVotes > 0 && (
                         <View style={styles.pollFooter}>
-                            <Ionicons name="person" size={12} color="#8696A0" />
+                            <Ionicons name="person" size={12} color={mutedIconColor} />
                             <Text style={styles.pollFooterText}>
                                 {totalVotes} {totalVotes === 1 ? 'голос' : totalVotes < 5 ? 'голоса' : 'голосов'}
                             </Text>
@@ -396,6 +413,8 @@ const BubbleContainer = ({
     participantsById = null,
     participants = null
 }) => {
+    const styles = useMessageStyles();
+    const mutedIconColor = useMutedIconColor();
     const containerRef = useRef(null);
     const [textWidth, setTextWidth] = useState(0);
     const [timeWidth, setTimeWidth] = useState(0);
@@ -506,7 +525,7 @@ const BubbleContainer = ({
                         
                         {isForwarded && (
                             <View style={styles.forwardedLabel}>
-                                <Ionicons name="arrow-redo" size={14} color="#8696A0" />
+                                <Ionicons name="arrow-redo" size={14} color={mutedIconColor} />
                                 <Text style={styles.forwardedLabelText}>Переслано</Text>
                             </View>
                         )}
@@ -597,6 +616,7 @@ const TextMessage = ({
     onSenderNamePress = null,
     isForwarded = false
 }) => {
+    const styles = useMessageStyles();
     const MAX_TEXT_LENGTH = 1000;
     
     // ИСПРАВЛЕНИЕ: используем только id сообщения для ключа
@@ -733,6 +753,7 @@ const ImageMessage = ({
     onSenderNamePress = null,
     isForwarded = false
 }) => {
+    const styles = useMessageStyles();
     const imageCount = attachments.length;
     
     // Определяем размеры сетки в зависимости от количества изображений (максимум 4)
@@ -941,6 +962,8 @@ const ProductMessage = memo(({
     onSenderNamePress = null,
     isForwarded = false
 }) => {
+    const styles = useMessageStyles();
+    const {colors, isDark} = useTheme();
     const dispatch = useDispatch();
     // Проверяем, удален ли продукт
     const isProductDeleted = useSelector((state) => selectIsProductDeleted(state, productId));
@@ -1030,7 +1053,7 @@ const ProductMessage = memo(({
                 >
                     <View style={styles.deletedProductContainer}>
                         <View style={styles.deletedProductIcon}>
-                            <Ionicons name="ban" size={24} color="#999" />
+                            <Ionicons name="ban" size={24} color={isDark ? colors.textTertiary : '#999'} />
                         </View>
                         <Text style={styles.deletedProductText}>
                             Товар удален
@@ -1167,6 +1190,7 @@ const WarehouseMessage = ({
     onSenderNamePress = null,
     isForwarded = false
 }) => {
+    const styles = useMessageStyles();
     // Преобразуем данные склада в нужный формат
     const transformedWarehouse = {
         id: warehouse.id || warehouseId || warehouse.warehouseId,
@@ -1293,6 +1317,8 @@ const ContactMessage = ({
     onSenderNamePress = null,
     isForwarded = false
 }) => {
+    const styles = useMessageStyles();
+    const mutedIconColor = useMutedIconColor();
     // Получаем данные контакта
     const contactData = contact || {};
     const finalContactUserId = contactUserId || contactData.userId;
@@ -1387,13 +1413,13 @@ const ContactMessage = ({
                         )}
                         {contactPhone && (
                             <View style={styles.contactDetailRow}>
-                                <Ionicons name="call-outline" size={14} color="#8696A0" />
+                                <Ionicons name="call-outline" size={14} color={mutedIconColor} />
                                 <Text style={styles.contactDetailText}>{contactPhone}</Text>
                             </View>
                         )}
                         {contactEmail && (
                             <View style={styles.contactDetailRow}>
-                                <Ionicons name="mail-outline" size={14} color="#8696A0" />
+                                <Ionicons name="mail-outline" size={14} color={mutedIconColor} />
                                 <Text style={styles.contactDetailText}>{contactEmail}</Text>
                             </View>
                         )}
@@ -1448,6 +1474,7 @@ const StopMessage = ({
     onSenderNamePress = null,
     isForwarded = false
 }) => {
+    const styles = useMessageStyles();
     const transformedStop = {
         stopId: stop.stopId || stop.id || stopId,
         address: stop.address,
@@ -1529,13 +1556,16 @@ const StopMessage = ({
     );
 };
 
-const SystemMessage = ({text, time}) => (
+const SystemMessage = ({text, time}) => {
+    const styles = useMessageStyles();
+    return (
     <View style={styles.systemMessageContainer}>
         <View style={styles.systemMessageBubble}>
             <Text style={styles.systemMessageText}>{text}</Text>
         </View>
     </View>
-);
+    );
+};
 
 export const MessageBubble = memo(({
                                        message,
@@ -1572,6 +1602,7 @@ export const MessageBubble = memo(({
                                        participantsById = null,
                                        onSenderNamePress = null
                                    }) => {
+    const styles = useMessageStyles();
     const isOwn = message?.senderId === currentUserId;
     const createdAt = message?.createdAt ? new Date(message.createdAt) : null;
     const time = createdAt ? createdAt.toLocaleTimeString('ru-RU', {
@@ -2457,7 +2488,7 @@ export const MessageBubble = memo(({
     return shouldSkipRender;
 });
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     messageContainer: {
         flexDirection: 'row',
         marginVertical: 0,
@@ -2476,7 +2507,7 @@ const styles = StyleSheet.create({
     pollQuestion: {
         fontSize: 15,
         fontWeight: '600',
-        color: '#000',
+        color: isDark ? colors.textPrimary : '#000',
         marginBottom: 10,
         lineHeight: 19,
     },
@@ -2486,14 +2517,14 @@ const styles = StyleSheet.create({
         marginBottom: 12,
         paddingBottom: 10,
         borderBottomWidth: 1,
-        borderBottomColor: '#E0E0E0',
+        borderBottomColor: isDark ? colors.divider : '#E0E0E0',
     },
     pollHeaderIcon: {
         marginTop: 2,
     },
     pollHeaderText: {
         fontSize: 12,
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         marginLeft: 6,
         flex: 1,
         lineHeight: 16,
@@ -2548,16 +2579,16 @@ const styles = StyleSheet.create({
     pollOptionText: {
         flex: 1,
         fontSize: 14.5,
-        color: '#000',
+        color: isDark ? colors.textPrimary : '#000',
         lineHeight: 18,
     },
     pollOptionTextVoted: {
         fontWeight: '500',
-        color: '#000',
+        color: isDark ? colors.textPrimary : '#000',
     },
     pollOptionVoteCount: {
         fontSize: 13,
-        color: '#8696A0',
+        color: isDark ? colors.textSecondary : '#8696A0',
         marginLeft: 8,
         fontWeight: '400',
     },
@@ -2573,7 +2604,7 @@ const styles = StyleSheet.create({
     },
     pollFooterText: {
         fontSize: 12,
-        color: '#8696A0',
+        color: isDark ? colors.textSecondary : '#8696A0',
         marginLeft: 4,
     },
     ownMessageContainer: {
@@ -2603,7 +2634,7 @@ const styles = StyleSheet.create({
         width: 32,
         height: 32,
         borderRadius: 16,
-        backgroundColor: '#E0E0E0',
+        backgroundColor: isDark ? colors.surfaceElevated : '#E0E0E0',
         justifyContent: 'center',
         alignItems: 'center',
         overflow: 'hidden',
@@ -2618,12 +2649,12 @@ const styles = StyleSheet.create({
         height: 32,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#E0E0E0',
+        backgroundColor: isDark ? colors.surfaceElevated : '#E0E0E0',
         borderRadius: 16,
     },
     avatarPlaceholderText: {
         fontSize: 16,
-        color: '#666666',
+        color: isDark ? colors.textSecondary : '#666666',
     },
     avatarSpacer: {
         width: 40,
@@ -2653,13 +2684,13 @@ const styles = StyleSheet.create({
         elevation: 1,
     },
     ownBubble: {
-        backgroundColor: '#DCF8C6',
+        backgroundColor: isDark ? '#005C4B' : '#DCF8C6',
     },
     otherBubble: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surfaceElevated : '#FFFFFF',
     },
     highlightedBubble: {
-        backgroundColor: '#FFF9C4', // Светло-желтый цвет для выделения
+        backgroundColor: isDark ? '#3D3820' : '#FFF9C4', // Светло-желтый цвет для выделения
         shadowColor: '#FBC02D',
         shadowOffset: { width: 0, height: 0 },
         shadowOpacity: 0.3,
@@ -2679,10 +2710,10 @@ const styles = StyleSheet.create({
         opacity: 0.85,
     },
     pressedBubbleInnerOwn: {
-        backgroundColor: '#C8E6A0', // Более темный зеленый для своих сообщений при нажатии
+        backgroundColor: isDark ? '#004A3C' : '#C8E6A0', // Более темный зеленый для своих сообщений при нажатии
     },
     pressedBubbleInnerOther: {
-        backgroundColor: '#E8E8E8', // Более темный белый для чужих сообщений при нажатии
+        backgroundColor: isDark ? colors.border : '#E8E8E8', // Более темный белый для чужих сообщений при нажатии
     },
 
     // Контент
@@ -2712,7 +2743,7 @@ const styles = StyleSheet.create({
     messageText: {
         fontSize: 16,
         lineHeight: 19,
-        color: '#000000',
+        color: isDark ? colors.textPrimary : '#000000',
     },
     expandButtonInline: {
         backgroundColor: 'transparent',
@@ -2721,7 +2752,7 @@ const styles = StyleSheet.create({
     },
     expandButtonText: {
         fontSize: 16,
-        color: '#8966A0',
+        color: isDark ? colors.primary : '#8966A0',
         fontWeight: '500',
         lineHeight: 19,
     },
@@ -2750,7 +2781,7 @@ const styles = StyleSheet.create({
     },
     timestamp: {
         fontSize: 11,
-        color: '#8696A0',
+        color: isDark ? colors.textSecondary : '#8696A0',
         marginRight: 3,
         lineHeight: 11, // добавлено для выравнивания с галочками
     },
@@ -2766,7 +2797,7 @@ const styles = StyleSheet.create({
     },
     tick: {
         fontSize: 12, // уменьшено с 16
-        color: '#8696A0',
+        color: isDark ? colors.textSecondary : '#8696A0',
         fontWeight: '600',
         lineHeight: 11, // выровнено для центрирования с текстом времени
         position: 'absolute',
@@ -2808,7 +2839,7 @@ const styles = StyleSheet.create({
         borderTopWidth: 10,
         borderLeftColor: 'transparent',
         borderRightColor: 'transparent',
-        borderBottomColor: '#DCF8C6',
+        borderBottomColor: isDark ? '#005C4B' : '#DCF8C6',
         borderTopColor: 'transparent',
         transform: [{rotate: '180deg'}], // Поворот хвостика
     },
@@ -2833,7 +2864,7 @@ const styles = StyleSheet.create({
         borderTopWidth: 10,
         borderLeftColor: 'transparent',
         borderRightColor: 'transparent',
-        borderBottomColor: '#FFFFFF',
+        borderBottomColor: isDark ? colors.surfaceElevated : '#FFFFFF',
         borderTopColor: 'transparent',
         transform: [{rotate: '180deg'}],
     },
@@ -2855,7 +2886,7 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
     },
     messageImage: {
-        backgroundColor: '#F0F0F0',
+        backgroundColor: isDark ? colors.surface : '#F0F0F0',
     },
     imageOverlay: {
         position: 'absolute',
@@ -2891,7 +2922,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     systemMessageBubble: {
-        backgroundColor: 'rgba(0, 0, 0, 0.1)',
+        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.1)',
         borderRadius: 12,
         paddingHorizontal: 12,
         paddingVertical: 6,
@@ -2900,13 +2931,13 @@ const styles = StyleSheet.create({
     },
     systemMessageText: {
         fontSize: 12,
-        color: '#666666',
+        color: isDark ? colors.textSecondary : '#666666',
         textAlign: 'center',
         fontWeight: '400',
     },
     systemMessageTime: {
         fontSize: 10,
-        color: '#999999',
+        color: isDark ? colors.textTertiary : '#999999',
         marginTop: 2,
     },
 
@@ -2929,7 +2960,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         padding: 12,
-        backgroundColor: '#F5F5F5',
+        backgroundColor: isDark ? colors.surface : '#F5F5F5',
         borderRadius: 12,
         width: 250,
     },
@@ -2937,13 +2968,13 @@ const styles = StyleSheet.create({
         width: 48,
         height: 48,
         borderRadius: 24,
-        backgroundColor: '#E0E0E0',
+        backgroundColor: isDark ? colors.surfaceElevated : '#E0E0E0',
     },
     contactAvatarPlaceholder: {
         width: 48,
         height: 48,
         borderRadius: 24,
-        backgroundColor: '#E0E0E0',
+        backgroundColor: isDark ? colors.surfaceElevated : '#E0E0E0',
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -2957,12 +2988,12 @@ const styles = StyleSheet.create({
     contactName: {
         fontSize: 16,
         fontWeight: '600',
-        color: '#000',
+        color: isDark ? colors.textPrimary : '#000',
         marginBottom: 2,
     },
     contactRole: {
         fontSize: 14,
-        color: '#8696A0',
+        color: isDark ? colors.textSecondary : '#8696A0',
         marginBottom: 6,
     },
     contactDetailRow: {
@@ -2972,7 +3003,7 @@ const styles = StyleSheet.create({
     },
     contactDetailText: {
         fontSize: 13,
-        color: '#8696A0',
+        color: isDark ? colors.textSecondary : '#8696A0',
         marginLeft: 6,
     },
     reactionsWrapper: {
@@ -3003,7 +3034,7 @@ const styles = StyleSheet.create({
     },
     forwardedLabelText: {
         fontSize: 12.5,
-        color: '#8696A0',
+        color: isDark ? colors.textSecondary : '#8696A0',
         marginLeft: 4,
         fontWeight: '400',
     },
@@ -3012,10 +3043,10 @@ const styles = StyleSheet.create({
         padding: 16,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#F5F5F5',
+        backgroundColor: isDark ? colors.surface : '#F5F5F5',
         borderRadius: 12,
         borderWidth: 1,
-        borderColor: '#E0E0E0',
+        borderColor: isDark ? colors.divider : '#E0E0E0',
         borderStyle: 'dashed',
     },
     deletedProductIcon: {
@@ -3024,13 +3055,13 @@ const styles = StyleSheet.create({
     deletedProductText: {
         fontSize: 14,
         fontWeight: '500',
-        color: '#999',
+        color: isDark ? colors.textTertiary : '#999',
         textAlign: 'center',
         marginBottom: 4,
     },
     deletedProductName: {
         fontSize: 12,
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         textAlign: 'center',
         fontStyle: 'italic',
     },

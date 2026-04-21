@@ -3,6 +3,7 @@ import { View, TextInput, TouchableOpacity, Text, StyleSheet, Platform, Modal } 
 import { Ionicons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import * as Contacts from 'expo-contacts';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 // Hooks
 import { useComposerState } from './hooks/useComposerState';
@@ -24,7 +25,7 @@ import { CameraIcon } from '@shared/ui/Icon/CameraIcon';
 
 // ============ MEMOIZED COMPONENTS ============
 
-const AttachmentMenuItem = memo(({ icon, backgroundColor, text, onPress, disabled }) => (
+const AttachmentMenuItem = memo(({ icon, backgroundColor, text, onPress, disabled, styles }) => (
   <TouchableOpacity style={styles.attachmentMenuItem} onPress={onPress} disabled={disabled}>
     <View style={[styles.attachmentMenuIcon, { backgroundColor }]}>
       <Ionicons name={icon} size={24} color="#fff" />
@@ -53,6 +54,7 @@ const ComposerModals = memo(({
   onSelectContact,
   roomId,
   disabled,
+  styles,
 }) => (
   <>
     {/* Voice Recording Modal */}
@@ -91,6 +93,7 @@ const ComposerModals = memo(({
             text="Галерея"
             onPress={onGalleryPress}
             disabled={disabled}
+            styles={styles}
           />
           <AttachmentMenuItem
             icon="camera"
@@ -98,6 +101,7 @@ const ComposerModals = memo(({
             text="Камера"
             onPress={onCameraPress}
             disabled={disabled}
+            styles={styles}
           />
           <AttachmentMenuItem
             icon="bar-chart"
@@ -105,6 +109,7 @@ const ComposerModals = memo(({
             text="Опрос"
             onPress={onPollPress}
             disabled={disabled}
+            styles={styles}
           />
           <AttachmentMenuItem
             icon="person"
@@ -112,6 +117,7 @@ const ComposerModals = memo(({
             text="Контакт"
             onPress={onContactPress}
             disabled={disabled}
+            styles={styles}
           />
         </View>
       </TouchableOpacity>
@@ -146,8 +152,12 @@ export const Composer = memo(({
   autoFocus = false,
   maxImages = 10,
 }) => {
+  const { colors, isDark } = useTheme();
+
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   // ============ STATE ============
-  
+
   const state = useComposerState(disabled);
   const [permissionModalVisible, setPermissionModalVisible] = useState(false);
   const [permissionType, setPermissionType] = useState('photos');
@@ -418,7 +428,11 @@ export const Composer = memo(({
                 <Ionicons
                   name={showEmojiPicker && !isKeyboardVisible ? "create-outline" : "happy-outline"}
                   size={24}
-                  color={disabled ? "#CCCCCC" : (showEmojiPicker && !isKeyboardVisible ? "#00A884" : "#8696A0")}
+                  color={disabled
+                    ? (isDark ? colors.textTertiary : "#CCCCCC")
+                    : (showEmojiPicker && !isKeyboardVisible
+                      ? (isDark ? colors.primary : "#00A884")
+                      : (isDark ? colors.textSecondary : "#8696A0"))}
                 />
               </TouchableOpacity>
             )}
@@ -434,7 +448,8 @@ export const Composer = memo(({
               onFocus={keyboard.handleInputFocus}
               multiline
               scrollEnabled={true}
-              placeholderTextColor="#999999"
+              placeholderTextColor={isDark ? colors.textTertiary : "#999999"}
+              keyboardAppearance={isDark ? 'dark' : 'light'}
               editable={!disabled}
             />
             
@@ -446,14 +461,18 @@ export const Composer = memo(({
                   style={styles.attachBtn}
                   disabled={disabled}
                 >
-                  <AttachIcon size={20} color={disabled ? "#CCCCCC" : "#8696A0"} />
+                  <AttachIcon size={20} color={disabled
+                    ? (isDark ? colors.textTertiary : "#CCCCCC")
+                    : (isDark ? colors.textSecondary : "#8696A0")} />
                 </TouchableOpacity>
                 <TouchableOpacity 
                   onPress={media.takePhoto} 
                   style={styles.cameraBtn}
                   disabled={disabled}
                 >
-                  <CameraIcon size={20} color={disabled ? "#CCCCCC" : "#8696A0"} />
+                  <CameraIcon size={20} color={disabled
+                    ? (isDark ? colors.textTertiary : "#CCCCCC")
+                    : (isDark ? colors.textSecondary : "#8696A0")} />
                 </TouchableOpacity>
               </View>
             )}
@@ -497,6 +516,7 @@ export const Composer = memo(({
         onSelectContact={handleSelectContact}
         roomId={roomId}
         disabled={disabled}
+        styles={styles}
       />
 
       {/* Emoji Picker */}
@@ -518,21 +538,21 @@ export const Composer = memo(({
 
 // ============ STYLES ============
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
-    backgroundColor: 'transparent', 
-    borderTopWidth: 0, 
+    backgroundColor: 'transparent',
+    borderTopWidth: 0,
     paddingBottom: Platform.OS === 'ios' ? 20 : 6,
   },
   replyContainer: {
-    backgroundColor: '#F0F0F0',
+    backgroundColor: isDark ? colors.surfaceElevated : '#F0F0F0',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 8,
     paddingTop: 8,
     paddingBottom: 4,
     borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    borderBottomColor: isDark ? colors.divider : '#E0E0E0',
   },
   row: {
     flexDirection: 'row',
@@ -542,17 +562,17 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     flex: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundColor: isDark ? colors.surfaceElevated : 'rgba(255, 255, 255, 0.9)',
     borderRadius: 25,
     marginRight: 8,
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
+    shadowOpacity: isDark ? 0.35 : 0.1,
     shadowRadius: 2,
     elevation: 2,
     borderWidth: 1,
-    borderColor: 'rgba(229, 229, 229, 0.8)',
+    borderColor: isDark ? colors.divider : 'rgba(229, 229, 229, 0.8)',
   },
   inputWrapper: {
     flexDirection: 'row',
@@ -574,7 +594,7 @@ const styles = StyleSheet.create({
     paddingVertical: Platform.OS === 'ios' ? 10 : 8,
     fontSize: 16,
     lineHeight: 20,
-    color: '#000000',
+    color: isDark ? colors.textPrimary : '#000000',
     textAlignVertical: 'top',
   },
   inputWithAttachments: {
@@ -582,7 +602,7 @@ const styles = StyleSheet.create({
   },
   inputDisabled: {
     opacity: 0.5,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: isDark ? colors.surface : '#f5f5f5',
   },
   rightButtons: {
     flexDirection: 'row',
@@ -607,28 +627,28 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(37, 211, 102, 0.95)',
+    backgroundColor: isDark ? colors.primary : 'rgba(37, 211, 102, 0.95)',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: isDark ? 0.4 : 0.2,
     shadowRadius: 3,
     elevation: 3,
   },
   sendBtnDisabled: {
-    backgroundColor: 'rgba(176, 190, 197, 0.8)',
+    backgroundColor: isDark ? colors.surfaceElevated : 'rgba(176, 190, 197, 0.8)',
   },
   voiceBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(37, 211, 102, 0.95)',
+    backgroundColor: isDark ? colors.primary : 'rgba(37, 211, 102, 0.95)',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: isDark ? 0.4 : 0.2,
     shadowRadius: 3,
     elevation: 3,
   },
@@ -639,22 +659,24 @@ const styles = StyleSheet.create({
   },
   recordingModalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.7)' : 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
   },
   attachmentMenuOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.7)' : 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
   },
   attachmentMenu: {
-    backgroundColor: '#fff',
+    backgroundColor: isDark ? colors.surface : '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingVertical: 20,
     paddingHorizontal: 16,
     flexDirection: 'row',
     justifyContent: 'space-around',
+    borderTopWidth: isDark ? 1 : 0,
+    borderTopColor: isDark ? colors.divider : 'transparent',
   },
   attachmentMenuItem: {
     alignItems: 'center',
@@ -670,7 +692,7 @@ const styles = StyleSheet.create({
   },
   attachmentMenuText: {
     fontSize: 12,
-    color: '#333',
+    color: isDark ? colors.textSecondary : '#333',
     marginTop: 4,
   },
 });

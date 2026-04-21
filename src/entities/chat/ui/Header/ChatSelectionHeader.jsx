@@ -4,6 +4,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {Ionicons} from '@expo/vector-icons';
 import {IconDelete} from '@shared/ui/Icon/ProductManagement/IconDelete';
 import ArrowBackIcon from '@shared/ui/Icon/Common/ArrowBackIcon';
+import {useTheme} from '@app/providers/themeProvider/ThemeProvider';
 
 const {width: screenWidth} = Dimensions.get('window');
 
@@ -19,6 +20,11 @@ export const ChatSelectionHeader = ({
   onForward,
   onDelete,
 }) => {
+  const {colors, isDark} = useTheme();
+
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const iconColor = isDark ? colors.textPrimary : '#333';
+
   const headerTitle = useMemo(() => {
     const n = typeof selectedCount === 'number' ? selectedCount : 0;
     return `Выбрано сообщений: ${n}`;
@@ -38,7 +44,7 @@ export const ChatSelectionHeader = ({
     <View style={styles.header}>
       <View style={styles.left}>
         <TouchableOpacity style={styles.backButton} onPress={onCancel} hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
-          <ArrowBackIcon width={24} height={24} color="#333" />
+          <ArrowBackIcon width={24} height={24} color={iconColor} />
         </TouchableOpacity>
       </View>
 
@@ -51,16 +57,16 @@ export const ChatSelectionHeader = ({
       <View style={styles.right}>
         {canReply && (
           <TouchableOpacity style={styles.iconBtn} onPress={onReply} disabled={!canReply}>
-            <Icon name="reply" size={22} color="#333" />
+            <Icon name="reply" size={22} color={iconColor} />
           </TouchableOpacity>
         )}
 
         <TouchableOpacity style={styles.iconBtn} onPress={onCopy} disabled={selectedCount === 0}>
-          <Ionicons name="copy-outline" size={22} color="#333" />
+          <Ionicons name="copy-outline" size={22} color={iconColor} />
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.iconBtn} onPress={onForward} disabled={selectedCount === 0}>
-          <Icon name="share" size={22} color="#333" />
+          <Icon name="share" size={22} color={iconColor} />
         </TouchableOpacity>
 
         {canDelete && onDelete ? (
@@ -78,7 +84,7 @@ export const ChatSelectionHeader = ({
             disabled={false}
             activeOpacity={0.6}
           >
-            <IconDelete width={22} height={22} color="#333" />
+            <IconDelete width={22} height={22} color={iconColor} />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -86,18 +92,18 @@ export const ChatSelectionHeader = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   header: {
     position: 'relative',
     width: '100%',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.surface : '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
     paddingVertical: 8,
     zIndex: 1000,
     borderBottomWidth: 0.5,
-    borderBottomColor: '#E0E0E0',
+    borderBottomColor: isDark ? colors.divider : '#E0E0E0',
     height: BASE_HEADER_HEIGHT,
   },
   left: {
@@ -115,7 +121,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 14,
-    color: '#000',
+    color: isDark ? colors.textPrimary : '#000',
     fontWeight: '500',
   },
   right: {
@@ -126,5 +132,3 @@ const styles = StyleSheet.create({
     padding: 8,
   },
 });
-
-

@@ -1,5 +1,7 @@
 package com.abuingush.iceberg
 
+import com.rustorepush.RustorePush
+
 import android.app.Application
 import android.content.res.Configuration
 
@@ -40,6 +42,7 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
+      RustorePush.init(this, "lTkNaNfvb3nRgzw9vqtltesSJyeNgaBH")
     DefaultNewArchitectureEntryPoint.releaseLevel = try {
       ReleaseLevel.valueOf(BuildConfig.REACT_NATIVE_RELEASE_LEVEL.uppercase())
     } catch (e: IllegalArgumentException) {

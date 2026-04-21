@@ -87,8 +87,11 @@ const getUserDistrictIds = (user) => {
   return EMPTY_ARRAY;
 };
 
-const isStopVisibleForUser = (msg, userDistrictIds) => {
+const isStopVisibleForUser = (msg, userDistrictIds, isBroadcast = true) => {
   if (!isMessageStop(msg)) return true;
+  // В обычных групповых чатах (GROUP) остановка всегда видна всем участникам —
+  // не фильтруем ни по району, ни по истечению времени.
+  if (!isBroadcast) return true;
   if (isStopMessageExpired(msg)) return false;
   if (!userDistrictIds.length) return true;
   return isStopInUserDistrict(msg, userDistrictIds);
@@ -128,7 +131,8 @@ export const selectRoomsList = createSelector(
       let actualUnread = unreadByRoomId?.[id] ?? 0;
       const roomType = String(room.type || '').toUpperCase();
       const isGroupOrBroadcast = roomType === 'GROUP' || roomType === 'BROADCAST';
-      const userDistrictIds = isGroupOrBroadcast ? getUserDistrictIds(currentUser) : EMPTY_ARRAY;
+      const isBroadcastRoom = roomType === 'BROADCAST';
+      const userDistrictIds = isBroadcastRoom ? getUserDistrictIds(currentUser) : EMPTY_ARRAY;
 
       // Получаем последнее сообщение с актуальным статусом
       let lastMessage = null;
@@ -138,7 +142,7 @@ export const selectRoomsList = createSelector(
         const allMessages = messages[id].ids
           .map(msgId => messages[id].byId[msgId])
           .filter(Boolean)
-          .filter(msg => isStopVisibleForUser(msg, userDistrictIds));
+          .filter(msg => isStopVisibleForUser(msg, userDistrictIds, isBroadcastRoom));
         if (allMessages.length > 0) {
           // Сортируем по времени создания (новые в конце) и берем последнее
           const sortedMessages = allMessages.sort((a, b) =>
@@ -153,7 +157,7 @@ export const selectRoomsList = createSelector(
 
       // Если в store нет сообщений, используем room.lastMessage
       let hadExpiredStopLastMessage = false;
-      const serverLastMessageHidden = !isStopVisibleForUser(room.lastMessage, userDistrictIds);
+      const serverLastMessageHidden = !isStopVisibleForUser(room.lastMessage, userDistrictIds, isBroadcastRoom);
       if (!lastMessage && room.lastMessage) {
         if (serverLastMessageHidden) {
           hadExpiredStopLastMessage = true;
@@ -210,7 +214,7 @@ export const selectRoomsList = createSelector(
             const msg = bucket.byId?.[msgId];
             if (!msg || msg.isDeletedForAll) return count;
             if (currentUserId && Number(msg.senderId) === Number(currentUserId)) return count;
-            if (!isStopVisibleForUser(msg, userDistrictIds)) return count;
+            if (!isStopVisibleForUser(msg, userDistrictIds, isBroadcastRoom)) return count;
             const st = String(msg.status || '').toUpperCase();
             if (st && st !== 'SENT' && st !== 'DELIVERED') return count;
             return count + 1;

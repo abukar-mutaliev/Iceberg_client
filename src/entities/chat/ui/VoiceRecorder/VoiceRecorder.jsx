@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated, Platform } from 'react-native';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Ionicons } from '@expo/vector-icons';
 import { useChatSocketActions } from '@entities/chat/hooks/useChatSocketActions';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const WAVEFORM_BARS_COUNT = 20;
 const MIN_BAR_HEIGHT = 8;
@@ -11,6 +12,8 @@ const MAX_BAR_HEIGHT = 50;
 
 export const VoiceRecorder = ({ onSend, onCancel, roomId }) => {
   const { emitTyping } = useChatSocketActions();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [recording, setRecording] = useState(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
@@ -689,9 +692,9 @@ export const VoiceRecorder = ({ onSend, onCancel, roomId }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.surface : '#FFFFFF',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 20,
@@ -701,7 +704,7 @@ const styles = StyleSheet.create({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: -2 },
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0.3 : 0.1,
         shadowRadius: 8,
       },
       android: {
@@ -730,7 +733,7 @@ const styles = StyleSheet.create({
   timer: {
     fontSize: 32,
     fontWeight: '700',
-    color: '#000000',
+    color: isDark ? colors.textPrimary : '#000000',
     textAlign: 'center',
     marginBottom: 20,
     fontVariant: ['tabular-nums'],
@@ -767,7 +770,7 @@ const styles = StyleSheet.create({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
+        shadowOpacity: isDark ? 0.4 : 0.2,
         shadowRadius: 4,
       },
       android: {
@@ -776,13 +779,13 @@ const styles = StyleSheet.create({
     }),
   },
   cancelButton: {
-    backgroundColor: '#FFE8E8',
+    backgroundColor: isDark ? 'rgba(255, 59, 48, 0.15)' : '#FFE8E8',
   },
   sendButton: {
     backgroundColor: '#25D366',
   },
   sendButtonDisabled: {
-    backgroundColor: '#B0B0B0',
+    backgroundColor: isDark ? colors.border : '#B0B0B0',
   },
   hintContainer: {
     minHeight: 40, // Минимальная высота для предотвращения дергания
@@ -793,7 +796,7 @@ const styles = StyleSheet.create({
   },
   hint: {
     fontSize: 14,
-    color: '#8E8E93',
+    color: isDark ? colors.textSecondary : '#8E8E93',
     textAlign: 'center',
     backgroundColor: 'transparent',
   },

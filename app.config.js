@@ -9,6 +9,7 @@ export default {
         version: '1.4.0',
         scheme: 'iceberg',
         icon: './assets/notification-icon.png',
+        userInterfaceStyle: 'automatic',
         splash: {
             image: './assets/logo/logo.png',
             resizeMode: 'contain',
@@ -107,6 +108,7 @@ export default {
             versionCode: 51,
             versionName: '1.5.1',
             icon: './assets/icon.png',
+            userInterfaceStyle: 'automatic',
             adaptiveIcon: {
                 foregroundImage: './assets/icon.png',
                 backgroundColor: '#E3F2FD',
@@ -160,6 +162,7 @@ export default {
             icon: './assets/icon.png',
             bundleIdentifier: 'com.abuingush.iceberg',
             buildNumber: '6',
+            userInterfaceStyle: 'automatic',
             config: {
                 googleMapsApiKey: 'AIzaSyDev-AMb24bvlQn3a-b4DGsItiYB6su6_E',
                 yandexMapsApiKey: '17ee620d-aee1-482c-acc9-c7144fd46087',

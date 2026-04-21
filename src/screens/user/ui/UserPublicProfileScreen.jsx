@@ -11,8 +11,12 @@ import { selectRoomsList } from '@entities/chat/model/selectors';
 import CallIcon from '@shared/ui/Chat/CallIcon';
 import ChatIcon from '@shared/ui/Chat/ChatIcon';
 import { PROCESSING_ROLE_LABELS } from '@entities/admin/lib/constants';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const UserPublicProfileScreen = ({ route, navigation }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     const userId = route?.params?.userId;
     const fromScreen = route?.params?.fromScreen;
     const roomId = route?.params?.roomId;
@@ -457,7 +461,10 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
     if (loading) {
         return (
             <SafeAreaView style={styles.loadingContainer}>
-                <StatusBar backgroundColor="#FFFFFF" barStyle="dark-content" />
+                <StatusBar
+                    backgroundColor={isDark ? colors.background : '#FFFFFF'}
+                    barStyle={isDark ? 'light-content' : 'dark-content'}
+                />
                 <ActivityIndicator size="large" color="#25D366" />
                 <Text style={styles.loadingText}>Загрузка профиля...</Text>
             </SafeAreaView>
@@ -467,7 +474,10 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
     if (error) {
         return (
             <SafeAreaView style={styles.container}>
-                <StatusBar backgroundColor="#FFFFFF" barStyle="dark-content" />
+                <StatusBar
+                    backgroundColor={isDark ? colors.background : '#FFFFFF'}
+                    barStyle={isDark ? 'light-content' : 'dark-content'}
+                />
                 <View style={styles.header}>
                     <TouchableOpacity
                         style={styles.backButton}
@@ -489,7 +499,10 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
 
     return (
         <View style={styles.container}>
-            <StatusBar backgroundColor="#FFFFFF" barStyle="dark-content" />
+            <StatusBar
+                backgroundColor={isDark ? colors.background : '#FFFFFF'}
+                barStyle={isDark ? 'light-content' : 'dark-content'}
+            />
 
             <View style={styles.header}>
                 <TouchableOpacity
@@ -816,21 +829,21 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.background : '#FFFFFF',
     },
     loadingContainer: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.background : '#FFFFFF',
     },
     loadingText: {
         marginTop: 16,
         fontSize: 16,
-        color: '#128C7E',
+        color: isDark ? colors.textSecondary : '#128C7E',
         fontWeight: '400',
     },
     center: {
@@ -844,14 +857,14 @@ const styles = StyleSheet.create({
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.background : '#FFFFFF',
         paddingTop: 8,
         paddingBottom: 12,
         paddingHorizontal: 16,
-        elevation: 4,
+        elevation: isDark ? 0 : 4,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
+        shadowOpacity: isDark ? 0 : 0.2,
         shadowRadius: 4,
     },
     backButton: {
@@ -860,7 +873,7 @@ const styles = StyleSheet.create({
     },
     backIcon: {
         fontSize: 24,
-        color: '#000000',
+        color: isDark ? colors.textPrimary : '#000000',
         fontWeight: '400',
     },
     headerTitleContainer: {
@@ -871,12 +884,12 @@ const styles = StyleSheet.create({
     headerTitle: {
         fontSize: 16,
         fontWeight: '500',
-        color: '#000000',
+        color: isDark ? colors.textPrimary : '#000000',
         marginBottom: 2,
     },
     headerSubtitle: {
         fontSize: 12,
-        color: '#666666',
+        color: isDark ? colors.textSecondary : '#666666',
         fontWeight: '400',
     },
     headerActions: {
@@ -887,13 +900,13 @@ const styles = StyleSheet.create({
     },
     headerActionIcon: {
         fontSize: 20,
-        color: '#000000',
+        color: isDark ? colors.textPrimary : '#000000',
         fontWeight: '600',
     },
 
     content: {
         flex: 1,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.background : '#FFFFFF',
     },
     scrollContent: {
         paddingBottom: 120,
@@ -901,7 +914,7 @@ const styles = StyleSheet.create({
 
     // Avatar Section
     avatarSection: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.background : '#FFFFFF',
         alignItems: 'center',
         paddingBottom: 24,
     },
@@ -914,17 +927,17 @@ const styles = StyleSheet.create({
         height: 200,
         borderRadius: 100,
         borderWidth: 3,
-        borderColor: 'rgba(255, 255, 255, 0.3)',
+        borderColor: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.3)',
     },
     avatarPlaceholder: {
         width: 200,
         height: 200,
         borderRadius: 100,
-        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        backgroundColor: isDark ? colors.surfaceElevated : 'rgba(255, 255, 255, 0.2)',
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 3,
-        borderColor: 'rgba(255, 255, 255, 0.3)',
+        borderColor: isDark ? colors.divider : 'rgba(255, 255, 255, 0.3)',
     },
     avatarPlaceholderText: {
         fontSize: 80,
@@ -933,31 +946,31 @@ const styles = StyleSheet.create({
     avatarName: {
         fontSize: 24,
         fontWeight: '500',
-        color: '#000000',
+        color: isDark ? colors.textPrimary : '#000000',
         textAlign: 'center',
         marginBottom: 4,
     },
     avatarRole: {
         fontSize: 16,
-        color: '#666666',
+        color: isDark ? colors.textSecondary : '#666666',
         fontWeight: '400',
         textAlign: 'center',
     },
 
     // Name Section
     nameSection: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
         paddingVertical: 20,
         paddingHorizontal: 16,
         borderBottomWidth: 1,
-        borderBottomColor: '#E8E8E8',
+        borderBottomColor: isDark ? colors.divider : '#E8E8E8',
     },
     nameRow: {
         marginBottom: 8,
     },
     sectionLabel: {
         fontSize: 14,
-        color: '#25D366',
+        color: isDark ? colors.primary : '#25D366',
         fontWeight: '400',
         textTransform: 'uppercase',
         letterSpacing: 0.5,
@@ -965,29 +978,29 @@ const styles = StyleSheet.create({
     nameText: {
         fontSize: 28,
         fontWeight: '400',
-        color: '#000000',
+        color: isDark ? colors.textPrimary : '#000000',
         marginBottom: 4,
     },
     roleText: {
         fontSize: 16,
-        color: '#666666',
+        color: isDark ? colors.textSecondary : '#666666',
         fontWeight: '400',
     },
 
     // Info Sections
     infoSection: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
         paddingVertical: 16,
         paddingHorizontal: 16,
         borderBottomWidth: 1,
-        borderBottomColor: '#E8E8E8',
+        borderBottomColor: isDark ? colors.divider : '#E8E8E8',
     },
     infoRow: {
         marginBottom: 8,
     },
     infoText: {
         fontSize: 18,
-        color: '#000000',
+        color: isDark ? colors.textPrimary : '#000000',
         fontWeight: '400',
         lineHeight: 24,
     },
@@ -1000,7 +1013,7 @@ const styles = StyleSheet.create({
     },
     phoneText: {
         fontSize: 18,
-        color: '#000000',
+        color: isDark ? colors.textPrimary : '#000000',
         fontWeight: '400',
         flex: 1,
     },
@@ -1026,7 +1039,7 @@ const styles = StyleSheet.create({
     // Actions Section
     actionsSection: {
         marginTop: 24,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
     },
     actionItem: {
         flexDirection: 'row',
@@ -1034,7 +1047,7 @@ const styles = StyleSheet.create({
         paddingVertical: 16,
         paddingHorizontal: 16,
         borderBottomWidth: 1,
-        borderBottomColor: '#E8E8E8',
+        borderBottomColor: isDark ? colors.divider : '#E8E8E8',
     },
     actionIcon: {
         width: 24,
@@ -1043,7 +1056,7 @@ const styles = StyleSheet.create({
     },
     actionText: {
         fontSize: 16,
-        color: '#000000',
+        color: isDark ? colors.textPrimary : '#000000',
         fontWeight: '400',
         flex: 1,
     },
@@ -1054,7 +1067,7 @@ const styles = StyleSheet.create({
 
     // Error States
     error: {
-        color: '#E53E3E',
+        color: isDark ? '#FF6B6B' : '#E53E3E',
         fontSize: 16,
         textAlign: 'center',
         marginBottom: 20,
@@ -1072,7 +1085,7 @@ const styles = StyleSheet.create({
         fontWeight: '500',
     },
 
-    // Modal Styles
+    // Modal Styles (preview всегда тёмный — overlay для изображения)
     modalBackground: {
         flex: 1,
         backgroundColor: 'rgba(0, 0, 0, 0.95)',

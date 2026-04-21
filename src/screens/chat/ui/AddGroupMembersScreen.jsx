@@ -14,8 +14,12 @@ import { addMembers, fetchRoom } from '@entities/chat/model/slice';
 import ChatApi from '@entities/chat/api/chatApi';
 import { getImageUrl } from '@shared/api/api';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const AddGroupMembersScreen = ({ route, navigation }) => {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const { roomId, currentMembers = [] } = route.params;
   const dispatch = useDispatch();
   const currentUser = useSelector(state => state?.auth?.user);
@@ -352,7 +356,8 @@ export const AddGroupMembersScreen = ({ route, navigation }) => {
           value={searchQuery}
           onChangeText={setSearchQuery}
           placeholder="Поиск участников..."
-          placeholderTextColor="#8696A0"
+          placeholderTextColor={isDark ? colors.textTertiary : '#8696A0'}
+          keyboardAppearance={isDark ? 'dark' : 'light'}
         />
         {searchQuery.length > 0 && (
           <Text style={styles.searchResultsCount}>
@@ -365,7 +370,7 @@ export const AddGroupMembersScreen = ({ route, navigation }) => {
       <View style={styles.content}>
         {loading && !hasLoadedAllUsers ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#007AFF" />
+            <ActivityIndicator size="large" color={isDark ? colors.primary : '#007AFF'} />
             <Text style={styles.loadingText}>Загрузка пользователей...</Text>
           </View>
         ) : (
@@ -401,10 +406,10 @@ export const AddGroupMembersScreen = ({ route, navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background : '#FFFFFF',
   },
   header: {
     flexDirection: 'row',
@@ -412,15 +417,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
-    backgroundColor: '#FFFFFF',
+    borderBottomColor: isDark ? colors.divider : '#E5E5E5',
+    backgroundColor: isDark ? colors.surface : '#FFFFFF',
   },
   backButton: {
     paddingHorizontal: 8,
   },
   backButtonText: {
     fontSize: 24,
-    color: '#007AFF',
+    color: isDark ? colors.primary : '#007AFF',
   },
   headerTitleContainer: {
     flex: 1,
@@ -429,15 +434,15 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#000000',
+    color: isDark ? colors.textPrimary : '#000000',
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#8696A0',
+    color: isDark ? colors.textSecondary : '#8696A0',
   },
   membersCountText: {
     fontSize: 12,
-    color: '#8696A0',
+    color: isDark ? colors.textSecondary : '#8696A0',
     marginTop: 2,
   },
   addButton: {
@@ -449,7 +454,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   addButtonDisabled: {
-    backgroundColor: '#C7C7CC',
+    backgroundColor: isDark ? colors.border : '#C7C7CC',
   },
   addButtonText: {
     color: '#FFFFFF',
@@ -459,27 +464,29 @@ const styles = StyleSheet.create({
   searchContainer: {
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#F8F8F8',
+    backgroundColor: isDark ? colors.background : '#F8F8F8',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
+    borderBottomColor: isDark ? colors.divider : '#E5E5E5',
   },
   searchInput: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.inputBackground : '#FFFFFF',
+    color: isDark ? colors.textPrimary : '#000000',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 16,
     borderWidth: 1,
-    borderColor: '#E5E5E5',
+    borderColor: isDark ? colors.border : '#E5E5E5',
   },
   searchResultsCount: {
     fontSize: 12,
-    color: '#8696A0',
+    color: isDark ? colors.textSecondary : '#8696A0',
     marginTop: 4,
     textAlign: 'right',
   },
   content: {
     flex: 1,
+    backgroundColor: isDark ? colors.background : '#FFFFFF',
   },
   listContainer: {
     paddingVertical: 8,
@@ -492,7 +499,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   userItemSelected: {
-    backgroundColor: '#F0F8FF',
+    backgroundColor: isDark ? colors.surfaceElevated : '#F0F8FF',
   },
   userInfo: {
     flexDirection: 'row',
@@ -513,13 +520,13 @@ const styles = StyleSheet.create({
   avatarPlaceholder: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#E5E5E5',
+    backgroundColor: isDark ? colors.surfaceElevated : '#E5E5E5',
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarPlaceholderText: {
     fontSize: 16,
-    color: '#666666',
+    color: isDark ? colors.textSecondary : '#666666',
   },
   userTextInfo: {
     flex: 1,
@@ -527,19 +534,19 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#000000',
+    color: isDark ? colors.textPrimary : '#000000',
     marginBottom: 2,
   },
   userRole: {
     fontSize: 14,
-    color: '#8696A0',
+    color: isDark ? colors.textSecondary : '#8696A0',
   },
   checkbox: {
     width: 20,
     height: 20,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: '#C7C7CC',
+    borderColor: isDark ? colors.border : '#C7C7CC',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -554,7 +561,7 @@ const styles = StyleSheet.create({
   },
   separator: {
     height: 1,
-    backgroundColor: '#F0F0F0',
+    backgroundColor: isDark ? colors.divider : '#F0F0F0',
     marginLeft: 68,
   },
   loadingContainer: {
@@ -564,7 +571,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 8,
     fontSize: 14,
-    color: '#8696A0',
+    color: isDark ? colors.textSecondary : '#8696A0',
   },
   emptyContainer: {
     alignItems: 'center',
@@ -573,7 +580,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
-    color: '#8696A0',
+    color: isDark ? colors.textSecondary : '#8696A0',
     textAlign: 'center',
   },
 });

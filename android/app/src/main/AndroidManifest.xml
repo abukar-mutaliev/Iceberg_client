@@ -36,6 +36,9 @@
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATE_URL" android:value="https://u.expo.dev/934456aa-74ef-4c35-844b-aa0c0c2899f3"/>
+    <meta-data android:name="ru.rustore.sdk.pushclient.default_notification_color" android:resource="@color/notification_icon_color"/>
+    <meta-data android:name="ru.rustore.sdk.pushclient.default_notification_icon" android:resource="@drawable/ic_stat_iceberg"/>
+    <meta-data android:name="ru.rustore.sdk.pushclient.params_class" android:value="com.rustorepush.RuStorePushClientParams"/>
     <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode|smallestScreenSize" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize|stateHidden" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:resizeableActivity="true">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>

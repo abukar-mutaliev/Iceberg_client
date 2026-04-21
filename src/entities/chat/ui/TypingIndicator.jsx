@@ -4,6 +4,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { selectTypingActivities, selectRoomsList } from '@entities/chat/model/selectors';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+
+const useTypingStyles = () => {
+  const { colors, isDark } = useTheme();
+  return useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+};
 
 // ============================================================================
 // КОНСТАНТЫ
@@ -321,6 +327,7 @@ const useIndicatorAnimation = (hasActiveUsers) => {
  * Компонент анимированных точек
  */
 const AnimatedDots = () => {
+  const styles = useTypingStyles();
   const dot1Opacity = useRef(new Animated.Value(0.3)).current;
   const dot2Opacity = useRef(new Animated.Value(0.3)).current;
   const dot3Opacity = useRef(new Animated.Value(0.3)).current;
@@ -355,6 +362,8 @@ const AnimatedDots = () => {
  * Компонент анимированного микрофона
  */
 const AnimatedMicrophone = () => {
+  const styles = useTypingStyles();
+  const { colors, isDark } = useTheme();
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const opacityAnim = useRef(new Animated.Value(1)).current;
 
@@ -387,7 +396,7 @@ const AnimatedMicrophone = () => {
         },
       ]}
     >
-      <Ionicons name="mic" size={18} color="#666" />
+      <Ionicons name="mic" size={18} color={isDark ? colors.textSecondary : '#666'} />
     </Animated.View>
   );
 };
@@ -396,6 +405,7 @@ const AnimatedMicrophone = () => {
  * Рендерит индикатор для конкретного типа активности
  */
 const TypingActivityIndicator = ({ users, activityType }) => {
+  const styles = useTypingStyles();
   if (users.length === 0) return null;
 
   return (
@@ -410,6 +420,7 @@ const TypingActivityIndicator = ({ users, activityType }) => {
 // ============================================================================
 
 export const TypingIndicator = ({ roomId, bottomOffset = 35 }) => {
+  const styles = useTypingStyles();
   const insets = useSafeAreaInsets();
   const typingActivities = useSelector((state) => selectTypingActivities(state, roomId));
   const rooms = useSelector(selectRoomsList);
@@ -478,7 +489,7 @@ export const TypingIndicator = ({ roomId, bottomOffset = 35 }) => {
 // СТИЛИ
 // ============================================================================
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     position: 'absolute',
     left: 16,
@@ -490,7 +501,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 4,
     paddingHorizontal: 12,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.surfaceElevated : '#FFFFFF',
     borderRadius: 18,
     alignSelf: 'flex-start',
     shadowColor: '#000',
@@ -498,9 +509,11 @@ const styles = StyleSheet.create({
       width: 0,
       height: 1,
     },
-    shadowOpacity: 0.1,
+    shadowOpacity: isDark ? 0.35 : 0.1,
     shadowRadius: 2,
     elevation: 2,
+    borderWidth: isDark ? 1 : 0,
+    borderColor: isDark ? colors.border : 'transparent',
   },
   microphoneContainer: {
     alignItems: 'center',
@@ -508,7 +521,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 14,
-    backgroundColor: 'rgba(102, 102, 102, 0.15)',
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(102, 102, 102, 0.15)',
   },
   dotsContainer: {
     flexDirection: 'row',
@@ -519,7 +532,7 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#666',
+    backgroundColor: isDark ? colors.textSecondary : '#666',
     marginHorizontal: 1.5,
   },
 });

@@ -75,37 +75,15 @@ export const useGroupChatActions = ({
     navigation,
   });
   
-  // canDeleteMessage с учетом групповых прав
+  // canDeleteMessage с учетом групповых прав.
+  // ВНИМАНИЕ: вызывается в рендере списка для каждого сообщения — никаких
+  // console.log здесь быть не должно даже под __DEV__, иначе в dev-режиме
+  // каждый лог проходит через RN-мост в Metro и блокирует JS-поток,
+  // из-за чего чат "подвисает" при открытии.
   const canDeleteMessage = useCallback((message) => {
-    if (!message) {
-      if (__DEV__) {
-        console.log('[useGroupChatActions] canDeleteMessage: no message');
-      }
-      return false;
-    }
-    
-    // Суперадмин и админ могут удалять любые сообщения
-    if (isSuperAdmin || isAdmin) {
-      if (__DEV__) {
-        console.log('[useGroupChatActions] canDeleteMessage: admin/superAdmin can delete', {
-          isSuperAdmin,
-          isAdmin,
-          messageId: message.id,
-        });
-      }
-      return true;
-    }
-    
-    // Обычные пользователи могут удалять только свои сообщения
-    const canDelete = Number(message.senderId) === Number(currentUserId);
-    if (__DEV__) {
-      console.log('[useGroupChatActions] canDeleteMessage: regular user check', {
-        messageSenderId: message.senderId,
-        currentUserId,
-        canDelete,
-      });
-    }
-    return canDelete;
+    if (!message) return false;
+    if (isSuperAdmin || isAdmin) return true;
+    return Number(message.senderId) === Number(currentUserId);
   }, [isSuperAdmin, isAdmin, currentUserId]);
   
   // Выход из группы

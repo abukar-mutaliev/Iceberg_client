@@ -3,6 +3,12 @@ import { View, Text, Image, StyleSheet, Pressable, TouchableOpacity, Modal, Link
 import { Color, Border, FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { getImageUrl } from '@shared/api/api';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+
+const useStopStyles = () => {
+    const { colors, isDark } = useTheme();
+    return useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+};
 
 const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
 
@@ -100,6 +106,7 @@ const getPhotoUrl = (photoPath) => {
 
 // Модальное окно выбора способа связи
 const ContactDriverModal = ({ visible, onClose, driverName, driverPhone, onChat, isChatLoading }) => {
+    const styles = useStopStyles();
     const handleCall = useCallback(() => {
         if (!driverPhone) return;
         
@@ -189,6 +196,7 @@ const ContactDriverModal = ({ visible, onClose, driverName, driverPhone, onChat,
 };
 
 const StopCardComponent = ({ stop, onPress, width, compact = true, showContactButton = false, onContactDriver }) => {
+    const styles = useStopStyles();
     const [imageError, setImageError] = React.useState(false);
     const [contactModalVisible, setContactModalVisible] = useState(false);
     const [isChatLoading, setIsChatLoading] = useState(false);
@@ -403,20 +411,20 @@ const arePropsEqual = (prevProps, nextProps) => {
 
 export const StopCard = memo(StopCardComponent, arePropsEqual);
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     compactContainer: {
         width: 250,
         borderWidth: 0.5,
-        borderColor: Color.purpleSoft,
+        borderColor: isDark ? colors.border : Color.purpleSoft,
         borderRadius: Border.br_xl,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.surfaceElevated : Color.colorLightMode,
         overflow: 'hidden',
     },
     compactImageContainer: {
         width: '100%',
         height: 150,
         position: 'relative',
-        backgroundColor: '#F9F9F9',
+        backgroundColor: isDark ? colors.surface : '#F9F9F9',
     },
     compactStopImage: {
         width: '100%',
@@ -427,7 +435,7 @@ const styles = StyleSheet.create({
         height: '100%',
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#E8E8E8',
+        backgroundColor: isDark ? colors.surface : '#E8E8E8',
     },
     placeholderIcon: {
         fontSize: 48,
@@ -478,20 +486,20 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontSize: 14,
         fontWeight: '600',
-        color: Color.purpleSoft,
+        color: isDark ? colors.textPrimary : Color.purpleSoft,
         marginBottom: 8,
         lineHeight: 18,
     },
     // Понятное время
     friendlyTimeContainer: {
-        backgroundColor: '#F5F7FA',
+        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F5F7FA',
         borderRadius: 8,
         paddingVertical: 8,
         paddingHorizontal: 10,
         marginBottom: 8,
     },
     friendlyTimeNow: {
-        backgroundColor: '#E8F5E9',
+        backgroundColor: isDark ? 'rgba(76, 175, 80, 0.18)' : '#E8F5E9',
         borderWidth: 1,
         borderColor: '#4CAF50',
     },
@@ -499,16 +507,16 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontSize: 14,
         fontWeight: '700',
-        color: '#333',
+        color: isDark ? colors.textPrimary : '#333',
     },
     friendlyTimeMainNow: {
-        color: '#2E7D32',
+        color: isDark ? '#81C784' : '#2E7D32',
     },
     friendlyTimeSub: {
         fontFamily: FontFamily.sFProText,
         fontSize: 12,
         fontWeight: '500',
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         marginTop: 2,
     },
     friendlyTimeSubNow: {

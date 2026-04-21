@@ -63,29 +63,17 @@ export const useChatLifecycle = ({
   );
   
   // Активная комната - КРИТИЧНО для подавления уведомлений
-  // Устанавливаем СРАЗУ через useLayoutEffect
+  // Устанавливаем СРАЗУ через useLayoutEffect.
+  // Логирование сознательно убрано: useLayoutEffect может перезапускаться при
+  // ре-рендерах (например, когда peerUserId разрешается из Redux), и каждый
+  // console.log в dev-режиме проходит через RN-мост в Metro, задерживая открытие.
   useLayoutEffect(() => {
     if (!roomId) return;
-    
-    // Устанавливаем активную комнату СРАЗУ, даже если userId еще не определен
+
     PushNotificationService.setActiveChatRoomId(roomId);
-    
-    // Пытаемся получить userId из route.params или из chatPartner
-    const peerUserId = userId || null;
-    PushNotificationService.setActiveChatPeerUserId(peerUserId);
-    
-    if (__DEV__) {
-      console.log('[useChatLifecycle] 🔄 [useLayoutEffect] Устанавливаем активную комнату СРАЗУ', { 
-        roomId,
-        userId: peerUserId,
-      });
-    }
-    
+    PushNotificationService.setActiveChatPeerUserId(userId || null);
+
     return () => {
-      // Cleanup ТОЛЬКО при размонтировании компонента
-      if (__DEV__) {
-        console.log('[useChatLifecycle] 🗑️ [useLayoutEffect] Cleanup: сбрасываем активную комнату', { roomId });
-      }
       PushNotificationService.setActiveChatRoomId(null);
       PushNotificationService.setActiveChatPeerUserId(null);
     };
@@ -94,13 +82,6 @@ export const useChatLifecycle = ({
   // Полная инициализация комнаты
   useEffect(() => {
     if (isRoomDeletedRef?.current || isRoomDeleted || !roomId) {
-      if (__DEV__) {
-        console.log('[useChatLifecycle] ⚠️ Пропуск установки активной комнаты', {
-          isRoomDeletedRef: isRoomDeletedRef?.current,
-          isRoomDeleted,
-          roomId
-        });
-      }
       return;
     }
 
@@ -118,19 +99,8 @@ export const useChatLifecycle = ({
     
     // КРИТИЧНО: Обрабатываем ошибку 404 при загрузке комнаты
     // Если комната удалена другим участником, она будет удалена из списка через fetchRoom.rejected
-    dispatch(fetchRoom(roomId)).then((result) => {
-      // Если комната не найдена (404), она уже обработана в fetchRoom.rejected
-      // и помечена как удаленная, что вызовет isRoomDeleted и вернет на список чатов
-      if (result.type.endsWith('/rejected')) {
-        const payload = result.payload;
-        if (payload?.isNotFound && payload?.roomId) {
-          if (__DEV__) {
-            console.log('[useChatLifecycle] ⚠️ Room not found (404), will be removed from list', { roomId });
-          }
-        }
-      }
-    }).catch(() => {
-      // Игнорируем ошибки - они обрабатываются в fetchRoom.rejected
+    dispatch(fetchRoom(roomId)).catch(() => {
+      // Игнорируем ошибки — они обрабатываются в fetchRoom.rejected.
     });
 
     let markAsReadTimeout;

@@ -560,9 +560,15 @@ class PushNotificationService {
     // Chat notification suppression
     // =============================
     setActiveChatRoomId(roomId) {
-        this.activeChatRoomId = roomId ? String(roomId) : null;
+        const next = roomId ? String(roomId) : null;
+        // Дедупликация: хук useChatLifecycle может вызвать сеттер несколько раз
+        // (useLayoutEffect + focus listener + основной useEffect). Без этой проверки
+        // в dev-консоль сыпалось несколько одинаковых логов, а каждый console.log
+        // в RN dev-режиме блокирует JS-поток через мост Metro.
+        if (this.activeChatRoomId === next) return;
+        this.activeChatRoomId = next;
         if (__DEV__) {
-            console.log('[PushNotification] setActiveChatRoomId', { roomId: this.activeChatRoomId });
+            console.log('[PushNotification] setActiveChatRoomId', { roomId: next });
         }
     }
 
@@ -571,9 +577,11 @@ class PushNotificationService {
     }
 
     setActiveChatPeerUserId(userId) {
-        this.activeChatPeerUserId = userId ? String(userId) : null;
+        const next = userId ? String(userId) : null;
+        if (this.activeChatPeerUserId === next) return;
+        this.activeChatPeerUserId = next;
         if (__DEV__) {
-            console.log('[PushNotification] setActiveChatPeerUserId', { userId: this.activeChatPeerUserId });
+            console.log('[PushNotification] setActiveChatPeerUserId', { userId: next });
         }
     }
 

@@ -1,14 +1,15 @@
-import React, { useState, memo, useCallback } from 'react';
-import { View, Text, TouchableOpacity, Image, Modal, StyleSheet } from 'react-native';
+import React, { useState, memo, useCallback, useMemo } from 'react';
+import { View, Text, TouchableOpacity, Image, StyleSheet, Pressable } from 'react-native';
 import { getImageUrl } from '@shared/api/api';
 import { MenuDotsIcon } from '@shared/ui/Icon/MenuDotsIcon';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { useChatHeaderData } from './hooks/useChatHeaderData';
 import { useChatHeaderActions } from './hooks/useChatHeaderActions';
 
 // ============ MEMOIZED COMPONENTS ============
 
-const BackButton = memo(({ onPress, textColor }) => (
+const BackButton = memo(({ onPress, textColor, styles }) => (
   <TouchableOpacity
     onPress={onPress}
     style={styles.backButton}
@@ -19,7 +20,7 @@ const BackButton = memo(({ onPress, textColor }) => (
   </TouchableOpacity>
 ));
 
-const Avatar = memo(({ uri, isGroup, onPress }) => (
+const Avatar = memo(({ uri, isGroup, onPress, styles }) => (
   <TouchableOpacity
     onPress={onPress}
     activeOpacity={0.7}
@@ -41,7 +42,7 @@ const Avatar = memo(({ uri, isGroup, onPress }) => (
   </TouchableOpacity>
 ));
 
-const ChatInfo = memo(({ name, status, onPress }) => (
+const ChatInfo = memo(({ name, status, onPress, styles }) => (
   <TouchableOpacity
     style={styles.chatInfoContainer}
     activeOpacity={0.7}
@@ -56,7 +57,7 @@ const ChatInfo = memo(({ name, status, onPress }) => (
   </TouchableOpacity>
 ));
 
-const MenuButton = memo(({ onPress, textColor }) => (
+const MenuButton = memo(({ onPress, textColor, styles }) => (
   <TouchableOpacity
     onPress={onPress}
     style={styles.menuButton}
@@ -67,7 +68,7 @@ const MenuButton = memo(({ onPress, textColor }) => (
   </TouchableOpacity>
 ));
 
-const MenuModal = memo(({
+const MenuOverlay = memo(({
   visible,
   onClose,
   isGroup,
@@ -78,19 +79,17 @@ const MenuModal = memo(({
   onDeleteGroup,
   onLeaveGroup,
   onLeaveGroupWithDeletion,
-}) => (
-  <Modal
-    visible={visible}
-    transparent={true}
-    animationType="fade"
-    onRequestClose={onClose}
-  >
-    <TouchableOpacity
-      style={styles.modalOverlay}
-      activeOpacity={1}
-      onPress={onClose}
-    >
-      <View style={styles.modalContainer}>
+  styles,
+}) => {
+  if (!visible) return null;
+
+  return (
+    <>
+      <Pressable
+        style={styles.menuBackdrop}
+        onPress={onClose}
+      />
+      <View style={styles.menuContainer} pointerEvents="box-none">
         {isGroup ? (
           <>
             {/* Удалить группу/канал - только для владельца */}
@@ -145,15 +144,18 @@ const MenuModal = memo(({
           </TouchableOpacity>
         )}
       </View>
-    </TouchableOpacity>
-  </Modal>
-));
+    </>
+  );
+});
 
 // ============ MAIN COMPONENT ============
 
 export const ChatHeader = memo(({ route, navigation }) => {
   const [menuVisible, setMenuVisible] = useState(false);
   const { showError, showAlert } = useCustomAlert();
+  const { colors, isDark } = useTheme();
+
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   
   // ============ DATA ============
   
@@ -211,7 +213,7 @@ export const ChatHeader = memo(({ route, navigation }) => {
   // ============ COMPUTED ============
   
   const avatarUri = chatPartnerInfo.avatar ? getImageUrl(chatPartnerInfo.avatar) : null;
-  const textColor = '#000000';
+  const textColor = isDark ? colors.textPrimary : '#000000';
   const isGroup = chatPartnerInfo.isGroup;
   const normalizedRoomType = String(
     roomData?.type || roomData?.roomType || route?.params?.roomType || ''
@@ -230,8 +232,38 @@ export const ChatHeader = memo(({ route, navigation }) => {
   // ============ RENDER ============
   
   return (
-    <>
-      <MenuModal
+    <View style={styles.wrapper}>
+      <View style={styles.header}>
+        <BackButton 
+          onPress={actions.handleBackPress} 
+          textColor={textColor}
+          styles={styles}
+        />
+        
+        <Avatar 
+          uri={avatarUri} 
+          isGroup={isGroup} 
+          onPress={actions.handleProfilePress}
+          styles={styles}
+        />
+        
+        <ChatInfo 
+          name={chatPartnerInfo.name} 
+          status={chatPartnerInfo.status} 
+          onPress={actions.handleProfilePress}
+          styles={styles}
+        />
+        
+        {shouldShowMenu && (
+          <MenuButton 
+            onPress={handleMenuPress} 
+            textColor={textColor}
+            styles={styles}
+          />
+        )}
+      </View>
+
+      <MenuOverlay
         visible={menuVisible}
         onClose={handleMenuClose}
         isGroup={isGroup}
@@ -242,45 +274,24 @@ export const ChatHeader = memo(({ route, navigation }) => {
         onDeleteGroup={handleDeleteGroup}
         onLeaveGroup={handleLeaveGroup}
         onLeaveGroupWithDeletion={handleLeaveGroupWithDeletion}
+        styles={styles}
       />
-
-      <View style={styles.header}>
-        <BackButton 
-          onPress={actions.handleBackPress} 
-          textColor={textColor} 
-        />
-        
-        <Avatar 
-          uri={avatarUri} 
-          isGroup={isGroup} 
-          onPress={actions.handleProfilePress} 
-        />
-        
-        <ChatInfo 
-          name={chatPartnerInfo.name} 
-          status={chatPartnerInfo.status} 
-          onPress={actions.handleProfilePress} 
-        />
-        
-        {shouldShowMenu && (
-          <MenuButton 
-            onPress={handleMenuPress} 
-            textColor={textColor} 
-          />
-        )}
-      </View>
-    </>
+    </View>
   );
 });
 
 // ============ STYLES ============
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
+  wrapper: {
+    position: 'relative',
+    zIndex: 1000,
+  },
   header: {
     position: 'relative',
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.surface : '#FFFFFF',
     paddingHorizontal: 8,
     paddingVertical: 8,
     height: 64,
@@ -307,7 +318,7 @@ const styles = StyleSheet.create({
     width: 35,
     height: 35,
     borderRadius: 20,
-    backgroundColor: '#E0E0E0',
+    backgroundColor: isDark ? colors.surfaceElevated : '#E0E0E0',
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden'
@@ -319,7 +330,7 @@ const styles = StyleSheet.create({
   },
   avatarPlaceholder: {
     fontSize: 18,
-    color: '#666666',
+    color: isDark ? colors.textSecondary : '#666666',
   },
   chatInfoContainer: {
     flex: 1,
@@ -328,36 +339,43 @@ const styles = StyleSheet.create({
   chatName: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#000000',
+    color: isDark ? colors.textPrimary : '#000000',
     marginBottom: 2,
   },
   chatStatus: {
     fontSize: 11,
-    color: '#666666',
+    color: isDark ? colors.textSecondary : '#666666',
   },
   menuButton: {
     padding: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-start',
-    alignItems: 'flex-end',
-    paddingTop: 60,
-    paddingRight: 16,
+  menuBackdrop: {
+    position: 'absolute',
+    top: 64,
+    left: 0,
+    right: 0,
+    height: 10000,
+    backgroundColor: 'transparent',
+    zIndex: 1000,
   },
-  modalContainer: {
-    backgroundColor: '#FFFFFF',
+  menuContainer: {
+    position: 'absolute',
+    top: 56,
+    right: 8,
+    backgroundColor: isDark ? colors.surfaceElevated : '#FFFFFF',
     borderRadius: 8,
     paddingVertical: 8,
     minWidth: 200,
     elevation: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
+    shadowOpacity: isDark ? 0.4 : 0.25,
     shadowRadius: 8,
+    borderWidth: isDark ? 1 : 0,
+    borderColor: isDark ? colors.divider : 'transparent',
+    zIndex: 1001,
   },
   modalItem: {
     paddingHorizontal: 16,
@@ -367,12 +385,12 @@ const styles = StyleSheet.create({
   },
   modalItemText: {
     fontSize: 16,
-    color: '#000000',
+    color: isDark ? colors.textPrimary : '#000000',
     fontWeight: '400',
   },
   modalItemTextDestructive: {
     fontSize: 16,
-    color: '#D32F2F',
+    color: isDark ? '#FF6B6B' : '#D32F2F',
     fontWeight: '400',
   },
 });

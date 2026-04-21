@@ -16,6 +16,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import ChatApi from '@entities/chat/api/chatApi';
 import { getImageUrl } from '@shared/api/api';
 import { selectRoomsList } from '@entities/chat/model/selectors';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const ForwardMessageModal = ({ visible, onClose, onForward, message }) => {
     const [searchQuery, setSearchQuery] = useState('');
@@ -30,14 +31,16 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
     const currentUserRole = useSelector((state) => state.auth?.user?.role);
     const currentUser = useSelector((state) => state.auth?.user);
     const participantsById = useSelector((s) => s.chat?.participants?.byUserId || {});
-    
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     const footerStyle = useMemo(() => ({
         paddingHorizontal: 16,
         paddingTop: 12,
         paddingBottom: Math.max(12, insets.bottom + 8),
         borderTopWidth: 1,
-        borderTopColor: '#E0E0E0',
-    }), [insets.bottom]);
+        borderTopColor: isDark ? colors.divider : '#E0E0E0',
+    }), [insets.bottom, isDark, colors.divider]);
 
     // Функция для преобразования пути в абсолютный URL
     const toAbsoluteUri = (raw) => {
@@ -395,6 +398,8 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
     };
 
     const renderAvatar = (avatarUrl, fallbackIcon, size = 40) => {
+        const avatarBg = isDark ? colors.surfaceElevated : '#E8E8E8';
+        const avatarIconColor = isDark ? colors.textSecondary : '#666';
         if (avatarUrl) {
             return (
                 <Image
@@ -403,7 +408,7 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
                         width: size,
                         height: size,
                         borderRadius: size / 2,
-                        backgroundColor: '#E8E8E8',
+                        backgroundColor: avatarBg,
                     }}
                 />
             );
@@ -414,11 +419,11 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
                 width: size,
                 height: size,
                 borderRadius: size / 2,
-                backgroundColor: '#E8E8E8',
+                backgroundColor: avatarBg,
                 justifyContent: 'center',
                 alignItems: 'center',
             }}>
-                <Icon name={fallbackIcon} size={size * 0.6} color="#666" />
+                <Icon name={fallbackIcon} size={size * 0.6} color={avatarIconColor} />
             </View>
         );
     };
@@ -443,7 +448,7 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
                     </Text>
                 </View>
                 {isSelected && (
-                    <Icon name="check-circle" size={24} color="#007AFF" />
+                    <Icon name="check-circle" size={24} color={isDark ? colors.primary : '#007AFF'} />
                 )}
             </TouchableOpacity>
         );
@@ -492,7 +497,7 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
                     )}
                 </View>
                 {isSelected && (
-                    <Icon name="check-circle" size={24} color="#007AFF" />
+                    <Icon name="check-circle" size={24} color={isDark ? colors.primary : '#007AFF'} />
                 )}
             </TouchableOpacity>
         );
@@ -531,7 +536,7 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
                     {/* Заголовок */}
                     <View style={styles.header}>
                         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                            <Icon name="close" size={24} color="#000" />
+                            <Icon name="close" size={24} color={isDark ? colors.textPrimary : '#000'} />
                         </TouchableOpacity>
                         <Text style={styles.headerTitle}>Переслать сообщение</Text>
                         <View style={styles.placeholder} />
@@ -540,7 +545,7 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
                     {/* Превью сообщения */}
                     {message && (
                         <View style={styles.messagePreview}>
-                            <Icon name="share" size={20} color="#666" />
+                            <Icon name="share" size={20} color={isDark ? colors.textSecondary : '#666'} />
                             <Text style={styles.messagePreviewText} numberOfLines={2}>
                                 {getMessagePreview()}
                             </Text>
@@ -549,17 +554,18 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
 
                     {/* Поиск */}
                     <View style={styles.searchContainer}>
-                        <Icon name="magnify" size={20} color="#999" />
+                        <Icon name="magnify" size={20} color={isDark ? colors.textTertiary : '#999'} />
                         <TextInput
                             style={styles.searchInput}
                             placeholder="Поиск чатов..."
                             value={searchQuery}
                             onChangeText={setSearchQuery}
-                            placeholderTextColor="#999"
+                            placeholderTextColor={isDark ? colors.textTertiary : '#999'}
+                            keyboardAppearance={isDark ? 'dark' : 'light'}
                         />
                         {searchQuery.length > 0 && (
                             <TouchableOpacity onPress={() => setSearchQuery('')}>
-                                <Icon name="close-circle" size={20} color="#999" />
+                                <Icon name="close-circle" size={20} color={isDark ? colors.textTertiary : '#999'} />
                             </TouchableOpacity>
                         )}
                     </View>
@@ -600,12 +606,12 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
                         ListEmptyComponent={
                             isSearching ? (
                                 <View style={styles.emptyContainer}>
-                                    <ActivityIndicator size="large" color="#007AFF" />
+                                    <ActivityIndicator size="large" color={isDark ? colors.primary : '#007AFF'} />
                                     <Text style={styles.emptyText}>Поиск...</Text>
                                 </View>
                             ) : (
                                 <View style={styles.emptyContainer}>
-                                    <Icon name="chat-outline" size={48} color="#CCC" />
+                                    <Icon name="chat-outline" size={48} color={isDark ? colors.textTertiary : '#CCC'} />
                                     <Text style={styles.emptyText}>
                                         {searchQuery ? 'Ничего не найдено' : 'Нет доступных чатов'}
                                     </Text>
@@ -642,18 +648,22 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: isDark ? 'rgba(0, 0, 0, 0.7)' : 'rgba(0, 0, 0, 0.5)',
         justifyContent: 'flex-end',
     },
     modalContent: {
-        backgroundColor: '#FFF',
+        backgroundColor: isDark ? colors.surface : '#FFF',
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
         maxHeight: '90%',
         minHeight: '50%',
+        borderTopWidth: isDark ? 1 : 0,
+        borderLeftWidth: isDark ? 1 : 0,
+        borderRightWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.divider : 'transparent',
     },
     header: {
         flexDirection: 'row',
@@ -662,7 +672,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingVertical: 16,
         borderBottomWidth: 1,
-        borderBottomColor: '#E0E0E0',
+        borderBottomColor: isDark ? colors.divider : '#E0E0E0',
     },
     closeButton: {
         padding: 4,
@@ -670,7 +680,7 @@ const styles = StyleSheet.create({
     headerTitle: {
         fontSize: 18,
         fontWeight: '600',
-        color: '#000',
+        color: isDark ? colors.textPrimary : '#000',
     },
     placeholder: {
         width: 32,
@@ -680,14 +690,14 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: 16,
         paddingVertical: 12,
-        backgroundColor: '#F5F5F5',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F5F5F5',
         borderBottomWidth: 1,
-        borderBottomColor: '#E0E0E0',
+        borderBottomColor: isDark ? colors.divider : '#E0E0E0',
     },
     messagePreviewText: {
         flex: 1,
         fontSize: 14,
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         marginLeft: 8,
     },
     searchContainer: {
@@ -696,14 +706,14 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingVertical: 12,
         borderBottomWidth: 1,
-        borderBottomColor: '#E0E0E0',
-        backgroundColor: '#F9F9F9',
+        borderBottomColor: isDark ? colors.divider : '#E0E0E0',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F9F9F9',
     },
     searchInput: {
         flex: 1,
         fontSize: 16,
         marginLeft: 8,
-        color: '#000',
+        color: isDark ? colors.textPrimary : '#000',
     },
     listContent: {
         paddingVertical: 8,
@@ -713,16 +723,16 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: 16,
         paddingVertical: 12,
-        backgroundColor: '#FFF',
+        backgroundColor: isDark ? colors.surface : '#FFF',
     },
     roomItemSelected: {
-        backgroundColor: '#F0F8FF',
+        backgroundColor: isDark ? 'rgba(124, 132, 255, 0.15)' : '#F0F8FF',
     },
     roomIcon: {
         width: 40,
         height: 40,
         borderRadius: 20,
-        backgroundColor: '#E0E0E0',
+        backgroundColor: isDark ? colors.surfaceElevated : '#E0E0E0',
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: 12,
@@ -734,28 +744,28 @@ const styles = StyleSheet.create({
     roomName: {
         fontSize: 16,
         fontWeight: '500',
-        color: '#000',
+        color: isDark ? colors.textPrimary : '#000',
     },
     roomNameSelected: {
-        color: '#007AFF',
+        color: isDark ? colors.primary : '#007AFF',
         fontWeight: '600',
     },
     userRole: {
         fontSize: 13,
-        color: '#999',
+        color: isDark ? colors.textTertiary : '#999',
         marginTop: 2,
     },
     sectionHeader: {
-        backgroundColor: '#F5F5F5',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F5F5F5',
         paddingHorizontal: 16,
         paddingVertical: 8,
         borderBottomWidth: 1,
-        borderBottomColor: '#E0E0E0',
+        borderBottomColor: isDark ? colors.divider : '#E0E0E0',
     },
     sectionTitle: {
         fontSize: 13,
         fontWeight: '600',
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         textTransform: 'uppercase',
     },
     emptyContainer: {
@@ -765,17 +775,18 @@ const styles = StyleSheet.create({
     },
     emptyText: {
         fontSize: 16,
-        color: '#999',
+        color: isDark ? colors.textSecondary : '#999',
         marginTop: 12,
     },
     footer: {
         paddingHorizontal: 16,
         paddingVertical: 12,
         borderTopWidth: 1,
-        borderTopColor: '#E0E0E0',
+        borderTopColor: isDark ? colors.divider : '#E0E0E0',
+        backgroundColor: isDark ? colors.surface : 'transparent',
     },
     forwardButton: {
-        backgroundColor: '#007AFF',
+        backgroundColor: isDark ? colors.primary : '#007AFF',
         borderRadius: 10,
         paddingVertical: 14,
         flexDirection: 'row',
@@ -783,7 +794,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     forwardButtonDisabled: {
-        backgroundColor: '#CCC',
+        backgroundColor: isDark ? colors.surfaceElevated : '#CCC',
     },
     forwardButtonText: {
         color: '#FFF',

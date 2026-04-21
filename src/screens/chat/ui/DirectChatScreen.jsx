@@ -1,6 +1,7 @@
 import React, { useRef, useState, useCallback, useMemo } from 'react';
 import { View, StyleSheet, KeyboardAvoidingView, Platform, LayoutAnimation, UIManager } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { Composer } from '@entities/chat/ui/Composer/Composer';
 import { ChatBackground } from '@entities/chat/ui/ChatBackground';
 import { TypingIndicator } from '@entities/chat';
@@ -59,6 +60,7 @@ export const DirectChatScreen = ({ route, navigation }) => {
   } = route.params || {};
   
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
   const { showError, showWarning, showConfirm } = useCustomAlert();
   
   // ============ DATA ============
@@ -590,9 +592,9 @@ export const DirectChatScreen = ({ route, navigation }) => {
   // ============ COMPUTED ============
   const systemBarStyle = useMemo(() => ({
     height: insets.bottom,
-    backgroundColor: '#ffffff',
+    backgroundColor: isDark ? colors.background : '#ffffff',
     width: '100%',
-  }), [insets.bottom]);
+  }), [insets.bottom, isDark, colors.background]);
   
   const canDeleteForAllSelected = useMemo(() => {
     if (!messagesToDelete?.length) return false;

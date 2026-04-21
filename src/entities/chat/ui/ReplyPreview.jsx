@@ -1,8 +1,9 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import {View, Text, TouchableOpacity, StyleSheet, Image} from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { getImageUrl } from '@shared/api/api';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 /**
  * Компонент для отображения превью сообщения, на которое отвечаем
@@ -23,6 +24,9 @@ export const ReplyPreview = ({
   participantsById,
   participants
 }) => {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   if (!replyTo) return null;
 
   const participantsByIdFromStore = useSelector((s) => s.chat?.participants?.byUserId || {});
@@ -32,16 +36,6 @@ export const ReplyPreview = ({
   const roomDataRaw = useSelector((s) => (activeRoomId ? s.chat?.rooms?.byId?.[activeRoomId] : null));
   const roomData = roomDataRaw?.room || roomDataRaw;
   const roomParticipants = roomData?.participants || [];
-
-  useEffect(() => {
-    if (__DEV__) {
-      console.log('[ReplyPreview] replyTo.sender', {
-        replyToId: replyTo?.id,
-        senderId: replyTo?.senderId,
-        sender: replyTo?.sender,
-      });
-    }
-  }, [replyTo?.id, replyTo?.senderId, replyTo?.sender, activeRoomId]);
 
   const getNameFromUser = (user) => {
     if (!user) return null;
@@ -253,14 +247,14 @@ export const ReplyPreview = ({
           style={styles.cancelButton}
           hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
         >
-          <Icon name="close" size={20} color="#666" />
+          <Icon name="close" size={20} color={isDark ? colors.textSecondary : '#666'} />
         </TouchableOpacity>
       )}
     </TouchableOpacity>
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flexDirection: 'row',
     backgroundColor: 'transparent', // Прозрачный фон, т.к. контейнер в Composer задает фон
@@ -271,7 +265,7 @@ const styles = StyleSheet.create({
     marginBottom: 0, // Без отступа снизу
   },
   containerInMessage: {
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)',
     marginBottom: 4,
     paddingVertical: 6,
     paddingHorizontal: 8,
@@ -282,7 +276,7 @@ const styles = StyleSheet.create({
   },
   leftBorder: {
     width: 3,
-    backgroundColor: '#007AFF',
+    backgroundColor: isDark ? colors.primary : '#007AFF',
     borderRadius: 2,
     marginRight: 8,
   },
@@ -292,7 +286,7 @@ const styles = StyleSheet.create({
   senderName: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#007AFF',
+    color: isDark ? colors.primary : '#007AFF',
     marginBottom: 2,
   },
   messageRow: {
@@ -302,12 +296,12 @@ const styles = StyleSheet.create({
   messagePreview: {
     flex: 1,
     fontSize: 13,
-    color: '#666',
+    color: isDark ? colors.textSecondary : '#666',
     lineHeight: 18,
   },
   deletedText: {
     fontStyle: 'italic',
-    color: '#999',
+    color: isDark ? colors.textTertiary : '#999',
   },
   thumbnail: {
     width: 40,

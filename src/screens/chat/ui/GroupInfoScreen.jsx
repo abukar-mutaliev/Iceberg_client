@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -24,9 +24,11 @@ import { IconEdit } from '@shared/ui/Icon/Profile/IconEdit';
 import { ImageViewerModal } from '@shared/ui/ImageViewerModal/ui/ImageViewerModal';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
 import { PROCESSING_ROLE_LABELS } from '@entities/admin/lib/constants';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 // Анимированный переключатель в стиле WhatsApp
 const AnimatedSwitch = ({ value, disabled }) => {
+  const { colors, isDark } = useTheme();
   const animatedValue = useRef(new Animated.Value(value ? 1 : 0)).current;
 
   useEffect(() => {
@@ -45,7 +47,7 @@ const AnimatedSwitch = ({ value, disabled }) => {
 
   const backgroundColor = animatedValue.interpolate({
     inputRange: [0, 1],
-    outputRange: ['#E0E0E0', '#00A884'],
+    outputRange: [isDark ? colors.border : '#E0E0E0', '#00A884'],
   });
 
   return (
@@ -80,6 +82,9 @@ const switchStyles = StyleSheet.create({
 });
 
 export const GroupInfoScreen = ({ route, navigation }) => {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const { roomId, fromScreen } = route.params || {};
   const dispatch = useDispatch();
   const currentUser = useSelector(state => state?.auth?.user);
@@ -813,7 +818,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
         style={styles.participantItem}
         onPress={() => handleParticipantPress(item)}
         onLongPress={() => canManageThis && handleMemberLongPress(item)}
-        android_ripple={{ color: '#f0f0f0' }}
+        android_ripple={{ color: isDark ? 'rgba(255,255,255,0.08)' : '#f0f0f0' }}
       >
         <View style={styles.participantAvatar}>
           {avatarUri ? (
@@ -991,32 +996,28 @@ export const GroupInfoScreen = ({ route, navigation }) => {
         </View>
       </ScrollView>
 
-      {/* Menu Modal */}
-      <Modal
-        visible={menuVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setMenuVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setMenuVisible(false)}
-        >
-          <View style={styles.menuModal}>
+      {/* Menu Overlay (inline, чтобы не затрагивать system navigation bar на Android) */}
+      {menuVisible && (
+        <>
+          <Pressable
+            style={styles.menuBackdrop}
+            onPress={() => setMenuVisible(false)}
+          />
+          <View style={styles.menuContainer} pointerEvents="box-none">
             {canEditGroup && !shouldHideEditMenu && (
               <TouchableOpacity
                 style={styles.menuItem}
                 onPress={handleEditGroup}
                 activeOpacity={0.7}
               >
-               
-                 <Text style={styles.menuItemText}>{roomData?.type === 'BROADCAST' ? 'Редактировать канал' : 'Редактировать группу'}</Text>
+                <Text style={styles.menuItemText}>
+                  {roomData?.type === 'BROADCAST' ? 'Редактировать канал' : 'Редактировать группу'}
+                </Text>
               </TouchableOpacity>
             )}
           </View>
-        </TouchableOpacity>
-      </Modal>
+        </>
+      )}
 
       {/* Avatar Modal */}
       <ImageViewerModal
@@ -1117,10 +1118,10 @@ export const GroupInfoScreen = ({ route, navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.surface : '#FFFFFF',
     maxHeight: "98%"
   },
   navigationButtons: {
@@ -1143,7 +1144,7 @@ const styles = StyleSheet.create({
   },
   backButtonText: {
     fontSize: 20,
-    color: '#000000',
+    color: isDark ? colors.textPrimary : '#000000',
     fontWeight: '600',
   },
   menuButton: {
@@ -1155,18 +1156,19 @@ const styles = StyleSheet.create({
   },
   menuButtonText: {
     fontSize: 18,
-    color: '#8696A0',
+    color: isDark ? colors.textSecondary : '#8696A0',
     fontWeight: '600',
   },
   content: {
     flex: 1,
+    backgroundColor: isDark ? colors.background : '#FFFFFF',
   },
   groupHeader: {
     alignItems: 'center',
     paddingTop: 0, 
     paddingBottom: 40,
     paddingHorizontal: 20,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.surface : '#FFFFFF',
     position: 'relative',
   },
   groupAvatarContainer: {
@@ -1182,18 +1184,18 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: '#E5E5E5',
+    backgroundColor: isDark ? colors.surfaceElevated : '#E5E5E5',
     justifyContent: 'center',
     alignItems: 'center',
   },
   groupAvatarPlaceholderText: {
     fontSize: 40,
-    color: '#666666',
+    color: isDark ? colors.textSecondary : '#666666',
   },
   groupName: {
     fontSize: 24,
     fontWeight: '600',
-    color: '#000000',
+    color: isDark ? colors.textPrimary : '#000000',
     textAlign: 'center',
     marginBottom: 8,
   },
@@ -1204,7 +1206,7 @@ const styles = StyleSheet.create({
   },
   groupDescription: {
     fontSize: 16,
-    color: '#666666',
+    color: isDark ? colors.textSecondary : '#666666',
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 4,
@@ -1224,30 +1226,30 @@ const styles = StyleSheet.create({
   },
   groupSubtitle: {
     fontSize: 16,
-    color: '#8696A0',
+    color: isDark ? colors.textSecondary : '#8696A0',
     textAlign: 'center',
   },
   section: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.surface : '#FFFFFF',
     marginTop: 8,
   },
   sectionHeader: {
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: isDark ? colors.divider : '#F0F0F0',
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#8696A0',
+    color: isDark ? colors.textSecondary : '#8696A0',
   },
   addMembersButton: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.surface : '#FFFFFF',
   },
   addMembersIcon: {
     width: 40,
@@ -1261,7 +1263,7 @@ const styles = StyleSheet.create({
 
   addMembersText: {
     fontSize: 16,
-    color: '#000000',
+    color: isDark ? colors.textPrimary : '#000000',
     fontWeight: '500',
   },
 
@@ -1270,7 +1272,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.surface : '#FFFFFF',
   },
   participantAvatar: {
     width: 40,
@@ -1286,13 +1288,13 @@ const styles = StyleSheet.create({
   avatarPlaceholder: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#E5E5E5',
+    backgroundColor: isDark ? colors.surfaceElevated : '#E5E5E5',
     justifyContent: 'center',
     alignItems: 'center',
   },
   avatarPlaceholderText: {
     fontSize: 16,
-    color: '#666666',
+    color: isDark ? colors.textSecondary : '#666666',
   },
   participantInfo: {
     flex: 1,
@@ -1300,21 +1302,21 @@ const styles = StyleSheet.create({
   participantName: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#000000',
+    color: isDark ? colors.textPrimary : '#000000',
     marginBottom: 2,
   },
   participantRole: {
     fontSize: 14,
-    color: '#8696A0',
+    color: isDark ? colors.textSecondary : '#8696A0',
   },
   participantPosition: {
     fontSize: 14,
-    color: '#666666',
+    color: isDark ? colors.textSecondary : '#666666',
     marginTop: 2,
     fontStyle: 'italic',
   },
   ownerRole: {
-    color: '#FF8C00',
+    color: isDark ? '#FFB454' : '#FF8C00',
     fontWeight: '600',
   },
   adminRole: {
@@ -1323,7 +1325,7 @@ const styles = StyleSheet.create({
   },
   separator: {
     height: 1,
-    backgroundColor: '#F0F0F0',
+    backgroundColor: isDark ? colors.divider : '#F0F0F0',
     marginLeft: 68,
   },
   // Modal Menu Styles
@@ -1336,15 +1338,17 @@ const styles = StyleSheet.create({
     paddingRight: 16,
   },
   menuModal: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.surfaceElevated : '#FFFFFF',
     borderRadius: 8,
     paddingVertical: 8,
     minWidth: 200,
     elevation: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
+    shadowOpacity: isDark ? 0.4 : 0.25,
     shadowRadius: 8,
+    borderWidth: isDark ? 1 : 0,
+    borderColor: isDark ? colors.border : 'transparent',
   },
   menuItem: {
     paddingHorizontal: 16,
@@ -1352,8 +1356,35 @@ const styles = StyleSheet.create({
   },
   menuItemText: {
     fontSize: 16,
-    color: '#000000',
+    color: isDark ? colors.textPrimary : '#000000',
     fontWeight: '400',
+  },
+  // Inline Menu Overlay (вместо Modal — чтобы не перекрашивался Android system nav bar)
+  menuBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'transparent',
+    zIndex: 1000,
+  },
+  menuContainer: {
+    position: 'absolute',
+    top: 50,
+    right: 16,
+    backgroundColor: isDark ? colors.surfaceElevated : '#FFFFFF',
+    borderRadius: 8,
+    paddingVertical: 8,
+    minWidth: 220,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: isDark ? 0.4 : 0.25,
+    shadowRadius: 8,
+    borderWidth: isDark ? 1 : 0,
+    borderColor: isDark ? colors.border : 'transparent',
+    zIndex: 1001,
   },
   // Avatar Modal Styles
   avatarModalOverlay: {
@@ -1444,12 +1475,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: isDark ? colors.divider : '#F0F0F0',
   },
   adminMenuTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#000000',
+    color: isDark ? colors.textPrimary : '#000000',
     textAlign: 'center',
   },
   revokeAdminText: {
@@ -1463,7 +1494,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 16,
     paddingHorizontal: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.surface : '#FFFFFF',
     marginTop: 8,
     marginBottom: 8,
   },
@@ -1471,7 +1502,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 8,
-    backgroundColor: '#F0F2F5',
+    backgroundColor: isDark ? colors.surfaceElevated : '#F0F2F5',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
@@ -1486,12 +1517,12 @@ const styles = StyleSheet.create({
   lockGroupTitle: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#1A1A1A',
+    color: isDark ? colors.textPrimary : '#1A1A1A',
     marginBottom: 2,
   },
   lockGroupDescription: {
     fontSize: 14,
-    color: '#8696A0',
+    color: isDark ? colors.textSecondary : '#8696A0',
     lineHeight: 18,
   },
   lockToggle: {
@@ -1520,7 +1551,7 @@ const styles = StyleSheet.create({
   },
   contactsHelpText: {
     fontSize: 13,
-    color: '#8696A0',
+    color: isDark ? colors.textSecondary : '#8696A0',
     marginTop: 8,
     lineHeight: 18,
   },

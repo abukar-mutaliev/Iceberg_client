@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -23,6 +23,7 @@ import { getImageUrl } from '@shared/api/api';
 import NetInfo from '@react-native-community/netinfo';
 import { useGlobalAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 import { PermissionInfoModal } from '@entities/chat/ui/Composer/components/PermissionInfoModal';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const CreateGroupScreen = ({ navigation, route }) => {
   // Получаем тип из параметров навигации (по умолчанию GROUP)
@@ -30,6 +31,8 @@ export const CreateGroupScreen = ({ navigation, route }) => {
   const dispatch = useDispatch();
   const currentUser = useSelector(state => state?.auth?.user);
   const { showError, showInfo, showWarning, showAlert } = useGlobalAlert();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   // Проверяем isSuperAdmin в разных возможных местах структуры пользователя
   const isSuperAdmin = currentUser?.role === 'ADMIN' && (
     currentUser?.admin?.isSuperAdmin || 
@@ -782,6 +785,8 @@ export const CreateGroupScreen = ({ navigation, route }) => {
               value={groupName}
               onChangeText={setGroupName}
               placeholder={groupType === 'BROADCAST' ? 'Введите название канала' : 'Введите название группы'}
+              placeholderTextColor={isDark ? colors.textTertiary : undefined}
+              keyboardAppearance={isDark ? 'dark' : 'light'}
               maxLength={100}
             />
           </View>
@@ -793,6 +798,8 @@ export const CreateGroupScreen = ({ navigation, route }) => {
               value={groupDescription}
               onChangeText={setGroupDescription}
               placeholder={groupType === 'BROADCAST' ? 'Введите описание канала' : 'Введите описание группы'}
+              placeholderTextColor={isDark ? colors.textTertiary : undefined}
+              keyboardAppearance={isDark ? 'dark' : 'light'}
               multiline
               maxLength={500}
             />
@@ -866,12 +873,14 @@ export const CreateGroupScreen = ({ navigation, route }) => {
             style={styles.searchInput}
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Введите имя пользователя для поиска (мин. 2 символа)..."
+            placeholder="Введите имя пользователя для поиска"
+            placeholderTextColor={isDark ? colors.textTertiary : undefined}
+            keyboardAppearance={isDark ? 'dark' : 'light'}
           />
 
           {loadingUsers ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#007AFF" />
+              <ActivityIndicator size="large" color={isDark ? colors.primary : '#007AFF'} />
               <Text style={styles.loadingText}>Загрузка пользователей...</Text>
             </View>
           ) : (
@@ -910,10 +919,10 @@ export const CreateGroupScreen = ({ navigation, route }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.background : '#FFFFFF',
   },
   header: {
     flexDirection: 'row',
@@ -921,8 +930,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 0,
-    borderBottomColor: '#E5E5E5',
+    borderBottomWidth: isDark ? 1 : 0,
+    borderBottomColor: isDark ? colors.divider : '#E5E5E5',
+    backgroundColor: isDark ? colors.surface : 'transparent',
   },
   headerActions: {
     flexDirection: 'row',
@@ -935,28 +945,28 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     gap: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
-    backgroundColor: '#F8F8F8',
+    borderBottomColor: isDark ? colors.divider : '#E5E5E5',
+    backgroundColor: isDark ? colors.surface : '#F8F8F8',
   },
   typeTab: {
     flex: 1,
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 20,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.surfaceElevated : '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#E5E5E5',
+    borderColor: isDark ? colors.divider : '#E5E5E5',
   },
   typeTabActive: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
+    backgroundColor: isDark ? colors.primary : '#007AFF',
+    borderColor: isDark ? colors.primary : '#007AFF',
   },
   typeTabText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#666666',
+    color: isDark ? colors.textSecondary : '#666666',
   },
   typeTabTextActive: {
     color: '#FFFFFF',
@@ -966,27 +976,27 @@ const styles = StyleSheet.create({
   },
   backButtonText: {
     fontSize: 24,
-    color: '#007AFF',
+    color: isDark ? colors.primary : '#007AFF',
   },
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#000000',
+    color: isDark ? colors.textPrimary : '#000000',
     flex: 1,
     textAlign: 'center',
     marginHorizontal: 16,
   },
   createButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: isDark ? colors.primary : '#007AFF',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
-    minWidth: 120, // Увеличено для отображения прогресса
+    minWidth: 120,
     alignItems: 'center',
     justifyContent: 'center',
   },
   createButtonDisabled: {
-    backgroundColor: '#C7C7CC',
+    backgroundColor: isDark ? colors.surfaceElevated : '#C7C7CC',
   },
   createButtonText: {
     color: '#FFFFFF',
@@ -1009,16 +1019,17 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    backgroundColor: isDark ? colors.background : 'transparent',
   },
   groupInfoSection: {
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: isDark ? colors.divider : '#F0F0F0',
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#000000',
+    color: isDark ? colors.textPrimary : '#000000',
     marginBottom: 12,
   },
   inputContainer: {
@@ -1027,17 +1038,18 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 14,
     fontWeight: '500',
-    color: '#333333',
+    color: isDark ? colors.textSecondary : '#333333',
     marginBottom: 8,
   },
   textInput: {
     borderWidth: 1,
-    borderColor: '#E5E5E5',
+    borderColor: isDark ? colors.divider : '#E5E5E5',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: isDark ? colors.inputBackground : '#FFFFFF',
+    color: isDark ? colors.textPrimary : '#000000',
   },
   descriptionInput: {
     height: 80,
@@ -1056,7 +1068,7 @@ const styles = StyleSheet.create({
     borderRadius: 50,
     overflow: 'hidden',
     borderWidth: 2,
-    borderColor: '#E5E5E5',
+    borderColor: isDark ? colors.divider : '#E5E5E5',
     borderStyle: 'dashed',
   },
   avatarImageContainer: {
@@ -1074,7 +1086,7 @@ const styles = StyleSheet.create({
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F8F8F8',
+    backgroundColor: isDark ? colors.surfaceElevated : '#F8F8F8',
   },
   avatarPlaceholderText: {
     fontSize: 24,
@@ -1082,7 +1094,7 @@ const styles = StyleSheet.create({
   },
   avatarPlaceholderSubtext: {
     fontSize: 12,
-    color: '#666666',
+    color: isDark ? colors.textSecondary : '#666666',
     textAlign: 'center',
   },
   removeAvatarButton: {
@@ -1110,7 +1122,7 @@ const styles = StyleSheet.create({
   selectedUsersSection: {
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: isDark ? colors.divider : '#F0F0F0',
   },
   selectedUsersList: {
     paddingVertical: 8,
@@ -1118,7 +1130,7 @@ const styles = StyleSheet.create({
   selectedUserChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E3F2FD',
+    backgroundColor: isDark ? 'rgba(33, 150, 243, 0.18)' : '#E3F2FD',
     borderRadius: 20,
     paddingLeft: 4,
     paddingRight: 8,
@@ -1141,12 +1153,12 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#C7C7CC',
+    backgroundColor: isDark ? colors.surfaceElevated : '#C7C7CC',
     marginRight: 6,
   },
   selectedUserName: {
     fontSize: 14,
-    color: '#1976D2',
+    color: isDark ? '#8FB9FF' : '#1976D2',
     fontWeight: '500',
     flex: 1,
   },
@@ -1156,7 +1168,7 @@ const styles = StyleSheet.create({
   },
   removeUserText: {
     fontSize: 16,
-    color: '#666666',
+    color: isDark ? colors.textSecondary : '#666666',
     fontWeight: 'bold',
   },
   usersSection: {
@@ -1164,12 +1176,13 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     borderWidth: 1,
-    borderColor: '#E5E5E5',
+    borderColor: isDark ? colors.divider : '#E5E5E5',
     borderRadius: 8,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 9,
     fontSize: 16,
-    backgroundColor: '#F8F8F8',
+    backgroundColor: isDark ? colors.inputBackground : '#F8F8F8',
+    color: isDark ? colors.textPrimary : '#000000',
     marginBottom: 16,
   },
   userItem: {
@@ -1180,7 +1193,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   userItemSelected: {
-    backgroundColor: '#F0F8FF',
+    backgroundColor: isDark ? 'rgba(124, 132, 255, 0.12)' : '#F0F8FF',
   },
   userInfo: {
     flexDirection: 'row',
@@ -1197,7 +1210,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#C7C7CC',
+    backgroundColor: isDark ? colors.surfaceElevated : '#C7C7CC',
     marginRight: 12,
   },
   userTextInfo: {
@@ -1206,25 +1219,25 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#000000',
+    color: isDark ? colors.textPrimary : '#000000',
     marginBottom: 2,
   },
   userRole: {
     fontSize: 14,
-    color: '#666666',
+    color: isDark ? colors.textSecondary : '#666666',
   },
   checkbox: {
     width: 20,
     height: 20,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: '#C7C7CC',
+    borderColor: isDark ? colors.divider : '#C7C7CC',
     alignItems: 'center',
     justifyContent: 'center',
   },
   checkboxSelected: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
+    backgroundColor: isDark ? colors.primary : '#007AFF',
+    borderColor: isDark ? colors.primary : '#007AFF',
   },
   checkmark: {
     color: '#FFFFFF',
@@ -1233,7 +1246,7 @@ const styles = StyleSheet.create({
   },
   separator: {
     height: 1,
-    backgroundColor: '#F0F0F0',
+    backgroundColor: isDark ? colors.divider : '#F0F0F0',
     marginLeft: 52,
   },
   loadingContainer: {
@@ -1243,7 +1256,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 8,
     fontSize: 14,
-    color: '#666666',
+    color: isDark ? colors.textSecondary : '#666666',
   },
   emptyContainer: {
     alignItems: 'center',
@@ -1251,7 +1264,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
-    color: '#666666',
+    color: isDark ? colors.textSecondary : '#666666',
   },
   selectedUsersHeader: {
     flexDirection: 'row',
@@ -1262,34 +1275,34 @@ const styles = StyleSheet.create({
   broadcastInfo: {
     marginTop: 12,
     padding: 12,
-    backgroundColor: '#E3F2FD',
+    backgroundColor: isDark ? 'rgba(33, 150, 243, 0.15)' : '#E3F2FD',
     borderRadius: 8,
     borderLeftWidth: 4,
-    borderLeftColor: '#2196F3',
+    borderLeftColor: isDark ? '#64B5F6' : '#2196F3',
   },
   routesToggle: {
     marginTop: 12,
     padding: 12,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: isDark ? colors.surfaceElevated : '#F5F5F5',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#E5E5E5',
+    borderColor: isDark ? colors.divider : '#E5E5E5',
   },
   routesToggleActive: {
-    backgroundColor: '#E8F5E9',
-    borderColor: '#66BB6A',
+    backgroundColor: isDark ? 'rgba(76, 175, 80, 0.18)' : '#E8F5E9',
+    borderColor: isDark ? '#7DC97F' : '#66BB6A',
   },
   routesToggleText: {
     fontSize: 13,
-    color: '#555555',
+    color: isDark ? colors.textSecondary : '#555555',
   },
   routesToggleTextActive: {
-    color: '#2E7D32',
+    color: isDark ? '#9FD8A1' : '#2E7D32',
     fontWeight: '600',
   },
   broadcastInfoText: {
     fontSize: 13,
-    color: '#1976D2',
+    color: isDark ? '#8FB9FF' : '#1976D2',
     lineHeight: 18,
   },
 });

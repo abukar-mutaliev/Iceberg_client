@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Image, View, StyleSheet } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { getImageUrl } from '@shared/api/api';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 // Глобальный кэш проверенных путей
 const verifiedPaths = new Map();
@@ -10,6 +11,7 @@ const verifiedPaths = new Map();
  * CachedImage - Компонент для кэширования изображений
  */
 export function CachedImage({ source, style, resizeMode = 'cover', ...props }) {
+  const { colors, isDark } = useTheme();
   // Вычисляем абсолютный URL и путь к хранилищу
   const { absoluteUri, storagePath, isLocalFile } = useMemo(() => {
     if (!source?.uri) return { absoluteUri: null, storagePath: null, isLocalFile: false };
@@ -104,7 +106,15 @@ export function CachedImage({ source, style, resizeMode = 'cover', ...props }) {
   }, [displayUri, storagePath, absoluteUri]);
 
   if (!displayUri) {
-    return <View style={[style, styles.placeholder]} />;
+    return (
+      <View
+        style={[
+          style,
+          styles.placeholder,
+          isDark && { backgroundColor: colors.surfaceElevated },
+        ]}
+      />
+    );
   }
 
   return (
