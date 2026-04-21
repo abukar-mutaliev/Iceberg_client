@@ -1,12 +1,12 @@
 // ============================================================================
 // ЧАСТЬ 1: Imports и Constants
 // ============================================================================
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Platform, Linking, Animated, View, Text, TouchableOpacity, Image } from 'react-native';
 import ThemedStatusBar from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { NavigationContainer } from "@react-navigation/native";
+import { NavigationContainer, DefaultTheme as NavDefaultTheme, DarkTheme as NavDarkTheme } from "@react-navigation/native";
 import { createStackNavigator, CardStyleInterpolators } from "@react-navigation/stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useDispatch, useSelector } from "react-redux";
@@ -600,6 +600,77 @@ const createProductDetailScreenOptions = (extra = {}) => ({ route }) => {
     });
 };
 
+// --- Тёма-aware фабрики опций для стеков ---
+// Избавляемся от белой вспышки в dark-режиме при slide/fade-переходах между экранами:
+// cardStyle.backgroundColor должен соответствовать фону активной темы, иначе во время
+// анимации между двумя картами показывается белая подложка по умолчанию.
+const useThemedCardStyle = (variant = 'default') => {
+    const { isDark, colors } = useTheme();
+    return useMemo(() => {
+        const bg = isDark ? colors.background : '#ffffff';
+        if (variant === 'productDetail') {
+            return {
+                backgroundColor: bg,
+                ...Platform.select({
+                    ios: {
+                        shadowColor: '#000',
+                        shadowOffset: { width: -3, height: 0 },
+                        shadowOpacity: isDark ? 0.5 : 0.3,
+                        shadowRadius: 8,
+                    },
+                    android: { elevation: isDark ? 0 : 8 },
+                }),
+            };
+        }
+        return {
+            backgroundColor: bg,
+            ...Platform.select({
+                ios: {
+                    shadowColor: '#000',
+                    shadowOffset: { width: -3, height: 0 },
+                    shadowOpacity: isDark ? 0.5 : 0.25,
+                    shadowRadius: 6,
+                },
+                android: { elevation: isDark ? 0 : 6 },
+            }),
+        };
+    }, [isDark, colors.background, variant]);
+};
+
+const useCreateScreenOptions = () => {
+    const themedCardStyle = useThemedCardStyle('default');
+    return useCallback((options = {}) => {
+        const { cardStyle: overrideCardStyle, ...rest } = options;
+        return {
+            ...slideFromRight,
+            headerShown: false,
+            ...rest,
+            cardStyle: overrideCardStyle
+                ? { ...themedCardStyle, ...overrideCardStyle }
+                : themedCardStyle,
+        };
+    }, [themedCardStyle]);
+};
+
+const useCreateProductDetailScreenOptions = () => {
+    const baseCreate = useCreateScreenOptions();
+    const productCardStyle = useThemedCardStyle('productDetail');
+    return useCallback((extra = {}) => ({ route }) => {
+        const isProductChain = (route?.params?.productHistory?.length ?? 0) > 0;
+        return baseCreate({
+            ...(isProductChain ? productChainTransition : cardStackTransition),
+            unmountOnBlur: false,
+            freezeOnBlur: true,
+            gestureEnabled: !isProductChain,
+            ...(Platform.OS === 'ios' && !isProductChain
+                ? { cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS }
+                : {}),
+            cardStyle: productCardStyle,
+            ...extra,
+        });
+    }, [baseCreate, productCardStyle]);
+};
+
 // ============================================================================
 // ЧАСТЬ 7: Stack Navigators (упрощенные)
 // ============================================================================
@@ -660,11 +731,19 @@ const ProfileTabScreenContent = ({ navigation }) => {
 };
 
 // Profile Stack Navigator
-const ProfileStackScreen = () => (
+const ProfileStackScreen = () => {
+    // Тёма-aware фабрики опций (шадоют модульные createScreenOptions / createProductDetailScreenOptions,
+    // чтобы все дочерние экраны получили правильный cardStyle.backgroundColor вместо жёсткого белого).
+    const createScreenOptions = useCreateScreenOptions();
+    const createProductDetailScreenOptions = useCreateProductDetailScreenOptions();
+    const themedCardStyle = useThemedCardStyle('default');
+
+    return (
     <ProfileStack.Navigator
         id="ProfileStack"
         screenOptions={{
             ...defaultScreenOptions,
+            cardStyle: themedCardStyle,
             cardOverlayEnabled: true,
             detachPreviousScreen: false,
         }}
@@ -672,7 +751,7 @@ const ProfileStackScreen = () => (
         <ProfileStack.Screen
             name="ProfileMain"
             component={ProfileTabScreenContent}
-            options={{ ...fadeIn, cardOverlayEnabled: false }}
+            options={{ ...fadeIn, cardOverlayEnabled: false, cardStyle: themedCardStyle }}
         />
         <ProfileStack.Screen
             name="ProfileEdit"
@@ -785,7 +864,8 @@ const ProfileStackScreen = () => (
             options={createScreenOptions()}
         />
     </ProfileStack.Navigator>
-);
+    );
+};
 
 // Cart Stack Navigator
 const CartStackScreen = () => (
@@ -1333,6 +1413,34 @@ export const AppNavigator = () => {
     useFavoritesCleanup(isAuthenticated);
     useDeepLinking();
 
+    // Тёма-aware фабрики опций — шадоуем модульные createScreenOptions
+    // / createProductDetailScreenOptions, чтобы все экраны этого стека (Welcome, Auth,
+    // MapScreen, CatalogModal, StopDetails, ProductDetail, CheckoutScreen и т.д.)
+    // получили правильный cardStyle.backgroundColor и не мигали белым в dark-режиме
+    // во время slide/fade-перехода.
+    const createScreenOptions = useCreateScreenOptions();
+    const createProductDetailScreenOptions = useCreateProductDetailScreenOptions();
+    const themedCardStyle = useThemedCardStyle('default');
+
+    // Тема самого NavigationContainer. Без неё используется DefaultTheme с БЕЛЫМ
+    // `colors.background`, и именно он показывается "под" карточками во время
+    // первого ленивого монтирования нового экрана (например, StopDetails) и
+    // даёт белую вспышку при slide-анимации в dark-режиме.
+    const navigationTheme = useMemo(() => {
+        const base = isDark ? NavDarkTheme : NavDefaultTheme;
+        return {
+            ...base,
+            colors: {
+                ...base.colors,
+                background: colors.background,
+                card: colors.surface || colors.background,
+                text: colors.textPrimary,
+                border: colors.divider || base.colors.border,
+                primary: colors.primary || base.colors.primary,
+            },
+        };
+    }, [isDark, colors.background, colors.surface, colors.textPrimary, colors.divider, colors.primary]);
+
     // Важно для push-навигации на cold start:
     // пока isAuthenticated === undefined, навигацию по уведомлению лучше не выполнять,
     // иначе она может быть перетёрта Welcome/Auth редиректом.
@@ -1345,6 +1453,7 @@ export const AppNavigator = () => {
     return (
         <NavigationContainer
             ref={navigationRef}
+            theme={navigationTheme}
             linking={linkingConfig}
             onReady={() => PushNotificationService.setNavigationReady()}
         >
@@ -1356,13 +1465,13 @@ export const AppNavigator = () => {
                     // Показываем только Splash экран пока проверяется авторизация
                     <Stack.Navigator
                         id="AppStack"
-                        screenOptions={defaultScreenOptions}
+                        screenOptions={{ ...defaultScreenOptions, cardStyle: themedCardStyle }}
                         initialRouteName="Splash"
                     >
                         <Stack.Screen
                             name="Splash"
                             component={SplashScreen}
-                            options={{ ...fadeIn, gestureEnabled: false }}
+                            options={{ ...fadeIn, gestureEnabled: false, cardStyle: themedCardStyle }}
                         />
                     </Stack.Navigator>
                 ) : (
@@ -1371,6 +1480,7 @@ export const AppNavigator = () => {
                         id="AppStack"
                         screenOptions={{
                             ...defaultScreenOptions,
+                            cardStyle: themedCardStyle,
                             cardOverlayEnabled: true,
                             detachPreviousScreen: false,
                         }}
