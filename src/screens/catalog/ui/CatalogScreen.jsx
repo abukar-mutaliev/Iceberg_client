@@ -175,6 +175,7 @@ export const CatalogScreen = ({ navigation }) => {
             <ProductCard
                 product={adaptedProduct}
                 onPress={() => handleProductPress(adaptedProduct)}
+                hideAddToCart
             />
         );
     };

@@ -76,7 +76,7 @@ const safeNumber = (value, defaultValue = 0) => {
 };
 
 
-const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
+const ProductTileComponent = React.memo(({ product, onPress, testID, hideAddToCart = false }) => {
     const navigation = useNavigation();
     const route = useRoute();
     const dispatch = useDispatch();
@@ -607,13 +607,15 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
                     </Text>
                 </View>
             </TouchableOpacity>
-            <View style={styles.addButtonContainer}>
-                <AddToCartButton 
-                    product={productData}
-                    size="small"
-                    isWhite={true}
-                />
-            </View>
+            {!hideAddToCart && (
+                <View style={styles.addButtonContainer}>
+                    <AddToCartButton 
+                        product={productData}
+                        size="small"
+                        isWhite={true}
+                    />
+                </View>
+            )}
         </View>
     );
 }, (prevProps, nextProps) => {
@@ -626,6 +628,7 @@ const ProductTileComponent = React.memo(({ product, onPress, testID }) => {
         if (safeNumber(prevProps.product.price) !== safeNumber(nextProps.product.price)) return false;
 
         if (prevProps.onPress !== nextProps.onPress) return false;
+        if (prevProps.hideAddToCart !== nextProps.hideAddToCart) return false;
 
         if (prevProps.testID !== nextProps.testID) return false;
 

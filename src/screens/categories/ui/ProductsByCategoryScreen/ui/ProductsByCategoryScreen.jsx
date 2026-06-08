@@ -440,6 +440,7 @@ const AnimatedProductCard = React.memo(({ item, onPress, index, styles }) => {
                     product={item}
                     onPress={handleProductPress}
                     width={SCREEN_WIDTH - normalize(32)}
+                    hideAddToCart
                 />
             ) : (
                 <ProductTile
@@ -448,6 +449,7 @@ const AnimatedProductCard = React.memo(({ item, onPress, index, styles }) => {
                         category: item.categories?.[0]?.description || 'БАСКЕТ'
                     }}
                     onPress={() => handleProductPress(item.id)}
+                    hideAddToCart
                 />
             )}
         </Animated.View>

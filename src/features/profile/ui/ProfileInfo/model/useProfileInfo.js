@@ -106,22 +106,9 @@ export const useProfileInfo = (isAuthenticated, tokens, currentUser, navigation)
                                 (isEmployee && !restrictedRoles.includes(processingRole));
 
     const canViewStaffOrders = isAdmin || isEmployee;
-    const isClient = currentUser?.role === 'CLIENT';
 
     // Формируем пункты меню в зависимости от роли
     let menuItems = [...baseMenuItems];
-
-    if (featureFlags.orders && isClient) {
-        menuItems.splice(2, 0, {
-            id: 'myOrders',
-            title: 'Мои заказы',
-            icon: <Icon name="shopping-bag" size={24} color="#666666" />,
-            onPress: () => navigation.navigate('Cart', {
-                screen: 'MyOrders',
-                params: { fromScreen: 'Profile' },
-            }),
-        });
-    }
 
     // Добавляем пункт "Заказы" для админов и сотрудников
     if (featureFlags.orders && canViewStaffOrders) {

@@ -18,7 +18,7 @@ const isMediumScreen = SCREEN_WIDTH >= 360 && SCREEN_WIDTH < 414;
 const isLargePhone = SCREEN_WIDTH >= 414 && SCREEN_WIDTH < 768;
 const isTablet = SCREEN_WIDTH >= 768;
 
-const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = false, compactImageHeight = 140 }) => {
+const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = false, compactImageHeight = 140, hideAddToCart = false }) => {
     const { showError, showWarning } = useToast();
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
@@ -694,14 +694,16 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                 </View>
             </Pressable>
 
-            <AddToCartButton
-                style={[styles.addButton, isSmallScreen && styles.addButtonSmall]}
-                product={product}
-                onPress={handleAddToCartPress}
-                size="default"
-                isWhite={false}
-                onGoToCart={handleGoToCart}
-            />
+            {!hideAddToCart && (
+                <AddToCartButton
+                    style={[styles.addButton, isSmallScreen && styles.addButtonSmall]}
+                    product={product}
+                    onPress={handleAddToCartPress}
+                    size="default"
+                    isWhite={false}
+                    onGoToCart={handleGoToCart}
+                />
+            )}
         </View>
     );
 };
@@ -711,6 +713,7 @@ const arePropsEqual = (prevProps, nextProps) => {
 
     if (prevProps.width !== nextProps.width) return false;
     if (prevProps.compact !== nextProps.compact) return false;
+    if (prevProps.hideAddToCart !== nextProps.hideAddToCart) return false;
     if (prevProps.onPress !== nextProps.onPress) return false;
     if (prevProps.onGoToCart !== nextProps.onGoToCart) return false;
 

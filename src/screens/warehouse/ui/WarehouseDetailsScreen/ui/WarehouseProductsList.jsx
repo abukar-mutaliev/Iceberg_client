@@ -181,6 +181,7 @@ export const WarehouseProductsList = ({ warehouseId, products, loading }) => {
                             >
                                 <ProductTile
                                     product={item}
+                                    hideAddToCart
                                 />
                             </View>
                         ))}

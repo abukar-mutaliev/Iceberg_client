@@ -23,7 +23,6 @@ const normalize = (size) => {
 // Количество карточек, отображаемых за один шаг
 const PAGE_SIZE = 4;
 
-// Ширина плитки: 2 колонки с горизонтальными отступами 15px и зазором 12px
 const TILE_WIDTH = Math.floor((SCREEN_WIDTH - 15 - 15 - 12) / 2);
 const TILE_HEIGHT = normalize(269);
 
@@ -117,6 +116,7 @@ export const SimilarProducts = React.memo(({
                                 product={item}
                                 onPress={() => handleProductPress(item)}
                                 testID={`similar-product-${item.id}`}
+                                hideAddToCart
                             />
                         </View>
                     );

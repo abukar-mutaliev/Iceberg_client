@@ -183,6 +183,7 @@ export const FavouritesScreen = ({ navigation }) => {
                 <ProductCard
                     product={wrappedProduct}
                     onPress={() => handleProductPress(productId)}
+                    hideAddToCart
                 />
             </View>
         );

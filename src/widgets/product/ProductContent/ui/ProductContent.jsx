@@ -41,6 +41,7 @@ export const ProductContent = React.memo(({
                                               canReplyAsSupplier = false,
                                               onReplySubmit = null,
                                               replyingFeedbackId = null,
+                                              hideQuantityControl = false,
                                           }) => {
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
@@ -92,7 +93,12 @@ export const ProductContent = React.memo(({
         return safeProduct.availableQuantity > 0 ? safeProduct.availableQuantity : 999;
     }, [maxQuantity, safeProduct.availableQuantity]);
 
-    const showWarehouseTab = featureFlags.warehouseTracking && !!safeProduct.id;
+    const canViewWarehouseTab = useMemo(() => {
+        const role = currentUser?.role;
+        return role === 'SUPPLIER' || role === 'EMPLOYEE' || role === 'ADMIN';
+    }, [currentUser?.role]);
+
+    const showWarehouseTab = featureFlags.warehouseTracking && !!safeProduct.id && canViewWarehouseTab;
     const {
         warehousesWithStock,
         totalStock,
@@ -116,6 +122,12 @@ export const ProductContent = React.memo(({
         }
         return items;
     }, [safeProduct.feedbackCount, showWarehouseTab]);
+
+    useEffect(() => {
+        if (activeTab === 'availability' && !showWarehouseTab) {
+            onTabChange?.('description');
+        }
+    }, [activeTab, showWarehouseTab, onTabChange]);
 
     const handleFeedbacksLayout = useCallback((event) => {
         const { height } = event.nativeEvent.layout;
@@ -156,19 +168,21 @@ export const ProductContent = React.memo(({
                 <View style={styles.priceContainer}>
                     <ProductPrice price={productWithNormalizedPricing.price} product={productWithNormalizedPricing} weight={productWithNormalizedPricing.weight} />
 
-                    <QuantityControl
-                        quantity={quantity}
-                        onQuantityChange={onQuantityChange}
-                        style={styles.quantityControl}
-                        isUpdating={isUpdatingQuantity}
-                        maxQuantity={effectiveMaxQuantity}
-                        disabled={safeProduct.availableQuantity <= 0}
-                        isInCart={isInCart}
-                        onAddToCart={onAddToCart}
-                        onUpdateQuantity={onUpdateQuantity}
-                        onRemoveFromCart={onRemoveFromCart}
-                        autoCartManagement={autoCartManagement}
-                    />
+                    {!hideQuantityControl && (
+                        <QuantityControl
+                            quantity={quantity}
+                            onQuantityChange={onQuantityChange}
+                            style={styles.quantityControl}
+                            isUpdating={isUpdatingQuantity}
+                            maxQuantity={effectiveMaxQuantity}
+                            disabled={safeProduct.availableQuantity <= 0}
+                            isInCart={isInCart}
+                            onAddToCart={onAddToCart}
+                            onUpdateQuantity={onUpdateQuantity}
+                            onRemoveFromCart={onRemoveFromCart}
+                            autoCartManagement={autoCartManagement}
+                        />
+                    )}
                    
                 </View>
 
