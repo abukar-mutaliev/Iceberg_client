@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import {
   PROCESSING_ROLE_DESCRIPTIONS
 } from '../../lib/constants';
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const ProcessingRoleAssignment = ({ 
   employee, 
@@ -27,6 +28,8 @@ export const ProcessingRoleAssignment = ({
 }) => {
   const [selectedRole, setSelectedRole] = useState(null);
   const { showAlert } = useCustomAlert();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   const resolvedRoleOptions = Array.isArray(roleOptions) && roleOptions.length > 0
     ? roleOptions
@@ -175,7 +178,7 @@ export const ProcessingRoleAssignment = ({
               disabled={!selectedRole || loading}
             >
               {loading ? (
-                <ActivityIndicator color="#fff" size="small" />
+                <ActivityIndicator color={colors.textInverse} size="small" />
               ) : (
                 <Text style={styles.confirmButtonText}>Назначить</Text>
               )}
@@ -187,7 +190,7 @@ export const ProcessingRoleAssignment = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -196,7 +199,7 @@ const styles = StyleSheet.create({
     padding: 20
   },
   modalContent: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     width: '100%',
     maxWidth: 400,
@@ -211,31 +214,31 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0'
+    borderBottomColor: colors.border
   },
   title: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#1f2937',
+    color: colors.textPrimary,
     marginBottom: 8,
     textAlign: 'center'
   },
   subtitle: {
     fontSize: 14,
-    color: '#6b7280',
+    color: colors.textSecondary,
     marginBottom: 16,
     textAlign: 'center'
   },
   employeeName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#374151',
+    color: colors.textPrimary,
     marginBottom: 4,
     textAlign: 'center'
   },
   employeeEmail: {
     fontSize: 14,
-    color: '#6b7280',
+    color: colors.textSecondary,
     textAlign: 'center'
   },
   rolesContainer: {
@@ -248,26 +251,26 @@ const styles = StyleSheet.create({
     paddingBottom: 20
   },
   roleOption: {
-    backgroundColor: '#f9fafb',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginVertical: 6,
     borderWidth: 2,
-    borderColor: '#e5e7eb',
+    borderColor: colors.border,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
       height: 1,
     },
-    shadowOpacity: 0.05,
+    shadowOpacity: isDark ? 0.25 : 0.05,
     shadowRadius: 2,
     elevation: 2
   },
   selectedRoleOption: {
-    backgroundColor: '#fef3f2',
-    borderColor: '#fd7e14',
-    shadowColor: '#fd7e14',
-    shadowOpacity: 0.15,
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.warning,
+    shadowColor: colors.warning,
+    shadowOpacity: isDark ? 0.25 : 0.15,
     elevation: 4
   },
   roleHeader: {
@@ -289,16 +292,16 @@ const styles = StyleSheet.create({
   roleLabel: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#374151',
+    color: colors.textPrimary,
     marginBottom: 4
   },
   roleDescription: {
     fontSize: 14,
-    color: '#6b7280',
+    color: colors.textSecondary,
     lineHeight: 20
   },
   selectedRoleText: {
-    color: '#fd7e14'
+    color: colors.warning
   },
   selectedIndicator: {
     position: 'absolute',
@@ -313,13 +316,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    borderTopColor: colors.border,
     gap: 12,
     justifyContent: 'space-between'
   },
   cancelButton: {
     flex: 1,
-    backgroundColor: '#f3f4f6',
+    backgroundColor: colors.surfaceSecondary,
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 8,
@@ -329,17 +332,17 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#6b7280'
+    color: colors.textSecondary
   },
   confirmButton: {
     flex: 1,
-    backgroundColor: '#fd7e14',
+    backgroundColor: colors.warning,
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#fd7e14',
+    shadowColor: colors.warning,
     shadowOffset: {
       width: 0,
       height: 2,
@@ -349,12 +352,12 @@ const styles = StyleSheet.create({
     elevation: 3
   },
   confirmButtonDisabled: {
-    backgroundColor: '#d1d5db',
+    backgroundColor: colors.surfaceSecondary,
     shadowOpacity: 0
   },
   confirmButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff'
+    color: colors.textInverse
   }
 }); 

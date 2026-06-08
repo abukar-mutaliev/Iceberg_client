@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
     View,
     Text,
@@ -7,10 +7,8 @@ import {
     ScrollView,
     Dimensions,
 } from 'react-native';
-import {
-    Color,
-    FontFamily
-} from '@app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -20,6 +18,8 @@ const normalize = (size) => {
 };
 
 export const ValidationModal = ({ results, onClose, onProceed }) => {
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
     if (!results) return null;
 
     const { issues = [], canProceedToCheckout } = results;
@@ -96,10 +96,10 @@ export const ValidationModal = ({ results, onClose, onProceed }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     modalContainer: {
         flex: 1,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.background,
     },
 
     modalHeader: {
@@ -108,19 +108,19 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         padding: normalize(20),
         borderBottomWidth: 1,
-        borderBottomColor: 'rgba(193, 199, 222, 0.30)',
+        borderBottomColor: colors.border,
     },
 
     modalTitle: {
         fontSize: normalize(18),
         fontWeight: '600',
-        color: '#000000',
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProDisplay || 'SF Pro Display',
     },
 
     modalCloseButton: {
         fontSize: normalize(20),
-        color: '#3339B0',
+        color: colors.primary,
         fontWeight: '600',
     },
 
@@ -138,11 +138,11 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         marginBottom: normalize(10),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: '#000000',
+        color: colors.textPrimary,
     },
 
     issueItem: {
-        backgroundColor: '#F8F9FF',
+        backgroundColor: colors.surface,
         padding: normalize(12),
         borderRadius: normalize(8),
         marginBottom: normalize(8),
@@ -153,30 +153,30 @@ const styles = StyleSheet.create({
         fontWeight: '500',
         marginBottom: normalize(4),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: '#000000',
+        color: colors.textPrimary,
     },
 
     issueMessage: {
         fontSize: normalize(13),
-        color: 'rgba(60, 60, 67, 0.60)',
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
     },
 
     modalFooter: {
         padding: normalize(20),
         borderTopWidth: 1,
-        borderTopColor: 'rgba(193, 199, 222, 0.30)',
+        borderTopColor: colors.border,
     },
 
     proceedButton: {
-        backgroundColor: '#5500FF',
+        backgroundColor: colors.primary,
         padding: normalize(15),
         borderRadius: normalize(10),
         alignItems: 'center',
     },
 
     proceedButtonText: {
-        color: '#FFFFFF',
+        color: colors.textInverse,
         fontSize: normalize(16),
         fontWeight: '600',
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
 
     cannotProceedText: {
         textAlign: 'center',
-        color: '#FF3B30',
+        color: colors.error,
         fontSize: normalize(14),
         fontWeight: '500',
         fontFamily: FontFamily.sFProText || 'SF Pro Text',

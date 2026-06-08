@@ -22,6 +22,7 @@ import { ContactPicker } from '../ContactPicker/ContactPicker';
 import { PermissionInfoModal } from './components/PermissionInfoModal';
 import { AttachIcon } from '@shared/ui/Icon/AttachIcon';
 import { CameraIcon } from '@shared/ui/Icon/CameraIcon';
+import { audioManager } from '@entities/chat/lib/audioManager';
 
 // ============ MEMOIZED COMPONENTS ============
 
@@ -143,6 +144,7 @@ const ComposerModals = memo(({
 
 export const Composer = memo(({
   roomId,
+  ensureRoomId,
   onTyping,
   replyTo,
   onCancelReply,
@@ -205,6 +207,7 @@ export const Composer = memo(({
   
   const send = useComposerSend({
     roomId,
+    ensureRoomId,
     replyTo,
     onCancelReply,
     isSendingRef,
@@ -270,6 +273,9 @@ export const Composer = memo(({
       const currentPermission = await Audio.getPermissionsAsync();
 
       if (currentPermission.granted) {
+        try {
+          await audioManager.stopAll();
+        } catch (_) {}
         setIsRecording(true);
         return;
       }
@@ -278,6 +284,9 @@ export const Composer = memo(({
       // Повторно синхронизируем разрешение через requestPermissionsAsync перед показом модалки.
       const permission = await Audio.requestPermissionsAsync();
       if (permission.granted) {
+        try {
+          await audioManager.stopAll();
+        } catch (_) {}
         setIsRecording(true);
         return;
       }

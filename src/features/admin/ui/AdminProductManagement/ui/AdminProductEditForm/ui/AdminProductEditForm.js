@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily } from '@app/styles/GlobalStyles';
@@ -9,6 +9,7 @@ import { MultipleImageUpload } from '@entities/product/ui/MultipleImageUpload';
 import { CategoryPicker } from "@shared/ui/Pickers/CategoryPicker/ui/CategoryPicker";
 import { SupplierPicker } from '@shared/ui/Pickers/SupplierPicker';
 import WarehouseService from '@entities/warehouse/api/warehouseApi';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 // Утилита для извлечения ID категории (как в EditProductModal)
 const extractCategoryId = (categoryValue) => {
@@ -58,6 +59,8 @@ export const AdminProductEditForm = ({
                                          onSaveSuccess = null, // Колбэк для успешного сохранения
                                          onGetSaveFunction = null // Колбэк для передачи функции сохранения
                                      }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const [removedImages, setRemovedImages] = useState([]);
     const [isInitialized, setIsInitialized] = useState(false);
 
@@ -450,15 +453,15 @@ export const AdminProductEditForm = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         padding: normalize(20),
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.background : Color.colorLightMode,
     },
     formTitle: {
         fontSize: normalizeFont(20),
         fontWeight: '700',
-        color: Color.dark,
+        color: isDark ? colors.textPrimary : Color.dark,
         marginBottom: normalize(24),
         fontFamily: FontFamily.sFProDisplay,
         textAlign: 'center',
@@ -487,13 +490,19 @@ const styles = StyleSheet.create({
     fieldLabel: {
         fontSize: normalizeFont(14),
         fontWeight: '600',
-        color: Color.dark,
-        opacity: 0.4,
+        color: isDark ? colors.textSecondary : Color.dark,
+        opacity: isDark ? 1 : 0.4,
         marginBottom: normalize(8),
         fontFamily: FontFamily.sFProText,
     },
+    errorText: {
+        color: colors.error,
+        fontSize: normalizeFont(12),
+        marginTop: normalize(4),
+        fontFamily: FontFamily.sFProText,
+    },
     submitButton: {
-        backgroundColor: '#3B43A2',
+        backgroundColor: colors.primary,
         height: normalize(44),
         borderRadius: normalize(8),
         justifyContent: 'center',
@@ -502,10 +511,10 @@ const styles = StyleSheet.create({
         marginBottom: normalize(30),
     },
     disabledButton: {
-        backgroundColor: '#a0a0a0',
+        backgroundColor: isDark ? colors.surfaceElevated : '#a0a0a0',
     },
     submitButtonText: {
-        color: Color.colorLightMode,
+        color: '#FFFFFF',
         fontSize: normalizeFont(16),
         fontWeight: '500',
         fontFamily: FontFamily.sFProText,
@@ -518,15 +527,15 @@ const styles = StyleSheet.create({
     totalQuantityLabel: {
         fontSize: normalizeFont(14),
         fontWeight: '600',
-        color: Color.dark,
-        opacity: 0.4,
+        color: isDark ? colors.textSecondary : Color.dark,
+        opacity: isDark ? 1 : 0.4,
         marginRight: normalize(8),
         fontFamily: FontFamily.sFProText,
     },
     totalQuantityValue: {
         fontSize: normalizeFont(14),
         fontWeight: '600',
-        color: Color.dark,
+        color: isDark ? colors.textPrimary : Color.dark,
         fontFamily: FontFamily.sFProText,
     },
 });

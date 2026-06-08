@@ -34,7 +34,6 @@ export const ProfileAvatarView = ({
                                   }) => {
     const route = useRoute();
     const isEditScreen = route.name === 'ProfileEdit';
-    const avatarLogRef = useRef({ lastUri: null, lastTs: 0 });
 
     const normalizedSize = normalize(size);
     const borderRadius = normalizedSize / 2;
@@ -186,26 +185,6 @@ export const ProfileAvatarView = ({
                                 }
                             ]}
                             resizeMode="cover"
-                            onLoadStart={() => {
-                                if (!__DEV__) return;
-                                const uri = avatarUri?.uri || null;
-                                const now = Date.now();
-                                if (uri && (avatarLogRef.current.lastUri !== uri || now - avatarLogRef.current.lastTs > 5000)) {
-                                    console.log('ProfileAvatar: image load start', { uri });
-                                    avatarLogRef.current = { lastUri: uri, lastTs: now };
-                                }
-                            }}
-                            onLoad={() => {
-                                if (!__DEV__) return;
-                                const uri = avatarUri?.uri || null;
-                                console.log('ProfileAvatar: image load success', { uri });
-                            }}
-                            onError={(event) => {
-                                if (!__DEV__) return;
-                                const uri = avatarUri?.uri || null;
-                                const error = event?.nativeEvent || {};
-                                console.log('ProfileAvatar: image load error', { uri, error });
-                            }}
                         />
                     ) : (
                         <View style={[
@@ -260,12 +239,6 @@ export const ProfileAvatarView = ({
                                 source={avatarUri}
                                 style={styles.modalImage}
                                 resizeMode="contain"
-                                onError={(event) => {
-                                    if (!__DEV__) return;
-                                    const uri = avatarUri?.uri || null;
-                                    const error = event?.nativeEvent || {};
-                                    console.log('ProfileAvatar: modal image load error', { uri, error });
-                                }}
                             />
                         </Animated.View>
                     </Animated.View>
@@ -343,15 +316,4 @@ const styles = StyleSheet.create({
         height: '100%',
         borderRadius: normalize(8),
     },
-    debugContainer: {
-        marginTop: normalize(10),
-        padding: normalize(10),
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
-        borderRadius: normalize(5),
-        maxWidth: SCREEN_WIDTH * 0.9,
-    },
-    debugText: {
-        color: '#fff',
-        fontSize: normalize(10),
-    }
 });

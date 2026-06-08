@@ -1,8 +1,9 @@
-import React, { useState, lazy, Suspense, memo, useCallback, useEffect } from 'react';
+import React, { useState, lazy, Suspense, memo, useCallback, useEffect, useMemo } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, TextInput } from 'react-native';
 import { useSelector } from 'react-redux';
 import { LinearGradient } from 'expo-linear-gradient';
 import { selectUser } from '@entities/auth';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { FeedbackCardHeader } from './FeedbackCardHeader';
 import { FeedbackCardPhotos } from './FeedbackCardPhotos';
 import IconDelete from "@shared/ui/Icon/Profile/IconDelete";
@@ -25,9 +26,13 @@ export const FeedbackCard = memo(({
                                canReply = false,
                                onReplySubmit = null,
                                isReplySubmitting = false,
+                               compact = false,
                            }) => {
     const feedbackData = feedback || feedbacks;
     if (!feedbackData) return null;
+
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark, compact), [colors, isDark, compact]);
 
     const currentUser = useSelector(selectUser);
     const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
@@ -93,16 +98,20 @@ export const FeedbackCard = memo(({
     const shouldShowReplyButton = replyLength > 80;
     const hasPhotos = feedbackData.photoUrls && Array.isArray(feedbackData.photoUrls) && feedbackData.photoUrls.length > 0;
 
+    const gradientColors = ['rgba(255, 255, 255, 1)', 'rgba(255, 255, 255, 1)'];
+
     return (
         <View style={styles.cardWrapper}>
             <View style={styles.card}>
-                <LinearGradient
-                    style={styles.feedbackBackground}
-                    locations={[0, 0.99]}
-                    colors={['rgba(255, 255, 255, 1)', 'rgba(255, 255, 255, 1)']}
-                    useAngle={true}
-                    angle={180}
-                />
+                {!isDark && (
+                    <LinearGradient
+                        style={styles.feedbackBackground}
+                        locations={[0, 0.99]}
+                        colors={gradientColors}
+                        useAngle={true}
+                        angle={180}
+                    />
+                )}
                 <FeedbackCardHeader feedback={feedbackData} currentUser={currentUser} onAuthorPress={onAuthorPress} />
                 {hasPhotos && (
                     <FeedbackCardPhotos
@@ -167,6 +176,7 @@ export const FeedbackCard = memo(({
                                     value={replyInput}
                                     onChangeText={setReplyInput}
                                     placeholder="Введите ответ поставщика..."
+                                    placeholderTextColor={isDark ? colors.textTertiary : '#999'}
                                     multiline
                                     maxLength={2000}
                                     style={styles.replyInput}
@@ -222,26 +232,28 @@ export const FeedbackCard = memo(({
     );
 });
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark, compact) => StyleSheet.create({
     cardWrapper: {
         width: '100%',
-        marginBottom: 16,
+        marginBottom: compact ? 0 : 16,
         borderRadius: 19,
         backgroundColor: 'transparent',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.12,
+        shadowOpacity: isDark ? 0 : 0.12,
         shadowRadius: 8,
-        elevation: 4,
+        elevation: isDark ? 0 : 4,
     },
     card: {
         width: '100%',
         position: 'relative',
         marginBottom: 0,
-        backgroundColor: 'white',
+        backgroundColor: isDark ? colors.surface : 'white',
         borderRadius: 19,
         overflow: 'hidden',
         paddingBottom: 12,
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     feedbackBackground: {
         position: 'absolute',
@@ -262,6 +274,7 @@ const styles = StyleSheet.create({
         fontSize: 13,
         lineHeight: 18,
         paddingBottom: 10,
+        color: colors.textPrimary,
     },
     replyContainer: {
         marginHorizontal: 16,
@@ -276,7 +289,9 @@ const styles = StyleSheet.create({
         width: '100%',
         height: '100%',
         borderRadius: 10,
-        backgroundColor: '#F5F5F5',
+        backgroundColor: isDark ? colors.surfaceElevated || '#2A2F55' : '#F5F5F5',
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     replyTextContainer: {
         padding: 12,
@@ -286,12 +301,13 @@ const styles = StyleSheet.create({
     replyText: {
         fontSize: 13,
         lineHeight: 18,
+        color: colors.textPrimary,
     },
     replyBadgeContainer: {
         alignSelf: 'flex-start',
         marginLeft: 10,
         marginTop: 8,
-        backgroundColor: '#6B4EFF',
+        backgroundColor: isDark ? '#737DFF' : '#6B4EFF',
         borderRadius: 6,
         paddingHorizontal: 8,
         paddingVertical: 2,
@@ -312,7 +328,7 @@ const styles = StyleSheet.create({
     },
     replyActionButtonText: {
         fontSize: 13,
-        color: '#6B4EFF',
+        color: isDark ? '#A0A8FF' : '#6B4EFF',
         fontWeight: '500',
     },
     replyEditorContainer: {
@@ -322,14 +338,14 @@ const styles = StyleSheet.create({
         minHeight: 80,
         maxHeight: 140,
         borderWidth: 1,
-        borderColor: '#D9D9D9',
+        borderColor: isDark ? colors.border : '#D9D9D9',
         borderRadius: 10,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surfaceElevated || '#2A2F55' : '#FFFFFF',
         paddingHorizontal: 12,
         paddingVertical: 10,
         fontSize: 13,
         lineHeight: 18,
-        color: '#1A1A1A',
+        color: isDark ? colors.textPrimary : '#1A1A1A',
     },
     replyEditorButtonsRow: {
         flexDirection: 'row',
@@ -342,19 +358,21 @@ const styles = StyleSheet.create({
         paddingHorizontal: 12,
     },
     replyEditorCancelButton: {
-        backgroundColor: '#ECECEC',
+        backgroundColor: isDark ? colors.surfaceElevated || '#3D4478' : '#ECECEC',
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     replyEditorCancelButtonText: {
         fontSize: 12,
-        color: '#444444',
+        color: isDark ? colors.textSecondary : '#444444',
         fontWeight: '500',
     },
     replyEditorSubmitButton: {
-        backgroundColor: '#6B4EFF',
+        backgroundColor: isDark ? '#737DFF' : '#6B4EFF',
         marginLeft: 8,
     },
     replyEditorSubmitButtonDisabled: {
-        backgroundColor: '#B9B0FF',
+        backgroundColor: isDark ? '#3D4478' : '#B9B0FF',
     },
     replyEditorSubmitButtonText: {
         fontSize: 12,
@@ -372,7 +390,7 @@ const styles = StyleSheet.create({
     },
     showMoreText: {
         fontSize: 13,
-        color: '#6B4EFF',
+        color: isDark ? '#A0A8FF' : '#6B4EFF',
         bottom: 10,
         padding: 5,
     },
@@ -394,7 +412,7 @@ const styles = StyleSheet.create({
     },
     productLinkText: {
         fontSize: 13,
-        color: '#5E00FF',
+        color: isDark ? '#A0A8FF' : '#5E00FF',
         fontWeight: '500',
     },
 });

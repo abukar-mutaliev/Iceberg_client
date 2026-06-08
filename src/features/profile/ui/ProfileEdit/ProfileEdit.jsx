@@ -149,11 +149,25 @@ export const ProfileEdit = () => {
         }
 
         if (userType === 'client') {
-            data.districtId = districts || [];
+            const clientDistrict = profile?.client?.district || profile?.district;
+            const hasCurrentDistrict = clientDistrict?.id
+                && !(districts || []).some((district) => district.value === clientDistrict.id || district.id === clientDistrict.id);
+
+            data.districtId = hasCurrentDistrict
+                ? [
+                    ...(districts || []),
+                    {
+                        id: clientDistrict.id,
+                        value: clientDistrict.id,
+                        label: clientDistrict.name,
+                        name: clientDistrict.name,
+                    },
+                ]
+                : districts || [];
         }
 
         return data;
-    }, [userType, districts, warehouses]);
+    }, [userType, districts, warehouses, profile]);
 
     if (!isFormReady || !formInitialValues) {
         const loadingText = isLoading

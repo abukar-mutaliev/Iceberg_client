@@ -1,10 +1,16 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet, useWindowDimensions } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily, FontSize, Shadow } from '@app/styles/GlobalStyles';
-import {BackButton} from "@shared/ui/Button/BackButton";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { BackButton } from '@shared/ui/Button/BackButton';
 
 export const AdminHeader = ({ title, icon, onBackPress, showBackButton = true }) => {
+    const { colors, isDark } = useTheme();
+    const { width } = useWindowDimensions();
+    const isSmallScreen = width <= 360;
+    const styles = useMemo(() => createStyles(colors, isDark, isSmallScreen), [colors, isDark, isSmallScreen]);
+
     return (
         <View style={styles.header}>
             {showBackButton && (
@@ -20,29 +26,33 @@ export const AdminHeader = ({ title, icon, onBackPress, showBackButton = true })
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark, isSmallScreen) => StyleSheet.create({
     header: {
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: normalize(72),
         paddingHorizontal: normalize(16),
-        paddingTop: 0,
-        paddingBottom: normalize(15),
+        paddingVertical: normalize(14),
         borderBottomWidth: 1,
-        borderBottomColor: Color.border,
-        backgroundColor: Color.colorLightMode,
-        ...Shadow.light,
+        borderBottomColor: isDark ? colors.divider : Color.border,
+        backgroundColor: isDark ? colors.surface : Color.colorLightMode,
+        ...(isDark ? {} : Shadow.light),
     },
     backButtonContainer: {
-        marginRight: normalize(8),
+        position: 'absolute',
+        left: normalize(6),
+        zIndex: 1,
     },
     headerIconContainer: {
         marginRight: normalize(12),
     },
     headerText: {
-        fontSize: normalizeFont(FontSize.size_xl),
+        fontSize: isSmallScreen ? normalizeFont(18) : normalizeFont(FontSize.size_xl),
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
-        color: Color.blue2,
+        color: isDark ? colors.primary : Color.blue2,
+        textAlignVertical: 'center',
     },
 });
 

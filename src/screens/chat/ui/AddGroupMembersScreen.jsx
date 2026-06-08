@@ -314,7 +314,7 @@ export const AddGroupMembersScreen = ({ route, navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -415,7 +415,9 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
+    paddingTop: 10,
     paddingBottom: 12,
+    minHeight: 72,
     borderBottomWidth: 1,
     borderBottomColor: isDark ? colors.divider : '#E5E5E5',
     backgroundColor: isDark ? colors.surface : '#FFFFFF',

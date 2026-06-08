@@ -138,11 +138,11 @@ export class OrderAlternativesApi {
 }
 
 /**
- * Типы предложений выбора
+ * Типы предложений выбора.
+ * После упрощения: DELIVERY_DISTANCE больше не используется.
  */
 export const CHOICE_TYPES = {
     STOCK_UNAVAILABLE: 'STOCK_UNAVAILABLE',
-    DELIVERY_DISTANCE: 'DELIVERY_DISTANCE',
     PARTIAL_AVAILABILITY: 'PARTIAL_AVAILABILITY',
     PRODUCT_SUBSTITUTE: 'PRODUCT_SUBSTITUTE'
 };
@@ -159,14 +159,14 @@ export const CHOICE_STATUS = {
 };
 
 /**
- * Типы альтернатив
+ * Типы альтернатив.
+ * После упрощения: DISTANT_DELIVERY больше не используется.
  */
 export const ALTERNATIVE_TYPES = {
     WAIT_STOCK: 'WAIT_STOCK',
     SUBSTITUTE: 'SUBSTITUTE',
     PARTIAL_ORDER: 'PARTIAL_ORDER',
     CANCEL_ORDER: 'CANCEL_ORDER',
-    DISTANT_DELIVERY: 'DISTANT_DELIVERY',
     REMOVE_UNAVAILABLE: 'REMOVE_UNAVAILABLE'
 };
 
@@ -175,7 +175,6 @@ export const ALTERNATIVE_TYPES = {
  */
 export const CHOICE_TYPE_LABELS = {
     [CHOICE_TYPES.STOCK_UNAVAILABLE]: 'Товар недоступен',
-    [CHOICE_TYPES.DELIVERY_DISTANCE]: 'Склад находится далеко',
     [CHOICE_TYPES.PARTIAL_AVAILABILITY]: 'Товар доступен частично',
     [CHOICE_TYPES.PRODUCT_SUBSTITUTE]: 'Предложение замены'
 };
@@ -188,7 +187,6 @@ export const ALTERNATIVE_TYPE_LABELS = {
     [ALTERNATIVE_TYPES.SUBSTITUTE]: 'Заменить товар',
     [ALTERNATIVE_TYPES.PARTIAL_ORDER]: 'Частичный заказ',
     [ALTERNATIVE_TYPES.CANCEL_ORDER]: 'Отменить заказ',
-    [ALTERNATIVE_TYPES.DISTANT_DELIVERY]: 'Доставка с дальнего склада',
     [ALTERNATIVE_TYPES.REMOVE_UNAVAILABLE]: 'Убрать недоступные товары'
 };
 
@@ -200,7 +198,6 @@ export const ALTERNATIVE_TYPE_ICONS = {
     [ALTERNATIVE_TYPES.SUBSTITUTE]: 'swap-horiz',
     [ALTERNATIVE_TYPES.PARTIAL_ORDER]: 'playlist-remove',
     [ALTERNATIVE_TYPES.CANCEL_ORDER]: 'cancel',
-    [ALTERNATIVE_TYPES.DISTANT_DELIVERY]: 'local-shipping',
     [ALTERNATIVE_TYPES.REMOVE_UNAVAILABLE]: 'delete-outline'
 };
 
@@ -212,7 +209,6 @@ export const ALTERNATIVE_TYPE_COLORS = {
     [ALTERNATIVE_TYPES.SUBSTITUTE]: '#007bff',
     [ALTERNATIVE_TYPES.PARTIAL_ORDER]: '#ffc107',
     [ALTERNATIVE_TYPES.CANCEL_ORDER]: '#dc3545',
-    [ALTERNATIVE_TYPES.DISTANT_DELIVERY]: '#17a2b8',
     [ALTERNATIVE_TYPES.REMOVE_UNAVAILABLE]: '#e83e8c'
 };
 

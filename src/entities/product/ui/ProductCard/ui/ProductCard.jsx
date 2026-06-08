@@ -1,9 +1,3 @@
-// Ключевые изменения для работы на Android и iOS:
-// 1. Добавлен collapsable={false} для PagerView и всех View внутри
-// 2. PagerView не обернут в Pressable - область изображений свободна для свайпов
-// 3. Только область контента (текст, цены) обернута в Pressable для обработки нажатий
-// 4. Добавлены необходимые пропсы в PagerView для корректной работы
-
 import React, { memo, useCallback, useMemo, useRef, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, Dimensions, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';

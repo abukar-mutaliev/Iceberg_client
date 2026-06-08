@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
@@ -15,6 +15,8 @@ import {
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { 
     selectEmail, 
     selectPassword, 
@@ -36,10 +38,20 @@ import {
 import { initiateRegister } from '@entities/auth';
 import { CustomTextInput } from '@shared/ui/CustomTextInput/CustomTextInput';
 import { api } from '@shared/api/api';
+import { retryRequest } from '@shared/api/retryHelper';
+import { GlobalAlert } from '@shared/ui/CustomAlert';
+
+const OTHER_DISTRICT_NAME = 'Другой';
 
 export const RegisterForm = ({ onVerification }) => {
     const dispatch = useDispatch();
     const navigation = useNavigation();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+    const placeholderColor = isDark ? colors.textTertiary : '#888';
+    const passwordIconColor = isLoading
+        ? (isDark ? colors.textTertiary : '#999')
+        : (isDark ? colors.primary : '#3339b0');
 
     const reduxEmail = useSelector(selectEmail) || '';
     const reduxPassword = useSelector(selectPassword) || '';
@@ -55,6 +67,7 @@ export const RegisterForm = ({ onVerification }) => {
 
     const [email, setLocalEmail] = useState(reduxEmail);
     const [password, setLocalPassword] = useState(reduxPassword);
+    const [confirmPassword, setConfirmPassword] = useState('');
     const [name, setLocalName] = useState(reduxName);
     const [phone, setLocalPhone] = useState(reduxPhone);
     const [address, setLocalAddress] = useState(reduxAddress);
@@ -66,10 +79,13 @@ export const RegisterForm = ({ onVerification }) => {
     const [districts, setDistricts] = useState([]);
     const [districtsLoading, setDistrictsLoading] = useState(false);
     const [isOtherDistrict, setIsOtherDistrict] = useState(!!reduxCustomDistrict);
+    const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+    const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
 
     // Состояния для ошибок
     const [emailError, setEmailError] = useState('');
     const [passwordError, setPasswordError] = useState('');
+    const [confirmPasswordError, setConfirmPasswordError] = useState('');
     const [nameError, setNameError] = useState('');
     const [phoneError, setPhoneError] = useState('');
     const [addressError, setAddressError] = useState('');
@@ -130,7 +146,7 @@ export const RegisterForm = ({ onVerification }) => {
     }, [reduxDistrictId]);
 
     useEffect(() => {
-        setLocalCustomDistrict(reduxCustomDistrict);
+        setLocalCustomDistrict(reduxCustomDistrict ? OTHER_DISTRICT_NAME : '');
         if (reduxCustomDistrict) {
             setIsOtherDistrict(true);
         }
@@ -142,8 +158,8 @@ export const RegisterForm = ({ onVerification }) => {
     };
 
     const getDistrictLabel = () => {
-        if (isOtherDistrict && customDistrict) {
-            return customDistrict;
+        if (isOtherDistrict) {
+            return OTHER_DISTRICT_NAME;
         }
         const selectedDistrict = districts.find(d => d.id === districtId);
         return selectedDistrict ? selectedDistrict.name : '';
@@ -160,7 +176,10 @@ export const RegisterForm = ({ onVerification }) => {
         if (district === 'other') {
             setIsOtherDistrict(true);
             setLocalDistrictId(null);
+            setLocalCustomDistrict(OTHER_DISTRICT_NAME);
             dispatch(setDistrictId(null));
+            dispatch(setCustomDistrict(OTHER_DISTRICT_NAME));
+            setDistrictError('');
             setShowDistrictModal(false);
         } else {
             setIsOtherDistrict(false);
@@ -181,6 +200,12 @@ export const RegisterForm = ({ onVerification }) => {
     const handlePasswordChange = (text) => {
         setLocalPassword(text);
         setPasswordError('');
+        if (confirmPasswordError) setConfirmPasswordError('');
+    };
+
+    const handleConfirmPasswordChange = (text) => {
+        setConfirmPassword(text);
+        setConfirmPasswordError('');
     };
 
     const handleNameChange = (text) => {
@@ -248,12 +273,6 @@ export const RegisterForm = ({ onVerification }) => {
         setAddressError('');
     };
 
-    const handleCustomDistrictChange = (text) => {
-        setLocalCustomDistrict(text);
-        dispatch(setCustomDistrict(text));
-        setDistrictError('');
-    };
-
     const handleEmailBlur = () => {
         dispatch(setEmail(email));
     };
@@ -293,6 +312,14 @@ export const RegisterForm = ({ onVerification }) => {
             isValid = false;
         }
 
+        if (!confirmPassword) {
+            setConfirmPasswordError('Пожалуйста, подтвердите пароль');
+            isValid = false;
+        } else if (password !== confirmPassword) {
+            setConfirmPasswordError('Пароли не совпадают');
+            isValid = false;
+        }
+
         if (!name) {
             setNameError('Пожалуйста, введите ФИО');
             isValid = false;
@@ -320,8 +347,8 @@ export const RegisterForm = ({ onVerification }) => {
         }
 
         // Район обязателен
-        if (!districtId && !customDistrict) {
-            setDistrictError('Пожалуйста, выберите или укажите район');
+        if (!districtId && !isOtherDistrict) {
+            setDistrictError('Пожалуйста, выберите район');
             isValid = false;
         }
 
@@ -333,6 +360,7 @@ export const RegisterForm = ({ onVerification }) => {
         // Сброс всех ошибок
         setEmailError('');
         setPasswordError('');
+        setConfirmPasswordError('');
         setNameError('');
         setPhoneError('');
         setAddressError('');
@@ -454,24 +482,39 @@ export const RegisterForm = ({ onVerification }) => {
         }
 
         if (!privacyAgreed) {
-            Alert.alert(
-                'Согласие на обработку персональных данных',
-                'Для продолжения регистрации необходимо дать согласие на обработку персональных данных. Пожалуйста, ознакомьтесь с соглашением и отметьте соответствующий чекбокс.'
-            );
+            GlobalAlert.show({
+                type: 'warning',
+                title: 'Согласие на обработку персональных данных',
+                message: 'Для продолжения регистрации необходимо дать согласие на обработку персональных данных. Пожалуйста, ознакомьтесь с соглашением и отметьте соответствующий чекбокс.',
+            });
             return;
         }
 
+        const payload = {
+            email,
+            password,
+            name,
+            phone,
+            address,
+            gender,
+            districtId: isOtherDistrict ? null : districtId,
+            customDistrict: isOtherDistrict ? OTHER_DISTRICT_NAME : null,
+        };
+
         try {
-            const result = await dispatch(initiateRegister({ 
-                email, 
-                password, 
-                name, 
-                phone, 
-                address, 
-                gender,
-                districtId: isOtherDistrict ? null : districtId,
-                customDistrict: isOtherDistrict ? customDistrict : null
-            })).unwrap();
+            const result = await retryRequest(
+                () => dispatch(initiateRegister(payload)).unwrap(),
+                {
+                    maxRetries: 4, // 5 попыток суммарно (1 первичная + 4 ретрая)
+                    baseDelayMs: 2000,
+                    maxDelayMs: 8000,
+                    waitForConnection: true, // ждём восстановления интернета перед каждой попыткой
+                    connectionTimeoutMs: 30000,
+                    onRetry: (attempt) => {
+                        console.log(`🔄 Повторная попытка регистрации ${attempt + 1}/5...`);
+                    },
+                }
+            );
             console.log('Результат initiateRegister:', result);
             const tempToken = result?.registrationToken || null;
             if (tempToken) {
@@ -479,30 +522,58 @@ export const RegisterForm = ({ onVerification }) => {
             }
         } catch (error) {
             console.error('Ошибка регистрации:', error);
-            
+
             // Пробуем обработать ошибки и показать под полями
             const handledAsFieldError = handleServerErrors(error);
-            
-            // Если не удалось привязать к полю, показываем общий Alert
+
+            // Если не удалось привязать к полю, показываем кастомный алерт
             if (!handledAsFieldError) {
-                // Проверяем, является ли это ошибкой отправки email
                 const errorMessage = error?.message || '';
-                const isEmailError = errorMessage.includes('отправк') || 
-                                    errorMessage.includes('соединен') ||
-                                    errorMessage.includes('письм') ||
-                                    error?.code === 500;
-                
-                let userMessage = errorMessage;
-                if (isEmailError && !errorMessage.includes('попробуйте позже')) {
-                    userMessage = 'Не удалось отправить код подтверждения на email. Пожалуйста, проверьте подключение к интернету и попробуйте позже.';
-                } else if (!userMessage) {
-                    userMessage = 'Произошла ошибка при регистрации. Проверьте введённые данные и попробуйте снова.';
+                const lowerMessage = errorMessage.toLowerCase();
+
+                const isNetworkError =
+                    error?.code === 'ERR_NETWORK' ||
+                    error?.originalError?.code === 'ERR_NETWORK' ||
+                    lowerMessage === 'network error' ||
+                    lowerMessage.includes('network') ||
+                    lowerMessage.includes('интернет') ||
+                    lowerMessage.includes('соедин') ||
+                    lowerMessage.includes('timeout') ||
+                    lowerMessage.includes('timed out');
+
+                const isEmailSendError =
+                    lowerMessage.includes('отправк') ||
+                    lowerMessage.includes('письм') ||
+                    error?.code === 500;
+
+                let userMessage;
+                if (isNetworkError) {
+                    userMessage = 'Не удалось подключиться к серверу после 5 попыток. Проверьте подключение к интернету и попробуйте снова.';
+                } else if (isEmailSendError && !lowerMessage.includes('попробуйте позже')) {
+                    userMessage = 'Не удалось отправить код подтверждения на email. Пожалуйста, проверьте подключение к интернету и попробуйте снова.';
+                } else {
+                    userMessage = errorMessage || 'Произошла ошибка при регистрации. Проверьте введённые данные и попробуйте снова.';
                 }
-                
-                Alert.alert(
-                    'Ошибка регистрации', 
-                    userMessage
-                );
+
+                GlobalAlert.show({
+                    type: 'error',
+                    title: 'Ошибка регистрации',
+                    message: userMessage,
+                    buttons: [
+                        {
+                            text: 'Отмена',
+                            style: 'cancel',
+                        },
+                        {
+                            text: 'Повторить',
+                            style: 'primary',
+                            icon: 'refresh',
+                            onPress: () => {
+                                handleRegister();
+                            },
+                        },
+                    ],
+                });
             }
         }
     };
@@ -531,7 +602,7 @@ export const RegisterForm = ({ onVerification }) => {
                         keyboardType="email-address"
                         autoCapitalize="none"
                         placeholder="Icbrg@gmail.com"
-                        placeholderTextColor="#888"
+                        placeholderTextColor={placeholderColor}
                     />
                     {emailError ? (
                         <Text style={styles.errorText}>{emailError}</Text>
@@ -541,20 +612,72 @@ export const RegisterForm = ({ onVerification }) => {
 
                 <View style={styles.inputContainer}>
                     <RequiredLabel text="Ваш пароль" />
-                    <CustomTextInput
-                        style={[
-                            styles.input,
-                            passwordError ? styles.inputError : null
-                        ]}
-                        value={password}
-                        onChangeText={handlePasswordChange}
-                        onBlur={handlePasswordBlur}
-                        secureTextEntry
-                        placeholder="********"
-                        placeholderTextColor="#888"
-                    />
+                    <View style={styles.passwordFieldContainer}>
+                        <CustomTextInput
+                            style={[
+                                styles.input,
+                                styles.passwordInput,
+                                passwordError ? styles.inputError : null
+                            ]}
+                            value={password}
+                            onChangeText={handlePasswordChange}
+                            onBlur={handlePasswordBlur}
+                            secureTextEntry={!isPasswordVisible}
+                            placeholder="********"
+                            placeholderTextColor={placeholderColor}
+                        />
+                        <TouchableOpacity
+                            style={styles.passwordVisibilityButton}
+                            onPress={() => setIsPasswordVisible((prev) => !prev)}
+                            disabled={isLoading}
+                            accessibilityRole="button"
+                            accessibilityLabel={isPasswordVisible ? 'Скрыть пароль' : 'Показать пароль'}
+                        >
+                            <Ionicons
+                                name={isPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
+                                size={normalize(24)}
+                                color={passwordIconColor}
+                            />
+                        </TouchableOpacity>
+                    </View>
                     {passwordError ? (
                         <Text style={styles.errorText}>{passwordError}</Text>
+                    ) : null}
+                    <View style={styles.inputUnderline} />
+                </View>
+
+                <View style={styles.inputContainer}>
+                    <RequiredLabel text="Подтверждение пароля" />
+                    <View style={styles.passwordFieldContainer}>
+                        <CustomTextInput
+                            style={[
+                                styles.input,
+                                styles.passwordInput,
+                                confirmPasswordError ? styles.inputError : null
+                            ]}
+                            value={confirmPassword}
+                            onChangeText={handleConfirmPasswordChange}
+                            secureTextEntry={!isConfirmPasswordVisible}
+                            placeholder="Повторите пароль"
+                            placeholderTextColor={placeholderColor}
+                            autoCapitalize="none"
+                        />
+                        <TouchableOpacity
+                            style={styles.passwordVisibilityButton}
+                            onPress={() => setIsConfirmPasswordVisible((prev) => !prev)}
+                            disabled={isLoading}
+                            accessibilityRole="button"
+                            accessibilityLabel={isConfirmPasswordVisible ? 'Скрыть подтверждение пароля' : 'Показать подтверждение пароля'}
+                        >
+                            <Ionicons
+                                name={isConfirmPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
+                                size={normalize(24)}
+                                color={passwordIconColor}
+                            />
+                        </TouchableOpacity>
+                    </View>
+                    {confirmPasswordError ? (
+                        <Text style={styles.errorText}>{confirmPasswordError}</Text>
                     ) : null}
                     <View style={styles.inputUnderline} />
                 </View>
@@ -570,7 +693,7 @@ export const RegisterForm = ({ onVerification }) => {
                         onChangeText={handleNameChange}
                         onBlur={handleNameBlur}
                         placeholder="Фамилия Имя Отчество"
-                        placeholderTextColor="#888"
+                        placeholderTextColor={placeholderColor}
                     />
                     {nameError ? (
                         <Text style={styles.errorText}>{nameError}</Text>
@@ -591,7 +714,7 @@ export const RegisterForm = ({ onVerification }) => {
                         onFocus={handlePhoneFocus}
                         keyboardType="phone-pad"
                         placeholder="+7 (___) ___-__-__"
-                        placeholderTextColor="#888"
+                        placeholderTextColor={placeholderColor}
                         maxLength={18}
                     />
                     {phoneError ? (
@@ -611,7 +734,7 @@ export const RegisterForm = ({ onVerification }) => {
                         onChangeText={handleAddressChange}
                         onBlur={handleAddressBlur}
                         placeholder="г. Магас, ул. Примерная, д. 1"
-                        placeholderTextColor="#888"
+                        placeholderTextColor={placeholderColor}
                     />
                     {addressError ? (
                         <Text style={styles.errorText}>{addressError}</Text>
@@ -635,24 +758,6 @@ export const RegisterForm = ({ onVerification }) => {
                     ) : null}
                     <View style={styles.inputUnderline} />
                 </View>
-
-                {/* Поле для ввода кастомного района */}
-                {isOtherDistrict && (
-                    <View style={styles.inputContainer}>
-                        <RequiredLabel text="Название вашего района" />
-                        <CustomTextInput
-                            style={[
-                                styles.input,
-                                districtError && !customDistrict ? styles.inputError : null
-                            ]}
-                            value={customDistrict}
-                            onChangeText={handleCustomDistrictChange}
-                            placeholder="Введите название района"
-                            placeholderTextColor="#888"
-                        />
-                        <View style={styles.inputUnderline} />
-                    </View>
-                )}
 
                 {/* Поле выбора пола */}
                 <View style={styles.inputContainer}>
@@ -767,46 +872,55 @@ export const RegisterForm = ({ onVerification }) => {
                         <Text style={styles.modalTitle}>Выберите район</Text>
                         {districtsLoading ? (
                             <View style={styles.loadingContainer}>
-                                <ActivityIndicator size="large" color="#000cff" />
+                                <ActivityIndicator size="large" color={isDark ? colors.primary : '#000cff'} />
                                 <Text style={styles.loadingText}>Загрузка районов...</Text>
                             </View>
                         ) : (
-                            <ScrollView style={styles.districtsList}>
-                                {districts.map((district) => (
+                            <>
+                                <Text style={styles.scrollHint}>Прокрутите список, чтобы увидеть все районы</Text>
+                                <ScrollView
+                                    style={styles.districtsList}
+                                    contentContainerStyle={styles.districtsListContent}
+                                    showsVerticalScrollIndicator={true}
+                                    persistentScrollbar={true}
+                                    indicatorStyle={isDark ? 'white' : 'black'}
+                                >
+                                    {districts.map((district) => (
+                                        <TouchableOpacity
+                                            key={district.id}
+                                            style={[
+                                                styles.optionItem,
+                                                districtId === district.id && !isOtherDistrict && styles.selectedOptionItem
+                                            ]}
+                                            onPress={() => handleDistrictSelect(district)}
+                                        >
+                                            <Text style={[
+                                                styles.optionText,
+                                                districtId === district.id && !isOtherDistrict && styles.selectedOptionText
+                                            ]}>
+                                                {district.name}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                    {/* Опция "Другой район" */}
                                     <TouchableOpacity
-                                        key={district.id}
                                         style={[
                                             styles.optionItem,
-                                            districtId === district.id && !isOtherDistrict && styles.selectedOptionItem
+                                            styles.otherDistrictOption,
+                                            isOtherDistrict && styles.selectedOptionItem
                                         ]}
-                                        onPress={() => handleDistrictSelect(district)}
+                                        onPress={() => handleDistrictSelect('other')}
                                     >
                                         <Text style={[
                                             styles.optionText,
-                                            districtId === district.id && !isOtherDistrict && styles.selectedOptionText
+                                            styles.otherDistrictText,
+                                            isOtherDistrict && styles.selectedOptionText
                                         ]}>
-                                            {district.name}
+                                            Другой
                                         </Text>
                                     </TouchableOpacity>
-                                ))}
-                                {/* Опция "Другой район" */}
-                                <TouchableOpacity
-                                    style={[
-                                        styles.optionItem,
-                                        styles.otherDistrictOption,
-                                        isOtherDistrict && styles.selectedOptionItem
-                                    ]}
-                                    onPress={() => handleDistrictSelect('other')}
-                                >
-                                    <Text style={[
-                                        styles.optionText,
-                                        styles.otherDistrictText,
-                                        isOtherDistrict && styles.selectedOptionText
-                                    ]}>
-                                        Другой район (ввести вручную)
-                                    </Text>
-                                </TouchableOpacity>
-                            </ScrollView>
+                                </ScrollView>
+                            </>
                         )}
                         <TouchableOpacity
                             style={styles.closeButton}
@@ -842,7 +956,7 @@ const normalizeFont = (size) => {
     return Math.round(PixelRatio.roundToNearestPixel(newSize));
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     formContainer: {
         flex: 1,
         paddingHorizontal: normalize(20),
@@ -865,13 +979,13 @@ const styles = StyleSheet.create({
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(15),
         fontWeight: '600',
-        color: '#000',
-        opacity: 0.4,
+        color: isDark ? colors.textSecondary : '#000',
+        opacity: isDark ? 1 : 0.4,
         marginBottom: normalize(5),
         lineHeight: normalize(21),
     },
     requiredStar: {
-        color: '#FF0000',
+        color: isDark ? colors.error : '#FF0000',
         fontWeight: '700',
         opacity: 1,
     },
@@ -879,23 +993,40 @@ const styles = StyleSheet.create({
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(17),
         fontWeight: '600',
-        color: '#000',
+        color: isDark ? colors.textPrimary : '#000',
         paddingBottom: normalize(5),
         height: normalize(40),
         paddingHorizontal: 0,
         borderBottomWidth: 0,
     },
+    passwordFieldContainer: {
+        position: 'relative',
+        justifyContent: 'center',
+    },
+    passwordInput: {
+        paddingRight: normalize(44),
+    },
+    passwordVisibilityButton: {
+        position: 'absolute',
+        right: 0,
+        top: 0,
+        bottom: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
+        width: normalize(44),
+        paddingLeft: normalize(12),
+    },
     inputText: {
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(17),
         fontWeight: '600',
-        color: '#000',
+        color: isDark ? colors.textPrimary : '#000',
     },
     placeholderText: {
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(17),
         fontWeight: '600',
-        color: '#888',
+        color: isDark ? colors.textTertiary : '#888',
     },
     genderSelector: {
         justifyContent: 'center',
@@ -903,29 +1034,29 @@ const styles = StyleSheet.create({
     },
     inputUnderline: {
         height: 1,
-        backgroundColor: '#000',
+        backgroundColor: isDark ? colors.border : '#000',
         width: '100%',
         position: 'absolute',
         bottom: 0,
     },
     inputError: {
-        color: '#FF0000',
+        color: isDark ? colors.error : '#FF0000',
     },
     errorText: {
-        color: '#FF0000',
+        color: isDark ? colors.error : '#FF0000',
         fontSize: normalizeFont(12),
         marginTop: normalize(5),
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
     },
     globalErrorText: {
-        color: '#FF0000',
+        color: isDark ? colors.error : '#FF0000',
         fontSize: normalizeFont(14),
         textAlign: 'center',
         marginBottom: normalize(15),
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
     },
     button: {
-        backgroundColor: '#000cff',
+        backgroundColor: isDark ? colors.primary : '#000cff',
         borderRadius: 30,
         width: Math.min(width * 0.8, normalize(320)),
         height: normalize(70),
@@ -937,7 +1068,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(20),
     },
     buttonDisabled: {
-        backgroundColor: '#d3d3d3',
+        backgroundColor: isDark ? colors.border : '#d3d3d3',
     },
     buttonText: {
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
@@ -947,15 +1078,14 @@ const styles = StyleSheet.create({
         color: '#fff',
         lineHeight: normalize(30),
     },
-    // Стили для модального окна
     modalContainer: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: isDark ? 'rgba(0, 0, 0, 0.7)' : 'rgba(0, 0, 0, 0.5)',
     },
     modalContent: {
-        backgroundColor: '#fff',
+        backgroundColor: isDark ? colors.surface : '#fff',
         borderRadius: 20,
         padding: normalize(20),
         width: width * 0.9,
@@ -966,30 +1096,37 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(18),
         fontWeight: '600',
         textAlign: 'center',
-        marginBottom: normalize(20),
-        color: '#000',
+        marginBottom: normalize(8),
+        color: isDark ? colors.textPrimary : '#000',
+    },
+    scrollHint: {
+        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+        fontSize: normalizeFont(13),
+        color: isDark ? colors.textSecondary : '#666',
+        textAlign: 'center',
+        marginBottom: normalize(12),
     },
     optionItem: {
         padding: normalize(15),
         borderBottomWidth: 1,
-        borderBottomColor: '#eee',
+        borderBottomColor: isDark ? colors.border : '#eee',
     },
     selectedOptionItem: {
-        backgroundColor: 'rgba(0, 12, 255, 0.1)',
+        backgroundColor: isDark ? 'rgba(124, 127, 232, 0.18)' : 'rgba(0, 12, 255, 0.1)',
     },
     optionText: {
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(16),
-        color: '#000',
+        color: isDark ? colors.textPrimary : '#000',
     },
     selectedOptionText: {
-        color: '#000cff',
+        color: isDark ? colors.primary : '#000cff',
         fontWeight: '600',
     },
     closeButton: {
         marginTop: normalize(20),
         padding: normalize(15),
-        backgroundColor: '#000cff',
+        backgroundColor: isDark ? colors.primary : '#000cff',
         borderRadius: 10,
         alignItems: 'center',
     },
@@ -999,9 +1136,11 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: '#fff',
     },
-    // Стили для списка районов
     districtsList: {
         maxHeight: height * 0.4,
+    },
+    districtsListContent: {
+        paddingBottom: normalize(8),
     },
     loadingContainer: {
         padding: normalize(30),
@@ -1011,11 +1150,11 @@ const styles = StyleSheet.create({
         marginTop: normalize(10),
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(14),
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
     },
     otherDistrictOption: {
         borderTopWidth: 2,
-        borderTopColor: '#ddd',
+        borderTopColor: isDark ? colors.border : '#ddd',
         marginTop: normalize(10),
     },
     otherDistrictText: {
@@ -1037,15 +1176,15 @@ const styles = StyleSheet.create({
         width: normalize(24),
         height: normalize(24),
         borderWidth: 2,
-        borderColor: '#000',
+        borderColor: isDark ? colors.border : '#000',
         borderRadius: 4,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surfaceElevated : '#FFFFFF',
     },
     checkboxChecked: {
-        backgroundColor: '#000cff',
-        borderColor: '#000cff',
+        backgroundColor: isDark ? colors.primary : '#000cff',
+        borderColor: isDark ? colors.primary : '#000cff',
     },
     checkmark: {
         color: '#FFFFFF',
@@ -1060,11 +1199,11 @@ const styles = StyleSheet.create({
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(13),
         fontWeight: '400',
-        color: '#333333',
+        color: isDark ? colors.textSecondary : '#333333',
         lineHeight: normalize(18),
     },
     privacyLink: {
-        color: '#000cff',
+        color: isDark ? colors.primary : '#000cff',
         textDecorationLine: 'underline',
         fontWeight: '500',
     },

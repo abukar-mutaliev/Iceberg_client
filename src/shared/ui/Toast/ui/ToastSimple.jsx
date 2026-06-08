@@ -1,241 +1,341 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Animated, TouchableOpacity, Easing } from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { FontFamily, Color, Border } from '@app/styles/GlobalStyles';
-import { AndroidShadow } from '@shared/ui/Shadow/ui/AndroidShadow';
+import { FontFamily } from '@app/styles/GlobalStyles';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
-export const ToastSimple = ({
-  message,
-  type = 'success',
-  duration = 3000,
-  onHide,
-  position = 'top',
-}) => {
-  const { isDark } = useTheme();
-  const [isVisible, setIsVisible] = useState(true);
-  const slideAnim = useRef(new Animated.Value(position === 'top' ? -100 : 100)).current;
-  const opacityAnim = useRef(new Animated.Value(0)).current;
+const CIRCLE_SIZE = normalize(44);
 
-  useEffect(() => {
-    // Animation for appearing
-    Animated.parallel([
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacityAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start();
+const ICON_MAP = {
+    success: 'check',
+    error: 'close',
+    warning: 'warning-amber',
+    info: 'info',
+};
 
-    // Auto-hide after duration
-    if (duration > 0) {
-      const timer = setTimeout(() => {
-        hideToast();
-      }, duration);
-
-      return () => clearTimeout(timer);
-    }
-  }, []);
-
-  const hideToast = () => {
-    Animated.parallel([
-      Animated.timing(slideAnim, {
-        toValue: position === 'top' ? -100 : 100,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacityAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setIsVisible(false);
-      onHide?.();
-    });
-  };
-
-  const getToastConfig = () => {
+const getToastConfig = (type, isDark) => {
     if (isDark) {
-      switch (type) {
-        case 'success':
-          return {
-            backgroundColor: '#1F6B46',
-            borderColor: 'rgba(52, 199, 89, 0.35)',
-            icon: '✓',
-            textColor: '#E8F6EE',
-          };
-        case 'error':
-          return {
-            backgroundColor: '#7A2320',
-            borderColor: 'rgba(255, 80, 70, 0.4)',
-            icon: '✕',
-            textColor: '#FDECEA',
-          };
-        case 'warning':
-          return {
-            backgroundColor: '#5C4733',
-            borderColor: 'rgba(255, 204, 0, 0.45)',
-            icon: '⚠',
-            textColor: '#FFE7A6',
-          };
-        case 'info':
-          return {
-            backgroundColor: '#2A2F55',
-            borderColor: 'rgba(115, 125, 255, 0.45)',
-            icon: 'ℹ',
-            textColor: '#E3E6FF',
-          };
-        default:
-          return {
-            backgroundColor: '#2A2F55',
-            borderColor: 'rgba(115, 125, 255, 0.45)',
-            icon: 'ℹ',
-            textColor: '#E3E6FF',
-          };
-      }
+        switch (type) {
+            case 'success':
+                return {
+                    bg: '#1F6B46',
+                    circleBg: '#2E8E63',
+                    border: 'rgba(76, 217, 123, 0.45)',
+                    textColor: '#EAF8EF',
+                };
+            case 'error':
+                return {
+                    bg: '#7A2320',
+                    circleBg: '#A2342F',
+                    border: 'rgba(255, 120, 110, 0.5)',
+                    textColor: '#FDECEA',
+                };
+            case 'warning':
+                return {
+                    bg: '#5C4733',
+                    circleBg: '#8A6A42',
+                    border: 'rgba(255, 204, 0, 0.5)',
+                    textColor: '#FFE7A6',
+                };
+            case 'info':
+            default:
+                return {
+                    bg: '#2A2F55',
+                    circleBg: '#3D4478',
+                    border: 'rgba(150, 160, 255, 0.55)',
+                    textColor: '#E3E6FF',
+                };
+        }
     }
 
     switch (type) {
-      case 'success':
-        return {
-          backgroundColor: '#34C759',
-          borderColor: 'transparent',
-          icon: '✓',
-          textColor: '#FFFFFF',
-        };
-      case 'error':
-        return {
-          backgroundColor: '#FF3B30',
-          borderColor: 'transparent',
-          icon: '✕',
-          textColor: '#FFFFFF',
-        };
-      case 'warning':
-        return {
-          backgroundColor: '#FFCC00',
-          borderColor: 'transparent',
-          icon: '⚠',
-          textColor: '#000000',
-        };
-      case 'info':
-        return {
-          backgroundColor: '#3339B0',
-          borderColor: 'transparent',
-          icon: 'ℹ',
-          textColor: '#FFFFFF',
-        };
-      default:
-        return {
-          backgroundColor: '#3339B0',
-          borderColor: 'transparent',
-          icon: 'ℹ',
-          textColor: '#FFFFFF',
-        };
+        case 'success':
+            return {
+                bg: '#34C759',
+                circleBg: '#2BB052',
+                border: 'transparent',
+                textColor: '#FFFFFF',
+            };
+        case 'error':
+            return {
+                bg: '#FF453A',
+                circleBg: '#E0362C',
+                border: 'transparent',
+                textColor: '#FFFFFF',
+            };
+        case 'warning':
+            return {
+                bg: '#FFB020',
+                circleBg: '#E69A12',
+                border: 'transparent',
+                textColor: '#1A1200',
+            };
+        case 'info':
+        default:
+            return {
+                bg: '#3339B0',
+                circleBg: '#2A2F94',
+                border: 'transparent',
+                textColor: '#FFFFFF',
+            };
     }
-  };
+};
 
-  const config = getToastConfig();
+export const ToastSimple = ({
+    message,
+    type = 'success',
+    duration = 3000,
+    onHide,
+    position = 'top',
+}) => {
+    const { isDark } = useTheme();
+    const [isVisible, setIsVisible] = useState(true);
+    const [paneWidth, setPaneWidth] = useState(0);
 
-  if (!isVisible) return null;
+    const containerOpacity = useRef(new Animated.Value(0)).current;
+    const slideAnim = useRef(new Animated.Value(position === 'top' ? -24 : 24)).current;
+    const circleScale = useRef(new Animated.Value(0)).current;
+    const expandProgress = useRef(new Animated.Value(0)).current;
 
-  return (
-    <Animated.View
-      style={[
-        styles.container,
-        {
-          [position === 'top' ? 'top' : 'bottom']: normalize(50),
-          transform: [{ translateY: slideAnim }],
-          opacity: opacityAnim,
-        },
-      ]}
-    >
-      <AndroidShadow
-        style={styles.toastContainer}
-        shadowColor={isDark ? 'rgba(0, 0, 0, 0.6)' : 'rgba(51, 57, 176, 0.15)'}
-        shadowConfig={{
-          offsetX: 0,
-          offsetY: 2,
-          elevation: 6,
-          radius: 4,
-          opacity: isDark ? 0.5 : 0.3
-        }}
-        borderRadius={10}
-      >
-        <View
-          style={[
-            styles.toast,
-            {
-              backgroundColor: config.backgroundColor,
-              borderWidth: isDark ? 1 : 0,
-              borderColor: config.borderColor,
-            },
-          ]}
+    const expandStartedRef = useRef(false);
+    const hideTriggeredRef = useRef(false);
+
+    const hideToast = () => {
+        if (hideTriggeredRef.current) return;
+        hideTriggeredRef.current = true;
+
+        Animated.sequence([
+            Animated.timing(expandProgress, {
+                toValue: 0,
+                duration: 220,
+                easing: Easing.in(Easing.cubic),
+                useNativeDriver: false,
+            }),
+            Animated.parallel([
+                Animated.timing(circleScale, {
+                    toValue: 0,
+                    duration: 180,
+                    easing: Easing.in(Easing.quad),
+                    useNativeDriver: true,
+                }),
+                Animated.timing(containerOpacity, {
+                    toValue: 0,
+                    duration: 200,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(slideAnim, {
+                    toValue: position === 'top' ? -24 : 24,
+                    duration: 220,
+                    easing: Easing.in(Easing.cubic),
+                    useNativeDriver: true,
+                }),
+            ]),
+        ]).start(() => {
+            setIsVisible(false);
+            onHide?.();
+        });
+    };
+
+    useEffect(() => {
+        Animated.parallel([
+            Animated.timing(containerOpacity, {
+                toValue: 1,
+                duration: 200,
+                useNativeDriver: true,
+            }),
+            Animated.timing(slideAnim, {
+                toValue: 0,
+                duration: 260,
+                easing: Easing.out(Easing.cubic),
+                useNativeDriver: true,
+            }),
+            Animated.spring(circleScale, {
+                toValue: 1,
+                tension: 180,
+                friction: 8,
+                useNativeDriver: true,
+            }),
+        ]).start();
+
+        if (duration > 0) {
+            const timer = setTimeout(hideToast, duration);
+            return () => clearTimeout(timer);
+        }
+        return undefined;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useEffect(() => {
+        if (paneWidth > 0 && !expandStartedRef.current) {
+            expandStartedRef.current = true;
+            Animated.sequence([
+                Animated.delay(120),
+                Animated.timing(expandProgress, {
+                    toValue: 1,
+                    duration: 360,
+                    easing: Easing.out(Easing.cubic),
+                    useNativeDriver: false,
+                }),
+            ]).start();
+        }
+    }, [paneWidth, expandProgress]);
+
+    const handlePaneLayout = (e) => {
+        const w = e.nativeEvent.layout.width;
+        if (paneWidth === 0 && w > 0) {
+            setPaneWidth(w);
+        }
+    };
+
+    const config = getToastConfig(type, isDark);
+
+    if (!isVisible) return null;
+
+    const animatedPaneWidth =
+        paneWidth === 0
+            ? undefined
+            : expandProgress.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, paneWidth],
+              });
+
+    return (
+        <Animated.View
+            style={[
+                styles.wrapper,
+                {
+                    transform: [{ translateY: slideAnim }],
+                    opacity: containerOpacity,
+                },
+            ]}
+            pointerEvents="box-none"
         >
-          <View style={styles.content}>
-            <Text style={styles.icon}>{config.icon}</Text>
-            <Text style={[styles.message, { color: config.textColor }]}>
-              {message}
-            </Text>
-          </View>
+            <View style={styles.row} pointerEvents="box-none">
+                <Animated.View
+                    style={[
+                        styles.circle,
+                        {
+                            backgroundColor: config.circleBg,
+                            borderColor: config.border,
+                            borderWidth: isDark ? 1 : 0,
+                            transform: [{ scale: circleScale }],
+                        },
+                    ]}
+                >
+                    <Icon
+                        name={ICON_MAP[type] || ICON_MAP.info}
+                        size={normalizeFont(22)}
+                        color={config.textColor}
+                    />
+                </Animated.View>
 
-          <TouchableOpacity
-            style={styles.closeButton}
-            onPress={hideToast}
-          >
-            <Text style={[styles.closeIcon, { color: config.textColor }]}>×</Text>
-          </TouchableOpacity>
-        </View>
-      </AndroidShadow>
-    </Animated.View>
-  );
+                <Animated.View
+                    style={[
+                        styles.paneWrapper,
+                        {
+                            width: animatedPaneWidth,
+                            opacity: paneWidth === 0 ? 0 : 1,
+                        },
+                    ]}
+                >
+                    <View
+                        onLayout={handlePaneLayout}
+                        style={[
+                            styles.pane,
+                            {
+                                backgroundColor: config.bg,
+                                borderColor: config.border,
+                                borderWidth: isDark ? 1 : 0,
+                                borderLeftWidth: 0,
+                                width: paneWidth > 0 ? paneWidth : undefined,
+                            },
+                        ]}
+                    >
+                        <Text
+                            style={[styles.message, { color: config.textColor }]}
+                            numberOfLines={1}
+                        >
+                            {message}
+                        </Text>
+
+                        <TouchableOpacity
+                            style={[
+                                styles.closeButton,
+                                { backgroundColor: 'rgba(255,255,255,0.18)' },
+                            ]}
+                            onPress={hideToast}
+                            activeOpacity={0.7}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                            <Icon
+                                name="close"
+                                size={normalizeFont(14)}
+                                color={config.textColor}
+                            />
+                        </TouchableOpacity>
+                    </View>
+                </Animated.View>
+            </View>
+        </Animated.View>
+    );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    left: normalize(16),
-    right: normalize(16),
-    zIndex: 1000,
-  },
-  toastContainer: {
-    width: '100%',
-  },
-  toast: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: normalize(16),
-    paddingVertical: normalize(12),
-    borderRadius: 10, // Border.br_3xs
-    minHeight: normalize(50),
-  },
-  content: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  icon: {
-    fontSize: normalizeFont(18),
-    marginRight: normalize(12),
-    fontWeight: 'bold',
-  },
-  message: {
-    flex: 1,
-    fontSize: normalizeFont(14),
-    fontFamily: 'SF Pro Text-Medium', // FontFamily.medium
-    lineHeight: normalizeFont(20),
-  },
-  closeButton: {
-    marginLeft: normalize(8),
-    padding: normalize(4),
-  },
-  closeIcon: {
-    fontSize: normalizeFont(20),
-    fontWeight: 'bold',
-  },
+    wrapper: {
+        width: '100%',
+    },
+    row: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    circle: {
+        width: CIRCLE_SIZE,
+        height: CIRCLE_SIZE,
+        borderRadius: CIRCLE_SIZE / 2,
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 8,
+        elevation: 6,
+    },
+    paneWrapper: {
+        overflow: 'hidden',
+        marginLeft: -CIRCLE_SIZE / 2,
+        height: CIRCLE_SIZE,
+        justifyContent: 'center',
+    },
+    pane: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        height: CIRCLE_SIZE,
+        paddingLeft: CIRCLE_SIZE / 2 + normalize(14),
+        paddingRight: normalize(8),
+        borderTopRightRadius: CIRCLE_SIZE / 2,
+        borderBottomRightRadius: CIRCLE_SIZE / 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.15,
+        shadowRadius: 6,
+        elevation: 4,
+    },
+    message: {
+        fontSize: normalizeFont(14),
+        fontFamily: FontFamily.medium,
+        letterSpacing: 0.2,
+        flexShrink: 1,
+    },
+    closeButton: {
+        marginLeft: normalize(8),
+        width: normalize(26),
+        height: normalize(26),
+        borderRadius: normalize(13),
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
 });
+
+export default ToastSimple;

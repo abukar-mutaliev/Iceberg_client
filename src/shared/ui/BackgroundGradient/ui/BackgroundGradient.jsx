@@ -78,7 +78,7 @@ export const ScrollableBackgroundGradient = React.memo(({ contentHeight, showOve
     }
 
     return (
-        <View style={[styles.scrollableWrapper, { height: contentHeight || SCREEN_HEIGHT, backgroundColor: '#fff' }]}>
+        <View style={[styles.scrollableWrapper, { height: '100%', backgroundColor: '#fff' }]}>
             <View style={{ height: clampedHeight }}>
                 <LinearGradient
                     style={styles.baseGradient}

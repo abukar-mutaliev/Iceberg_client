@@ -8,6 +8,7 @@ import { PaymentApi } from '@entities/payment';
 import { CartService, clearCart } from '@entities/cart';
 import { OrderApi } from '@entities/order';
 import { PaymentLogger } from '../utils/PaymentLogger';
+import { exitPaymentToCart, exitPaymentToMyOrders } from '../utils/paymentNavigation';
 
 export const usePaymentLifecycle = ({
     params,
@@ -112,10 +113,7 @@ export const usePaymentLifecycle = ({
                 [{
                     text: 'К корзине',
                     style: 'primary',
-                    onPress: () => navigation.navigate('Cart', {
-                        forceRefresh: true,
-                        timestamp: Date.now()
-                    })
+                    onPress: () => exitPaymentToCart(navigation)
                 }]
             );
         }
@@ -147,6 +145,12 @@ export const usePaymentLifecycle = ({
                 return false;
             } else {
                 PaymentLogger.log('Payment status pending:', paymentStatus);
+                showInfo(
+                    'Ожидание оплаты',
+                    'Платёж ещё обрабатывается банком. Нажмите 🔄 для повторной проверки или ✕ для отмены.',
+                    [],
+                    4000
+                );
                 return false;
             }
         } catch (error) {
@@ -219,11 +223,16 @@ export const usePaymentLifecycle = ({
                     [{
                         text: 'К корзине',
                         style: 'primary',
-                        onPress: () => navigation.navigate('Cart', {
-                            forceRefresh: true,
-                            timestamp: Date.now()
-                        })
+                        onPress: () => exitPaymentToCart(navigation)
                     }]
+                );
+            } else {
+                PaymentLogger.log('Payment status pending:', paymentStatus);
+                showInfo(
+                    'Ожидание оплаты',
+                    'Платёж ещё обрабатывается банком. Нажмите 🔄 для повторной проверки или ✕ для отмены.',
+                    [],
+                    4000
                 );
             }
         } catch (error) {
@@ -270,7 +279,7 @@ export const usePaymentLifecycle = ({
             PaymentLogger.success('Successfully navigated to OrderSuccess screen');
         } catch (navError) {
             PaymentLogger.error('Navigation error:', navError);
-            navigation.navigate('Cart', { forceRefresh: true, timestamp: Date.now() });
+            exitPaymentToCart(navigation);
         }
     }, [state, params, navigation]);
 
@@ -279,10 +288,7 @@ export const usePaymentLifecycle = ({
      */
     const cancelPayment = useCallback(async () => {
         if (state.paymentCompleted) {
-            navigation.navigate('MyOrders', {
-                refresh: true,
-                timestamp: Date.now()
-            });
+            exitPaymentToMyOrders(navigation);
             return;
         }
 
@@ -311,10 +317,7 @@ export const usePaymentLifecycle = ({
                     }
                 }
 
-                navigation.navigate('Cart', {
-                    forceRefresh: true,
-                    timestamp: Date.now()
-                });
+                exitPaymentToCart(navigation);
             },
             () => {
                 // Пользователь передумал - остается на экране оплаты

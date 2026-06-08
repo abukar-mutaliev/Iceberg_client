@@ -124,6 +124,29 @@ export const useChatHeaderData = (route) => {
     
     // Для личных чатов
     if (!chatPartner) {
+      // Черновой режим: пользователь тапнул на собеседника в поиске,
+      // но комнаты ещё нет. Используем draftPeer из параметров маршрута.
+      const draftPeer = params.draftPeer;
+      const draftPeerUserId = params.draftPeerUserId;
+      if (draftPeer || draftPeerUserId) {
+        const draftUserData = draftPeer || { id: draftPeerUserId };
+        const cachedDraftUser = draftPeerUserId ? participantsById[draftPeerUserId] : null;
+        const resolvedUser = cachedDraftUser || draftUserData;
+        return {
+          name: getDisplayName(resolvedUser),
+          avatar:
+            cachedDraftUser?.avatar ||
+            cachedDraftUser?.image ||
+            draftPeer?.avatar ||
+            draftPeer?.image ||
+            null,
+          status: 'онлайн',
+          isGroup: false,
+          userId: draftPeerUserId,
+          userRole: resolvedUser?.role,
+        };
+      }
+
       // Fallback на supplier info если нет собеседника
       const supplierInfo = params.productInfo?.supplier || params.supplierInfo;
       if (supplierInfo) {

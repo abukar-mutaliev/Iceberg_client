@@ -8,7 +8,7 @@ import {
     selectDriverLoading,
     selectDriverError,
     clearDriverError,
-    fetchAllDrivers
+    fetchRouteAssignees
 } from "@entities/driver";
 
 import {
@@ -113,7 +113,7 @@ export const EditStopScreen = ({ route, navigation }) => {
     const stopData = useSelector(state => selectStopById(state, stopId));
     const isDriverLoading = useSelector(selectDriverLoading);
     const userRole = useSelector(state => state.auth?.user?.role || 'DRIVER');
-    const allDrivers = useSelector(state => state.driver?.allDrivers || []);
+    const routeAssignees = useSelector(state => state.driver?.routeAssignees || []);
     const districts = useSelector(selectDistricts);
     const districtsForDropdown = useSelector(selectDistrictsForDropdown);
     const error = useSelector(selectDriverError);
@@ -227,10 +227,10 @@ export const EditStopScreen = ({ route, navigation }) => {
     }, [dispatch, districts.length]);
 
     useEffect(() => {
-        if (isAdminOrEmployee && allDrivers.length === 0) {
-            dispatch(fetchAllDrivers());
+        if (isAdminOrEmployee && routeAssignees.length === 0) {
+            dispatch(fetchRouteAssignees());
         }
-    }, [dispatch, isAdminOrEmployee, allDrivers.length]);
+    }, [dispatch, isAdminOrEmployee, routeAssignees.length]);
 
     useEffect(() => {
         if (stopData?.mapLocation && (!locationData.mapLocation || locationData.mapLocation === '')) {

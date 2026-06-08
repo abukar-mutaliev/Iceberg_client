@@ -5,6 +5,8 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { userApi } from '@entities/user/api/userApi';
 import { chatCacheService } from '../lib/chatCacheService';
+import { resolveStopDistrictId } from '../lib/resolveStopDistrictId';
+import { enrichStopChatMessageFromStore } from '../lib/enrichStopChatMessageFromStore';
 import { waitForConnection } from '@shared/api/retryHelper';
 
 const initialState = {
@@ -311,12 +313,14 @@ export const loadRoomsCache = createAsyncThunk('chat/loadRoomsCache', async (_, 
 });
 
 // Загрузка сообщений комнаты из кэша
-export const loadRoomMessagesCache = createAsyncThunk('chat/loadRoomMessagesCache', async ({ roomId }, { rejectWithValue }) => {
+export const loadRoomMessagesCache = createAsyncThunk('chat/loadRoomMessagesCache', async ({ roomId }, { rejectWithValue, getState }) => {
   try {
     // Сначала пробуем новый ChatCacheService
     const messages = await chatCacheService.getMessages(roomId);
     if (messages.length > 0) {
-      return { roomId, messages };
+      const state = getState();
+      const enriched = messages.map((m) => enrichStopChatMessageFromStore(m, state));
+      return { roomId, messages: enriched };
     }
     
     // Fallback на старый AsyncStorage
@@ -328,7 +332,9 @@ export const loadRoomMessagesCache = createAsyncThunk('chat/loadRoomMessagesCach
       await chatCacheService.saveMessages(roomId, oldMessages);
     }
     
-    return { roomId, messages: oldMessages };
+    const state = getState();
+    const enriched = oldMessages.map((m) => enrichStopChatMessageFromStore(m, state));
+    return { roomId, messages: enriched };
   } catch (e) {
     return rejectWithValue(e.message || 'Ошибка чтения кэша сообщений');
   }
@@ -348,7 +354,10 @@ export const syncChatData = createAsyncThunk('chat/syncChatData', async ({ roomI
       ...(lastSyncTime && { after: lastSyncTime })
     });
     
-    const messages = res?.data?.messages || res?.data?.data || res?.data || [];
+    let messages = res?.data?.messages || res?.data?.data || res?.data || [];
+    messages = messages.map((m) =>
+      enrichStopChatMessageFromStore(m, getState())
+    );
     
     // Сохраняем новые сообщения в кэш
     if (messages.length > 0) {
@@ -457,7 +466,7 @@ export const fetchRooms = createAsyncThunk(
                 // Сохраняем сообщение в Redux store
                 dispatch(receiveMessage({
                   roomId: room.id,
-                  message: lastMessage
+                  message: enrichStopChatMessageFromStore(lastMessage, getState())
                 }));
               }
             } catch (error) {
@@ -541,7 +550,7 @@ export const fetchRoomAvatar = createAsyncThunk(
 
 export const fetchMessages = createAsyncThunk(
     'chat/fetchMessages',
-    async ({ roomId, limit = 100, cursorId = null, direction = 'backward' }, { rejectWithValue }) => {
+    async ({ roomId, limit = 100, cursorId = null, direction = 'backward' }, { rejectWithValue, getState }) => {
       try {
         const params = { limit };
         if (cursorId) params.cursorId = cursorId;
@@ -594,6 +603,10 @@ export const fetchMessages = createAsyncThunk(
           }
           return message;
         });
+
+        messages = messages.map((m) =>
+          enrichStopChatMessageFromStore(m, getState())
+        );
 
         if (!cursorId) {
           try {
@@ -689,6 +702,38 @@ const isNetworkError = (error) => {
   return false;
 };
 
+// Безопасный ретрай: повторяем только когда уверены, что запрос ТОЧНО не дошёл
+// до сервера. Тайм-аут после отправки тела (ECONNABORTED, 504, 408, 502, 503)
+// означает, что сервер мог уже создать сообщение, и без идемпотентности ретрай
+// плодит дубли. Идемпотентность есть, но мы всё равно не хотим зря дёргать
+// сервер — поэтому ретраим только «истинно офлайн» сценарии.
+const isOfflineRetryableError = (error) => {
+  if (!error) return false;
+  const errorCode = error.code || error.response?.status;
+  if (
+    errorCode === 'ERR_NETWORK' ||
+    errorCode === 'ERR_INTERNET_DISCONNECTED' ||
+    errorCode === 'ENOTFOUND' ||
+    errorCode === 'ECONNREFUSED'
+  ) {
+    return true;
+  }
+  // Network-level ошибка без response И без HTTP-кода — выполнялась локально
+  // (offline / DNS / TCP отказ). HTTP 4xx/5xx и axios timeout сюда не попадают.
+  if (!error.response && !error.response?.status && errorCode === 0) {
+    return true;
+  }
+  const msg = (error.message || '').toLowerCase();
+  if (
+    msg.includes('network request failed') ||
+    msg.includes('no internet') ||
+    msg.includes('сетевым подключением')
+  ) {
+    return true;
+  }
+  return false;
+};
+
 // Функция задержки для retry
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -707,8 +752,12 @@ const waitForNetwork = async (timeoutMs = 20000) => {
 export const sendVoice = createAsyncThunk(
     'chat/sendVoice',
 async ({ roomId, voice, temporaryId, replyToId, retryCount = 0 }, { rejectWithValue, dispatch, getState }) => {
-      const MAX_RETRIES = 5;
-      const RETRY_DELAYS = [1000, 2000, 3000, 5000, 10000]; // Прогрессивная задержка
+      // С идемпотентностью сервера (temporaryId) ретрай безопасен, но мы всё
+      // равно бережно: 3 попытки, и только когда запрос ТОЧНО не долетел
+      // (offline). На тайм-ауты после отправки тела не ретраим — пользователь
+      // увидит "Failed" и сможет нажать "Повторить".
+      const MAX_RETRIES = 3;
+      const RETRY_DELAYS = [1500, 3000, 6000];
       
       try {
         const form = new FormData();
@@ -795,10 +844,11 @@ async ({ roomId, voice, temporaryId, replyToId, retryCount = 0 }, { rejectWithVa
           });
         }
         
-        // Проверяем, является ли это сетевой ошибкой и есть ли ещё попытки
-        if (isNetworkError(error) && retryCount < MAX_RETRIES - 1) {
+        // Ретраим только истинно офлайн-ошибки. На таймауты / 5xx —
+        // помечаем как FAILED, чтобы не плодить лишние HTTP-запросы.
+        if (isOfflineRetryableError(error) && retryCount < MAX_RETRIES - 1) {
           const nextRetryCount = retryCount + 1;
-          const delayMs = RETRY_DELAYS[retryCount] || 10000;
+          const delayMs = RETRY_DELAYS[retryCount] || 6000;
           
           if (__DEV__) {
             console.log(`🔄 Повторная попытка ${nextRetryCount + 1}/${MAX_RETRIES} через ${delayMs}ms`);
@@ -819,7 +869,7 @@ async ({ roomId, voice, temporaryId, replyToId, retryCount = 0 }, { rejectWithVa
           })).unwrap();
         }
         
-        // Если исчерпаны все попытки или это не сетевая ошибка
+        // Если исчерпаны все попытки или это не offline-ошибка
         if (temporaryId) {
           dispatch(markOptimisticMessageFailed({ 
             temporaryId, 
@@ -843,8 +893,10 @@ async ({ roomId, voice, temporaryId, replyToId, retryCount = 0 }, { rejectWithVa
 export const sendText = createAsyncThunk(
     'chat/sendText',
     async ({ roomId, content, temporaryId, replyToId, retryCount = 0 }, { rejectWithValue, dispatch, getState }) => {
-      const MAX_RETRIES = 5;
-      const RETRY_DELAYS = [1000, 2000, 3000, 5000, 10000]; // Прогрессивная задержка
+      // 3 попытки, ретраим только истинно офлайн-ошибки (см. isOfflineRetryableError).
+      // На таймауты / 5xx сообщение помечаем как FAILED — пользователь повторит вручную.
+      const MAX_RETRIES = 3;
+      const RETRY_DELAYS = [1500, 3000, 6000];
       
       try {
         const form = new FormData();
@@ -852,6 +904,11 @@ export const sendText = createAsyncThunk(
         form.append('content', content);
         if (replyToId) {
           form.append('replyToId', replyToId.toString());
+        }
+        // Идемпотентный ключ для дедупликации на сервере — даже если ретрай
+        // создаст второй HTTP-запрос, сервер вернёт уже созданное сообщение.
+        if (temporaryId) {
+          form.append('temporaryId', temporaryId);
         }
         
         if (__DEV__) {
@@ -902,14 +959,15 @@ export const sendText = createAsyncThunk(
             error: error.message,
             attempt: retryCount + 1,
             maxRetries: MAX_RETRIES,
-            isNetworkError: isNetworkError(error)
+            isNetworkError: isNetworkError(error),
+            isOfflineRetryable: isOfflineRetryableError(error)
           });
         }
         
-        // Проверяем, является ли это сетевой ошибкой и есть ли ещё попытки
-        if (isNetworkError(error) && retryCount < MAX_RETRIES - 1) {
+        // Ретраим только истинно офлайн-ошибки
+        if (isOfflineRetryableError(error) && retryCount < MAX_RETRIES - 1) {
           const nextRetryCount = retryCount + 1;
-          const delayMs = RETRY_DELAYS[retryCount] || 10000;
+          const delayMs = RETRY_DELAYS[retryCount] || 6000;
           
           if (__DEV__) {
             console.log(`🔄 Повторная попытка отправки текста ${nextRetryCount + 1}/${MAX_RETRIES} через ${delayMs}ms`);
@@ -930,7 +988,7 @@ export const sendText = createAsyncThunk(
           })).unwrap();
         }
         
-        // Если исчерпаны все попытки или это не сетевая ошибка
+        // Если исчерпаны все попытки или это не offline-ошибка
         if (temporaryId) {
           dispatch(markOptimisticMessageFailed({ 
             temporaryId, 
@@ -954,8 +1012,8 @@ export const sendText = createAsyncThunk(
 export const sendPoll = createAsyncThunk(
     'chat/sendPoll',
     async ({ roomId, pollData, temporaryId, replyToId, retryCount = 0 }, { rejectWithValue, dispatch, getState }) => {
-      const MAX_RETRIES = 5;
-      const RETRY_DELAYS = [1000, 2000, 3000, 5000, 10000]; // Прогрессивная задержка
+      const MAX_RETRIES = 3;
+      const RETRY_DELAYS = [1500, 3000, 6000];
       
       try {
         const form = new FormData();
@@ -968,6 +1026,10 @@ export const sendPoll = createAsyncThunk(
         }));
         if (replyToId) {
           form.append('replyToId', replyToId.toString());
+        }
+        // Идемпотентный ключ для дедупликации на сервере
+        if (temporaryId) {
+          form.append('temporaryId', temporaryId);
         }
         
         if (__DEV__) {
@@ -1017,25 +1079,23 @@ export const sendPoll = createAsyncThunk(
             error: error.message,
             attempt: retryCount + 1,
             maxRetries: MAX_RETRIES,
-            isNetworkError: isNetworkError(error)
+            isNetworkError: isNetworkError(error),
+            isOfflineRetryable: isOfflineRetryableError(error)
           });
         }
         
-        // Проверяем, является ли это сетевой ошибкой и есть ли ещё попытки
-        if (isNetworkError(error) && retryCount < MAX_RETRIES - 1) {
+        // Ретраим только истинно офлайн-ошибки
+        if (isOfflineRetryableError(error) && retryCount < MAX_RETRIES - 1) {
           const nextRetryCount = retryCount + 1;
-          const delayMs = RETRY_DELAYS[retryCount] || 10000;
+          const delayMs = RETRY_DELAYS[retryCount] || 6000;
           
           if (__DEV__) {
             console.log(`🔄 Повторная попытка отправки опроса ${nextRetryCount + 1}/${MAX_RETRIES} через ${delayMs}ms`);
           }
           
           await waitForNetwork(20000);
-          
-          // Ждём перед повторной попыткой
           await delay(delayMs);
           
-          // Рекурсивно вызываем sendPoll с увеличенным счётчиком
           return dispatch(sendPoll({ 
             roomId, 
             pollData, 
@@ -1045,7 +1105,6 @@ export const sendPoll = createAsyncThunk(
           })).unwrap();
         }
         
-        // Если исчерпаны все попытки или это не сетевая ошибка
         if (temporaryId) {
           dispatch(markOptimisticMessageFailed({ 
             temporaryId, 
@@ -1069,14 +1128,21 @@ export const sendPoll = createAsyncThunk(
 export const sendImages = createAsyncThunk(
     'chat/sendImages',
     async ({ roomId, files = [], captions = [], temporaryId, replyToId, retryCount = 0 }, { rejectWithValue, dispatch, getState }) => {
-      const MAX_RETRIES = 5;
-      const RETRY_DELAYS = [1000, 2000, 3000, 5000, 10000]; // Прогрессивная задержка
+      const MAX_RETRIES = 3;
+      const RETRY_DELAYS = [1500, 3000, 6000];
       
       try {
         const form = new FormData();
         form.append('type', 'IMAGE');
         if (replyToId) {
           form.append('replyToId', replyToId.toString());
+        }
+        // Идемпотентный ключ для защиты от дубликатов: на нестабильной сети
+        // часто ответ теряется уже после того, как сервер создал сообщение.
+        // Сервер дедуплицирует по (senderId, temporaryId) и вернёт уже
+        // существующее сообщение вместо создания второго.
+        if (temporaryId) {
+          form.append('temporaryId', temporaryId);
         }
 
         const preparedFiles = [];
@@ -1150,25 +1216,26 @@ export const sendImages = createAsyncThunk(
           console.error('❌ sendImages error:', {
             error: error.message,
             attempt: retryCount + 1,
-            maxRetries: MAX_RETRIES
+            maxRetries: MAX_RETRIES,
+            isNetworkError: isNetworkError(error),
+            isOfflineRetryable: isOfflineRetryableError(error)
           });
         }
         
-        // Проверяем, является ли это сетевой ошибкой и есть ли ещё попытки
-        if (isNetworkError(error) && retryCount < MAX_RETRIES - 1) {
+        // Ретраим только истинно офлайн-ошибки. Тайм-ауты / 5xx могли долететь
+        // до сервера — даже при идемпотентности не хотим зря дёргать аплоад
+        // больших файлов несколько раз.
+        if (isOfflineRetryableError(error) && retryCount < MAX_RETRIES - 1) {
           const nextRetryCount = retryCount + 1;
-          const delayMs = RETRY_DELAYS[retryCount] || 10000;
+          const delayMs = RETRY_DELAYS[retryCount] || 6000;
           
           if (__DEV__) {
             console.log(`🔄 Повторная попытка отправки изображений ${nextRetryCount + 1}/${MAX_RETRIES} через ${delayMs}ms`);
           }
           
           await waitForNetwork(20000);
-          
-          // Ждём перед повторной попыткой
           await delay(delayMs);
           
-          // Рекурсивно вызываем sendImages с увеличенным счётчиком
           return dispatch(sendImages({ 
             roomId, 
             files, 
@@ -1179,7 +1246,6 @@ export const sendImages = createAsyncThunk(
           })).unwrap();
         }
         
-        // Если исчерпаны все попытки или это не сетевая ошибка
         if (temporaryId) {
           dispatch(markOptimisticMessageFailed({ 
             temporaryId, 
@@ -1224,13 +1290,26 @@ export const sendProduct = createAsyncThunk(
 
 export const sendStop = createAsyncThunk(
     'chat/sendStop',
-    async ({ roomId, stopId }, { rejectWithValue }) => {
+    async ({ roomId, stopId }, { rejectWithValue, getState }) => {
       try {
         const form = new FormData();
         form.append('type', 'STOP');
         form.append('stopId', String(stopId));
         const res = await ChatApi.sendMessage(roomId, form);
-        return res?.data?.data || res?.data;
+        const payload = res?.data?.data || res?.data;
+        const rootState = getState();
+        if (!payload || typeof payload !== 'object') return payload;
+        if (payload.message && typeof payload.message === 'object') {
+          return {
+            ...payload,
+            message: enrichStopChatMessageFromStore(payload.message, rootState),
+          };
+        }
+        const msgLike = payload.id != null ? payload : null;
+        if (msgLike && String(payload.type || '').toUpperCase() === 'STOP') {
+          return enrichStopChatMessageFromStore(payload, rootState);
+        }
+        return payload;
       } catch (e) {
         return rejectWithValue(e.message || 'Ошибка отправки остановки');
       }
@@ -1349,6 +1428,22 @@ export const updateRoom = createAsyncThunk(
         return res?.data?.data?.room || res?.data?.room || res?.data?.data || res?.data;
       } catch (e) {
         return rejectWithValue(e.message || 'Ошибка обновления комнаты');
+      }
+    }
+);
+
+export const toggleGlobalPin = createAsyncThunk(
+    'chat/toggleGlobalPin',
+    async ({ roomId, isPinned }, { rejectWithValue }) => {
+      try {
+        const res = await ChatApi.toggleGlobalPin(roomId, isPinned);
+        return res?.data?.data?.room || res?.data?.room || res?.data?.data || res?.data;
+      } catch (e) {
+        const errorMessage = e?.response?.data?.message ||
+                            e?.response?.data?.error ||
+                            e?.message ||
+                            'Ошибка закрепления канала';
+        return rejectWithValue(errorMessage);
       }
     }
 );
@@ -2500,12 +2595,10 @@ const chatSlice = createSlice({
               }
 
               if (isVisible && userDistrictIds.length > 0) {
-                const stopDistrictId = stopData.districtId;
-                if (!stopDistrictId) {
-                  isVisible = false;
-                } else {
-                  const normalizedStopId = typeof stopDistrictId === 'string'
-                    ? parseInt(stopDistrictId, 10) : stopDistrictId;
+                const stopDistrictRaw = resolveStopDistrictId(stopData);
+                if (stopDistrictRaw !== null && stopDistrictRaw !== '') {
+                  const normalizedStopId = typeof stopDistrictRaw === 'string'
+                    ? parseInt(stopDistrictRaw, 10) : stopDistrictRaw;
                   isVisible = userDistrictIds.some(id => {
                     const n = typeof id === 'string' ? parseInt(id, 10) : id;
                     return n === normalizedStopId;
@@ -2518,7 +2611,7 @@ const chatSlice = createSlice({
                   roomId,
                   isVisible,
                   userDistrictIds,
-                  stopDistrictId: stopData.districtId,
+                  stopDistrictId: resolveStopDistrictId(stopData),
                   isDeleted,
                   endTime,
                 });
@@ -2599,6 +2692,17 @@ const chatSlice = createSlice({
       if (message) {
         // Обновляем опрос в сообщении
         message.poll = poll;
+        message._pollUpdated = Date.now();
+
+        const room = state.rooms.byId[roomId];
+        if (room?.lastMessage?.id === messageId) {
+          room.lastMessage = {
+            ...(room.lastMessage || {}),
+            poll,
+            _pollUpdated: message._pollUpdated,
+          };
+        }
+
         // Обновляем кэш
         updateMessageCache(roomId, bucket);
       }
@@ -2615,7 +2719,11 @@ const chatSlice = createSlice({
       const bucket = state.messages[roomId];
 
       const existing = bucket.byId[message.id];
-      bucket.byId[message.id] = { ...(existing || {}), ...message };
+      bucket.byId[message.id] = {
+        ...(existing || {}),
+        ...message,
+        ...(message?.poll ? { _pollUpdated: Date.now() } : {}),
+      };
       if (!bucket.ids.includes(message.id)) {
         bucket.ids.push(message.id);
       }
@@ -3222,6 +3330,7 @@ const chatSlice = createSlice({
         })
         .addCase(fetchMessages.fulfilled, (state, action) => {
           const { roomId, messages, hasMore } = action.payload;
+          const { cursorId: requestCursorId } = action.meta?.arg || {};
           ensureRoomBucket(state, roomId);
           
           // Удаляем временные сообщения (только с temporaryId, без реального ID)
@@ -3253,6 +3362,93 @@ const chatSlice = createSlice({
                 state.messages[roomId].ids.splice(index, 1);
               }
             });
+          }
+          
+          // Reconciliation удаленных сообщений: если это первая страница (без курсора),
+          // сервер вернул актуальный снапшот последних N сообщений с отфильтрованными
+          // isDeletedForAll. Локальные сообщения, попадающие во временной диапазон ответа
+          // и отсутствующие в нем, были удалены на сервере, но WS-событие могло быть
+          // пропущено (офлайн/реконнект). Принудительно убираем их из стора и кэша,
+          // чтобы участники не видели "призрачные" сообщения после удаления.
+          if (!requestCursorId && Array.isArray(messages) && messages.length > 0) {
+            const bucket = state.messages[roomId];
+            const serverIds = new Set();
+            let oldestTs = Infinity;
+            let newestTs = -Infinity;
+            for (const m of messages) {
+              if (m?.id != null) serverIds.add(m.id);
+              const ts = m?.createdAt ? new Date(m.createdAt).getTime() : NaN;
+              if (!isNaN(ts)) {
+                if (ts < oldestTs) oldestTs = ts;
+                if (ts > newestTs) newestTs = ts;
+              }
+            }
+
+            if (oldestTs !== Infinity && newestTs !== -Infinity) {
+              const deletedLocalIds = [];
+              for (const localKey of bucket.ids) {
+                const msg = bucket.byId[localKey];
+                if (!msg) continue;
+                // Пропускаем оптимистичные/неотправленные сообщения без серверного id
+                if (!msg.id) continue;
+                if (typeof msg.id === 'string' && msg.id.startsWith('temp_')) continue;
+                if (typeof localKey === 'string' && localKey.startsWith('temp_')) continue;
+                if (msg.isOptimistic) continue;
+                if (msg.status === 'FAILED' || msg.status === 'SENDING') continue;
+
+                const ts = msg.createdAt ? new Date(msg.createdAt).getTime() : NaN;
+                if (isNaN(ts)) continue;
+                // Только сообщения внутри временного диапазона серверного снапшота
+                if (ts < oldestTs || ts > newestTs) continue;
+                if (serverIds.has(msg.id)) continue;
+
+                deletedLocalIds.push({ key: localKey, messageId: msg.id });
+              }
+
+              if (deletedLocalIds.length > 0) {
+                const keysToDelete = new Set(deletedLocalIds.map(d => d.key));
+                deletedLocalIds.forEach(({ key }) => {
+                  delete bucket.byId[key];
+                });
+                bucket.ids = bucket.ids.filter(id => !keysToDelete.has(id));
+
+                // Подчищаем lastMessage комнаты, если оно ссылалось на удаленное сообщение
+                const room = state.rooms.byId[roomId];
+                if (room?.lastMessage?.id != null) {
+                  const removedIds = new Set(deletedLocalIds.map(d => d.messageId));
+                  if (removedIds.has(room.lastMessage.id)) {
+                    const remaining = bucket.ids
+                      .map(id => bucket.byId[id])
+                      .filter(Boolean)
+                      .sort((a, b) => {
+                        const at = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+                        const bt = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+                        return bt - at;
+                      });
+                    if (remaining.length > 0) {
+                      room.lastMessage = remaining[0];
+                      room.updatedAt = remaining[0].createdAt || room.updatedAt;
+                    } else {
+                      delete room.lastMessage;
+                    }
+                  }
+                }
+
+                // Чистим SQLite-кэш асинхронно — saveRoomMessages работает только в upsert,
+                // поэтому без явного удаления удаленные сообщения остаются в кэше навсегда.
+                deletedLocalIds.forEach(({ messageId }) => {
+                  chatCacheService.removeMessageFromCache(roomId, messageId).catch(() => {});
+                });
+
+                if (__DEV__) {
+                  console.log('🧹 fetchMessages: reconciled deleted messages', {
+                    roomId,
+                    removed: deletedLocalIds.length,
+                    ids: deletedLocalIds.map(d => d.messageId),
+                  });
+                }
+              }
+            }
           }
           
           // Обновляем сообщения с новыми статусами
@@ -3829,6 +4025,10 @@ const chatSlice = createSlice({
           upsertRooms(state, [room]);
         })
         .addCase(updateRoom.fulfilled, (state, action) => {
+          const room = action.payload;
+          upsertRooms(state, [room]);
+        })
+        .addCase(toggleGlobalPin.fulfilled, (state, action) => {
           const room = action.payload;
           upsertRooms(state, [room]);
         })

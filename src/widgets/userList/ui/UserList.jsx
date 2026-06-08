@@ -1,9 +1,10 @@
-import React from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import CustomButton from '@shared/ui/Button/CustomButton';
 import {UserCard} from "@entities/user";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const UserList = ({
                              items,
@@ -19,12 +20,15 @@ export const UserList = ({
                              onProcessingRoleChange,
                              currentUser
                          }) => {
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
+
     const renderFooter = () => {
         if (!isLoading) return null;
 
         return (
             <View style={styles.footerLoader}>
-                <ActivityIndicator size="small" color={Color.blue2} />
+                <ActivityIndicator size="small" color={colors.primary} />
                 <Text style={styles.footerText}>Загрузка...</Text>
             </View>
         );
@@ -37,7 +41,7 @@ export const UserList = ({
     if (isLoading && items.length === 0) {
         return (
             <View style={styles.centered}>
-                <ActivityIndicator size="large" color={Color.blue2} />
+                <ActivityIndicator size="large" color={colors.primary} />
                 <Text style={styles.loadingText}>Загрузка пользователей...</Text>
             </View>
         );
@@ -50,7 +54,7 @@ export const UserList = ({
                 <CustomButton
                     title="Повторить"
                     onPress={handleRefresh}
-                    color={Color.blue2}
+                    color={colors.primary}
                     style={{ marginTop: normalize(16) }}
                 />
             </View>
@@ -75,8 +79,15 @@ export const UserList = ({
             ItemSeparatorComponent={renderSeparator}
             ListEmptyComponent={renderEmptyList}
             ListFooterComponent={renderFooter}
-            onRefresh={handleRefresh}
-            refreshing={refreshing}
+            refreshControl={
+                <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={handleRefresh}
+                    tintColor={colors.primary}
+                    colors={[colors.primary]}
+                    progressBackgroundColor={colors.surface}
+                />
+            }
             onEndReached={handleLoadMore}
             onEndReachedThreshold={0.5}
             removeClippedSubviews={false}
@@ -87,7 +98,7 @@ export const UserList = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     centered: {
         flex: 1,
         justifyContent: 'center',
@@ -96,7 +107,7 @@ const styles = StyleSheet.create({
     },
     loadingText: {
         fontSize: normalizeFont(14),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginTop: normalize(10),
     },
     listContent: {
@@ -116,7 +127,7 @@ const styles = StyleSheet.create({
     errorText: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: 'red',
+        color: colors.error,
         textAlign: 'center',
     },
     footerLoader: {
@@ -128,7 +139,7 @@ const styles = StyleSheet.create({
     footerText: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginLeft: normalize(8),
     }
 });

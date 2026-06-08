@@ -32,6 +32,7 @@ export const StopDetailsScreen = ({ navigation }) => {
     const isSuperAdmin = useSelector(state => !!state.auth?.user?.admin?.isSuperAdmin);
     const userId = useSelector(state => state.auth?.user?.id);
     const userDriverId = useSelector(state => state.auth?.user?.driver?.id);
+    const userEmployeeId = useSelector(state => state.auth?.user?.employee?.id);
     const currentStop = localStop || stop;
 
     const stopStatus = (currentStop?.status || 'SCHEDULED').toUpperCase();
@@ -212,13 +213,18 @@ export const StopDetailsScreen = ({ navigation }) => {
         );
     }
 
-    const stopOwnerUserId = currentStop?.driver?.userId;
+    const stopOwnerUserId = currentStop?.employee?.userId || currentStop?.driver?.userId;
     const stopOwnerDriverId = currentStop?.driverId;
+    const stopOwnerEmployeeId = currentStop?.employeeId;
     const isDriverOwnedStop = !!(
         (userId && stopOwnerUserId === userId) ||
         (userDriverId && stopOwnerDriverId === userDriverId)
     );
-    const canManageStopLifecycle = isAdminOrEmployee || (isDriver && isDriverOwnedStop);
+    const isEmployeeOwnedStop = !!(
+        (userId && stopOwnerUserId === userId) ||
+        (userEmployeeId && stopOwnerEmployeeId === userEmployeeId)
+    );
+    const canManageStopLifecycle = isAdminOrEmployee || (isDriver && isDriverOwnedStop) || isEmployeeOwnedStop;
 
     const lifecycleSection = canManageStopLifecycle && (
         <View style={styles.lifecycleSection}>

@@ -9,9 +9,10 @@ import {
   RefreshControl,
   ActivityIndicator,
   LayoutAnimation,
-  UIManager,
   Platform,
+  StatusBar,
 } from 'react-native';
+import { enableLayoutAnimationExperimentalAndroid } from '@shared/lib/enableLayoutAnimationAndroid';
 import { useProcessingRoles } from '@entities/admin/hooks/useProcessingRoles';
 import { ProcessingRoleAssignment } from '@entities/admin/ui/ProcessingRoleAssignment';
 import {
@@ -22,12 +23,13 @@ import {
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 import { HeaderWithBackButton } from '@shared/ui/HeaderWithBackButton';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+enableLayoutAnimationExperimentalAndroid();
 
 export const ProcessingRolesScreen = () => {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { showAlert } = useCustomAlert();
   const {
     employees,
@@ -181,12 +183,15 @@ export const ProcessingRolesScreen = () => {
 
   // Рендер сотрудника
   const renderEmployee = ({ item: employee }) => {
+    const employeeWarehouses = employee.warehouses?.length
+      ? employee.warehouses
+      : (employee.warehouse ? [employee.warehouse] : []);
     const roleLabel = employee.processingRole 
       ? PROCESSING_ROLE_LABELS[employee.processingRole]
       : 'Не назначена';
     const roleColor = employee.processingRole 
       ? PROCESSING_ROLE_COLORS[employee.processingRole]
-      : '#6c757d';
+      : colors.textSecondary;
     const roleIcon = employee.processingRole 
       ? PROCESSING_ROLE_ICONS[employee.processingRole]
       : '❓';
@@ -209,10 +214,18 @@ export const ProcessingRolesScreen = () => {
           </View>
         </View>
         
-        {employee.warehouse && (
+        {employeeWarehouses.length > 0 && (
           <View style={styles.warehouseInfo}>
-            <Text style={styles.warehouseLabel}>Склад:</Text>
-            <Text style={styles.warehouseName}>{employee.warehouse.name}</Text>
+            <Text style={styles.warehouseLabel}>
+              {employeeWarehouses.length > 1 ? 'Склады:' : 'Склад:'}
+            </Text>
+            <View style={styles.warehouseList}>
+              {employeeWarehouses.map((warehouse) => (
+                <View key={warehouse.id} style={styles.warehouseChip}>
+                  <Text style={styles.warehouseName}>{warehouse.name}</Text>
+                </View>
+              ))}
+            </View>
           </View>
         )}
 
@@ -245,6 +258,7 @@ export const ProcessingRolesScreen = () => {
   if (!accessRights.canViewProcessingRoles) {
     return (
       <View style={styles.accessDeniedContainer}>
+        <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
         <Text style={styles.accessDeniedText}>
           Только суперадминистратор может просматривать и назначать должности сотрудников
         </Text>
@@ -254,6 +268,7 @@ export const ProcessingRolesScreen = () => {
 
   return (
     <View style={styles.container}>
+      <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
       <HeaderWithBackButton title="Должности сотрудников" />
 
       {/* Заголовок + поиск вынесены из FlatList чтобы TextInput не терял фокус */}
@@ -267,6 +282,8 @@ export const ProcessingRolesScreen = () => {
         <TextInput
           style={styles.searchInput}
           placeholder="Поиск по имени или email..."
+          placeholderTextColor={colors.textTertiary}
+          keyboardAppearance={colors.keyboardAppearance}
           value={searchQuery}
           onChangeText={handleSearchChange}
           autoCorrect={false}
@@ -291,7 +308,7 @@ export const ProcessingRolesScreen = () => {
         <Icon
           name={showStatistics ? 'keyboard-arrow-up' : 'keyboard-arrow-down'}
           size={24}
-          color="#333"
+          color={colors.textPrimary}
         />
       </TouchableOpacity>
 
@@ -320,7 +337,13 @@ export const ProcessingRolesScreen = () => {
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={styles.listContainer}
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={handleRefresh} />
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+            progressBackgroundColor={colors.surface}
+          />
         }
         ListEmptyComponent={renderEmptyComponent}
         showsVerticalScrollIndicator={false}
@@ -339,28 +362,28 @@ export const ProcessingRolesScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.background,
     paddingBottom: 30
   },
   header: {
     paddingHorizontal: 20,
     paddingVertical: 12,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
+    borderBottomColor: colors.border,
   },
   subtitle: {
     fontSize: 14,
-    color: '#666'
+    color: colors.textSecondary
   },
   searchContainer: {
     padding: 16,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
+    borderBottomColor: colors.border,
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 0
@@ -369,24 +392,25 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 40,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: colors.inputBorder,
     borderRadius: 8,
     paddingHorizontal: 12,
     fontSize: 16,
-    backgroundColor: '#fff'
+    backgroundColor: colors.inputBackground,
+    color: colors.textPrimary
   },
   clearSearchButton: {
     marginLeft: 8,
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.surfaceSecondary,
     justifyContent: 'center',
     alignItems: 'center'
   },
   clearSearchText: {
     fontSize: 16,
-    color: '#666'
+    color: colors.textSecondary
   },
   statisticsToggle: {
     flexDirection: 'row',
@@ -394,20 +418,20 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
+    borderBottomColor: colors.border,
   },
   statisticsToggleText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: colors.textPrimary,
   },
   statisticsContainer: {
     padding: 16,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
+    borderBottomColor: colors.border,
   },
   statisticsGrid: {
     flexDirection: 'row',
@@ -417,10 +441,12 @@ const styles = StyleSheet.create({
   statisticItem: {
     flex: 1,
     minWidth: '45%',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.surfaceSecondary,
     borderRadius: 8,
     padding: 12,
-    alignItems: 'center'
+    alignItems: 'center',
+    borderWidth: isDark ? 1 : 0,
+    borderColor: colors.border
   },
   statisticIcon: {
     fontSize: 24,
@@ -428,29 +454,31 @@ const styles = StyleSheet.create({
   },
   statisticLabel: {
     fontSize: 12,
-    color: '#666',
+    color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: 4
   },
   statisticCount: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#333'
+    color: colors.textPrimary
   },
   listContainer: {
     padding: 16,
     paddingTop: 0
   },
   employeeCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.cardBackground,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3
+    shadowOpacity: isDark ? 0.25 : 0.1,
+    shadowRadius: isDark ? 6 : 4,
+    elevation: isDark ? 2 : 3,
+    borderWidth: isDark ? 1 : 0,
+    borderColor: colors.border
   },
   employeeHeader: {
     flexDirection: 'row',
@@ -464,25 +492,27 @@ const styles = StyleSheet.create({
   employeeName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: colors.textPrimary,
     marginBottom: 4
   },
   employeeEmail: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 2
   },
   employeePosition: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     fontStyle: 'italic'
   },
   roleBadge: {
     alignItems: 'center',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.surfaceSecondary,
     borderRadius: 8,
     padding: 8,
-    minWidth: 80
+    minWidth: 80,
+    borderWidth: isDark ? 1 : 0,
+    borderColor: colors.border
   },
   roleIcon: {
     fontSize: 20,
@@ -495,31 +525,46 @@ const styles = StyleSheet.create({
   },
   warehouseInfo: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 12,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0'
+    borderTopColor: colors.border
   },
   warehouseLabel: {
     fontSize: 14,
-    color: '#666',
-    marginRight: 4
+    color: colors.textSecondary,
+    marginRight: 8,
+    marginTop: 4
+  },
+  warehouseList: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6
+  },
+  warehouseChip: {
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 8,
+    paddingVertical: 4
   },
   warehouseName: {
     fontSize: 14,
-    color: '#333',
+    color: colors.textPrimary,
     fontWeight: '500'
   },
   assignButton: {
-    backgroundColor: '#007bff',
+    backgroundColor: colors.primary,
     borderRadius: 8,
     paddingVertical: 10,
     paddingHorizontal: 16,
     alignItems: 'center'
   },
   assignButtonText: {
-    color: '#fff',
+    color: colors.textInverse,
     fontSize: 14,
     fontWeight: '600'
   },
@@ -536,12 +581,12 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#333',
+    color: colors.textPrimary,
     marginBottom: 8
   },
   emptySubtitle: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     textAlign: 'center'
   },
   accessDeniedContainer: {
@@ -552,7 +597,7 @@ const styles = StyleSheet.create({
   },
   accessDeniedText: {
     fontSize: 16,
-    color: '#666',
+    color: colors.textSecondary,
     textAlign: 'center'
   }
 }); 

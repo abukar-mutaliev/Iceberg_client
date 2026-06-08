@@ -1,4 +1,4 @@
-import React, {useEffect, useState, useRef, useCallback} from "react";
+import React, {useEffect, useState, useRef, useCallback, useMemo} from "react";
 import {useDispatch, useSelector} from "react-redux";
 import {useNavigation, useRoute} from "@react-navigation/native";
 import {
@@ -23,6 +23,7 @@ import {createProductChunked, clearProductsCache} from '@entities/product';
 import {fetchProfile} from "@entities/profile";
 import ProductsService from "@shared/services/ProductsService";
 import {CustomAlert} from "@shared/ui/CustomAlert/CustomAlert";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const AddProductScreen = () => {
     const navigation = useNavigation();
@@ -30,6 +31,8 @@ export const AddProductScreen = () => {
     const dispatch = useDispatch();
     const user = useSelector(selectUser);
     const isAuthenticated = useSelector(selectIsAuthenticated);
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     const { onSuccess } = route.params || {};
 
@@ -723,7 +726,7 @@ export const AddProductScreen = () => {
                     value={value}
                     onChangeText={onChangeText}
                     placeholder={placeholder}
-                    placeholderTextColor="#999"
+                    placeholderTextColor={isDark ? colors.textTertiary : '#999'}
                     keyboardType={keyboardType}
                     multiline={multiline}
                     editable={editable}
@@ -927,10 +930,10 @@ export const AddProductScreen = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#F5F7FA',
+        backgroundColor: isDark ? colors.background : '#F5F7FA',
     },
     header: {
         flexDirection: 'row',
@@ -938,18 +941,18 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingHorizontal: 20,
         paddingVertical: 16,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
         borderBottomWidth: 1,
-        borderBottomColor: '#E8ECF1',
+        borderBottomColor: isDark ? colors.border : '#E8ECF1',
         ...Platform.select({
             ios: {
                 shadowColor: '#000',
                 shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.05,
+                shadowOpacity: isDark ? 0 : 0.05,
                 shadowRadius: 8,
             },
             android: {
-                elevation: 3,
+                elevation: isDark ? 0 : 3,
             },
         }),
     },
@@ -957,13 +960,13 @@ const styles = StyleSheet.create({
         width: 40,
         height: 40,
         borderRadius: 20,
-        backgroundColor: '#F5F7FA',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F5F7FA',
         justifyContent: 'center',
         alignItems: 'center',
     },
     closeButtonText: {
         fontSize: 20,
-        color: '#666',
+        color: isDark ? colors.textPrimary : '#666',
         fontFamily: FontFamily.sFProText,
     },
     headerTitleContainer: {
@@ -973,12 +976,12 @@ const styles = StyleSheet.create({
     headerTitle: {
         fontSize: 20,
         fontWeight: '700',
-        color: '#1A1A1A',
+        color: isDark ? colors.textPrimary : '#1A1A1A',
         fontFamily: FontFamily.sFProDisplay,
     },
     headerSubtitle: {
         fontSize: 13,
-        color: '#8E8E93',
+        color: isDark ? colors.textSecondary : '#8E8E93',
         fontFamily: FontFamily.sFProText,
         marginTop: 2,
     },
@@ -994,7 +997,7 @@ const styles = StyleSheet.create({
     formContainer: {
         padding: 16,
     },
-    
+
     // Section Styles
     section: {
         marginBottom: 24,
@@ -1002,7 +1005,7 @@ const styles = StyleSheet.create({
     sectionTitle: {
         fontSize: 16,
         fontWeight: '700',
-        color: '#1A1A1A',
+        color: isDark ? colors.textPrimary : '#1A1A1A',
         fontFamily: FontFamily.sFProDisplay,
         marginBottom: 12,
         paddingLeft: 4,
@@ -1011,76 +1014,80 @@ const styles = StyleSheet.create({
         gap: 12,
     },
     sectionError: {
-        color: '#FF3B30',
+        color: colors.error,
         fontSize: 13,
         marginTop: 8,
         paddingLeft: 4,
         fontFamily: FontFamily.sFProText,
     },
     uploadHint: {
-        color: '#6B7280',
+        color: isDark ? colors.textSecondary : '#6B7280',
         fontSize: 12,
         marginTop: 6,
         paddingLeft: 4,
         fontFamily: FontFamily.sFProText,
         paddingBottom: 50
     },
-    
+
     // Photo Section
     photoSection: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
         borderRadius: 16,
         padding: 8,
         maxHeight: 200,
+        borderWidth: isDark ? StyleSheet.hairlineWidth : 0,
+        borderColor: isDark ? colors.border : 'transparent',
         ...Platform.select({
             ios: {
                 shadowColor: '#000',
                 shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.06,
+                shadowOpacity: isDark ? 0 : 0.06,
                 shadowRadius: 12,
             },
             android: {
-                elevation: 2,
+                elevation: isDark ? 0 : 2,
             },
         }),
     },
-    
+
     // Input Card Styles
     inputCard: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
         borderRadius: 12,
         padding: 16,
+        borderWidth: isDark ? StyleSheet.hairlineWidth : 0,
+        borderColor: isDark ? colors.border : 'transparent',
         ...Platform.select({
             ios: {
                 shadowColor: '#000',
                 shadowOffset: { width: 0, height: 1 },
-                shadowOpacity: 0.05,
+                shadowOpacity: isDark ? 0 : 0.05,
                 shadowRadius: 8,
             },
             android: {
-                elevation: 1,
+                elevation: isDark ? 0 : 1,
             },
         }),
     },
     inputLabel: {
         fontSize: 13,
         fontWeight: '600',
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         marginBottom: 8,
         fontFamily: FontFamily.sFProText,
     },
     requiredStar: {
-        color: '#FF3B30',
+        color: colors.error,
     },
     cardInput: {
         fontSize: 16,
-        color: '#1A1A1A',
+        color: isDark ? colors.textPrimary : '#1A1A1A',
         paddingVertical: 8,
         paddingHorizontal: 12,
-        backgroundColor: '#F5F7FA',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F5F7FA',
         borderRadius: 8,
         borderWidth: 1,
-        borderColor: '#E8ECF1',
+        borderColor: isDark ? colors.border : '#E8ECF1',
         fontFamily: FontFamily.sFProText,
         minHeight: 44,
     },
@@ -1090,58 +1097,62 @@ const styles = StyleSheet.create({
         paddingTop: 12,
     },
     cardInputError: {
-        borderColor: '#FF3B30',
-        backgroundColor: '#FFF5F5',
+        borderColor: isDark ? colors.errorBorder : '#FF3B30',
+        backgroundColor: isDark ? colors.errorSubtle : '#FFF5F5',
     },
     cardInputDisabled: {
-        backgroundColor: '#F5F7FA',
-        color: '#999',
+        backgroundColor: isDark ? colors.surfaceSecondary : '#F5F7FA',
+        color: isDark ? colors.textTertiary : '#999',
     },
     cardErrorText: {
-        color: '#FF3B30',
+        color: colors.error,
         fontSize: 12,
         marginTop: 6,
         paddingLeft: 4,
         fontFamily: FontFamily.sFProText,
     },
-    
+
     // Picker Card
     pickerCard: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
         borderRadius: 12,
         padding: 16,
+        borderWidth: isDark ? StyleSheet.hairlineWidth : 0,
+        borderColor: isDark ? colors.border : 'transparent',
         ...Platform.select({
             ios: {
                 shadowColor: '#000',
                 shadowOffset: { width: 0, height: 1 },
-                shadowOpacity: 0.05,
+                shadowOpacity: isDark ? 0 : 0.05,
                 shadowRadius: 8,
             },
             android: {
-                elevation: 1,
+                elevation: isDark ? 0 : 1,
             },
         }),
     },
-    
+
     // Category Picker Card with high zIndex
     pickerCardCategory: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
         borderRadius: 12,
         padding: 16,
         zIndex: 1000,
+        borderWidth: isDark ? StyleSheet.hairlineWidth : 0,
+        borderColor: isDark ? colors.border : 'transparent',
         ...Platform.select({
             ios: {
                 shadowColor: '#000',
                 shadowOffset: { width: 0, height: 1 },
-                shadowOpacity: 0.05,
+                shadowOpacity: isDark ? 0 : 0.05,
                 shadowRadius: 8,
             },
             android: {
-                elevation: 10,
+                elevation: isDark ? 0 : 10,
             },
         }),
     },
-    
+
     // Price Row
     priceRow: {
         flexDirection: 'row',
@@ -1151,27 +1162,27 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     additionalPriceInfo: {
-        backgroundColor: '#FFF9E6',
+        backgroundColor: isDark ? 'rgba(255, 210, 74, 0.12)' : '#FFF9E6',
         borderRadius: 12,
         padding: 12,
         borderWidth: 1,
-        borderColor: '#FFE08A',
+        borderColor: isDark ? 'rgba(255, 210, 74, 0.35)' : '#FFE08A',
         marginTop: 8,
     },
     additionalPriceNote: {
         fontSize: 13,
-        color: '#856404',
+        color: isDark ? '#FFD24A' : '#856404',
         fontFamily: FontFamily.sFProText,
         lineHeight: 18,
     },
-    
+
     // Stock Summary
     stockSummaryCard: {
-        backgroundColor: '#F0F9FF',
+        backgroundColor: isDark ? 'rgba(56, 139, 253, 0.12)' : '#F0F9FF',
         borderRadius: 12,
         padding: 16,
         borderWidth: 1,
-        borderColor: '#BAE6FD',
+        borderColor: isDark ? 'rgba(56, 139, 253, 0.35)' : '#BAE6FD',
     },
     stockSummaryRow: {
         flexDirection: 'row',
@@ -1180,33 +1191,35 @@ const styles = StyleSheet.create({
     },
     stockSummaryLabel: {
         fontSize: 14,
-        color: '#0369A1',
+        color: isDark ? '#7FB9FF' : '#0369A1',
         fontWeight: '600',
         fontFamily: FontFamily.sFProText,
     },
     stockSummaryValue: {
         fontSize: 18,
-        color: '#0369A1',
+        color: isDark ? '#7FB9FF' : '#0369A1',
         fontWeight: '700',
         fontFamily: FontFamily.sFProDisplay,
     },
-    
+
     // Progress Container
     progressContainer: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
         borderRadius: 16,
         padding: 20,
         marginTop: 24,
         marginBottom: 16,
+        borderWidth: isDark ? StyleSheet.hairlineWidth : 0,
+        borderColor: isDark ? colors.border : 'transparent',
         ...Platform.select({
             ios: {
-                shadowColor: '#3B43A2',
+                shadowColor: isDark ? 'transparent' : '#3B43A2',
                 shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.15,
+                shadowOpacity: isDark ? 0 : 0.15,
                 shadowRadius: 16,
             },
             android: {
-                elevation: 4,
+                elevation: isDark ? 0 : 4,
             },
         }),
     },
@@ -1219,37 +1232,37 @@ const styles = StyleSheet.create({
     progressTitle: {
         fontSize: 15,
         fontWeight: '600',
-        color: '#1A1A1A',
+        color: isDark ? colors.textPrimary : '#1A1A1A',
         fontFamily: FontFamily.sFProDisplay,
     },
     progressPercentage: {
         fontSize: 18,
         fontWeight: '700',
-        color: '#3B43A2',
+        color: isDark ? colors.primary : '#3B43A2',
         fontFamily: FontFamily.sFProDisplay,
     },
     progressBarContainer: {
         height: 8,
-        backgroundColor: '#E8ECF1',
+        backgroundColor: isDark ? colors.surfaceElevated : '#E8ECF1',
         borderRadius: 4,
         overflow: 'hidden',
         marginBottom: 10,
     },
     progressBar: {
         height: '100%',
-        backgroundColor: '#3B43A2',
+        backgroundColor: isDark ? colors.primary : '#3B43A2',
         borderRadius: 4,
     },
     progressText: {
         fontSize: 13,
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
     },
-    
+
     // Submit Button
     submitButton: {
-        backgroundColor: '#3B43A2',
+        backgroundColor: isDark ? colors.primary : '#3B43A2',
         height: 56,
         borderRadius: 16,
         justifyContent: 'center',
@@ -1257,24 +1270,24 @@ const styles = StyleSheet.create({
         marginTop: 24,
         ...Platform.select({
             ios: {
-                shadowColor: '#3B43A2',
+                shadowColor: isDark ? 'transparent' : '#3B43A2',
                 shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.3,
+                shadowOpacity: isDark ? 0 : 0.3,
                 shadowRadius: 12,
             },
             android: {
-                elevation: 6,
+                elevation: isDark ? 0 : 6,
             },
         }),
     },
     submitButtonDisabled: {
-        backgroundColor: '#C7C7CC',
+        backgroundColor: isDark ? colors.surfaceElevated : '#C7C7CC',
         ...Platform.select({
             ios: {
-                shadowOpacity: 0.1,
+                shadowOpacity: isDark ? 0 : 0.1,
             },
             android: {
-                elevation: 2,
+                elevation: isDark ? 0 : 2,
             },
         }),
     },

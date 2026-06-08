@@ -28,12 +28,15 @@ import { AdminProductBasicInfo, AdminProductEditForm, AdminProductHeader } from 
 import {ProductWarehouseInfo} from "@entities/product";
 import { StagnantProductWarning } from "./StagnantProductWarning";
 import { AdminWarehouseInfo } from "@widgets/warehouse/AdminWarehouseInfo";
+import { useTheme } from "@app/providers/themeProvider/ThemeProvider";
 
 export const AdminProductDetailScreen = () => {
     const navigation = useNavigation();
     const route = useRoute();
     const dispatch = useDispatch();
     const { currentUser } = useAuth();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     // Получаем ID продукта из параметров навигации
     const productId = route.params?.productId;
@@ -584,10 +587,10 @@ export const AdminProductDetailScreen = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.background : Color.colorLightMode,
     },
     scrollView: {
         flex: 1,
@@ -597,17 +600,19 @@ const styles = StyleSheet.create({
         marginBottom: 12,
         padding: 14,
         borderRadius: 12,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
+        borderWidth: isDark ? StyleSheet.hairlineWidth : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     moderationTitle: {
         fontSize: 16,
         fontWeight: '700',
-        color: '#1F2937',
+        color: colors.textPrimary,
         marginBottom: 6,
     },
     moderationHint: {
         fontSize: 12,
-        color: '#6B7280',
+        color: colors.textSecondary,
         marginBottom: 12,
     },
     moderationButtonsRow: {
@@ -622,10 +627,10 @@ const styles = StyleSheet.create({
         paddingVertical: 12,
     },
     approveButton: {
-        backgroundColor: '#16A34A',
+        backgroundColor: colors.success || '#16A34A',
     },
     rejectButton: {
-        backgroundColor: '#DC2626',
+        backgroundColor: colors.error || '#DC2626',
     },
     disabledModerationButton: {
         opacity: 0.6,

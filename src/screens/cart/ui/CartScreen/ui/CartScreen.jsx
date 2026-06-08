@@ -12,22 +12,20 @@ import {
     StatusBar,
     Dimensions,
     Modal,
-    ScrollView,
     KeyboardAvoidingView,
-    Platform} from "react-native";
+    Platform,
+    RefreshControl
+} from "react-native";
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-    Color,
-    FontFamily
-} from '@app/styles/GlobalStyles';
-import { useCustomAlert } from '@shared/ui/CustomAlert';
+import { FontFamily } from '@app/styles/GlobalStyles';
+import { useToast } from '@shared/ui/Toast';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 import {
     CartSummary,
     EmptyCartView,
     CartItem,
     CartHeader,
-    CartNotifications,
     ValidationModal,
     ClientTypeModal,
     GuestCheckoutModal,
@@ -66,6 +64,8 @@ export const CartScreen = ({ navigation }) => {
     // ===== ОСНОВНЫЕ ХУКИ =====
     const dispatch = useDispatch();
     const route = useRoute();
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
     const { isCartAvailable, isAuthenticated, isGuest } = useCartAvailability();
     
     // Получаем роль пользователя для проверки доступа к заказам
@@ -87,10 +87,8 @@ export const CartScreen = ({ navigation }) => {
     const totalAmount = stats?.totalAmount || 0;
 
     const {
-        notifications,
         addSuccessNotification,
         addErrorNotification,
-        removeNotification
     } = useCartNotifications();
 
     const {
@@ -108,8 +106,7 @@ export const CartScreen = ({ navigation }) => {
         setClientType: changeClientType
     } = useClientType();
 
-    // Хук для кастомных алертов
-    const { showError } = useCustomAlert();
+    const { showError } = useToast();
 
     // ===== ЛОКАЛЬНОЕ СОСТОЯНИЕ =====
     const [selectedItems, setSelectedItems] = useState(new Set());
@@ -280,16 +277,9 @@ export const CartScreen = ({ navigation }) => {
                 // Очищаем параметры СРАЗУ
                 navigation.setParams({ forceRefresh: undefined, timestamp: undefined });
                 
-                // Очищаем кэш и принудительно перезагружаем корзину
-                console.log('📱 CartScreen: Clearing cache and force reloading in useFocusEffect...');
-                clearCartCache().then(() => {
-                    console.log('📱 CartScreen: Cache cleared, dispatching fetchCart from useFocusEffect');
-                    dispatch(fetchCart(true)).unwrap().then(() => {
-                        console.log('✅ CartScreen: Cart data force reloaded in useFocusEffect');
-                    }).catch(err => {
-                        console.error('❌ CartScreen: Error reloading cart in useFocusEffect:', err);
-                    });
-                });
+                // clearCartCache — Redux action, не Promise
+                dispatch(clearCartCache());
+                loadCartData(true);
                 return;
             }
             
@@ -358,9 +348,8 @@ export const CartScreen = ({ navigation }) => {
                                error.includes('unauthorized');
             
             if (!isAuthError) {
-                showError('Ошибка', error, [
-                    { text: 'OK', style: 'primary', onPress: clearError }
-                ]);
+                showError(error, { duration: 5000, position: 'top' });
+                clearError();
             } else {
                 // Для ошибок авторизации просто очищаем ошибку без показа алерта
                 clearError();
@@ -491,7 +480,7 @@ export const CartScreen = ({ navigation }) => {
             setShowValidationModal(true);
         } catch (error) {
             console.error('Detailed validation error:', error);
-            showError('Ошибка', 'Не удалось выполнить валидацию корзины');
+            showError('Не удалось выполнить валидацию корзины', { duration: 5000, position: 'top' });
         }
     };
 
@@ -505,7 +494,7 @@ export const CartScreen = ({ navigation }) => {
                 setShowClientTypeModal(false);
             }
         } catch (error) {
-            showError('Ошибка', 'Не удалось изменить тип клиента');
+            showError('Не удалось изменить тип клиента', { duration: 5000, position: 'top' });
         }
     };
 
@@ -618,13 +607,13 @@ export const CartScreen = ({ navigation }) => {
     // Состояние загрузки
     if (isInitialLoading && (!items || items.length === 0)) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
                 <StatusBar
-                    barStyle="dark-content"
-                    backgroundColor={Color.background || '#FFFFFF'}
+                    barStyle={colors.statusBarStyle}
+                    backgroundColor={colors.background}
                 />
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color="#3339B0" />
+                    <ActivityIndicator size="large" color={colors.primary} />
                     <Text style={styles.loadingText}>Загрузка корзины...</Text>
                 </View>
             </SafeAreaView>
@@ -634,10 +623,10 @@ export const CartScreen = ({ navigation }) => {
     // Пустая корзина
     if (isEmpty) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
                 <StatusBar
-                    barStyle="dark-content"
-                    backgroundColor={Color.background || '#FFFFFF'}
+                    barStyle={colors.statusBarStyle}
+                    backgroundColor={colors.background}
                 />
                 <EmptyCartView key="empty-cart" navigation={navigation} />
             </SafeAreaView>
@@ -647,10 +636,10 @@ export const CartScreen = ({ navigation }) => {
     // ===== ОСНОВНОЙ РЕНДЕР =====
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
             <StatusBar
-                barStyle="dark-content"
-                backgroundColor={Color.background || '#FFFFFF'}
+                barStyle={colors.statusBarStyle}
+                backgroundColor={colors.background}
             />
             
             <KeyboardAvoidingView 
@@ -670,12 +659,6 @@ export const CartScreen = ({ navigation }) => {
                         visible={showGuestNotification}
                     />
                 )}
-
-                {/* Уведомления */}
-                <CartNotifications
-                    notifications={notifications}
-                    onDismiss={removeNotification}
-                />
 
                 {/* Кнопка "Мои заказы" для авторизованных клиентов */}
                 {isAuthenticated && userRole === 'CLIENT' && (
@@ -736,8 +719,15 @@ export const CartScreen = ({ navigation }) => {
                     getItemLayout={null}
                     keyboardShouldPersistTaps="handled"
                     keyboardDismissMode="on-drag"
-                    refreshing={isRefreshing}
-                    onRefresh={handleRefresh}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={isRefreshing}
+                            onRefresh={handleRefresh}
+                            tintColor={colors.primary}
+                            colors={[colors.primary]}
+                            progressBackgroundColor={colors.surface}
+                        />
+                    }
                 />
 
                 {/* Блок "К оплате" */}
@@ -799,10 +789,10 @@ export const CartScreen = ({ navigation }) => {
 };
 
 // ===== СТИЛИ =====
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.background,
     },
 
     keyboardAvoidingView: {
@@ -813,14 +803,14 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.background,
     },
 
     loadingText: {
         marginTop: normalize(16),
         fontSize: normalize(16),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: 'rgba(60, 60, 67, 0.60)',
+        color: colors.textSecondary,
         fontWeight: '500',
     },
 
@@ -830,9 +820,9 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(15),
-        backgroundColor: '#F8F9FF',
+        backgroundColor: colors.surface,
         borderBottomWidth: 1,
-        borderBottomColor: 'rgba(193, 199, 222, 0.20)',
+        borderBottomColor: colors.border,
     },
 
     selectAllButton: {
@@ -846,20 +836,20 @@ const styles = StyleSheet.create({
         height: normalize(22),
         borderRadius: normalize(6),
         borderWidth: 2,
-        borderColor: '#3339B0',
-        backgroundColor: '#FFFFFF',
+        borderColor: colors.primary,
+        backgroundColor: colors.cardBackground,
         marginRight: normalize(12),
         justifyContent: 'center',
         alignItems: 'center',
     },
 
     selectAllCheckboxActive: {
-        backgroundColor: '#3339B0',
-        borderColor: '#3339B0',
+        backgroundColor: colors.primary,
+        borderColor: colors.primary,
     },
 
     selectAllCheckmark: {
-        color: '#FFFFFF',
+        color: colors.textInverse,
         fontSize: normalize(14),
         fontWeight: 'bold',
     },
@@ -868,42 +858,44 @@ const styles = StyleSheet.create({
         fontSize: normalize(16),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '500',
-        color: '#000000',
+        color: colors.textPrimary,
     },
 
     selectedCountText: {
         fontSize: normalize(14),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '400',
-        color: 'rgba(60, 60, 67, 0.60)',
+        color: colors.textSecondary,
     },
 
     list: {
         flex: 1,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.background,
     },
 
     listContent: {
         paddingTop: normalize(8),
-        paddingBottom: normalize(120), // Увеличиваем отступ снизу
+        // Учитываем высоту блока «К оплате» (~150px) + высоту нижнего таб-бара (80px),
+        // чтобы последний товар не оказался под итоговым блоком или таб-баром.
+        paddingBottom: normalize(240),
     },
     
     myOrdersContainer: {
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(8),
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.background,
     },
 
     myOrdersButton: {
-        backgroundColor: '#F8F9FF',
+        backgroundColor: colors.surface,
         borderRadius: normalize(12),
         paddingVertical: normalize(12),
         paddingHorizontal: normalize(16),
         borderWidth: 1,
-        borderColor: '#3339B0',
+        borderColor: colors.primary,
         alignItems: 'center',
         justifyContent: 'center',
-        shadowColor: '#3339B0',
+        shadowColor: colors.primary,
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
         shadowRadius: 4,
@@ -914,13 +906,13 @@ const styles = StyleSheet.create({
         fontSize: normalize(16),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
-        color: '#3339B0',
+        color: colors.primary,
     },
 
     cartSummaryContainer: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.surface,
         borderTopWidth: 1,
-        borderTopColor: 'rgba(193, 199, 222, 0.20)',
+        borderTopColor: colors.border,
         paddingBottom: normalize(40), 
     },
 });

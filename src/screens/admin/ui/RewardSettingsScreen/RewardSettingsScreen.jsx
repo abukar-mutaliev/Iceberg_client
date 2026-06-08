@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
@@ -8,16 +8,17 @@ import {
     TextInput,
     ActivityIndicator,
     Switch,
+    StatusBar,
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 
-import { Color } from "@/styles/GlobalStyles";
 import { selectTokens } from '@entities/auth';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { getBaseUrl } from '@/shared/api/api';
 import { HeaderWithBackButton } from '@/shared/ui/HeaderWithBackButton';
 import { GlobalAlert } from '@shared/ui/CustomAlert';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const RewardSettingsScreen = () => {
     const dispatch = useDispatch();
@@ -25,6 +26,8 @@ const RewardSettingsScreen = () => {
     const tokens = useSelector(selectTokens);
     const token = tokens?.accessToken;
     const { currentUser } = useAuth();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -134,8 +137,8 @@ const RewardSettingsScreen = () => {
                 <Switch
                     value={data.isActive}
                     onValueChange={(value) => updateSetting(type, 'isActive', value)}
-                    trackColor={{ false: '#767577', true: Color.primary }}
-                    thumbColor={data.isActive ? '#fff' : '#f4f3f4'}
+                    trackColor={{ false: colors.border, true: colors.primary }}
+                    thumbColor={data.isActive ? '#fff' : colors.surfaceElevated}
                 />
             </View>
             
@@ -155,16 +158,19 @@ const RewardSettingsScreen = () => {
                     }}
                     keyboardType="numeric"
                     placeholder="0"
+                    placeholderTextColor={colors.textTertiary}
+                    keyboardAppearance={colors.keyboardAppearance}
                     editable={data.isActive}
                 />
             </View>
         </View>
-    ), [updateSetting]);
+    ), [colors, styles, updateSetting]);
 
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={Color.primary} />
+                <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
+                <ActivityIndicator size="large" color={colors.primary} />
                 <Text style={styles.loadingText}>Загрузка настроек...</Text>
             </View>
         );
@@ -172,6 +178,7 @@ const RewardSettingsScreen = () => {
 
     return (
         <View style={styles.container}>
+            <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
             <HeaderWithBackButton
                 title="Настройки вознаграждений"
                 onBackPress={() => navigation.goBack()}
@@ -235,45 +242,45 @@ const RewardSettingsScreen = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Color.background,
+        backgroundColor: colors.background,
     },
     loadingContainer: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: Color.background,
+        backgroundColor: colors.background,
     },
     loadingText: {
         marginTop: 16,
         fontSize: 16,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
     },
     scrollContainer: {
         flex: 1,
     },
     header: {
         padding: 20,
-        backgroundColor: Color.background,
+        backgroundColor: colors.background,
     },
     screenTitle: {
         fontSize: 24,
         fontWeight: '700',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         marginBottom: 8,
     },
     screenSubtitle: {
         fontSize: 16,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         lineHeight: 22,
     },
     settingsContainer: {
         padding: 16,
     },
     settingCard: {
-        backgroundColor: Color.background,
+        backgroundColor: colors.cardBackground,
         borderRadius: 16,
         padding: 20,
         marginBottom: 16,
@@ -282,11 +289,11 @@ const styles = StyleSheet.create({
             width: 0,
             height: 2,
         },
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0.35 : 0.1,
         shadowRadius: 3.84,
         elevation: 5,
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: colors.border,
     },
     settingHeader: {
         flexDirection: 'row',
@@ -297,12 +304,12 @@ const styles = StyleSheet.create({
     settingTitle: {
         fontSize: 18,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         flex: 1,
     },
     settingDescription: {
         fontSize: 14,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginBottom: 16,
         lineHeight: 20,
     },
@@ -314,48 +321,48 @@ const styles = StyleSheet.create({
     amountLabel: {
         fontSize: 16,
         fontWeight: '500',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
     },
     amountInput: {
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: colors.inputBorder,
         borderRadius: 8,
         paddingHorizontal: 12,
         paddingVertical: 8,
         fontSize: 16,
-        color: Color.textPrimary,
-        backgroundColor: Color.background,
+        color: colors.textPrimary,
+        backgroundColor: colors.inputBackground,
         minWidth: 80,
         textAlign: 'right',
     },
     amountInputDisabled: {
-        backgroundColor: '#F8F9FA',
-        color: Color.textSecondary,
+        backgroundColor: colors.surfaceSecondary,
+        color: colors.textSecondary,
     },
     infoContainer: {
         margin: 16,
         padding: 16,
-        backgroundColor: '#F8F9FA',
+        backgroundColor: colors.surfaceSecondary,
         borderRadius: 12,
         borderLeftWidth: 4,
-        borderLeftColor: Color.primary,
+        borderLeftColor: colors.primary,
     },
     infoTitle: {
         fontSize: 16,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         marginBottom: 8,
     },
     infoText: {
         fontSize: 14,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         lineHeight: 20,
     },
     footer: {
         padding: 20,
         borderTopWidth: 1,
-        borderTopColor: Color.border,
-        backgroundColor: Color.background,
+        borderTopColor: colors.border,
+        backgroundColor: colors.background,
     },
     buttonContainer: {
         flexDirection: 'row',
@@ -363,7 +370,7 @@ const styles = StyleSheet.create({
         paddingBottom: 30
     },
     saveButton: {
-        backgroundColor: Color.primary,
+        backgroundColor: colors.primary,
         borderRadius: 12,
         paddingVertical: 16,
         alignItems: 'center',
@@ -379,19 +386,19 @@ const styles = StyleSheet.create({
         color: '#fff',
     },
     cancelButton: {
-        backgroundColor: Color.background,
+        backgroundColor: colors.surface,
         borderRadius: 12,
         paddingVertical: 16,
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: colors.border,
         flex: 1,
     },
     cancelButtonText: {
         fontSize: 16,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
     },
     buttonDisabled: {
         opacity: 0.5,

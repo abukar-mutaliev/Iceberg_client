@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -11,11 +11,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
 import CloseIcon from '@shared/ui/Icon/Profile/CloseIcon';
 import { IconCheck } from '@shared/ui/Icon/Common';
 import { fetchAllDistricts } from '@entities/district/model/slice';
 import { driverApi } from '@entities/user/api/userApi';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const DriverDistrictsModal = ({ 
     visible, 
@@ -24,6 +25,8 @@ export const DriverDistrictsModal = ({
     onSuccess 
 }) => {
     const dispatch = useDispatch();
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
     const { districts, isLoading: districtsLoading } = useSelector(state => state.district);
 
     const [selectedDistricts, setSelectedDistricts] = useState([]);
@@ -127,7 +130,7 @@ export const DriverDistrictsModal = ({
                     </View>
                     <View style={[styles.checkbox, isSelected && styles.checkedCheckbox]}>
                         {isSelected && (
-                            <IconCheck width={16} height={16} color={Color.colorLightMode} />
+                            <IconCheck width={16} height={16} color={colors.textInverse} />
                         )}
                     </View>
                 </View>
@@ -154,7 +157,7 @@ export const DriverDistrictsModal = ({
                                 style={styles.closeButton}
                                 onPress={handleClose}
                             >
-                                <CloseIcon width={24} height={24} color={Color.textSecondary} />
+                                <CloseIcon width={24} height={24} color={colors.textSecondary} />
                             </TouchableOpacity>
                         </View>
 
@@ -186,7 +189,7 @@ export const DriverDistrictsModal = ({
                         <View style={styles.listContainer}>
                             {districtsLoading ? (
                                 <View style={styles.loadingContainer}>
-                                    <ActivityIndicator size="large" color={Color.blue2} />
+                                    <ActivityIndicator size="large" color={colors.primary} />
                                     <Text style={styles.loadingText}>Загрузка районов...</Text>
                                 </View>
                             ) : (
@@ -221,7 +224,7 @@ export const DriverDistrictsModal = ({
                                 disabled={isUpdating}
                             >
                                 {isUpdating ? (
-                                    <ActivityIndicator size="small" color={Color.colorLightMode} />
+                                    <ActivityIndicator size="small" color={colors.textInverse} />
                                 ) : (
                                     <Text style={styles.saveButtonText}>Сохранить</Text>
                                 )}
@@ -234,10 +237,10 @@ export const DriverDistrictsModal = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: colors.modalOverlay,
         justifyContent: 'flex-end',
     },
     modalContainer: {
@@ -245,7 +248,7 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-end',
     },
     modalContent: {
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.cardBackground,
         borderTopLeftRadius: Border.radius.large,
         borderTopRightRadius: Border.radius.large,
         maxHeight: '95%',
@@ -258,13 +261,13 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(16),
         borderBottomWidth: 1,
-        borderBottomColor: Color.border,
+        borderBottomColor: colors.border,
     },
     title: {
         fontSize: normalizeFont(FontSize.size_lg),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
     },
     closeButton: {
         padding: normalize(4),
@@ -272,36 +275,36 @@ const styles = StyleSheet.create({
     driverInfo: {
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(12),
-        backgroundColor: Color.colorLightGray,
+        backgroundColor: colors.surfaceSecondary,
     },
     driverName: {
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
     },
     driverPhone: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginTop: normalize(2),
     },
     counter: {
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(12),
         borderBottomWidth: 1,
-        borderBottomColor: Color.border,
+        borderBottomColor: colors.border,
     },
     counterText: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.blue2,
+        color: colors.primary,
         fontWeight: '500',
     },
     warehouseInfoText: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginTop: normalize(4),
         fontStyle: 'italic',
     },
@@ -312,11 +315,11 @@ const styles = StyleSheet.create({
     districtItem: {
         paddingVertical: normalize(12),
         borderBottomWidth: 1,
-        borderBottomColor: Color.border,
+        borderBottomColor: colors.border,
         paddingHorizontal: normalize(12)
     },
     selectedDistrictItem: {
-        backgroundColor: 'rgba(0, 123, 255, 0.1)',
+        backgroundColor: colors.surfaceSecondary,
     },
     districtContent: {
         flexDirection: 'row',
@@ -331,29 +334,29 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '500',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
     },
     districtDescription: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginTop: normalize(2),
     },
     selectedText: {
-        color: Color.blue2,
+        color: colors.primary,
     },
     checkbox: {
         width: normalize(24),
         height: normalize(24),
         borderRadius: normalize(4),
         borderWidth: 2,
-        borderColor: Color.border,
+        borderColor: colors.border,
         justifyContent: 'center',
         alignItems: 'center',
     },
     checkedCheckbox: {
-        backgroundColor: Color.blue2,
-        borderColor: Color.blue2,
+        backgroundColor: colors.primary,
+        borderColor: colors.primary,
     },
     loadingContainer: {
         alignItems: 'center',
@@ -362,7 +365,7 @@ const styles = StyleSheet.create({
     loadingText: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginTop: normalize(8),
     },
     emptyContainer: {
@@ -372,14 +375,14 @@ const styles = StyleSheet.create({
     emptyText: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
     },
     actions: {
         flexDirection: 'row',
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(16),
         borderTopWidth: 1,
-        borderTopColor: Color.border,
+        borderTopColor: colors.border,
         gap: normalize(12),
     },
     cancelButton: {
@@ -387,27 +390,27 @@ const styles = StyleSheet.create({
         paddingVertical: normalize(12),
         borderRadius: Border.radius.medium,
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: colors.border,
         alignItems: 'center',
     },
     cancelButtonText: {
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '500',
-        color: Color.textSecondary,
+        color: colors.textSecondary,
     },
     saveButton: {
         flex: 1,
         paddingVertical: normalize(12),
         borderRadius: Border.radius.medium,
-        backgroundColor: Color.blue2,
+        backgroundColor: colors.primary,
         alignItems: 'center',
     },
     saveButtonText: {
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.colorLightMode,
+        color: colors.textInverse,
     },
     disabledButton: {
         opacity: 0.6,

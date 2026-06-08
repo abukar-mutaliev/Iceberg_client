@@ -2,7 +2,8 @@
  * Middleware для автоматической перезагрузки корзины после операций с поддержкой коробочной логики
  */
 
-import { fetchCart, fetchCartStats, addNotification } from './slice';
+import { fetchCart, fetchCartStats } from './slice';
+import { showCartToast } from '../lib/showCartToast';
 
 const cartOperationTypes = [
     'cart/addToCart/fulfilled',
@@ -45,18 +46,26 @@ const formatBoxQuantity = (product, quantity) => {
  * @param {Object} state - Состояние приложения
  * @returns {Object|null} - Объект уведомления или null
  */
-const createCartOperationNotification = (operationType, payload, state) => {
-    const { productId, quantity, itemId, guestCart } = payload;
+const normalizeCartActionPayload = (payload) => {
+    if (typeof payload === 'number' || typeof payload === 'string') {
+        return { itemId: payload };
+    }
 
-    let product = null;
+    return payload || {};
+};
+
+const createCartOperationNotification = (operationType, payload, state) => {
+    const { productId, quantity, itemId, guestCart, product: payloadProduct } = normalizeCartActionPayload(payload);
+
+    let product = payloadProduct || null;
 
     if (guestCart && guestCart.items) {
         const cartItem = guestCart.items.find(item =>
             item.productId === productId || item.id === itemId
         );
-        product = cartItem?.product;
+        product = product || cartItem?.product;
     } else {
-        product = state.products?.items?.find(p => p.id === productId);
+        product = product || state.products?.items?.find(p => p.id === productId);
 
         if (!product) {
             const cartItem = state.cart?.items?.find(item =>
@@ -127,6 +136,9 @@ const createCartOperationNotification = (operationType, payload, state) => {
 };
 
 export const cartReloadMiddleware = (store) => (next) => (action) => {
+    const shouldCreateNotification = notificationOperationTypes.includes(action.type);
+    const preActionState = shouldCreateNotification ? store.getState() : null;
+
     const result = next(action);
 
     if (cartOperationTypes.includes(action.type)) {
@@ -157,14 +169,18 @@ export const cartReloadMiddleware = (store) => (next) => (action) => {
             return result;
         }
 
-        if (notificationOperationTypes.includes(action.type)) {
-            const notification = createCartOperationNotification(action.type, action.payload, state);
+        if (shouldCreateNotification) {
+            const notification = createCartOperationNotification(
+                action.type,
+                action.payload,
+                preActionState || store.getState()
+            );
 
             if (notification) {
-                store.dispatch(addNotification(notification));
+                showCartToast(notification);
 
                 if (__DEV__) {
-                    console.log(`📢 CartReloadMiddleware: Added notification for ${action.type}:`, notification.message);
+                    console.log(`📢 CartReloadMiddleware: Toast for ${action.type}:`, notification.message);
                 }
             }
         }
@@ -221,16 +237,12 @@ export const cartReloadMiddleware = (store) => (next) => (action) => {
     }
 
     if (action.type === 'cart/checkout/fulfilled') {
-        store.dispatch({ type: 'cart/clearNotifications' });
-
-        store.dispatch(addNotification({
-            id: `checkout_success_${Date.now()}`,
+        showCartToast({
             type: 'success',
             message: '🎉 Заказ успешно оформлен!',
-            autoHide: true,
             duration: 5000,
-            action: 'checkout'
-        }));
+            position: 'top',
+        });
 
         if (__DEV__) {
             console.log('🎉 CartReloadMiddleware: Order completed successfully');
@@ -256,16 +268,12 @@ export const cartReloadMiddleware = (store) => (next) => (action) => {
         if (isAuthError) {
             // Не логируем вообще, так как корзина скрыта
         } else {
-            // Показываем только реальные ошибки
-            store.dispatch(addNotification({
-                id: `error_${Date.now()}`,
+            showCartToast({
                 type: 'error',
                 message: `Ошибка: ${errorMessage}`,
-                autoHide: true,
                 duration: 5000,
-                icon: '⚠️',
-                action: 'error'
-            }));
+                position: 'top',
+            });
 
             if (__DEV__) {
                 console.error(`❌ CartReloadMiddleware: Error in ${action.type}:`, errorMessage);

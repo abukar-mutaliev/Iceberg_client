@@ -2,6 +2,31 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { makeSelectRoomMessages, selectIsRoomDeleted, selectRoomsList } from '@entities/chat/model/selectors';
 import { useCachedMessages, useMediaPreload } from '@entities/chat/hooks/useChatCache';
+import { authService } from '@shared/api/api';
+import { isGroupAdminRoleSystemMessage } from '@entities/chat/lib/isGroupAdminRoleSystemMessage';
+import { resolveStopDistrictId } from '@entities/chat/lib/resolveStopDistrictId';
+
+const userLikeIsSuperAdmin = (u) => {
+  if (!u) return false;
+  const role = String(u.role || '').toUpperCase();
+  if (role === 'SUPER_ADMIN') return true;
+  return (
+    role === 'ADMIN' &&
+    Boolean(u.admin?.isSuperAdmin ?? u.profile?.isSuperAdmin ?? u.isSuperAdmin)
+  );
+};
+
+const jwtIndicatesSuperAdmin = (decoded) => {
+  if (!decoded || typeof decoded !== 'object') return false;
+  const role = String(decoded.role || '').toUpperCase();
+  if (role === 'SUPER_ADMIN') return true;
+  return Boolean(
+    decoded.isSuperAdmin === true ||
+      decoded.superAdmin === true ||
+      decoded.is_super_admin === true ||
+      decoded.super_admin === true
+  );
+};
 
 /**
  * Хук для управления данными группового чата
@@ -25,6 +50,8 @@ export const useGroupChatData = (roomId) => {
   const cursorId = useSelector((s) => s.chat?.messages?.[roomId]?.cursorId);
   const currentUserId = useSelector((s) => s.auth?.user?.id);
   const currentUser = useSelector((s) => s.auth?.user);
+  const profileData = useSelector((s) => s.profile?.data);
+  const accessToken = useSelector((s) => s.auth?.tokens?.accessToken);
   const roomDataRaw = useSelector((s) => s.chat?.rooms?.byId?.[roomId]);
   const roomData = useMemo(() => roomDataRaw?.room || roomDataRaw, [roomDataRaw]);
   const isRoomDeleted = useSelector((s) => selectIsRoomDeleted(s, roomId));
@@ -85,9 +112,30 @@ export const useGroupChatData = (roomId) => {
     });
 
     // Фильтрация сообщений
-    return uniqueMessages.filter(msg => {
+    return uniqueMessages.filter((msg) => {
+      const explicitType = String(msg?.type || '').toUpperCase();
+
+      // Товар и склад: только лимит 7 дней в канале. Раньше шли после эвристики STOP —
+      // JSON склада содержит `id`, ошибочно попадали под фильтр остановки по району (клиенты не видели карточку).
+      if (explicitType === 'PRODUCT') {
+        if (!isBroadcastRoom) return true;
+        const messageCreatedAt = msg?.createdAt ? new Date(msg.createdAt) : null;
+        if (messageCreatedAt && messageCreatedAt < sevenDaysAgo) {
+          return false;
+        }
+        return true;
+      }
+      if (explicitType === 'WAREHOUSE') {
+        if (!isBroadcastRoom) return true;
+        const messageCreatedAt = msg?.createdAt ? new Date(msg.createdAt) : null;
+        if (messageCreatedAt && messageCreatedAt < sevenDaysAgo) {
+          return false;
+        }
+        return true;
+      }
+
       let stopData = null;
-      const hasStopType = String(msg?.type || '').toUpperCase() === 'STOP';
+      const hasStopType = explicitType === 'STOP';
       if (msg?.stop || msg?.content) {
         if (msg?.stop) {
           stopData = msg.stop;
@@ -100,7 +148,12 @@ export const useGroupChatData = (roomId) => {
         }
       }
 
-      const isStopMessage = hasStopType || Boolean(stopData?.id || stopData?.stopId || stopData?.startTime || stopData?.endTime);
+      // STOP: явный тип, вложенный stop или поля фургона — не использовать общий id (у склада/товара тоже есть id в JSON)
+      const isStopMessage =
+        hasStopType ||
+        Boolean(msg?.stop) ||
+        Boolean(stopData?.stopId || stopData?.stop_id) ||
+        Boolean(stopData?.startTime || stopData?.endTime);
 
       // Фильтрация STOP сообщений по району и времени остановки
       if (isStopMessage) {
@@ -150,15 +203,16 @@ export const useGroupChatData = (roomId) => {
         // Фильтрация по району (только для BROADCAST)
         if (!userDistrictIds.length) return true;
 
-        let stopDistrictId = stopData?.districtId;
-
-        if (!stopDistrictId) {
-          return false;
+        const stopDistrictRaw = resolveStopDistrictId(stopData);
+        // В payload сообщений чата часто нет district/districtId — не скрываем такие STOP,
+        // иначе клиенты с привязкой к району не видят остановки вообще
+        if (stopDistrictRaw === null || stopDistrictRaw === '') {
+          return true;
         }
 
-        const normalizedStopId = typeof stopDistrictId === 'string'
-          ? parseInt(stopDistrictId, 10)
-          : stopDistrictId;
+        const normalizedStopId = typeof stopDistrictRaw === 'string'
+          ? parseInt(stopDistrictRaw, 10)
+          : stopDistrictRaw;
 
         return userDistrictIds.some(userId => {
           const normalizedUserId = typeof userId === 'string'
@@ -168,24 +222,8 @@ export const useGroupChatData = (roomId) => {
         });
       }
 
-      // Фильтрация PRODUCT сообщений - исчезают через 7 дней (только в каналах)
-      if (msg.type === 'PRODUCT') {
-        if (!isBroadcastRoom) return true;
-        const messageCreatedAt = msg?.createdAt ? new Date(msg.createdAt) : null;
-        if (messageCreatedAt && messageCreatedAt < sevenDaysAgo) {
-          return false;
-        }
-        return true;
-      }
-
-      // Фильтрация WAREHOUSE сообщений - исчезают через 7 дней (только в каналах)
-      if (msg.type === 'WAREHOUSE') {
-        if (!isBroadcastRoom) return true;
-        const messageCreatedAt = msg?.createdAt ? new Date(msg.createdAt) : null;
-        if (messageCreatedAt && messageCreatedAt < sevenDaysAgo) {
-          return false;
-        }
-        return true;
+      if (isBroadcastRoom && isGroupAdminRoleSystemMessage(msg)) {
+        return false;
       }
 
       // Остальные типы сообщений проходят без фильтрации
@@ -195,12 +233,21 @@ export const useGroupChatData = (roomId) => {
   
   // Предзагрузка медиа
   useMediaPreload(roomId, messages);
-  
-  // Права доступа для групп
+
+  const jwtDecoded = useMemo(() => {
+    if (!accessToken) return null;
+    return authService.decodeToken(accessToken);
+  }, [accessToken]);
+
+  // Права доступа для групп: суперадмин из JWT, auth после loadUserProfile или из среза profile
+  // (после refresh токена в auth.user часто только id/role без admin.isSuperAdmin).
   const isSuperAdmin = useMemo(() => {
-    return currentUser?.role === 'ADMIN' && 
-           (currentUser?.admin?.isSuperAdmin || currentUser?.profile?.isSuperAdmin || currentUser?.isSuperAdmin);
-  }, [currentUser]);
+    if (jwtIndicatesSuperAdmin(jwtDecoded)) return true;
+    if (userLikeIsSuperAdmin(currentUser)) return true;
+    if (userLikeIsSuperAdmin(profileData)) return true;
+    if (userLikeIsSuperAdmin(profileData?.user)) return true;
+    return false;
+  }, [currentUser, profileData, jwtDecoded]);
 
   const currentParticipant = useMemo(() => {
     if (!roomData?.participants || !currentUserId) return null;

@@ -1,8 +1,8 @@
-import React, { useEffect, useCallback, useState } from 'react';
-import { View, ScrollView, RefreshControl, BackHandler, TouchableOpacity, Text } from 'react-native';
+import React, { useEffect, useCallback, useMemo, useState } from 'react';
+import { View, ScrollView, RefreshControl, BackHandler, TouchableOpacity, Text, StatusBar } from 'react-native';
 import { useRoute, useFocusEffect } from '@react-navigation/native';
 import { HeaderWithBackButton } from '@/shared/ui/HeaderWithBackButton';
-import { styles } from './styles/EmployeeRewardsScreen.styles';
+import { createStyles } from './styles/EmployeeRewardsScreen.styles';
 import {
     useEmployeeRewardsData,
     useEmployeeRewardsNavigation,
@@ -18,11 +18,14 @@ import {
     MonthlySummaryCard
 } from './components';
 import { useAuth } from '@entities/auth/hooks/useAuth';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const EmployeeRewardsScreen = React.memo(({ navigation }) => {
     const route = useRoute();
     const [refreshing, setRefreshing] = useState(false);
     const { currentUser: user } = useAuth();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     // Получаем параметры из route с безопасной обработкой
     const routeParams = route.params || {};
@@ -264,6 +267,7 @@ export const EmployeeRewardsScreen = React.memo(({ navigation }) => {
     try {
         return (
             <View style={styles.screen}>
+                <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
                 <HeaderWithBackButton
                     title={navigationHook.screenTitle}
                     onBackPress={navigationHook.handleBackNavigation}
@@ -282,6 +286,9 @@ export const EmployeeRewardsScreen = React.memo(({ navigation }) => {
                             refreshing={refreshing}
                             onRefresh={handleRefresh}
                             progressViewOffset={60}
+                            tintColor={colors.primary}
+                            colors={[colors.primary]}
+                            progressBackgroundColor={colors.surface}
                         />
                     }
                     showsVerticalScrollIndicator={false}
@@ -297,6 +304,7 @@ export const EmployeeRewardsScreen = React.memo(({ navigation }) => {
         console.error('Critical error in EmployeeRewardsScreen render:', error);
         return (
             <View style={styles.screen}>
+                <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
                 <HeaderWithBackButton
                     title="Ошибка"
                     onBackPress={navigationHook.handleBackNavigation}

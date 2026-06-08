@@ -114,7 +114,7 @@ export const WelcomeScreen = ({ navigation }) => {
 const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: isDark ? colors.background : '#738aff',
+        backgroundColor: isDark ? '#1F2450' : '#738aff',
         elevation: 10,
         overflow: 'hidden',
         justifyContent: 'center',
@@ -123,7 +123,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     icon: {
         width: '71%',
         marginTop: 130,
-        opacity: isDark ? 0.75 : 1,
+        opacity: 1,
     },
     textContainer: {
         position: 'absolute',

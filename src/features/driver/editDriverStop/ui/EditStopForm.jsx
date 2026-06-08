@@ -147,6 +147,16 @@ const applyTimeToDate = (baseDate, timeValue, fallbackDate = new Date()) => {
   return nextDate;
 };
 
+const getAssigneeValue = (stopData) => {
+  if (stopData?.employeeId || stopData?.employee?.id) {
+    return `EMPLOYEE:${stopData.employeeId || stopData.employee.id}`;
+  }
+  if (stopData?.driverId || stopData?.driver?.id) {
+    return `DRIVER:${stopData.driverId || stopData.driver.id}`;
+  }
+  return null;
+};
+
 export const EditStopForm = ({ 
   stopData, 
   onClose, 
@@ -233,9 +243,7 @@ export const EditStopForm = ({
   const [selectedDistrict, setSelectedDistrict] = useState(stopData?.districtId || null);
   const [showDistrictPicker, setShowDistrictPicker] = useState(false);
   const [warehouseId, setWarehouseId] = useState(stopData?.warehouseId || null);
-  const [selectedDriver, setSelectedDriver] = useState(
-    stopData?.driverId || stopData?.driver?.id || null
-  );
+  const [selectedDriver, setSelectedDriver] = useState(getAssigneeValue(stopData));
   const [showDriverPicker, setShowDriverPicker] = useState(false);
   const [selectedProducts, setSelectedProducts] = useState(
     stopData?.products?.map(sp => ({
@@ -251,8 +259,8 @@ export const EditStopForm = ({
   const timeFieldsTouchedRef = useRef(false);
 
   useEffect(() => {
-    setSelectedDriver(stopData?.driverId || stopData?.driver?.id || null);
-  }, [stopData?.driverId, stopData?.driver?.id]);
+    setSelectedDriver(getAssigneeValue(stopData));
+  }, [stopData?.driverId, stopData?.driver?.id, stopData?.employeeId, stopData?.employee?.id]);
 
   // Мемоизируем инициализацию mapLocation чтобы избежать бесконечного рендеринга
   const initialMapLocation = useMemo(() => {
@@ -284,7 +292,7 @@ export const EditStopForm = ({
   const navigation = useNavigation();
   const userRole = useSelector(state => state.auth?.user?.role || 'DRIVER');
   const isAdminOrEmployee = userRole === 'ADMIN' || userRole === 'EMPLOYEE';
-  const allDrivers = useSelector(state => state.driver?.allDrivers || []);
+  const routeAssignees = useSelector(state => state.driver?.routeAssignees || []);
   const { 
     showWarning: showAlertWarning,
     showError: showAlertError
@@ -654,7 +662,7 @@ export const EditStopForm = ({
     }
 
     if (isAdminOrEmployee && !selectedDriver) {
-      newErrors.driver = 'Необходимо выбрать водителя';
+      newErrors.driver = 'Необходимо выбрать водителя или сотрудника';
       isFormValid = false;
     }
 
@@ -876,7 +884,12 @@ export const EditStopForm = ({
     formData.append('truckModel', truckModel);
     formData.append('truckNumber', truckNumber);
     if (isAdminOrEmployee && selectedDriver) {
-      formData.append('driverId', selectedDriver);
+      const [assigneeType, assigneeId] = String(selectedDriver).split(':');
+      if (assigneeType === 'EMPLOYEE') {
+        formData.append('employeeId', assigneeId);
+      } else {
+        formData.append('driverId', assigneeId || selectedDriver);
+      }
     }
 
     if (scheduleEnabled) {
@@ -945,13 +958,13 @@ export const EditStopForm = ({
       )}
 
       {isAdminOrEmployee && (
-        <FormSection title="Водитель">
+        <FormSection title="Ответственный">
           <FormField
             required={isAdminOrEmployee}
             error={errors.driver && typeof errors.driver === 'string' ? errors.driver : ''}
           >
             <DriverPicker
-              drivers={allDrivers}
+              drivers={routeAssignees}
               selectedDriver={selectedDriver}
               setSelectedDriver={(driverId) => {
                 setSelectedDriver(driverId);
@@ -960,6 +973,12 @@ export const EditStopForm = ({
               showDriverPicker={showDriverPicker}
               setShowDriverPicker={setShowDriverPicker}
               error={errors.driver && typeof errors.driver === 'string' ? errors.driver : ''}
+              label="Водитель или сотрудник"
+              placeholder="Выберите ответственного"
+              modalTitle="Выберите ответственного"
+              searchPlaceholder="Поиск по имени или телефону..."
+              emptyText="Список ответственных пуст"
+              notFoundText="Ответственные не найдены"
             />
           </FormField>
         </FormSection>

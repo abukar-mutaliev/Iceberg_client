@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, ScrollView, RefreshControl, Animated, StatusBar, TouchableOpacity, Text } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useDispatch } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -12,18 +13,35 @@ import { GlobalAlert } from '@shared/ui/CustomAlert';
 // Импорты общих компонентов и утилит
 import { useOrderDetails } from '@shared/hooks/useOrderDetails';
 import { canCancelOrder } from '@shared/lib/orderUtils';
-import { createOrderDetailsStyles } from '@shared/ui/OrderDetailsStyles';
+import { useOrderDetailsStyles, OrderDetailsScreenThemeProvider, useOrderDetailsScreenBackground, ORDER_DETAILS_CLIENT_DARK_BACKGROUND } from '@shared/ui/OrderDetailsStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { navigateToOrderDetailsInCart } from '@screens/ordes/lib/orderDetailsNavigation';
 import { OrderHeader } from '@shared/ui/OrderHeader/ui/OrderHeader';
+import { OrderDetailsBackButton } from '@shared/ui/OrderDetailsBackButton/ui/OrderDetailsBackButton';
 import { DeliveryInfo } from '@shared/ui/DeliveryInfo/ui/DeliveryInfo';
 import { OrderItems } from '@shared/ui/OrderItems/ui/OrderItems';
 import { OrderLoadingState, OrderErrorState } from '@shared/ui/OrderLoadingState/ui/OrderLoadingState';
 import { WaitingStockIndicator, SplitOrderInfo, useSplitOrders } from '@entities/order';
 
-const styles = createOrderDetailsStyles();
-
 export const OrderDetailsClientScreen = () => {
+    return (
+        <OrderDetailsScreenThemeProvider darkScreenBackground={ORDER_DETAILS_CLIENT_DARK_BACKGROUND}>
+            <OrderDetailsClientScreenContent />
+        </OrderDetailsScreenThemeProvider>
+    );
+};
+
+const OrderDetailsClientScreenContent = () => {
     const route = useRoute();
     const navigation = useNavigation();
+    const { colors } = useTheme();
+    const styles = useOrderDetailsStyles();
+    const screenBackground = useOrderDetailsScreenBackground();
+    const insets = useSafeAreaInsets();
+    const scrollContentStyle = [
+        styles.scrollContent,
+        { paddingBottom: 32 + insets.bottom + 34 },
+    ];
     const { orderId, showSplitInfo, originalOrderNumber } = route.params || {};
     
     // Отладочная информация
@@ -178,10 +196,9 @@ export const OrderDetailsClientScreen = () => {
 
     // Обработчик для нажатия на разделенные заказы
     const handleSplitOrderPress = useCallback((splitOrder) => {
-        navigation.navigate('OrderDetails', { 
-            orderId: splitOrder.id,
+        navigateToOrderDetailsInCart(navigation, splitOrder.id, {
             showSplitInfo: true,
-            originalOrderNumber: originalOrderNumber || getOriginalOrderNumber(order)
+            originalOrderNumber: originalOrderNumber || getOriginalOrderNumber(order),
         });
     }, [navigation, originalOrderNumber, getOriginalOrderNumber, order]);
 
@@ -228,7 +245,7 @@ export const OrderDetailsClientScreen = () => {
                             </View>
                         ) : (
                             <>
-                                <Icon name="cancel" size={20} color="#fff" />
+                                <Icon name="cancel" size={20} color="#FFFFFF" />
                                 <Text style={styles.cancelButtonText}>Отменить заказ</Text>
                             </>
                         )}
@@ -240,23 +257,32 @@ export const OrderDetailsClientScreen = () => {
 
     // Рендер скелетона загрузки
     if (loading && !refreshing) {
-        return <OrderLoadingState />;
+        return (
+            <>
+                <OrderDetailsBackButton fallbackScreen="MyOrders" />
+                <OrderLoadingState />
+            </>
+        );
     }
 
     // Рендер ошибки
     if (error && !loading) {
         return (
-            <OrderErrorState
-                error={error}
-                onRetry={() => loadOrderDetails()}
-            />
+            <>
+                <OrderDetailsBackButton fallbackScreen="MyOrders" />
+                <OrderErrorState
+                    error={error}
+                    onRetry={() => loadOrderDetails()}
+                />
+            </>
         );
     }
 
     // Основной рендер
     return (
         <View style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor="#667eea" />
+            <StatusBar barStyle="light-content" backgroundColor={screenBackground} />
+            <OrderDetailsBackButton fallbackScreen="MyOrders" />
 
             <Animated.View
                 style={[
@@ -269,15 +295,15 @@ export const OrderDetailsClientScreen = () => {
             >
                 <ScrollView
                     style={styles.scrollContainer}
-                    contentContainerStyle={styles.scrollContent}
+                    contentContainerStyle={scrollContentStyle}
                     showsVerticalScrollIndicator={false}
                     refreshControl={
                         <RefreshControl
                             refreshing={refreshing}
                             onRefresh={refreshOrderDetails}
-                            colors={['#667eea']}
-                            tintColor="#667eea"
-                            progressBackgroundColor="#fff"
+                            colors={[colors.primary]}
+                            tintColor={colors.primary}
+                            progressBackgroundColor={colors.surface}
                         />
                     }
                 >

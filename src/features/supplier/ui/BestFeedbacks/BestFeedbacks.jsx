@@ -1,13 +1,29 @@
 import React, { useMemo } from 'react';
 import { View, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
-import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { FeedbackCard } from "@entities/feedback/ui/FeedbackCard";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+const hasFeedbackCommentText = (feedback) => {
+    const comment = feedback?.comment;
+    return typeof comment === 'string' && comment.trim().length > 0;
+};
+
+export const filterDisplayableSupplierFeedbacks = (feedbacks = []) => {
+    if (!Array.isArray(feedbacks)) return [];
+
+    return feedbacks.filter(feedback =>
+        feedback &&
+        typeof feedback === 'object' &&
+        feedback.id !== undefined &&
+        feedback.rating >= 4 &&
+        hasFeedbackCommentText(feedback)
+    );
+};
+
 /**
  * Оптимизированный компонент для отображения лучших отзывов поставщика
- * - Показывает только отзывы с рейтингом 4 и 5 звезд
+ * - Показывает только отзывы с рейтингом 4 и 5 звезд и с текстом
  * - Использует мемоизацию для предотвращения лишних рендеров
  * - Оптимизированы проверки наличия отзывов
  * - Добавлена защита от неожиданных типов данных
@@ -16,19 +32,12 @@ export const BestFeedbacks = React.memo(({
                                              feedbacks = [],
                                              onProductPress = () => {}
                                          }) => {
-    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(), []);
 
-    // Мемоизируем валидные отзывы (фильтрация невалидных отзывов и отзывов с низким рейтингом)
-    const validFeedbacks = useMemo(() => {
-        if (!Array.isArray(feedbacks)) return [];
-
-        return feedbacks.filter(feedback =>
-            feedback &&
-            typeof feedback === 'object' &&
-            feedback.id !== undefined &&
-            feedback.rating >= 4 // Показываем только отзывы с рейтингом 4 и 5
-        );
-    }, [feedbacks]);
+    const validFeedbacks = useMemo(
+        () => filterDisplayableSupplierFeedbacks(feedbacks),
+        [feedbacks]
+    );
 
     // Если нет отзывов, не отображаем компонент вообще
     if (validFeedbacks.length === 0) return null;
@@ -52,6 +61,7 @@ export const BestFeedbacks = React.memo(({
                     <FeedbackCard
                         feedback={feedback}
                         onExpandComment={handleExpandComment}
+                        compact
                     />
                 </TouchableOpacity>
             ))}
@@ -62,7 +72,7 @@ export const BestFeedbacks = React.memo(({
 // Добавляем displayName для удобства отладки
 BestFeedbacks.displayName = 'BestFeedbacks';
 
-const styles = StyleSheet.create({
+const createStyles = () => StyleSheet.create({
     container: {
         marginTop: SCREEN_WIDTH * 0.023,
         marginBottom: SCREEN_WIDTH * 0.003,
@@ -74,7 +84,7 @@ const styles = StyleSheet.create({
         marginBottom: SCREEN_WIDTH * 0.023,
     },
     feedbackWrapper: {
-        marginBottom: SCREEN_WIDTH * 0.007,
+        marginBottom: SCREEN_WIDTH * 0.037,
         borderRadius: 19,
         overflow: 'hidden',
     },

@@ -1,9 +1,10 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
-import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { IconEdit, IconDelete } from '@shared/ui/Icon/ProductManagement';
 import {CategoryIcon} from "@entities/category/ui/CategoryIcon";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 // Объект для соответствия имени категории и типа иконки
 const CATEGORY_ICON_MAP = {
@@ -15,6 +16,9 @@ const CATEGORY_ICON_MAP = {
 };
 
 export const CategoryListItem = ({ category, products, onEdit, onDelete }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     const productCount = useMemo(() => {
         if (!products || !products.length) return 0;
 
@@ -31,9 +35,9 @@ export const CategoryListItem = ({ category, products, onEdit, onDelete }) => {
     const hasProducts = productCount > 0;
 
     const getBadgeColor = () => {
-        if (productCount > 10) return Color.green;
-        if (productCount > 0) return Color.blue2;
-        return Color.grey7D7D7D;
+        if (productCount > 10) return colors.success;
+        if (productCount > 0) return colors.primary;
+        return colors.textTertiary;
     };
 
     // Определяем тип иконки на основе имени категории
@@ -52,7 +56,7 @@ export const CategoryListItem = ({ category, products, onEdit, onDelete }) => {
                         type={getIconType()} 
                         style={styles.categoryIcon}
                         size={24} 
-                        color={Color.blue2} 
+                        color={colors.primary} 
                     />
                 </View>
             </View>
@@ -75,7 +79,7 @@ export const CategoryListItem = ({ category, products, onEdit, onDelete }) => {
                     activeOpacity={0.7}
                     onPress={onEdit}
                 >
-                    <IconEdit width={18} height={18} color={Color.blue2} />
+                    <IconEdit width={18} height={18} color={colors.primary} />
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -83,17 +87,17 @@ export const CategoryListItem = ({ category, products, onEdit, onDelete }) => {
                     activeOpacity={0.7}
                     onPress={onDelete}
                 >
-                    <IconDelete width={18} height={18} color={Color.colorRed} />
+                    <IconDelete width={18} height={18} color={colors.error} />
                 </TouchableOpacity>
             </View>
         </Animated.View>
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         marginTop: normalize(12),
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.cardBackground,
         borderRadius: normalize(20),
         padding: normalize(16),
         marginBottom: normalize(12),
@@ -102,9 +106,11 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 3,
-        elevation: 2,
+        shadowOpacity: isDark ? 0.25 : 0.08,
+        shadowRadius: isDark ? 6 : 3,
+        elevation: isDark ? 2 : 2,
+        borderWidth: isDark ? 1 : 0,
+        borderColor: colors.border,
     },
     leftContent: {
         marginRight: normalize(12),
@@ -132,7 +138,7 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         flex: 1,
     },
     badgeContainer: {
@@ -147,12 +153,12 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
-        color: Color.colorLightMode,
+        color: colors.textInverse,
     },
     description: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         lineHeight: normalizeFont(FontSize.size_xs) * 1.4,
     },
     actionsContainer: {

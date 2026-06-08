@@ -12,6 +12,30 @@ import { ProductTile } from '@entities/product/ui/ProductTile';
 import { selectDeletedProductIds } from '@entities/product/model/selectors';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
+/**
+ * Основные цены каталога (как на экране товара: ProductContent / useProductDetailData).
+ * product.price — цена за единицу; boxPrice при отсутствии считается как price * itemsPerBox.
+ */
+function resolveCatalogPricing(catalogProduct) {
+    if (!catalogProduct || typeof catalogProduct !== 'object') {
+        return null;
+    }
+    const itemsPerBox = Number(catalogProduct.itemsPerBox) || 1;
+    const isPendingLike =
+        catalogProduct.moderationStatus === 'PENDING'
+        || catalogProduct.moderationStatus === 'REJECTED';
+    const rawUnit = isPendingLike
+        ? Number(catalogProduct.supplierProposedPrice ?? catalogProduct.price)
+        : Number(catalogProduct.price);
+    const explicitBox = isPendingLike
+        ? Number(catalogProduct.supplierProposedBoxPrice ?? catalogProduct.boxPrice)
+        : Number(catalogProduct.boxPrice);
+    const unitPrice = Number.isFinite(rawUnit) ? rawUnit : 0;
+    const hasExplicitBoxPrice = Number.isFinite(explicitBox) && explicitBox > 0;
+    const boxPrice = hasExplicitBoxPrice ? explicitBox : unitPrice * itemsPerBox;
+    return { unitPrice, boxPrice, itemsPerBox };
+}
+
 export const WarehouseProductsList = ({ warehouseId, products, loading }) => {
     const deletedProductIds = useSelector(selectDeletedProductIds);
     const { colors, isDark } = useTheme();
@@ -52,13 +76,30 @@ export const WarehouseProductsList = ({ warehouseId, products, loading }) => {
                 return true;
             })
             .map(product => {
-            // Извлекаем itemsPerBox
-            const itemsPerBox = product.itemsPerBox || product.product?.itemsPerBox || 1;
-            
-            // Получаем цену
-            const price = product.price || product.product?.price || 0;
-            const pricePerItem = price / itemsPerBox;
-            
+            const catalogProduct =
+                product.product && typeof product.product === 'object' ? product.product : null;
+            const catalog = resolveCatalogPricing(catalogProduct);
+
+            let itemsPerBox = catalog?.itemsPerBox
+                ?? catalogProduct?.itemsPerBox
+                ?? product.itemsPerBox
+                ?? 1;
+            if (!itemsPerBox || itemsPerBox < 1) {
+                itemsPerBox = 1;
+            }
+
+            let unitPrice;
+            let boxPrice;
+            if (catalog && catalogProduct) {
+                unitPrice = catalog.unitPrice;
+                boxPrice = catalog.boxPrice;
+                itemsPerBox = catalog.itemsPerBox;
+            } else {
+                const warehouseBoxPrice = Number(product.price ?? 0) || 0;
+                boxPrice = warehouseBoxPrice;
+                unitPrice = warehouseBoxPrice / itemsPerBox;
+            }
+
             // Получаем категорию
             const category = product.product?.categories?.[0]?.name || 
                             product.categories?.[0]?.name || 
@@ -70,9 +111,11 @@ export const WarehouseProductsList = ({ warehouseId, products, loading }) => {
                 id: product.product?.id || product.productId || product.id,
                 name: product.name || product.product?.name,
                 title: product.name || product.product?.name,
-                price: pricePerItem,
-                boxPrice: price,
-                itemsPerBox: itemsPerBox,
+                price: unitPrice,
+                pricePerItem: unitPrice,
+                boxPrice,
+                itemsPerBox,
+                priceInfo: catalogProduct?.priceInfo ?? product.priceInfo ?? null,
                 stockQuantity: product.quantity || product.stockQuantity || 0,
                 availableQuantity: product.availableQuantity || product.quantity || 0,
                 isActive: (product.isActive !== false) && (product.product?.isActive !== false),
@@ -80,7 +123,7 @@ export const WarehouseProductsList = ({ warehouseId, products, loading }) => {
                 image: (product.images && product.images[0]) || (product.product?.images && product.product.images[0]),
                 category: category,
                 categories: product.product?.categories || product.categories || [],
-                originalData: product.product || product,
+                originalData: catalogProduct || product,
             };
         });
     }, [products, deletedProductIdSet]);

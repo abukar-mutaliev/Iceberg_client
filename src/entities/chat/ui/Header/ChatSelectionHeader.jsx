@@ -113,6 +113,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
   },
   backButton: {
     padding: 8,
+    marginTop: -3,
   },
   titleWrap: {
     flex: 1,
@@ -130,5 +131,6 @@ const createStyles = (colors, isDark) => StyleSheet.create({
   },
   iconBtn: {
     padding: 8,
+    marginTop: -3,
   },
 });

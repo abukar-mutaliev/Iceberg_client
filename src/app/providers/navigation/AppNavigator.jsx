@@ -2,18 +2,13 @@
 // ЧАСТЬ 1: Imports и Constants
 // ============================================================================
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { Platform, Linking, Animated, View, Text, TouchableOpacity, Image } from 'react-native';
+import { Platform, Animated, View, Text, TouchableOpacity, Image } from 'react-native';
 import ThemedStatusBar from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NavigationContainer, DefaultTheme as NavDefaultTheme, DarkTheme as NavDarkTheme } from "@react-navigation/native";
-import { createStackNavigator, CardStyleInterpolators } from "@react-navigation/stack";
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useDispatch, useSelector } from "react-redux";
-import { useNavigation } from '@react-navigation/native';
 
 // Hooks & Services
-import { useNotifications } from "@entities/notification";
 import PushNotificationService from '@shared/services/PushNotificationService';
 import { useAuth } from "@entities/auth/hooks/useAuth";
 import { selectIsAuthenticated } from "@entities/auth/model/selectors";
@@ -97,14 +92,13 @@ import {
     ProductReturnDetailScreen,
     CreateReturnModal
 } from '@screens/product-return';
-import { getBaseUrl } from "@shared/api/api";
 
 // Navigation Config
 import { linkingConfig } from '@shared/config/linkingConfig';
 import { DeepLinkHandler } from '@shared/ui/DeepLinkHandler';
-import { AppContainer } from "@app/providers/AppContainer/AppContainer";
-import { CustomTabBar, TabBarProvider, useTabBar } from "@widgets/navigation";
 import { featureFlags } from "@shared/config/featureFlags";
+import { MainTabNavigator } from './MainTabNavigator';
+import { NavigationWrapper } from './NavigationWrapper';
 // InAppNotificationProvider больше не используется - показываем системные уведомления как в WhatsApp
 // import { InAppNotificationProvider } from '@shared/ui/InAppNotificationBanner';
 
@@ -114,110 +108,35 @@ import {
     fadeIn,
     modalSlideFromBottom,
     slideFromBottom,
-    cardStackTransition,
-    productChainTransition,
     defaultScreenOptions,
     fullScreenModal
 } from '@app/providers/navigation/transitionConfigs';
+import {
+    useDeepLinking,
+} from '@app/providers/navigation/navigationServices';
+import {
+    createProductDetailScreenOptions,
+    createScreenOptions,
+    useCreateProductDetailScreenOptions,
+    useCreateScreenOptions,
+    useThemedCardStyle,
+} from '@app/providers/navigation/navigationOptions';
+import {
+    AdminStack,
+    CartStack,
+    ChatStack,
+    MainStack,
+    ProfileStack,
+    SearchStack,
+    Stack,
+} from './stacks/stackNavigators';
 
 // ============================================================================
 // ЧАСТЬ 2: Navigation Stacks
 // ============================================================================
-const Stack = createStackNavigator();
-const Tab = createBottomTabNavigator();
-const MainStack = createStackNavigator();
-const SearchStack = createStackNavigator();
-const CartStack = createStackNavigator();
-const ChatStack = createStackNavigator();
-const ProfileStack = createStackNavigator();
-const AdminStack = createStackNavigator();
-
 // ============================================================================
 // ЧАСТЬ 3: Утилиты и хуки
 // ============================================================================
-
-// Хук для обработки Deep Links
-const useDeepLinking = () => {
-    const processedUrls = useRef(new Set());
-    const [initialUrl, setInitialUrl] = useState(null);
-
-    useEffect(() => {
-        const handleDeepLink = (url) => {
-            const apiBaseUrl = getBaseUrl();
-            
-            // Пропускаем служебные URL
-            if (url.startsWith('exp://') ||
-                url.includes('expo-dev-client://') ||
-                url.startsWith(apiBaseUrl)) {
-                return;
-            }
-
-            // Предотвращаем дублирование
-            if (processedUrls.current.has(url)) return;
-            
-            processedUrls.current.add(url);
-
-            // Очистка старых URL
-            if (processedUrls.current.size > 20) {
-                const urls = Array.from(processedUrls.current);
-                urls.slice(0, 10).forEach(oldUrl => processedUrls.current.delete(oldUrl));
-            }
-
-            // Парсинг и навигация
-            const match = url.match(/iceberg:\/\/(\w+)\/(\d+)/);
-            if (match) {
-                const [, type, id] = match;
-                const itemId = parseInt(id);
-
-                setTimeout(() => {
-                    switch (type) {
-                        case 'stop':
-                            window.navigateToStops?.({
-                                stopId: itemId,
-                                source: 'deep_link',
-                                forceRefresh: true,
-                                skipDeepLinkCheck: true
-                            });
-                            break;
-                        case 'order':
-                            window.navigateToOrder?.({
-                                orderId: itemId,
-                                source: 'deep_link',
-                                forceRefresh: true
-                            });
-                            break;
-                        case 'chat':
-                            window.navigateToChat?.({
-                                roomId: itemId,
-                                source: 'deep_link',
-                                fromNotification: true
-                            });
-                            break;
-                        default:
-                            console.warn('Unknown deep link type:', type);
-                    }
-                }, 300);
-            }
-        };
-
-        // Обработка начального URL
-        Linking.getInitialURL().then((url) => {
-            if (url) {
-                setInitialUrl(url);
-                setTimeout(() => handleDeepLink(url), 1500);
-            }
-        });
-
-        // Подписка на изменения URL
-        const subscription = Linking.addEventListener('url', (event) => {
-            handleDeepLink(event.url);
-        });
-
-        return () => subscription?.remove();
-    }, []);
-
-    return initialUrl;
-};
 
 // Хук для очистки избранного
 // Оптимизация: запускается однократно за сессию с задержкой 30 сек,
@@ -264,412 +183,8 @@ const useFavoritesCleanup = (isAuthenticated) => {
 };
 
 // ============================================================================
-// ЧАСТЬ 4: Навигационные функции
-// ============================================================================
-
-const createNavigationFunctions = (navigation) => {
-    const navigateToStops = (params = {}) => {
-        try {
-            if (!params.stopId) {
-                navigation.navigate('StopsListScreen', params);
-                return;
-            }
-
-            const stopId = parseInt(params.stopId);
-            const { InteractionManager } = require('react-native');
-            const { CommonActions } = require('@react-navigation/native');
-
-            const performNavigation = () => {
-                try {
-                    navigation.dispatch(
-                        CommonActions.reset({
-                            index: 1,
-                            routes: [
-                                { name: 'Main' },
-                                {
-                                    name: 'StopDetails',
-                                    params: {
-                                        stopId,
-                                        fromNotification: true,
-                                        ...params
-                                    }
-                                }
-                            ]
-                        })
-                    );
-                } catch (error) {
-                    console.error('Navigation error to stop (reset):', error);
-                    try {
-                        navigation.navigate('StopDetails', {
-                            stopId,
-                            fromNotification: true,
-                            ...params
-                        });
-                    } catch (fallbackError) {
-                        console.error('Fallback navigation to stop failed:', fallbackError);
-                    }
-                }
-            };
-
-            setTimeout(() => {
-                requestAnimationFrame(() => {
-                    InteractionManager.runAfterInteractions(() => {
-                        if (!navigation || typeof navigation.dispatch !== 'function') {
-                            setTimeout(() => {
-                                if (navigation && typeof navigation.dispatch === 'function') {
-                                    performNavigation();
-                                }
-                            }, 500);
-                            return;
-                        }
-                        performNavigation();
-                    });
-                });
-            }, 1500);
-        } catch (error) {
-            console.error('Navigation error to stops:', error);
-            try {
-                navigation.navigate('Main', {
-                    screen: 'MainTab',
-                    params: { screen: 'StopsListScreen' }
-                });
-            } catch (fallbackError) {
-                console.error('Fallback navigation failed:', fallbackError);
-            }
-        }
-    };
-
-    const navigateToOrder = (params = {}) => {
-        try {
-            if (!params.orderId) {
-                navigation.navigate('Cart', { screen: 'MyOrders', params });
-                return;
-            }
-
-            const orderId = parseInt(params.orderId);
-            const userRole = navigation.getState()?.routes
-                ?.find(route => route.name === 'Main')?.state?.routes
-                ?.find(route => route.name === 'ProfileTab')?.params?.userRole || 'CLIENT';
-
-            const isEmployee = userRole === 'EMPLOYEE' || userRole === 'ADMIN';
-            
-            if (isEmployee) {
-                try {
-                    navigation.navigate('Admin', {
-                        screen: 'StaffOrderDetails',
-                        params: { orderId, fromNotification: true, ...params }
-                    });
-                } catch (error) {
-                    console.warn('StaffOrderDetails navigation failed, trying OrderDetails:', error.message);
-                    navigation.navigate('Cart', {
-                        screen: 'OrderDetails',
-                        params: { orderId, fromNotification: true, ...params }
-                    });
-                }
-            } else {
-                navigation.navigate('Cart', {
-                    screen: 'OrderDetails',
-                    params: { orderId, fromNotification: true, ...params }
-                });
-            }
-        } catch (error) {
-            console.error('General navigation error to order:', error);
-        }
-    };
-
-    const navigateToChat = (data) => {
-        try {
-            if (!data.roomId) {
-                if (__DEV__) {
-                    console.warn('[AppNavigator] ⚠️ No roomId provided for chat navigation', data);
-                }
-                return;
-            }
-
-            const roomId = parseInt(data.roomId || data.room_id);
-            if (__DEV__) {
-                console.log('[AppNavigator] 🔄 navigateToChat вызван', {
-                    roomId,
-                    autoFocusInput: data.autoFocusInput,
-                    messageId: data.messageId
-                });
-            }
-
-            // При холодном запуске навигация может быть перезаписана WelcomeScreen
-            // Используем requestAnimationFrame и InteractionManager для гарантии, что навигация выполнится после инициализации
-            const { InteractionManager } = require('react-native');
-            const { CommonActions } = require('@react-navigation/native');
-            
-            // Увеличенная задержка для гарантии, что WelcomeScreen завершил свою работу и Main экран загружен
-            setTimeout(() => {
-                requestAnimationFrame(() => {
-                    InteractionManager.runAfterInteractions(() => {
-                        try {
-                            // Проверяем, что навигация все еще доступна
-                            if (!navigation || typeof navigation.navigate !== 'function') {
-                                if (__DEV__) {
-                                    console.warn('[AppNavigator] ⚠️ Navigation недоступна, откладываем навигацию');
-                                }
-                                // Повторная попытка через небольшую задержку
-                                setTimeout(() => {
-                                    if (navigation && typeof navigation.navigate === 'function') {
-                                        // Используем reset для замены стека навигации
-                                        navigation.dispatch(
-                                            CommonActions.reset({
-                                                index: 1,
-                                                routes: [
-                                                    { name: 'Main' },
-                                                    { 
-                                                        name: 'ChatRoom',
-                                                        params: {
-                                                            roomId,
-                                                            fromNotification: true,
-                                                            messageId: data.messageId || null,
-                                                            autoFocusInput: data.autoFocusInput || false,
-                                                        }
-                                                    }
-                                                ]
-                                            })
-                                        );
-                                        if (__DEV__) {
-                                            console.log('[AppNavigator] ✅ Навигация к чату выполнена (повторная попытка, reset)', { roomId });
-                                        }
-                                    }
-                                }, 500);
-                                return;
-                            }
-
-                            // Используем reset для замены стека навигации, чтобы при нажатии "назад" вернуться на Main
-                            navigation.dispatch(
-                                CommonActions.reset({
-                                    index: 1,
-                                    routes: [
-                                        { name: 'Main' }, // Список чатов в качестве базового экрана
-                                        { 
-                                            name: 'ChatRoom',
-                                            params: {
-                                                roomId,
-                                                fromNotification: true,
-                                                messageId: data.messageId || null,
-                                                autoFocusInput: data.autoFocusInput || false,
-                                            }
-                                        }
-                                    ]
-                                })
-                            );
-
-                            if (__DEV__) {
-                                console.log('[AppNavigator] ✅ Навигация к чату выполнена (reset stack)', { roomId });
-                            }
-                        } catch (error) {
-                            if (__DEV__) {
-                                console.error('[AppNavigator] ❌ Navigation error to chat:', error?.message, error?.stack);
-                            }
-                        }
-                    });
-                });
-            }, 2000); // Увеличенная задержка 2 секунды для гарантии, что WelcomeScreen завершил работу и Main экран загружен
-        } catch (error) {
-            if (__DEV__) {
-                console.error('[AppNavigator] ❌ Navigation error to chat:', error?.message, error?.stack);
-            }
-        }
-    };
-
-    const navigateToUrl = (url) => {
-        try {
-            if (!url.startsWith('iceberg://')) return;
-
-            const path = url.replace('iceberg://', '');
-            const [screen, id] = path.split('/');
-
-            if (screen === 'chat' && id) {
-                navigateToChat({ roomId: id });
-            } else if (screen === 'stop' && id) {
-                navigateToStops({ stopId: id });
-            } else if (screen === 'order' && id) {
-                navigateToOrder({ orderId: id });
-            }
-        } catch (error) {
-            console.error('Navigation error for URL:', error);
-        }
-    };
-
-    return { navigateToStops, navigateToOrder, navigateToChat, navigateToUrl };
-};
-
-// ============================================================================
-// ЧАСТЬ 5: Navigation Wrapper
-// ============================================================================
-
-// Компонент для инициализации InApp уведомлений - БОЛЬШЕ НЕ ИСПОЛЬЗУЕТСЯ
-// Теперь показываем системные уведомления как в WhatsApp
-// const InAppNotificationInitializer = ({ children }) => {
-//     return children;
-// };
-
-const NavigationWrapper = ({ children }) => {
-    const navigation = useNavigation();
-    const notifications = useNotifications(navigation);
-
-    useEffect(() => {
-        const { navigateToStops, navigateToOrder, navigateToChat, navigateToUrl } = 
-            createNavigationFunctions(navigation);
-
-        if (PushNotificationService?.setNavigationFunctions) {
-            PushNotificationService.setNavigationFunctions(
-                navigateToStops, 
-                navigateToOrder, 
-                navigateToChat, 
-                navigateToUrl
-            );
-        }
-    }, [navigation]);
-
-    const handleNavigateToAuth = useCallback((mode) => {
-        try {
-            navigation.navigate('Auth', { initialScreen: mode });
-        } catch (error) {
-            console.error('Navigation error:', error);
-        }
-    }, [navigation]);
-
-    return (
-        <AppContainer onNavigateToAuth={handleNavigateToAuth}>
-            {children}
-        </AppContainer>
-    );
-};
-
-// ============================================================================
 // ЧАСТЬ 6: Screen Options (вынесены в константы)
 // ============================================================================
-
-const COMMON_CARD_STYLE = {
-    backgroundColor: '#ffffff',
-    ...Platform.select({
-        ios: {
-            shadowColor: '#000',
-            shadowOffset: { width: -3, height: 0 },
-            shadowOpacity: 0.25,
-            shadowRadius: 6,
-        },
-        android: {
-            elevation: 6,
-        },
-    }),
-};
-
-const createScreenOptions = (options = {}) => ({
-    ...slideFromRight,
-    headerShown: false,
-    cardStyle: COMMON_CARD_STYLE,
-    ...options,
-});
-
-const PRODUCT_DETAIL_CARD_STYLE = {
-    backgroundColor: '#ffffff',
-    ...Platform.select({
-        ios: {
-            shadowColor: '#000',
-            shadowOffset: { width: -3, height: 0 },
-            shadowOpacity: 0.3,
-            shadowRadius: 8,
-        },
-        android: {
-            elevation: 8,
-        },
-    }),
-};
-
-const createProductDetailScreenOptions = (extra = {}) => ({ route }) => {
-    // Если пользователь идёт по цепочке похожих товаров (productHistory непустая),
-    // используем быструю fade-анимацию вместо слайда: меньше нагрузки на JS/GPU-поток
-    // и жест свайпа назад отключён (возврат через кнопку «Назад» / JS-историю).
-    const isProductChain = (route?.params?.productHistory?.length ?? 0) > 0;
-    return createScreenOptions({
-        ...(isProductChain ? productChainTransition : cardStackTransition),
-        unmountOnBlur: false,
-        freezeOnBlur: true,
-        gestureEnabled: !isProductChain,
-        ...(Platform.OS === 'ios' && !isProductChain
-            ? { cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS }
-            : {}),
-        cardStyle: PRODUCT_DETAIL_CARD_STYLE,
-        ...extra,
-    });
-};
-
-// --- Тёма-aware фабрики опций для стеков ---
-// Избавляемся от белой вспышки в dark-режиме при slide/fade-переходах между экранами:
-// cardStyle.backgroundColor должен соответствовать фону активной темы, иначе во время
-// анимации между двумя картами показывается белая подложка по умолчанию.
-const useThemedCardStyle = (variant = 'default') => {
-    const { isDark, colors } = useTheme();
-    return useMemo(() => {
-        const bg = isDark ? colors.background : '#ffffff';
-        if (variant === 'productDetail') {
-            return {
-                backgroundColor: bg,
-                ...Platform.select({
-                    ios: {
-                        shadowColor: '#000',
-                        shadowOffset: { width: -3, height: 0 },
-                        shadowOpacity: isDark ? 0.5 : 0.3,
-                        shadowRadius: 8,
-                    },
-                    android: { elevation: isDark ? 0 : 8 },
-                }),
-            };
-        }
-        return {
-            backgroundColor: bg,
-            ...Platform.select({
-                ios: {
-                    shadowColor: '#000',
-                    shadowOffset: { width: -3, height: 0 },
-                    shadowOpacity: isDark ? 0.5 : 0.25,
-                    shadowRadius: 6,
-                },
-                android: { elevation: isDark ? 0 : 6 },
-            }),
-        };
-    }, [isDark, colors.background, variant]);
-};
-
-const useCreateScreenOptions = () => {
-    const themedCardStyle = useThemedCardStyle('default');
-    return useCallback((options = {}) => {
-        const { cardStyle: overrideCardStyle, ...rest } = options;
-        return {
-            ...slideFromRight,
-            headerShown: false,
-            ...rest,
-            cardStyle: overrideCardStyle
-                ? { ...themedCardStyle, ...overrideCardStyle }
-                : themedCardStyle,
-        };
-    }, [themedCardStyle]);
-};
-
-const useCreateProductDetailScreenOptions = () => {
-    const baseCreate = useCreateScreenOptions();
-    const productCardStyle = useThemedCardStyle('productDetail');
-    return useCallback((extra = {}) => ({ route }) => {
-        const isProductChain = (route?.params?.productHistory?.length ?? 0) > 0;
-        return baseCreate({
-            ...(isProductChain ? productChainTransition : cardStackTransition),
-            unmountOnBlur: false,
-            freezeOnBlur: true,
-            gestureEnabled: !isProductChain,
-            ...(Platform.OS === 'ios' && !isProductChain
-                ? { cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS }
-                : {}),
-            cardStyle: productCardStyle,
-            ...extra,
-        });
-    }, [baseCreate, productCardStyle]);
-};
 
 // ============================================================================
 // ЧАСТЬ 7: Stack Navigators (упрощенные)
@@ -1313,94 +828,15 @@ const SearchStackScreen = () => (
         />
     </SearchStack.Navigator>
 );
-const MainTabNavigatorContent = () => {
-    const { isTabBarVisible } = useTabBar();
-    const insets = useSafeAreaInsets();
-    const tabBarHeight = 80 + insets.bottom;
-
-    const getLeafRouteName = React.useCallback((route) => {
-        let r = route;
-        while (r?.state?.routes && typeof r.state.index === 'number') {
-            r = r.state.routes[r.state.index];
-        }
-        return r?.name;
-    }, []);
-    
-    React.useEffect(() => {
-        if (__DEV__) {
-            console.log('🎯 TabBar visibility changed:', isTabBarVisible);
-        }
-    }, [isTabBarVisible]);
-    
-    const tabBarStyle = React.useMemo(() => {
-        const baseStyle = {
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: '#ffffff',
-            zIndex: 100,
-            elevation: 8,
-        };
-
-        const style = isTabBarVisible ? {
-            ...baseStyle,
-            shadowOpacity: 0.1,
-            shadowRadius: 6,
-            shadowOffset: { width: 0, height: -2 },
-            height: tabBarHeight,
-        } : {
-            ...baseStyle,
-            height: 0,
-            opacity: 0,
-            overflow: 'hidden',
-        };
-        if (__DEV__) {
-            console.log('📐 TabBar style:', style);
-        }
-        return style;
-    }, [isTabBarVisible, tabBarHeight]);
-    
-    return (
-        <Tab.Navigator
-            id="MainTabs"
-            screenOptions={({ route }) => {
-                // iOS: freezeOnBlur вызывает утечки памяти (react-native-screens #2971),
-                //       поэтому размонтируем неактивные вкладки для экономии памяти.
-                //       Redux Persist восстанавливает состояние мгновенно при переключении.
-                // Android: храним вкладки в памяти и замораживаем — мгновенное переключение.
-                const isIOS = Platform.OS === 'ios';
-                return {
-                    headerShown: false,
-                    tabBarStyle: tabBarStyle,
-                    lazy: true,
-                    unmountOnBlur: isIOS,
-                    freezeOnBlur: !isIOS,
-                    animationEnabled: false,
-                };
-            }}
-            sceneContainerStyle={isTabBarVisible ? { paddingBottom: tabBarHeight } : undefined}
-            // iOS: отсоединяем неактивные экраны для снижения потребления памяти,
-            //       чтобы iOS не убивала приложение при сворачивании.
-            // Android: держим всё в памяти для мгновенного переключения.
-            detachInactiveScreens={Platform.OS === 'ios'}
-            tabBar={props => <CustomTabBar {...props} />}
-            backBehavior="none"
-        >
-            <Tab.Screen name="MainTab" component={MainStackScreen} options={{ lazy: false }} />
-            <Tab.Screen name="Search" component={SearchStackScreen} />
-            <Tab.Screen name="Cart" component={CartStackScreen} />
-            {featureFlags.chat && <Tab.Screen name="ChatList" component={ChatStackScreen} options={Platform.OS === 'ios' ? undefined : { unmountOnBlur: false }} />}
-            <Tab.Screen name="ProfileTab" component={ProfileStackScreen} />
-            <Tab.Screen name="Catalog" component={CatalogScreen} options={{ tabBarVisible: false }} />
-        </Tab.Navigator>
-    );
-};
-
-export const MainTabNavigator = () => (
-    <TabBarProvider>
-        <MainTabNavigatorContent />
-    </TabBarProvider>
+const MainTabNavigatorScreen = () => (
+    <MainTabNavigator
+        MainStackScreen={MainStackScreen}
+        SearchStackScreen={SearchStackScreen}
+        CartStackScreen={CartStackScreen}
+        ChatStackScreen={ChatStackScreen}
+        ProfileStackScreen={ProfileStackScreen}
+        CatalogScreen={CatalogScreen}
+    />
 );
 
 // ============================================================================
@@ -1514,7 +950,7 @@ export const AppNavigator = () => {
                     />
                     <Stack.Screen
                         name="Main"
-                        component={MainTabNavigator}
+                        component={MainTabNavigatorScreen}
                         options={{
                             ...slideFromRight,
                             headerLeft: null,

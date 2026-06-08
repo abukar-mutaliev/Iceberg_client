@@ -1,14 +1,12 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
     View,
     Text,
     StyleSheet,
     Dimensions
 } from 'react-native';
-import {
-    Color,
-    FontFamily
-} from '@app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -18,6 +16,9 @@ const normalize = (size) => {
 };
 
 export const CartHeader = ({ itemsCount = 0 }) => {
+    const { colors, isDark } = useTheme();
+    const headerStyles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     return (
         <View style={headerStyles.container}>
             {/* Градиентный фон (эмуляция) */}
@@ -78,20 +79,20 @@ const getItemsText = (count) => {
     }
 };
 
-const headerStyles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.surface,
         paddingHorizontal: normalize(20),
         paddingTop: normalize(20),
         paddingBottom: normalize(15),
         borderBottomLeftRadius: normalize(24),
         borderBottomRightRadius: normalize(24),
-        shadowColor: '#5500FF',
+        shadowColor: colors.primary,
         shadowOffset: {
             width: 0,
             height: 4,
         },
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0.25 : 0.1,
         shadowRadius: 12,
         elevation: 8,
         position: 'relative',
@@ -104,7 +105,7 @@ const headerStyles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.surface,
         opacity: 1,
     },
 
@@ -122,12 +123,12 @@ const headerStyles = StyleSheet.create({
         width: normalize(56),
         height: normalize(56),
         borderRadius: normalize(28),
-        backgroundColor: 'rgba(85, 0, 255, 0.1)',
+        backgroundColor: isDark ? colors.surfaceSecondary : colors.primary + '1A',
         justifyContent: 'center',
         alignItems: 'center',
         position: 'relative',
         borderWidth: 2,
-        borderColor: 'rgba(85, 0, 255, 0.2)',
+        borderColor: colors.primary,
     },
 
     cartIcon: {
@@ -138,7 +139,7 @@ const headerStyles = StyleSheet.create({
         position: 'absolute',
         top: normalize(-4),
         right: normalize(-4),
-        backgroundColor: '#FF3B30',
+        backgroundColor: colors.error,
         borderRadius: normalize(12),
         minWidth: normalize(24),
         height: normalize(24),
@@ -146,8 +147,8 @@ const headerStyles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: normalize(6),
         borderWidth: 2,
-        borderColor: '#FFFFFF',
-        shadowColor: '#FF3B30',
+        borderColor: colors.surface,
+        shadowColor: colors.error,
         shadowOffset: {
             width: 0,
             height: 2,
@@ -158,7 +159,7 @@ const headerStyles = StyleSheet.create({
     },
 
     badgeText: {
-        color: '#FFFFFF',
+        color: colors.textInverse,
         fontSize: normalize(11),
         fontWeight: '700',
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
@@ -174,7 +175,7 @@ const headerStyles = StyleSheet.create({
         fontSize: normalize(28),
         fontWeight: '700',
         fontFamily: FontFamily.sFProDisplay || 'SF Pro Display',
-        color: '#000000',
+        color: colors.textPrimary,
         marginBottom: normalize(2),
         letterSpacing: -0.5,
     },
@@ -183,7 +184,7 @@ const headerStyles = StyleSheet.create({
         fontSize: normalize(15),
         fontWeight: '500',
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: 'rgba(60, 60, 67, 0.60)',
+        color: colors.textSecondary,
     },
 
     // Декоративные элементы
@@ -194,7 +195,7 @@ const headerStyles = StyleSheet.create({
         width: normalize(100),
         height: normalize(100),
         borderRadius: normalize(50),
-        backgroundColor: 'rgba(85, 0, 255, 0.05)',
+        backgroundColor: colors.primary + '14',
         zIndex: 1,
     },
 
@@ -205,7 +206,7 @@ const headerStyles = StyleSheet.create({
         width: normalize(80),
         height: normalize(80),
         borderRadius: normalize(40),
-        backgroundColor: 'rgba(255, 59, 48, 0.05)',
+        backgroundColor: colors.error + '14',
         zIndex: 1,
     },
 });

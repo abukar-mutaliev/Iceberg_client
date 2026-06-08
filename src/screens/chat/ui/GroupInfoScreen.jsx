@@ -114,6 +114,11 @@ export const GroupInfoScreen = ({ route, navigation }) => {
   const participants = React.useMemo(() => {
     if (!roomData?.participants) return [];
 
+    const districtIdsMatch = (a, b) => {
+      if (a == null || b == null) return false;
+      return String(a) === String(b);
+    };
+
     // Для каналов BROADCAST и клиентов - показываем только менеджеров и водителей склада клиента
     if (roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT') {
       const clientDistrictId = currentUser?.client?.districtId;
@@ -129,7 +134,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
           return true; // Обычные админы показываются
         }
 
-        // Сотрудники - только менеджеры из района клиента
+        // Сотрудники - только менеджеры из района клиента (склад ИЛИ любой из районов обслуживания)
         if (userRole === 'EMPLOYEE') {
           const processingRole = user?.employee?.processingRole;
           // Скрываем сборщиков, упаковщиков, контроллеров качества, курьеров
@@ -144,14 +149,30 @@ export const GroupInfoScreen = ({ route, navigation }) => {
             return false; // Скрываем сотрудников без должности
           }
 
-          // Проверяем, что сотрудник работает на складе в районе клиента
-          const employeeWarehouseDistrictId = user?.employee?.warehouse?.districtId;
-          // Если у сотрудника есть склад, проверяем район
-          if (employeeWarehouseDistrictId && clientDistrictId && employeeWarehouseDistrictId !== clientDistrictId) {
-            return false; // Скрываем сотрудников других районов
+          if (!clientDistrictId) {
+            return true;
           }
 
-          return true;
+          const employeeWarehouseDistrictId =
+            user?.employee?.warehouse?.districtId ??
+            user?.employee?.warehouse?.district?.id ??
+            null;
+          const employeeDistricts = user?.employee?.districts || [];
+
+          const servesClientDistrict =
+            districtIdsMatch(employeeWarehouseDistrictId, clientDistrictId) ||
+            employeeDistricts.some((d) => districtIdsMatch(d?.id, clientDistrictId));
+
+          if (servesClientDistrict) {
+            return true;
+          }
+
+          // Без привязки склада к району — не отсекаем (как при отсутствии warehouseDistrictId раньше)
+          if (employeeWarehouseDistrictId == null) {
+            return true;
+          }
+
+          return false;
         }
 
         // Поставщиков не показываем
@@ -159,21 +180,21 @@ export const GroupInfoScreen = ({ route, navigation }) => {
           return false;
         }
 
-        // Водители - только если их склад в районе клиента
+        // Водители - склад в районе клиента или район клиента в списке обслуживания
         if (userRole === 'DRIVER') {
           // Если у клиента нет района - не показываем водителей
           if (!clientDistrictId) return false;
 
-          // Проверяем, что склад водителя находится в районе клиента
-          const driverWarehouseDistrictId = user?.driver?.warehouse?.district?.id || 
-                                            user?.driver?.warehouse?.districtId;
-          if (driverWarehouseDistrictId === clientDistrictId) {
+          const driverWarehouseDistrictId =
+            user?.driver?.warehouse?.district?.id ??
+            user?.driver?.warehouse?.districtId ??
+            null;
+          if (districtIdsMatch(driverWarehouseDistrictId, clientDistrictId)) {
             return true;
           }
 
-          // Запасной вариант: проверяем районы обслуживания водителя
           const driverDistricts = user?.driver?.districts || [];
-          return driverDistricts.some(d => d.id === clientDistrictId);
+          return driverDistricts.some((d) => districtIdsMatch(d?.id, clientDistrictId));
         }
 
         return false;
@@ -443,7 +464,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
 
   // Функции для работы с аватаром группы
   const requestPermissions = async () => {
-    if (Platform.OS !== 'web') {
+    if (Platform.OS !== 'web' && Platform.OS !== 'android') {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
         showError('Ошибка', 'Для загрузки изображений необходимо разрешение на доступ к галерее');
@@ -1130,6 +1151,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     left: 0,
     right: 0,
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     zIndex: 1,
@@ -1140,7 +1162,6 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     height: 50,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: -15,
   },
   backButtonText: {
     fontSize: 20,

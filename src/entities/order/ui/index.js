@@ -1,21 +1,16 @@
-// Экспорт компонентов системы обработки заказов
+// Точечный реэкспорт UI-компонентов модуля заказов.
+// После упрощения системы убраны:
+//  - OrderProcessingStages, OrderAssignment, ProcessingNotifications;
+//  - хуки useOrderProcessing / useProcessingNotifications;
+//  - API OrderProcessingApi / ProcessingNotificationApi;
+//  - reducer orderProcessingReducer.
 
-// Основные компоненты
-export { OrderProcessingStages } from './OrderProcessingStages/OrderProcessingStages';
-export { OrderAssignment } from './OrderAssignment/OrderAssignment';
-export { ProcessingNotifications } from './ProcessingNotifications/ProcessingNotifications';
+export { OrderCard } from './OrderCard';
+export { OrderChoiceCard } from './OrderChoiceCard';
+export { ChoiceNotificationBanner } from './ChoiceNotificationBanner';
+export { WaitingStockIndicator } from './WaitingStockIndicator';
+export { WaitingStockBadge } from './WaitingStockBadge';
+export { SplitOrderIndicator } from './SplitOrderIndicator';
+export { SplitOrderInfo } from './SplitOrderInfo';
 
-// Экспорт хуков
-export { useOrderProcessing } from '../hooks/useOrderProcessing';
-export { useProcessingNotifications } from '../hooks/useProcessingNotifications';
-
-// Экспорт API
-export { OrderProcessingApi } from '../api/orderProcessingApi';
-export { ProcessingNotificationApi } from '../api/processingNotificationApi';
-
-// Экспорт констант
 export * from '../lib/constants';
-
-// Экспорт Redux slice
-export { default as orderProcessingReducer } from '../model/processingSlice';
-export * from '../model/processingSlice'; 

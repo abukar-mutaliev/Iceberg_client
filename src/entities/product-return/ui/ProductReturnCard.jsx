@@ -1,8 +1,10 @@
-import React from 'react';
-import { View, Text, StyleSheet, Image, Pressable } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { ReturnStatusBadge } from './ReturnStatusBadge';
 import { formatReturnNumber, formatDate } from '../lib/utils';
-import { Color, FontFamily, FontSize, Border, Shadow, Padding } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize, Border, Shadow, Padding } from '@app/styles/GlobalStyles';
+import { ReliableImage, Placeholder as ImagePlaceholder } from '@shared/ui/ReliableImage';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 /**
  * Карточка возврата товара
@@ -14,6 +16,9 @@ export const ProductReturnCard = React.memo(({
   returnItem, 
   onPress,
 }) => {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const {
     id,
     product,
@@ -33,6 +38,7 @@ export const ProductReturnCard = React.memo(({
 
   const returnNumber = formatReturnNumber(id);
   const requestDate = formatDate(requestedAt);
+  const imageSource = product?.image || product?.imageUrl || product?.images || null;
 
   return (
     <Pressable 
@@ -41,15 +47,19 @@ export const ProductReturnCard = React.memo(({
         pressed && styles.pressed,
       ]}
       onPress={handlePress}
-      android_ripple={{ color: Color.purpleLight }}
+      android_ripple={{ color: colors.primarySoft }}
     >
       {/* Изображение товара */}
-      {product?.image && (
-        <Image
-          source={{ uri: product.image }}
+      {imageSource ? (
+        <ReliableImage
+          source={imageSource}
           style={styles.image}
           resizeMode="cover"
+          placeholderIconSize={22}
+          placeholderText="Нет фото"
         />
+      ) : (
+        <ImagePlaceholder style={styles.image} iconSize={22} text="Нет фото" />
       )}
 
       {/* Контент */}
@@ -119,14 +129,16 @@ export const ProductReturnCard = React.memo(({
   );
 });
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flexDirection: 'row',
-    backgroundColor: Color.colorLightMode,
+    backgroundColor: colors.cardBackground,
     borderRadius: Border.br_base,
     padding: Padding.medium,
     marginBottom: 12,
-    ...Shadow.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...(isDark ? {} : Shadow.card),
   },
   pressed: {
     opacity: 0.8,
@@ -136,7 +148,7 @@ const styles = StyleSheet.create({
     width: 70,
     height: 70,
     borderRadius: Border.radius.large,
-    backgroundColor: Color.secondary,
+    backgroundColor: colors.surfaceSecondary,
   },
   content: {
     flex: 1,
@@ -152,13 +164,13 @@ const styles = StyleSheet.create({
     fontSize: FontSize.size_md,
     fontFamily: FontFamily.bold,
     fontWeight: '700',
-    color: Color.purpleSoft,
+    color: colors.primary,
   },
   productName: {
     fontSize: FontSize.size_sm,
     fontFamily: FontFamily.medium,
     fontWeight: '600',
-    color: Color.textPrimary,
+    color: colors.textPrimary,
     marginBottom: 8,
   },
   infoContainer: {
@@ -177,12 +189,12 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: FontSize.size_xs,
     fontFamily: FontFamily.regular,
-    color: Color.textSecondary,
+    color: colors.textSecondary,
   },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Color.secondary,
+    backgroundColor: colors.surfaceSecondary,
     borderRadius: Border.radius.medium,
     padding: 8,
   },
@@ -193,19 +205,19 @@ const styles = StyleSheet.create({
   divider: {
     width: 1,
     height: 20,
-    backgroundColor: Color.border,
+    backgroundColor: colors.divider,
   },
   statValue: {
     fontSize: FontSize.size_md,
     fontFamily: FontFamily.bold,
     fontWeight: '700',
-    color: Color.purpleSoft,
+    color: colors.primary,
     marginBottom: 2,
   },
   statLabel: {
     fontSize: FontSize.size_5xs,
     fontFamily: FontFamily.regular,
-    color: Color.textSecondary,
+    color: colors.textSecondary,
     textAlign: 'center',
   },
 });

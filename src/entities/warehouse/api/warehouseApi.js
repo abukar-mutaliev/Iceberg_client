@@ -18,6 +18,12 @@ const WarehouseService = {
     return createProtectedRequest('get', `/api/warehouses/district/${districtId}`);
   },
 
+  // Получение основного склада доставки (isMain=true). Возвращает единственный
+  // склад, через который идут все доставки после упрощения системы.
+  async getMainDeliveryWarehouse() {
+    return createProtectedRequest('get', '/api/warehouses?isMain=true&limit=1');
+  },
+
   // Получение товаров на складе (публичный доступ)
   async getWarehouseProducts(warehouseId, params = {}) {
     const queryString = new URLSearchParams(params).toString();

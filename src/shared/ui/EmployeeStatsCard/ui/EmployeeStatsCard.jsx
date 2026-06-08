@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Color } from "@/styles/GlobalStyles";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const EmployeeStatsCard = ({ employee, onPress, showRewardActions = false, onViewRewards }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     const {
         id,
         name,
@@ -109,9 +112,9 @@ export const EmployeeStatsCard = ({ employee, onPress, showRewardActions = false
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
-        backgroundColor: Color.background,
+        backgroundColor: colors.cardBackground,
         borderRadius: 16,
         padding: 16,
         marginBottom: 12,
@@ -120,11 +123,13 @@ const styles = StyleSheet.create({
             width: 0,
             height: 2,
         },
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0.35 : 0.1,
         shadowRadius: 3.84,
         elevation: 5,
+        borderWidth: 1,
+        borderColor: colors.border,
         borderLeftWidth: 4,
-        borderLeftColor: Color.blue2,
+        borderLeftColor: colors.primary,
     },
     header: {
         flexDirection: 'row',
@@ -138,23 +143,23 @@ const styles = StyleSheet.create({
     employeeName: {
         fontSize: 18,
         fontWeight: '700',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         marginBottom: 4,
     },
     employeePosition: {
         fontSize: 14,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontWeight: '500',
     },
     idBadge: {
-        backgroundColor: Color.lightGray,
+        backgroundColor: colors.surfaceSecondary,
         paddingHorizontal: 8,
         paddingVertical: 4,
         borderRadius: 12,
     },
     idText: {
         fontSize: 12,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontWeight: '600',
     },
     warehouseSection: {
@@ -163,18 +168,18 @@ const styles = StyleSheet.create({
         marginBottom: 16,
         paddingVertical: 8,
         paddingHorizontal: 12,
-        backgroundColor: '#F8F9FA',
+        backgroundColor: colors.surfaceSecondary,
         borderRadius: 8,
     },
     warehouseLabel: {
         fontSize: 14,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginRight: 8,
         fontWeight: '500',
     },
     warehouseValue: {
         fontSize: 14,
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         fontWeight: '600',
         flex: 1,
     },
@@ -183,7 +188,7 @@ const styles = StyleSheet.create({
         justifyContent: 'space-around',
         marginBottom: 16,
         paddingVertical: 12,
-        backgroundColor: '#F8F9FA',
+        backgroundColor: colors.surfaceSecondary,
         borderRadius: 8,
     },
     statItem: {
@@ -192,17 +197,17 @@ const styles = StyleSheet.create({
     statValue: {
         fontSize: 20,
         fontWeight: '700',
-        color: Color.blue2,
+        color: colors.primary,
         marginBottom: 4,
     },
     statLabel: {
         fontSize: 12,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         textAlign: 'center',
         fontWeight: '500',
     },
     financialStats: {
-        backgroundColor: '#F8F9FA',
+        backgroundColor: colors.surfaceSecondary,
         borderRadius: 8,
         padding: 12,
         marginBottom: 12,
@@ -217,7 +222,7 @@ const styles = StyleSheet.create({
     },
     financialLabel: {
         fontSize: 12,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginBottom: 2,
         fontWeight: '500',
     },
@@ -226,27 +231,27 @@ const styles = StyleSheet.create({
         fontWeight: '700',
     },
     totalEarned: {
-        color: Color.blue2,
+        color: colors.primary,
         fontSize: 16,
     },
     paid: {
-        color: Color.success,
+        color: colors.success,
     },
     pending: {
-        color: Color.warning,
+        color: colors.warning,
     },
     actions: {
         marginTop: 8,
     },
     actionButton: {
-        backgroundColor: Color.primary,
+        backgroundColor: colors.primary,
         paddingVertical: 10,
         paddingHorizontal: 16,
         borderRadius: 8,
         alignItems: 'center',
     },
     actionButtonText: {
-        color: Color.background,
+        color: colors.textInverse,
         fontSize: 14,
         fontWeight: '600',
     },
@@ -254,13 +259,13 @@ const styles = StyleSheet.create({
         position: 'absolute',
         top: 12,
         right: 16,
-        backgroundColor: Color.success,
+        backgroundColor: colors.success,
         paddingHorizontal: 8,
         paddingVertical: 4,
         borderRadius: 12,
     },
     activityText: {
-        color: Color.background,
+        color: colors.textInverse,
         fontSize: 10,
         fontWeight: '600',
     },

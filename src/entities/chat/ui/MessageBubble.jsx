@@ -12,6 +12,7 @@ import {MessageReactions} from './ReactionPicker/MessageReactions';
 import {getImageUrl} from '@shared/api/api';
 import {CachedImage} from './CachedImage/CachedImage';
 import ChatApi from '@entities/chat/api/chatApi';
+import {updatePollInMessage} from '@entities/chat/model/slice';
 import {selectIsProductDeleted, selectProductById, selectCurrentProduct} from '@entities/product/model/selectors';
 import {fetchProductById} from '@entities/product/model/slice';
 import {PROCESSING_ROLE_LABELS} from '@entities/admin/lib/constants';
@@ -147,6 +148,14 @@ const PollMessage = memo(({
 }) => {
     const styles = useMessageStyles();
     const mutedIconColor = useMutedIconColor();
+    const dispatch = useDispatch();
+    const resolvedRoomId = useSelector((state) => {
+        const directRoomId = message?.roomId || message?.chatRoomId || message?.room?.id;
+        if (directRoomId) return directRoomId;
+        const allBuckets = state.chat?.messages || {};
+        const foundRoomId = Object.keys(allBuckets).find((roomId) => allBuckets?.[roomId]?.byId?.[message?.id]);
+        return foundRoomId || null;
+    });
     const [poll, setPoll] = useState(message.poll || null);
     const [isVoting, setIsVoting] = useState(false);
 
@@ -217,6 +226,13 @@ const PollMessage = memo(({
             
             if (updatedPoll && updatedPoll.options) {
                 setPoll(updatedPoll);
+                if (resolvedRoomId && message?.id) {
+                    dispatch(updatePollInMessage({
+                        messageId: message.id,
+                        roomId: resolvedRoomId,
+                        poll: updatedPoll,
+                    }));
+                }
             } else {
                 if (message.poll && message.poll.id && typeof message.poll.id === 'number') {
                     setPoll(message.poll);
@@ -227,7 +243,7 @@ const PollMessage = memo(({
         } finally {
             setIsVoting(false);
         }
-    }, [poll, isVoting, currentUserId, message.poll]);
+    }, [dispatch, poll, isVoting, currentUserId, message, resolvedRoomId]);
 
     if (!poll) {
         return (
@@ -2453,9 +2469,15 @@ export const MessageBubble = memo(({
     const nextReactions = nextProps.message?.reactions || [];
     const prevReactionsTimestamp = prevProps.message?._reactionsUpdated;
     const nextReactionsTimestamp = nextProps.message?._reactionsUpdated;
+    const prevPollTimestamp = prevProps.message?._pollUpdated;
+    const nextPollTimestamp = nextProps.message?._pollUpdated;
     
     // Сравниваем по timestamp если он есть
     if (prevReactionsTimestamp !== nextReactionsTimestamp) {
+        return false; // Перерисовываем компонент
+    }
+
+    if (prevPollTimestamp !== nextPollTimestamp) {
         return false; // Перерисовываем компонент
     }
     
@@ -2481,6 +2503,7 @@ export const MessageBubble = memo(({
         prevProps.isHighlighted === nextProps.isHighlighted &&
         prevProps.canDelete === nextProps.canDelete &&
         prevSenderId === nextSenderId &&
+        prevProps.reactionsRenderTick === nextProps.reactionsRenderTick &&
         prevProps.roomType === nextProps.roomType &&
         prevProps.participants === nextProps.participants
     );

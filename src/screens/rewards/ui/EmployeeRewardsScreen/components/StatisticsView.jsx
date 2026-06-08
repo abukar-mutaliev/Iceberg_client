@@ -1,13 +1,14 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, TouchableOpacity, Text } from 'react-native';
 import { StatsCard } from '@/shared/ui/StatsCard';
 import { SearchBar } from '@/shared/ui/SearchBar';
 import { EmployeeStatsCard } from '@/shared/ui/EmployeeStatsCard';
-import { styles } from '../styles/EmployeeRewardsScreen.styles';
+import { createStyles } from '../styles/EmployeeRewardsScreen.styles';
 import { useAuth } from '@entities/auth/hooks/useAuth';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 // Мемоизированный компонент кнопки pending карточки
-const PendingCard = React.memo(({ totalStats, onPress }) => (
+const PendingCard = React.memo(({ styles, totalStats, onPress }) => (
     <TouchableOpacity style={styles.pendingCard} onPress={onPress}>
         <Text style={styles.pendingTitle}>В ожидании 👆</Text>
         <Text style={styles.pendingAmount}>
@@ -15,9 +16,7 @@ const PendingCard = React.memo(({ totalStats, onPress }) => (
         </Text>
         <Text style={styles.pendingSubtitle}>Нажмите для просмотра</Text>
     </TouchableOpacity>
-), (prevProps, nextProps) => {
-    return prevProps.totalStats?.pendingAmount === nextProps.totalStats?.pendingAmount;
-});
+));
 
 // Мемоизированный компонент статистики сотрудника
 const MemoizedEmployeeStatsCard = React.memo(({ employee, onPress }) => (
@@ -41,6 +40,8 @@ export const StatisticsView = React.memo(({
     onViewEmployeeRewards
 }) => {
     const { currentUser: user } = useAuth();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const isAdmin = user?.role === 'ADMIN';
 
     // Подсчитываем общую сумму к выплате всем сотрудникам
@@ -55,6 +56,7 @@ export const StatisticsView = React.memo(({
                 {/* Показываем pending карточку только администраторам */}
                 {isAdmin && (
                     <PendingCard
+                        styles={styles}
                         totalStats={totalStats}
                         onPress={onPendingCardClick}
                     />

@@ -1,13 +1,14 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
 import IconAdmin from '@shared/ui/Icon/IconAdmin';
 import IconUser from '@shared/ui/Icon/Profile/IconPersona';
 import IconEdit from '@shared/ui/Icon/Profile/IconEdit';
 import IconDelete from '@shared/ui/Icon/Profile/IconDelete';
 import IconSettings from '@shared/ui/Icon/Profile/IconSettings';
 import { USER_ROLES_DISPLAY, USER_CARD_COLORS } from '@entities/user/model/constants';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 // Пытаемся импортировать константы должностей с фолбэком
 let PROCESSING_ROLE_LABELS = {};
@@ -26,6 +27,9 @@ try {
 }
 
 export const UserCard = ({ user, onEdit, onDelete, onRoleChange, onProcessingRoleChange, currentUser }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     const getUserName = () => {
         if (!user.profile) return 'Неизвестный пользователь';
 
@@ -77,7 +81,10 @@ export const UserCard = ({ user, onEdit, onDelete, onRoleChange, onProcessingRol
 
     // Получаем цвет карточки в зависимости от роли
     const getCardColor = () => {
-        return { backgroundColor: USER_CARD_COLORS[user.role] || Color.colorLightMode };
+        const roleColor = USER_CARD_COLORS[user.role] || colors.primary;
+        return isDark
+            ? { borderLeftColor: roleColor }
+            : { backgroundColor: roleColor };
     };
 
     // Получаем отображаемое название роли на русском
@@ -119,7 +126,7 @@ export const UserCard = ({ user, onEdit, onDelete, onRoleChange, onProcessingRol
                     {user.avatar ? (
                         <Image source={{ uri: user.avatar }} style={styles.avatarImage} />
                     ) : (
-                        <IconUser width={24} height={24} color={Color.blue2} />
+                        <IconUser width={24} height={24} color={colors.primary} />
                     )}
                 </View>
                 <View style={styles.userInfo}>
@@ -132,14 +139,14 @@ export const UserCard = ({ user, onEdit, onDelete, onRoleChange, onProcessingRol
             <View style={styles.userCardActions}>
                 {/* Добавить экран редактирования пользователя если нужно*/}
                 {/*<TouchableOpacity style={styles.actionButton} onPress={() => onEdit(user)}>*/}
-                {/*    <IconEdit width={18} height={18} color={Color.blue2} />*/}
+                {/*    <IconEdit width={18} height={18} color={colors.primary} />*/}
                 {/*    <Text style={styles.actionText}>Изменить</Text>*/}
                 {/*</TouchableOpacity>*/}
                 
                 {/* Кнопка изменения роли - только для суперадминов */}
                 {canChangeRole && (
                     <TouchableOpacity style={styles.actionButton} onPress={() => onRoleChange(user)}>
-                        <IconAdmin width={18} height={18} color={Color.blue2} />
+                        <IconAdmin width={18} height={18} color={colors.primary} />
                         <Text style={styles.actionText}>{user.role === 'ADMIN' ? 'Права' : 'Роль'}</Text>
                     </TouchableOpacity>
                 )}
@@ -147,8 +154,8 @@ export const UserCard = ({ user, onEdit, onDelete, onRoleChange, onProcessingRol
                 {/* Кнопка назначения должности обработки - только для суперадминов и только для сотрудников */}
                 {canAssignProcessingRole && onProcessingRoleChange && (
                     <TouchableOpacity style={styles.actionButton} onPress={() => onProcessingRoleChange(user)}>
-                        <IconSettings width={18} height={18} color={Color.orange} />
-                        <Text style={[styles.actionText, { color: Color.orange }]}>Должность</Text>
+                        <IconSettings width={18} height={18} color={colors.warning} />
+                        <Text style={[styles.actionText, { color: colors.warning }]}>Должность</Text>
                     </TouchableOpacity>
                 )}
                 
@@ -158,8 +165,8 @@ export const UserCard = ({ user, onEdit, onDelete, onRoleChange, onProcessingRol
                         style={styles.actionButton}
                         onPress={() => onDelete && onDelete(user)}
                     >
-                        <IconDelete width={18} height={18} color="red" />
-                        <Text style={[styles.actionText, { color: 'red' }]}>Удалить</Text>
+                        <IconDelete width={18} height={18} color={colors.error} />
+                        <Text style={[styles.actionText, { color: colors.error }]}>Удалить</Text>
                     </TouchableOpacity>
                 )}
             </View>
@@ -167,12 +174,19 @@ export const UserCard = ({ user, onEdit, onDelete, onRoleChange, onProcessingRol
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     userCard: {
         borderRadius: Border.radius.medium,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.cardBackground,
         padding: normalize(12),
-        ...Shadow.light,
+        borderWidth: 1,
+        borderLeftWidth: isDark ? 4 : 1,
+        borderColor: colors.border,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: isDark ? 0.25 : Shadow.light.shadowOpacity,
+        shadowRadius: isDark ? 6 : Shadow.light.shadowRadius,
+        elevation: isDark ? 2 : Shadow.light.elevation,
     },
     userCardHeader: {
         flexDirection: 'row',
@@ -181,7 +195,7 @@ const styles = StyleSheet.create({
         width: normalize(40),
         height: normalize(40),
         borderRadius: normalize(20),
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.surfaceSecondary,
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: normalize(12),
@@ -198,25 +212,25 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
     },
     userEmail: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginBottom: normalize(4),
     },
     userRole: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: Color.blue2,
+        color: colors.primary,
         fontWeight: '500',
         marginBottom: normalize(2),
     },
     userAdditionalInfo: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
     },
     userCardActions: {
         flexDirection: 'row',
@@ -224,7 +238,7 @@ const styles = StyleSheet.create({
         marginTop: normalize(12),
         paddingTop: normalize(8),
         borderTopWidth: 1,
-        borderTopColor: Color.border,
+        borderTopColor: colors.border,
     },
     actionButton: {
         flexDirection: 'row',
@@ -236,7 +250,7 @@ const styles = StyleSheet.create({
     actionText: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: Color.blue2,
+        color: colors.primary,
         marginLeft: normalize(4),
     },
 });

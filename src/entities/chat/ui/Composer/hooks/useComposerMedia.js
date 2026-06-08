@@ -24,16 +24,8 @@ export const useComposerMedia = ({
     
     try {
       if (Platform.OS === 'android') {
-        // На Android: автоматический запрос разрешения (как раньше)
-        const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
-        
-        if (currentStatus !== 'granted') {
-          const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-          
-          if (permissionResult.status !== 'granted') {
-            return;
-          }
-        }
+        // Android 13+: используем системный Photo Picker без READ_MEDIA_IMAGES/VIDEO.
+        // Широкий доступ к галерее запрещен Google Play для редкого выбора фото.
       } else {
         // iOS: сначала запрашиваем разрешение, и только после отказа показываем экран настроек
         const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
@@ -14,7 +14,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { Color, FontFamily } from '@app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { useOrderAlternatives } from '@entities/order';
 import {
     ALTERNATIVE_TYPE_LABELS,
@@ -50,6 +51,8 @@ const formatOrderNumber = (orderNumber) => {
 
 export const OrderChoicesListScreen = () => {
     const navigation = useNavigation();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     
     // Хуки
     const {
@@ -296,10 +299,10 @@ export const OrderChoicesListScreen = () => {
     // Состояние загрузки
     if (loading && choices.length === 0) {
         return (
-            <SafeAreaView style={styles.container}>
-                <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+                <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color="#667eea" />
+                    <ActivityIndicator size="large" color={colors.primary} />
                     <Text style={styles.loadingText}>Загрузка предложений...</Text>
                 </View>
             </SafeAreaView>
@@ -309,17 +312,17 @@ export const OrderChoicesListScreen = () => {
     // Состояние ошибки
     if (error && choices.length === 0) {
         return (
-            <SafeAreaView style={styles.container}>
-                <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+                <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
                 <View style={styles.errorContainer}>
-                    <Icon name="error-outline" size={80} color="#dc3545" />
+                    <Icon name="error-outline" size={80} color={colors.error} />
                     <Text style={styles.errorTitle}>Ошибка загрузки</Text>
                     <Text style={styles.errorText}>{error}</Text>
                     <TouchableOpacity
                         style={styles.retryButton}
                         onPress={loadMyChoices}
                     >
-                        <Icon name="refresh" size={20} color="#fff" />
+                        <Icon name="refresh" size={20} color={colors.textInverse} />
                         <Text style={styles.retryButtonText}>Попробовать снова</Text>
                     </TouchableOpacity>
                 </View>
@@ -330,8 +333,8 @@ export const OrderChoicesListScreen = () => {
     // Пустое состояние
     if (choices.length === 0) {
         return (
-            <SafeAreaView style={styles.container}>
-                <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+                <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
                 
                 {/* Заголовок */}
                 <View style={styles.header}>
@@ -339,7 +342,7 @@ export const OrderChoicesListScreen = () => {
                         style={styles.headerBackButton}
                         onPress={() => navigation.goBack()}
                     >
-                        <Icon name="arrow-back" size={24} color="#333" />
+                        <Icon name="arrow-back" size={24} color={colors.textPrimary} />
                     </TouchableOpacity>
                     <Text style={styles.headerTitle}>Предложения по заказам</Text>
                     <View style={styles.headerPlaceholder} />
@@ -347,7 +350,7 @@ export const OrderChoicesListScreen = () => {
 
                 <View style={styles.modernEmptyContainer}>
                     <View style={styles.emptyIconContainer}>
-                        <Icon name="check-circle" size={80} color="#28a745" />
+                        <Icon name="check-circle" size={80} color={colors.success} />
                     </View>
                     <Text style={styles.emptyTitle}>Нет активных предложений</Text>
                     <Text style={styles.emptyText}>
@@ -357,7 +360,7 @@ export const OrderChoicesListScreen = () => {
                         style={styles.modernButton}
                         onPress={() => navigation.goBack()}
                     >
-                        <Icon name="arrow-back" size={20} color="#fff" />
+                        <Icon name="arrow-back" size={20} color={colors.textInverse} />
                         <Text style={styles.modernButtonText}>Вернуться к заказам</Text>
                     </TouchableOpacity>
                 </View>
@@ -366,8 +369,8 @@ export const OrderChoicesListScreen = () => {
     }
 
     return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+            <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
             
             {/* Современный заголовок */}
             <View style={styles.modernHeader}>
@@ -375,7 +378,7 @@ export const OrderChoicesListScreen = () => {
                     style={styles.headerBackButton}
                     onPress={() => navigation.goBack()}
                 >
-                    <Icon name="arrow-back" size={24} color="#333" />
+                    <Icon name="arrow-back" size={24} color={colors.textPrimary} />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Предложения по заказам</Text>
                 <View style={styles.headerPlaceholder} />
@@ -391,7 +394,7 @@ export const OrderChoicesListScreen = () => {
                             <Text style={styles.statLabel}>Всего предложений</Text>
                         </View>
                         <View style={styles.statCard}>
-                            <Text style={[styles.statNumber, { color: '#fd7e14' }]}>{urgentChoices.length}</Text>
+                            <Text style={[styles.statNumber, { color: colors.warning }]}>{urgentChoices.length}</Text>
                             <Text style={styles.statLabel}>Требуют внимания</Text>
                         </View>
                     </View>
@@ -406,7 +409,9 @@ export const OrderChoicesListScreen = () => {
                     <RefreshControl
                         refreshing={refreshing}
                         onRefresh={handleRefresh}
-                        colors={['#667eea']}
+                        tintColor={colors.primary}
+                        colors={[colors.primary]}
+                        progressBackgroundColor={colors.surface}
                     />
                 }
             >
@@ -442,13 +447,13 @@ export const OrderChoicesListScreen = () => {
                                     <View
                                         style={[
                                             styles.statusBadge, 
-                                            { backgroundColor: urgent ? '#fd7e14' : '#667eea' }
+                                            { backgroundColor: urgent ? colors.warning : colors.primary }
                                         ]}
                                     >
                                         <Icon 
                                             name={urgent ? "warning" : "schedule"} 
                                             size={12} 
-                                            color="#fff" 
+                                            color={colors.textInverse}
                                         />
                                         <Text style={styles.statusText}>
                                             {urgent ? 'СРОЧНО' : 'ОЖИДАЕТ'}
@@ -469,7 +474,7 @@ export const OrderChoicesListScreen = () => {
                                         />
                                     ) : (
                                         <View style={[styles.productImage, styles.placeholderContainer]}>
-                                            <Icon name="image" size={24} color="#ccc" />
+                                            <Icon name="image" size={24} color={colors.textTertiary} />
                                         </View>
                                     )}
                                 </View>
@@ -477,7 +482,7 @@ export const OrderChoicesListScreen = () => {
                                 <View style={styles.orderDetails}>
                                     <View style={styles.orderItemsInfo}>
                                         <View style={styles.itemsCountContainer}>
-                                            <Icon name="shopping-cart" size={14} color="#4a5568" />
+                                            <Icon name="shopping-cart" size={14} color={colors.textSecondary} />
                                             <Text style={styles.itemsCount}>
                                                 {productInfo.name}
                                             </Text>
@@ -485,7 +490,7 @@ export const OrderChoicesListScreen = () => {
                                         
                                         {choice.order?.deliveryDate && (
                                             <View style={styles.deliveryContainer}>
-                                                <Icon name="local-shipping" size={12} color="#28a745" />
+                                                <Icon name="local-shipping" size={12} color={colors.success} />
                                                 <Text style={styles.deliveryDate}>
                                                     {new Date(choice.order.deliveryDate).toLocaleDateString('ru-RU')}
                                                 </Text>
@@ -501,7 +506,7 @@ export const OrderChoicesListScreen = () => {
                                             </Text>
                                         </View>
                                         <View style={styles.amountIcon}>
-                                            <Icon name="account-balance-wallet" size={16} color="#667eea" />
+                                            <Icon name="account-balance-wallet" size={16} color={colors.primary} />
                                         </View>
                                     </View>
 
@@ -518,7 +523,7 @@ export const OrderChoicesListScreen = () => {
                                             <Icon 
                                                 name={urgent ? "warning" : "schedule"} 
                                                 size={14} 
-                                                color={urgent ? "#fd7e14" : "#666"} 
+                                                color={urgent ? colors.warning : colors.textSecondary} 
                                             />
                                             <Text style={[
                                                 styles.timeText,
@@ -538,10 +543,10 @@ export const OrderChoicesListScreen = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.background,
     },
     // Современный заголовок (как в MyOrdersScreen)
     modernHeader: {
@@ -549,28 +554,28 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: 16,
         paddingVertical: 16,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.surface,
         borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
+        borderBottomColor: colors.border,
     },
     headerBackButton: {
         width: 40,
         height: 40,
         borderRadius: 20,
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surfaceSecondary,
         justifyContent: 'center',
         alignItems: 'center',
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
+        shadowOpacity: isDark ? 0.24 : 0.1,
+        shadowRadius: isDark ? 8 : 4,
+        elevation: isDark ? 4 : 3,
     },
     headerTitle: {
         flex: 1,
         fontSize: 20,
         fontWeight: '700',
-        color: '#1a1a1a',
+        color: colors.textPrimary,
         textAlign: 'center',
         marginHorizontal: 16,
     },
@@ -584,10 +589,10 @@ const styles = StyleSheet.create({
         marginBottom: 8,
     },
     statsGradient: {
-        backgroundColor: '#667eea',
+        backgroundColor: colors.primary,
         borderRadius: 16,
         padding: 20,
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.15,
         shadowRadius: 8,
@@ -596,7 +601,7 @@ const styles = StyleSheet.create({
     statsTitle: {
         fontSize: 20,
         fontWeight: '700',
-        color: '#fff',
+        color: colors.textInverse,
         marginBottom: 16,
         textAlign: 'center',
     },
@@ -611,7 +616,7 @@ const styles = StyleSheet.create({
     statNumber: {
         fontSize: 28,
         fontWeight: '800',
-        color: '#fff',
+        color: colors.textInverse,
         marginBottom: 4,
     },
     statLabel: {
@@ -625,23 +630,23 @@ const styles = StyleSheet.create({
     },
     // Современные карточки предложений (как в MyOrdersScreen)
     modernChoiceCard: {
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         borderRadius: 16,
         padding: 20,
         marginHorizontal: 16,
         marginVertical: 6,
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 12,
-        elevation: 6,
+        shadowOpacity: isDark ? 0.26 : 0.1,
+        shadowRadius: isDark ? 14 : 12,
+        elevation: isDark ? 7 : 6,
         borderWidth: 1,
-        borderColor: 'rgba(0,0,0,0.05)',
+        borderColor: colors.border,
     },
     choiceCardUrgent: {
         borderLeftWidth: 4,
-        borderLeftColor: '#fd7e14',
-        backgroundColor: '#fff8f0',
+        borderLeftColor: colors.warning,
+        backgroundColor: isDark ? colors.surface : colors.warning + '12',
     },
     choiceHeader: {
         flexDirection: 'row',
@@ -655,12 +660,12 @@ const styles = StyleSheet.create({
     choiceTitle: {
         fontSize: 18,
         fontWeight: '700',
-        color: '#1a1a1a',
+        color: colors.textPrimary,
         marginBottom: 4,
     },
     choiceOrder: {
         fontSize: 13,
-        color: '#666',
+        color: colors.textSecondary,
         fontWeight: '500',
     },
     headerRight: {
@@ -675,7 +680,7 @@ const styles = StyleSheet.create({
         borderRadius: 16,
         gap: 4,
         maxWidth: 120,
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.1,
         shadowRadius: 2,
@@ -684,7 +689,7 @@ const styles = StyleSheet.create({
     statusText: {
         fontSize: 11,
         fontWeight: '600',
-        color: '#fff',
+        color: colors.textInverse,
         textTransform: 'uppercase',
         letterSpacing: 0.5,
     },
@@ -698,20 +703,20 @@ const styles = StyleSheet.create({
         height: 60,
         borderRadius: 12,
         overflow: 'hidden',
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surfaceSecondary,
         borderWidth: 1,
-        borderColor: 'rgba(0,0,0,0.05)',
+        borderColor: colors.borderSubtle,
     },
     productImage: {
         width: '100%',
         height: '100%',
     },
     placeholderContainer: {
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surfaceSecondary,
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#e9ecef',
+        borderColor: colors.border,
     },
     orderDetails: {
         flex: 1,
@@ -727,7 +732,7 @@ const styles = StyleSheet.create({
     },
     itemsCount: {
         fontSize: 15,
-        color: '#1a1a1a',
+        color: colors.textPrimary,
         fontWeight: '600',
         lineHeight: 20,
         flex: 1,
@@ -739,7 +744,7 @@ const styles = StyleSheet.create({
     },
     deliveryDate: {
         fontSize: 12,
-        color: '#28a745',
+        color: colors.success,
         fontWeight: '600',
     },
     // Сумма
@@ -747,7 +752,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        backgroundColor: 'rgba(102, 126, 234, 0.05)',
+        backgroundColor: colors.primary + '0D',
         paddingHorizontal: 12,
         paddingVertical: 8,
         borderRadius: 8,
@@ -758,19 +763,19 @@ const styles = StyleSheet.create({
     },
     amountLabel: {
         fontSize: 12,
-        color: '#667eea',
+        color: colors.primary,
         fontWeight: '600',
         marginBottom: 2,
     },
     amount: {
         fontSize: 18,
         fontWeight: '800',
-        color: '#667eea',
+        color: colors.primary,
     },
     amountIcon: {
         width: 28,
         height: 28,
-        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+        backgroundColor: colors.primary + '1A',
         borderRadius: 14,
         justifyContent: 'center',
         alignItems: 'center',
@@ -781,7 +786,7 @@ const styles = StyleSheet.create({
     },
     choiceDescription: {
         fontSize: 13,
-        color: '#4a5568',
+        color: colors.textSecondary,
         lineHeight: 18,
     },
     // Время
@@ -792,11 +797,11 @@ const styles = StyleSheet.create({
     },
     timeText: {
         fontSize: 12,
-        color: '#666',
+        color: colors.textSecondary,
         fontWeight: '500',
     },
     timeTextUrgent: {
-        color: '#fd7e14',
+        color: colors.warning,
         fontWeight: '600',
     },
     loadingContainer: {
@@ -807,7 +812,7 @@ const styles = StyleSheet.create({
     },
     loadingText: {
         fontSize: normalize(16),
-        color: '#666',
+        color: colors.textSecondary,
         marginTop: normalize(16),
     },
     errorContainer: {
@@ -819,13 +824,13 @@ const styles = StyleSheet.create({
     errorTitle: {
         fontSize: normalize(20),
         fontWeight: '600',
-        color: '#dc3545',
+        color: colors.error,
         marginTop: normalize(16),
         marginBottom: normalize(8),
     },
     errorText: {
         fontSize: normalize(14),
-        color: '#666',
+        color: colors.textSecondary,
         textAlign: 'center',
         lineHeight: normalize(20),
         marginBottom: normalize(24),
@@ -833,7 +838,7 @@ const styles = StyleSheet.create({
     retryButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#dc3545',
+        backgroundColor: colors.error,
         borderRadius: normalize(12),
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(12),
@@ -841,7 +846,7 @@ const styles = StyleSheet.create({
     retryButtonText: {
         fontSize: normalize(14),
         fontWeight: '600',
-        color: '#fff',
+        color: colors.textInverse,
         marginLeft: normalize(8),
     },
     // Современное пустое состояние (как в MyOrdersScreen)
@@ -852,7 +857,7 @@ const styles = StyleSheet.create({
         padding: 32,
     },
     emptyIconContainer: {
-        backgroundColor: 'rgba(40, 167, 69, 0.1)',
+        backgroundColor: colors.success + '1A',
         padding: 24,
         borderRadius: 50,
         marginBottom: 24,
@@ -860,13 +865,13 @@ const styles = StyleSheet.create({
     emptyTitle: {
         fontSize: 24,
         fontWeight: '700',
-        color: '#1a1a1a',
+        color: colors.textPrimary,
         marginBottom: 12,
         textAlign: 'center',
     },
     emptyText: {
         fontSize: 16,
-        color: '#666',
+        color: colors.textSecondary,
         textAlign: 'center',
         lineHeight: 24,
         marginBottom: 32,
@@ -876,19 +881,19 @@ const styles = StyleSheet.create({
     modernButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#667eea',
+        backgroundColor: colors.primary,
         paddingHorizontal: 24,
         paddingVertical: 14,
         borderRadius: 12,
         gap: 8,
-        shadowColor: '#667eea',
+        shadowColor: colors.primary,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
         shadowRadius: 8,
         elevation: 6,
     },
     modernButtonText: {
-        color: '#fff',
+        color: colors.textInverse,
         fontSize: 16,
         fontWeight: '600',
     },

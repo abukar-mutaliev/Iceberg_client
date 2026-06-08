@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, Modal, TextInput, ActivityIndicator } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
-import { Color } from "@/styles/GlobalStyles";
 import { selectCurrentUserRole } from '@entities/auth';
 import { processReward } from '@entities/reward/model/slice';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const StatusColors = {
     PENDING: {
@@ -43,6 +43,8 @@ const RewardTypeLabels = {
 
 export const RewardCard = ({ reward, showDetails = false, showEmployee = false, style }) => {
     const dispatch = useDispatch();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const userRole = useSelector(selectCurrentUserRole);
     const [modalVisible, setModalVisible] = useState(false);
     const [selectedAction, setSelectedAction] = useState(null);
@@ -228,6 +230,8 @@ export const RewardCard = ({ reward, showDetails = false, showEmployee = false, 
                             value={comment}
                             onChangeText={setComment}
                             placeholder="Добавить комментарий..."
+                            placeholderTextColor={colors.textTertiary}
+                            keyboardAppearance={colors.keyboardAppearance}
                             multiline
                             maxLength={500}
                         />
@@ -260,19 +264,19 @@ export const RewardCard = ({ reward, showDetails = false, showEmployee = false, 
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         borderRadius: 12,
         padding: 16,
         marginVertical: 6,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0.35 : 0.1,
         shadowRadius: 4,
         elevation: 3,
         borderWidth: 1,
-        borderColor: '#f0f0f0',
+        borderColor: colors.border,
     },
     header: {
         flexDirection: 'row',
@@ -286,12 +290,12 @@ const styles = StyleSheet.create({
     typeText: {
         fontSize: 16,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         marginBottom: 2,
     },
     orderText: {
         fontSize: 14,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
     },
     statusBadge: {
         paddingHorizontal: 12,
@@ -304,7 +308,7 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     employeeContainer: {
-        backgroundColor: '#f0f0f0',
+        backgroundColor: colors.surfaceSecondary,
         padding: 12,
         borderRadius: 8,
         marginTop: 12,
@@ -316,17 +320,17 @@ const styles = StyleSheet.create({
     employeeName: {
         fontSize: 16,
         fontWeight: '700',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         marginBottom: 2,
     },
     employeePosition: {
         fontSize: 14,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginBottom: 2,
     },
     employeeWarehouse: {
         fontSize: 14,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
     },
     amountContainer: {
         flexDirection: 'row',
@@ -337,24 +341,24 @@ const styles = StyleSheet.create({
     amountText: {
         fontSize: 20,
         fontWeight: '700',
-        color: Color.primary,
+        color: colors.primary,
     },
     negativeAmount: {
         color: '#e74c3c',
     },
     dateText: {
         fontSize: 14,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
     },
     descriptionContainer: {
         marginTop: 8,
         padding: 12,
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surfaceSecondary,
         borderRadius: 8,
     },
     descriptionText: {
         fontSize: 14,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         lineHeight: 20,
     },
     actionsContainer: {
@@ -391,13 +395,13 @@ const styles = StyleSheet.create({
     },
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: colors.modalOverlay,
         justifyContent: 'center',
         alignItems: 'center',
         padding: 20,
     },
     modalContent: {
-        backgroundColor: '#fff',
+        backgroundColor: colors.surface,
         borderRadius: 16,
         padding: 24,
         width: '100%',
@@ -406,30 +410,32 @@ const styles = StyleSheet.create({
     modalTitle: {
         fontSize: 18,
         fontWeight: '700',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         textAlign: 'center',
         marginBottom: 16,
     },
     rewardInfo: {
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surfaceSecondary,
         padding: 12,
         borderRadius: 8,
         marginBottom: 16,
     },
     rewardInfoText: {
         fontSize: 14,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginBottom: 4,
     },
     commentLabel: {
         fontSize: 14,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         marginBottom: 8,
     },
     commentInput: {
         borderWidth: 1,
-        borderColor: '#ddd',
+        borderColor: colors.inputBorder,
+        backgroundColor: colors.inputBackground,
+        color: colors.textPrimary,
         borderRadius: 8,
         padding: 12,
         fontSize: 14,
@@ -448,17 +454,17 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     cancelButton: {
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surfaceSecondary,
         borderWidth: 1,
-        borderColor: '#ddd',
+        borderColor: colors.border,
     },
     confirmButton: {
-        backgroundColor: Color.primary,
+        backgroundColor: colors.primary,
     },
     cancelButtonText: {
         fontSize: 16,
         fontWeight: '600',
-        color: Color.textSecondary,
+        color: colors.textSecondary,
     },
     confirmButtonText: {
         fontSize: 16,

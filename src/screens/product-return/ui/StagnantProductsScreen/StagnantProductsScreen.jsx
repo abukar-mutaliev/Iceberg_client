@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,10 +6,12 @@ import {
   FlatList,
   ActivityIndicator,
   RefreshControl,
-  Pressable} from 'react-native';
+  Pressable,
+  StatusBar,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Color, FontFamily, FontSize, Border, Shadow, Padding } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize, Border, Shadow, Padding } from '@app/styles/GlobalStyles';
 import { normalize } from '@shared/lib/normalize';
 import { BackButton } from '@shared/ui/Button/BackButton';
 import {
@@ -20,13 +22,60 @@ import {
   UrgencyLevel,
 } from '@entities/product-return';
 import { GlobalAlert } from '@shared/ui/CustomAlert';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+
+const defaultProductImage = {
+  uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
+};
+
+const getProductImages = (product) => {
+  const nestedProduct = product?.product;
+
+  if (nestedProduct?.images) {
+    if (Array.isArray(nestedProduct.images) && nestedProduct.images.length > 0) {
+      return nestedProduct.images;
+    }
+
+    if (typeof nestedProduct.images === 'string') {
+      try {
+        const parsed = JSON.parse(nestedProduct.images);
+        return Array.isArray(parsed) ? parsed : [nestedProduct.images];
+      } catch {
+        return [nestedProduct.images];
+      }
+    }
+  }
+
+  if (Array.isArray(product?.images) && product.images.length > 0) {
+    return product.images;
+  }
+
+  if (product?.productImage) {
+    return [product.productImage];
+  }
+
+  return [];
+};
+
+const adaptStagnantProduct = (product) => {
+  const images = getProductImages(product);
+
+  return {
+    ...product,
+    images,
+    image: images.length > 0 ? { uri: images[0] } : defaultProductImage,
+    originalData: product?.product || product,
+  };
+};
 
 /**
- * Экран списка залежавшихся товаров
+ * Экран списка зalежавшихся товаров
  * Доступен для: ADMIN, EMPLOYEE, SUPPLIER
  */
 export const StagnantProductsScreen = () => {
   const navigation = useNavigation();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { canCreate, isSupplier } = useReturnPermissions();
   const { createReturn, isCreating } = useCreateReturn();
   const screenTitle = isSupplier ? 'Мои залежавшиеся товары' : 'Залежавшиеся товары';
@@ -145,6 +194,8 @@ export const StagnantProductsScreen = () => {
         <Text style={styles.filtersLabel}>Фильтр по срочности:</Text>
         <View style={styles.filterButtons}>
           <FilterButton
+            styles={styles}
+            colors={colors}
             label="Критично"
             emoji="🔴"
             count={counts.critical}
@@ -152,6 +203,8 @@ export const StagnantProductsScreen = () => {
             onPress={() => handleFilterPress(UrgencyLevel.CRITICAL)}
           />
           <FilterButton
+            styles={styles}
+            colors={colors}
             label="Высокий"
             emoji="🟠"
             count={counts.high}
@@ -159,6 +212,8 @@ export const StagnantProductsScreen = () => {
             onPress={() => handleFilterPress(UrgencyLevel.HIGH)}
           />
           <FilterButton
+            styles={styles}
+            colors={colors}
             label="Средний"
             emoji="🟡"
             count={counts.medium}
@@ -185,6 +240,7 @@ export const StagnantProductsScreen = () => {
   if (error && !loading) {
     return (
       <SafeAreaView style={styles.container} edges={['left', 'right']}>
+        <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
         {renderScreenHeader()}
         <View style={styles.errorContainer}>
           <Text style={styles.errorIcon}>⚠️</Text>
@@ -200,13 +256,14 @@ export const StagnantProductsScreen = () => {
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right']}>
+      <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
       {renderScreenHeader()}
       <FlatList
         data={products}
         keyExtractor={(item, index) => `stagnant-${item.productId}-${item.warehouseId || item.id || index}`}
         renderItem={({ item }) => (
           <StagnantProductCard
-            product={item}
+            product={adaptStagnantProduct(item)}
             onPress={handleProductPress}
             onCreateReturn={canCreate && !isSupplier ? handleCreateReturn : null}
           />
@@ -218,8 +275,9 @@ export const StagnantProductsScreen = () => {
           <RefreshControl
             refreshing={loading}
             onRefresh={refresh}
-            tintColor={Color.purpleSoft}
-            colors={[Color.purpleSoft]}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+            progressBackgroundColor={colors.surface}
           />
         }
         showsVerticalScrollIndicator={false}
@@ -228,7 +286,7 @@ export const StagnantProductsScreen = () => {
       {/* Индикатор создания возврата */}
       {isCreating && (
         <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color={Color.purpleSoft} />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Создание возврата...</Text>
         </View>
       )}
@@ -239,7 +297,7 @@ export const StagnantProductsScreen = () => {
 /**
  * Компонент кнопки фильтра
  */
-const FilterButton = ({ label, emoji, count, active, onPress }) => (
+const FilterButton = ({ styles, colors, label, emoji, count, active, onPress }) => (
   <Pressable
     style={({ pressed }) => [
       styles.filterButton,
@@ -247,7 +305,7 @@ const FilterButton = ({ label, emoji, count, active, onPress }) => (
       pressed && styles.filterButtonPressed,
     ]}
     onPress={onPress}
-    android_ripple={{ color: Color.purpleLight }}
+    android_ripple={{ color: colors.primarySoft }}
   >
     <Text style={styles.filterEmoji}>{emoji}</Text>
     <Text style={[styles.filterLabel, active && styles.filterLabelActive]}>
@@ -263,10 +321,10 @@ const FilterButton = ({ label, emoji, count, active, onPress }) => (
   </Pressable>
 );
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Color.background,
+    backgroundColor: colors.background,
   },
   screenHeader: {
     flexDirection: 'row',
@@ -274,9 +332,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     height: 56,
     paddingHorizontal: 16,
-    backgroundColor: Color.colorWhite,
+    backgroundColor: colors.background,
     borderBottomWidth: 1,
-    borderBottomColor: Color.border,
+    borderBottomColor: colors.border,
   },
   screenHeaderTitle: {
     flex: 1,
@@ -284,7 +342,7 @@ const styles = StyleSheet.create({
     fontSize: FontSize.size_lg,
     fontFamily: FontFamily.sFProDisplay,
     fontWeight: '600',
-    color: Color.textPrimary,
+    color: colors.textPrimary,
   },
   screenHeaderPlaceholder: {
     width: 50,
@@ -299,7 +357,7 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: FontSize.size_sm,
     fontFamily: FontFamily.regular,
-    color: Color.textSecondary,
+    color: colors.textSecondary,
     marginBottom: Padding.medium,
   },
   
@@ -311,7 +369,7 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    backgroundColor: Color.secondary,
+    backgroundColor: colors.surfaceSecondary,
     borderRadius: Border.radius.large,
     padding: Padding.medium,
     alignItems: 'center',
@@ -326,19 +384,19 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xxxlarge,
     fontFamily: FontFamily.bold,
     fontWeight: '700',
-    color: Color.purpleSoft,
+    color: colors.primary,
     marginBottom: 4,
   },
   statValueCritical: {
-    color: Color.error,
+    color: colors.error,
   },
   statValueHigh: {
-    color: Color.orange,
+    color: colors.warning,
   },
   statLabel: {
     fontSize: FontSize.size_xs,
     fontFamily: FontFamily.regular,
-    color: Color.textSecondary,
+    color: colors.textSecondary,
   },
 
   // Фильтры
@@ -349,7 +407,7 @@ const styles = StyleSheet.create({
     fontSize: FontSize.size_sm,
     fontFamily: FontFamily.medium,
     fontWeight: '600',
-    color: Color.textPrimary,
+    color: colors.textPrimary,
     marginBottom: 8,
   },
   filterButtons: {
@@ -361,17 +419,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Color.colorLightMode,
+    backgroundColor: colors.cardBackground,
     borderRadius: Border.radius.medium,
     borderWidth: 1,
-    borderColor: Color.border,
+    borderColor: colors.border,
     paddingVertical: 8,
     paddingHorizontal: 10,
-    ...Shadow.light,
+    ...(isDark ? {} : Shadow.light),
   },
   filterButtonActive: {
-    backgroundColor: Color.purpleSoft,
-    borderColor: Color.purpleSoft,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   filterButtonPressed: {
     opacity: 0.8,
@@ -384,13 +442,13 @@ const styles = StyleSheet.create({
     fontSize: FontSize.size_xs,
     fontFamily: FontFamily.medium,
     fontWeight: '600',
-    color: Color.textPrimary,
+    color: colors.textPrimary,
   },
   filterLabelActive: {
-    color: Color.colorLightMode,
+    color: '#FFFFFF',
   },
   filterBadge: {
-    backgroundColor: Color.purpleSoft,
+    backgroundColor: colors.primary,
     borderRadius: 10,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -399,16 +457,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   filterBadgeActive: {
-    backgroundColor: Color.colorLightMode,
+    backgroundColor: '#FFFFFF',
   },
   filterBadgeText: {
     fontSize: FontSize.size_5xs,
     fontFamily: FontFamily.bold,
     fontWeight: '700',
-    color: Color.colorLightMode,
+    color: '#FFFFFF',
   },
   filterBadgeTextActive: {
-    color: Color.purpleSoft,
+    color: colors.primary,
   },
 
   // Пустое состояние
@@ -426,14 +484,14 @@ const styles = StyleSheet.create({
     fontSize: FontSize.size_lg,
     fontFamily: FontFamily.bold,
     fontWeight: '700',
-    color: Color.textPrimary,
+    color: colors.textPrimary,
     marginBottom: 8,
     textAlign: 'center',
   },
   emptyText: {
     fontSize: FontSize.size_sm,
     fontFamily: FontFamily.regular,
-    color: Color.textSecondary,
+    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -453,28 +511,28 @@ const styles = StyleSheet.create({
     fontSize: FontSize.size_lg,
     fontFamily: FontFamily.bold,
     fontWeight: '700',
-    color: Color.textPrimary,
+    color: colors.textPrimary,
     marginBottom: 8,
   },
   errorText: {
     fontSize: FontSize.size_sm,
     fontFamily: FontFamily.regular,
-    color: Color.textSecondary,
+    color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: Padding.large,
   },
   retryButton: {
-    backgroundColor: Color.purpleSoft,
+    backgroundColor: colors.primary,
     borderRadius: Border.radius.medium,
     paddingVertical: 12,
     paddingHorizontal: 24,
-    ...Shadow.button,
+    ...(isDark ? {} : Shadow.button),
   },
   retryButtonText: {
     fontSize: FontSize.size_md,
     fontFamily: FontFamily.medium,
     fontWeight: '600',
-    color: Color.colorLightMode,
+    color: '#FFFFFF',
   },
 
   // Overlay загрузки
@@ -493,7 +551,7 @@ const styles = StyleSheet.create({
     fontSize: FontSize.size_md,
     fontFamily: FontFamily.medium,
     fontWeight: '600',
-    color: Color.colorLightMode,
+    color: '#FFFFFF',
   },
 });
 

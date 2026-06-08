@@ -235,10 +235,10 @@ export const PaymentScreen = ({ navigation, route }) => {
                 onLoadingChange={actions.setWebViewLoading}
                 onNavigationChange={(url) => {
                     if (url.startsWith('icebergapp://payment-result')) {
-                        completePayment('completed');
+                        checkPaymentStatus();
                     }
                 }}
-                onPaymentSuccess={() => completePayment('completed')}
+                onPaymentSuccess={checkPaymentStatus}
                 onCheckStatus={checkPaymentStatus}
             />
         </View>

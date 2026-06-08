@@ -2,6 +2,7 @@ import React, { useMemo, useEffect } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily, Border, Shadow } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 // Функция для правильного склонения слова "коробка"
 const getBoxesText = (count) => {
@@ -21,6 +22,8 @@ export const ProductWarehouseInfo = ({
                                          loading,
                                          error
                                      }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     useEffect(() => {
         const summary = {
@@ -69,7 +72,7 @@ export const ProductWarehouseInfo = ({
         if (loading) {
             return (
                 <View style={styles.centeredContainer}>
-                    <ActivityIndicator size="small" color={Color.blue2} />
+                    <ActivityIndicator size="small" color={isDark ? colors.primary : Color.blue2} />
                     <Text style={styles.loadingText}>Загрузка данных о складах...</Text>
                 </View>
             );
@@ -153,6 +156,8 @@ export const ProductWarehouseInfo = ({
 };
 
 const WarehouseCard = React.memo(({ warehouse }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     // Обрабатываем разные структуры данных
     const warehouseData = useMemo(() => {
         // Если это данные из API /find-with-product
@@ -276,18 +281,20 @@ const WarehouseCard = React.memo(({ warehouse }) => {
     );
 });
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         margin: normalize(16),
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.surface : Color.colorLightMode,
         borderRadius: Border.radius.medium,
         padding: normalize(16),
-        ...Shadow.light,
+        borderWidth: isDark ? StyleSheet.hairlineWidth : 0,
+        borderColor: isDark ? colors.border : 'transparent',
+        ...(isDark ? {} : Shadow.light),
     },
     sectionTitle: {
         fontSize: normalizeFont(18),
         fontWeight: '600',
-        color: Color.dark,
+        color: isDark ? colors.textPrimary : Color.dark,
         marginBottom: normalize(16),
         fontFamily: FontFamily.sFProDisplay,
     },
@@ -297,7 +304,7 @@ const styles = StyleSheet.create({
     },
     loadingText: {
         fontSize: normalizeFont(14),
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         marginTop: normalize(8),
         fontFamily: FontFamily.sFProText,
     },
@@ -307,14 +314,14 @@ const styles = StyleSheet.create({
     },
     errorText: {
         fontSize: normalizeFont(14),
-        color: Color.red,
+        color: isDark ? colors.error : Color.red,
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
         textAlign: 'center',
     },
     errorSubtext: {
         fontSize: normalizeFont(12),
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
         marginTop: normalize(4),
@@ -325,24 +332,26 @@ const styles = StyleSheet.create({
     },
     noDataText: {
         fontSize: normalizeFont(14),
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
         textAlign: 'center',
     },
     noDataSubtext: {
         fontSize: normalizeFont(12),
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
         marginTop: normalize(8),
         paddingHorizontal: normalize(20),
     },
     stockSummaryCard: {
-        backgroundColor: Color.lightGray,
+        backgroundColor: isDark ? colors.surfaceElevated : Color.lightGray,
         borderRadius: Border.radius.small,
         padding: normalize(16),
         marginBottom: normalize(16),
+        borderWidth: isDark ? StyleSheet.hairlineWidth : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     stockSummaryRow: {
         flexDirection: 'row',
@@ -355,12 +364,12 @@ const styles = StyleSheet.create({
     divider: {
         width: 1,
         height: normalize(40),
-        backgroundColor: Color.border,
+        backgroundColor: isDark ? colors.border : Color.border,
         marginHorizontal: normalize(16),
     },
     stockSummaryLabel: {
         fontSize: normalizeFont(12),
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(4),
         textAlign: 'center',
@@ -371,10 +380,10 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProDisplay,
     },
     totalStock: {
-        color: Color.blue2,
+        color: isDark ? colors.primary : Color.blue2,
     },
     availableStock: {
-        color: '#4CAF50',
+        color: isDark ? '#4ADE80' : '#4CAF50',
     },
     statusIndicator: {
         flexDirection: 'row',
@@ -383,7 +392,7 @@ const styles = StyleSheet.create({
         marginTop: normalize(12),
         paddingTop: normalize(12),
         borderTopWidth: 0.5,
-        borderTopColor: Color.border,
+        borderTopColor: isDark ? colors.border : Color.border,
     },
     statusDot: {
         width: normalize(8),
@@ -392,16 +401,16 @@ const styles = StyleSheet.create({
         marginRight: normalize(6),
     },
     statusAvailable: {
-        backgroundColor: '#4CAF50',
+        backgroundColor: isDark ? '#4ADE80' : '#4CAF50',
     },
     statusUnavailable: {
-        backgroundColor: '#f44336',
+        backgroundColor: isDark ? colors.error : '#f44336',
     },
     statusText: {
         fontSize: normalizeFont(12),
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
     },
     warehousesList: {
         gap: normalize(12),
@@ -409,16 +418,16 @@ const styles = StyleSheet.create({
     warehousesTitle: {
         fontSize: normalizeFont(14),
         fontWeight: '600',
-        color: Color.dark,
+        color: isDark ? colors.textPrimary : Color.dark,
         marginBottom: normalize(8),
         fontFamily: FontFamily.sFProText,
     },
     warehouseCard: {
-        backgroundColor: '#F8F9FA',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F8F9FA',
         borderRadius: Border.radius.small,
         padding: normalize(12),
         borderWidth: 0.5,
-        borderColor: Color.border,
+        borderColor: isDark ? colors.border : Color.border,
     },
     warehouseHeader: {
         flexDirection: 'row',
@@ -433,13 +442,13 @@ const styles = StyleSheet.create({
     warehouseName: {
         fontSize: normalizeFont(16),
         fontWeight: '600',
-        color: Color.dark,
+        color: isDark ? colors.textPrimary : Color.dark,
         fontFamily: FontFamily.sFProDisplay,
         marginBottom: normalize(2),
     },
     warehouseAddress: {
         fontSize: normalizeFont(13),
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         fontFamily: FontFamily.sFProText,
     },
     warehouseQuantityContainer: {
@@ -448,12 +457,12 @@ const styles = StyleSheet.create({
     warehouseQuantity: {
         fontSize: normalizeFont(18),
         fontWeight: '700',
-        color: Color.blue2,
+        color: isDark ? colors.primary : Color.blue2,
         fontFamily: FontFamily.sFProDisplay,
     },
     warehouseQuantityLabel: {
         fontSize: normalizeFont(10),
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginTop: normalize(2),
     },
@@ -468,7 +477,7 @@ const styles = StyleSheet.create({
     },
     warehouseDistrictText: {
         fontSize: normalizeFont(12),
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         fontFamily: FontFamily.sFProText,
     },
     reservedInfo: {
@@ -477,7 +486,7 @@ const styles = StyleSheet.create({
         marginTop: normalize(4),
         paddingTop: normalize(8),
         borderTopWidth: 0.5,
-        borderTopColor: Color.border,
+        borderTopColor: isDark ? colors.border : Color.border,
     },
     reservedIcon: {
         fontSize: normalizeFont(12),
@@ -493,11 +502,11 @@ const styles = StyleSheet.create({
         marginTop: normalize(4),
         paddingTop: normalize(4),
         borderTopWidth: 0.5,
-        borderTopColor: Color.border,
+        borderTopColor: isDark ? colors.border : Color.border,
     },
     debugText: {
         fontSize: normalizeFont(10),
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         fontFamily: FontFamily.sFProText,
         fontStyle: 'italic',
     },
@@ -505,7 +514,7 @@ const styles = StyleSheet.create({
         marginTop: normalize(8),
         paddingTop: normalize(8),
         borderTopWidth: 0.5,
-        borderTopColor: Color.border,
+        borderTopColor: isDark ? colors.border : Color.border,
     },
     priceRow: {
         flexDirection: 'row',
@@ -515,13 +524,13 @@ const styles = StyleSheet.create({
     },
     priceLabel: {
         fontSize: normalizeFont(12),
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         fontFamily: FontFamily.sFProText,
     },
     priceValue: {
         fontSize: normalizeFont(16),
         fontWeight: '700',
-        color: Color.blue2,
+        color: isDark ? colors.primary : Color.blue2,
         fontFamily: FontFamily.sFProDisplay,
     },
     warehousePriceRow: {
@@ -531,17 +540,17 @@ const styles = StyleSheet.create({
         marginTop: normalize(4),
         paddingTop: normalize(4),
         borderTopWidth: 0.5,
-        borderTopColor: Color.border,
+        borderTopColor: isDark ? colors.border : Color.border,
     },
     warehousePriceLabel: {
         fontSize: normalizeFont(11),
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         fontFamily: FontFamily.sFProText,
     },
     warehousePriceValue: {
         fontSize: normalizeFont(14),
         fontWeight: '600',
-        color: '#3B43A2',
+        color: isDark ? colors.primary : '#3B43A2',
         fontFamily: FontFamily.sFProDisplay,
     },
     discountRow: {
@@ -552,19 +561,19 @@ const styles = StyleSheet.create({
     },
     discountText: {
         fontSize: normalizeFont(11),
-        color: '#4CAF50',
+        color: isDark ? '#4ADE80' : '#4CAF50',
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
     },
     basePriceText: {
         fontSize: normalizeFont(10),
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         fontFamily: FontFamily.sFProText,
         textDecorationLine: 'line-through',
     },
     fallbackPriceText: {
         fontSize: normalizeFont(10),
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         fontFamily: FontFamily.sFProText,
         fontStyle: 'italic',
         marginTop: normalize(4),

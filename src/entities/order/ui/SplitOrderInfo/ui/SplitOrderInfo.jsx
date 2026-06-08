@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     View,
     Text,
@@ -10,7 +10,8 @@ import {
     Dimensions
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { Color, FontFamily } from '@app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 // Импортируем напрямую из API, чтобы избежать циклической зависимости
 import { OrderApi } from '../../../api/orderApi';
 
@@ -26,6 +27,8 @@ export const SplitOrderInfo = ({
     onOrderPress,
     style = {} 
 }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const [splitOrders, setSplitOrders] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -77,7 +80,7 @@ export const SplitOrderInfo = ({
                 subtitle: 'Товары в наличии',
                 color: '#28a745',
                 icon: 'local-shipping',
-                bgColor: '#f8fff9'
+                bgColor: isDark ? colors.surface : '#f8fff9'
             };
         } else if (order.isWaiting) {
             return {
@@ -85,15 +88,15 @@ export const SplitOrderInfo = ({
                 subtitle: 'Товары будут доставлены после поступления',
                 color: '#fd7e14',
                 icon: 'inventory',
-                bgColor: '#fff8f0'
+                bgColor: isDark ? colors.surface : '#fff8f0'
             };
         }
         return {
             title: 'Заказ',
             subtitle: 'Обычный заказ',
-            color: '#6c757d',
+            color: colors.textTertiary,
             icon: 'shopping-cart',
-            bgColor: '#f8f9fa'
+            bgColor: colors.surface
         };
     };
 
@@ -127,7 +130,7 @@ export const SplitOrderInfo = ({
         return (
             <View style={[styles.container, style]}>
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="small" color="#667eea" />
+                    <ActivityIndicator size="small" color={colors.primary} />
                     <Text style={styles.loadingText}>Загрузка информации о разделенных заказах...</Text>
                 </View>
             </View>
@@ -138,7 +141,7 @@ export const SplitOrderInfo = ({
         return (
             <View style={[styles.container, style]}>
                 <View style={styles.errorContainer}>
-                    <Icon name="error-outline" size={24} color="#dc3545" />
+                    <Icon name="error-outline" size={24} color={colors.error} />
                     <Text style={styles.errorText}>{error}</Text>
                     <TouchableOpacity style={styles.retryButton} onPress={loadSplitOrderInfo}>
                         <Text style={styles.retryButtonText}>Повторить</Text>
@@ -155,7 +158,7 @@ export const SplitOrderInfo = ({
     return (
         <View style={[styles.container, style]}>
             <View style={styles.header}>
-                <Icon name="call-split" size={20} color="#667eea" />
+                <Icon name="call-split" size={20} color={colors.primary} />
                 <Text style={styles.headerTitle}>Разделенные заказы</Text>
             </View>
 
@@ -220,29 +223,32 @@ export const SplitOrderInfo = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         borderRadius: normalize(12),
         marginVertical: normalize(8),
-        shadowColor: '#000',
+        marginHorizontal: normalize(20),
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0.2 : 0.1,
         shadowRadius: 4,
         elevation: 2,
+        borderWidth: isDark ? 1 : 0,
+        borderColor: colors.border,
     },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
         padding: normalize(16),
         borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
+        borderBottomColor: colors.border,
     },
     headerTitle: {
         fontSize: normalize(16),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
-        color: '#1a1a1a',
+        color: colors.textPrimary,
         marginLeft: normalize(8),
     },
     scrollContent: {
@@ -255,7 +261,7 @@ const styles = StyleSheet.create({
         padding: normalize(16),
         marginRight: normalize(12),
         borderWidth: 1,
-        borderColor: '#e9ecef',
+        borderColor: colors.border,
     },
     lastCard: {
         marginRight: 0,
@@ -280,13 +286,13 @@ const styles = StyleSheet.create({
         fontSize: normalize(14),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
-        color: '#1a1a1a',
+        color: colors.textPrimary,
         marginBottom: normalize(2),
     },
     cardSubtitle: {
         fontSize: normalize(12),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: '#666',
+        color: colors.textSecondary,
         lineHeight: normalize(16),
     },
     orderInfo: {
@@ -296,13 +302,13 @@ const styles = StyleSheet.create({
         fontSize: normalize(13),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
-        color: '#333',
+        color: colors.textPrimary,
         marginBottom: normalize(4),
     },
     orderDate: {
         fontSize: normalize(12),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: '#666',
+        color: colors.textSecondary,
     },
     orderStats: {
         flexDirection: 'row',
@@ -315,14 +321,14 @@ const styles = StyleSheet.create({
     statLabel: {
         fontSize: normalize(11),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: '#666',
+        color: colors.textSecondary,
         marginBottom: normalize(2),
     },
     statValue: {
         fontSize: normalize(13),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
-        color: '#1a1a1a',
+        color: colors.textPrimary,
     },
     statusContainer: {
         alignItems: 'flex-start',
@@ -348,7 +354,7 @@ const styles = StyleSheet.create({
     loadingText: {
         fontSize: normalize(14),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: '#666',
+        color: colors.textSecondary,
         marginLeft: normalize(8),
     },
     errorContainer: {
@@ -358,12 +364,12 @@ const styles = StyleSheet.create({
     errorText: {
         fontSize: normalize(14),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: '#dc3545',
+        color: colors.error,
         textAlign: 'center',
         marginVertical: normalize(8),
     },
     retryButton: {
-        backgroundColor: '#667eea',
+        backgroundColor: colors.primary,
         paddingHorizontal: normalize(16),
         paddingVertical: normalize(8),
         borderRadius: normalize(8),

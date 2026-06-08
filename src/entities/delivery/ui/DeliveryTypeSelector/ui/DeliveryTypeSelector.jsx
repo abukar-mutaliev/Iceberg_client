@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 /**
  * Компонент выбора типа доставки
@@ -15,6 +16,9 @@ export const DeliveryTypeSelector = ({
     onTypeChange, 
     disabled = false 
 }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     const deliveryOptions = [
         {
             type: 'DELIVERY',
@@ -41,7 +45,7 @@ export const DeliveryTypeSelector = ({
     return (
         <View style={styles.container}>
             <View style={styles.header}>
-                <Icon name="local-shipping" size={24} color="#667eea" />
+                <Icon name="local-shipping" size={24} color={colors.primary} />
                 <Text style={styles.title}>Способ получения</Text>
             </View>
             
@@ -69,7 +73,7 @@ export const DeliveryTypeSelector = ({
                                 <Icon 
                                     name={option.icon} 
                                     size={28} 
-                                    color="#667eea" 
+                                    color={colors.primary}
                                 />
                             </View>
                             
@@ -92,7 +96,7 @@ export const DeliveryTypeSelector = ({
                             {/* Индикатор выбора - чекмарка */}
                             {isSelected && (
                                 <View style={styles.checkmarkContainer}>
-                                    <Icon name="check-circle" size={24} color="#667eea" />
+                                    <Icon name="check-circle" size={24} color={colors.primary} />
                                 </View>
                             )}
                         </TouchableOpacity>
@@ -103,7 +107,7 @@ export const DeliveryTypeSelector = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         marginBottom: 20,
     },
@@ -118,7 +122,7 @@ const styles = StyleSheet.create({
         fontSize: FontSize.size_lg || 18,
         fontFamily: FontFamily.sFProDisplayMedium || 'SF Pro Display Medium',
         fontWeight: '700',
-        color: '#1a1a1a',
+        color: colors.textPrimary,
     },
     optionsContainer: {
         gap: 12,
@@ -126,22 +130,22 @@ const styles = StyleSheet.create({
     optionCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         borderRadius: 16,
         padding: 16,
         borderWidth: 2,
-        borderColor: '#f0f0f0',
+        borderColor: colors.border,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06,
-        shadowRadius: 4,
-        elevation: 2,
+        shadowOpacity: isDark ? 0.22 : 0.06,
+        shadowRadius: isDark ? 8 : 4,
+        elevation: isDark ? 3 : 2,
         position: 'relative',
     },
     optionCardSelected: {
-        borderColor: '#667eea',
-        backgroundColor: '#fff', // Белый фон остается
-        shadowColor: '#667eea',
+        borderColor: colors.primary,
+        backgroundColor: colors.cardBackground,
+        shadowColor: colors.primary,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.15,
         shadowRadius: 8,
@@ -154,13 +158,13 @@ const styles = StyleSheet.create({
         width: 56,
         height: 56,
         borderRadius: 28,
-        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+        backgroundColor: colors.primary + '1A',
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: 16,
     },
     iconContainerSelected: {
-        backgroundColor: 'rgba(102, 126, 234, 0.1)', // Такой же фон как обычно
+        backgroundColor: colors.primary + '1A',
         // Убрали тень
     },
     textContent: {
@@ -170,20 +174,20 @@ const styles = StyleSheet.create({
         fontSize: FontSize.size_base || 16,
         fontFamily: FontFamily.sFProDisplayMedium || 'SF Pro Display Medium',
         fontWeight: '600',
-        color: '#1a1a1a',
+        color: colors.textPrimary,
         marginBottom: 4,
     },
     optionLabelSelected: {
-        color: '#667eea',
+        color: colors.primary,
     },
     optionDescription: {
         fontSize: FontSize.size_sm || 14,
         fontFamily: FontFamily.sFProDisplay || 'SF Pro Display',
-        color: '#666',
+        color: colors.textSecondary,
         fontWeight: '400',
     },
     optionDescriptionSelected: {
-        color: '#5a6fd8',
+        color: colors.primary,
     },
     checkmarkContainer: {
         marginLeft: 8,

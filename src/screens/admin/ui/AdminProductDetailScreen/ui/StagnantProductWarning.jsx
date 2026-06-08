@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Color, FontFamily, FontSize, Border, Padding } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 /**
  * Компонент предупреждения о залежавшемся товаре
@@ -8,6 +9,8 @@ import { Color, FontFamily, FontSize, Border, Padding } from '@app/styles/Global
  * @param {Array} props.warehousesData - Данные о складах с залежавшимися товарами
  */
 export const StagnantProductWarning = ({ warehousesData }) => {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   if (!warehousesData || warehousesData.length === 0) {
     return null;
   }
@@ -63,25 +66,28 @@ export const StagnantProductWarning = ({ warehousesData }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
-    backgroundColor: '#FFF9E6',
+    backgroundColor: isDark ? 'rgba(255, 210, 74, 0.12)' : '#FFF9E6',
     borderRadius: Border.br_base,
     padding: Padding.medium,
     marginBottom: 16,
+    marginHorizontal: 16,
     borderLeftWidth: 4,
+    borderWidth: isDark ? StyleSheet.hairlineWidth : 0,
+    borderColor: isDark ? 'rgba(255, 210, 74, 0.35)' : 'transparent',
   },
   title: {
     fontSize: FontSize.size_md,
     fontFamily: FontFamily.bold,
     fontWeight: '700',
-    color: Color.textPrimary,
+    color: isDark ? colors.textPrimary : Color.textPrimary,
     marginBottom: 4,
   },
   subtitle: {
     fontSize: FontSize.size_sm,
     fontFamily: FontFamily.regular,
-    color: Color.textSecondary,
+    color: isDark ? colors.textSecondary : Color.textSecondary,
     marginBottom: 12,
   },
   warehousesList: {
@@ -91,7 +97,7 @@ const styles = StyleSheet.create({
     fontSize: FontSize.size_xs,
     fontFamily: FontFamily.medium,
     fontWeight: '600',
-    color: Color.textPrimary,
+    color: isDark ? colors.textPrimary : Color.textPrimary,
     marginBottom: 6,
   },
   warehouseItem: {
@@ -114,7 +120,7 @@ const styles = StyleSheet.create({
     fontSize: FontSize.size_xs,
     fontFamily: FontFamily.medium,
     fontWeight: '600',
-    color: Color.textPrimary,
+    color: isDark ? colors.textPrimary : Color.textPrimary,
     marginBottom: 2,
   },
   warehouseStats: {
@@ -125,7 +131,7 @@ const styles = StyleSheet.create({
     fontSize: FontSize.size_sm,
     fontFamily: FontFamily.bold,
     fontWeight: '700',
-    color: Color.purpleSoft,
+    color: isDark ? colors.primary : Color.purpleSoft,
     marginRight: 12,
   },
   warehouseDays: {
@@ -137,7 +143,7 @@ const styles = StyleSheet.create({
   recommendation: {
     fontSize: FontSize.size_xs,
     fontFamily: FontFamily.regular,
-    color: Color.textSecondary,
+    color: isDark ? colors.textSecondary : Color.textSecondary,
     fontStyle: 'italic',
   },
 });

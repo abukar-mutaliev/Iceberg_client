@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
     StyleSheet,
     Text,
@@ -13,12 +13,15 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Color, FontFamily } from "@app/styles/GlobalStyles";
 import { useSuppliers } from '@entities/supplier/hooks/useSuppliers';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const SupplierPicker = ({ selectedSupplier, onSelectSupplier, error }) => {
     const [modalVisible, setModalVisible] = useState(false);
     const [searchText, setSearchText] = useState('');
     const [filteredSuppliers, setFilteredSuppliers] = useState([]);
     const [selectedSupplierName, setSelectedSupplierName] = useState('');
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
 
     const {
@@ -158,7 +161,7 @@ const SupplierPicker = ({ selectedSupplier, onSelectSupplier, error }) => {
                 ]}>
                     {selectedSupplierName || (selectedSupplier ? `Поставщик ID:${selectedSupplier}` : 'Выберите поставщика')}
                 </Text>
-                <Ionicons name="chevron-down" size={13} color="#666" />
+                <Ionicons name="chevron-down" size={13} color={isDark ? colors.textSecondary : '#666'} />
             </TouchableOpacity>
             <View style={[styles.inputUnderline, error ? styles.underlineError : null]} />
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -182,28 +185,29 @@ const SupplierPicker = ({ selectedSupplier, onSelectSupplier, error }) => {
                                 style={styles.closeButton}
                                 onPress={closeModal}
                             >
-                                <Ionicons name="close" size={24} color="#000" />
+                                <Ionicons name="close" size={24} color={isDark ? colors.textPrimary : '#000'} />
                             </TouchableOpacity>
                         </View>
 
                         <View style={styles.searchContainer}>
-                            <Ionicons name="search" size={20} color="#666" style={styles.searchIcon} />
+                            <Ionicons name="search" size={20} color={isDark ? colors.textSecondary : '#666'} style={styles.searchIcon} />
                             <TextInput
                                 style={styles.searchInput}
                                 placeholder="Поиск поставщика"
+                                placeholderTextColor={isDark ? colors.textTertiary : '#999'}
                                 value={searchText}
                                 onChangeText={setSearchText}
                             />
                             {searchText ? (
                                 <TouchableOpacity onPress={() => setSearchText('')}>
-                                    <Ionicons name="close-circle" size={20} color="#666" />
+                                    <Ionicons name="close-circle" size={20} color={isDark ? colors.textSecondary : '#666'} />
                                 </TouchableOpacity>
                             ) : null}
                         </View>
 
                         {isLoading ? (
                             <View style={styles.loadingContainer}>
-                                <ActivityIndicator size="large" color="#3B43A2" />
+                                <ActivityIndicator size="large" color={colors.primary} />
                                 <Text style={styles.loadingText}>Загрузка поставщиков...</Text>
                             </View>
                         ) : (
@@ -238,15 +242,15 @@ const SupplierPicker = ({ selectedSupplier, onSelectSupplier, error }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         marginBottom: 5,
     },
     label: {
         fontSize: 14,
         fontWeight: "600",
-        color: Color.dark,
-        opacity: 0.4,
+        color: isDark ? colors.textSecondary : Color.dark,
+        opacity: isDark ? 1 : 0.4,
         marginBottom: 0,
         fontFamily: FontFamily.sFProText,
     },
@@ -259,26 +263,26 @@ const styles = StyleSheet.create({
     },
     pickerText: {
         fontSize: 13,
-        color: Color.dark,
+        color: isDark ? colors.textPrimary : Color.dark,
         fontFamily: FontFamily.sFProText,
     },
     placeholderText: {
-        color: '#999',
+        color: isDark ? colors.textTertiary : '#999',
     },
     pickerError: {
-        borderColor: '#FF3B30',
+        borderColor: colors.error,
     },
     inputUnderline: {
         height: 1,
-        backgroundColor: '#000',
+        backgroundColor: isDark ? colors.border : '#000',
         marginTop: 0,
     },
     underlineError: {
-        backgroundColor: '#FF3B30',
+        backgroundColor: colors.error,
         height: 1.5,
     },
     errorText: {
-        color: '#FF3B30',
+        color: colors.error,
         fontSize: 12,
         marginTop: 5,
         fontFamily: FontFamily.sFProText,
@@ -293,10 +297,10 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: colors.modalOverlay,
     },
     modalContent: {
-        backgroundColor: 'white',
+        backgroundColor: isDark ? colors.surface : 'white',
         borderTopLeftRadius: 16,
         borderTopRightRadius: 16,
         height: '80%',
@@ -307,11 +311,12 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         padding: 16,
         borderBottomWidth: 1,
-        borderBottomColor: '#eee',
+        borderBottomColor: isDark ? colors.border : '#eee',
     },
     modalTitle: {
         fontSize: 18,
         fontWeight: '600',
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     closeButton: {
@@ -320,7 +325,7 @@ const styles = StyleSheet.create({
     searchContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#f5f5f5',
+        backgroundColor: isDark ? colors.surfaceElevated : '#f5f5f5',
         borderRadius: 8,
         margin: 16,
         paddingHorizontal: 10,
@@ -332,6 +337,7 @@ const styles = StyleSheet.create({
         flex: 1,
         height: 40,
         fontSize: 16,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     listContainer: {
@@ -341,18 +347,18 @@ const styles = StyleSheet.create({
     supplierItem: {
         paddingVertical: 12,
         borderBottomWidth: 1,
-        borderBottomColor: '#eee',
+        borderBottomColor: isDark ? colors.border : '#eee',
     },
     supplierName: {
         fontSize: 16,
         fontWeight: '500',
-        color: Color.dark,
+        color: isDark ? colors.textPrimary : Color.dark,
         fontFamily: FontFamily.sFProText,
         marginBottom: 4,
     },
     supplierInfo: {
         fontSize: 14,
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         fontFamily: FontFamily.sFProText,
     },
     loadingContainer: {
@@ -363,7 +369,7 @@ const styles = StyleSheet.create({
     loadingText: {
         marginTop: 12,
         fontSize: 16,
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         fontFamily: FontFamily.sFProText,
     },
     emptyContainer: {
@@ -372,7 +378,7 @@ const styles = StyleSheet.create({
     },
     emptyText: {
         fontSize: 16,
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
     },
@@ -383,12 +389,12 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         padding: 16,
-        backgroundColor: 'white',
+        backgroundColor: isDark ? colors.surface : 'white',
         borderTopWidth: 1,
-        borderTopColor: '#eee',
+        borderTopColor: isDark ? colors.border : '#eee',
     },
     cancelButton: {
-        backgroundColor: '#3B43A2',
+        backgroundColor: isDark ? colors.primary : '#3B43A2',
         borderRadius: 8,
         paddingVertical: 12,
         alignItems: 'center',

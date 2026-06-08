@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, TextInput, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
 import { SearchIcon } from '@shared/ui/Icon/SearchIcon';
 import CloseIcon from '@shared/ui/Icon/Profile/CloseIcon';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const SearchBar = ({ 
     placeholder = "Поиск...",
@@ -16,6 +17,9 @@ export const SearchBar = ({
     containerStyle,
     inputStyle
 }) => {
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
+
     const handleClear = () => {
         onChangeText && onChangeText('');
         onClear && onClear();
@@ -29,7 +33,7 @@ export const SearchBar = ({
     return (
         <View style={[styles.searchContainer, containerStyle]}>
             <View style={styles.searchInputContainer}>
-                <SearchIcon width={20} height={20} color={Color.grey7D7D7D} />
+                <SearchIcon width={20} height={20} color={colors.textTertiary} />
                 <TextInput
                     style={[styles.searchInput, inputStyle]}
                     placeholder={placeholder}
@@ -37,7 +41,8 @@ export const SearchBar = ({
                     onChangeText={onChangeText}
                     onSubmitEditing={handleSubmit}
                     returnKeyType="search"
-                    placeholderTextColor={Color.grey7D7D7D}
+                    placeholderTextColor={colors.textTertiary}
+                    keyboardAppearance={colors.keyboardAppearance}
                     autoCapitalize="none"
                     autoCorrect={false}
                 />
@@ -47,7 +52,7 @@ export const SearchBar = ({
                         style={styles.clearButton}
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
-                        <CloseIcon width={16} height={16} color={Color.grey7D7D7D} />
+                        <CloseIcon width={16} height={16} color={colors.textTertiary} />
                     </TouchableOpacity>
                 ) : null}
             </View>
@@ -63,20 +68,20 @@ export const SearchBar = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     searchContainer: {
         flexDirection: 'row',
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(12),
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.background,
         borderBottomWidth: 1,
-        borderBottomColor: Color.border,
+        borderBottomColor: colors.border,
     },
     searchInputContainer: {
         flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: Color.colorLightGray,
+        backgroundColor: colors.inputBackground,
         borderRadius: Border.radius.medium,
         paddingHorizontal: normalize(12),
         marginRight: normalize(8),
@@ -87,7 +92,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(8),
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         height: '100%',
     },
     clearButton: {
@@ -96,7 +101,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     searchButton: {
-        backgroundColor: Color.blue2,
+        backgroundColor: colors.primary,
         borderRadius: Border.radius.medium,
         paddingHorizontal: normalize(16),
         justifyContent: 'center',
@@ -104,7 +109,7 @@ const styles = StyleSheet.create({
         minWidth: normalize(60),
     },
     searchButtonText: {
-        color: Color.colorLightMode,
+        color: colors.textInverse,
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',

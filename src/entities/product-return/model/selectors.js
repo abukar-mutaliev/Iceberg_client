@@ -291,6 +291,32 @@ const formatImageUrl = (imagePath) => {
   return getImageUrl(imagePath);
 };
 
+const extractFirstImagePath = (source) => {
+  if (!source) return null;
+
+  if (Array.isArray(source)) {
+    return extractFirstImagePath(source.find(Boolean));
+  }
+
+  if (typeof source === 'object') {
+    return source.uri || source.url || source.path || source.src || source.imageUrl || null;
+  }
+
+  if (typeof source !== 'string') {
+    return null;
+  }
+
+  const trimmed = source.trim();
+  if (!trimmed) return null;
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    return extractFirstImagePath(parsed);
+  } catch {
+    return trimmed;
+  }
+};
+
 /**
  * Форматированные залежавшиеся товары с преобразованными полями для UI
  */
@@ -298,20 +324,24 @@ export const selectStagnantProductsFormatted = createSelector(
   [selectStagnantProducts],
   (products) => {
     return products.map((stock) => {
-      // Получаем первое изображение
-      let imageUrl = null;
-      if (stock.product?.images) {
-        if (Array.isArray(stock.product.images) && stock.product.images.length > 0) {
-          imageUrl = stock.product.images[0];
-        } else if (typeof stock.product.images === 'string') {
-          try {
-            const parsed = JSON.parse(stock.product.images);
-            imageUrl = Array.isArray(parsed) ? parsed[0] : null;
-          } catch {
-            imageUrl = stock.product.images;
-          }
-        }
-      }
+      const imagePath = extractFirstImagePath(
+        stock.product?.images ||
+        stock.product?.image ||
+        stock.product?.imageUrl ||
+        stock.product?.img ||
+        stock.product?.picture ||
+        stock.product?.photo ||
+        stock.product?.thumbnail ||
+        stock.product?.cover ||
+        stock.productImage ||
+        stock.imageUrl ||
+        stock.image ||
+        stock.img ||
+        stock.picture ||
+        stock.photo ||
+        stock.thumbnail ||
+        stock.cover
+      );
 
       return {
         ...stock,
@@ -319,7 +349,7 @@ export const selectStagnantProductsFormatted = createSelector(
         productId: stock.product?.id || stock.productId,
         warehouseId: stock.warehouseId || stock.warehouse?.id,
         // Изображение товара (первое из массива)
-        productImage: formatImageUrl(imageUrl),
+        productImage: formatImageUrl(imagePath),
         // Название товара
         productName: stock.product?.name || 'Без названия',
         // Имя поставщика

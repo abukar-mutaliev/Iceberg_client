@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
     View,
     Text,
@@ -8,9 +8,9 @@ import {
     Image,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { OrderApi } from '@entities/order/api/orderApi';
-import { formatAmount, formatOrderNumber, isPriorityOrder } from "@entities/order/lib/utils";
+import { formatAmount, formatOrderNumber, isPriorityOrder, ORDER_STATUS_COLORS, ORDER_STATUS_ICONS, getStatusLabel, getOrderStatusProgress } from "@entities/order/lib/utils";
 import { PROCESSING_STAGE_LABELS, PROCESSING_STAGE_COLORS, PROCESSING_STAGE_ICONS  } from "@entities/order/lib/constants";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const { width } = Dimensions.get('window');
 
@@ -23,39 +23,6 @@ const getBoxesText = (count) => {
     } else {
         return 'коробок';
     }
-};
-
-const ORDER_STATUS_COLORS = {
-    PENDING: '#FFA726',
-    CONFIRMED: '#42A5F5',
-    WAITING_STOCK: '#fd7e14',
-    IN_DELIVERY: '#5C6BC0',
-    DELIVERED: '#66BB6A',
-    CANCELLED: '#EF5350',
-    RETURNED: '#78909C'
-};
-
-const ORDER_STATUS_ICONS = {
-    PENDING: 'schedule',
-    CONFIRMED: 'check-circle',
-    WAITING_STOCK: 'inventory',
-    IN_DELIVERY: 'local-shipping',
-    DELIVERED: 'done-all',
-    CANCELLED: 'cancel',
-    RETURNED: 'undo'
-};
-
-const getOrderProgress = (status) => {
-    const progressMap = {
-        PENDING: 25,
-        CONFIRMED: 50,
-        WAITING_STOCK: 30,
-        IN_DELIVERY: 75,
-        DELIVERED: 100,
-        CANCELLED: 0,
-        RETURNED: 0
-    };
-    return progressMap[status] || 0;
 };
 
 /**
@@ -100,12 +67,17 @@ export const OrderCard = ({
                           }) => {
     if (!order) return null;
 
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+    const iconMuted = colors.textSecondary;
+    const iconPrimary = colors.primary;
+
     const isPriority = isPriorityOrder(order);
     const formattedNumber = formatOrderNumber(order.orderNumber);
     const formattedAmount = formatAmount(order.totalAmount);
-    const statusColor = ORDER_STATUS_COLORS[order.status];
-    const statusIcon = ORDER_STATUS_ICONS[order.status];
-    const progress = getOrderProgress(order.status);
+    const statusColor = ORDER_STATUS_COLORS[order.status] || colors.textSecondary;
+    const statusIcon = ORDER_STATUS_ICONS[order.status] || 'help';
+    const progress = getOrderStatusProgress(order.status);
 
     const formatDate = (dateString) => {
         const date = new Date(dateString);
@@ -143,7 +115,7 @@ export const OrderCard = ({
 
         return (
             <View style={styles.clientInfo}>
-                <Icon name="person" size={16} color="#666" />
+                <Icon name="person" size={16} color={iconMuted} />
                 <Text style={styles.clientName}>{order.client.name}</Text>
                 {order.client.phone && (
                     <Text style={styles.clientPhone}>{order.client.phone}</Text>
@@ -196,7 +168,7 @@ export const OrderCard = ({
                 
                 {processingStage.assignedTo && (
                     <View style={styles.assignedInfo}>
-                        <Icon name="person" size={14} color="#666" />
+                        <Icon name="person" size={14} color={iconMuted} />
                         <Text style={styles.assignedText}>
                             Назначен: {processingStage.employee?.user?.name || 'Неизвестно'}
                         </Text>
@@ -205,7 +177,7 @@ export const OrderCard = ({
                 
                 {processingStage.startedAt && (
                     <View style={styles.timeInfo}>
-                        <Icon name="schedule" size={14} color="#666" />
+                        <Icon name="schedule" size={14} color={iconMuted} />
                         <Text style={styles.timeText}>
                             Начало: {new Date(processingStage.startedAt).toLocaleTimeString()}
                         </Text>
@@ -229,7 +201,7 @@ export const OrderCard = ({
         return (
             <View style={styles.employeeInfo}>
                 <View style={styles.employeeHeader}>
-                    <Icon name="person" size={16} color="#667eea" />
+                    <Icon name="person" size={16} color={iconPrimary} />
                     <Text style={styles.employeeTitle}>Текущий ответственный</Text>
                 </View>
                 <View style={styles.employeeDetails}>
@@ -252,12 +224,12 @@ export const OrderCard = ({
         return (
             <View style={styles.statusHistory}>
                 <View style={styles.historyHeader}>
-                    <Icon name="history" size={16} color="#666" />
+                    <Icon name="history" size={16} color={iconMuted} />
                     <Text style={styles.historyTitle}>Последнее изменение</Text>
                 </View>
                 <View style={styles.historyDetails}>
                     <Text style={styles.historyStatus}>
-                        {OrderApi.getStatusLabel(lastStatusChange.status)}
+                        {getStatusLabel(lastStatusChange.status)}
                     </Text>
                     <Text style={styles.historyDate}>
                         {new Date(lastStatusChange.createdAt).toLocaleString()}
@@ -277,7 +249,7 @@ export const OrderCard = ({
         if (!order.statusHistory || order.statusHistory.length === 0) return [];
 
         const processingSteps = [];
-        const statusOrder = ['PENDING', 'CONFIRMED', 'IN_DELIVERY', 'DELIVERED', 'CANCELLED', 'RETURNED'];
+        const statusOrder = ['PENDING', 'CONFIRMED', 'PICKING', 'IN_DELIVERY', 'DELIVERED', 'CANCELLED', 'RETURNED'];
         
         // Анализируем каждый статус в истории
         order.statusHistory.forEach((historyItem, index) => {
@@ -289,12 +261,13 @@ export const OrderCard = ({
             
             switch (status) {
                 case 'CONFIRMED':
+                case 'PICKING':
                     role = 'PICKER';
                     roleLabel = 'Сборщик';
                     break;
                 case 'IN_DELIVERY':
-                    role = 'PACKER';
-                    roleLabel = 'Упаковщик';
+                    role = 'COURIER';
+                    roleLabel = 'Курьер';
                     break;
                 case 'DELIVERED':
                     role = 'COURIER';
@@ -372,7 +345,7 @@ export const OrderCard = ({
         return (
             <View style={styles.processingHistory}>
                 <View style={styles.historyHeader}>
-                    <Icon name="people" size={16} color="#667eea" />
+                    <Icon name="people" size={16} color={iconPrimary} />
                     <Text style={styles.historyTitle}>История обработки</Text>
                 </View>
                 
@@ -385,7 +358,7 @@ export const OrderCard = ({
                             <View style={styles.stepRole}>
                                 <Text style={styles.stepRoleLabel}>{step.roleLabel}</Text>
                                 <Text style={styles.stepStatus}>
-                                    {OrderApi.getStatusLabel(step.status)}
+                                    {getStatusLabel(step.status)}
                                 </Text>
                             </View>
                             <Text style={styles.stepDate}>
@@ -395,7 +368,7 @@ export const OrderCard = ({
                         
                         {step.employeeName && (
                             <View style={styles.stepEmployee}>
-                                <Icon name="person" size={14} color="#666" />
+                                <Icon name="person" size={14} color={iconMuted} />
                                 <Text style={styles.stepEmployeeName}>
                                     {step.employeeName}
                                 </Text>
@@ -423,7 +396,7 @@ export const OrderCard = ({
 
         return (
             <View style={styles.actions}>
-                {onTakeOrder && (order.status === 'PENDING' || order.status === 'CONFIRMED' || order.status === 'IN_DELIVERY') && (
+                {onTakeOrder && (
                     isTakenByMe ? (
                         onReleaseOrder ? (
                             <TouchableOpacity
@@ -440,7 +413,7 @@ export const OrderCard = ({
                             onPress={() => canTake && onTakeOrder(order.id)}
                             disabled={!canTake}
                         >
-                            <Icon name="handshake" size={16} color={canTake ? '#4CAF50' : '#bbb'} />
+                            <Icon name="handshake" size={16} color={canTake ? colors.success || '#4CAF50' : colors.textTertiary} />
                             <Text style={[styles.actionText, !canTake && styles.actionTextDisabled]}>
                                 {canTake ? 'Взять' : 'Занят'}
                             </Text>
@@ -452,7 +425,7 @@ export const OrderCard = ({
                         style={styles.actionButton}
                         onPress={() => onStatusUpdate(order.id)}
                     >
-                        <Icon name="edit" size={16} color="#667eea" />
+                        <Icon name="edit" size={16} color={iconPrimary} />
                         <Text style={styles.actionText}>Статус</Text>
                     </TouchableOpacity>
                 )}
@@ -466,9 +439,9 @@ export const OrderCard = ({
                         disabled={downloadingInvoice}
                     >
                         {downloadingInvoice ? (
-                            <Icon name="hourglass-empty" size={16} color="#666" />
+                            <Icon name="hourglass-empty" size={16} color={iconMuted} />
                         ) : (
-                            <Icon name="download" size={16} color="#28a745" />
+                            <Icon name="download" size={16} color={colors.success || '#28a745'} />
                         )}
                         <Text style={styles.actionText}>
                             {downloadingInvoice ? 'Загрузка...' : 'Накладная'}
@@ -491,7 +464,7 @@ export const OrderCard = ({
                     <Text style={styles.orderDate}>{formatDate(order.createdAt)}</Text>
                     {isRecentlyProcessed && (
                         <View style={styles.recentlyProcessedBadge}>
-                            <Icon name="check-circle" size={12} color="#4CAF50" />
+                            <Icon name="check-circle" size={12} color={colors.success || '#4CAF50'} />
                             <Text style={styles.recentlyProcessedText}>Обработан</Text>
                         </View>
                     )}
@@ -508,7 +481,7 @@ export const OrderCard = ({
                         <Icon name={statusIcon} size={16} color="#fff" />
                     </View>
                     <Text style={styles.statusText}>
-                        {OrderApi.getStatusLabel(order.status)}
+                        {getStatusLabel(order.status)}
                     </Text>
                 </View>
             </View>
@@ -528,7 +501,7 @@ export const OrderCard = ({
                 
                 {order.deliveryAddress && (
                     <View style={styles.addressContainer}>
-                        <Icon name="location-on" size={14} color="#666" />
+                        <Icon name="location-on" size={14} color={iconMuted} />
                         <Text style={styles.address} numberOfLines={1}>
                             {order.deliveryAddress}
                         </Text>
@@ -541,17 +514,19 @@ export const OrderCard = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         borderRadius: 12,
         padding: 16,
         marginBottom: 8,
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
+        shadowOpacity: isDark ? 0.25 : 0.08,
         shadowRadius: 4,
         elevation: 3,
+        borderWidth: isDark ? 1 : 0,
+        borderColor: colors.border,
     },
     priorityContainer: {
         borderLeftWidth: 4,
@@ -569,12 +544,12 @@ const styles = StyleSheet.create({
     orderNumber: {
         fontSize: 16,
         fontWeight: '700',
-        color: '#1a1a1a',
+        color: colors.textPrimary,
         marginBottom: 4,
     },
     orderDate: {
         fontSize: 12,
-        color: '#718096',
+        color: colors.textSecondary,
     },
     statusContainer: {
         flexDirection: 'row',
@@ -584,14 +559,18 @@ const styles = StyleSheet.create({
     statusIndicator: {
         width: 24,
         height: 24,
-        borderRadius: 12,
+        minWidth: 24,
+        minHeight: 24,
+        borderRadius: 9999,
+        overflow: 'hidden',
+        flexShrink: 0,
         alignItems: 'center',
         justifyContent: 'center',
     },
     statusText: {
         fontSize: 12,
         fontWeight: '600',
-        color: '#4a5568',
+        color: colors.textSecondary,
     },
     clientInfo: {
         flexDirection: 'row',
@@ -600,16 +579,16 @@ const styles = StyleSheet.create({
         marginBottom: 12,
         paddingBottom: 12,
         borderBottomWidth: 1,
-        borderBottomColor: '#f1f5f9',
+        borderBottomColor: colors.border,
     },
     clientName: {
         fontSize: 14,
         fontWeight: '600',
-        color: '#4a5568',
+        color: colors.textSecondary,
     },
     clientPhone: {
         fontSize: 12,
-        color: '#718096',
+        color: colors.textSecondary,
     },
     orderItems: {
         marginBottom: 12,
@@ -622,24 +601,24 @@ const styles = StyleSheet.create({
     },
     itemName: {
         fontSize: 14,
-        color: '#4a5568',
+        color: colors.textSecondary,
         fontWeight: '600',
     },
     itemQuantity: {
         fontSize: 12,
-        color: '#718096',
+        color: colors.textSecondary,
         fontWeight: '500',
     },
     additionalItems: {
         fontSize: 12,
-        color: '#718096',
+        color: colors.textSecondary,
         fontWeight: '500',
     },
     processingInfo: {
         marginTop: 12,
         paddingTop: 12,
         borderTopWidth: 1,
-        borderTopColor: '#f1f5f9',
+        borderTopColor: colors.border,
     },
     processingHeader: {
         flexDirection: 'row',
@@ -649,7 +628,7 @@ const styles = StyleSheet.create({
     },
     processingIcon: {
         fontSize: 18,
-        color: '#666',
+        color: colors.textSecondary,
     },
     processingStage: {
         fontSize: 13,
@@ -663,7 +642,7 @@ const styles = StyleSheet.create({
     },
     assignedText: {
         fontSize: 12,
-        color: '#666',
+        color: colors.textSecondary,
     },
     timeInfo: {
         flexDirection: 'row',
@@ -673,7 +652,7 @@ const styles = StyleSheet.create({
     },
     timeText: {
         fontSize: 12,
-        color: '#666',
+        color: colors.textSecondary,
     },
     delayInfo: {
         flexDirection: 'row',
@@ -689,7 +668,7 @@ const styles = StyleSheet.create({
         marginTop: 12,
         paddingTop: 12,
         borderTopWidth: 1,
-        borderTopColor: '#f1f5f9',
+        borderTopColor: colors.border,
     },
     employeeHeader: {
         flexDirection: 'row',
@@ -700,7 +679,7 @@ const styles = StyleSheet.create({
     employeeTitle: {
         fontSize: 13,
         fontWeight: '600',
-        color: '#4a5568',
+        color: colors.textSecondary,
     },
     employeeDetails: {
         marginLeft: 24,
@@ -708,18 +687,18 @@ const styles = StyleSheet.create({
     employeeName: {
         fontSize: 14,
         fontWeight: '600',
-        color: '#2d3748',
+        color: colors.textPrimary,
         marginBottom: 2,
     },
     employeePosition: {
         fontSize: 12,
-        color: '#718096',
+        color: colors.textSecondary,
     },
     statusHistory: {
         marginTop: 12,
         paddingTop: 12,
         borderTopWidth: 1,
-        borderTopColor: '#f1f5f9',
+        borderTopColor: colors.border,
     },
     historyHeader: {
         flexDirection: 'row',
@@ -730,7 +709,7 @@ const styles = StyleSheet.create({
     historyTitle: {
         fontSize: 13,
         fontWeight: '600',
-        color: '#4a5568',
+        color: colors.textSecondary,
     },
     historyDetails: {
         marginLeft: 24,
@@ -738,30 +717,30 @@ const styles = StyleSheet.create({
     historyStatus: {
         fontSize: 14,
         fontWeight: '600',
-        color: '#2d3748',
+        color: colors.textPrimary,
         marginBottom: 2,
     },
     historyDate: {
         fontSize: 12,
-        color: '#718096',
+        color: colors.textSecondary,
         marginBottom: 4,
     },
     historyComment: {
         fontSize: 12,
-        color: '#718096',
+        color: colors.textSecondary,
         fontStyle: 'italic',
     },
     processingHistory: {
         marginTop: 12,
         paddingTop: 12,
         borderTopWidth: 1,
-        borderTopColor: '#f1f5f9',
+        borderTopColor: colors.border,
     },
     processingStep: {
         marginBottom: 12,
         paddingBottom: 12,
         borderBottomWidth: 1,
-        borderBottomColor: '#f1f5f9',
+        borderBottomColor: colors.border,
     },
     stepHeader: {
         flexDirection: 'row',
@@ -777,16 +756,16 @@ const styles = StyleSheet.create({
     stepRoleLabel: {
         fontSize: 12,
         fontWeight: '600',
-        color: '#4a5568',
+        color: colors.textSecondary,
     },
     stepStatus: {
         fontSize: 12,
         fontWeight: '600',
-        color: '#2d3748',
+        color: colors.textPrimary,
     },
     stepDate: {
         fontSize: 12,
-        color: '#718096',
+        color: colors.textSecondary,
     },
     stepEmployee: {
         flexDirection: 'row',
@@ -797,15 +776,15 @@ const styles = StyleSheet.create({
     stepEmployeeName: {
         fontSize: 13,
         fontWeight: '600',
-        color: '#2d3748',
+        color: colors.textPrimary,
     },
     stepEmployeePosition: {
         fontSize: 11,
-        color: '#718096',
+        color: colors.textSecondary,
     },
     stepComment: {
         fontSize: 12,
-        color: '#718096',
+        color: colors.textSecondary,
         fontStyle: 'italic',
         marginTop: 4,
         lineHeight: 16,
@@ -817,7 +796,7 @@ const styles = StyleSheet.create({
         marginTop: 16,
         paddingTop: 16,
         borderTopWidth: 1,
-        borderTopColor: '#f1f5f9',
+        borderTopColor: colors.border,
     },
     amountContainer: {
         flexDirection: 'row',
@@ -826,13 +805,13 @@ const styles = StyleSheet.create({
     },
     amountLabel: {
         fontSize: 14,
-        color: '#718096',
+        color: colors.textSecondary,
         fontWeight: '600',
     },
     amount: {
         fontSize: 16,
         fontWeight: '700',
-        color: '#667eea',
+        color: colors.primary,
     },
     addressContainer: {
         flexDirection: 'row',
@@ -843,7 +822,7 @@ const styles = StyleSheet.create({
     },
     address: {
         fontSize: 12,
-        color: '#718096',
+        color: colors.textSecondary,
         flex: 1,
     },
     actions: {
@@ -852,7 +831,7 @@ const styles = StyleSheet.create({
         marginTop: 16,
         paddingTop: 16,
         borderTopWidth: 1,
-        borderTopColor: '#f1f5f9',
+        borderTopColor: colors.border,
     },
     actionButton: {
         flex: 1,
@@ -861,22 +840,22 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         paddingVertical: 10,
         paddingHorizontal: 15,
-        backgroundColor: '#e3f2fd',
+        backgroundColor: isDark ? 'rgba(102, 126, 234, 0.15)' : '#e3f2fd',
         borderRadius: 12,
         borderWidth: 1,
-        borderColor: '#bbdefb',
+        borderColor: isDark ? 'rgba(102, 126, 234, 0.35)' : '#bbdefb',
         gap: 6,
     },
     actionText: {
         fontSize: 12,
         fontWeight: '700',
-        color: '#667eea',
+        color: colors.primary,
     },
     recentlyProcessedBadge: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 4,
-        backgroundColor: '#e8f5e8',
+        backgroundColor: isDark ? 'rgba(76, 175, 80, 0.15)' : '#e8f5e8',
         paddingHorizontal: 6,
         paddingVertical: 2,
         borderRadius: 8,
@@ -892,7 +871,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 4,
-        backgroundColor: '#e3f2fd',
+        backgroundColor: isDark ? 'rgba(25, 118, 210, 0.15)' : '#e3f2fd',
         paddingHorizontal: 6,
         paddingVertical: 2,
         borderRadius: 8,
@@ -907,7 +886,7 @@ const styles = StyleSheet.create({
     historyOrderContainer: {
         borderLeftWidth: 3,
         borderLeftColor: '#1976d2',
-        backgroundColor: '#fafafa',
+        backgroundColor: isDark ? colors.surface : '#fafafa',
     },
 });
 

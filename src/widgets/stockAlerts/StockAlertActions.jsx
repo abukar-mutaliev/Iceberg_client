@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
     View,
     Text,
@@ -6,10 +6,11 @@ import {
     TouchableOpacity,
 } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color, FontFamily } from '@app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
-const ModernActionButton = ({ icon, title, subtitle, onPress, color, disabled }) => (
+const ModernActionButton = ({ icon, title, subtitle, onPress, color, disabled, styles }) => (
     <TouchableOpacity
         style={[
             styles.actionCard,
@@ -34,6 +35,9 @@ const ModernStockAlertActions = ({
     refreshing = false,
     checking = false
 }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     const actions = [
         {
             icon: 'refresh',
@@ -65,24 +69,26 @@ const ModernStockAlertActions = ({
         <View style={styles.container}>
             <View style={styles.actionsGrid}>
                 {actions.map((action, index) => (
-                    <ModernActionButton key={index} {...action} />
+                    <ModernActionButton key={index} {...action} styles={styles} />
                 ))}
             </View>
         </View>
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.cardBackground,
         borderRadius: normalize(16),
         padding: normalize(12),
         marginBottom: normalize(12),
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
+        shadowOpacity: isDark ? 0.35 : 0.08,
         shadowRadius: 12,
         elevation: 3,
+        borderWidth: 1,
+        borderColor: colors.border,
     },
     actionsGrid: {
         flexDirection: 'row',
@@ -90,7 +96,7 @@ const styles = StyleSheet.create({
     },
     actionCard: {
         flex: 1,
-        backgroundColor: '#F8F9FA',
+        backgroundColor: colors.surfaceSecondary,
         borderRadius: normalize(12),
         padding: normalize(12),
         alignItems: 'center',
@@ -110,13 +116,13 @@ const styles = StyleSheet.create({
     actionTitle: {
         fontSize: normalizeFont(12),
         fontFamily: FontFamily.sFProTextBold,
-        color: '#1C1C1E',
+        color: colors.textPrimary,
         textAlign: 'center',
         marginBottom: normalize(2),
     },
     actionSubtitle: {
         fontSize: normalizeFont(10),
-        color: '#8E8E93',
+        color: colors.textSecondary,
         textAlign: 'center',
     },
 });

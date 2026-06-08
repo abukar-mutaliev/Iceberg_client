@@ -3,7 +3,9 @@ import {View, FlatList, TouchableOpacity, Text, StyleSheet, RefreshControl, Imag
 import {useFocusEffect, CommonActions} from '@react-navigation/native';
 import { useTabBar } from '@widgets/navigation/context';
 import {useDispatch, useSelector, useStore} from 'react-redux';
-import {fetchRooms, setActiveRoom, loadRoomsCache, fetchRoom, fetchMessages, tickTime} from '@entities/chat/model/slice';
+import {fetchRooms, setActiveRoom, loadRoomsCache, fetchRoom, fetchMessages, tickTime, toggleGlobalPin} from '@entities/chat/model/slice';
+import { isGroupAdminRoleSystemMessage } from '@entities/chat/lib/isGroupAdminRoleSystemMessage';
+import { resolveStopDistrictId } from '@entities/chat/lib/resolveStopDistrictId';
 import {fetchProductById} from '@entities/product/model/slice';
 import {selectRoomsList, selectIsRoomDeleted} from '@entities/chat/model/selectors';
 import {selectProductsById, selectDeletedProductIds} from '@entities/product/model/selectors';
@@ -15,6 +17,7 @@ import {IconDelivery} from '@shared/ui/Icon/Profile/IconDelivery';
 import IconWarehouse from '@shared/ui/Icon/Warehouse/IconWarehouse';
 import {Ionicons} from '@expo/vector-icons';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { useCustomAlert } from '@shared/ui/CustomAlert';
 
 // Компонент для отображения иконки голосового сообщения
 const VoiceMessageIcon = React.memo(({ styles, iconColor }) => (
@@ -93,11 +96,11 @@ const isStopInUserDistrict = (message, districtIds) => {
     const stopData = parseStopDataFromMessage(message);
     if (!stopData) return true;
 
-    const stopDistrictId = stopData?.districtId;
-    if (!stopDistrictId) return false;
+    const stopDistrictRaw = resolveStopDistrictId(stopData);
+    if (stopDistrictRaw === null || stopDistrictRaw === '') return true;
 
-    const normalizedStopId = typeof stopDistrictId === 'string'
-        ? parseInt(stopDistrictId, 10) : stopDistrictId;
+    const normalizedStopId = typeof stopDistrictRaw === 'string'
+        ? parseInt(stopDistrictRaw, 10) : stopDistrictRaw;
 
     return districtIds.some(id => {
         const normalizedId = typeof id === 'string' ? parseInt(id, 10) : id;
@@ -105,10 +108,41 @@ const isStopInUserDistrict = (message, districtIds) => {
     });
 };
 
+const isBroadcastRoom = (room) => String(room?.type || '').toUpperCase() === 'BROADCAST';
+
+const getGlobalPinTimestamp = (room) => {
+    const rawValue =
+        room?.globalPinnedAt ??
+        room?.pinnedForAllAt ??
+        room?.pinForAllAt ??
+        room?.pinnedAt ??
+        room?.pinMeta?.globalPinnedAt ??
+        room?.pinMeta?.pinnedForAllAt ??
+        null;
+    if (!rawValue) return 0;
+    const parsed = new Date(rawValue).getTime();
+    return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const isGloballyPinnedChannel = (room) => {
+    if (!isBroadcastRoom(room)) return false;
+    return Boolean(
+        room?.isPinnedForAll ||
+        room?.pinnedForAll ||
+        room?.isGlobalPinned ||
+        room?.globalPinned ||
+        room?.pinMeta?.isPinnedForAll ||
+        room?.pinMeta?.pinnedForAll ||
+        room?.pinMeta?.isGlobalPinned ||
+        room?.pinMeta?.globalPinned
+    );
+};
+
 export const ChatListScreen = ({navigation}) => {
     const dispatch = useDispatch();
     const store = useStore();
     const { showTabBar } = useTabBar();
+    const { showAlert } = useCustomAlert();
     const insets = useSafeAreaInsets();
     const tabBarHeight = 80 + insets.bottom;
     const { colors, isDark } = useTheme();
@@ -120,6 +154,7 @@ export const ChatListScreen = ({navigation}) => {
     const loading = useSelector((s) => s.chat?.rooms?.loading);
     const currentUser = useSelector((s) => s.auth?.user);
     const currentUserId = currentUser?.id;
+    const isCurrentUserSuperAdmin = currentUser?.role === 'ADMIN' && currentUser?.admin?.isSuperAdmin === true;
     const participantsById = useSelector((s) => s.chat?.participants?.byUserId || {});
     const productsById = useSelector(selectProductsById);
     const deletedProductIds = useSelector(selectDeletedProductIds);
@@ -179,9 +214,31 @@ export const ChatListScreen = ({navigation}) => {
             return true;
         });
 
+        const sortedRooms = filteredRooms
+            .map((room, index) => ({ room, index }))
+            .sort((a, b) => {
+                const aPinned = isGloballyPinnedChannel(a.room);
+                const bPinned = isGloballyPinnedChannel(b.room);
+                if (aPinned !== bPinned) {
+                    return aPinned ? -1 : 1;
+                }
+
+                if (aPinned && bPinned) {
+                    const aPinnedAt = getGlobalPinTimestamp(a.room);
+                    const bPinnedAt = getGlobalPinTimestamp(b.room);
+                    if (aPinnedAt !== bPinnedAt) {
+                        return bPinnedAt - aPinnedAt;
+                    }
+                }
+
+                // Для остальных элементов сохраняем исходный порядок селектора.
+                return a.index - b.index;
+            })
+            .map((entry) => entry.room);
+
         // Обновляем предыдущее значение только если не идет навигация
-        previousRoomsRef.current = filteredRooms;
-        return filteredRooms;
+        previousRoomsRef.current = sortedRooms;
+        return sortedRooms;
     }, [rooms]);
 
     useEffect(() => {
@@ -655,8 +712,36 @@ export const ChatListScreen = ({navigation}) => {
         });
     };
 
+    const handleRoomLongPress = useCallback((room) => {
+        if (!isCurrentUserSuperAdmin) return;
+        if (!room?.id || String(room?.type || '').toUpperCase() !== 'BROADCAST') return;
+
+        const isPinned = isGloballyPinnedChannel(room);
+        const actionTitle = isPinned ? 'Открепить канал' : 'Закрепить канал';
+        const actionMessage = isPinned
+            ? 'Канал перестанет быть приоритетным в списке чатов у всех пользователей.'
+            : 'Канал будет отображаться первым в списке чатов у всех пользователей.';
+
+        showAlert({
+            type: 'confirm',
+            title: actionTitle,
+            message: actionMessage,
+            buttons: [
+                { text: 'Отмена', style: 'cancel' },
+                {
+                    text: actionTitle,
+                    style: 'primary',
+                    onPress: () => {
+                        dispatch(toggleGlobalPin({ roomId: room.id, isPinned: !isPinned }));
+                    }
+                }
+            ]
+        });
+    }, [dispatch, isCurrentUserSuperAdmin, showAlert]);
+
     const renderItem = useCallback(({item}) => {
         const title = getChatTitle(item);
+        const isPinnedChannel = isGloballyPinnedChannel(item);
         const avatarUri = getRoomAvatar(item);
         // Последнее сообщение для строки: селектор может отдать только serverLastMessage
         const lastMessageRaw = item.lastMessage ?? item.serverLastMessage;
@@ -670,18 +755,26 @@ export const ChatListScreen = ({navigation}) => {
         const isExpiredStop = item.type === 'BROADCAST' &&
             lastMessageRaw?.type === 'STOP' &&
             isStopMessageExpired(lastMessageRaw, timeTick);
-        // Канал «Маршруты» (BROADCAST): служебные SYSTEM в превью списка не показываем
+        const lastMsgTypeUpper = String(lastMessageRaw?.type || '').toUpperCase();
+        const isLastMessageSystem = lastMsgTypeUpper === 'SYSTEM';
+        // Канал «Маршруты» (BROADCAST): любые SYSTEM в превью не показываем
         const isRoutesBroadcastChannel =
             item.type === 'BROADCAST' && /маршрут/i.test(String(item.title || ''));
         const hideSystemPreviewOnRoutes =
-            isRoutesBroadcastChannel &&
-            String(lastMessageRaw?.type || '').toUpperCase() === 'SYSTEM';
-        const lastMessage = (isFilteredByDistrict || isExpiredStop || hideSystemPreviewOnRoutes)
+            isRoutesBroadcastChannel && isLastMessageSystem;
+        // Все каналы: не показываем превью о назначении/отзыве администратора (как в ленте чата)
+        const hideBroadcastAdminRoleSystemPreview =
+            item.type === 'BROADCAST' &&
+            isLastMessageSystem &&
+            isGroupAdminRoleSystemMessage(lastMessageRaw);
+        const hideSystemRelatedPreview =
+            hideSystemPreviewOnRoutes || hideBroadcastAdminRoleSystemPreview;
+        const lastMessage = (isFilteredByDistrict || isExpiredStop || hideSystemRelatedPreview)
             ? null
             : lastMessageRaw;
 
         const hideUnreadForForeignOrExpiredStop =
-            isFilteredByDistrict || isExpiredStop || hideSystemPreviewOnRoutes;
+            isFilteredByDistrict || isExpiredStop || hideSystemRelatedPreview;
         const displayUnread = hideUnreadForForeignOrExpiredStop ? 0 : (Number(item.unread) || 0);
 
         // Определяем, является ли последнее сообщение нашим
@@ -819,7 +912,12 @@ export const ChatListScreen = ({navigation}) => {
         }
 
         return (
-            <TouchableOpacity style={styles.item} onPress={() => openRoom(item)}>
+            <TouchableOpacity
+                style={styles.item}
+                onPress={() => openRoom(item)}
+                onLongPress={() => handleRoomLongPress(item)}
+                delayLongPress={300}
+            >
                 <View style={styles.avatarBox}>
                     {avatarUri ? (
                         <Image source={{uri: avatarUri}} style={styles.avatarImg} resizeMode="cover"/>
@@ -839,7 +937,17 @@ export const ChatListScreen = ({navigation}) => {
                 </View>
                 <View style={styles.textContainer}>
                     <View style={styles.rowBetween}>
-                        <Text style={styles.title} numberOfLines={1}>{title}</Text>
+                        <View style={styles.titleContainer}>
+                            {isPinnedChannel && (
+                                <Ionicons
+                                    name="pin"
+                                    size={12}
+                                    color={isDark ? colors.warning : '#FF9500'}
+                                    style={styles.pinnedIcon}
+                                />
+                            )}
+                            <Text style={styles.title} numberOfLines={1}>{title}</Text>
+                        </View>
                         <View style={styles.messageInfo}>
                             <Text style={styles.time}>{time}</Text>
                         </View>
@@ -898,7 +1006,7 @@ export const ChatListScreen = ({navigation}) => {
                 )}
             </TouchableOpacity>
         );
-    }, [getChatTitle, getRoomAvatar, openRoom, currentUserId, userDistrictIds, timeTick, styles, mutedIconColor]);
+    }, [getChatTitle, getRoomAvatar, openRoom, handleRoomLongPress, currentUserId, userDistrictIds, timeTick, styles, mutedIconColor, isDark, colors.warning]);
 
     const keyExtractor = useCallback((item) => {
         // Безопасное извлечение ключа с обработкой undefined/null
@@ -1055,6 +1163,17 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'flex-start',
         marginBottom: 4,
+    },
+    titleContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+        minWidth: 0,
+        marginRight: 8,
+    },
+    pinnedIcon: {
+        marginRight: 4,
+        marginTop: 2,
     },
     title: {
         fontSize: 16,

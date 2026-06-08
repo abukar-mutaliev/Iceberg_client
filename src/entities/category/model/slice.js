@@ -1,16 +1,83 @@
 import {createSlice, createAsyncThunk} from '@reduxjs/toolkit';
 import {categoryApi} from '@entities/category/api/categoryApi';
+import {
+    logCategoryProducts,
+    summarizeProducts,
+    summarizePagination,
+    summarizeReduxProductsByCategory,
+} from '@entities/category/lib/categoryProductsDebug';
+
+const PRODUCTS_BY_CATEGORY_PAGE_SIZE = 20;
+
+/** Единый ключ для Redux — number; иначе "1" и 1 дают разные записи в memo/cache. */
+export const normalizeCategoryId = (categoryId) => {
+    if (categoryId === null || categoryId === undefined || categoryId === '') {
+        return null;
+    }
+    const numericId = Number(categoryId);
+    return Number.isFinite(numericId) ? numericId : null;
+};
 
 const initialState = {
     categories: [],
     currentCategory: null,
     productsByCategory: {},
+    productsPaginationByCategory: {},
+    productsLoadingByCategory: {},
+    productsLoadingMoreByCategory: {},
+    productsErrorByCategory: {},
     isLoading: false,
     error: null,
-    lastFetchTime: null
+    lastFetchTime: null,
 };
 
 const CACHE_EXPIRY_TIME = 15 * 60 * 1000; // 15 минут
+
+const applyCategoryProductsResult = (state, { categoryId, products, pagination, page = 1 }) => {
+    const normalizedId = normalizeCategoryId(categoryId);
+    if (!normalizedId) {
+        return;
+    }
+
+    state.productsLoadingByCategory[normalizedId] = false;
+    state.productsLoadingMoreByCategory[normalizedId] = false;
+
+    const incomingCount = Array.isArray(products) ? products.length : 0;
+    const validProducts = Array.isArray(products)
+        ? products.filter((product) => product?.id)
+        : [];
+    const droppedCount = incomingCount - validProducts.length;
+    const previousCount = state.productsByCategory[normalizedId]?.length ?? 0;
+
+    if (page === 1) {
+        state.productsByCategory[normalizedId] = validProducts;
+    } else {
+        const existing = state.productsByCategory[normalizedId] || [];
+        const existingIds = new Set(existing.map((product) => product.id));
+        const newProducts = validProducts.filter((product) => !existingIds.has(product.id));
+        state.productsByCategory[normalizedId] = [...existing, ...newProducts];
+    }
+
+    if (pagination) {
+        state.productsPaginationByCategory[normalizedId] = {
+            currentPage: pagination.currentPage,
+            totalPages: pagination.totalPages,
+            totalItems: pagination.totalItems,
+            hasMore: pagination.hasMore,
+        };
+    }
+
+    logCategoryProducts('redux.productsApplied', {
+        normalizedId,
+        page,
+        incomingCount,
+        storedCount: state.productsByCategory[normalizedId]?.length ?? 0,
+        previousCount,
+        droppedWithoutId: droppedCount,
+        pagination: state.productsPaginationByCategory[normalizedId],
+        allCategoryKeys: Object.keys(state.productsByCategory),
+    });
+};
 
 const isCacheValid = (lastFetchTime) => {
     return lastFetchTime && Date.now() - lastFetchTime < CACHE_EXPIRY_TIME;
@@ -138,34 +205,178 @@ export const fetchCategoryById = createAsyncThunk(
 
 export const fetchProductsByCategory = createAsyncThunk(
     'category/fetchProductsByCategory',
-    async ({categoryId, params}, {rejectWithValue}) => {
+    async (
+        {
+            categoryId,
+            categoryName = null,
+            page = 1,
+            limit = PRODUCTS_BY_CATEGORY_PAGE_SIZE,
+            refresh = false,
+            params = {},
+        },
+        { rejectWithValue, getState }
+    ) => {
         try {
-            const response = await categoryApi.getProductsByCategory(categoryId, params);
-            
-            // Проверяем разные возможные форматы ответа API
+            const normalizedCategoryId = normalizeCategoryId(categoryId);
+            if (!normalizedCategoryId) {
+                logCategoryProducts('thunk.reject.invalidCategoryId', {
+                    rawCategoryId: categoryId,
+                    categoryName,
+                    page,
+                    limit,
+                });
+                return rejectWithValue('Некорректный идентификатор категории');
+            }
+
+            const requestParams = {
+                page,
+                limit,
+                ...params,
+            };
+
+            logCategoryProducts('thunk.start', {
+                rawCategoryId: categoryId,
+                normalizedCategoryId,
+                categoryName,
+                page,
+                limit,
+                refresh,
+                requestParams,
+            });
+
+            const response = await categoryApi.getProductsByCategory(normalizedCategoryId, requestParams);
+
+            const buildPagination = (serverPagination, productsCount) => {
+                const currentPage = serverPagination?.page || page;
+                const totalPages = serverPagination?.totalPages || 1;
+                const totalItems = serverPagination?.totalItems ?? productsCount;
+                const hasMore = currentPage < totalPages;
+
+                return {
+                    currentPage,
+                    totalPages,
+                    totalItems,
+                    hasMore: serverPagination?.hasMore ?? hasMore,
+                };
+            };
+
+            const matchesCategory = (product) => {
+                if (!Array.isArray(product?.categories)) {
+                    return false;
+                }
+
+                const normalizedName = typeof categoryName === 'string'
+                    ? categoryName.trim().toLowerCase()
+                    : '';
+
+                return product.categories.some((cat) => {
+                    const catId = normalizeCategoryId(cat?.id);
+                    if (catId === normalizedCategoryId) {
+                        return true;
+                    }
+                    if (!normalizedName) {
+                        return false;
+                    }
+                    const catName = (cat?.name || '').trim().toLowerCase();
+                    const catDescription = (cat?.description || '').trim().toLowerCase();
+                    return catName === normalizedName
+                        || catDescription === normalizedName;
+                });
+            };
+
+            const pickFallbackProducts = () => {
+                const catalogProducts = getState()?.products?.items;
+                if (!Array.isArray(catalogProducts) || catalogProducts.length === 0) {
+                    return [];
+                }
+                return catalogProducts.filter(matchesCategory);
+            };
+
             if (response && response.status === 'success') {
-                // Вариант 1: { data: { products: [...], pagination: {...} } }
                 if (response.data && response.data.products) {
+                    const apiProducts = response.data.products || [];
+                    let products = apiProducts;
+                    let usedFallback = false;
+
+                    logCategoryProducts('thunk.apiProducts', {
+                        normalizedCategoryId,
+                        categoryName,
+                        page,
+                        apiProducts: summarizeProducts(apiProducts),
+                        pagination: summarizePagination(response.data.pagination),
+                    });
+
+                    if (page === 1 && products.length === 0) {
+                        products = pickFallbackProducts();
+                        usedFallback = products.length > 0;
+                        logCategoryProducts('thunk.fallbackCatalog', {
+                            normalizedCategoryId,
+                            categoryName,
+                            fallback: summarizeProducts(products),
+                            catalogTotal: getState()?.products?.items?.length ?? 0,
+                        });
+                    }
+
+                    const pagination = buildPagination(response.data.pagination, products.length);
+                    const withoutId = products.filter((product) => !product?.id).length;
+
+                    logCategoryProducts('thunk.return', {
+                        normalizedCategoryId,
+                        categoryName,
+                        page,
+                        usedFallback,
+                        finalProducts: summarizeProducts(products),
+                        pagination: summarizePagination(pagination),
+                        droppedWithoutId: withoutId,
+                    });
+
                     return {
-                        categoryId,
-                        products: response.data.products || [],
-                        pagination: response.data.pagination || {}
+                        categoryId: normalizedCategoryId,
+                        products,
+                        pagination,
+                        page,
+                        refresh,
                     };
                 }
-                
-                // Вариант 2: { data: [...] } - массив продуктов напрямую
+
                 if (response.data && Array.isArray(response.data)) {
+                    const products = response.data;
+                    const inferredHasMore = products.length >= limit;
+
+                    logCategoryProducts('thunk.return.arrayFormat', {
+                        normalizedCategoryId,
+                        products: summarizeProducts(products),
+                    });
+
                     return {
-                        categoryId,
-                        products: response.data,
-                        pagination: {}
+                        categoryId: normalizedCategoryId,
+                        products,
+                        pagination: {
+                            currentPage: page,
+                            totalPages: inferredHasMore ? page + 1 : page,
+                            totalItems: products.length,
+                            hasMore: inferredHasMore,
+                        },
+                        page,
+                        refresh,
                     };
                 }
             }
-            
-            console.error('Invalid response format:', response);
+
+            logCategoryProducts('thunk.invalidResponse', {
+                normalizedCategoryId,
+                responseStatus: response?.status,
+                responseKeys: response ? Object.keys(response) : [],
+                dataKeys: response?.data ? Object.keys(response.data) : [],
+            });
             return rejectWithValue('Некорректный формат ответа от сервера');
         } catch (error) {
+            logCategoryProducts('thunk.error', {
+                normalizedCategoryId: normalizeCategoryId(categoryId),
+                categoryName,
+                page,
+                message: error?.message || String(error),
+            });
             return rejectWithValue(handleError(error));
         }
     }
@@ -243,12 +454,56 @@ const categorySlice = createSlice({
                 state.error = null;
             },
             clearProductsByCategory: (state, action) => {
-                if (action.payload) {
-                    delete state.productsByCategory[action.payload];
+                const normalizedId = normalizeCategoryId(action.payload);
+                if (normalizedId) {
+                    delete state.productsByCategory[normalizedId];
+                    delete state.productsPaginationByCategory[normalizedId];
+                    delete state.productsLoadingByCategory[normalizedId];
+                    delete state.productsLoadingMoreByCategory[normalizedId];
+                    delete state.productsErrorByCategory[normalizedId];
                 } else {
                     state.productsByCategory = {};
+                    state.productsPaginationByCategory = {};
+                    state.productsLoadingByCategory = {};
+                    state.productsLoadingMoreByCategory = {};
+                    state.productsErrorByCategory = {};
                 }
-            }
+            },
+            setCategoryProductsLoading: (state, action) => {
+                const { categoryId, page = 1 } = action.payload || {};
+                const normalizedId = normalizeCategoryId(categoryId);
+                if (!normalizedId) {
+                    return;
+                }
+
+                logCategoryProducts('redux.loading', { normalizedId, page });
+
+                if (page === 1) {
+                    state.productsLoadingByCategory[normalizedId] = true;
+                } else {
+                    state.productsLoadingMoreByCategory[normalizedId] = true;
+                }
+                delete state.productsErrorByCategory[normalizedId];
+            },
+            setCategoryProductsResult: (state, action) => {
+                applyCategoryProductsResult(state, action.payload);
+            },
+            setCategoryProductsError: (state, action) => {
+                const { categoryId, page = 1, error } = action.payload || {};
+                const normalizedId = normalizeCategoryId(categoryId);
+                if (!normalizedId) {
+                    return;
+                }
+
+                if (page === 1) {
+                    state.productsLoadingByCategory[normalizedId] = false;
+                } else {
+                    state.productsLoadingMoreByCategory[normalizedId] = false;
+                }
+
+                logCategoryProducts('redux.error', { normalizedId, page, error });
+                state.productsErrorByCategory[normalizedId] = error;
+            },
         },
 
         extraReducers: (builder) => {
@@ -288,50 +543,56 @@ const categorySlice = createSlice({
                 })
                 .addCase(fetchCategoryById.rejected, setRejected)
 
-                .addCase(fetchProductsByCategory.pending, (state) => {
-                    state.productsLoading = true;
-                    state.productsError = null;
-                    // НЕ очищаем продукты при обновлении - сохраняем старые до получения новых
-                    // Это предотвращает исчезновение товаров во время обновления
+                .addCase(fetchProductsByCategory.pending, (state, action) => {
+                    const { categoryId, categoryName, page = 1 } = action.meta.arg || {};
+                    const normalizedId = normalizeCategoryId(categoryId);
+                    if (!normalizedId) {
+                        return;
+                    }
+
+                    logCategoryProducts('redux.pending', {
+                        normalizedId,
+                        categoryName,
+                        page,
+                        previousCount: state.productsByCategory[normalizedId]?.length ?? 0,
+                    });
+
+                    if (page === 1) {
+                        state.productsLoadingByCategory[normalizedId] = true;
+                    } else {
+                        state.productsLoadingMoreByCategory[normalizedId] = true;
+                    }
+                    delete state.productsErrorByCategory[normalizedId];
                 })
                 .addCase(fetchProductsByCategory.fulfilled, (state, action) => {
-                    state.productsLoading = false;
-                    // Обновляем продукты только если они есть в ответе
-                    if (action.payload && action.payload.categoryId) {
-                        const categoryId = action.payload.categoryId;
-                        const newProducts = action.payload.products;
-                        
-                        // Логируем для отладки
-                        console.log('[categorySlice] fetchProductsByCategory.fulfilled:', {
-                            categoryId,
-                            productsCount: Array.isArray(newProducts) ? newProducts.length : 0,
-                            hasProducts: Array.isArray(newProducts) && newProducts.length > 0,
-                            currentProductsCount: Array.isArray(state.productsByCategory[categoryId]) 
-                                ? state.productsByCategory[categoryId].length 
-                                : 0
-                        });
-                        
-                        // Обновляем продукты только если они есть в ответе
-                        // Если массив пустой, это может быть нормально (нет товаров в категории)
-                        // Но мы не должны очищать существующие товары, если ответ пустой
-                        if (Array.isArray(newProducts)) {
-                            // Если новые продукты есть, обновляем
-                            // Если новых продуктов нет, но старые есть - сохраняем старые
-                            // Это предотвращает исчезновение товаров при обновлении
-                            if (newProducts.length > 0) {
-                                state.productsByCategory[categoryId] = newProducts;
-                            } else if (!state.productsByCategory[categoryId] || state.productsByCategory[categoryId].length === 0) {
-                                // Обновляем только если старых продуктов тоже нет
-                                state.productsByCategory[categoryId] = [];
-                            }
-                            // Если новых продуктов нет, но старые есть - ничего не делаем
-                        }
-                    }
+                    applyCategoryProductsResult(state, action.payload);
                 })
                 .addCase(fetchProductsByCategory.rejected, (state, action) => {
-                    state.productsLoading = false;
-                    state.productsError = action.payload;
-                    // НЕ очищаем продукты при ошибке - сохраняем старые данные
+                    const { categoryId, categoryName, page = 1 } = action.meta.arg || {};
+                    const normalizedId = normalizeCategoryId(categoryId);
+                    if (!normalizedId) {
+                        return;
+                    }
+
+                    if (page === 1) {
+                        state.productsLoadingByCategory[normalizedId] = false;
+                    } else {
+                        state.productsLoadingMoreByCategory[normalizedId] = false;
+                    }
+
+                    logCategoryProducts('redux.rejected', {
+                        normalizedId,
+                        categoryName,
+                        page,
+                        aborted: !!action.meta.aborted,
+                        error: action.payload,
+                    });
+
+                    if (action.meta.aborted) {
+                        return;
+                    }
+
+                    state.productsErrorByCategory[normalizedId] = action.payload;
                 })
 
                 .addCase(updateCategory.pending, setPending)
@@ -369,7 +630,10 @@ export const {
     setCurrentCategory,
     clearCurrentCategory,
     setCategories,
-    clearProductsByCategory
+    clearProductsByCategory,
+    setCategoryProductsLoading,
+    setCategoryProductsResult,
+    setCategoryProductsError,
 } = categorySlice.actions;
 
 // Экспортируем reducer как default и именованный экспорт для поддержки совместимости

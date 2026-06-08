@@ -381,9 +381,30 @@ const suppliersSlice = createSlice({
             state.ratings = {};
         },
 
+        /**
+         * Инвалидирует кэш рейтинга для конкретного поставщика, чтобы при
+         * следующем обращении к `fetchSupplierRating` данные были перезапрошены
+         * с сервера. Используется после CRUD отзывов, чтобы рейтинг на баннере
+         * (BrandCard) и в списках поставщиков оставался актуальным.
+         */
+        invalidateSupplierRating: (state, action) => {
+            const { supplierId } = action.payload || {};
+            if (!supplierId) return;
+            const normalizedId = Number(supplierId);
+            delete state.lastFetchTime[`rating_${normalizedId}`];
+        },
+
         setSupplierRating: (state, action) => {
-            const { supplierId, rating, totalFeedbacks } = action.payload;
-            state.ratings[supplierId] = { rating, totalFeedbacks };
+            const { supplierId, rating, totalFeedbacks } = action.payload || {};
+            if (supplierId == null) return;
+            const normalizedId = Number(supplierId);
+            state.ratings[normalizedId] = {
+                rating: rating || 0,
+                totalFeedbacks: totalFeedbacks || 0,
+            };
+            // Фиксируем «свежесть» значения, чтобы fetchSupplierRating
+            // не подменил уже точный рейтинг, посчитанный из отзывов.
+            state.lastFetchTime[`rating_${normalizedId}`] = Date.now();
         },
 
         prefillSupplierData: (state, action) => {
@@ -598,6 +619,7 @@ export const {
     clearSupplierError,
     setSupplierRating,
     clearRatings,
+    invalidateSupplierRating,
     clearSupplierCache,
     prefillSupplierData
 } = suppliersSlice.actions;

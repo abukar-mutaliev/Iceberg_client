@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -8,16 +8,16 @@ import {
     ScrollView,
     ActivityIndicator,
     KeyboardAvoidingView,
-    Platform} from 'react-native';
+    Platform,
+    Switch
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CommonActions } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import {
-    Color,
-    FontFamily
-} from '@app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
 import { CustomTextInput } from '@shared/ui/CustomTextInput/CustomTextInput';
-import { useCustomAlert } from '@shared/ui/CustomAlert';
+import { useToast } from '@shared/ui/Toast';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 import { CartService, clearCart, clearCartCache } from '@entities/cart';
 import { AddressPickerModal, DeliveryAddressApi } from '@entities/deliveryAddress';
@@ -33,19 +33,19 @@ const normalize = (size) => {
 export const CheckoutScreen = ({ navigation, route }) => {
     const { items = [], stats = {}, clientType } = route.params || {};
     const dispatch = useDispatch();
-    const { showError } = useCustomAlert();
+    const { showError } = useToast();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
-    // Delivery hook
+    // Delivery hook (упрощённая версия: фикс. цена)
     const {
         deliveryType,
         deliveryCost,
-        deliveryDistance,
-        isFreeDelivery,
         calculating,
         warehouseName,
-        freeDeliveryInfo,
         totalWithDelivery,
         calculateDeliveryFee,
+        fetchActiveTariff,
         setDeliveryType: setDeliveryTypeAction,
         clearDeliveryCalculation,
     } = useDelivery();
@@ -60,82 +60,45 @@ export const CheckoutScreen = ({ navigation, route }) => {
         expectedDeliveryDate: null,
         paymentMethod: 'ONLINE' // Только онлайн оплата
     });
+    const [skipPaymentForTesting, setSkipPaymentForTesting] = useState(__DEV__);
     const [selectedWarehouse, setSelectedWarehouse] = useState(null);
 
 
     useEffect(() => {
-        const loadDefaultAddress = async () => {
+        // После упрощения логики склад доставки всегда один (Warehouse.isMain).
+        // Здесь мы только подгружаем дефолтный адрес клиента и единственный
+        // склад доставки — без выбора по району.
+        const loadAddressAndMainWarehouse = async () => {
             try {
                 setAddressLoading(true);
-                const response = await DeliveryAddressApi.getDefaultAddress();
-                
-                // Безопасная обработка ответа - проверяем все возможные варианты структуры
+
+                const [addressResponse, warehouseResponse] = await Promise.all([
+                    DeliveryAddressApi.getDefaultAddress(),
+                    WarehouseService.getMainDeliveryWarehouse().catch(() => null)
+                ]);
+
                 let defaultAddress = null;
-                if (response && response.data !== null && response.data !== undefined) {
-                    defaultAddress = response.data;
-                } else if (response && response.data === null) {
-                    // Адрес по умолчанию не установлен
-                    defaultAddress = null;
-                } else if (response && !response.data) {
-                    // Прямой ответ без обертки data
-                    defaultAddress = response;
+                if (addressResponse && addressResponse.data !== null && addressResponse.data !== undefined) {
+                    defaultAddress = addressResponse.data;
+                } else if (addressResponse && !addressResponse.data) {
+                    defaultAddress = addressResponse;
                 }
-                
-                if (defaultAddress) {
-                    const districtId = defaultAddress.district?.id || defaultAddress.districtId;
-                    
-                    console.log('📍 Загружен адрес по умолчанию:', {
-                        id: defaultAddress.id,
-                        title: defaultAddress.title,
-                        districtId,
-                        districtName: defaultAddress.district?.name,
-                        hasDistrictId: !!districtId
-                    });
-                    
-                    setSelectedAddress(defaultAddress);
-                    
-                    // Получаем склад для района адреса
-                    if (districtId) {
-                        console.log('📍 Загрузка склада для района:', districtId);
-                        try {
-                            const warehousesResponse = await WarehouseService.getWarehousesByDistrict(districtId);
-                            console.log('🏭 Ответ складов:', warehousesResponse);
-                            
-                            // Извлекаем массив складов из ответа
-                            const warehouses = warehousesResponse.data?.warehouses || warehousesResponse.data || [];
-                            console.log('📦 Извлечено складов:', warehouses.length);
-                            
-                            if (warehousesResponse.status === 'success' && warehouses.length > 0) {
-                                const warehouse = warehouses[0]; // Берем первый активный склад
-                                console.log('✅ Найден склад:', {
-                                    id: warehouse.id,
-                                    name: warehouse.name,
-                                    districtId: warehouse.districtId
-                                });
-                                setWarehouseId(warehouse.id);
-                                setSelectedWarehouse(warehouse);
-                            } else {
-                                console.warn('⚠️ Склад не найден для района:', districtId);
-                                setWarehouseId(null);
-                                setSelectedWarehouse(null);
-                            }
-                        } catch (warehouseError) {
-                            console.error('❌ Error loading warehouse:', warehouseError);
-                            setWarehouseId(null);
-                            setSelectedWarehouse(null);
-                        }
-                    } else {
-                        console.warn('⚠️ У адреса нет districtId:', defaultAddress);
-                        setWarehouseId(null);
-                        setSelectedWarehouse(null);
-                    }
+                setSelectedAddress(defaultAddress || null);
+
+                const mainWarehouse = warehouseResponse?.data?.warehouses?.[0]
+                    || warehouseResponse?.data?.[0]
+                    || null;
+
+                if (mainWarehouse) {
+                    setWarehouseId(mainWarehouse.id);
+                    setSelectedWarehouse(mainWarehouse);
                 } else {
-                    setSelectedAddress(null);
                     setWarehouseId(null);
                     setSelectedWarehouse(null);
+                    console.warn('⚠️ Основной склад доставки (isMain=true) не найден');
                 }
             } catch (error) {
-                console.error('❌ Error loading default address:', error);
+                console.error('❌ Error loading address / main warehouse:', error);
                 setSelectedAddress(null);
                 setWarehouseId(null);
                 setSelectedWarehouse(null);
@@ -144,65 +107,27 @@ export const CheckoutScreen = ({ navigation, route }) => {
             }
         };
 
-        loadDefaultAddress();
+        loadAddressAndMainWarehouse();
     }, []);
 
-    // Эффект для расчета доставки при изменении адреса или типа доставки
+    // Тариф и стоимость доставки — с сервера (фиксированная цена по deliveryType).
     useEffect(() => {
-        const calculateDelivery = async () => {
-            console.log('🔍 Проверка условий для расчета доставки:', {
-                deliveryType,
-                hasAddress: !!selectedAddress,
-                addressId: selectedAddress?.id,
-                hasWarehouse: !!warehouseId,
-                warehouseId,
-                orderAmount: stats.totalAmount || 0,
-                addressLoading
-            });
+        fetchActiveTariff().catch((error) => {
+            console.error('❌ Ошибка загрузки тарифа доставки:', error);
+        });
+    }, [fetchActiveTariff]);
 
-            // Расчитываем только для доставки курьером
-            if (deliveryType !== 'DELIVERY') {
-                console.log('⏭️ Пропуск расчета: тип доставки не DELIVERY');
-                return;
-            }
-
-            if (!selectedAddress) {
-                console.log('⏭️ Пропуск расчета: адрес не выбран');
-                return;
-            }
-
-            if (!warehouseId) {
-                console.log('⏭️ Пропуск расчета: склад не определен');
-                return;
-            }
-
-            if (addressLoading) {
-                console.log('⏭️ Пропуск расчета: адрес еще загружается');
-                return;
-            }
-
+    useEffect(() => {
+        const syncDeliveryFee = async () => {
             try {
-                console.log('🚚 Начинаем расчет стоимости доставки', {
-                    warehouseId,
-                    addressId: selectedAddress.id,
-                    orderAmount: stats.totalAmount || 0
-                });
-
-                await calculateDeliveryFee(
-                    warehouseId,
-                    selectedAddress.id,
-                    stats.totalAmount || 0
-                );
-
-                console.log('✅ Расчет доставки завершен успешно');
+                await calculateDeliveryFee(deliveryType);
             } catch (error) {
-                console.error('❌ Ошибка расчета доставки:', error);
-                // Ошибка расчета не блокирует оформление заказа
+                console.error('❌ Ошибка расчёта доставки:', error);
             }
         };
 
-        calculateDelivery();
-    }, [selectedAddress, deliveryType, warehouseId, stats.totalAmount, calculateDeliveryFee, addressLoading]);
+        syncDeliveryFee();
+    }, [deliveryType, calculateDeliveryFee]);
 
     const handleFieldChange = (field, value) => {
         setFormData(prev => ({
@@ -211,90 +136,22 @@ export const CheckoutScreen = ({ navigation, route }) => {
         }));
     };
 
-    const handleAddressSelected = async (address) => {
+    const handleAddressSelected = (address) => {
         setShowAddressPicker(false);
-        setAddressLoading(true);
         setSelectedAddress(address);
-        clearDeliveryCalculation();
-
-        // Получаем склад для района нового адреса
-        const districtId = address?.district?.id || address?.districtId;
-        let resolvedWarehouse = null;
-
-        if (districtId) {
-            console.log('📍 Загрузка склада для нового адреса, район:', districtId);
-            try {
-                const warehousesResponse = await WarehouseService.getWarehousesByDistrict(districtId);
-                console.log('🏭 Ответ складов:', warehousesResponse);
-
-                // Извлекаем массив складов из ответа
-                const warehouses = warehousesResponse.data?.warehouses || warehousesResponse.data || [];
-                console.log('📦 Извлечено складов:', warehouses.length);
-
-                if (warehousesResponse.status === 'success' && warehouses.length > 0) {
-                    resolvedWarehouse = warehouses[0];
-                    console.log('✅ Найден склад:', {
-                        id: resolvedWarehouse.id,
-                        name: resolvedWarehouse.name,
-                        districtId: resolvedWarehouse.districtId
-                    });
-                    setWarehouseId(resolvedWarehouse.id);
-                    setSelectedWarehouse(resolvedWarehouse);
-                } else {
-                    console.warn('⚠️ Склад не найден для района:', districtId);
-                    setWarehouseId(null);
-                    setSelectedWarehouse(null);
-                }
-            } catch (error) {
-                console.error('❌ Error loading warehouse for new address:', error);
-                setWarehouseId(null);
-                setSelectedWarehouse(null);
-            }
-        } else {
-            console.warn('⚠️ Адрес не имеет districtId:', address);
-            setWarehouseId(null);
-            setSelectedWarehouse(null);
-        }
-
-        try {
-            if (
-                deliveryType === 'DELIVERY' &&
-                resolvedWarehouse?.id &&
-                address?.id
-            ) {
-                console.log('🚚 Перерасчет доставки после выбора нового адреса', {
-                    warehouseId: resolvedWarehouse.id,
-                    addressId: address.id,
-                    orderAmount: stats.totalAmount || 0
-                });
-
-                await calculateDeliveryFee(
-                    resolvedWarehouse.id,
-                    address.id,
-                    stats.totalAmount || 0
-                );
-            }
-        } catch (error) {
-            console.error('❌ Ошибка при перерасчете доставки после выбора адреса:', error);
-        } finally {
-            setAddressLoading(false);
-        }
     };
 
     const handleDeliveryTypeChange = (type) => {
-        console.log('🔄 Изменение типа доставки:', type);
         setDeliveryTypeAction(type);
 
-        // Если выбран самовывоз, очищаем расчет доставки
         if (type === 'PICKUP') {
-            console.log('🚚 Очистка расчета доставки для самовывоза');
             clearDeliveryCalculation();
         }
     };
 
     const handleSubmit = async () => {
         if (!selectedAddress && deliveryType === 'DELIVERY') {
-            showError('Ошибка', 'Выберите адрес доставки');
+            showError('Выберите адрес доставки', { duration: 5000, position: 'top' });
             return;
         }
 
@@ -312,10 +169,20 @@ export const CheckoutScreen = ({ navigation, route }) => {
                 expectedDeliveryDate: formData.expectedDeliveryDate,
                 paymentMethod: formData.paymentMethod,
                 deliveryType: deliveryType, // Передаем тип доставки: DELIVERY или PICKUP
-                usePreauthorization: true // Включаем предавторизацию по умолчанию
+                usePreauthorization: true, // Включаем предавторизацию по умолчанию
+                skipPayment: __DEV__ && skipPaymentForTesting
             });
 
-            const order = result.data?.order;
+            const order = result?.data?.order ?? result?.order;
+            const skipPaymentApplied = order?.skipPaymentApplied === true;
+            const requiresPayment = order?.status === 'PENDING_PAYMENT' && !skipPaymentApplied;
+
+            if (__DEV__ && skipPaymentForTesting && order?.status === 'PENDING_PAYMENT' && !skipPaymentApplied) {
+                showError(
+                    'Тестовая оплата не сработала. Сервер всё ещё требует оплату. Проверьте SKIP_PAYMENT_FOR_TESTING=true в .env и перезапустите сервер (pm2 restart iceberg-web).',
+                    { duration: 6000, position: 'top' }
+                );
+            }
 
             // Проверяем, требуется ли выбор клиента
             if (order?.requiresClientChoice) {
@@ -331,6 +198,29 @@ export const CheckoutScreen = ({ navigation, route }) => {
                         fromCheckout: true
                     });
                 }, 100);
+                return;
+            }
+
+            // Тестовый режим или не-онлайн оплата — сразу к успешному заказу
+            if (!requiresPayment) {
+                console.log('✅ Заказ создан без оплаты', {
+                    orderId: order?.id,
+                    orderNumber: order?.orderNumber,
+                    status: order?.status,
+                    skipPaymentApplied
+                });
+
+                dispatch(clearCartCache());
+                dispatch(clearCart());
+
+                navigation.navigate('OrderSuccess', {
+                    orderId: order?.id,
+                    orderNumber: order?.orderNumber,
+                    totalAmount: order?.totalAmount,
+                    deliveryDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+                    itemsCount: stats.totalItems || 0,
+                    boxesCount: stats.totalBoxes || 0
+                });
                 return;
             }
 
@@ -367,7 +257,7 @@ export const CheckoutScreen = ({ navigation, route }) => {
                 errorMessage = error.message;
             }
 
-            showError('Ошибка', errorMessage);
+            showError(errorMessage, { duration: 5000, position: 'top' });
         } finally {
             setLoading(false);
         }
@@ -383,10 +273,10 @@ export const CheckoutScreen = ({ navigation, route }) => {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
             <StatusBar
-                barStyle="dark-content"
-                backgroundColor={Color.background || '#FFFFFF'}
+                barStyle={colors.statusBarStyle}
+                backgroundColor={colors.background}
             />
 
             <KeyboardAvoidingView
@@ -439,15 +329,17 @@ export const CheckoutScreen = ({ navigation, route }) => {
                                 </Text>
                             </View>
                             
-                            {/* Стоимость доставки */}
-                            {deliveryType === 'DELIVERY' && deliveryCost > 0 && (
+                            {/* Стоимость доставки с сервера */}
+                            {deliveryType === 'DELIVERY' && (
                                 <View style={styles.orderRow}>
-                                    <Text style={styles.orderLabel}>
-                                        {isFreeDelivery ? 'Доставка (бесплатно):' : 'Доставка:'}
-                                    </Text>
-                                    <Text style={isFreeDelivery ? styles.savingsValue : styles.orderValue}>
-                                        {isFreeDelivery ? '0 ₽' : formatPrice(deliveryCost)}
-                                    </Text>
+                                    <Text style={styles.orderLabel}>Доставка:</Text>
+                                    {calculating ? (
+                                        <ActivityIndicator size="small" color={colors.primary} />
+                                    ) : (
+                                        <Text style={styles.orderValue}>
+                                            {formatPrice(deliveryCost)}
+                                        </Text>
+                                    )}
                                 </View>
                             )}
 
@@ -464,15 +356,7 @@ export const CheckoutScreen = ({ navigation, route }) => {
                                     {(() => {
                                         const baseAmount = stats.finalPrice || stats.totalAmount || 0;
                                         const deliveryAmount = deliveryType === 'DELIVERY' ? deliveryCost : 0;
-                                        const total = baseAmount + deliveryAmount;
-                                        console.log('💰 Расчет итоговой суммы:', {
-                                            deliveryType,
-                                            baseAmount,
-                                            deliveryCost,
-                                            deliveryAmount,
-                                            total
-                                        });
-                                        return formatPrice(total);
+                                        return formatPrice(baseAmount + deliveryAmount);
                                     })()}
                                 </Text>
                             </View>
@@ -498,7 +382,7 @@ export const CheckoutScreen = ({ navigation, route }) => {
                             
                             {addressLoading ? (
                                 <View style={styles.addressLoadingContainer}>
-                                    <ActivityIndicator size="small" color="#3339B0" />
+                                    <ActivityIndicator size="small" color={colors.primary} />
                                     <Text style={styles.addressLoadingText}>Загрузка адреса...</Text>
                                 </View>
                             ) : selectedAddress ? (
@@ -541,18 +425,15 @@ export const CheckoutScreen = ({ navigation, route }) => {
                         )}
 
 
-                        {/* Информация о доставке - только для доставки */}
+                        {/* Информация о доставке — только для доставки */}
                         {deliveryType === 'DELIVERY' && (
                             <View style={styles.deliveryAddressSection}>
                                 <View style={styles.deliveryInfoSection}>
                                     <DeliveryInfo
                                         deliveryType={deliveryType}
                                         deliveryCost={deliveryCost}
-                                        deliveryDistance={deliveryDistance}
-                                        isFreeDelivery={isFreeDelivery}
                                         calculating={calculating}
                                         warehouseName={warehouseName}
-                                        freeDeliveryInfo={freeDeliveryInfo}
                                     />
                                 </View>
                             </View>
@@ -603,7 +484,7 @@ export const CheckoutScreen = ({ navigation, route }) => {
                                     orderNumber: 'новый заказ'
                                 })}
                             >
-                                <Icon name="info-outline" size={20} color="#667eea" />
+                                <Icon name="info-outline" size={20} color={colors.primary} />
                                 <Text style={styles.infoButtonText}>Как это работает?</Text>
                             </TouchableOpacity>
                         </View>
@@ -611,7 +492,7 @@ export const CheckoutScreen = ({ navigation, route }) => {
                         {/* Онлайн оплата */}
                         <View style={styles.onlinePaymentInfo}>
                             <View style={styles.paymentMethodCard}>
-                                <Icon name="payment" size={24} color="#667eea" />
+                                <Icon name="payment" size={24} color={colors.primary} />
                                 <View style={styles.paymentMethodContent}>
                                     <Text style={styles.paymentMethodTitle}>Онлайн оплата</Text>
                                     <Text style={styles.paymentMethodDescription}>
@@ -622,11 +503,27 @@ export const CheckoutScreen = ({ navigation, route }) => {
 
                             {/* Информация о предавторизации */}
                             <View style={styles.preauthorizationInfo}>
-                                <Icon name="security" size={16} color="#28a745" />
+                                <Icon name="security" size={16} color={colors.success} />
                                 <Text style={styles.preauthorizationText}>
                                     Средства будут заблокированы на карте, но списаны только после подтверждения наличия товаров
                                 </Text>
                             </View>
+
+                            {__DEV__ && (
+                                <View style={styles.testModeCard}>
+                                    <View style={styles.testModeContent}>
+                                        <Text style={styles.testModeTitle}>Тест: пропустить оплату</Text>
+                                        <Text style={styles.testModeDescription}>
+                                            Заказ сразу перейдёт в обработку. В .env сервера: SKIP_PAYMENT_FOR_TESTING=true и pm2 restart
+                                        </Text>
+                                    </View>
+                                    <Switch
+                                        value={skipPaymentForTesting}
+                                        onValueChange={setSkipPaymentForTesting}
+                                        trackColor={{ false: colors.border, true: colors.primary }}
+                                    />
+                                </View>
+                            )}
                         </View>
                     </View>
                 </ScrollView>
@@ -642,7 +539,7 @@ export const CheckoutScreen = ({ navigation, route }) => {
                         disabled={loading || addressLoading || (deliveryType === 'DELIVERY' && !selectedAddress)}
                     >
                         {loading ? (
-                            <ActivityIndicator color="#FFFFFF" size="small" />
+                            <ActivityIndicator color={colors.textInverse} size="small" />
                         ) : (
                             <Text style={styles.submitButtonText}>
                                 {addressLoading ? 'Загрузка...' : 'Оформить заказ'}
@@ -664,10 +561,10 @@ export const CheckoutScreen = ({ navigation, route }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.background,
     },
 
     keyboardAvoidingView: {
@@ -681,22 +578,22 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(16),
         borderBottomWidth: 1,
-        borderBottomColor: 'rgba(193, 199, 222, 0.20)',
-        backgroundColor: '#FFFFFF',
+        borderBottomColor: colors.border,
+        backgroundColor: colors.surface,
     },
 
     backButton: {
         width: normalize(40),
         height: normalize(40),
         borderRadius: normalize(20),
-        backgroundColor: '#F8F9FF',
+        backgroundColor: colors.surfaceSecondary,
         justifyContent: 'center',
         alignItems: 'center',
     },
 
     backButtonText: {
         fontSize: normalize(20),
-        color: '#3339B0',
+        color: colors.primary,
         fontWeight: '600',
     },
 
@@ -704,7 +601,7 @@ const styles = StyleSheet.create({
         fontSize: normalize(18),
         fontFamily: FontFamily.sFProDisplay || 'SF Pro Display',
         fontWeight: '600',
-        color: '#000000',
+        color: colors.textPrimary,
     },
 
     placeholder: {
@@ -713,21 +610,21 @@ const styles = StyleSheet.create({
 
     content: {
         flex: 1,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.background,
     },
 
     section: {
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(20),
         borderBottomWidth: 1,
-        borderBottomColor: 'rgba(193, 199, 222, 0.10)',
+        borderBottomColor: colors.borderSubtle,
     },
 
     sectionTitle: {
         fontSize: normalize(16),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
-        color: '#000000',
+        color: colors.textPrimary,
     },
 
     sectionHeader: {
@@ -747,7 +644,7 @@ const styles = StyleSheet.create({
     infoButtonText: {
         fontSize: normalize(12),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: '#667eea',
+        color: colors.primary,
         marginLeft: normalize(4),
         fontWeight: '500',
     },
@@ -755,25 +652,55 @@ const styles = StyleSheet.create({
     preauthorizationInfo: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#f0f8ff',
+        backgroundColor: colors.surface,
         padding: normalize(12),
         borderRadius: normalize(8),
         marginBottom: normalize(16),
         borderWidth: 1,
-        borderColor: '#b8daff',
+        borderColor: colors.border,
     },
 
     preauthorizationText: {
         fontSize: normalize(12),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: '#0c5460',
+        color: colors.textSecondary,
         lineHeight: normalize(16),
         marginLeft: normalize(8),
         flex: 1,
     },
 
+    testModeCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: normalize(14),
+        backgroundColor: isDark ? '#2a2418' : '#fff8e6',
+        borderRadius: normalize(12),
+        borderWidth: 1,
+        borderColor: isDark ? '#5c4a1f' : '#ffd666',
+        gap: normalize(12),
+    },
+
+    testModeContent: {
+        flex: 1,
+    },
+
+    testModeTitle: {
+        fontSize: normalize(14),
+        fontFamily: FontFamily.sFProText || 'SF Pro Text',
+        fontWeight: '600',
+        color: colors.textPrimary,
+        marginBottom: normalize(4),
+    },
+
+    testModeDescription: {
+        fontSize: normalize(12),
+        fontFamily: FontFamily.sFProText || 'SF Pro Text',
+        color: colors.textSecondary,
+        lineHeight: normalize(16),
+    },
+
     orderInfo: {
-        backgroundColor: '#F8F9FF',
+        backgroundColor: colors.surface,
         borderRadius: normalize(12),
         padding: normalize(16),
     },
@@ -788,26 +715,26 @@ const styles = StyleSheet.create({
     orderLabel: {
         fontSize: normalize(14),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: 'rgba(60, 60, 67, 0.60)',
+        color: colors.textSecondary,
     },
 
     orderValue: {
         fontSize: normalize(14),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '500',
-        color: '#000000',
+        color: colors.textPrimary,
     },
 
     savingsValue: {
         fontSize: normalize(14),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '500',
-        color: '#28a745',
+        color: colors.success,
     },
 
     totalRow: {
         borderTopWidth: 1,
-        borderTopColor: 'rgba(193, 199, 222, 0.30)',
+        borderTopColor: colors.border,
         paddingTop: normalize(12),
         marginTop: normalize(8),
         marginBottom: 0,
@@ -817,22 +744,22 @@ const styles = StyleSheet.create({
         fontSize: normalize(16),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
-        color: '#000000',
+        color: colors.textPrimary,
     },
 
     totalValue: {
         fontSize: normalize(18),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '700',
-        color: '#3339B0',
+        color: colors.primary,
     },
 
     textArea: {
         minHeight: normalize(100),
         textAlignVertical: 'top',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.inputBackground,
         borderWidth: 1,
-        borderColor: '#E1E5E9',
+        borderColor: colors.inputBorder,
         borderRadius: normalize(12),
         padding: normalize(16),
         marginTop: normalize(8),
@@ -840,14 +767,14 @@ const styles = StyleSheet.create({
     textAreaInput: {
         minHeight: normalize(60),
         fontSize: normalize(16),
-        color: '#333333',
+        color: colors.textPrimary,
         lineHeight: normalize(22),
         textAlignVertical: 'top',
     },
     textAreaLabel: {
         fontSize: normalize(16),
         fontWeight: '600',
-        color: '#333333',
+        color: colors.textPrimary,
         marginBottom: normalize(8),
     },
 
@@ -859,10 +786,10 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         padding: normalize(16),
-        backgroundColor: '#F8F9FF',
+        backgroundColor: colors.surface,
         borderRadius: normalize(12),
         borderWidth: 1,
-        borderColor: '#667eea',
+        borderColor: colors.primary,
         gap: normalize(12),
     },
 
@@ -874,26 +801,26 @@ const styles = StyleSheet.create({
         fontSize: normalize(16),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
-        color: '#000000',
+        color: colors.textPrimary,
         marginBottom: normalize(4),
     },
 
     paymentMethodDescription: {
         fontSize: normalize(14),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: 'rgba(60, 60, 67, 0.60)',
+        color: colors.textSecondary,
     },
 
     footer: {
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(16),
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.surface,
         borderTopWidth: 1,
-        borderTopColor: 'rgba(193, 199, 222, 0.20)',
+        borderTopColor: colors.border,
     },
 
     submitButton: {
-        backgroundColor: '#3339B0',
+        backgroundColor: colors.primary,
         borderRadius: normalize(12),
         paddingVertical: normalize(16),
         alignItems: 'center',
@@ -908,7 +835,7 @@ const styles = StyleSheet.create({
         fontSize: normalize(16),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
-        color: '#FFFFFF',
+        color: colors.textInverse,
     },
 
     // Стили для выбора адреса
@@ -920,7 +847,7 @@ const styles = StyleSheet.create({
         fontSize: normalize(14),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '500',
-        color: '#000000',
+        color: colors.textPrimary,
         marginBottom: normalize(8),
     },
 
@@ -929,32 +856,32 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: normalize(16),
-        backgroundColor: '#F8F9FF',
+        backgroundColor: colors.surface,
         borderRadius: normalize(12),
         borderWidth: 1,
-        borderColor: 'rgba(193, 199, 222, 0.30)',
+        borderColor: colors.border,
     },
 
     selectAddressText: {
         fontSize: normalize(16),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: 'rgba(60, 60, 67, 0.60)',
+        color: colors.textSecondary,
     },
 
     selectAddressArrow: {
         fontSize: normalize(16),
-        color: '#3339B0',
+        color: colors.primary,
         fontWeight: '600',
     },
 
     selectedAddressContainer: {
         flexDirection: 'row',
         alignItems: 'flex-start',
-        backgroundColor: '#F0F1FF',
+        backgroundColor: isDark ? colors.surface : colors.primary + '12',
         borderRadius: normalize(12),
         padding: normalize(16),
         borderWidth: 1,
-        borderColor: '#3339B0',
+        borderColor: colors.primary,
     },
 
     selectedAddress: {
@@ -966,14 +893,14 @@ const styles = StyleSheet.create({
         fontSize: normalize(16),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
-        color: '#000000',
+        color: colors.textPrimary,
         marginBottom: normalize(4),
     },
 
     selectedAddressText: {
         fontSize: normalize(14),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: 'rgba(60, 60, 67, 0.85)',
+        color: colors.textSecondary,
         lineHeight: normalize(20),
         marginBottom: normalize(4),
     },
@@ -981,13 +908,13 @@ const styles = StyleSheet.create({
     selectedAddressDistrict: {
         fontSize: normalize(12),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: 'rgba(60, 60, 67, 0.60)',
+        color: colors.textTertiary,
     },
 
     changeAddressButton: {
         paddingHorizontal: normalize(12),
         paddingVertical: normalize(6),
-        backgroundColor: '#3339B0',
+        backgroundColor: colors.primary,
         borderRadius: normalize(8),
     },
 
@@ -995,7 +922,7 @@ const styles = StyleSheet.create({
         fontSize: normalize(12),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '500',
-        color: '#FFFFFF',
+        color: colors.textInverse,
     },
 
     // Стили для загрузки адреса
@@ -1003,24 +930,24 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         padding: normalize(16),
-        backgroundColor: '#F8F9FF',
+        backgroundColor: colors.surface,
         borderRadius: normalize(12),
         borderWidth: 1,
-        borderColor: 'rgba(193, 199, 222, 0.30)',
+        borderColor: colors.border,
     },
 
     addressLoadingText: {
         fontSize: normalize(14),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: 'rgba(60, 60, 67, 0.60)',
+        color: colors.textSecondary,
         marginLeft: normalize(8),
     },
 
     defaultAddressBadge: {
         fontSize: normalize(11),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: '#3339B0',
-        backgroundColor: '#E8F4FD',
+        color: colors.primary,
+        backgroundColor: isDark ? colors.surfaceSecondary : colors.primary + '12',
         paddingHorizontal: normalize(6),
         paddingVertical: normalize(2),
         borderRadius: normalize(4),

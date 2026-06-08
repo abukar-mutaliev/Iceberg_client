@@ -11,8 +11,7 @@ import {
   ScrollView,
   Platform,
   KeyboardAvoidingView,
-  ActionSheetIOS,
-  Alert} from 'react-native';
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -157,17 +156,7 @@ export const CreateGroupScreen = ({ navigation, route }) => {
       }
       
       if (Platform.OS === 'android') {
-        // На Android: автоматический запрос разрешения (как раньше)
-        const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
-        
-        if (currentStatus !== 'granted') {
-          const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-          
-          if (permissionResult.status !== 'granted') {
-            console.log('❌ Разрешения не предоставлены');
-            return;
-          }
-        }
+        // Android: открываем системный Photo Picker без READ_MEDIA_* permissions.
       } else {
         // iOS: сначала запрашиваем разрешение, и только после отказа показываем экран настроек
         const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
@@ -301,39 +290,30 @@ export const CreateGroupScreen = ({ navigation, route }) => {
 
   const showImagePicker = () => {
     console.log('📸 Показываем выбор способа загрузки изображения');
-    
-    if (Platform.OS === 'ios') {
-      // Используем нативный ActionSheet для iOS
-      ActionSheetIOS.showActionSheetWithOptions(
+
+    showAlert({
+      type: 'info',
+      title: 'Выбрать изображение',
+      message: 'Выберите способ загрузки аватара группы',
+      buttons: [
         {
-          options: ['Отмена', 'Галерея', 'Камера'],
-          cancelButtonIndex: 0,
-          title: 'Выбрать изображение',
-          message: 'Выберите способ загрузки аватара группы',
+          text: 'Отмена',
+          style: 'cancel',
         },
-        (buttonIndex) => {
-          console.log('📸 Выбран вариант:', buttonIndex);
-          if (buttonIndex === 1) {
-            // Галерея - откладываем вызов, чтобы ActionSheet успел закрыться
-            setTimeout(() => pickImageFromGallery(), 500);
-          } else if (buttonIndex === 2) {
-            // Камера
-            setTimeout(() => takePhoto(), 500);
-          }
-        }
-      );
-    } else {
-      // Для Android используем Alert
-      Alert.alert(
-        'Выбрать изображение',
-        'Выберите способ загрузки аватара группы',
-        [
-          { text: 'Отмена', style: 'cancel' },
-          { text: 'Галерея', onPress: () => pickImageFromGallery() },
-          { text: 'Камера', onPress: () => takePhoto() },
-        ]
-      );
-    }
+        {
+          text: 'Галерея',
+          style: 'primary',
+          icon: 'photo-library',
+          onPress: pickImageFromGallery,
+        },
+        {
+          text: 'Камера',
+          style: 'primary',
+          icon: 'camera-alt',
+          onPress: takePhoto,
+        },
+      ],
+    });
   };
 
   const removeAvatar = () => {

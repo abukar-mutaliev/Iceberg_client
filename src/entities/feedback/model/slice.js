@@ -1,5 +1,81 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { feedbackApi } from '../api/feedbackApi';
+import {
+    invalidateSupplierRating,
+    setSupplierRating,
+} from '@entities/supplier/model/slice';
+
+const SUPPLIER_FEEDBACKS_CACHE_MS = 5 * 60 * 1000;
+
+/**
+ * Считает средний рейтинг поставщика по массиву отзывов.
+ * Используем только отзывы с валидным числовым rating > 0, чтобы не занижать
+ * среднее «пустыми» записями.
+ */
+const computeRatingFromFeedbacks = (feedbacks) => {
+    if (!Array.isArray(feedbacks) || feedbacks.length === 0) {
+        return { rating: 0, totalFeedbacks: 0 };
+    }
+    let sum = 0;
+    let count = 0;
+    for (const fb of feedbacks) {
+        const r = typeof fb?.rating === 'number' ? fb.rating : Number(fb?.rating);
+        if (!Number.isFinite(r) || r <= 0) continue;
+        sum += r;
+        count += 1;
+    }
+    if (count === 0) return { rating: 0, totalFeedbacks: 0 };
+    return {
+        rating: Math.round((sum / count) * 10) / 10,
+        totalFeedbacks: count,
+    };
+};
+
+/**
+ * Находит supplierId продукта в Redux (byId / items / currentProduct).
+ * Возвращает число либо null, если не удалось определить.
+ */
+const resolveSupplierIdForProduct = (state, productId) => {
+    if (!productId) return null;
+    const numericProductId = Number(productId);
+    const productsState = state?.products || {};
+
+    const candidate =
+        productsState.byId?.[numericProductId] ||
+        productsState.items?.find?.((p) => p?.id === numericProductId) ||
+        (productsState.currentProduct?.id === numericProductId
+            ? productsState.currentProduct
+            : null);
+
+    const rawSupplierId =
+        candidate?.supplierId ??
+        candidate?.supplier?.id ??
+        candidate?.supplier?.supplier?.id ??
+        null;
+
+    if (rawSupplierId == null) return null;
+    const numericSupplierId = Number(rawSupplierId);
+    return Number.isFinite(numericSupplierId) ? numericSupplierId : null;
+};
+
+/**
+ * Инвалидирует кэш отзывов поставщика и перезапрашивает их, чтобы
+ * пересчитать средний рейтинг из актуальных отзывов. После успешной
+ * перезагрузки `fetchSupplierFeedbacks` сам обновит state.suppliers.ratings
+ * через setSupplierRating, и баннеры (BrandCard) / карточки списков
+ * отобразят свежее значение.
+ */
+const refreshSupplierRatingForProduct = (dispatch, getState, productId) => {
+    try {
+        const supplierId = resolveSupplierIdForProduct(getState(), productId);
+        if (!supplierId) return;
+        dispatch(invalidateSupplierRating({ supplierId }));
+        dispatch(invalidateSupplierFeedbacksCache({ supplierId }));
+        dispatch(fetchSupplierFeedbacks(supplierId));
+    } catch (e) {
+        console.warn('refreshSupplierRatingForProduct error:', e?.message || e);
+    }
+};
 
 const initialState = {
     items: {},
@@ -11,7 +87,11 @@ const initialState = {
     loadedProductIds: [],
     supplierLoading: false,
     supplierError: null,
-    supplierLoadedIds: []
+    supplierLoadedIds: [],
+    // Таймстемпы загрузки всех отзывов поставщика, используются для
+    // ленивой автозагрузки с экранов, где нет полной supplier-страницы
+    // (например, BrandCard на ProductDetailScreen).
+    supplierCacheTimestamps: {}
 };
 
 export const fetchProductFeedbacks = createAsyncThunk(
@@ -47,38 +127,68 @@ export const fetchProductFeedbacks = createAsyncThunk(
 
 export const fetchSupplierFeedbacks = createAsyncThunk(
     'feedback/fetchSupplierFeedbacks',
-    async (supplierId, { rejectWithValue, getState }) => {
+    async (supplierId, { rejectWithValue, getState, dispatch }) => {
         try {
-            console.log(`🔄 Загрузка всех отзывов для поставщика ${supplierId} напрямую с сервера`);
+            const normalizedSupplierId = Number(supplierId);
             const state = getState();
+
+            // Кэш на уровне поставщика — чтобы повторные маунты BrandCard,
+            // списков и т. д. не дёргали API.
+            const cacheTs = state.feedback?.supplierCacheTimestamps?.[normalizedSupplierId];
+            if (cacheTs && Date.now() - cacheTs < SUPPLIER_FEEDBACKS_CACHE_MS) {
+                return { supplierId: normalizedSupplierId, fromCache: true };
+            }
+
+            console.log(`🔄 Загрузка всех отзывов для поставщика ${supplierId} напрямую с сервера`);
             const userData = {
                 ...state.auth?.user,
                 profile: state.profile?.data,
             };
             const response = await feedbackApi.getSupplierFeedbacks(supplierId, userData);
-            
+
             if (response && response.status === 'success' && Array.isArray(response.data)) {
                 console.log(`✅ Получено ${response.data.length} отзывов для поставщика ${supplierId}`);
-                
+
                 // Группируем отзывы по productId для сохранения в store
                 const feedbacksByProduct = {};
-                response.data.forEach(feedback => {
+                response.data.forEach((feedback) => {
                     const productId = feedback.productId;
                     if (!feedbacksByProduct[productId]) {
                         feedbacksByProduct[productId] = [];
                     }
                     feedbacksByProduct[productId].push(feedback);
                 });
-                
-                return { 
-                    supplierId, 
+
+                // Пересчитываем рейтинг поставщика прямо из полученных отзывов
+                // и синхронизируем его в state.suppliers.ratings — это то, что
+                // читает SupplierRatingFromRedux на BrandCard.
+                const { rating, totalFeedbacks } = computeRatingFromFeedbacks(response.data);
+                dispatch(
+                    setSupplierRating({
+                        supplierId: normalizedSupplierId,
+                        rating,
+                        totalFeedbacks,
+                    })
+                );
+
+                return {
+                    supplierId: normalizedSupplierId,
                     feedbacks: response.data,
-                    feedbacksByProduct 
+                    feedbacksByProduct,
                 };
             }
 
             console.log('⚠️ Нет отзывов для поставщика');
-            return { supplierId, feedbacks: [], feedbacksByProduct: {} };
+            // Всё равно зафиксируем нулевой рейтинг, чтобы компонент не
+            // продолжал пытаться перезагружать данные.
+            dispatch(
+                setSupplierRating({
+                    supplierId: normalizedSupplierId,
+                    rating: 0,
+                    totalFeedbacks: 0,
+                })
+            );
+            return { supplierId: normalizedSupplierId, feedbacks: [], feedbacksByProduct: {} };
         } catch (error) {
             console.error('❌ Ошибка при загрузке отзывов поставщика:', error);
             return rejectWithValue(error.message || 'Не удалось загрузить отзывы поставщика');
@@ -137,6 +247,9 @@ export const createFeedback = createAsyncThunk(
             // Перезагружаем отзывы
             await dispatch(fetchProductFeedbacks(productId));
 
+            // Синхронизируем серверный рейтинг поставщика с новым отзывом
+            refreshSupplierRatingForProduct(dispatch, getState, productId);
+
             return { productId, feedback: response.data };
         } catch (error) {
             console.error('Ошибка создания отзыва:', error);
@@ -167,6 +280,9 @@ export const updateFeedback = createAsyncThunk(
             dispatch(invalidateFeedbackCache(productId));
             await dispatch(fetchProductFeedbacks(productId));
 
+            // Синхронизируем серверный рейтинг поставщика с обновлённым отзывом
+            refreshSupplierRatingForProduct(dispatch, getState, productId);
+
             return { productId, feedback: response.data };
         } catch (error) {
             console.error(`Ошибка при обновлении отзыва ${id}:`, error);
@@ -177,13 +293,16 @@ export const updateFeedback = createAsyncThunk(
 
 export const deleteFeedback = createAsyncThunk(
     'feedback/deleteFeedback',
-    async ({ id, productId }, { rejectWithValue, dispatch }) => {
+    async ({ id, productId }, { rejectWithValue, dispatch, getState }) => {
         try {
             await feedbackApi.deleteFeedback(id);
 
             // Инвалидируем кэш и перезагружаем отзывы
             dispatch(invalidateFeedbackCache(productId));
             await dispatch(fetchProductFeedbacks(productId));
+
+            // Синхронизируем серверный рейтинг поставщика после удаления отзыва
+            refreshSupplierRatingForProduct(dispatch, getState, productId);
 
             return { id, productId };
         } catch (error) {
@@ -249,6 +368,26 @@ const feedbackSlice = createSlice({
                 delete state.items[productId];
                 delete state.cacheTimestamps[productId];
                 state.loadedProductIds = state.loadedProductIds.filter(id => id !== productId);
+            }
+        },
+        /**
+         * Сбрасывает кэш загрузки всех отзывов для конкретного поставщика,
+         * чтобы следующий вызов fetchSupplierFeedbacks действительно сходил
+         * на сервер. Используется при CRUD отзыва — чтобы пересчитать
+         * средний рейтинг поставщика из актуальных данных.
+         */
+        invalidateSupplierFeedbacksCache: (state, action) => {
+            const { supplierId } = action.payload || {};
+            if (!supplierId) return;
+            const numericId = Number(supplierId);
+            if (state.supplierCacheTimestamps) {
+                delete state.supplierCacheTimestamps[numericId];
+                delete state.supplierCacheTimestamps[supplierId];
+            }
+            if (Array.isArray(state.supplierLoadedIds)) {
+                state.supplierLoadedIds = state.supplierLoadedIds.filter(
+                    (id) => id !== numericId && id !== supplierId
+                );
             }
         },
         // Дополнительные reducers для управления состоянием
@@ -322,25 +461,30 @@ const feedbackSlice = createSlice({
             })
             .addCase(fetchSupplierFeedbacks.fulfilled, (state, action) => {
                 state.supplierLoading = false;
-                const { supplierId, feedbacksByProduct } = action.payload;
-                
+                const { supplierId, feedbacksByProduct, fromCache } = action.payload || {};
+
+                if (fromCache) return;
+
                 // Сохраняем отзывы по продуктам в items
                 if (feedbacksByProduct) {
                     Object.keys(feedbacksByProduct).forEach(productId => {
                         state.items[productId] = feedbacksByProduct[productId];
                         state.cacheTimestamps[productId] = Date.now();
-                        if (!state.loadedProductIds.includes(parseInt(productId))) {
-                            state.loadedProductIds.push(parseInt(productId));
+                        const numericProductId = parseInt(productId, 10);
+                        if (!state.loadedProductIds.includes(numericProductId)) {
+                            state.loadedProductIds.push(numericProductId);
                         }
                     });
                 }
-                
+
                 // Отмечаем что отзывы поставщика загружены
                 state.supplierLoadedIds = state.supplierLoadedIds || [];
+                state.supplierCacheTimestamps = state.supplierCacheTimestamps || {};
                 if (!state.supplierLoadedIds.includes(supplierId)) {
                     state.supplierLoadedIds.push(supplierId);
                 }
-                
+                state.supplierCacheTimestamps[supplierId] = Date.now();
+
                 console.log(`✅ Отзывы поставщика ${supplierId} сохранены в Redux store`);
             })
             .addCase(fetchSupplierFeedbacks.rejected, (state, action) => {
@@ -427,6 +571,7 @@ export const {
     clearFeedbacks,
     resetFeedbackLoadingState,
     invalidateFeedbackCache, // <- Это действие теперь экспортируется
+    invalidateSupplierFeedbacksCache,
     setFeedbacksLoading,
     setFeedbacksError,
     setFeedbacksPhotoUploading,

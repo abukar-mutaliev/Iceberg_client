@@ -1,9 +1,10 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, RefreshControl, FlatList, Animated, Platform, StatusBar, ActivityIndicator } from 'react-native';
+import React, { useCallback, useMemo, useRef } from 'react';
+import { View, Text, StyleSheet, RefreshControl, Animated, Platform, ActivityIndicator } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { OrderCard } from '@entities/order/ui/OrderCard';
 import { orderStateHelpers } from '@entities/order/lib/orderStateHelpers';
-import { CONSTANTS } from '@entities/order';
+import { CONSTANTS, isOrderStatusMatchingRole, canEmployeeTakeOrderByRole, getNextStatusAfterComplete } from '@entities/order';
 import { useStaffOrdersScreen } from '../hooks/useStaffOrdersScreen';
 import { StatusUpdateModal } from '../ui/StatusUpdateModal';
 import { OrdersHeader } from '../ui/OrdersHeader';
@@ -11,10 +12,11 @@ import { OrdersSkeleton } from '../ui/OrdersSkeleton';
 import { WaitingStockOrderCard } from '../../WaitingStockOrderCard';
 import { ToastSimple } from '@shared/ui/Toast/ui/ToastSimple';
 import { Loader } from '@shared/ui/Loader';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { ORDER_DETAILS_CLIENT_DARK_BACKGROUND, OrderDetailsScreenThemeProvider } from '@shared/ui/OrderDetailsStyles';
+import { ThemedStatusBar } from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
 
 // ============== Компоненты ==============
-
-const CardSeparator = React.memo(() => <View style={styles.cardSeparator} />);
 
 const EmptyOrdersList = React.memo(({ 
   canViewAllOrders, 
@@ -23,6 +25,9 @@ const EmptyOrdersList = React.memo(({
   actualProcessingRole,
   isLoading 
 }) => {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const getMessage = useCallback(() => {
     if (showHistory) return 'История обработки пуста';
     if (showWaitingStock) return 'Нет заказов, ожидающих поставки товаров на склад';
@@ -33,14 +38,12 @@ const EmptyOrdersList = React.memo(({
     
     const roleMessages = {
       PICKER: 'новых заказов для сборки',
-      PACKER: 'заказов для упаковки',
       COURIER: 'заказов для доставки',
     };
     
     return `Нет ${roleMessages[actualProcessingRole] || 'заказов для обработки'}`;
   }, [canViewAllOrders, showHistory, showWaitingStock, actualProcessingRole]);
 
-  // Показываем лоадер во время загрузки вместо сообщения о пустом списке
   if (isLoading) {
     return (
       <View style={styles.emptyContainer}>
@@ -66,19 +69,6 @@ EmptyOrdersList.displayName = 'EmptyOrdersList';
 
 // ============== Логика прав доступа ==============
 
-// Проверка соответствия статуса заказа роли сотрудника
-const isStatusMatchingRole = (employeeRole, status) => {
-  // PICKER работает с заказами в статусе PENDING или CONFIRMED
-  if (employeeRole === 'PICKER') {
-    return ['PENDING', 'CONFIRMED'].includes(status);
-  }
-  // COURIER работает с заказами в статусе IN_DELIVERY
-  if (employeeRole === 'COURIER') {
-    return status === 'IN_DELIVERY';
-  }
-  return false;
-};
-
 const useOrderPermissions = (currentUser, actualProcessingRole, showHistory) => {
   return useMemo(() => ({
     canWorkWithOrders: currentUser?.role !== 'ADMIN' && 
@@ -88,9 +78,7 @@ const useOrderPermissions = (currentUser, actualProcessingRole, showHistory) => 
       if (currentUser?.role === 'ADMIN') return false;
       if (showHistory && actualProcessingRole !== 'COURIER') return false;
       
-      // ⚠️ ВАЖНО: Проверяем соответствие статуса роли сотрудника
-      // PICKER не может работать с IN_DELIVERY, COURIER не может работать с PENDING/CONFIRMED
-      if (!isStatusMatchingRole(actualProcessingRole, status)) return false;
+      if (!isOrderStatusMatchingRole(actualProcessingRole, status)) return false;
       
       return ['PICKER', 'COURIER'].includes(actualProcessingRole);
     },
@@ -106,11 +94,7 @@ const useOrderStatus = (order, localAction, actualProcessingRole, currentUser) =
     const isRecentlyProcessed = isCompleted && !isCompletedStatus;
     
     const displayStatus = isRecentlyProcessed
-      ? {
-          PICKER: 'IN_DELIVERY',
-          PACKER: 'PACKING_COMPLETED',
-          COURIER: 'DELIVERED',
-        }[actualProcessingRole] || order.status
+      ? getNextStatusAfterComplete(actualProcessingRole, order.status)
       : order.status;
 
     const isAssignedToMe = Boolean(
@@ -146,7 +130,6 @@ const OrderItem = React.memo(({
   onReleaseOrder,
   onDownloadInvoice,
 }) => {
-  // Хук вызывается здесь, внутри компонента-функции
   const orderStatus = useOrderStatus(item, localAction, actualProcessingRole, currentUser);
 
   if (showWaitingStock && item.status === 'WAITING_STOCK') {
@@ -164,9 +147,8 @@ const OrderItem = React.memo(({
   const canUpdateStatus = permissions.canUpdateOrderStatus(item.status) &&
     (orderStatus.isAssignedToMe || orderStatus.isLocallyTaken);
 
-  // ⚠️ ВАЖНО: Проверяем соответствие статуса заказа роли сотрудника для кнопки "Взять в работу"
-  const canTakeOrder = permissions.canWorkWithOrders && 
-                       isStatusMatchingRole(actualProcessingRole, item.status) &&
+  const canTakeOrder = permissions.canWorkWithOrders &&
+                       canEmployeeTakeOrderByRole(actualProcessingRole, item.status) &&
                        orderStateHelpers.canTakeOrder(item, localAction, currentUser);
 
   return (
@@ -195,12 +177,20 @@ OrderItem.displayName = 'OrderItem';
 
 // ============== Основной компонент ==============
 
-export const StaffOrdersScreen = () => {
+export const StaffOrdersScreen = () => (
+  <OrderDetailsScreenThemeProvider darkScreenBackground={ORDER_DETAILS_CLIENT_DARK_BACKGROUND}>
+    <StaffOrdersScreenContent />
+  </OrderDetailsScreenThemeProvider>
+);
+
+const StaffOrdersScreenContent = () => {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const listBottomPadding = 80 + insets.bottom + 12;
   
-  // Анимация для sticky tabs
   const scrollY = useRef(new Animated.Value(0)).current;
-  const headerRef = useRef(null);
 
   const {
     filters,
@@ -216,9 +206,6 @@ export const StaffOrdersScreen = () => {
     selectedStatus,
     statusComment,
     updatingStatus,
-    staffOrders,
-    filteredOrders,
-    waitingStockCount,
     isLoading,
     isRefreshing,
     isInitializing,
@@ -241,6 +228,8 @@ export const StaffOrdersScreen = () => {
     handleCloseStatusModal,
     handleStatusSelect,
     handleStatusCommentChange,
+    filteredOrders,
+    waitingStockCount,
   } = useStaffOrdersScreen();
 
   const permissions = useOrderPermissions(currentUser, actualProcessingRole, showHistory);
@@ -253,15 +242,9 @@ export const StaffOrdersScreen = () => {
     navigation.navigate('StaffOrderDetails', { orderId });
   }, [navigation]);
 
-  // Константы для sticky tabs
-  const headerTopPadding = Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0;
-  
-  // Высота заголовка с кнопкой "Назад" (без StatusBar padding)
-  // Вкладки начинают фиксироваться сразу после прокрутки заголовка для плавного перехода
   const HEADER_HEIGHT = 60;
   const stickyActivationPoint = HEADER_HEIGHT;
   
-  // Вкладки начинают фиксироваться когда скролл достигает их позиции
   const isSticky = scrollY.interpolate({
     inputRange: [0, stickyActivationPoint, stickyActivationPoint + 1],
     outputRange: [0, 0, 1],
@@ -280,7 +263,6 @@ export const StaffOrdersScreen = () => {
     extrapolate: 'clamp',
   });
 
-  // Состояние для определения видимости sticky вкладок
   const [stickyVisible, setStickyVisible] = React.useState(false);
   
   React.useEffect(() => {
@@ -331,13 +313,18 @@ export const StaffOrdersScreen = () => {
     handleDownloadInvoice,
   ]);
 
+  const renderCardSeparator = useCallback(() => (
+    <View style={styles.cardSeparator} />
+  ), [styles.cardSeparator]);
+
   if (isInitializing || !currentUser) {
     return <OrdersSkeleton onGoBack={handleGoBack} />;
   }
 
   return (
     <View style={styles.container} keyboardShouldPersistTaps="always">
-      {/* Sticky вкладки - появляются только при скролле */}
+      <ThemedStatusBar />
+
       {stickyVisible && (currentUser?.role === 'EMPLOYEE' || currentUser?.role === 'ADMIN') && (
         <Animated.View
           style={[
@@ -400,6 +387,9 @@ export const StaffOrdersScreen = () => {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={handleRefreshData}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+            progressBackgroundColor={colors.surface}
           />
         }
         ListEmptyComponent={
@@ -411,15 +401,19 @@ export const StaffOrdersScreen = () => {
             isLoading={isLoading}
           />
         }
-        contentContainerStyle={styles.listContentContainer}
-        ItemSeparatorComponent={CardSeparator}
+        contentContainerStyle={[styles.listContentContainer, { paddingBottom: listBottomPadding }]}
+        ItemSeparatorComponent={renderCardSeparator}
         removeClippedSubviews={false}
         maxToRenderPerBatch={10}
         initialNumToRender={8}
         windowSize={10}
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
-        ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color="#667eea" style={{ marginVertical: 20 }} /> : null}
+        ListFooterComponent={
+          loadingMore ? (
+            <ActivityIndicator size="small" color={colors.primary} style={styles.footerLoader} />
+          ) : null
+        }
       />
 
       <StatusUpdateModal
@@ -430,6 +424,7 @@ export const StaffOrdersScreen = () => {
         statusComment={statusComment}
         updatingStatus={updatingStatus}
         canViewAllOrders={canViewAllOrders}
+        employeeProcessingRole={actualProcessingRole}
         onClose={handleCloseStatusModal}
         onStatusSelect={handleStatusSelect}
         onCommentChange={handleStatusCommentChange}
@@ -448,20 +443,25 @@ export const StaffOrdersScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => {
+  const headerBackground = isDark ? ORDER_DETAILS_CLIENT_DARK_BACKGROUND : colors.cardBackground;
+
+  return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: colors.background,
   },
   stickyTabsContainer: {
     position: 'absolute',
     left: 0,
     right: 0,
     zIndex: 1000,
-    backgroundColor: '#fff',
-    shadowColor: '#000',
+    backgroundColor: headerBackground,
+    shadowColor: colors.shadowColor || '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowRadius: 4,
+    borderBottomWidth: isDark ? 1 : 0,
+    borderBottomColor: colors.border,
     ...Platform.select({
       android: {
         elevation: 0,
@@ -474,6 +474,9 @@ const styles = StyleSheet.create({
   cardSeparator: {
     height: 8,
   },
+  footerLoader: {
+    marginVertical: 20,
+  },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -483,15 +486,16 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 18,
-    color: '#666',
+    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 24,
   },
   emptyHint: {
     fontSize: 14,
-    color: '#999',
+    color: colors.textTertiary,
     textAlign: 'center',
     marginTop: 12,
     fontStyle: 'italic',
   },
 });
+};

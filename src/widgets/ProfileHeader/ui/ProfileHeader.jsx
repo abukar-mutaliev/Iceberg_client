@@ -1,16 +1,19 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import { ProfileAvatar } from '@entities/profile';
-import { normalize } from '@shared/lib/normalize';
+import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { useAuth } from "@entities/auth/hooks/useAuth";
+import { useLogout } from '@entities/auth/hooks/useLogout';
 import {BackButton} from "@shared/ui/Button/BackButton";
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const ProfileHeader = () => {
     const navigation = useNavigation();
     const { currentUser } = useAuth();
+    const { handleLogout } = useLogout();
     const { colors } = useTheme();
     const profile = useSelector(state => state.profile.data);
 
@@ -80,15 +83,25 @@ export const ProfileHeader = () => {
 
     return (
         <View style={styles.container} key={componentKey}>
-            <BackButton onPress={handleBackToMain} style={styles.backButton} />
+            <View style={styles.topBar}>
+                <BackButton onPress={handleBackToMain} />
 
-
-            <View style={styles.placeholder} />
+                <Pressable
+                    style={styles.logoutButton}
+                    onPress={handleLogout}
+                    accessibilityRole="button"
+                    accessibilityLabel="Выйти из аккаунта"
+                    android_ripple={{ color: 'rgba(0, 0, 0, 0.1)', borderless: true }}
+                >
+                    <Icon name="logout" size={22} color={colors.textSecondary} />
+                    <Text style={styles.logoutText}>Выйти</Text>
+                </Pressable>
+            </View>
 
             <View style={styles.avatarContainer}>
                 <ProfileAvatar
                     profile={profile}
-                    size={118}
+                    size={188}
                     centered={true}
                     editable={true}
                     key={componentKey + '-avatar'} // Ключ для перерисовки аватара
@@ -109,26 +122,30 @@ const createStyles = (colors) => StyleSheet.create({
     container: {
         backgroundColor: colors.background,
         alignItems: 'center',
+    },
+    topBar: {
+        width: '100%',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: normalize(16),
         paddingTop: normalize(30),
+        height: normalize(50) + normalize(30),
     },
-    backButton: {
-        position: 'absolute',
-        left: normalize(16),
-        top: normalize(30),
-        zIndex: 1,
+    logoutButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        height: normalize(50),
+        paddingHorizontal: normalize(8),
     },
-    title: {
-        fontSize: normalize(18),
-        fontWeight: '500',
-        color: colors.textPrimary,
-        marginBottom: normalize(20),
-    },
-    placeholder: {
-        width: normalize(32),
+    logoutText: {
+        fontSize: normalizeFont(14),
+        color: colors.textSecondary,
+        marginLeft: normalize(4),
     },
     avatarContainer: {
         alignItems: 'center',
-        marginBottom: normalize(16),
+        marginBottom: normalize(1),
     },
     nameText: {
         fontSize: normalize(18),

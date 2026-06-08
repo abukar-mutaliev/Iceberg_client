@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
     View,
     Text,
@@ -10,6 +10,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { formatAmount, formatOrderNumber, getStatusLabel } from "@entities/order/lib/utils";
 import { getImageUrl } from "@shared/api/api";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const { width } = Dimensions.get('window');
 
@@ -45,7 +46,12 @@ export const WaitingStockOrderCard = ({
     showEmployeeInfo = false,
     isRecentlyProcessed = false,
 }) => {
-    const statusColor = ORDER_STATUS_COLORS[order.status] || '#666';
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+    const iconMuted = colors.textSecondary;
+    const iconPrimary = colors.primary;
+
+    const statusColor = ORDER_STATUS_COLORS[order.status] || colors.textSecondary;
     const statusIcon = ORDER_STATUS_ICONS[order.status] || 'help';
 
     const formatDate = (dateString) => {
@@ -67,7 +73,7 @@ export const WaitingStockOrderCard = ({
 
         return (
             <View style={styles.clientInfo}>
-                <Icon name="person" size={16} color="#666" />
+                <Icon name="person" size={16} color={iconMuted} />
                 <Text style={styles.clientName}>{order.client?.name || 'Клиент'}</Text>
                 {order.client?.phone && (
                     <Text style={styles.clientPhone}>{order.client.phone}</Text>
@@ -138,7 +144,7 @@ export const WaitingStockOrderCard = ({
 
         return (
             <View style={styles.employeeInfo}>
-                <Icon name="person-pin" size={16} color="#666" />
+                <Icon name="person-pin" size={16} color={iconMuted} />
                 <Text style={styles.employeeName}>
                     {order.assignedTo.name} {order.assignedTo.position}
                 </Text>
@@ -201,7 +207,7 @@ export const WaitingStockOrderCard = ({
             {/* Адрес доставки */}
             {order.deliveryAddress && (
                 <View style={styles.deliveryContainer}>
-                    <Icon name="location-on" size={16} color="#666" />
+                    <Icon name="location-on" size={16} color={iconMuted} />
                     <Text style={styles.deliveryAddress} numberOfLines={2}>
                         {order.deliveryAddress}
                     </Text>
@@ -211,7 +217,7 @@ export const WaitingStockOrderCard = ({
             {/* Комментарий */}
             {order.comment && (
                 <View style={styles.commentContainer}>
-                    <Icon name="comment" size={16} color="#666" />
+                    <Icon name="comment" size={16} color={iconMuted} />
                     <Text style={styles.commentText} numberOfLines={2}>
                         {order.comment}
                     </Text>
@@ -231,20 +237,22 @@ export const WaitingStockOrderCard = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         borderRadius: 12,
         padding: 16,
         marginHorizontal: 4,
         marginVertical: 4,
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0.25 : 0.1,
         shadowRadius: 4,
         elevation: 3,
         borderLeftWidth: 4,
         borderLeftColor: '#fd7e14',
+        borderWidth: isDark ? 1 : 0,
+        borderColor: colors.border,
     },
     header: {
         flexDirection: 'row',
@@ -258,12 +266,12 @@ const styles = StyleSheet.create({
     orderNumber: {
         fontSize: 16,
         fontWeight: '700',
-        color: '#1a1a1a',
+        color: colors.textPrimary,
         marginBottom: 4,
     },
     orderDate: {
         fontSize: 12,
-        color: '#666',
+        color: colors.textSecondary,
     },
     statusBadge: {
         flexDirection: 'row',
@@ -285,28 +293,28 @@ const styles = StyleSheet.create({
         marginBottom: 12,
         paddingVertical: 8,
         paddingHorizontal: 12,
-        backgroundColor: '#f8f9fa',
+        backgroundColor: isDark ? colors.surface : '#f8f9fa',
         borderRadius: 8,
     },
     clientName: {
         fontSize: 14,
         fontWeight: '600',
-        color: '#1a1a1a',
+        color: colors.textPrimary,
         marginLeft: 8,
         flex: 1,
     },
     clientPhone: {
         fontSize: 12,
-        color: '#666',
+        color: colors.textSecondary,
         marginLeft: 8,
     },
     waitingProductsContainer: {
         marginBottom: 12,
         padding: 12,
-        backgroundColor: '#fff3e0',
+        backgroundColor: isDark ? 'rgba(253, 126, 20, 0.15)' : '#fff3e0',
         borderRadius: 8,
         borderWidth: 1,
-        borderColor: '#ffcc02',
+        borderColor: isDark ? 'rgba(253, 126, 20, 0.35)' : '#ffcc02',
     },
     waitingProductsHeader: {
         flexDirection: 'row',
@@ -339,40 +347,40 @@ const styles = StyleSheet.create({
         width: 50,
         height: 50,
         borderRadius: 8,
-        backgroundColor: '#f5f5f5',
+        backgroundColor: isDark ? colors.surface : '#f5f5f5',
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#e0e0e0',
+        borderColor: colors.border,
     },
     productInfo: {
         flex: 1,
     },
     productName: {
         fontSize: 14,
-        color: '#1a1a1a',
+        color: colors.textPrimary,
         fontWeight: '500',
         marginBottom: 4,
         lineHeight: 18,
     },
     productQuantity: {
         fontSize: 12,
-        color: '#666',
+        color: colors.textSecondary,
         fontWeight: '500',
     },
     additionalProducts: {
         fontSize: 12,
-        color: '#666',
+        color: colors.textSecondary,
         fontStyle: 'italic',
         marginTop: 4,
     },
     warehouseContainer: {
         marginBottom: 12,
         padding: 12,
-        backgroundColor: '#e3f2fd',
+        backgroundColor: isDark ? 'rgba(25, 118, 210, 0.15)' : '#e3f2fd',
         borderRadius: 8,
         borderWidth: 1,
-        borderColor: '#bbdefb',
+        borderColor: isDark ? 'rgba(25, 118, 210, 0.35)' : '#bbdefb',
     },
     warehouseHeader: {
         flexDirection: 'row',
@@ -388,12 +396,12 @@ const styles = StyleSheet.create({
     warehouseName: {
         fontSize: 14,
         fontWeight: '500',
-        color: '#1a1a1a',
+        color: colors.textPrimary,
         marginBottom: 2,
     },
     warehouseDistrict: {
         fontSize: 12,
-        color: '#666',
+        color: colors.textSecondary,
     },
     employeeInfo: {
         flexDirection: 'row',
@@ -401,12 +409,12 @@ const styles = StyleSheet.create({
         marginBottom: 12,
         paddingVertical: 6,
         paddingHorizontal: 10,
-        backgroundColor: '#f5f5f5',
+        backgroundColor: isDark ? colors.surface : '#f5f5f5',
         borderRadius: 6,
     },
     employeeName: {
         fontSize: 13,
-        color: '#666',
+        color: colors.textSecondary,
         marginLeft: 6,
         flex: 1,
     },
@@ -417,17 +425,17 @@ const styles = StyleSheet.create({
         marginBottom: 12,
         paddingVertical: 8,
         paddingHorizontal: 12,
-        backgroundColor: '#f8f9fa',
+        backgroundColor: isDark ? colors.surface : '#f8f9fa',
         borderRadius: 8,
     },
     amountLabel: {
         fontSize: 14,
-        color: '#666',
+        color: colors.textSecondary,
     },
     amountValue: {
         fontSize: 16,
         fontWeight: '700',
-        color: '#1a1a1a',
+        color: colors.textPrimary,
     },
     deliveryContainer: {
         flexDirection: 'row',
@@ -436,7 +444,7 @@ const styles = StyleSheet.create({
     },
     deliveryAddress: {
         fontSize: 13,
-        color: '#666',
+        color: colors.textSecondary,
         marginLeft: 6,
         flex: 1,
         lineHeight: 18,
@@ -448,7 +456,7 @@ const styles = StyleSheet.create({
     },
     commentText: {
         fontSize: 13,
-        color: '#666',
+        color: colors.textSecondary,
         marginLeft: 6,
         flex: 1,
         lineHeight: 18,
@@ -460,10 +468,10 @@ const styles = StyleSheet.create({
         marginTop: 12,
         paddingVertical: 12,
         paddingHorizontal: 16,
-        backgroundColor: '#fff3e0',
+        backgroundColor: isDark ? 'rgba(253, 126, 20, 0.15)' : '#fff3e0',
         borderRadius: 8,
         borderWidth: 1,
-        borderColor: '#ffcc02',
+        borderColor: isDark ? 'rgba(253, 126, 20, 0.35)' : '#ffcc02',
     },
     waitingStatusText: {
         fontSize: 14,

@@ -1,100 +1,98 @@
-/**
- * Селекторы для delivery entity
- */
+import { createSelector } from '@reduxjs/toolkit';
 
-// Базовые селекторы
+const EMPTY_DELIVERY_OPTIONS = Object.freeze([]);
+const DEFAULT_FREE_DELIVERY_INFO = Object.freeze({
+    hasFreeDelivery: false,
+    enabled: false,
+    message: ''
+});
+const DEFAULT_TARIFF = Object.freeze({
+    fixedFee: null,
+    freeDelivery: false,
+    name: ''
+});
+
 export const selectDeliveryState = (state) => state.delivery;
 
-export const selectDeliveryType = (state) => state.delivery?.selectedDeliveryType || 'DELIVERY';
+export const selectDeliveryType = (state) =>
+    state.delivery?.selectedDeliveryType || 'DELIVERY';
 
-export const selectCurrentDeliveryFee = (state) => state.delivery?.currentDeliveryFee;
+export const selectActiveTariff = (state) =>
+    state.delivery?.activeTariff ?? DEFAULT_TARIFF;
 
-export const selectDeliveryCost = (state) => state.delivery?.deliveryCost || 0;
+export const selectFreeDeliveryInfo = (state) =>
+    state.delivery?.freeDeliveryInfo ?? DEFAULT_FREE_DELIVERY_INFO;
 
-export const selectDeliveryDistance = (state) => state.delivery?.deliveryDistance;
+export const selectLastCalculation = (state) => state.delivery?.lastCalculation ?? null;
 
-export const selectIsFreeDelivery = (state) => state.delivery?.isFreeDelivery || false;
+export const selectDeliveryCalculating = (state) =>
+    Boolean(state.delivery?.calculating);
 
-export const selectWarehouseName = (state) => state.delivery?.warehouseName;
+export const selectDeliveryError = (state) => state.delivery?.error ?? null;
 
-export const selectDeliveryAddress = (state) => state.delivery?.deliveryAddress;
+export const selectTariffLoading = (state) =>
+    Boolean(state.delivery?.tariffLoading);
 
-// Активный тариф
-export const selectActiveTariff = (state) => state.delivery?.activeTariff;
+export const selectIsPickup = (state) =>
+    state.delivery?.selectedDeliveryType === 'PICKUP';
 
-// Информация о бесплатной доставке
-export const selectFreeDeliveryInfo = (state) => state.delivery?.freeDeliveryInfo;
+export const selectIsDelivery = (state) =>
+    state.delivery?.selectedDeliveryType === 'DELIVERY';
 
-// Множественные варианты доставки
-export const selectMultipleDeliveryOptions = (state) => state.delivery?.multipleDeliveryOptions || [];
+export const selectDeliveryCost = createSelector(
+    [selectDeliveryState, selectActiveTariff, selectIsPickup],
+    (delivery, tariff, isPickup) => {
+        if (isPickup) {
+            return 0;
+        }
 
-// Состояния загрузки
-export const selectDeliveryLoading = (state) => state.delivery?.loading || false;
+        if (delivery?.deliveryCost != null) {
+            return delivery.deliveryCost;
+        }
 
-export const selectDeliveryCalculating = (state) => state.delivery?.calculating || false;
+        if (tariff?.fixedFee != null) {
+            return tariff.fixedFee;
+        }
 
-export const selectTariffLoading = (state) => state.delivery?.tariffLoading || false;
-
-// Ошибки
-export const selectDeliveryError = (state) => state.delivery?.error;
-
-// Последний расчет
-export const selectLastCalculation = (state) => state.delivery?.lastCalculation;
-
-export const selectLastCalculationTime = (state) => state.delivery?.lastCalculationTime;
-
-// Сложные селекторы
-export const selectIsPickup = (state) => state.delivery?.selectedDeliveryType === 'PICKUP';
-
-export const selectIsDelivery = (state) => state.delivery?.selectedDeliveryType === 'DELIVERY';
-
-/**
- * Проверяет, актуален ли текущий расчет доставки (не старше 5 минут)
- */
-export const selectIsCalculationValid = (state) => {
-    const lastTime = state.delivery?.lastCalculationTime;
-    if (!lastTime) return false;
-    
-    const FIVE_MINUTES = 5 * 60 * 1000;
-    return Date.now() - lastTime < FIVE_MINUTES;
-};
-
-/**
- * Получить итоговую стоимость с учетом доставки
- */
-export const selectTotalWithDelivery = (state) => {
-    const cartTotal = state.cart?.totalAmount || 0;
-    const deliveryCost = state.delivery?.deliveryCost || 0;
-    const isPickup = state.delivery?.selectedDeliveryType === 'PICKUP';
-    
-    return cartTotal + (isPickup ? 0 : deliveryCost);
-};
-
-/**
- * Получить сообщение о доставке для UI
- */
-export const selectDeliveryMessage = (state) => {
-    const deliveryType = state.delivery?.selectedDeliveryType;
-    const isFreeDelivery = state.delivery?.isFreeDelivery;
-    const deliveryCost = state.delivery?.deliveryCost;
-    const distance = state.delivery?.deliveryDistance;
-    
-    if (deliveryType === 'PICKUP') {
-        return 'Самовывоз - бесплатно';
+        return 0;
     }
-    
-    if (isFreeDelivery) {
-        return distance 
-            ? `Бесплатная доставка (${distance.toFixed(1)} км)` 
-            : 'Бесплатная доставка';
-    }
-    
-    if (deliveryCost > 0) {
-        return distance 
-            ? `Доставка: ${deliveryCost}₽ (${distance.toFixed(1)} км)` 
-            : `Доставка: ${deliveryCost}₽`;
-    }
-    
-    return 'Доставка';
-};
+);
 
+export const selectTotalWithDelivery = createSelector(
+    [(state) => state.cart?.totalAmount || 0, selectDeliveryCost, selectIsPickup],
+    (cartTotal, deliveryCost, isPickup) => cartTotal + (isPickup ? 0 : deliveryCost)
+);
+
+export const selectDeliveryMessage = createSelector(
+    [selectIsPickup, selectDeliveryCost],
+    (isPickup, deliveryCost) => {
+        if (isPickup) {
+            return 'Самовывоз — бесплатно';
+        }
+        return `Доставка: ${deliveryCost} ₽`;
+    }
+);
+
+export const selectIsFreeDelivery = createSelector(
+    [selectLastCalculation, selectFreeDeliveryInfo],
+    (lastCalculation, freeDeliveryInfo) =>
+        Boolean(lastCalculation?.isFreeDelivery || freeDeliveryInfo?.hasFreeDelivery)
+);
+
+export const selectDeliveryDistance = createSelector(
+    [selectLastCalculation],
+    (lastCalculation) => lastCalculation?.distance ?? null
+);
+
+export const selectIsCalculationValid = createSelector(
+    [selectLastCalculation, selectIsPickup],
+    (lastCalculation, isPickup) => isPickup || lastCalculation != null
+);
+
+// Deprecated aliases — читают из того же state, без новых объектов на каждый вызов.
+export const selectCurrentDeliveryFee = selectDeliveryCost;
+export const selectWarehouseName = () => null;
+export const selectDeliveryAddress = () => null;
+export const selectMultipleDeliveryOptions = () => EMPTY_DELIVERY_OPTIONS;
+export const selectDeliveryLoading = selectDeliveryCalculating;
+export const selectLastCalculationTime = () => null;

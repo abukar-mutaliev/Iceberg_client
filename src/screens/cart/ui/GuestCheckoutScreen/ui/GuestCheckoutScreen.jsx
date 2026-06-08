@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
     View,
     Text,
@@ -8,14 +8,13 @@ import {
     ScrollView,
     ActivityIndicator,
     KeyboardAvoidingView,
-    Platform} from 'react-native';
+    Platform
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-    Color,
-    FontFamily
-} from '@app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
 import { CustomTextInput } from '@shared/ui/CustomTextInput/CustomTextInput';
 import { Toast } from '@shared/ui/Toast';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const normalize = (size) => {
     const scale = 375 / 375;
@@ -24,6 +23,8 @@ const normalize = (size) => {
 
 export const GuestCheckoutScreen = ({ navigation, route }) => {
     const { items = [], stats = {}, clientType } = route.params || {};
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     
     const [loading, setLoading] = useState(false);
     const [showSuccessToast, setShowSuccessToast] = useState(false);
@@ -95,10 +96,10 @@ export const GuestCheckoutScreen = ({ navigation, route }) => {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
             <StatusBar
-                barStyle="dark-content"
-                backgroundColor={Color.background || '#FFFFFF'}
+                barStyle={colors.statusBarStyle}
+                backgroundColor={colors.background}
             />
             
             <KeyboardAvoidingView 
@@ -158,6 +159,9 @@ export const GuestCheckoutScreen = ({ navigation, route }) => {
                             value={formData.customerName}
                             onChangeText={(value) => handleFieldChange('customerName', value)}
                             placeholder="Введите ваше имя"
+                            style={styles.inputField}
+                            inputStyle={styles.inputText}
+                            labelStyle={styles.inputLabel}
                         />
 
                         <CustomTextInput
@@ -166,6 +170,9 @@ export const GuestCheckoutScreen = ({ navigation, route }) => {
                             onChangeText={(value) => handleFieldChange('customerPhone', value)}
                             placeholder="+7 (999) 123-45-67"
                             keyboardType="phone-pad"
+                            style={styles.inputField}
+                            inputStyle={styles.inputText}
+                            labelStyle={styles.inputLabel}
                         />
                     </View>
 
@@ -180,6 +187,8 @@ export const GuestCheckoutScreen = ({ navigation, route }) => {
                             multiline
                             numberOfLines={3}
                             style={styles.textArea}
+                            inputStyle={styles.textAreaInput}
+                            labelStyle={styles.textAreaLabel}
                         />
 
                         <CustomTextInput
@@ -203,7 +212,7 @@ export const GuestCheckoutScreen = ({ navigation, route }) => {
                         disabled={loading}
                     >
                         {loading ? (
-                            <ActivityIndicator color="#FFFFFF" size="small" />
+                            <ActivityIndicator color={colors.textInverse} size="small" />
                         ) : (
                             <Text style={styles.submitButtonText}>
                                 Оформить заказ
@@ -238,10 +247,10 @@ export const GuestCheckoutScreen = ({ navigation, route }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.background,
     },
     keyboardAvoidingView: {
         flex: 1,
@@ -253,59 +262,59 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(16),
         borderBottomWidth: 1,
-        borderBottomColor: 'rgba(193, 199, 222, 0.20)',
-        backgroundColor: '#FFFFFF',
+        borderBottomColor: colors.border,
+        backgroundColor: colors.surface,
     },
     backButton: {
         width: normalize(40),
         height: normalize(40),
         borderRadius: normalize(20),
-        backgroundColor: '#F8F9FF',
+        backgroundColor: colors.surfaceSecondary,
         justifyContent: 'center',
         alignItems: 'center',
     },
     backButtonText: {
         fontSize: normalize(20),
-        color: '#3339B0',
+        color: colors.primary,
         fontWeight: '600',
     },
     title: {
         fontSize: normalize(18),
         fontFamily: FontFamily.sFProDisplay || 'SF Pro Display',
         fontWeight: '600',
-        color: '#000000',
+        color: colors.textPrimary,
     },
     placeholder: {
         width: normalize(40),
     },
     content: {
         flex: 1,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.background,
     },
     guestNotice: {
         margin: normalize(20),
         padding: normalize(16),
-        backgroundColor: '#FFF9E6',
+        backgroundColor: isDark ? colors.surface : colors.warning + '18',
         borderRadius: normalize(12),
         borderLeftWidth: 4,
-        borderLeftColor: '#FFB800',
+        borderLeftColor: colors.warning,
     },
     guestNoticeTitle: {
         fontSize: normalize(16),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
-        color: '#000000',
+        color: colors.textPrimary,
         marginBottom: normalize(8),
     },
     guestNoticeText: {
         fontSize: normalize(14),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: 'rgba(60, 60, 67, 0.80)',
+        color: colors.textSecondary,
         lineHeight: normalize(20),
         marginBottom: normalize(12),
     },
     registerButton: {
-        backgroundColor: '#FFB800',
+        backgroundColor: colors.warning,
         borderRadius: normalize(8),
         paddingVertical: normalize(8),
         paddingHorizontal: normalize(12),
@@ -315,23 +324,23 @@ const styles = StyleSheet.create({
         fontSize: normalize(14),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
-        color: '#FFFFFF',
+        color: colors.textInverse,
     },
     section: {
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(20),
         borderBottomWidth: 1,
-        borderBottomColor: 'rgba(193, 199, 222, 0.10)',
+        borderBottomColor: colors.borderSubtle,
     },
     sectionTitle: {
         fontSize: normalize(16),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
-        color: '#000000',
+        color: colors.textPrimary,
         marginBottom: normalize(16),
     },
     orderInfo: {
-        backgroundColor: '#F8F9FF',
+        backgroundColor: colors.surface,
         borderRadius: normalize(12),
         padding: normalize(16),
     },
@@ -344,17 +353,17 @@ const styles = StyleSheet.create({
     orderLabel: {
         fontSize: normalize(14),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: 'rgba(60, 60, 67, 0.60)',
+        color: colors.textSecondary,
     },
     orderValue: {
         fontSize: normalize(14),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '500',
-        color: '#000000',
+        color: colors.textPrimary,
     },
     totalRow: {
         borderTopWidth: 1,
-        borderTopColor: 'rgba(193, 199, 222, 0.30)',
+        borderTopColor: colors.border,
         paddingTop: normalize(12),
         marginTop: normalize(8),
         marginBottom: 0,
@@ -363,20 +372,39 @@ const styles = StyleSheet.create({
         fontSize: normalize(16),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
-        color: '#000000',
+        color: colors.textPrimary,
     },
     totalValue: {
         fontSize: normalize(18),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '700',
-        color: '#3339B0',
+        color: colors.primary,
+    },
+    inputField: {
+        backgroundColor: colors.inputBackground,
+        borderWidth: 1,
+        borderColor: colors.inputBorder,
+        borderRadius: normalize(12),
+        padding: normalize(16),
+        marginTop: normalize(8),
+    },
+    inputText: {
+        fontSize: normalize(16),
+        color: colors.textPrimary,
+        lineHeight: normalize(22),
+    },
+    inputLabel: {
+        fontSize: normalize(16),
+        fontWeight: '600',
+        color: colors.textPrimary,
+        marginBottom: normalize(8),
     },
     textArea: {
         minHeight: normalize(100),
         textAlignVertical: 'top',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.inputBackground,
         borderWidth: 1,
-        borderColor: '#E1E5E9',
+        borderColor: colors.inputBorder,
         borderRadius: normalize(12),
         padding: normalize(16),
         marginTop: normalize(8),
@@ -384,25 +412,25 @@ const styles = StyleSheet.create({
     textAreaInput: {
         minHeight: normalize(60),
         fontSize: normalize(16),
-        color: '#333333',
+        color: colors.textPrimary,
         lineHeight: normalize(22),
         textAlignVertical: 'top',
     },
     textAreaLabel: {
         fontSize: normalize(16),
         fontWeight: '600',
-        color: '#333333',
+        color: colors.textPrimary,
         marginBottom: normalize(8),
     },
     footer: {
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(16),
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.surface,
         borderTopWidth: 1,
-        borderTopColor: 'rgba(193, 199, 222, 0.20)',
+        borderTopColor: colors.border,
     },
     submitButton: {
-        backgroundColor: '#3339B0',
+        backgroundColor: colors.primary,
         borderRadius: normalize(12),
         paddingVertical: normalize(16),
         alignItems: 'center',
@@ -415,6 +443,6 @@ const styles = StyleSheet.create({
         fontSize: normalize(16),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
-        color: '#FFFFFF',
+        color: colors.textInverse,
     },
 }); 

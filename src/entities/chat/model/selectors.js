@@ -1,4 +1,5 @@
 import { createSelector } from '@reduxjs/toolkit';
+import { resolveStopDistrictId } from '@entities/chat/lib/resolveStopDistrictId';
 
 const EMPTY_ARRAY = [];
 const EMPTY_OBJECT = {};
@@ -19,9 +20,11 @@ const parseStopDataFromMessage = (message) => {
 const isMessageStop = (message) => {
   if (!message) return false;
   const type = String(message?.type || '').toUpperCase();
+  // Склад/товар: JSON с id не считается остановкой — иначе фильтр по району канала их ломает
+  if (type === 'WAREHOUSE' || type === 'PRODUCT') return false;
   if (type === 'STOP') return true;
   const stopData = parseStopDataFromMessage(message);
-  return Boolean(stopData?.id || stopData?.stopId || stopData?.startTime || stopData?.endTime);
+  return Boolean(stopData?.stopId || stopData?.stop_id || stopData?.startTime || stopData?.endTime);
 };
 
 const isStopMessageExpired = (message) => {
@@ -54,11 +57,11 @@ const isStopInUserDistrict = (message, districtIds) => {
   const stopData = parseStopDataFromMessage(message);
   if (!stopData) return true;
 
-  const stopDistrictId = stopData?.districtId;
-  if (!stopDistrictId) return false;
+  const stopDistrictRaw = resolveStopDistrictId(stopData);
+  if (stopDistrictRaw === null || stopDistrictRaw === '') return true;
 
-  const normalizedStopId = typeof stopDistrictId === 'string'
-    ? parseInt(stopDistrictId, 10) : stopDistrictId;
+  const normalizedStopId = typeof stopDistrictRaw === 'string'
+    ? parseInt(stopDistrictRaw, 10) : stopDistrictRaw;
 
   return districtIds.some(id => {
     const normalizedId = typeof id === 'string' ? parseInt(id, 10) : id;
@@ -202,23 +205,36 @@ export const selectRoomsList = createSelector(
         lastMessage = room.lastMessage;
       }
 
-      // Для GROUP/BROADCAST — считаем unread НАПРЯМУЮ из сообщений в bucket.
-      // Это единственный надёжный способ, исключающий:
-      // - двойной подсчёт (fetchRooms + WebSocket)
-      // - показ бейджей для STOP из чужих районов
-      // - зависшие бейджи после истечения стоянки
+      // Для GROUP/BROADCAST серверный unreadCount — источник истины.
+      // Глобальный message.status в группах может стать READ из-за другого участника,
+      // поэтому локально только вычитаем невидимые STOP из окна непрочитанных.
       if (isGroupOrBroadcast) {
         const bucket = messages?.[id];
         if (bucket?.ids?.length) {
-          actualUnread = bucket.ids.reduce((count, msgId) => {
-            const msg = bucket.byId?.[msgId];
-            if (!msg || msg.isDeletedForAll) return count;
-            if (currentUserId && Number(msg.senderId) === Number(currentUserId)) return count;
-            if (!isStopVisibleForUser(msg, userDistrictIds, isBroadcastRoom)) return count;
-            const st = String(msg.status || '').toUpperCase();
-            if (st && st !== 'SENT' && st !== 'DELIVERED') return count;
-            return count + 1;
-          }, 0);
+          const rawUnread = Number(unreadByRoomId?.[id]) || 0;
+          if (rawUnread <= 0) {
+            actualUnread = 0;
+          } else {
+            let countedServerUnread = 0;
+            let visibleUnread = 0;
+
+            for (const msgId of bucket.ids) {
+              if (countedServerUnread >= rawUnread) break;
+
+              const msg = bucket.byId?.[msgId];
+              if (!msg || msg.isDeletedForAll) continue;
+              if (currentUserId && Number(msg.senderId) === Number(currentUserId)) continue;
+
+              countedServerUnread += 1;
+              if (isStopVisibleForUser(msg, userDistrictIds, isBroadcastRoom)) {
+                visibleUnread += 1;
+              }
+            }
+
+            // Если bucket не покрывает весь unreadCount, оставшаяся часть неизвестна,
+            // поэтому сохраняем её, чтобы не прятать реальные новые сообщения.
+            actualUnread = visibleUnread + Math.max(rawUnread - countedServerUnread, 0);
+          }
         } else if (serverLastMessageHidden) {
           actualUnread = 0;
         } else if (!lastMessage) {
@@ -330,8 +346,16 @@ export const makeSelectRoomMessages = () => createSelector(
                 .sort()
                 .join(',');
         },
+        (state, roomId) => {
+            const bucket = state.chat?.messages?.[roomId];
+            if (!bucket) return '';
+            return Object.values(bucket.byId || {})
+                .map(msg => `${msg.id}:${msg._pollUpdated || 0}`)
+                .sort()
+                .join(',');
+        },
     ],
-    (bucket, room, participantsById, currentUserId, bucketIds, reactionsHash) => {
+    (bucket, room, participantsById, currentUserId, bucketIds, reactionsHash, pollsHash) => {
         if (!bucket || !bucketIds) return EMPTY_ARRAY;
         const participants = room?.participants || EMPTY_ARRAY;
 

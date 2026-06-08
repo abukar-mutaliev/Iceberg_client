@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, Modal, FlatList, StyleSheet, TextInput, Animated } from 'react-native';
-import { FontFamily, FontSize, Color, Border } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
 import { logData } from '@shared/lib/logger';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const MultiDistrictPicker = ({
     districts,
@@ -13,6 +14,8 @@ export const MultiDistrictPicker = ({
     error,
     disabled = false
 }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const [searchText, setSearchText] = useState('');
     const [filteredDistricts, setFilteredDistricts] = useState(districts);
     const [modalVisible, setModalVisible] = useState(false);
@@ -182,7 +185,8 @@ export const MultiDistrictPicker = ({
                                 placeholder="Поиск района..."
                                 value={searchText}
                                 onChangeText={setSearchText}
-                                placeholderTextColor="#999"
+                                placeholderTextColor={colors.textTertiary}
+                                keyboardAppearance={colors.keyboardAppearance}
                             />
                         </View>
 
@@ -270,7 +274,7 @@ export const MultiDistrictPicker = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         marginBottom: normalize(20),
         width: '100%',
@@ -278,8 +282,8 @@ const styles = StyleSheet.create({
     label: {
         fontSize: normalizeFont(15),
         fontWeight: '600',
-        color: Color.dark,
-        opacity: 0.4,
+        color: colors.textPrimary,
+        opacity: isDark ? 0.85 : 0.4,
         marginBottom: 0,
         fontFamily: FontFamily.sFProText,
     },
@@ -295,50 +299,52 @@ const styles = StyleSheet.create({
     pickerButtonText: {
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
     },
     pickerButtonTextDisabled: {
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         opacity: 0.5,
     },
     selectedText: {
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         fontWeight: '500',
     },
     pickerButtonError: {
         // Стили для ошибки
     },
     pickerButtonTextError: {
-        color: 'red',
+        color: colors.error,
     },
     inputUnderline: {
         height: 1,
-        backgroundColor: Color.border,
+        backgroundColor: colors.inputBorder,
         marginTop: normalize(5),
     },
     underlineError: {
-        backgroundColor: 'red',
+        backgroundColor: colors.error,
     },
     errorText: {
         fontSize: normalizeFont(FontSize.size_xs),
-        color: 'red',
+        color: colors.error,
         marginTop: normalize(5),
         fontFamily: FontFamily.sFProText,
     },
     modalBackdrop: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: colors.modalOverlay,
         justifyContent: 'flex-end',
     },
     backdropTouchable: {
         flex: 1,
     },
     modalContent: {
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.cardBackground,
         borderTopLeftRadius: Border.radius.large,
         borderTopRightRadius: Border.radius.large,
         maxHeight: '85%',
         paddingBottom: normalize(20),
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     header: {
         flexDirection: 'row',
@@ -346,12 +352,12 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         padding: normalize(20),
         borderBottomWidth: 1,
-        borderBottomColor: Color.border,
+        borderBottomColor: colors.border,
     },
     modalTitle: {
         fontSize: normalizeFont(FontSize.size_lg),
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProDisplay,
     },
     closeButton: {
@@ -359,7 +365,7 @@ const styles = StyleSheet.create({
     },
     closeButtonText: {
         fontSize: normalizeFont(FontSize.size_md),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
     },
@@ -368,15 +374,15 @@ const styles = StyleSheet.create({
         paddingBottom: normalize(10),
     },
     searchInput: {
-        backgroundColor: Color.backgroundLight,
+        backgroundColor: colors.inputBackground,
         borderRadius: Border.radius.small,
         paddingHorizontal: normalize(15),
         paddingVertical: normalize(12),
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProText,
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: colors.inputBorder,
     },
     controlsContainer: {
         flexDirection: 'row',
@@ -388,20 +394,20 @@ const styles = StyleSheet.create({
     selectAllButton: {
         paddingVertical: normalize(8),
         paddingHorizontal: normalize(12),
-        backgroundColor: Color.backgroundLight,
+        backgroundColor: colors.surfaceSecondary,
         borderRadius: Border.radius.small,
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: colors.border,
     },
     selectAllButtonText: {
         fontSize: normalizeFont(FontSize.size_sm),
-        color: Color.blue2,
+        color: colors.primary,
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
     },
     selectedCount: {
         fontSize: normalizeFont(FontSize.size_sm),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
     },
     districtItem: {
@@ -410,10 +416,10 @@ const styles = StyleSheet.create({
         paddingVertical: normalize(15),
         paddingHorizontal: normalize(20),
         borderBottomWidth: 1,
-        borderBottomColor: Color.border,
+        borderBottomColor: colors.border,
     },
     selectedItem: {
-        backgroundColor: Color.blue2,
+        backgroundColor: colors.primary,
     },
     districtInfo: {
         flex: 1,
@@ -421,35 +427,35 @@ const styles = StyleSheet.create({
     districtName: {
         fontSize: normalizeFont(FontSize.size_md),
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProDisplay,
         marginBottom: normalize(2),
     },
     districtDescription: {
         fontSize: normalizeFont(FontSize.size_sm),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
     },
     selectedItemText: {
-        color: Color.colorLightMode,
+        color: colors.textInverse,
     },
     checkbox: {
         width: normalize(24),
         height: normalize(24),
         borderRadius: normalize(4),
         borderWidth: 2,
-        borderColor: Color.border,
+        borderColor: colors.border,
         alignItems: 'center',
         justifyContent: 'center',
         marginLeft: normalize(10),
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.cardBackground,
     },
     checkboxSelected: {
-        backgroundColor: Color.colorLightMode,
-        borderColor: Color.colorLightMode,
+        backgroundColor: colors.textInverse,
+        borderColor: colors.textInverse,
     },
     checkmark: {
-        color: Color.blue2,
+        color: colors.primary,
         fontSize: normalizeFont(16),
         fontWeight: 'bold',
     },
@@ -459,7 +465,7 @@ const styles = StyleSheet.create({
     },
     emptyText: {
         fontSize: normalizeFont(FontSize.size_md),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
     },
@@ -467,17 +473,17 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(20),
         paddingTop: normalize(10),
         borderTopWidth: 1,
-        borderTopColor: Color.border,
+        borderTopColor: colors.border,
     },
     confirmButton: {
-        backgroundColor: Color.blue2,
+        backgroundColor: colors.primary,
         paddingVertical: normalize(12),
         borderRadius: Border.radius.medium,
         alignItems: 'center',
     },
     confirmButtonText: {
         fontSize: normalizeFont(FontSize.size_md),
-        color: Color.colorLightMode,
+        color: colors.textInverse,
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
     },

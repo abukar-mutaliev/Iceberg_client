@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import {
     View,
     Text,
@@ -20,10 +20,9 @@ import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { useProfileInfo } from "@features/profile/ui/ProfileInfo/model/useProfileInfo";
 import { Color, FontFamily } from "@app/styles/GlobalStyles";
 import IconRight from "@shared/ui/Icon/Profile/IconRight";
-import JoinTeamIcon from "@shared/ui/Icon/Profile/JoinTeamIcon";
 import CustomButton from "@shared/ui/Button/CustomButton";
 import { useAuth } from "@entities/auth/hooks/useAuth";
-import PushNotificationService from "@shared/services/PushNotificationService";
+import { useLogout } from '@entities/auth/hooks/useLogout';
 import { GlobalAlert } from '@shared/ui/CustomAlert';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
@@ -38,12 +37,11 @@ export const ProfileInfo = ({ onProductPress }) => {
     const styles = useMemo(() => createStyles(colors), [colors]);
 
     // Используем хук useAuth для получения данных авторизации
-    const { isAuthenticated, currentUser, logout } = useAuth();
+    const { isAuthenticated, currentUser } = useAuth();
+    const { handleLogout } = useLogout();
 
     // Получаем токены отдельно
     const tokens = useSelector(state => state.auth.tokens);
-
-    const [activeButtonId, setActiveButtonId] = useState(null);
 
     const {
         activeItemId,
@@ -58,7 +56,6 @@ export const ProfileInfo = ({ onProductPress }) => {
         isEmployee: currentUser?.role === 'EMPLOYEE',
         isSupplier: currentUser?.role === 'SUPPLIER',
         isDriver: currentUser?.role === 'DRIVER',
-        isClient: currentUser?.role === 'CLIENT'
     }), [currentUser?.role]);
 
     const handleMenuItemPress = (itemId, callback) => {
@@ -69,79 +66,9 @@ export const ProfileInfo = ({ onProductPress }) => {
         }, 150);
     };
 
-    const handleJoinTeamPress = () => {
-        navigation.navigate('JoinTeam');
-    };
-
-    const handleLogoutPress = async () => {
-        try {
-            console.log('🚪 Выполняем выход из системы...');
-
-            // Деактивируем OneSignal токен перед выходом
-            const deactivationResult = await PushNotificationService.clearUserContext();
-            
-            if (deactivationResult?.success) {
-                console.log('✅ OneSignal токен успешно деактивирован при выходе');
-            } else {
-                console.warn('⚠️ Не удалось деактивировать OneSignal токен:', deactivationResult?.error?.message);
-                // Показываем предупреждение, но не блокируем выход
-                GlobalAlert.show(
-                    'Предупреждение',
-                    'Не удалось полностью отключить push-уведомления. Вы можете продолжить выход, но уведомления могут приходить до следующего входа.',
-                    [
-                        {
-                            text: 'Отмена',
-                            style: 'cancel'
-                        },
-                        {
-                            text: 'Выйти всё равно',
-                            onPress: () => proceedWithLogout()
-                        }
-                    ]
-                );
-                return; // Ждем решения пользователя
-            }
-
-            // Если деактивация успешна, продолжаем выход
-            proceedWithLogout();
-
-        } catch (error) {
-            console.error('❌ Необработанная ошибка при выходе:', error);
-            GlobalAlert.showError('Ошибка', 'Произошла неизвестная ошибка при выходе из системы.');
-        }
-    };
-
-    const proceedWithLogout = () => {
-        console.log('🚪 Начинаем процесс выхода из аккаунта');
-
-        // Небольшая задержка для стабилизации состояния перед сбросом
-        setTimeout(() => {
-            // Затем выполняем стандартный выход
-            dispatch({ type: 'RESET_APP_STATE' });
-            console.log('🔄 RESET_APP_STATE отправлен');
-
-            logout().then(() => {
-                console.log('✅ Выход выполнен, переходим на экран авторизации');
-
-                // После выхода переходим на экран авторизации
-                navigation.reset({
-                    index: 0,
-                    routes: [{ name: 'Auth' }],
-                });
-                console.log('🧭 Навигация сброшена на экран Auth');
-            }).catch(error => {
-                console.error('❌ Ошибка при выходе:', error);
-                GlobalAlert.showError('Ошибка', 'Не удалось выйти из системы. Попробуйте еще раз.');
-            });
-        }, 300); // Уменьшил задержку до 300ms
-    };
-
-
-
     const handleProductSuccess = (product) => {
         console.log('Продукт добавлен:', product);
         if (onProductPress && product?.id) {
-            // Небольшая задержка чтобы продукт успел попасть в кэш и базу данных
             setTimeout(() => {
                 onProductPress(product.id);
             }, 500);
@@ -187,7 +114,7 @@ export const ProfileInfo = ({ onProductPress }) => {
                 `${message}. Вы можете выйти из аккаунта и войти снова.`,
                 [
                     { text: 'ОК' },
-                    { text: 'Выйти', onPress: handleLogoutPress }
+                    { text: 'Выйти', onPress: handleLogout }
                 ]
             );
         }
@@ -261,7 +188,7 @@ export const ProfileInfo = ({ onProductPress }) => {
                         />
                         <CustomButton
                             title="Выйти из аккаунта"
-                            onPress={handleLogoutPress}
+                            onPress={handleLogout}
                             outlined={false}
                             color={Color.red}
                             activeColor="#FFFFFF"
@@ -323,18 +250,6 @@ export const ProfileInfo = ({ onProductPress }) => {
             </View>
 
             {/* Кнопки для разных ролей */}
-            {roleChecks.isClient && (
-                <View style={styles.buttonContainer}>
-                    <CustomButton
-                        title="Стать частью команды"
-                        icon={<JoinTeamIcon />}
-                        onPress={handleJoinTeamPress}
-                        outlined={true}
-                        color={Color.blue2}
-                    />
-                </View>
-            )}
-
             {roleChecks.isSupplier && (
                 <View style={styles.buttonContainer}>
                     <CustomButton
@@ -382,16 +297,6 @@ export const ProfileInfo = ({ onProductPress }) => {
                     />
                 </View>
             )}
-
-            <View style={styles.logoutContainer}>
-                <CustomButton
-                    title="Выйти"
-                    onPress={handleLogoutPress}
-                    outlined={false}
-                    color={Color.red}
-                    activeColor="#FFFFFF"
-                />
-            </View>
 
         </View>
     );
@@ -471,11 +376,6 @@ const createStyles = (colors) => StyleSheet.create({
     },
     buttonMargin: {
         marginBottom: normalize(10),
-    },
-    logoutContainer: {
-        margin: normalize(15),
-        marginTop: normalize(50),
-        marginBottom: normalize(30),
     },
     loginMessage: {
         fontSize: normalizeFont(16),

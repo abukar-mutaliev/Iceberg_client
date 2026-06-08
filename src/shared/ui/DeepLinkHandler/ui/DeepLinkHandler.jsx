@@ -71,6 +71,13 @@ export const DeepLinkHandler = () => {
             // Обработка deep link для оплаты
             if (url.includes('payment-result') || url.includes('icebergapp://payment-result')) {
                 console.log('💳 Payment result deep link detected:', url);
+
+                const currentRoute = navigation.getCurrentRoute?.();
+                if (currentRoute?.name === 'PaymentScreen') {
+                    console.log('💳 Already on PaymentScreen — deep link handled by WebView');
+                    return;
+                }
+
                 navigation.dispatch(
                     CommonActions.navigate({
                         name: 'PaymentScreen',

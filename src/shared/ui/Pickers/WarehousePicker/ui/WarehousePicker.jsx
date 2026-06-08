@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -9,9 +9,10 @@ import {
     TextInput,
     Animated
 } from 'react-native';
-import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
 import { logData } from '@shared/lib/logger';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const WarehousePicker = ({
     warehouses,
@@ -22,6 +23,8 @@ export const WarehousePicker = ({
     error,
     disabled = false
 }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const [searchText, setSearchText] = useState('');
     const [filteredWarehouses, setFilteredWarehouses] = useState(warehouses);
     const [modalVisible, setModalVisible] = useState(false);
@@ -159,7 +162,8 @@ export const WarehousePicker = ({
                                 placeholder="Поиск склада..."
                                 value={searchText}
                                 onChangeText={setSearchText}
-                                placeholderTextColor="#999"
+                                placeholderTextColor={colors.textTertiary}
+                                keyboardAppearance={colors.keyboardAppearance}
                             />
                         </View>
 
@@ -231,7 +235,7 @@ export const WarehousePicker = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         marginBottom: normalize(20),
         width: '100%',
@@ -239,8 +243,8 @@ const styles = StyleSheet.create({
     label: {
         fontSize: normalizeFont(15),
         fontWeight: '600',
-        color: Color.dark,
-        opacity: 0.4,
+        color: colors.textPrimary,
+        opacity: isDark ? 0.85 : 0.4,
         marginBottom: 0,
         fontFamily: FontFamily.sFProText,
     },
@@ -256,50 +260,52 @@ const styles = StyleSheet.create({
     pickerButtonText: {
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
     },
     pickerButtonTextDisabled: {
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         opacity: 0.5,
     },
     selectedText: {
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         fontWeight: '500',
     },
     pickerButtonError: {
         // Стили для ошибки
     },
     pickerButtonTextError: {
-        color: 'red',
+        color: colors.error,
     },
     inputUnderline: {
         height: 1,
-        backgroundColor: Color.border,
+        backgroundColor: colors.inputBorder,
         marginTop: normalize(5),
     },
     underlineError: {
-        backgroundColor: 'red',
+        backgroundColor: colors.error,
     },
     errorText: {
         fontSize: normalizeFont(FontSize.size_xs),
-        color: 'red',
+        color: colors.error,
         marginTop: normalize(5),
         fontFamily: FontFamily.sFProText,
     },
     modalBackdrop: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: colors.modalOverlay,
         justifyContent: 'flex-end',
     },
     backdropTouchable: {
         flex: 1,
     },
     modalContent: {
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.cardBackground,
         borderTopLeftRadius: Border.radius.large,
         borderTopRightRadius: Border.radius.large,
         maxHeight: '80%',
         paddingBottom: normalize(20),
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     header: {
         flexDirection: 'row',
@@ -307,12 +313,12 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         padding: normalize(20),
         borderBottomWidth: 1,
-        borderBottomColor: Color.border,
+        borderBottomColor: colors.border,
     },
     modalTitle: {
         fontSize: normalizeFont(FontSize.size_lg),
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProDisplay,
     },
     closeButton: {
@@ -320,7 +326,7 @@ const styles = StyleSheet.create({
     },
     closeButtonText: {
         fontSize: normalizeFont(FontSize.size_md),
-        color: Color.blue2,
+        color: colors.primary,
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
     },
@@ -329,30 +335,30 @@ const styles = StyleSheet.create({
         paddingBottom: normalize(10),
     },
     searchInput: {
-        backgroundColor: Color.backgroundLight,
+        backgroundColor: colors.inputBackground,
         borderRadius: Border.radius.small,
         paddingHorizontal: normalize(15),
         paddingVertical: normalize(12),
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProText,
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: colors.inputBorder,
     },
     clearButton: {
         marginHorizontal: normalize(20),
         marginBottom: normalize(10),
         paddingVertical: normalize(12),
         paddingHorizontal: normalize(15),
-        backgroundColor: Color.backgroundLight,
+        backgroundColor: colors.surfaceSecondary,
         borderRadius: Border.radius.small,
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: colors.border,
         alignItems: 'center',
     },
     clearButtonText: {
         fontSize: normalizeFont(FontSize.size_md),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
     },
@@ -360,10 +366,10 @@ const styles = StyleSheet.create({
         paddingVertical: normalize(15),
         paddingHorizontal: normalize(20),
         borderBottomWidth: 1,
-        borderBottomColor: Color.border,
+        borderBottomColor: colors.border,
     },
     selectedItem: {
-        backgroundColor: Color.blue2,
+        backgroundColor: colors.primary,
     },
     warehouseInfo: {
         flex: 1,
@@ -371,30 +377,30 @@ const styles = StyleSheet.create({
     warehouseName: {
         fontSize: normalizeFont(FontSize.size_md),
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProDisplay,
         marginBottom: normalize(4),
     },
     warehouseAddress: {
         fontSize: normalizeFont(FontSize.size_sm),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(2),
     },
     warehouseDistrict: {
         fontSize: normalizeFont(FontSize.size_sm),
-        color: Color.blue2,
+        color: colors.primary,
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
         marginBottom: normalize(2),
     },
     warehouseEmployees: {
         fontSize: normalizeFont(FontSize.size_xs),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
     },
     selectedItemText: {
-        color: Color.colorLightMode,
+        color: colors.textInverse,
     },
     emptyContainer: {
         padding: normalize(40),
@@ -402,7 +408,7 @@ const styles = StyleSheet.create({
     },
     emptyText: {
         fontSize: normalizeFont(FontSize.size_md),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
     },

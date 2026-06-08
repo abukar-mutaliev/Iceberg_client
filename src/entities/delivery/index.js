@@ -5,9 +5,8 @@ export { default as DeliveryService } from './api/deliveryApi';
 export { default as deliveryReducer } from './model/slice';
 export {
     calculateDeliveryFee,
-    calculateMultipleDeliveryFees,
-    fetchFreeDeliveryInfo,
     fetchActiveTariff,
+    fetchFreeDeliveryInfo,
     setDeliveryType,
     clearDeliveryCalculation,
     clearDeliveryError,

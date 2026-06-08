@@ -7,7 +7,12 @@ import {
     StyleSheet,
     Pressable,
     Animated,
-    Keyboard
+    Keyboard,
+    Modal,
+    ScrollView,
+    FlatList,
+    Dimensions,
+    Platform,
 } from 'react-native';
 import DropdownArrowIcon from '@shared/ui/Icon/Profile/DropdownArrowIcon';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
@@ -197,6 +202,7 @@ export const DynamicFormField = ({
     };
 
     const options = field.options ? [...field.options, ...extraOptions] : extraOptions;
+    const isDistrictField = field.id === 'districtId' || field.id === 'districts';
 
     const getSelectedOptionLabel = () => {
         if (!value) {
@@ -213,6 +219,94 @@ export const DynamicFormField = ({
             const option = options.find(opt => opt.value === value || opt.id === value);
             return option ? option.label || option.name : '';
         }
+    };
+
+    const renderDistrictModal = (isMultiSelect = false) => {
+        const windowH = Dimensions.get('window').height;
+        // Явная высота контейнера списка — на iOS ScrollView/список без bounded height
+        // часто растягивается на всё содержимое и перестаёт скроллиться.
+        const listHeight = Math.min(normalize(360), Math.floor(windowH * 0.48));
+
+        const renderDistrictRow = ({ item: option }) => {
+            const optionValue = option.value || option.id;
+            const isSelected = isMultiSelect
+                ? Array.isArray(value) && value.includes(optionValue)
+                : optionValue === value || option.id === value;
+
+            return (
+                <Pressable
+                    style={[
+                        styles.modalOption,
+                        isSelected && styles.modalSelectedOption,
+                    ]}
+                    onPress={() => {
+                        if (isMultiSelect) {
+                            const newValue = [...(Array.isArray(value) ? value : [])];
+                            const index = newValue.indexOf(optionValue);
+
+                            if (index > -1) {
+                                newValue.splice(index, 1);
+                            } else {
+                                newValue.push(optionValue);
+                            }
+
+                            onChange(field.id, newValue);
+                            return;
+                        }
+
+                        handleOptionSelect({ value: optionValue });
+                    }}
+                >
+                    <Text
+                        style={[
+                            styles.modalOptionText,
+                            isSelected && styles.modalSelectedOptionText,
+                        ]}
+                    >
+                        {option.label || option.name}
+                    </Text>
+                </Pressable>
+            );
+        };
+
+        return (
+            <Modal
+                visible={showDropdown}
+                transparent={true}
+                animationType="slide"
+                onRequestClose={() => setShowDropdown(false)}
+            >
+                <View style={styles.modalContainer}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>{field.label || 'Выберите район'}</Text>
+                        <Text style={styles.scrollHint}>Прокрутите список, чтобы увидеть все районы</Text>
+
+                        <View style={[styles.districtsListWrapper, { height: listHeight }]}>
+                            <FlatList
+                                data={options}
+                                keyExtractor={(item, index) =>
+                                    String(item.value ?? item.id ?? index)
+                                }
+                                renderItem={renderDistrictRow}
+                                style={styles.districtsList}
+                                contentContainerStyle={styles.districtsListContent}
+                                showsVerticalScrollIndicator
+                                keyboardShouldPersistTaps="handled"
+                                nestedScrollEnabled
+                                {...(Platform.OS === 'android' ? { persistentScrollbar: true } : {})}
+                            />
+                        </View>
+
+                        <TouchableOpacity
+                            style={styles.modalCloseButton}
+                            onPress={() => setShowDropdown(false)}
+                        >
+                            <Text style={styles.modalCloseButtonText}>Закрыть</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+        );
     };
 
     const renderField = () => {
@@ -308,7 +402,9 @@ export const DynamicFormField = ({
                                 />
                             </Animated.View>
                         </Pressable>
-                        {showDropdown && (
+                        {isDistrictField
+                            ? renderDistrictModal(false)
+                            : showDropdown && (
                             <View style={[
                                 styles.dropdown,
                                 { maxHeight: normalize(300) }
@@ -364,7 +460,9 @@ export const DynamicFormField = ({
                                 />
                             </Animated.View>
                         </Pressable>
-                        {showDropdown && (
+                        {isDistrictField
+                            ? renderDistrictModal(true)
+                            : showDropdown && (
                             <View style={[
                                 styles.dropdown,
                                 { maxHeight: normalize(300) }
@@ -417,7 +515,10 @@ export const DynamicFormField = ({
         <View
             style={[
                 styles.fieldContainer,
-                showDropdown && (field.type === 'select' || field.type === 'multiselect') && styles.fieldContainerExpanded
+                showDropdown
+                    && !isDistrictField
+                    && (field.type === 'select' || field.type === 'multiselect')
+                    && styles.fieldContainerExpanded
             ]}
             ref={fieldContainerRef}
         >
@@ -560,5 +661,73 @@ const createStyles = (colors) => StyleSheet.create({
         fontSize: normalizeFont(12),
         color: colors.error,
         marginTop: normalize(5),
+    },
+    modalContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    },
+    modalContent: {
+        width: '90%',
+        maxHeight: '75%',
+        flexShrink: 1,
+        borderRadius: normalize(20),
+        padding: normalize(20),
+        backgroundColor: colors.surfaceElevated,
+    },
+    modalTitle: {
+        fontSize: normalizeFont(18),
+        fontWeight: '600',
+        color: colors.textPrimary,
+        textAlign: 'center',
+        marginBottom: normalize(8),
+    },
+    scrollHint: {
+        fontSize: normalizeFont(13),
+        color: colors.textSecondary,
+        textAlign: 'center',
+        marginBottom: normalize(12),
+    },
+    districtsListWrapper: {
+        width: '100%',
+        overflow: 'hidden',
+    },
+    districtsList: {
+        flexGrow: 0,
+    },
+    districtsListContent: {
+        paddingBottom: normalize(8),
+    },
+    modalOption: {
+        paddingVertical: normalize(15),
+        paddingHorizontal: normalize(12),
+        borderBottomWidth: 0.5,
+        borderBottomColor: colors.divider,
+        backgroundColor: colors.surfaceElevated,
+    },
+    modalSelectedOption: {
+        backgroundColor: colors.primary,
+    },
+    modalOptionText: {
+        fontSize: normalizeFont(16),
+        color: colors.textPrimary,
+        lineHeight: normalize(22),
+    },
+    modalSelectedOptionText: {
+        color: colors.menuItemActiveText,
+        fontWeight: '600',
+    },
+    modalCloseButton: {
+        marginTop: normalize(20),
+        padding: normalize(15),
+        borderRadius: normalize(10),
+        alignItems: 'center',
+        backgroundColor: colors.primary,
+    },
+    modalCloseButtonText: {
+        fontSize: normalizeFont(16),
+        fontWeight: '600',
+        color: colors.menuItemActiveText,
     },
 });

@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useState} from "react";
+import React, {useCallback, useEffect, useState, useMemo} from "react";
 import {useSelector, useDispatch} from "react-redux";
 import {selectCategories, selectCategoriesLoading, fetchCategories} from "@entities/category";
 import {
@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import {Feather} from '@expo/vector-icons';
 import {Color, FontFamily} from "@app/styles/GlobalStyles";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const CategoryPicker = ({ 
     selectedCategory, 
@@ -26,6 +27,8 @@ export const CategoryPicker = ({
     const categories = useSelector(selectCategories) || [];
     const isLoading = useSelector(selectCategoriesLoading) || false;
     const dispatch = useDispatch();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     // Определяем, используем ли мы множественный выбор
     const isMultiple = allowMultiple && selectedCategories !== undefined && onSelectCategories !== undefined;
@@ -160,7 +163,7 @@ export const CategoryPicker = ({
 
     const renderCategories = () => {
         if (isLoading) {
-            return <ActivityIndicator size="small" color="#3B43A2" style={styles.loadingIndicator} />;
+            return <ActivityIndicator size="small" color={colors.primary} style={styles.loadingIndicator} />;
         }
 
         if (!categories || categories.length === 0) {
@@ -216,7 +219,7 @@ export const CategoryPicker = ({
                 ]}>
                     {selectedCategoryName || (isMultiple ? 'Выберите категории' : 'Выберите категорию')}
                 </Text>
-                <Feather name={showDropdown ? "chevron-up" : "chevron-down"} size={13} color="#888" />
+                <Feather name={showDropdown ? "chevron-up" : "chevron-down"} size={13} color={isDark ? colors.textSecondary : '#888'} />
             </TouchableOpacity>
             <View style={[styles.inputUnderline, error ? styles.underlineError : null]} />
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -250,7 +253,7 @@ export const CategoryPicker = ({
 };
 
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     inputGroup: {
         marginBottom: 10,
         position: 'relative',
@@ -259,25 +262,25 @@ const styles = StyleSheet.create({
     label: {
         fontSize: 14,
         fontWeight: '600',
-        color: Color.dark,
-        opacity: 0.4,
+        color: isDark ? colors.textSecondary : Color.dark,
+        opacity: isDark ? 1 : 0.4,
         marginBottom: 0,
         fontFamily: FontFamily.sFProText,
     },
     inputError: {
-        color: '#FF3B30',
+        color: colors.error,
     },
     inputUnderline: {
         height: 1,
-        backgroundColor: '#000',
+        backgroundColor: isDark ? colors.border : '#000',
         marginTop: 0,
     },
     underlineError: {
-        backgroundColor: '#FF3B30',
+        backgroundColor: colors.error,
         height: 1.5,
     },
     errorText: {
-        color: '#FF3B30',
+        color: colors.error,
         fontSize: 12,
         marginTop: 5,
         fontFamily: FontFamily.sFProText,
@@ -291,26 +294,26 @@ const styles = StyleSheet.create({
     },
     pickerText: {
         fontSize: 13,
-        color: Color.dark,
+        color: isDark ? colors.textPrimary : Color.dark,
         fontFamily: FontFamily.sFProText,
     },
     placeholderText: {
-        color: '#888',
+        color: isDark ? colors.textTertiary : '#888',
     },
     dropdownContainer: {
         position: 'absolute',
         top: 60,
         left: 0,
         right: 0,
-        backgroundColor: 'white',
+        backgroundColor: isDark ? colors.surfaceElevated : 'white',
         borderWidth: 1,
-        borderColor: '#EBEBF0',
+        borderColor: isDark ? colors.border : '#EBEBF0',
         borderRadius: 4,
         zIndex: 100,
         elevation: 5,
         shadowColor: '#000',
         shadowOffset: {width: 0, height: 2},
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0 : 0.1,
         shadowRadius: 2,
         // убираем фиксированную maxHeight - теперь она динамическая
     },
@@ -321,25 +324,25 @@ const styles = StyleSheet.create({
         paddingVertical: 12,
         paddingHorizontal: 10,
         borderBottomWidth: 1,
-        borderBottomColor: '#EBEBF0',
+        borderBottomColor: isDark ? colors.border : '#EBEBF0',
         minHeight: 44, // фиксированная минимальная высота для точного расчета
     },
     selectedDropdownItem: {
-        backgroundColor: 'rgba(59, 67, 162, 0.1)',
+        backgroundColor: isDark ? 'rgba(99, 102, 241, 0.18)' : 'rgba(59, 67, 162, 0.1)',
     },
     dropdownItemText: {
         fontSize: 14,
-        color: Color.dark,
+        color: isDark ? colors.textPrimary : Color.dark,
         fontFamily: FontFamily.sFProText,
     },
     selectedItem: {
         fontWeight: 'bold',
-        color: '#3B43A2',
+        color: isDark ? colors.primary : '#3B43A2',
     },
     noDataText: {
         padding: 10,
         textAlign: 'center',
-        color: '#888',
+        color: isDark ? colors.textSecondary : '#888',
         fontFamily: FontFamily.sFProText,
     },
     loadingIndicator: {
@@ -356,15 +359,15 @@ const styles = StyleSheet.create({
         width: 16,
         height: 16,
         borderWidth: 1,
-        borderColor: '#CCCCCC',
+        borderColor: isDark ? colors.border : '#CCCCCC',
         borderRadius: 3,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'white',
+        backgroundColor: isDark ? colors.surface : 'white',
     },
     checkboxSelected: {
-        backgroundColor: '#3B43A2',
-        borderColor: '#3B43A2',
+        backgroundColor: isDark ? colors.primary : '#3B43A2',
+        borderColor: isDark ? colors.primary : '#3B43A2',
     },
     checkmark: {
         color: 'white',
@@ -372,11 +375,11 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
     },
     doneButton: {
-        backgroundColor: '#3B43A2',
+        backgroundColor: isDark ? colors.primary : '#3B43A2',
         padding: 10,
         alignItems: 'center',
         borderTopWidth: 1,
-        borderTopColor: '#EBEBF0',
+        borderTopColor: isDark ? colors.border : '#EBEBF0',
     },
     doneButtonText: {
         color: 'white',

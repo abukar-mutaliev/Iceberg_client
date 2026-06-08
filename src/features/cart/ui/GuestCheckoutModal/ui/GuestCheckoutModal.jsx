@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useMemo, useRef } from 'react';
 import {
     View,
     Text,
@@ -7,8 +7,9 @@ import {
     Modal,
     Dimensions} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Color, FontFamily } from '@app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
 import { AuthDialog } from "@entities/auth/ui/AuthDialog";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -26,6 +27,8 @@ export const GuestCheckoutModal = ({
     cartStats = {},
     navigation 
 }) => {
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
     const authDialogRef = useRef(null);
     const { totalItems = 0, totalAmount = 0 } = cartStats;
 
@@ -180,22 +183,22 @@ export const GuestCheckoutModal = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: colors.modalOverlay,
         justifyContent: 'flex-end',
     },
     safeArea: {
         maxHeight: '90%',
     },
     modalContainer: {
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: colors.modalOverlay,
         justifyContent: 'flex-end',
         flex: 1,
     },
     modalContent: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.cardBackground,
         borderTopLeftRadius: normalize(20),
         borderTopRightRadius: normalize(20),
         paddingHorizontal: normalize(20),
@@ -212,24 +215,24 @@ const styles = StyleSheet.create({
     title: {
         fontSize: normalize(22),
         fontWeight: '600',
-        color: '#000000',
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProDisplay || 'SF Pro Display',
     },
     closeButton: {
         width: normalize(30),
         height: normalize(30),
         borderRadius: normalize(15),
-        backgroundColor: '#F5F5F5',
+        backgroundColor: colors.surfaceSecondary,
         justifyContent: 'center',
         alignItems: 'center',
     },
     closeButtonText: {
         fontSize: normalize(16),
-        color: '#666666',
+        color: colors.textSecondary,
         fontWeight: '600',
     },
     orderInfo: {
-        backgroundColor: '#F8F9FF',
+        backgroundColor: colors.surface,
         borderRadius: normalize(12),
         padding: normalize(16),
         marginBottom: normalize(20),
@@ -237,7 +240,7 @@ const styles = StyleSheet.create({
     orderInfoTitle: {
         fontSize: normalize(16),
         fontWeight: '600',
-        color: '#000000',
+        color: colors.textPrimary,
         marginBottom: normalize(8),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
     },
@@ -247,7 +250,7 @@ const styles = StyleSheet.create({
     },
     orderStatsText: {
         fontSize: normalize(14),
-        color: '#666666',
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
     },
     description: {
@@ -256,14 +259,14 @@ const styles = StyleSheet.create({
     descriptionTitle: {
         fontSize: normalize(18),
         fontWeight: '600',
-        color: '#000000',
+        color: colors.textPrimary,
         marginBottom: normalize(8),
         textAlign: 'center',
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
     },
     descriptionText: {
         fontSize: normalize(14),
-        color: '#666666',
+        color: colors.textSecondary,
         textAlign: 'center',
         lineHeight: normalize(20),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
@@ -272,7 +275,7 @@ const styles = StyleSheet.create({
         marginBottom: normalize(24),
     },
     primaryButton: {
-        backgroundColor: '#3339B0',
+        backgroundColor: colors.primary,
         borderRadius: normalize(12),
         paddingVertical: normalize(16),
         paddingHorizontal: normalize(24),
@@ -282,7 +285,7 @@ const styles = StyleSheet.create({
     primaryButtonText: {
         fontSize: normalize(16),
         fontWeight: '600',
-        color: '#FFFFFF',
+        color: colors.textInverse,
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
     },
     secondaryButton: {
@@ -293,12 +296,12 @@ const styles = StyleSheet.create({
         marginBottom: normalize(12),
         alignItems: 'center',
         borderWidth: 2,
-        borderColor: '#3339B0',
+        borderColor: colors.primary,
     },
     secondaryButtonText: {
         fontSize: normalize(16),
         fontWeight: '600',
-        color: '#3339B0',
+        color: colors.primary,
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
     },
     guestButton: {
@@ -310,24 +313,24 @@ const styles = StyleSheet.create({
     },
     guestButtonText: {
         fontSize: normalize(14),
-        color: '#999999',
+        color: colors.textTertiary,
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
     },
     benefits: {
-        backgroundColor: '#F0F8FF',
+        backgroundColor: colors.surface,
         borderRadius: normalize(12),
         padding: normalize(16),
     },
     benefitsTitle: {
         fontSize: normalize(14),
         fontWeight: '600',
-        color: '#000000',
+        color: colors.textPrimary,
         marginBottom: normalize(8),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
     },
     benefitsItem: {
         fontSize: normalize(12),
-        color: '#666666',
+        color: colors.textSecondary,
         marginBottom: normalize(4),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
     },

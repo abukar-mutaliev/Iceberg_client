@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
     View,
     Text,
@@ -9,10 +9,11 @@ import {
     Image,
 } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color, FontFamily } from '@app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
-const ModernCriticalStockItem = ({ item, onPress }) => {
+const ModernCriticalStockItem = ({ item, onPress, styles, colors }) => {
     const safeItem = {
         productId: String(item?.productId || ''),
         productName: String(item?.productName || ''),
@@ -88,11 +89,11 @@ const ModernCriticalStockItem = ({ item, onPress }) => {
                             {safeItem.productName}
                         </Text>
                         <View style={styles.warehouseRow}>
-                            <Icon name="location-on" size={normalize(12)} color="#8E8E93" />
+                            <Icon name="location-on" size={normalize(12)} color={colors.textTertiary} />
                             <Text style={styles.warehouseName}>{safeItem.warehouseName}</Text>
                         </View>
                         <View style={styles.salesInfoRow}>
-                            <Icon name="trending-up" size={normalize(12)} color="#8E8E93" />
+                            <Icon name="trending-up" size={normalize(12)} color={colors.textTertiary} />
                             <Text style={styles.salesRateText}>
                                 {safeItem.isFastMoving ? 'Быстро продающийся' : 'Медленно продающийся'} • {safeItem.salesRate} {safeItem.unit}/день
                             </Text>
@@ -144,12 +145,14 @@ const ModernCriticalStockItem = ({ item, onPress }) => {
 };
 
 const ModernCriticalStockList = ({ items, loading, onItemPress }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const [visibleItemsCount, setVisibleItemsCount] = useState(5);
 
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={Color.blue2} />
+                <ActivityIndicator size="large" color={colors.primary} />
                 <Text style={styles.loadingText}>{String('Загрузка товаров...')}</Text>
             </View>
         );
@@ -190,6 +193,8 @@ const ModernCriticalStockList = ({ items, loading, onItemPress }) => {
                     <ModernCriticalStockItem
                         item={item}
                         onPress={onItemPress}
+                        styles={styles}
+                        colors={colors}
                     />
                 )}
                 showsVerticalScrollIndicator={false}
@@ -201,40 +206,44 @@ const ModernCriticalStockList = ({ items, loading, onItemPress }) => {
                     <Text style={styles.showMoreText}>
                         {String('Показать еще')} {String(Math.min(15, items.length - visibleItemsCount))} {String('товаров')}
                     </Text>
-                    <Icon name="arrow-forward" size={normalize(16)} color="#007AFF" />
+                    <Icon name="arrow-forward" size={normalize(16)} color={colors.primary} />
                 </TouchableOpacity>
             )}
         </View>
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.cardBackground,
         borderRadius: normalize(16),
         padding: normalize(12),
         marginBottom: normalize(12),
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
+        shadowOpacity: isDark ? 0.35 : 0.08,
         shadowRadius: 12,
         elevation: 3,
+        borderWidth: 1,
+        borderColor: colors.border,
     },
     loadingContainer: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.cardBackground,
         borderRadius: normalize(16),
         padding: normalize(32),
         marginBottom: normalize(16),
         alignItems: 'center',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
+        shadowOpacity: isDark ? 0.35 : 0.08,
         shadowRadius: 12,
         elevation: 3,
+        borderWidth: 1,
+        borderColor: colors.border,
     },
     loadingText: {
         fontSize: normalizeFont(14),
-        color: '#8E8E93',
+        color: colors.textSecondary,
         marginTop: normalize(8),
     },
     header: {
@@ -259,12 +268,12 @@ const styles = StyleSheet.create({
     headerTitle: {
         fontSize: normalizeFont(18),
         fontFamily: FontFamily.sFProTextBold,
-        color: '#1C1C1E',
+        color: colors.textPrimary,
         marginBottom: normalize(2),
     },
     headerSubtitle: {
         fontSize: normalizeFont(13),
-        color: '#8E8E93',
+        color: colors.textSecondary,
     },
     countBadge: {
         backgroundColor: '#FF3B30',
@@ -280,7 +289,7 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProTextBold,
     },
     itemCard: {
-        backgroundColor: '#F8F9FA',
+        backgroundColor: colors.surfaceSecondary,
         borderRadius: normalize(12),
         padding: normalize(14),
         marginBottom: normalize(10),
@@ -304,7 +313,7 @@ const styles = StyleSheet.create({
         width: normalize(50),
         height: normalize(50),
         borderRadius: normalize(8),
-        backgroundColor: '#F8F9FA',
+        backgroundColor: colors.surfaceSecondary,
     },
     productImagePlaceholder: {
         width: normalize(50),
@@ -312,9 +321,9 @@ const styles = StyleSheet.create({
         borderRadius: normalize(8),
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#F8F9FA',
+        backgroundColor: colors.surfaceSecondary,
         borderWidth: 1,
-        borderColor: '#E5E5EA',
+        borderColor: colors.border,
     },
     itemInfo: {
         flex: 1,
@@ -322,7 +331,7 @@ const styles = StyleSheet.create({
     itemName: {
         fontSize: normalizeFont(15),
         fontFamily: FontFamily.sFProTextBold,
-        color: '#1C1C1E',
+        color: colors.textPrimary,
         marginBottom: normalize(4),
         lineHeight: normalize(20),
     },
@@ -332,7 +341,7 @@ const styles = StyleSheet.create({
     },
     warehouseName: {
         fontSize: normalizeFont(13),
-        color: '#8E8E93',
+        color: colors.textSecondary,
         marginLeft: normalize(4),
     },
     salesInfoRow: {
@@ -342,7 +351,7 @@ const styles = StyleSheet.create({
     },
     salesRateText: {
         fontSize: normalizeFont(11),
-        color: '#8E8E93',
+        color: colors.textSecondary,
         marginLeft: normalize(4),
     },
     statusBadge: {
@@ -357,7 +366,7 @@ const styles = StyleSheet.create({
     itemMetrics: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.surface,
         borderRadius: normalize(8),
         padding: normalize(10),
     },
@@ -367,18 +376,18 @@ const styles = StyleSheet.create({
     },
     metricLabel: {
         fontSize: normalizeFont(11),
-        color: '#8E8E93',
+        color: colors.textSecondary,
         marginBottom: normalize(4),
     },
     metricValue: {
         fontSize: normalizeFont(15),
         fontFamily: FontFamily.sFProTextBold,
-        color: '#1C1C1E',
+        color: colors.textPrimary,
     },
     metricDivider: {
         width: 1,
         height: normalize(24),
-        backgroundColor: '#E5E5EA',
+        backgroundColor: colors.divider,
     },
     showMoreButton: {
         flexDirection: 'row',
@@ -390,7 +399,7 @@ const styles = StyleSheet.create({
     showMoreText: {
         fontSize: normalizeFont(14),
         fontFamily: FontFamily.sFProTextBold,
-        color: '#007AFF',
+        color: colors.primary,
         marginRight: normalize(8),
     },
 });

@@ -205,6 +205,10 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
         return false;
     }, [currentUser, user]);
 
+    const canViewUserDistrict = useMemo(() => (
+        currentUser?.role === 'ADMIN' || currentUser?.role === 'EMPLOYEE'
+    ), [currentUser?.role]);
+
     // Проверяем существование чата с пользователем
     const existingChat = useMemo(() => {
         if (!currentUser?.id || !user?.id) return null;
@@ -348,6 +352,11 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
             userData.admin?.phone ||
             userData.profile?.phone ||
             null;
+    };
+
+    const getClientDistrictName = (userData) => {
+        const district = userData?.client?.district || userData?.profile?.district;
+        return district?.name || null;
     };
 
     // Функция для совершения звонка
@@ -656,12 +665,17 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                             </View>
                         )}
 
-                        {(user.client?.address || user.profile?.address) && (
+                        {(user.client?.address || user.profile?.address || (canViewUserDistrict && getClientDistrictName(user))) && (
                             <View style={styles.infoSection}>
                                 <View style={styles.infoRow}>
                                     <Text style={styles.sectionLabel}>Адрес</Text>
                                 </View>
-                                <Text style={styles.infoText}>{user.client?.address || user.profile?.address}</Text>
+                                {(user.client?.address || user.profile?.address) && (
+                                    <Text style={styles.infoText}>{user.client?.address || user.profile?.address}</Text>
+                                )}
+                                {canViewUserDistrict && getClientDistrictName(user) && (
+                                    <Text style={styles.districtText}>{getClientDistrictName(user)}</Text>
+                                )}
                             </View>
                         )}
                     </>
@@ -1003,6 +1017,13 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         color: isDark ? colors.textPrimary : '#000000',
         fontWeight: '400',
         lineHeight: 24,
+    },
+    districtText: {
+        marginTop: 6,
+        fontSize: 16,
+        color: isDark ? colors.textSecondary : '#666666',
+        fontWeight: '400',
+        lineHeight: 22,
     },
 
     // Phone Section

@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Modal, FlatList, Animated, ScrollView, KeyboardAvoidingView, Platform, Dimensions, Keyboard, Switch } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
 import CustomButton from '@shared/ui/Button/CustomButton';
 import { USER_ROLES_DISPLAY } from '@entities/user/model/constants';
 import { WarehousePicker } from '@shared/ui/Pickers/WarehousePicker';
@@ -10,6 +10,7 @@ import { useAdmin } from '@entities/admin';
 import { useDistrict } from '@entities/district';
 import { useWarehouses } from '@entities/warehouse/hooks/useWarehouses';
 import { PROCESSING_ROLES, PROCESSING_ROLE_LABELS } from '@entities/admin/lib/constants';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -22,6 +23,8 @@ const ProcessingRolePicker = ({
     showProcessingRolePicker,
     setShowProcessingRolePicker
 }) => {
+    const { colors, isDark } = useTheme();
+    const pickerStyles = useMemo(() => createPickerStyles(colors, isDark), [colors, isDark]);
     const [searchText, setSearchText] = useState('');
     const [filteredRoles, setFilteredRoles] = useState(processingRoles);
     const [modalVisible, setModalVisible] = useState(false);
@@ -160,7 +163,8 @@ const ProcessingRolePicker = ({
                                 placeholder="Поиск должности..."
                                 value={searchText}
                                 onChangeText={setSearchText}
-                                placeholderTextColor="#999"
+                                placeholderTextColor={colors.textTertiary}
+                                keyboardAppearance={colors.keyboardAppearance}
                             />
                         </View>
 
@@ -198,7 +202,168 @@ const ProcessingRolePicker = ({
     );
 };
 
-const pickerStyles = StyleSheet.create({
+const ClientDistrictPicker = ({
+    districts,
+    selectedDistrictId,
+    setSelectedDistrictId,
+    showDistrictPicker,
+    setShowDistrictPicker,
+    disabled
+}) => {
+    const { colors, isDark } = useTheme();
+    const pickerStyles = useMemo(() => createPickerStyles(colors, isDark), [colors, isDark]);
+    const [searchText, setSearchText] = useState('');
+    const [modalVisible, setModalVisible] = useState(false);
+    const slideAnimation = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        if (showDistrictPicker) {
+            setModalVisible(true);
+            Animated.timing(slideAnimation, {
+                toValue: 1,
+                duration: 300,
+                useNativeDriver: true
+            }).start();
+        } else {
+            Animated.timing(slideAnimation, {
+                toValue: 0,
+                duration: 300,
+                useNativeDriver: true
+            }).start(() => {
+                setModalVisible(false);
+            });
+        }
+    }, [showDistrictPicker]);
+
+    const translateY = slideAnimation.interpolate({
+        inputRange: [0, 1],
+        outputRange: [300, 0]
+    });
+
+    const filteredDistricts = React.useMemo(() => {
+        const normalizedSearch = searchText.trim().toLowerCase();
+        if (!normalizedSearch) return districts || [];
+
+        return (districts || []).filter(district => (
+            district.name?.toLowerCase().includes(normalizedSearch) ||
+            district.description?.toLowerCase().includes(normalizedSearch)
+        ));
+    }, [districts, searchText]);
+
+    const selectedDistrictName = React.useMemo(() => {
+        const selectedDistrict = (districts || []).find(
+            district => Number(district.id) === Number(selectedDistrictId)
+        );
+        return selectedDistrict?.name || 'Выберите район клиента';
+    }, [districts, selectedDistrictId]);
+
+    const handleSelect = (districtId) => {
+        setSelectedDistrictId(Number(districtId));
+        setShowDistrictPicker(false);
+        setSearchText('');
+    };
+
+    return (
+        <View style={pickerStyles.container}>
+            <Text style={pickerStyles.label}>Район клиента:</Text>
+            <TouchableOpacity
+                style={[pickerStyles.pickerButton, disabled && pickerStyles.disabledButton]}
+                onPress={() => !disabled && setShowDistrictPicker(true)}
+                disabled={disabled}
+            >
+                <Text style={[
+                    pickerStyles.pickerButtonText,
+                    selectedDistrictId ? pickerStyles.selectedText : null
+                ]}>
+                    {disabled ? 'Загрузка районов...' : selectedDistrictName}
+                </Text>
+            </TouchableOpacity>
+            <View style={pickerStyles.inputUnderline} />
+
+            <Modal
+                visible={modalVisible}
+                transparent={true}
+                animationType="none"
+                onRequestClose={() => setShowDistrictPicker(false)}
+            >
+                <Animated.View
+                    style={[
+                        pickerStyles.modalBackdrop,
+                        {
+                            opacity: slideAnimation
+                        }
+                    ]}
+                >
+                    <TouchableOpacity
+                        style={pickerStyles.backdropTouchable}
+                        activeOpacity={1}
+                        onPress={() => setShowDistrictPicker(false)}
+                    />
+
+                    <Animated.View
+                        style={[
+                            pickerStyles.modalContent,
+                            {
+                                transform: [{ translateY }]
+                            }
+                        ]}
+                    >
+                        <View style={pickerStyles.header}>
+                            <Text style={pickerStyles.modalTitle}>Выберите район клиента</Text>
+                            <TouchableOpacity
+                                style={pickerStyles.closeButton}
+                                onPress={() => setShowDistrictPicker(false)}
+                            >
+                                <Text style={pickerStyles.closeButtonText}>Закрыть</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <View style={pickerStyles.searchContainer}>
+                            <TextInput
+                                style={pickerStyles.searchInput}
+                                placeholder="Поиск района..."
+                                value={searchText}
+                                onChangeText={setSearchText}
+                                placeholderTextColor={colors.textTertiary}
+                                keyboardAppearance={colors.keyboardAppearance}
+                            />
+                        </View>
+
+                        <FlatList
+                            data={filteredDistricts}
+                            keyExtractor={(item) => String(item.id)}
+                            renderItem={({ item }) => (
+                                <TouchableOpacity
+                                    style={[
+                                        pickerStyles.roleItem,
+                                        Number(selectedDistrictId) === Number(item.id) && pickerStyles.selectedItem
+                                    ]}
+                                    onPress={() => handleSelect(item.id)}
+                                >
+                                    <Text style={[
+                                        pickerStyles.roleName,
+                                        Number(selectedDistrictId) === Number(item.id) && pickerStyles.selectedItemText
+                                    ]}>
+                                        {item.name}
+                                    </Text>
+                                </TouchableOpacity>
+                            )}
+                            ListEmptyComponent={() => (
+                                <View style={pickerStyles.emptyContainer}>
+                                    <Text style={pickerStyles.emptyText}>
+                                        {searchText ? 'Районы не найдены' : 'Список районов пуст'}
+                                    </Text>
+                                </View>
+                            )}
+                        />
+                    </Animated.View>
+                </Animated.View>
+            </Modal>
+        </View>
+    );
+};
+
+const createPickerStyles = (colors, isDark) => StyleSheet.create({
     container: {
         marginBottom: normalize(20),
         width: '100%',
@@ -206,8 +371,7 @@ const pickerStyles = StyleSheet.create({
     label: {
         fontSize: normalizeFont(15),
         fontWeight: '600',
-        color: Color.dark,
-        opacity: 0.4,
+        color: colors.textSecondary,
         marginBottom: 0,
         fontFamily: FontFamily.sFProText,
     },
@@ -215,13 +379,16 @@ const pickerStyles = StyleSheet.create({
         height: normalize(30),
         justifyContent: 'center',
     },
+    disabledButton: {
+        opacity: 0.6,
+    },
     pickerButtonText: {
         fontSize: normalizeFont(FontSize.size_xs),
-        color: '#999',
+        color: colors.textTertiary,
         fontFamily: FontFamily.sFProText,
     },
     selectedText: {
-        color: Color.dark,
+        color: colors.textPrimary,
     },
     clearButton: {
         marginTop: normalize(5),
@@ -229,12 +396,12 @@ const pickerStyles = StyleSheet.create({
     },
     clearButtonText: {
         fontSize: normalizeFont(FontSize.size_xs),
-        color: Color.main,
+        color: colors.primary,
         fontFamily: FontFamily.sFProText,
     },
     inputUnderline: {
         height: 1,
-        backgroundColor: '#000',
+        backgroundColor: colors.inputBorder,
         marginTop: 0,
     },
     modalBackdrop: {
@@ -252,7 +419,7 @@ const pickerStyles = StyleSheet.create({
     modalContent: {
         width: '100%',
         maxHeight: '80%',
-        backgroundColor: 'white',
+        backgroundColor: colors.cardBackground,
         borderTopLeftRadius: Border.br_3xs,
         borderTopRightRadius: Border.br_3xs,
         overflow: 'hidden',
@@ -263,31 +430,33 @@ const pickerStyles = StyleSheet.create({
         alignItems: 'center',
         padding: normalize(16),
         borderBottomWidth: 1,
-        borderBottomColor: '#eee',
+        borderBottomColor: colors.border,
     },
     modalTitle: {
         fontSize: normalizeFont(18),
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     closeButton: {
         padding: normalize(5),
     },
     closeButtonText: {
-        color: Color.main,
+        color: colors.primary,
         fontSize: normalizeFont(16),
         fontFamily: FontFamily.sFProText,
     },
     searchContainer: {
         padding: normalize(10),
         borderBottomWidth: 1,
-        borderBottomColor: '#eee',
+        borderBottomColor: colors.border,
     },
     searchInput: {
         height: normalize(50),
         borderWidth: 1,
-        borderColor: '#ddd',
+        borderColor: colors.inputBorder,
+        backgroundColor: colors.inputBackground,
+        color: colors.textPrimary,
         borderRadius: Border.br_3xs,
         paddingHorizontal: normalize(10),
         fontFamily: FontFamily.sFProText,
@@ -295,19 +464,19 @@ const pickerStyles = StyleSheet.create({
     roleItem: {
         padding: normalize(15),
         borderBottomWidth: 1,
-        borderBottomColor: '#eee',
+        borderBottomColor: colors.border,
     },
     selectedItem: {
-        backgroundColor: Color.main,
+        backgroundColor: colors.primary,
     },
     roleName: {
         fontSize: normalizeFont(16),
         fontWeight: '500',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     selectedItemText: {
-        color: 'white',
+        color: colors.textInverse,
     },
     emptyContainer: {
         padding: normalize(20),
@@ -315,12 +484,14 @@ const pickerStyles = StyleSheet.create({
     },
     emptyText: {
         fontSize: normalizeFont(16),
-        color: '#999',
+        color: colors.textTertiary,
         fontFamily: FontFamily.sFProText,
     },
 });
 
 export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const [selectedRole, setSelectedRole] = useState('');
     const [userData, setUserData] = useState({});
     const [fieldErrors, setFieldErrors] = useState({});
@@ -341,9 +512,13 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
     const [selectedDriverDistricts, setSelectedDriverDistricts] = useState([]);
     const [showDriverDistrictPicker, setShowDriverDistrictPicker] = useState(false);
 
+    // Состояние для района клиента
+    const [selectedClientDistrictId, setSelectedClientDistrictId] = useState(null);
+    const [showClientDistrictPicker, setShowClientDistrictPicker] = useState(false);
+
     // Хуки для загрузки данных
     const { warehouses, loadWarehouses } = useAdmin();
-    const { districts, loadDistricts } = useDistrict();
+    const { districts, loadDistricts, isLoading: districtsLoading } = useDistrict();
     const {
         warehouses: allWarehouses,
         loading: allWarehousesLoading,
@@ -436,7 +611,7 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                 user.isSuperAdmin
             );
 
-            setSelectedRole(user.role === 'ADMIN' ? 'ADMIN' : '');
+            setSelectedRole(['ADMIN', 'CLIENT'].includes(user.role) ? user.role : '');
             setFieldErrors({});
             const existingData = getUserExistingData();
             // Очищаем "Не указано" из телефона и адреса, чтобы поля ввода были пустыми
@@ -463,6 +638,7 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
             }
             setSelectedDriverWarehouse(null);
             setSelectedDriverDistricts([]);
+            setSelectedClientDistrictId(user.client?.districtId || null);
         }
     }, [visible, user]);
 
@@ -501,7 +677,7 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
         { value: 'EMPLOYEE', label: 'Сотрудник' },
         { value: 'SUPPLIER', label: 'Поставщик' },
         { value: 'DRIVER', label: 'Водитель' }
-    ].filter(role => !user || role.value !== user.role || role.value === 'ADMIN');
+    ].filter(role => !user || role.value !== user.role || ['ADMIN', 'CLIENT'].includes(role.value));
 
     // Обработчик изменения данных пользователя
     const handleUserDataChange = (key, value) => {
@@ -551,6 +727,17 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
             setFieldErrors(prev => {
                 const next = { ...prev };
                 delete next.driverDistricts;
+                return next;
+            });
+        }
+    };
+
+    const handleClientDistrictChange = (districtId) => {
+        setSelectedClientDistrictId(districtId);
+        if (fieldErrors.clientDistrictId) {
+            setFieldErrors(prev => {
+                const next = { ...prev };
+                delete next.clientDistrictId;
                 return next;
             });
         }
@@ -619,8 +806,8 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                             <Switch
                                 value={Boolean(userData.isSuperAdmin)}
                                 onValueChange={(value) => handleUserDataChange('isSuperAdmin', value)}
-                                trackColor={{ false: '#767577', true: Color.blue2 }}
-                                thumbColor={userData.isSuperAdmin ? '#fff' : '#f4f3f4'}
+                                trackColor={{ false: colors.surfaceSecondary, true: colors.primary }}
+                                thumbColor={userData.isSuperAdmin ? colors.textInverse : colors.textSecondary}
                             />
                         </View>
                     </>
@@ -653,6 +840,15 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                                 {fieldErrors.phone && <Text style={styles.fieldError}>{fieldErrors.phone}</Text>}
                             </>
                         )}
+                        <ClientDistrictPicker
+                            districts={districts || []}
+                            selectedDistrictId={selectedClientDistrictId}
+                            setSelectedDistrictId={handleClientDistrictChange}
+                            showDistrictPicker={showClientDistrictPicker}
+                            setShowDistrictPicker={setShowClientDistrictPicker}
+                            disabled={districtsLoading}
+                        />
+                        {fieldErrors.clientDistrictId && <Text style={styles.fieldError}>{fieldErrors.clientDistrictId}</Text>}
                     </>
                 );
             case 'EMPLOYEE':
@@ -834,6 +1030,9 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                 } else if (trimValue(userData.name).length < 2) {
                     errors.name = 'Имя клиента должно содержать минимум 2 символа';
                 }
+                if (!selectedClientDistrictId) {
+                    errors.clientDistrictId = 'Выберите район клиента';
+                }
                 break;
             case 'DRIVER':
                 if (!hasName) {
@@ -912,6 +1111,10 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
         if (selectedRole === 'DRIVER') {
             data.warehouseId = selectedDriverWarehouse;
             data.districts = selectedDriverDistricts;
+        }
+
+        if (selectedRole === 'CLIENT') {
+            data.districtId = selectedClientDistrictId;
         }
 
         if (selectedRole === 'SUPPLIER') {
@@ -1012,6 +1215,7 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                                                 {(user?.phone || userData.phone) && `Телефон: ${user?.phone || userData.phone}`}
                                                 {((user?.phone || userData.phone) && (user?.address || userData.address)) && '\n'}
                                                 {(user?.address || userData.address) && `Адрес: ${user?.address || userData.address}`}
+                                                {user?.client?.district?.name && `\nТекущий район: ${user.client.district.name}`}
                                             </Text>
                                             <Text style={styles.infoSubtext}>
                                                 Существующие данные будут сохранены
@@ -1028,7 +1232,7 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                                 title="Отмена"
                                 onPress={onClose}
                                 outlined={true}
-                                color={Color.grey7D7D7D}
+                                color={colors.textSecondary}
                                 style={styles.modalButton}
                             />
                             <CustomButton
@@ -1042,7 +1246,7 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
                                     onSubmit(user.id, selectedRole, prepareSubmitData());
                                 }}
                                 disabled={false}
-                                color={Color.blue2}
+                                color={colors.primary}
                                 style={styles.modalButton}
                             />
                         </View>
@@ -1053,11 +1257,11 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     // Стили остаются теми же
     modalContainer: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: colors.modalOverlay,
         padding: normalize(16),
         justifyContent: 'center',
     },
@@ -1067,12 +1271,16 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     modalContent: {
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.cardBackground,
         borderRadius: Border.radius.medium,
         padding: normalize(16),
         width: '100%',
         maxHeight: SCREEN_HEIGHT * 0.9,
-        ...Shadow.medium,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: isDark ? 0.35 : Shadow.medium.shadowOpacity,
+        shadowRadius: isDark ? 10 : Shadow.medium.shadowRadius,
+        elevation: isDark ? 6 : Shadow.medium.elevation,
     },
     modalContentKeyboardVisible: {
         maxHeight: SCREEN_HEIGHT * 0.95,
@@ -1089,12 +1297,12 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_lg),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         marginBottom: normalize(16),
         textAlign: 'center',
     },
     modalUserInfo: {
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.surfaceSecondary,
         borderRadius: Border.radius.small,
         padding: normalize(12),
         marginBottom: normalize(16),
@@ -1103,19 +1311,19 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
     },
     modalUserRole: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginTop: normalize(4),
     },
     modalLabel: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         marginBottom: normalize(8),
     },
     roleButtonsContainer: {
@@ -1124,66 +1332,66 @@ const styles = StyleSheet.create({
         marginBottom: normalize(16),
     },
     roleButton: {
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.surface,
         borderRadius: Border.radius.small,
         paddingHorizontal: normalize(12),
         paddingVertical: normalize(8),
         marginRight: normalize(8),
         marginBottom: normalize(8),
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: colors.border,
     },
     roleButtonSelected: {
-        backgroundColor: Color.blue2,
-        borderColor: Color.blue2,
+        backgroundColor: colors.primary,
+        borderColor: colors.primary,
     },
     roleButtonText: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textPrimary,
+        color: colors.textPrimary,
     },
     roleButtonTextSelected: {
-        color: Color.colorLightMode,
+        color: colors.textInverse,
         fontWeight: '500',
     },
     modalInput: {
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.inputBackground,
         borderRadius: Border.radius.small,
         paddingHorizontal: normalize(12),
         paddingVertical: normalize(10),
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         marginBottom: normalize(16),
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: colors.inputBorder,
     },
     fieldError: {
         fontSize: normalizeFont(FontSize.size_xs),
-        color: '#D93025',
+        color: colors.error,
         marginTop: normalize(-12),
         marginBottom: normalize(12),
         fontFamily: FontFamily.sFProText,
     },
     infoContainer: {
-        backgroundColor: Color.blue2 + '15', // Полупрозрачный синий фон
+        backgroundColor: isDark ? colors.surfaceSecondary : colors.primary + '15',
         borderRadius: Border.radius.small,
         padding: normalize(12),
         marginBottom: normalize(16),
         borderWidth: 1,
-        borderColor: Color.blue2 + '30',
+        borderColor: isDark ? colors.border : colors.primary + '30',
     },
     infoText: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
-        color: Color.activeBlue,
+        color: colors.primary,
         marginBottom: normalize(4),
     },
     infoSubtext: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: Color.activeBlue,
+        color: colors.primary,
         fontStyle: 'italic',
     },
     switchContainer: {
@@ -1199,7 +1407,7 @@ const styles = StyleSheet.create({
     switchHint: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         lineHeight: normalize(16),
     },
     modalActions: {

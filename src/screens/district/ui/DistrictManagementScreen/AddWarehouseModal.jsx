@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     View,
     Text,
@@ -28,10 +28,18 @@ import { ReusableModal } from '@shared/ui/Modal';
 import { Ionicons } from '@expo/vector-icons';
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 import { FlatList } from 'react-native';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
-export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSubmitting }) => {
+export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSubmitting, openKey = 0 }) => {
     const dispatch = useDispatch();
     const { showSuccess, showError, showInfo } = useCustomAlert();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+    const mapStyles = useMemo(() => createMapStyles(colors, isDark), [colors, isDark]);
+    const districtPickerStyles = useMemo(() => createDistrictPickerStyles(colors, isDark), [colors, isDark]);
+    const textColor = isDark ? (colors.textPrimary || colors.text || Color.colorLightMode) : Color.textPrimary;
+    const secondaryTextColor = isDark ? colors.textSecondary : Color.textSecondary;
+    const primaryColor = isDark ? colors.primary : Color.blue2;
     
     const [formData, setFormData] = useState({
         name: '',
@@ -65,10 +73,24 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
     });
     const [markerPosition, setMarkerPosition] = useState(null);
 
-    // Инициализация формы при открытии модального окна
+    // Только id (или режим создания), не сам объект warehouse: иначе при каждой
+    // новой ссылке warehouse от родителя эффект сбрасывал бы форму и картинку
+    // (например после ImagePicker или фонового обновления списка складов).
+    const formResetKey =
+        warehouse?.id !== undefined &&
+        warehouse?.id !== null &&
+        warehouse?.id !== ''
+            ? String(warehouse.id)
+            : null;
+
+    // Инициализация формы только при явном открытии модалки (openKey++) или смене склада.
+    // visible в зависимостях нельзя: при обрезке в ImagePicker (allowsEditing) нативный UI
+    // гасит RN Modal, visible кратко false→true — форма и фото сбрасывались бы с сервера.
     useEffect(() => {
-        if (visible) {
-            if (warehouse) {
+        if (!visible) {
+            return;
+        }
+        if (warehouse) {
                 // Режим редактирования
                 // Пытаемся разделить адрес на город и улицу
                 const addressParts = warehouse.address ? warehouse.address.split(',').map(s => s.trim()) : ['', ''];
@@ -157,11 +179,11 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                     workingHours: defaultWorkingHours
                 });
                 setSelectedImage(null);
-            }
-            setErrors({});
-            loadDistricts();
         }
-    }, [visible, warehouse]);
+        setErrors({});
+        loadDistricts();
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- visible намеренно не в deps; warehouse — из замыкания при смене openKey/formResetKey
+    }, [openKey, formResetKey]);
 
     // Загрузка списка районов
     const loadDistricts = async () => {
@@ -518,10 +540,12 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
     // Выбор изображения
     const pickImage = async () => {
         try {
-            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-            if (status !== 'granted') {
-                Alert.alert('Требуется разрешение', 'Для выбора изображения необходимо разрешение на доступ к галерее.');
-                return;
+            if (Platform.OS !== 'android') {
+                const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                if (status !== 'granted') {
+                    Alert.alert('Требуется разрешение', 'Для выбора изображения необходимо разрешение на доступ к галерее.');
+                    return;
+                }
             }
 
             // На Android добавляем задержку и ждем завершения всех взаимодействий,
@@ -670,7 +694,7 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                         style={styles.closeButton}
                         onPress={onClose}
                     >
-                        <IconClose width={24} height={24} color={Color.textPrimary} />
+                        <IconClose width={24} height={24} color={textColor} />
                     </TouchableOpacity>
                 </View>
 
@@ -694,7 +718,7 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                             value={formData.name}
                             onChangeText={(value) => handleFieldChange('name', value)}
                             placeholder="Например: Склад Назрань"
-                            placeholderTextColor={Color.textSecondary}
+                            placeholderTextColor={secondaryTextColor}
                         />
                         {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
                     </View>
@@ -720,7 +744,7 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                                 activeOpacity={0.7}
                                 disabled={isSubmitting}
                             >
-                                <Ionicons name="image-outline" size={24} color={Color.blue2} />
+                                <Ionicons name="image-outline" size={24} color={primaryColor} />
                                 <Text style={styles.imagePickerText}>Выбрать изображение</Text>
                             </TouchableOpacity>
                         )}
@@ -734,7 +758,7 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                             value={formData.city}
                             onChangeText={(value) => handleFieldChange('city', value)}
                             placeholder="с. Экажево"
-                            placeholderTextColor={Color.textSecondary}
+                            placeholderTextColor={secondaryTextColor}
                         />
                         {errors.city && <Text style={styles.errorText}>{errors.city}</Text>}
                         <Text style={styles.hintText}>✅ Используйте формат с сокращением: "с. Экажево", "с. Плиево", "г. Назрань", "г. Карабулак"</Text>
@@ -748,7 +772,7 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                             value={formData.address}
                             onChangeText={(value) => handleFieldChange('address', value)}
                             placeholder="Например: улица Ингушская, 10"
-                            placeholderTextColor={Color.textSecondary}
+                            placeholderTextColor={secondaryTextColor}
                         />
                         {errors.address && <Text style={styles.errorText}>{errors.address}</Text>}
                     </View>
@@ -758,7 +782,7 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                         <Text style={styles.label}>Район *</Text>
                         {isLoadingDistricts ? (
                             <View style={styles.pickerContainer}>
-                                <ActivityIndicator size="small" color={Color.blue2} />
+                                <ActivityIndicator size="small" color={primaryColor} />
                                 <Text style={styles.loadingText}>Загрузка районов...</Text>
                             </View>
                         ) : (
@@ -773,7 +797,7 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                                 ]}>
                                     {selectedDistrictName}
                                 </Text>
-                                <Ionicons name="chevron-down" size={20} color={Color.textSecondary} />
+                                <Ionicons name="chevron-down" size={20} color={secondaryTextColor} />
                             </TouchableOpacity>
                         )}
                         {errors.districtId && <Text style={styles.errorText}>{errors.districtId}</Text>}
@@ -821,7 +845,7 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                                     value={formData.latitude}
                                     onChangeText={(value) => handleFieldChange('latitude', value)}
                                     placeholder="0.000000"
-                                    placeholderTextColor={Color.textSecondary}
+                                    placeholderTextColor={secondaryTextColor}
                                     keyboardType="decimal-pad"
                                 />
                                 {errors.latitude && <Text style={styles.errorText}>{errors.latitude}</Text>}
@@ -833,7 +857,7 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                                     value={formData.longitude}
                                     onChangeText={(value) => handleFieldChange('longitude', value)}
                                     placeholder="0.000000"
-                                    placeholderTextColor={Color.textSecondary}
+                                    placeholderTextColor={secondaryTextColor}
                                     keyboardType="decimal-pad"
                                 />
                                 {errors.longitude && <Text style={styles.errorText}>{errors.longitude}</Text>}
@@ -849,7 +873,7 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                             value={formData.maxDeliveryRadius}
                             onChangeText={(value) => handleFieldChange('maxDeliveryRadius', value)}
                             placeholder="30"
-                            placeholderTextColor={Color.textSecondary}
+                            placeholderTextColor={secondaryTextColor}
                             keyboardType="numeric"
                         />
                         {errors.maxDeliveryRadius && <Text style={styles.errorText}>{errors.maxDeliveryRadius}</Text>}
@@ -934,7 +958,7 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                                     value={formData.maintenanceReason}
                                     onChangeText={(value) => handleFieldChange('maintenanceReason', value)}
                                     placeholder="Например: обновление оборудования, инвентаризация"
-                                    placeholderTextColor={Color.textSecondary}
+                                    placeholderTextColor={secondaryTextColor}
                                     multiline
                                 />
                             </View>
@@ -1070,7 +1094,7 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                                                             handleFieldChange('workingHours', updated);
                                                         }}
                                                         placeholder="09:00"
-                                                        placeholderTextColor={Color.textSecondary}
+                                                        placeholderTextColor={secondaryTextColor}
                                                         keyboardType="default"
                                                     />
                                                 </View>
@@ -1085,7 +1109,7 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                                                             handleFieldChange('workingHours', updated);
                                                         }}
                                                         placeholder="18:00"
-                                                        placeholderTextColor={Color.textSecondary}
+                                                        placeholderTextColor={secondaryTextColor}
                                                         keyboardType="default"
                                                     />
                                                 </View>
@@ -1179,25 +1203,25 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
                                 style={districtPickerStyles.closeButton}
                                 onPress={() => setDistrictPickerVisible(false)}
                             >
-                                <IconClose width={24} height={24} color={Color.textPrimary} />
+                                <IconClose width={24} height={24} color={textColor} />
                             </TouchableOpacity>
                         </View>
 
                         <View style={districtPickerStyles.searchContainer}>
-                            <Ionicons name="search" size={20} color={Color.textSecondary} style={districtPickerStyles.searchIcon} />
+                            <Ionicons name="search" size={20} color={secondaryTextColor} style={districtPickerStyles.searchIcon} />
                             <TextInput
                                 style={districtPickerStyles.searchInput}
                                 placeholder="Поиск района..."
                                 value={districtSearchText}
                                 onChangeText={setDistrictSearchText}
-                                placeholderTextColor={Color.textSecondary}
+                                placeholderTextColor={secondaryTextColor}
                             />
                             {districtSearchText.length > 0 && (
                                 <TouchableOpacity
                                     style={districtPickerStyles.clearSearchButton}
                                     onPress={() => setDistrictSearchText('')}
                                 >
-                                    <Ionicons name="close-circle" size={20} color={Color.textSecondary} />
+                                    <Ionicons name="close-circle" size={20} color={secondaryTextColor} />
                                 </TouchableOpacity>
                             )}
                         </View>
@@ -1239,10 +1263,10 @@ export const AddWarehouseModal = ({ visible, onClose, onSubmit, warehouse, isSub
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.background : Color.colorLightMode,
     },
     header: {
         flexDirection: 'row',
@@ -1251,8 +1275,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(16),
         borderBottomWidth: 1,
-        borderBottomColor: Color.border,
-        backgroundColor: Color.colorLightMode,
+        borderBottomColor: isDark ? colors.divider : Color.border,
+        backgroundColor: isDark ? colors.background : Color.colorLightMode,
     },
     headerContent: {
         flex: 1,
@@ -1261,7 +1285,7 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_lg),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: isDark ? (colors.textPrimary || colors.text || Color.colorLightMode) : Color.textPrimary,
     },
     closeButton: {
         padding: normalize(20),
@@ -1291,28 +1315,28 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: isDark ? (colors.textPrimary || colors.text || Color.colorLightMode) : Color.textPrimary,
         marginBottom: normalize(6),
     },
     input: {
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: isDark ? colors.divider : Color.border,
         borderRadius: Border.radius.small,
         paddingHorizontal: normalize(12),
         paddingVertical: normalize(10),
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textPrimary,
-        backgroundColor: Color.colorLightMode,
+        color: isDark ? (colors.textPrimary || colors.text || Color.colorLightMode) : Color.textPrimary,
+        backgroundColor: isDark ? colors.cardBackground : Color.colorLightMode,
     },
     inputError: {
         borderColor: Color.red,
     },
     pickerContainer: {
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: isDark ? colors.divider : Color.border,
         borderRadius: Border.radius.small,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.cardBackground : Color.colorLightMode,
         overflow: 'hidden',
         minHeight: normalize(44),
         justifyContent: 'center',
@@ -1324,9 +1348,9 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: isDark ? colors.divider : Color.border,
         borderRadius: Border.radius.small,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.cardBackground : Color.colorLightMode,
         paddingHorizontal: normalize(12),
         paddingVertical: normalize(12),
         minHeight: normalize(44),
@@ -1334,15 +1358,15 @@ const styles = StyleSheet.create({
     districtPickerText: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textPrimary,
+        color: isDark ? (colors.textPrimary || colors.text || Color.colorLightMode) : Color.textPrimary,
         flex: 1,
     },
     districtPickerTextSelected: {
-        color: Color.textPrimary,
+        color: isDark ? (colors.textPrimary || colors.text || Color.colorLightMode) : Color.textPrimary,
         fontWeight: '500',
     },
     districtPickerTextPlaceholder: {
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
     },
     statusContainer: {
         flexDirection: 'row',
@@ -1354,30 +1378,30 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(16),
         borderRadius: Border.radius.small,
         borderWidth: 1,
-        borderColor: Color.border,
-        backgroundColor: Color.colorLightMode,
+        borderColor: isDark ? colors.divider : Color.border,
+        backgroundColor: isDark ? colors.cardBackground : Color.colorLightMode,
         alignItems: 'center',
         justifyContent: 'center',
     },
     statusButtonActive: {
-        backgroundColor: Color.blue2,
-        borderColor: Color.blue2,
+        backgroundColor: isDark ? colors.primary : Color.blue2,
+        borderColor: isDark ? colors.primary : Color.blue2,
     },
     statusButtonInactive: {
-        backgroundColor: Color.colorLightGray || '#f5f5f5',
-        borderColor: Color.border,
+        backgroundColor: isDark ? colors.backgroundSecondary : (Color.colorLightGray || '#f5f5f5'),
+        borderColor: isDark ? colors.divider : Color.border,
     },
     statusButtonText: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textPrimary,
+        color: isDark ? (colors.textPrimary || colors.text || Color.colorLightMode) : Color.textPrimary,
         fontWeight: '500',
     },
     statusButtonTextActive: {
         color: Color.colorLightMode,
     },
     statusButtonTextInactive: {
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
     },
     statusButtonDisabled: {
         opacity: 0.6,
@@ -1385,7 +1409,7 @@ const styles = StyleSheet.create({
     loadingText: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         marginLeft: normalize(8),
     },
     errorText: {
@@ -1397,14 +1421,14 @@ const styles = StyleSheet.create({
     helperText: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: Color.blue2,
+        color: isDark ? colors.primary : Color.blue2,
         marginTop: normalize(4),
         fontWeight: '500',
     },
     hintText: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: Color.grey7D7D7D || Color.textSecondary,
+        color: isDark ? colors.textSecondary : (Color.grey7D7D7D || Color.textSecondary),
         marginTop: normalize(4),
         fontStyle: 'italic',
     },
@@ -1413,8 +1437,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(16),
         borderTopWidth: 1,
-        borderTopColor: Color.border,
-        backgroundColor: Color.colorLightMode,
+        borderTopColor: isDark ? colors.divider : Color.border,
+        backgroundColor: isDark ? colors.background : Color.colorLightMode,
         gap: normalize(12),
     },
     cancelButton: {
@@ -1422,24 +1446,24 @@ const styles = StyleSheet.create({
         paddingVertical: normalize(12),
         borderRadius: Border.radius.medium,
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: isDark ? colors.divider : Color.border,
         alignItems: 'center',
     },
     cancelButtonText: {
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: isDark ? (colors.textPrimary || colors.text || Color.colorLightMode) : Color.textPrimary,
     },
     saveButton: {
         flex: 1,
         paddingVertical: normalize(12),
         borderRadius: Border.radius.medium,
-        backgroundColor: Color.blue2,
+        backgroundColor: isDark ? colors.primary : Color.blue2,
         alignItems: 'center',
     },
     disabledButton: {
-        backgroundColor: Color.colorLightGray,
+        backgroundColor: isDark ? colors.divider : Color.colorLightGray,
     },
     saveButtonText: {
         fontSize: normalizeFont(FontSize.size_md),
@@ -1460,7 +1484,7 @@ const styles = StyleSheet.create({
     coordinateActionButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: Color.blue2,
+        backgroundColor: isDark ? colors.primary : Color.blue2,
         paddingHorizontal: normalize(10),
         paddingVertical: normalize(6),
         borderRadius: Border.radius.small,
@@ -1483,13 +1507,13 @@ const styles = StyleSheet.create({
         width: '100%',
         height: normalize(200),
         borderRadius: Border.radius.small,
-        backgroundColor: Color.colorLightGray || '#f5f5f5',
+        backgroundColor: isDark ? colors.backgroundSecondary : (Color.colorLightGray || '#f5f5f5'),
     },
     removeImageButton: {
         position: 'absolute',
         top: normalize(8),
         right: normalize(8),
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.background : Color.colorLightMode,
         borderRadius: 20,
         padding: normalize(4),
     },
@@ -1498,7 +1522,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: isDark ? colors.divider : Color.border,
         borderStyle: 'dashed',
         borderRadius: Border.radius.small,
         paddingVertical: normalize(16),
@@ -1509,7 +1533,7 @@ const styles = StyleSheet.create({
     imagePickerText: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.blue2,
+        color: isDark ? colors.primary : Color.blue2,
         fontWeight: '500',
     },
     switchContainer: {
@@ -1522,18 +1546,18 @@ const styles = StyleSheet.create({
         width: normalize(50),
         height: normalize(30),
         borderRadius: normalize(15),
-        backgroundColor: Color.border || '#ccc',
+        backgroundColor: isDark ? colors.divider : (Color.border || '#ccc'),
         justifyContent: 'center',
         paddingHorizontal: normalize(2),
     },
     switchActive: {
-        backgroundColor: Color.blue2,
+        backgroundColor: isDark ? colors.primary : Color.blue2,
     },
     switchThumb: {
         width: normalize(26),
         height: normalize(26),
         borderRadius: normalize(13),
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.background : Color.colorLightMode,
         alignSelf: 'flex-start',
     },
     switchThumbActive: {
@@ -1543,9 +1567,9 @@ const styles = StyleSheet.create({
         marginBottom: normalize(12),
         padding: normalize(12),
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: isDark ? colors.divider : Color.border,
         borderRadius: Border.radius.small,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.cardBackground : Color.colorLightMode,
     },
     workingHoursDayHeader: {
         marginBottom: normalize(8),
@@ -1560,19 +1584,19 @@ const styles = StyleSheet.create({
         height: normalize(24),
         borderRadius: normalize(4),
         borderWidth: 2,
-        borderColor: Color.border,
-        backgroundColor: Color.colorLightMode,
+        borderColor: isDark ? colors.divider : Color.border,
+        backgroundColor: isDark ? colors.background : Color.colorLightMode,
         justifyContent: 'center',
         alignItems: 'center',
     },
     checkboxChecked: {
-        backgroundColor: Color.blue2,
-        borderColor: Color.blue2,
+        backgroundColor: isDark ? colors.primary : Color.blue2,
+        borderColor: isDark ? colors.primary : Color.blue2,
     },
     workingHoursDayName: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textPrimary,
+        color: isDark ? (colors.textPrimary || colors.text || Color.colorLightMode) : Color.textPrimary,
         fontWeight: '500',
     },
     workingHoursTimeContainer: {
@@ -1583,23 +1607,23 @@ const styles = StyleSheet.create({
     workingHoursTimeLabel: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         marginBottom: normalize(4),
     },
     workingHoursTimeInput: {
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: isDark ? colors.divider : Color.border,
         borderRadius: Border.radius.small,
         paddingHorizontal: normalize(12),
         paddingVertical: normalize(8),
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textPrimary,
-        backgroundColor: Color.colorLightMode,
+        color: isDark ? (colors.textPrimary || colors.text || Color.colorLightMode) : Color.textPrimary,
+        backgroundColor: isDark ? colors.background : Color.colorLightMode,
     },
 });
 
-const mapStyles = StyleSheet.create({
+const createMapStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
         position: 'relative',
@@ -1616,12 +1640,12 @@ const mapStyles = StyleSheet.create({
     },
     confirmButton: {
         flexDirection: 'row',
-        backgroundColor: Color.success || Color.green || '#28A745',
+        backgroundColor: isDark ? (colors.success || Color.green || '#28A745') : (Color.success || Color.green || '#28A745'),
         padding: normalize(15),
         borderRadius: Border.radius.medium,
         alignItems: 'center',
         justifyContent: 'center',
-        ...Shadow.light,
+        ...(isDark ? {} : Shadow.light),
     },
     buttonText: {
         color: Color.colorLightMode,
@@ -1631,7 +1655,7 @@ const mapStyles = StyleSheet.create({
     },
 });
 
-const districtPickerStyles = StyleSheet.create({
+const createDistrictPickerStyles = (colors, isDark) => StyleSheet.create({
     modalBackdrop: {
         flex: 1,
         backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -1641,7 +1665,7 @@ const districtPickerStyles = StyleSheet.create({
         flex: 1,
     },
     modalContent: {
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.cardBackground : Color.colorLightMode,
         borderTopLeftRadius: Border.radius.large,
         borderTopRightRadius: Border.radius.large,
         maxHeight: '80%',
@@ -1654,13 +1678,13 @@ const districtPickerStyles = StyleSheet.create({
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(16),
         borderBottomWidth: 1,
-        borderBottomColor: Color.border,
+        borderBottomColor: isDark ? colors.divider : Color.border,
     },
     modalTitle: {
         fontSize: normalizeFont(FontSize.size_lg),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: isDark ? (colors.textPrimary || colors.text || Color.colorLightMode) : Color.textPrimary,
         flex: 1,
     },
     closeButton: {
@@ -1673,9 +1697,9 @@ const districtPickerStyles = StyleSheet.create({
         marginTop: normalize(16),
         marginBottom: normalize(12),
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: isDark ? colors.divider : Color.border,
         borderRadius: Border.radius.small,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.background : Color.colorLightMode,
         paddingHorizontal: normalize(12),
     },
     searchIcon: {
@@ -1685,7 +1709,7 @@ const districtPickerStyles = StyleSheet.create({
         flex: 1,
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textPrimary,
+        color: isDark ? (colors.textPrimary || colors.text || Color.colorLightMode) : Color.textPrimary,
         paddingVertical: normalize(10),
     },
     clearSearchButton: {
@@ -1699,15 +1723,15 @@ const districtPickerStyles = StyleSheet.create({
         paddingVertical: normalize(16),
         paddingHorizontal: normalize(20),
         borderBottomWidth: 1,
-        borderBottomColor: Color.border,
+        borderBottomColor: isDark ? colors.divider : Color.border,
     },
     selectedDistrictItem: {
-        backgroundColor: Color.blue2,
+        backgroundColor: isDark ? colors.primary : Color.blue2,
     },
     districtItemText: {
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProText,
-        color: Color.textPrimary,
+        color: isDark ? (colors.textPrimary || colors.text || Color.colorLightMode) : Color.textPrimary,
         flex: 1,
     },
     selectedDistrictItemText: {
@@ -1721,7 +1745,7 @@ const districtPickerStyles = StyleSheet.create({
     emptyText: {
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         textAlign: 'center',
     },
 });

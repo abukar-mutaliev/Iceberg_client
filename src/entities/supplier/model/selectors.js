@@ -109,6 +109,64 @@ export const selectSupplierTotalFeedbacks = createSelector(
     (ratingData) => ratingData?.totalFeedbacks || 0
 );
 
+/**
+ * Рассчитывает рейтинг поставщика напрямую из отзывов, которые уже лежат в
+ * state.feedback.items. Это держит рейтинг в хедере поставщика всегда
+ * синхронизированным с отзывами, которые видит пользователь на экране
+ * (а также со свежими отзывами после create/update/delete), в отличие от
+ * кэшированного рейтинга из state.suppliers.ratings.
+ */
+export const selectSupplierRatingFromFeedbacks = createSelector(
+    [
+        (state) => state.feedback?.items || EMPTY_OBJECT,
+        (state) => state.suppliers?.supplierProducts || EMPTY_OBJECT,
+        (_, supplierId) => supplierId,
+    ],
+    (feedbackItems, supplierProducts, supplierId) => {
+        if (!supplierId) {
+            return { rating: 0, formattedRating: '0.0', totalFeedbacks: 0, hasData: false };
+        }
+
+        const numericId = Number(supplierId);
+        const products = supplierProducts[numericId];
+
+        if (!Array.isArray(products) || products.length === 0) {
+            return { rating: 0, formattedRating: '0.0', totalFeedbacks: 0, hasData: false };
+        }
+
+        let total = 0;
+        let count = 0;
+
+        for (const product of products) {
+            if (!product?.id) continue;
+            const list = feedbackItems[product.id];
+            if (!Array.isArray(list) || list.length === 0) continue;
+
+            for (const fb of list) {
+                const r = typeof fb?.rating === 'number' ? fb.rating : Number(fb?.rating);
+                if (!Number.isFinite(r) || r <= 0) continue;
+                total += r;
+                count += 1;
+            }
+        }
+
+        if (count === 0) {
+            return { rating: 0, formattedRating: '0.0', totalFeedbacks: 0, hasData: false };
+        }
+
+        const avg = total / count;
+        const rounded = Math.round(avg * 10) / 10;
+
+        return {
+            rating: rounded,
+            formattedRating: rounded.toFixed(1),
+            isPositive: rounded >= 4.0,
+            totalFeedbacks: count,
+            hasData: true,
+        };
+    }
+);
+
 // Селектор для получения текущего поставщика
 export const selectCurrentSupplier = createSelector(
     [selectSupplierDetails, selectCurrentSupplierId],

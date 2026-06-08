@@ -2,6 +2,7 @@ import React, { useMemo, useCallback, useRef } from 'react';
 import { View, StyleSheet, Image, Text, Pressable } from 'react-native';
 import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
 import { ProductActions } from '@widgets/product/ProductActions';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const defaultProductImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
 
@@ -11,6 +12,8 @@ export const ProductManagementCard = ({ product, onViewProduct, onProductUpdated
     }
 
     const isNavigatingRef = useRef(false);
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     const imageSource = useMemo(() => {
         return product.images && product.images.length > 0
@@ -45,23 +48,23 @@ export const ProductManagementCard = ({ product, onViewProduct, onProductUpdated
         if (status === 'PENDING') {
             return {
                 label: 'На модерации',
-                backgroundColor: '#FFF4E5',
-                color: '#B26A00'
+                backgroundColor: isDark ? 'rgba(255, 210, 74, 0.15)' : '#FFF4E5',
+                color: isDark ? '#FFD24A' : '#B26A00'
             };
         }
         if (status === 'REJECTED') {
             return {
                 label: 'Отклонен',
-                backgroundColor: '#FFECEC',
-                color: '#C62828'
+                backgroundColor: isDark ? 'rgba(255, 99, 99, 0.15)' : '#FFECEC',
+                color: isDark ? '#FF7B7B' : '#C62828'
             };
         }
         return {
             label: 'Опубликован',
-            backgroundColor: '#EAF9EF',
-            color: '#1E8E3E'
+            backgroundColor: isDark ? 'rgba(76, 217, 100, 0.15)' : '#EAF9EF',
+            color: isDark ? '#4CD964' : '#1E8E3E'
         };
-    }, [product.moderationStatus]);
+    }, [product.moderationStatus, isDark]);
 
     const handlePress = useCallback(() => {
         if (isNavigatingRef.current) {
@@ -85,7 +88,7 @@ export const ProductManagementCard = ({ product, onViewProduct, onProductUpdated
             style={styles.container}
             onPress={handlePress}
             disabled={false}
-            android_ripple={{ color: 'rgba(0,0,0,0.1)' }}
+            android_ripple={{ color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)' }}
         >
             <Image
                 source={imageSource}
@@ -148,19 +151,19 @@ export const ProductManagementCard = ({ product, onViewProduct, onProductUpdated
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         height: 152,
-        borderWidth: 0.5,
-        borderColor: Color.purpleSoft,
+        borderWidth: isDark ? StyleSheet.hairlineWidth : 0.5,
+        borderColor: isDark ? colors.border : Color.purpleSoft,
         borderStyle: 'solid',
         borderRadius: Border.br_xl,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.surface : Color.colorLightMode,
         overflow: 'hidden',
         position: 'relative',
         marginBottom: 20,
         marginHorizontal: 5,
-        ...Shadow.light,
+        ...(isDark ? {} : Shadow.light),
     },
     productImage: {
         width: 120,
@@ -171,6 +174,7 @@ const styles = StyleSheet.create({
         position: 'absolute',
         borderTopLeftRadius: Border.br_xl,
         borderBottomLeftRadius: Border.br_xl,
+        backgroundColor: isDark ? colors.surfaceElevated : 'transparent',
     },
     contentContainer: {
         marginLeft: 128,
@@ -187,7 +191,7 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProDisplay,
         fontSize: FontSize.size_sm,
         fontWeight: '600',
-        color: Color.purpleSoft,
+        color: colors.textPrimary,
         textAlign: 'left',
     },
     descriptionContainer: {
@@ -211,7 +215,7 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontSize: FontSize.size_xs,
         fontWeight: '600',
-        color: Color.purpleSoft,
+        color: isDark ? colors.primary : Color.purpleSoft,
         textAlign: 'left',
         marginBottom: 2,
     },
@@ -219,14 +223,14 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontSize: FontSize.size_xs,
         fontWeight: '500',
-        color: Color.purpleSoft,
+        color: isDark ? colors.primary : Color.purpleSoft,
         textAlign: 'left',
         marginBottom: 2,
     },
     stockInfo: {
         fontFamily: FontFamily.sFProText,
         fontSize: FontSize.size_xs,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         textAlign: 'left',
         marginBottom: 2,
     },
@@ -234,14 +238,14 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontSize: FontSize.size_xs,
         fontWeight: '400',
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         textAlign: 'left',
         marginBottom: 2,
     },
     supplier: {
         fontFamily: FontFamily.sFProText,
         fontSize: FontSize.size_xs,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginTop: 4,
         fontStyle: 'italic',
         width: '100%',

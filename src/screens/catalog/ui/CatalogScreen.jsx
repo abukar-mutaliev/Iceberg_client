@@ -1,12 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     View,
     Text,
     StyleSheet,
     ActivityIndicator,
     FlatList,
-    Pressable,
-    BackHandler
+    BackHandler,
+    StatusBar
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
@@ -15,28 +15,40 @@ import {fetchProducts, resetCurrentProduct} from '@entities/product/model/slice'
 import {
     selectProducts,
     selectProductsLoading,
-    selectProductsError
+    selectProductsError,
+    selectProductsLoadingMore,
+    selectProductsHasMore,
+    selectProductsCurrentPage
 } from '@entities/product/model/selectors';
-import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { ProductCard } from "@entities/product";
-import BackIcon from '@shared/ui/Icon/BackArrowIcon/BackArrowIcon';
 import {BackButton} from "@shared/ui/Button/BackButton";
 import { navigateToProductDetail } from '@shared/utils/NavigationUtils';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 // Заменяем изображение на простой серый блок
 const defaultProductImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
+const PRODUCTS_PER_PAGE = 20;
 
 export const CatalogScreen = ({ navigation }) => {
     const dispatch = useDispatch();
     const route = useRoute();
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
     const products = useSelector(selectProducts);
     const isLoading = useSelector(selectProductsLoading);
+    const isLoadingMore = useSelector(selectProductsLoadingMore);
+    const hasMoreProducts = useSelector(selectProductsHasMore);
+    const currentPage = useSelector(selectProductsCurrentPage);
     const error = useSelector(selectProductsError);
     const [selectedCategory, setSelectedCategory] = useState(null);
-    const [filteredProducts, setFilteredProducts] = useState([]);
 
     useEffect(() => {
-        dispatch(fetchProducts());
+        dispatch(fetchProducts({
+            page: 1,
+            limit: PRODUCTS_PER_PAGE,
+            refresh: true
+        }));
     }, [dispatch]);
 
     const fromScreen = route?.params?.fromScreen;
@@ -78,21 +90,52 @@ export const CatalogScreen = ({ navigation }) => {
         }, [handleBackPress])
     );
 
-    useEffect(() => {
-        if (products && products.length > 0) {
-            if (selectedCategory) {
-                const filtered = products.filter(product =>
-                    product.categoryId === selectedCategory.id);
-                setFilteredProducts(filtered);
-            } else {
-                setFilteredProducts(products);
-            }
+    const filteredProducts = useMemo(() => {
+        if (!Array.isArray(products) || products.length === 0) {
+            return [];
         }
+
+        if (!selectedCategory) {
+            return products;
+        }
+
+        return products.filter(product => product.categoryId === selectedCategory.id);
     }, [products, selectedCategory]);
 
     const handleCategorySelect = (category) => {
         setSelectedCategory(category);
     };
+
+    const handleRefresh = useCallback(() => {
+        dispatch(fetchProducts({
+            page: 1,
+            limit: PRODUCTS_PER_PAGE,
+            refresh: true
+        }));
+    }, [dispatch]);
+
+    const handleLoadMore = useCallback(() => {
+        if (!hasMoreProducts || isLoading || isLoadingMore) {
+            return;
+        }
+
+        dispatch(fetchProducts({
+            page: currentPage + 1,
+            limit: PRODUCTS_PER_PAGE
+        }));
+    }, [dispatch, currentPage, hasMoreProducts, isLoading, isLoadingMore]);
+
+    const renderListFooter = useCallback(() => {
+        if (!isLoadingMore) {
+            return null;
+        }
+
+        return (
+            <View style={styles.footerLoader}>
+                <ActivityIndicator size="small" color={colors.primary} />
+            </View>
+        );
+    }, [colors.primary, isLoadingMore, styles.footerLoader]);
 
     const adaptProduct = (product) => ({
         id: product.id,
@@ -138,22 +181,25 @@ export const CatalogScreen = ({ navigation }) => {
 
     if (isLoading && (!products || products.length === 0)) {
         return (
-            <View style={styles.loaderContainer}>
-                <ActivityIndicator size="large" color={Color.purpleSoft} />
-            </View>
+            <SafeAreaView style={styles.loaderContainer} edges={['left', 'right', 'bottom']}>
+                <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
+                <ActivityIndicator size="large" color={colors.primary} />
+            </SafeAreaView>
         );
     }
 
     if (error) {
         return (
-            <View style={styles.errorContainer}>
+            <SafeAreaView style={styles.errorContainer} edges={['left', 'right', 'bottom']}>
+                <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
                 <Text style={styles.errorText}>Ошибка загрузки продуктов: {error}</Text>
-            </View>
+            </SafeAreaView>
         );
     }
 
     return (
         <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+            <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
             <View style={styles.header}>
                 <BackButton onPress={handleBackPress} />
                 <Text style={styles.title}>Каталог</Text>
@@ -170,8 +216,11 @@ export const CatalogScreen = ({ navigation }) => {
                     keyExtractor={(item) => item.id.toString()}
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={styles.listContainer}
-                    onRefresh={() => dispatch(fetchProducts())}
+                    onRefresh={handleRefresh}
                     refreshing={isLoading}
+                    onEndReached={handleLoadMore}
+                    onEndReachedThreshold={0.5}
+                    ListFooterComponent={renderListFooter}
                     fromScreen="Catalog"
                 />
             )}
@@ -179,10 +228,10 @@ export const CatalogScreen = ({ navigation }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.background,
     },
     header: {
         flexDirection: 'row',
@@ -202,7 +251,7 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontSize: FontSize.size_xs,
         fontWeight: '600',
-        color: Color.purpleSoft,
+        color: colors.primary,
     },
     searchContainer: {
         paddingHorizontal: 16,
@@ -211,19 +260,25 @@ const styles = StyleSheet.create({
     listContainer: {
         paddingBottom: 20,
     },
+    footerLoader: {
+        paddingVertical: 16,
+        alignItems: 'center',
+    },
     loaderContainer: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
+        backgroundColor: colors.background,
     },
     errorContainer: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
         paddingHorizontal: 20,
+        backgroundColor: colors.background,
     },
     errorText: {
-        color: 'red',
+        color: colors.error,
         fontSize: FontSize.size_sm,
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
@@ -236,6 +291,6 @@ const styles = StyleSheet.create({
     emptyText: {
         fontSize: FontSize.size_sm,
         fontFamily: FontFamily.sFProText,
-        color: Color.colorSilver_100,
+        color: colors.textSecondary,
     }
 });

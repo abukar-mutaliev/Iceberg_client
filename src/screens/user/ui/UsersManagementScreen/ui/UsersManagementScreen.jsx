@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import {  StyleSheet } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { StyleSheet, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Color } from '@app/styles/GlobalStyles';
 import IconUser from '@shared/ui/Icon/Profile/IconPersona';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 import { useAuth } from "@entities/auth/hooks/useAuth";
 import { useAdmin } from "@entities/admin";
@@ -19,8 +19,11 @@ import { UserStats } from "@widgets/userManagement/UserStats";
 import { AddUserButton } from "@widgets/userActions";
 import { useCustomAlert } from "@shared/ui/CustomAlert/CustomAlertProvider";
 
+// Управление пользователями
 export const UsersManagementScreen = () => {
     const navigation = useNavigation();
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
     const { currentUser, hasPermission } = useAuth();
     const { showAlert } = useCustomAlert();
     const {
@@ -289,9 +292,10 @@ export const UsersManagementScreen = () => {
 
     return (
         <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+            <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
             <AdminHeader
                 title="Управление пользователями"
-                icon={<IconUser width={24} height={24} color={Color.blue2} />}
+                icon={<IconUser width={24} height={24} color={colors.primary} />}
                 onBackPress={() => navigation.goBack()}
             />
 
@@ -359,10 +363,10 @@ export const UsersManagementScreen = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.background,
     },
 });
 

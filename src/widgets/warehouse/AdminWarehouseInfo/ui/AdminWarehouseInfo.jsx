@@ -1,9 +1,10 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
 import { ProductWarehouseInfo } from '@entities/product/ui/ProductWarehouseInfo/ui/ProductWarehouseInfo';
 import { WarehousePriceEditor } from '@widgets/warehouse/WarehousePriceEditor/ui/WarehousePriceEditor';
 import { normalize } from '@shared/lib/normalize';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const getBoxesText = (count) => {
     if (count % 10 === 1 && count % 100 !== 11) {
@@ -82,6 +83,8 @@ export const AdminWarehouseInfo = ({
     canManagePrices,
     onPriceUpdated
 }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     // Обогащаем данные складов информацией о ценах для редактирования
     const enrichedWarehouses = warehousesWithStock?.map(warehouse => {
         const normalized = normalizeWarehouse(warehouse);
@@ -150,7 +153,7 @@ export const AdminWarehouseInfo = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         marginVertical: normalize(16),
     },
@@ -163,27 +166,27 @@ const styles = StyleSheet.create({
         fontSize: FontSize.size_lg,
         fontFamily: FontFamily.bold,
         fontWeight: '700',
-        color: Color.textPrimary,
+        color: isDark ? colors.textPrimary : Color.textPrimary,
         marginBottom: normalize(12),
     },
     priceEditorsHint: {
         fontSize: FontSize.size_sm,
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
     },
     priceEditorCard: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
         borderRadius: Border.br_base,
         padding: normalize(16),
         marginBottom: normalize(12),
         borderWidth: 1,
-        borderColor: '#E0E0E0',
+        borderColor: isDark ? colors.border : '#E0E0E0',
     },
     warehouseName: {
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.bold,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: isDark ? colors.textPrimary : Color.textPrimary,
         marginBottom: normalize(8),
     }
 });

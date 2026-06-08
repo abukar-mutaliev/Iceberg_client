@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, TouchableOpacity, Image, StyleSheet } from 'react-native';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { getImageUrl } from '@shared/api/api';
 
 /**
@@ -10,6 +11,9 @@ import { getImageUrl } from '@shared/api/api';
  * @param {Function} props.onPhotoPress - Обработчик нажатия на фото
  */
 export const FeedbackCardPhotos = ({ photoUrls = [], onPhotoPress }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     // Нормализуем URL фотографий (заменяем старый IP на текущий базовый URL)
     const normalizedPhotoUrls = useMemo(() => {
         if (!photoUrls || !Array.isArray(photoUrls)) return [];
@@ -41,7 +45,7 @@ export const FeedbackCardPhotos = ({ photoUrls = [], onPhotoPress }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     photosContainer: {
         width: '100%',
         marginTop: 8,
@@ -58,7 +62,7 @@ const styles = StyleSheet.create({
         height: 37,
         borderRadius: 8,
         overflow: 'hidden',
-        backgroundColor: '#F0F0F0',
+        backgroundColor: isDark ? colors.surfaceElevated || '#2A2F55' : '#F0F0F0',
     },
     photoImage: {
         width: '100%',

@@ -19,13 +19,15 @@ export const useComposerMedia = ({
     if (disabled) return;
     
     try {
-      const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
-      
-      if (currentStatus !== 'granted') {
-        const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        
-        if (permissionResult.status !== 'granted') {
-          return;
+      if (Platform.OS !== 'android') {
+        const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
+
+        if (currentStatus !== 'granted') {
+          const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+          if (permissionResult.status !== 'granted') {
+            return;
+          }
         }
       }
 

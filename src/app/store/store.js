@@ -1,5 +1,5 @@
 import { configureStore, combineReducers } from '@reduxjs/toolkit';
-import { persistStore, persistReducer } from 'redux-persist';
+import { persistStore, persistReducer, createTransform } from 'redux-persist';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authReducer } from '@entities/auth';
 import { productsReducer } from '@entities/product';
@@ -13,7 +13,7 @@ import { userReducer } from "@entities/user";
 import { suppliersReducer } from "@entities/supplier";
 import { searchHistoryReducer } from "@entities/search";
 import { filterReducer } from "@entities/filter";
-import { setDispatch } from '@shared/api/api';
+import { setDispatch, setGetState } from '@shared/api/api';
 import { driverReducer } from "@entities/driver";
 import { stopReducer } from "@entities/stop";
 import { districtReducer } from "@entities/district";
@@ -25,11 +25,31 @@ import { cartReloadMiddleware } from '@entities/cart/model/middleware';
 import { deliveryReducer } from '@entities/delivery';
 import { warehouseReducer } from '@entities/warehouse';
 import { orderReducer } from '@entities/order';
-import { orderProcessingReducer} from '@entities/order';
 import { rewardReducer } from '@entities/reward';
 import { chatReducer } from '@entities/chat';
 import { productReturnReducer } from '@entities/product-return';
 import { stockAlertReducer } from '@entities/stockAlert';
+
+// Не сохраняем товары по категориям — большой объект ломает rehydrate и serializableCheck
+const stripCategoryProductsState = (state) => {
+    if (!state) {
+        return state;
+    }
+    return {
+        ...state,
+        productsByCategory: {},
+        productsPaginationByCategory: {},
+        productsLoadingByCategory: {},
+        productsLoadingMoreByCategory: {},
+        productsErrorByCategory: {},
+    };
+};
+
+const categoryPersistTransform = createTransform(
+    stripCategoryProductsState,
+    stripCategoryProductsState,
+    { whitelist: ['category'] }
+);
 
 // Конфигурация для redux-persist
 // Расширенный whitelist: при возврате из фона или cold start закэшированные данные
@@ -38,7 +58,8 @@ const persistConfig = {
     key: 'root',
     storage: AsyncStorage,
     whitelist: ['auth', 'favorites', 'profile', 'category', 'banner'],
-    version: 3, // Increment: added profile, category, banner to persist
+    version: 4,
+    transforms: [categoryPersistTransform],
 };
 
 
@@ -69,7 +90,6 @@ const appReducer = combineReducers({
     warehouse: warehouseReducer,
     order: orderReducer,
     rewards: rewardReducer,
-    orderProcessing: orderProcessingReducer,
     chat: chatReducer,
     productReturn: productReturnReducer,
     stockAlert: stockAlertReducer,
@@ -143,8 +163,24 @@ export const store = configureStore({
     middleware: (getDefaultMiddleware) =>
         getDefaultMiddleware({
             serializableCheck: {
-                ignoredActions: ['persist/PERSIST', 'persist/REHYDRATE'],
+                ignoredActions: [
+                    'persist/PERSIST',
+                    'persist/REHYDRATE',
+                    'category/fetchProductsByCategory/pending',
+                    'category/fetchProductsByCategory/fulfilled',
+                    'category/fetchProductsByCategory/rejected',
+                    'category/setCategoryProductsResult',
+                ],
+                ignoredPaths: [
+                    'category.productsByCategory',
+                    'category.productsPaginationByCategory',
+                    'category.productsLoadingByCategory',
+                    'category.productsLoadingMoreByCategory',
+                    'category.productsErrorByCategory',
+                ],
+                warnAfter: 128,
             },
+            immutableCheck: { warnAfter: 128 },
         })
             .concat(localStorageMiddleware)
             .concat(notificationSettingsMiddleware)
@@ -156,3 +192,4 @@ export const store = configureStore({
 export const persistor = persistStore(store);
 
 setDispatch(store.dispatch);
+setGetState(() => store.getState);

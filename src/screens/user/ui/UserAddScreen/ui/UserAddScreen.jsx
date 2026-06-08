@@ -1,5 +1,5 @@
 // Improved UserAddScreen with all required fields from Prisma schema
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
 import {
     View,
     Text,
@@ -8,14 +8,16 @@ import {
     TextInput,
     TouchableOpacity,
     Alert,
-    Switch
+    Switch,
+    StatusBar
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
 import IconPersona from '@shared/ui/Icon/Profile/IconPersona';
 import CustomButton from '@shared/ui/Button/CustomButton';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 import { useAuth } from "@entities/auth/hooks/useAuth";
 import { useAdmin } from "@entities/admin";
@@ -25,8 +27,15 @@ import { WarehousePicker } from '@shared/ui/Pickers/WarehousePicker';
 import { MultiDistrictPicker } from '@shared/ui/Pickers/MultiDistrictPicker';
 import { useDistrict } from '@entities/district';
 
+// Добпаление пользователя
 export const UserAddScreen = () => {
     const navigation = useNavigation();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+    const inputThemeProps = useMemo(() => ({
+        placeholderTextColor: colors.textTertiary,
+        keyboardAppearance: colors.keyboardAppearance
+    }), [colors]);
     const { currentUser, hasPermission } = useAuth() || { currentUser: null, hasPermission: () => false };
 
     // Использование хука useDistrict с деструктуризацией нужных методов и данных
@@ -483,6 +492,7 @@ export const UserAddScreen = () => {
                             value={userData.name || ''}
                             onChangeText={(text) => handleInputChange('name', text)}
                             placeholder="Введите имя администратора"
+                            {...inputThemeProps}
                         />
                         {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
 
@@ -492,6 +502,7 @@ export const UserAddScreen = () => {
                             value={userData.phone || ''}
                             onChangeText={(text) => handleInputChange('phone', text)}
                             placeholder="Введите телефон (необязательно)"
+                            {...inputThemeProps}
                             keyboardType="phone-pad"
                         />
 
@@ -501,6 +512,7 @@ export const UserAddScreen = () => {
                             value={userData.address || ''}
                             onChangeText={(text) => handleInputChange('address', text)}
                             placeholder="Введите адрес (необязательно)"
+                            {...inputThemeProps}
                         />
 
                         <View style={styles.switchContainer}>
@@ -508,8 +520,8 @@ export const UserAddScreen = () => {
                             <Switch
                                 value={userData.isSuperAdmin || false}
                                 onValueChange={(value) => handleInputChange('isSuperAdmin', value)}
-                                trackColor={{ false: "#767577", true: Color.blue2 }}
-                                thumbColor={userData.isSuperAdmin ? "#fff" : "#f4f3f4"}
+                                trackColor={{ false: colors.surfaceSecondary, true: colors.primary }}
+                                thumbColor={userData.isSuperAdmin ? colors.textInverse : colors.textSecondary}
                             />
                         </View>
                     </>
@@ -523,6 +535,7 @@ export const UserAddScreen = () => {
                             value={userData.name || ''}
                             onChangeText={(text) => handleInputChange('name', text)}
                             placeholder="Введите имя клиента"
+                            {...inputThemeProps}
                         />
                         {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
 
@@ -532,6 +545,7 @@ export const UserAddScreen = () => {
                             value={userData.phone || ''}
                             onChangeText={(text) => handleInputChange('phone', text)}
                             placeholder="Введите телефон (необязательно)"
+                            {...inputThemeProps}
                             keyboardType="phone-pad"
                         />
 
@@ -541,6 +555,7 @@ export const UserAddScreen = () => {
                             value={userData.address || ''}
                             onChangeText={(text) => handleInputChange('address', text)}
                             placeholder="Введите адрес (необязательно)"
+                            {...inputThemeProps}
                         />
 
                         {/* Компонент выбора района для клиента */}
@@ -563,6 +578,7 @@ export const UserAddScreen = () => {
                             value={userData.phone || ''}
                             onChangeText={(text) => handleInputChange('phone', text)}
                             placeholder="Введите телефон (необязательно)"
+                            {...inputThemeProps}
                             keyboardType="phone-pad"
                         />
 
@@ -572,6 +588,7 @@ export const UserAddScreen = () => {
                             value={userData.address || ''}
                             onChangeText={(text) => handleInputChange('address', text)}
                             placeholder="Введите адрес (необязательно)"
+                            {...inputThemeProps}
                         />
 
                         {/* Компонент выбора склада для сотрудника */}
@@ -606,6 +623,7 @@ export const UserAddScreen = () => {
                             value={userData.companyName || ''}
                             onChangeText={(text) => handleInputChange('companyName', text)}
                             placeholder="Введите название компании"
+                            {...inputThemeProps}
                         />
                         {errors.companyName && <Text style={styles.errorText}>{errors.companyName}</Text>}
 
@@ -615,6 +633,7 @@ export const UserAddScreen = () => {
                             value={userData.contactPerson || ''}
                             onChangeText={(text) => handleInputChange('contactPerson', text)}
                             placeholder="Введите контактное лицо"
+                            {...inputThemeProps}
                         />
                         {errors.contactPerson && <Text style={styles.errorText}>{errors.contactPerson}</Text>}
 
@@ -624,6 +643,7 @@ export const UserAddScreen = () => {
                             value={userData.phone || ''}
                             onChangeText={(text) => handleInputChange('phone', text)}
                             placeholder="Введите телефон (необязательно)"
+                            {...inputThemeProps}
                             keyboardType="phone-pad"
                         />
 
@@ -633,6 +653,7 @@ export const UserAddScreen = () => {
                             value={userData.address || ''}
                             onChangeText={(text) => handleInputChange('address', text)}
                             placeholder="Введите адрес (необязательно)"
+                            {...inputThemeProps}
                         />
 
                         <Text style={styles.inputLabel}>ИНН:</Text>
@@ -641,6 +662,7 @@ export const UserAddScreen = () => {
                             value={userData.inn || ''}
                             onChangeText={(text) => handleInputChange('inn', text)}
                             placeholder="Введите ИНН (необязательно)"
+                            {...inputThemeProps}
                             keyboardType="numeric"
                         />
 
@@ -650,6 +672,7 @@ export const UserAddScreen = () => {
                             value={userData.ogrn || ''}
                             onChangeText={(text) => handleInputChange('ogrn', text)}
                             placeholder="Введите ОГРН (необязательно)"
+                            {...inputThemeProps}
                             keyboardType="numeric"
                         />
 
@@ -659,6 +682,7 @@ export const UserAddScreen = () => {
                             value={userData.bankAccount || ''}
                             onChangeText={(text) => handleInputChange('bankAccount', text)}
                             placeholder="Введите номер счета (необязательно)"
+                            {...inputThemeProps}
                             keyboardType="numeric"
                         />
 
@@ -668,6 +692,7 @@ export const UserAddScreen = () => {
                             value={userData.bik || ''}
                             onChangeText={(text) => handleInputChange('bik', text)}
                             placeholder="Введите БИК (необязательно)"
+                            {...inputThemeProps}
                             keyboardType="numeric"
                         />
                     </>
@@ -681,6 +706,7 @@ export const UserAddScreen = () => {
                             value={userData.name || ''}
                             onChangeText={(text) => handleInputChange('name', text)}
                             placeholder="Введите имя водителя"
+                            {...inputThemeProps}
                         />
                         {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
 
@@ -690,6 +716,7 @@ export const UserAddScreen = () => {
                             value={userData.phone || ''}
                             onChangeText={(text) => handleInputChange('phone', text)}
                             placeholder="Введите телефон (необязательно)"
+                            {...inputThemeProps}
                             keyboardType="phone-pad"
                         />
 
@@ -699,6 +726,7 @@ export const UserAddScreen = () => {
                             value={userData.address || ''}
                             onChangeText={(text) => handleInputChange('address', text)}
                             placeholder="Введите адрес (необязательно)"
+                            {...inputThemeProps}
                         />
 
                         {/* Компонент выбора района для водителя */}
@@ -747,9 +775,10 @@ export const UserAddScreen = () => {
 
     return (
         <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+            <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
             <AdminHeader
                 title="Добавление пользователя"
-                icon={<IconPersona width={24} height={24} color={Color.blue2} />}
+                icon={<IconPersona width={24} height={24} color={colors.primary} />}
                 onBackPress={() => navigation.goBack()}
             />
 
@@ -770,6 +799,7 @@ export const UserAddScreen = () => {
                         value={userData.email}
                         onChangeText={(text) => handleInputChange('email', text)}
                         placeholder="Введите email пользователя"
+                        {...inputThemeProps}
                         keyboardType="email-address"
                         autoCapitalize="none"
                     />
@@ -781,6 +811,7 @@ export const UserAddScreen = () => {
                         value={userData.password}
                         onChangeText={(text) => handleInputChange('password', text)}
                         placeholder="Введите пароль"
+                        {...inputThemeProps}
                         secureTextEntry
                     />
                     {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
@@ -791,6 +822,7 @@ export const UserAddScreen = () => {
                         value={userData.confirmPassword}
                         onChangeText={(text) => handleInputChange('confirmPassword', text)}
                         placeholder="Подтвердите пароль"
+                        {...inputThemeProps}
                         secureTextEntry
                     />
                     {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword}</Text>}
@@ -833,7 +865,7 @@ export const UserAddScreen = () => {
                     <CustomButton
                         title="Создать"
                         onPress={handleSubmit}
-                        color={Color.blue2}
+                        color={colors.primary}
                         loading={isLoading || districtsLoading}
                         disabled={isLoading || districtsLoading}
                     />
@@ -841,7 +873,7 @@ export const UserAddScreen = () => {
                         title="Отмена"
                         onPress={() => navigation.goBack()}
                         outlined={true}
-                        color={Color.grey7D7D7D}
+                        color={colors.textSecondary}
                         style={{ marginRight: normalize(8) }}
                     />
                 </View>
@@ -851,10 +883,10 @@ export const UserAddScreen = () => {
 };
 
 // Стили
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.background,
     },
     scrollView: {
         flex: 1,
@@ -864,58 +896,64 @@ const styles = StyleSheet.create({
         paddingVertical: normalize(16),
     },
     form: {
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.cardBackground,
         borderRadius: Border.radius.medium,
         padding: normalize(16),
-        ...Shadow.light,
+        borderWidth: isDark ? 1 : 0,
+        borderColor: colors.border,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: isDark ? 0.25 : Shadow.light.shadowOpacity,
+        shadowRadius: isDark ? 6 : Shadow.light.shadowRadius,
+        elevation: isDark ? 2 : Shadow.light.elevation,
     },
     serverErrorContainer: {
-        backgroundColor: '#FFEBEE',  // светло-красный фон
+        backgroundColor: colors.errorSubtle,
         borderRadius: Border.radius.small,
         padding: normalize(12),
         marginBottom: normalize(16),
         borderWidth: 1,
-        borderColor: '#FFCDD2',  // более темный оттенок красного для границы
+        borderColor: colors.errorBorder,
     },
     serverErrorText: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: '#D32F2F',  // темно-красный текст
+        color: colors.error,
         fontWeight: '500',
     },
     formLabel: {
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         marginBottom: normalize(16),
     },
     inputLabel: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         marginBottom: normalize(8),
     },
     input: {
-        backgroundColor: Color.backgroundLight,
+        backgroundColor: colors.inputBackground,
         borderRadius: Border.radius.small,
         paddingHorizontal: normalize(12),
         paddingVertical: normalize(10),
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         marginBottom: normalize(16),
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: colors.inputBorder,
     },
     inputError: {
-        borderColor: 'red',
+        borderColor: colors.error,
     },
     errorText: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: 'red',
+        color: colors.error,
         marginTop: normalize(-12),
         marginBottom: normalize(16),
     },
@@ -925,26 +963,26 @@ const styles = StyleSheet.create({
         marginBottom: normalize(16),
     },
     roleButton: {
-        backgroundColor: Color.backgroundLight,
+        backgroundColor: colors.surfaceSecondary,
         borderRadius: Border.radius.small,
         paddingHorizontal: normalize(12),
         paddingVertical: normalize(8),
         marginRight: normalize(8),
         marginBottom: normalize(8),
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: colors.border,
     },
     roleButtonSelected: {
-        backgroundColor: Color.blue2,
-        borderColor: Color.blue2,
+        backgroundColor: colors.primary,
+        borderColor: colors.primary,
     },
     roleButtonText: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textPrimary,
+        color: colors.textPrimary,
     },
     roleButtonTextSelected: {
-        color: Color.colorLightMode,
+        color: colors.textInverse,
         fontWeight: '500',
     },
     genderButtonsContainer: {
@@ -953,26 +991,26 @@ const styles = StyleSheet.create({
         marginBottom: normalize(16),
     },
     genderButton: {
-        backgroundColor: Color.backgroundLight,
+        backgroundColor: colors.surfaceSecondary,
         borderRadius: Border.radius.small,
         paddingHorizontal: normalize(12),
         paddingVertical: normalize(8),
         marginRight: normalize(8),
         marginBottom: normalize(8),
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: colors.border,
     },
     genderButtonSelected: {
-        backgroundColor: Color.blue2,
-        borderColor: Color.blue2,
+        backgroundColor: colors.primary,
+        borderColor: colors.primary,
     },
     genderButtonText: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textPrimary,
+        color: colors.textPrimary,
     },
     genderButtonTextSelected: {
-        color: Color.colorLightMode,
+        color: colors.textInverse,
         fontWeight: '500',
     },
     switchContainer: {
@@ -987,8 +1025,8 @@ const styles = StyleSheet.create({
         flexDirection: 'column',
         padding: normalize(16),
         borderTopWidth: 1,
-        borderTopColor: Color.border,
-        backgroundColor: Color.colorLightMode,
+        borderTopColor: colors.border,
+        backgroundColor: colors.surface,
         gap: normalize(16),
     }
 });

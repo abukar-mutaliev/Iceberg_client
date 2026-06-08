@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
@@ -15,6 +15,8 @@ import {
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { 
     selectName, 
     setName, 
@@ -32,10 +34,20 @@ import {
 } from '@entities/auth';
 import { CustomTextInput } from '@shared/ui/CustomTextInput/CustomTextInput';
 import { api } from '@shared/api/api';
+import { retryRequest } from '@shared/api/retryHelper';
+import { GlobalAlert } from '@shared/ui/CustomAlert';
+
+const OTHER_DISTRICT_NAME = 'Другой';
 
 export const PhoneRegisterForm = ({ onVerification }) => {
     const dispatch = useDispatch();
     const navigation = useNavigation();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+    const placeholderColor = isDark ? colors.textTertiary : '#888';
+    const passwordIconColor = isLoading
+        ? (isDark ? colors.textTertiary : '#999')
+        : (isDark ? colors.primary : '#3339b0');
 
     const reduxName = useSelector(selectName) || '';
     const reduxPhone = useSelector(selectPhone) || '';
@@ -55,6 +67,8 @@ export const PhoneRegisterForm = ({ onVerification }) => {
     const [customDistrict, setLocalCustomDistrict] = useState(reduxCustomDistrict);
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
+    const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+    const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
     const [showGenderModal, setShowGenderModal] = useState(false);
     const [showDistrictModal, setShowDistrictModal] = useState(false);
     const [districts, setDistricts] = useState([]);
@@ -116,7 +130,7 @@ export const PhoneRegisterForm = ({ onVerification }) => {
     }, [reduxDistrictId]);
 
     useEffect(() => {
-        setLocalCustomDistrict(reduxCustomDistrict);
+        setLocalCustomDistrict(reduxCustomDistrict ? OTHER_DISTRICT_NAME : '');
         if (reduxCustomDistrict) {
             setIsOtherDistrict(true);
         }
@@ -128,8 +142,8 @@ export const PhoneRegisterForm = ({ onVerification }) => {
     };
 
     const getDistrictLabel = () => {
-        if (isOtherDistrict && customDistrict) {
-            return customDistrict;
+        if (isOtherDistrict) {
+            return OTHER_DISTRICT_NAME;
         }
         const selectedDistrict = districts.find(d => d.id === districtId);
         return selectedDistrict ? selectedDistrict.name : '';
@@ -146,7 +160,10 @@ export const PhoneRegisterForm = ({ onVerification }) => {
         if (district === 'other') {
             setIsOtherDistrict(true);
             setLocalDistrictId(null);
+            setLocalCustomDistrict(OTHER_DISTRICT_NAME);
             dispatch(setDistrictId(null));
+            dispatch(setCustomDistrict(OTHER_DISTRICT_NAME));
+            setDistrictError('');
             setShowDistrictModal(false);
         } else {
             setIsOtherDistrict(false);
@@ -218,12 +235,6 @@ export const PhoneRegisterForm = ({ onVerification }) => {
         setAddressError('');
     };
 
-    const handleCustomDistrictChange = (text) => {
-        setLocalCustomDistrict(text);
-        dispatch(setCustomDistrict(text));
-        setDistrictError('');
-    };
-
     const handleNameBlur = () => {
         dispatch(setName(name));
     };
@@ -263,8 +274,8 @@ export const PhoneRegisterForm = ({ onVerification }) => {
             isValid = false;
         }
 
-        if (!districtId && !customDistrict) {
-            setDistrictError('Пожалуйста, выберите или укажите район');
+        if (!districtId && !isOtherDistrict) {
+            setDistrictError('Пожалуйста, выберите район');
             isValid = false;
         }
 
@@ -385,24 +396,39 @@ export const PhoneRegisterForm = ({ onVerification }) => {
         }
 
         if (!privacyAgreed) {
-            Alert.alert(
-                'Согласие на обработку персональных данных',
-                'Для продолжения регистрации необходимо дать согласие на обработку персональных данных. Пожалуйста, ознакомьтесь с соглашением и отметьте соответствующий чекбокс.'
-            );
+            GlobalAlert.show({
+                type: 'warning',
+                title: 'Согласие на обработку персональных данных',
+                message: 'Для продолжения регистрации необходимо дать согласие на обработку персональных данных. Пожалуйста, ознакомьтесь с соглашением и отметьте соответствующий чекбокс.',
+            });
             return;
         }
 
+        const payload = {
+            phone,
+            name,
+            address,
+            gender,
+            districtId: isOtherDistrict ? null : districtId,
+            customDistrict: isOtherDistrict ? OTHER_DISTRICT_NAME : null,
+            password,
+        };
+
         try {
-            const result = await dispatch(initiatePhoneRegister({ 
-                phone, 
-                name, 
-                address, 
-                gender,
-                districtId: isOtherDistrict ? null : districtId,
-                customDistrict: isOtherDistrict ? customDistrict : null,
-                password
-            })).unwrap();
-            
+            const result = await retryRequest(
+                () => dispatch(initiatePhoneRegister(payload)).unwrap(),
+                {
+                    maxRetries: 4, // 5 попыток суммарно
+                    baseDelayMs: 2000,
+                    maxDelayMs: 8000,
+                    waitForConnection: true, // ждём восстановления интернета перед каждой попыткой
+                    connectionTimeoutMs: 30000,
+                    onRetry: (attempt) => {
+                        console.log(`🔄 Повторная попытка регистрации по телефону ${attempt + 1}/5...`);
+                    },
+                }
+            );
+
             console.log('Результат initiatePhoneRegister:', result);
             const tempToken = result?.registrationToken || null;
             if (tempToken) {
@@ -410,14 +436,46 @@ export const PhoneRegisterForm = ({ onVerification }) => {
             }
         } catch (error) {
             console.error('Ошибка регистрации по телефону:', error);
-            
+
             const handledAsFieldError = handleServerErrors(error);
-            
+
             if (!handledAsFieldError) {
-                Alert.alert(
-                    'Ошибка регистрации', 
-                    error?.message || 'Произошла ошибка при регистрации. Проверьте введённые данные и попробуйте снова.'
-                );
+                const errorMessage = error?.message || '';
+                const lowerMessage = errorMessage.toLowerCase();
+
+                const isNetworkError =
+                    error?.code === 'ERR_NETWORK' ||
+                    error?.originalError?.code === 'ERR_NETWORK' ||
+                    lowerMessage === 'network error' ||
+                    lowerMessage.includes('network') ||
+                    lowerMessage.includes('интернет') ||
+                    lowerMessage.includes('соедин') ||
+                    lowerMessage.includes('timeout') ||
+                    lowerMessage.includes('timed out');
+
+                const userMessage = isNetworkError
+                    ? 'Не удалось подключиться к серверу после 5 попыток. Проверьте подключение к интернету и попробуйте снова.'
+                    : (errorMessage || 'Произошла ошибка при регистрации. Проверьте введённые данные и попробуйте снова.');
+
+                GlobalAlert.show({
+                    type: 'error',
+                    title: 'Ошибка регистрации',
+                    message: userMessage,
+                    buttons: [
+                        {
+                            text: 'Отмена',
+                            style: 'cancel',
+                        },
+                        {
+                            text: 'Повторить',
+                            style: 'primary',
+                            icon: 'refresh',
+                            onPress: () => {
+                                handleRegister();
+                            },
+                        },
+                    ],
+                });
             }
         }
     };
@@ -449,7 +507,7 @@ export const PhoneRegisterForm = ({ onVerification }) => {
                         onFocus={handlePhoneFocus}
                         keyboardType="phone-pad"
                         placeholder="+7 (___) ___-__-__"
-                        placeholderTextColor="#888"
+                        placeholderTextColor={placeholderColor}
                         maxLength={18}
                     />
                     {phoneError ? (
@@ -469,7 +527,7 @@ export const PhoneRegisterForm = ({ onVerification }) => {
                         onChangeText={handleNameChange}
                         onBlur={handleNameBlur}
                         placeholder="Фамилия Имя Отчество"
-                        placeholderTextColor="#888"
+                        placeholderTextColor={placeholderColor}
                     />
                     {nameError ? (
                         <Text style={styles.errorText}>{nameError}</Text>
@@ -488,7 +546,7 @@ export const PhoneRegisterForm = ({ onVerification }) => {
                         onChangeText={handleAddressChange}
                         onBlur={handleAddressBlur}
                         placeholder="г. Магас, ул. Примерная, д. 1"
-                        placeholderTextColor="#888"
+                        placeholderTextColor={placeholderColor}
                     />
                     {addressError ? (
                         <Text style={styles.errorText}>{addressError}</Text>
@@ -512,23 +570,6 @@ export const PhoneRegisterForm = ({ onVerification }) => {
                     <View style={styles.inputUnderline} />
                 </View>
 
-                {isOtherDistrict && (
-                    <View style={styles.inputContainer}>
-                        <RequiredLabel text="Название вашего района" />
-                        <CustomTextInput
-                            style={[
-                                styles.input,
-                                districtError && !customDistrict ? styles.inputError : null
-                            ]}
-                            value={customDistrict}
-                            onChangeText={handleCustomDistrictChange}
-                            placeholder="Введите название района"
-                            placeholderTextColor="#888"
-                        />
-                        <View style={styles.inputUnderline} />
-                    </View>
-                )}
-
                 <View style={styles.inputContainer}>
                     <RequiredLabel text="Ваш пол" required={false} />
                     <TouchableOpacity
@@ -547,21 +588,37 @@ export const PhoneRegisterForm = ({ onVerification }) => {
 
                 <View style={styles.inputContainer}>
                     <RequiredLabel text="Пароль" />
-                    <CustomTextInput
-                        style={[
-                            styles.input,
-                            passwordError ? styles.inputError : null
-                        ]}
-                        value={password}
-                        onChangeText={(text) => {
-                            setPassword(text);
-                            if (passwordError) setPasswordError('');
-                        }}
-                        placeholder="Минимум 6 символов"
-                        placeholderTextColor="#888"
-                        secureTextEntry
-                        autoCapitalize="none"
-                    />
+                    <View style={styles.passwordFieldContainer}>
+                        <CustomTextInput
+                            style={[
+                                styles.input,
+                                styles.passwordInput,
+                                passwordError ? styles.inputError : null
+                            ]}
+                            value={password}
+                            onChangeText={(text) => {
+                                setPassword(text);
+                                if (passwordError) setPasswordError('');
+                            }}
+                            placeholder="Минимум 6 символов"
+                            placeholderTextColor={placeholderColor}
+                            secureTextEntry={!isPasswordVisible}
+                            autoCapitalize="none"
+                        />
+                        <TouchableOpacity
+                            style={styles.passwordVisibilityButton}
+                            onPress={() => setIsPasswordVisible((prev) => !prev)}
+                            disabled={isLoading}
+                            accessibilityRole="button"
+                            accessibilityLabel={isPasswordVisible ? 'Скрыть пароль' : 'Показать пароль'}
+                        >
+                            <Ionicons
+                                name={isPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
+                                size={normalize(24)}
+                                color={passwordIconColor}
+                            />
+                        </TouchableOpacity>
+                    </View>
                     {passwordError ? (
                         <Text style={styles.errorText}>{passwordError}</Text>
                     ) : null}
@@ -570,21 +627,37 @@ export const PhoneRegisterForm = ({ onVerification }) => {
 
                 <View style={styles.inputContainer}>
                     <RequiredLabel text="Подтверждение пароля" />
-                    <CustomTextInput
-                        style={[
-                            styles.input,
-                            confirmPasswordError ? styles.inputError : null
-                        ]}
-                        value={confirmPassword}
-                        onChangeText={(text) => {
-                            setConfirmPassword(text);
-                            if (confirmPasswordError) setConfirmPasswordError('');
-                        }}
-                        placeholder="Повторите пароль"
-                        placeholderTextColor="#888"
-                        secureTextEntry
-                        autoCapitalize="none"
-                    />
+                    <View style={styles.passwordFieldContainer}>
+                        <CustomTextInput
+                            style={[
+                                styles.input,
+                                styles.passwordInput,
+                                confirmPasswordError ? styles.inputError : null
+                            ]}
+                            value={confirmPassword}
+                            onChangeText={(text) => {
+                                setConfirmPassword(text);
+                                if (confirmPasswordError) setConfirmPasswordError('');
+                            }}
+                            placeholder="Повторите пароль"
+                            placeholderTextColor={placeholderColor}
+                            secureTextEntry={!isConfirmPasswordVisible}
+                            autoCapitalize="none"
+                        />
+                        <TouchableOpacity
+                            style={styles.passwordVisibilityButton}
+                            onPress={() => setIsConfirmPasswordVisible((prev) => !prev)}
+                            disabled={isLoading}
+                            accessibilityRole="button"
+                            accessibilityLabel={isConfirmPasswordVisible ? 'Скрыть подтверждение пароля' : 'Показать подтверждение пароля'}
+                        >
+                            <Ionicons
+                                name={isConfirmPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
+                                size={normalize(24)}
+                                color={passwordIconColor}
+                            />
+                        </TouchableOpacity>
+                    </View>
                     {confirmPasswordError ? (
                         <Text style={styles.errorText}>{confirmPasswordError}</Text>
                     ) : null}
@@ -686,7 +759,7 @@ export const PhoneRegisterForm = ({ onVerification }) => {
                         <Text style={styles.modalTitle}>Выберите район</Text>
                         {districtsLoading ? (
                             <View style={styles.loadingContainer}>
-                                <ActivityIndicator size="large" color="#000cff" />
+                                <ActivityIndicator size="large" color={isDark ? colors.primary : '#000cff'} />
                                 <Text style={styles.loadingText}>Загрузка районов...</Text>
                             </View>
                         ) : (
@@ -721,7 +794,7 @@ export const PhoneRegisterForm = ({ onVerification }) => {
                                         styles.otherDistrictText,
                                         isOtherDistrict && styles.selectedOptionText
                                     ]}>
-                                        Другой район (ввести вручную)
+                                        Другой
                                     </Text>
                                 </TouchableOpacity>
                             </ScrollView>
@@ -760,7 +833,7 @@ const normalizeFont = (size) => {
     return Math.round(PixelRatio.roundToNearestPixel(newSize));
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     formContainer: {
         flex: 1,
         paddingHorizontal: normalize(20),
@@ -775,12 +848,12 @@ const styles = StyleSheet.create({
     infoText: {
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(14),
-        color: '#000cff',
+        color: isDark ? colors.primary : '#000cff',
         textAlign: 'center',
         marginBottom: normalize(20),
         paddingHorizontal: normalize(10),
         paddingVertical: normalize(10),
-        backgroundColor: 'rgba(0, 12, 255, 0.05)',
+        backgroundColor: isDark ? 'rgba(124, 127, 232, 0.15)' : 'rgba(0, 12, 255, 0.05)',
         borderRadius: 8,
     },
     inputsContainer: {
@@ -794,13 +867,13 @@ const styles = StyleSheet.create({
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(15),
         fontWeight: '600',
-        color: '#000',
-        opacity: 0.4,
+        color: isDark ? colors.textSecondary : '#000',
+        opacity: isDark ? 1 : 0.4,
         marginBottom: normalize(5),
         lineHeight: normalize(21),
     },
     requiredStar: {
-        color: '#FF0000',
+        color: isDark ? colors.error : '#FF0000',
         fontWeight: '700',
         opacity: 1,
     },
@@ -808,23 +881,40 @@ const styles = StyleSheet.create({
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(17),
         fontWeight: '600',
-        color: '#000',
+        color: isDark ? colors.textPrimary : '#000',
         paddingBottom: normalize(5),
         height: normalize(40),
         paddingHorizontal: 0,
         borderBottomWidth: 0,
     },
+    passwordFieldContainer: {
+        position: 'relative',
+        justifyContent: 'center',
+    },
+    passwordInput: {
+        paddingRight: normalize(44),
+    },
+    passwordVisibilityButton: {
+        position: 'absolute',
+        right: 0,
+        top: 0,
+        bottom: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
+        width: normalize(44),
+        paddingLeft: normalize(12),
+    },
     inputText: {
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(17),
         fontWeight: '600',
-        color: '#000',
+        color: isDark ? colors.textPrimary : '#000',
     },
     placeholderText: {
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(17),
         fontWeight: '600',
-        color: '#888',
+        color: isDark ? colors.textTertiary : '#888',
     },
     genderSelector: {
         justifyContent: 'center',
@@ -832,22 +922,22 @@ const styles = StyleSheet.create({
     },
     inputUnderline: {
         height: 1,
-        backgroundColor: '#000',
+        backgroundColor: isDark ? colors.border : '#000',
         width: '100%',
         position: 'absolute',
         bottom: 0,
     },
     inputError: {
-        color: '#FF0000',
+        color: isDark ? colors.error : '#FF0000',
     },
     errorText: {
-        color: '#FF0000',
+        color: isDark ? colors.error : '#FF0000',
         fontSize: normalizeFont(12),
         marginTop: normalize(5),
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
     },
     button: {
-        backgroundColor: '#000cff',
+        backgroundColor: isDark ? colors.primary : '#000cff',
         borderRadius: 30,
         width: Math.min(width * 0.8, normalize(320)),
         height: normalize(70),
@@ -859,7 +949,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(20),
     },
     buttonDisabled: {
-        backgroundColor: '#d3d3d3',
+        backgroundColor: isDark ? colors.border : '#d3d3d3',
     },
     buttonText: {
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
@@ -873,10 +963,10 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: isDark ? 'rgba(0, 0, 0, 0.7)' : 'rgba(0, 0, 0, 0.5)',
     },
     modalContent: {
-        backgroundColor: '#fff',
+        backgroundColor: isDark ? colors.surface : '#fff',
         borderRadius: 20,
         padding: normalize(20),
         width: width * 0.9,
@@ -888,29 +978,29 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         textAlign: 'center',
         marginBottom: normalize(20),
-        color: '#000',
+        color: isDark ? colors.textPrimary : '#000',
     },
     optionItem: {
         padding: normalize(15),
         borderBottomWidth: 1,
-        borderBottomColor: '#eee',
+        borderBottomColor: isDark ? colors.border : '#eee',
     },
     selectedOptionItem: {
-        backgroundColor: 'rgba(0, 12, 255, 0.1)',
+        backgroundColor: isDark ? 'rgba(124, 127, 232, 0.18)' : 'rgba(0, 12, 255, 0.1)',
     },
     optionText: {
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(16),
-        color: '#000',
+        color: isDark ? colors.textPrimary : '#000',
     },
     selectedOptionText: {
-        color: '#000cff',
+        color: isDark ? colors.primary : '#000cff',
         fontWeight: '600',
     },
     closeButton: {
         marginTop: normalize(20),
         padding: normalize(15),
-        backgroundColor: '#000cff',
+        backgroundColor: isDark ? colors.primary : '#000cff',
         borderRadius: 10,
         alignItems: 'center',
     },
@@ -931,11 +1021,11 @@ const styles = StyleSheet.create({
         marginTop: normalize(10),
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(14),
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
     },
     otherDistrictOption: {
         borderTopWidth: 2,
-        borderTopColor: '#ddd',
+        borderTopColor: isDark ? colors.border : '#ddd',
         marginTop: normalize(10),
     },
     otherDistrictText: {
@@ -957,15 +1047,15 @@ const styles = StyleSheet.create({
         width: normalize(24),
         height: normalize(24),
         borderWidth: 2,
-        borderColor: '#000',
+        borderColor: isDark ? colors.border : '#000',
         borderRadius: 4,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surfaceElevated : '#FFFFFF',
     },
     checkboxChecked: {
-        backgroundColor: '#000cff',
-        borderColor: '#000cff',
+        backgroundColor: isDark ? colors.primary : '#000cff',
+        borderColor: isDark ? colors.primary : '#000cff',
     },
     checkmark: {
         color: '#FFFFFF',
@@ -980,11 +1070,11 @@ const styles = StyleSheet.create({
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(13),
         fontWeight: '400',
-        color: '#333333',
+        color: isDark ? colors.textSecondary : '#333333',
         lineHeight: normalize(18),
     },
     privacyLink: {
-        color: '#000cff',
+        color: isDark ? colors.primary : '#000cff',
         textDecorationLine: 'underline',
         fontWeight: '500',
     },

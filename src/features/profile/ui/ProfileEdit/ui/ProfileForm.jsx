@@ -3,7 +3,6 @@ import { View, ScrollView, StyleSheet } from 'react-native';
 import { DynamicFormField } from './DynamicFormField';
 import { ProfileSaveButton } from './ProfileSaveButton';
 import { normalize } from '@shared/lib/normalize';
-import { logData } from '@shared/lib/logger';
 import { roleFieldsConfig } from "@features/profile";
 
 const ProfileFormComponent = ({
@@ -57,24 +56,8 @@ const ProfileFormComponent = ({
             // Инициализируем форму начальными значениями только при первом рендере
             // или если форма еще не была инициализирована
             if (isInitialRender || !isFormInitializedRef.current) {
-                if (__DEV__) {
-                    console.log('ProfileForm: Установка начальных значений формы', {
-                        userType,
-                        gender: valuesWithDefaults.gender,
-                        isInitialRender,
-                        isFormInitialized: isFormInitializedRef.current
-                    });
-                }
-
                 setFormValues(valuesWithDefaults);
                 isFormInitializedRef.current = true; // Помечаем форму как инициализированную
-
-                // Для отладки gender поля
-                if (__DEV__ && valuesWithDefaults.gender) {
-                    console.log('ProfileForm: gender set in formValues', {
-                        gender: valuesWithDefaults.gender
-                    });
-                }
             } else {
                 setFormValues(prevValues => {
                     const updatedValues = { ...prevValues };
@@ -147,23 +130,9 @@ const ProfileFormComponent = ({
 
     const handleSave = useCallback(() => {
         if (validateForm()) {
-            logData('ProfileForm: Форма валидна, отправка данных', {
-                formValues,
-                gender: formValues.gender,
-                formValuesKeys: Object.keys(formValues)
-            });
-
-
             onSave(formValues);
-        } else {
-            logData('ProfileForm: Ошибка валидации формы', {
-                formErrors,
-                formValues,
-                gender: formValues.gender
-            });
-
         }
-    }, [validateForm, formValues, onSave, userType]);
+    }, [validateForm, formValues, onSave]);
 
     useEffect(() => {
         if (!registerSaveHandler) {

@@ -39,8 +39,6 @@ export const OrderChoiceCard = ({
         switch (choiceType) {
             case 'STOCK_UNAVAILABLE':
                 return { icon: 'inventory-2', color: '#fd7e14' };
-            case 'DELIVERY_DISTANCE':
-                return { icon: 'local-shipping', color: '#17a2b8' };
             case 'PARTIAL_AVAILABILITY':
                 return { icon: 'playlist-remove', color: '#ffc107' };
             case 'PRODUCT_SUBSTITUTE':

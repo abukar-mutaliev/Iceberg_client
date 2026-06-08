@@ -20,6 +20,27 @@ import { loadUserProfile } from '@entities/auth/model/slice';
 import { ShareWarehouseModal } from './ShareWarehouseModal';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
+// Тёмная схема для Google Maps (Android) — стандартный стиль DevTools
+const DARK_MAP_STYLE = [
+    { elementType: 'geometry', stylers: [{ color: '#1d2030' }] },
+    { elementType: 'labels.text.stroke', stylers: [{ color: '#1d2030' }] },
+    { elementType: 'labels.text.fill', stylers: [{ color: '#8a92b2' }] },
+    { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#d1d5db' }] },
+    { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#8a92b2' }] },
+    { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#1f3a2a' }] },
+    { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#6b9a76' }] },
+    { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2b2f44' }] },
+    { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#1d2030' }] },
+    { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#9ca0b8' }] },
+    { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#3a3f5c' }] },
+    { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#1d2030' }] },
+    { featureType: 'road.highway', elementType: 'labels.text.fill', stylers: [{ color: '#f3d19c' }] },
+    { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#2f3344' }] },
+    { featureType: 'transit.station', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+    { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0e1626' }] },
+    { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#4e6d92' }] },
+];
+
 // Функция для геокодирования адреса через Nominatim
 const geocodeAddress = async (address, districtName = '') => {
     if (!address || !address.trim()) {
@@ -83,6 +104,7 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
     const [isGeocoding, setIsGeocoding] = useState(false);
     const [geocodingError, setGeocodingError] = useState(null);
     const [editModalVisible, setEditModalVisible] = useState(false);
+    const [warehouseEditOpenKey, setWarehouseEditOpenKey] = useState(0);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [shareModalVisible, setShareModalVisible] = useState(false);
     const warehouseImageUrl = useMemo(() => {
@@ -160,6 +182,7 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
     
     // Обработчик открытия модального окна редактирования
     const handleEditPress = () => {
+        setWarehouseEditOpenKey((k) => k + 1);
         setEditModalVisible(true);
     };
 
@@ -668,6 +691,7 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
                     ) : (
                         <View style={styles.mapWrapper}>
                             <MapView
+                                key={isDark ? 'map-dark' : 'map-light'}
                                 style={styles.map}
                                 initialRegion={{
                                     latitude: mapCoordinates.latitude,
@@ -696,6 +720,8 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
                                 minZoomLevel={10}
                                 maxZoomLevel={20}
                                 provider={undefined}
+                                userInterfaceStyle={isDark ? 'dark' : 'light'}
+                                customMapStyle={isDark ? DARK_MAP_STYLE : []}
                             >
                                 <Marker
                                     coordinate={{
@@ -705,7 +731,7 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
                                     title={warehouse.address || 'Склад'}
                                     description="Нажмите для навигации"
                                     onPress={handleMarkerPress}
-                                    pinColor="#28C76F"
+                                    pinColor={isDark ? '#4ADE80' : '#28C76F'}
                                 />
                             </MapView>
                         </View>
@@ -743,12 +769,13 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
             </View>
             
             {/* Модальное окно редактирования склада */}
-            {isSuperAdmin && (
+            {(isSuperAdmin || editModalVisible) && (
                 <AddWarehouseModal
-                    visible={editModalVisible}
+                    visible={isSuperAdmin && editModalVisible}
                     onClose={handleCloseEditModal}
                     onSubmit={handleWarehouseSubmit}
                     warehouse={warehouse}
+                    openKey={warehouseEditOpenKey}
                     isSubmitting={isSubmitting}
                 />
             )}

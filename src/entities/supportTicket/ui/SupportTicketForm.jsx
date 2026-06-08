@@ -86,11 +86,12 @@ export const SupportTicketForm = ({
         }
 
         try {
-            // Запрашиваем разрешение
-            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-            if (status !== 'granted') {
-                Alert.alert('Требуется разрешение', 'Для выбора файла необходимо разрешение на доступ к галерее.');
-                return;
+            if (Platform.OS !== 'android') {
+                const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                if (status !== 'granted') {
+                    Alert.alert('Требуется разрешение', 'Для выбора файла необходимо разрешение на доступ к галерее.');
+                    return;
+                }
             }
 
             // Открываем галерею

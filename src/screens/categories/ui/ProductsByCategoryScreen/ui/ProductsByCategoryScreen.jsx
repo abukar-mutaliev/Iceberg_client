@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useMemo, useState } from 'react';
+import React, { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import {
     View,
     Text,
@@ -15,36 +15,34 @@ import {
     Platform
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CommonActions } from '@react-navigation/native';
+import { CommonActions, useRoute } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import { Color, Padding, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
 import { ProductTile } from "@entities/product";
 import { AndroidShadow } from '@shared/ui/Shadow';
 import { ScrollableBackgroundGradient } from "@shared/ui/BackgroundGradient";
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { ThemedStatusBar } from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
+import {
+    logCategoryProducts,
+    summarizeProducts,
+    summarizeReduxProductsByCategory,
+} from '@entities/category/lib/categoryProductsDebug';
 
-// Безопасные импорты
-let selectProductsByCategory, selectProductsByCategoryLoading, selectProductsByCategoryError, fetchProductsByCategory, ProductCard;
-try {
-    const categorySelectors = require('@entities/category/model/selectors');
-    selectProductsByCategory = categorySelectors.selectProductsByCategory;
-    selectProductsByCategoryLoading = categorySelectors.selectProductsByCategoryLoading;
-    selectProductsByCategoryError = categorySelectors.selectProductsByCategoryError;
+import {
+    loadCategoryProducts,
+    selectProductsByCategory,
+    selectProductsByCategoryLoading,
+    selectProductsByCategoryLoadingMore,
+    selectProductsByCategoryError,
+    selectProductsByCategoryHasMore,
+    selectProductsByCategoryCurrentPage,
+} from '@entities/category';
+import { ProductCard } from '@entities/product/ui/ProductCard';
 
-    const categoryActions = require('@entities/category');
-    fetchProductsByCategory = categoryActions.fetchProductsByCategory;
-
-    ProductCard = require('@entities/product/ui/ProductCard').ProductCard;
-} catch (error) {
-    selectProductsByCategory = () => [];
-    selectProductsByCategoryLoading = () => false;
-    selectProductsByCategoryError = () => null;
-    fetchProductsByCategory = () => Promise.resolve();
-    ProductCard = null;
-}
+const PRODUCTS_PER_PAGE = 20;
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const scale = SCREEN_WIDTH / 414;
@@ -158,30 +156,39 @@ const LoadingComponent = ({ styles, colors, isDark }) => {
 };
 
 const EmptyStateComponent = ({ categoryName, onRetry, onGoHome, navigation, bottomInset = 0, styles, colors, isDark }) => {
-    const fadeAnim = new Animated.Value(0);
-    const slideAnim = new Animated.Value(30);
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+    const slideAnim = useRef(new Animated.Value(24)).current;
+    const iconScale = useRef(new Animated.Value(0.85)).current;
 
     useEffect(() => {
         Animated.parallel([
             Animated.timing(fadeAnim, {
                 toValue: 1,
-                duration: 800,
-                useNativeDriver: true,
-            }),
-            Animated.timing(slideAnim, {
-                toValue: 0,
                 duration: 600,
                 useNativeDriver: true,
             }),
+            Animated.spring(slideAnim, {
+                toValue: 0,
+                tension: 80,
+                friction: 10,
+                useNativeDriver: true,
+            }),
+            Animated.spring(iconScale, {
+                toValue: 1,
+                tension: 60,
+                friction: 7,
+                useNativeDriver: true,
+            }),
         ]).start();
-    }, []);
+    }, [fadeAnim, slideAnim, iconScale]);
 
     const accentGradient = isDark
-        ? [colors.primary, colors.primary]
+        ? [colors.primary, colors.primaryMuted || colors.primary]
         : ['#b5c9fb', '#b7c4fd'];
     const accentShadow = isDark
         ? 'rgba(0, 0, 0, 0.5)'
-        : 'rgba(181, 201, 251, 0.3)';
+        : 'rgba(181, 201, 251, 0.35)';
+    const displayCategory = categoryName || 'Категория';
 
     return (
         <Animated.View
@@ -190,35 +197,49 @@ const EmptyStateComponent = ({ categoryName, onRetry, onGoHome, navigation, bott
                 {
                     opacity: fadeAnim,
                     transform: [{ translateY: slideAnim }],
-                    paddingBottom: bottomInset
-                }
+                    paddingBottom: bottomInset,
+                },
             ]}
         >
-            <View style={styles.emptyContent}>
-                <AndroidShadow
-                    shadowColor={accentShadow}
-                    shadowConfig={{
-                        offsetX: 0,
-                        offsetY: 8,
-                        elevation: 12,
-                        radius: 16,
-                        opacity: 0.3
-                    }}
-                    borderRadius={60}
-                    style={styles.emptyIconContainer}
-                >
-                    <LinearGradient
-                        colors={accentGradient}
-                        style={styles.emptyIconGradient}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                    />
-                    <Text style={styles.emptyIcon}>🛍️</Text>
-                </AndroidShadow>
+            <View style={styles.emptyDecor} pointerEvents="none">
+                <View style={styles.emptyDecorCircle1} />
+                <View style={styles.emptyDecorCircle2} />
+            </View>
+
+            <View style={styles.emptyCard}>
+                <Animated.View style={[styles.emptyIconWrap, { transform: [{ scale: iconScale }] }]}>
+                    <AndroidShadow
+                        shadowColor={accentShadow}
+                        shadowConfig={{
+                            offsetX: 0,
+                            offsetY: 8,
+                            elevation: 10,
+                            radius: 16,
+                            opacity: 0.25,
+                        }}
+                        borderRadius={56}
+                        style={styles.emptyIconContainer}
+                    >
+                        <LinearGradient
+                            colors={accentGradient}
+                            style={styles.emptyIconGradient}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                        />
+                        <Icon name="inventory-2" size={44} color="#fff" />
+                    </AndroidShadow>
+                </Animated.View>
+
+                <View style={styles.emptyCategoryBadge}>
+                    <Icon name="category" size={14} color={colors.primary} />
+                    <Text style={styles.emptyCategoryBadgeText} numberOfLines={1}>
+                        {displayCategory}
+                    </Text>
+                </View>
 
                 <Text style={styles.emptyTitle}>Товары не найдены</Text>
                 <Text style={styles.emptySubtitle}>
-                    В категории "{categoryName || 'Категория'}" пока нет товаров
+                    В этой категории пока нет товаров. Обновите список или выберите другую категорию.
                 </Text>
 
                 <View style={styles.emptyActions}>
@@ -229,63 +250,52 @@ const EmptyStateComponent = ({ categoryName, onRetry, onGoHome, navigation, bott
                             offsetY: 6,
                             elevation: 8,
                             radius: 12,
-                            opacity: 0.3
+                            opacity: 0.3,
                         }}
-                        borderRadius={3}
-                        style={styles.primaryButton}
+                        borderRadius={14}
+                        style={styles.emptyPrimaryButton}
                     >
                         <TouchableOpacity
                             style={styles.fullAreaButton}
                             onPress={onRetry}
-                            activeOpacity={0.8}
+                            activeOpacity={0.85}
                         >
                             <LinearGradient
-                                colors={
-                                    isDark
-                                        ? [colors.surfaceElevated, colors.surfaceElevated]
-                                        : [Color.colorLightMode, Color.colorLightMode]
-                                }
+                                colors={accentGradient}
                                 style={styles.buttonGradient}
                                 start={{ x: 0, y: 0 }}
                                 end={{ x: 1, y: 0 }}
                             />
-                            <Text style={styles.primaryButtonText}>🔄 Обновить</Text>
-                        </TouchableOpacity>
-                    </AndroidShadow>
-
-                    <AndroidShadow
-                        shadowColor={accentShadow}
-                        shadowConfig={{
-                            offsetX: 0,
-                            offsetY: 2,
-                            elevation: 4,
-                            radius: 8,
-                            opacity: 0.2
-                        }}
-                        borderRadius={26}
-                        style={styles.secondaryButton}
-                    >
-                        <TouchableOpacity
-                            style={styles.fullAreaButton}
-                            onPress={() => navigation.navigate('Categories')}
-                            activeOpacity={0.8}
-                        >
-                            <Text style={styles.secondaryButtonText}>📂 Все категории</Text>
+                            <View style={styles.emptyButtonContent}>
+                                <Icon name="refresh" size={20} color="#fff" />
+                                <Text style={styles.emptyPrimaryButtonText}>Обновить</Text>
+                            </View>
                         </TouchableOpacity>
                     </AndroidShadow>
 
                     <TouchableOpacity
-                        style={styles.tertiaryButton}
-                        onPress={onGoHome}
-                        activeOpacity={0.8}
+                        style={styles.emptySecondaryButton}
+                        onPress={() => navigation.navigate('Categories')}
+                        activeOpacity={0.85}
                     >
-                        <Text style={styles.tertiaryButtonText}>🏠 На главную</Text>
+                        <Icon name="folder-open" size={20} color={colors.primary} />
+                        <Text style={styles.emptySecondaryButtonText}>Все категории</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={styles.emptyTertiaryButton}
+                        onPress={onGoHome}
+                        activeOpacity={0.85}
+                    >
+                        <Icon name="home" size={18} color={colors.textSecondary} />
+                        <Text style={styles.emptyTertiaryButtonText}>На главную</Text>
                     </TouchableOpacity>
                 </View>
 
                 <View style={styles.emptyFooter}>
+                    <Icon name="lightbulb-outline" size={16} color={colors.primary} />
                     <Text style={styles.emptyFooterText}>
-                        💡 Попробуйте поискать в других категориях или воспользуйтесь поиском
+                        Попробуйте поиск или другие категории
                     </Text>
                 </View>
             </View>
@@ -447,8 +457,14 @@ const AnimatedProductCard = React.memo(({ item, onPress, index, styles }) => {
         prevProps.index === nextProps.index;
 });
 
-export const ProductsByCategoryScreen = ({ route, navigation }) => {
-    const { categoryId, categoryName } = route.params || {};
+export const ProductsByCategoryScreen = ({ navigation }) => {
+    const route = useRoute();
+    const { categoryId: rawCategoryId, categoryName } = route.params || {};
+    const categoryId = useMemo(() => {
+        const numericId = Number(rawCategoryId);
+        return Number.isFinite(numericId) ? numericId : null;
+    }, [rawCategoryId]);
+
     const dispatch = useDispatch();
     const [refreshing, setRefreshing] = useState(false);
     const insets = useSafeAreaInsets();
@@ -456,8 +472,58 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     const products = useSelector((state) => selectProductsByCategory(state, categoryId));
-    const isLoading = useSelector(selectProductsByCategoryLoading);
-    const error = useSelector(selectProductsByCategoryError);
+    const isLoading = useSelector((state) => selectProductsByCategoryLoading(state, categoryId));
+    const isLoadingMore = useSelector((state) => selectProductsByCategoryLoadingMore(state, categoryId));
+    const hasMoreProducts = useSelector((state) => selectProductsByCategoryHasMore(state, categoryId));
+    const currentPage = useSelector((state) => selectProductsByCategoryCurrentPage(state, categoryId));
+    const error = useSelector((state) => selectProductsByCategoryError(state, categoryId));
+    const categoryStateSnapshot = useSelector((state) => state.category);
+
+    useEffect(() => {
+        logCategoryProducts('ProductsByCategoryScreen.mount', {
+            routeParams: route.params,
+            rawCategoryId,
+            normalizedCategoryId: categoryId,
+            categoryName,
+        });
+    }, []);
+
+    useEffect(() => {
+        const hasProducts = Array.isArray(products) && products.length > 0;
+        const contentBranch = (isLoading && !refreshing && !hasProducts)
+            ? 'loading'
+            : hasProducts
+                ? 'list'
+                : (error && !refreshing)
+                    ? 'error'
+                    : (!refreshing && !isLoading)
+                        ? 'empty'
+                        : 'refreshing-placeholder';
+
+        logCategoryProducts('ProductsByCategoryScreen.state', {
+            normalizedCategoryId: categoryId,
+            categoryName,
+            contentBranch,
+            selectorProducts: summarizeProducts(products),
+            isLoading,
+            isLoadingMore,
+            hasMoreProducts,
+            currentPage,
+            error,
+            redux: summarizeReduxProductsByCategory(categoryStateSnapshot),
+        });
+    }, [
+        categoryId,
+        categoryName,
+        products,
+        isLoading,
+        isLoadingMore,
+        hasMoreProducts,
+        currentPage,
+        error,
+        refreshing,
+        categoryStateSnapshot,
+    ]);
 
     const getRootNavigation = useCallback(() => {
         let current = navigation;
@@ -500,11 +566,48 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
         navigation.navigate('MainTab', { screen: 'Main' });
     }, [getRootNavigation, navigation]);
 
-    useEffect(() => {
-        if (categoryId && dispatch && fetchProductsByCategory) {
-            dispatch(fetchProductsByCategory({ categoryId, params: {} }));
+    const requestCategoryProducts = useCallback((options = {}) => {
+        if (!categoryId || !dispatch) {
+            logCategoryProducts('ProductsByCategoryScreen.load.skip', {
+                categoryId,
+                hasDispatch: !!dispatch,
+                options,
+            });
+            return null;
         }
-    }, [dispatch, categoryId]);
+
+        logCategoryProducts('ProductsByCategoryScreen.load.dispatch', {
+            categoryId,
+            categoryName,
+            page: options.page ?? 1,
+            limit: PRODUCTS_PER_PAGE,
+        });
+
+        return dispatch(loadCategoryProducts({
+            categoryId,
+            categoryName,
+            page: options.page ?? 1,
+            limit: PRODUCTS_PER_PAGE,
+        }));
+    }, [dispatch, categoryId, categoryName]);
+
+    useEffect(() => {
+        if (!categoryId || !dispatch) {
+            return;
+        }
+
+        logCategoryProducts('ProductsByCategoryScreen.effect.load', {
+            categoryId,
+            categoryName,
+        });
+
+        dispatch(loadCategoryProducts({
+            categoryId,
+            categoryName,
+            page: 1,
+            limit: PRODUCTS_PER_PAGE,
+        }));
+    }, [dispatch, categoryId, categoryName]);
 
     const handleProductPress = useCallback((product) => {
         const productId = typeof product === 'object' && product?.id ? product.id : product;
@@ -524,25 +627,70 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
     }, [navigation]);
 
     const handleRetry = useCallback(() => {
-        if (categoryId && dispatch && fetchProductsByCategory) {
-            dispatch(fetchProductsByCategory({ categoryId, params: {} }));
+        requestCategoryProducts({ page: 1 });
+    }, [requestCategoryProducts]);
+
+    const handleLoadMore = useCallback(() => {
+        if (!categoryId || !dispatch) {
+            return;
         }
-    }, [dispatch, categoryId]);
+        if (!hasMoreProducts || isLoading || isLoadingMore) {
+            logCategoryProducts('ProductsByCategoryScreen.loadMore.skip', {
+                categoryId,
+                hasMoreProducts,
+                isLoading,
+                isLoadingMore,
+                currentPage,
+            });
+            return;
+        }
+
+        logCategoryProducts('ProductsByCategoryScreen.loadMore.dispatch', {
+            categoryId,
+            categoryName,
+            nextPage: currentPage + 1,
+            currentProductsCount: products?.length ?? 0,
+        });
+
+        dispatch(loadCategoryProducts({
+            categoryId,
+            categoryName,
+            page: currentPage + 1,
+            limit: PRODUCTS_PER_PAGE,
+        }));
+    }, [dispatch, categoryId, categoryName, hasMoreProducts, isLoading, isLoadingMore, currentPage, products?.length]);
 
     const onRefresh = useCallback(async () => {
-        if (!categoryId || !dispatch || !fetchProductsByCategory) {
+        if (!categoryId) {
             return;
         }
 
         setRefreshing(true);
         try {
-            const result = await dispatch(fetchProductsByCategory({ categoryId, params: {}, refresh: true })).unwrap();
+            await dispatch(loadCategoryProducts({
+                categoryId,
+                categoryName,
+                page: 1,
+                limit: PRODUCTS_PER_PAGE,
+            }));
         } catch (error) {
             console.error('ProductsByCategory: Ошибка при обновлении:', error);
         } finally {
             setRefreshing(false);
         }
-    }, [dispatch, categoryId, products]);
+    }, [categoryId, categoryName, dispatch]);
+
+    const renderListFooter = useCallback(() => {
+        if (!isLoadingMore) {
+            return null;
+        }
+
+        return (
+            <View style={styles.footerLoader}>
+                <ActivityIndicator size="small" color={colors.primary} />
+            </View>
+        );
+    }, [colors.primary, isLoadingMore, styles.footerLoader]);
 
     const renderProductItem = useCallback(({ item, index }) => (
         <AnimatedProductCard
@@ -570,12 +718,10 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
         if (hasProducts) {
             return (
                 <FlatList
+                    key={`products-category-${categoryId}`}
                     data={products}
                     renderItem={renderProductItem}
-                    keyExtractor={(item) => {
-                        const key = item?.id?.toString() || `product-${Math.random()}`;
-                        return key;
-                    }}
+                    keyExtractor={(item) => item?.id?.toString() || `product-${item?.name}`}
                     numColumns={1}
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={styles.productsList}
@@ -588,13 +734,16 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
                             progressBackgroundColor={refreshProgressBg}
                         />
                     }
+                    onEndReached={handleLoadMore}
+                    onEndReachedThreshold={0.5}
+                    ListFooterComponent={renderListFooter}
                     removeClippedSubviews={false}
                     maxToRenderPerBatch={10}
                     updateCellsBatchingPeriod={50}
-                    initialNumToRender={products.length}
+                    initialNumToRender={Math.min(products.length, PRODUCTS_PER_PAGE)}
                     windowSize={5}
                     ItemSeparatorComponent={() => <View style={styles.productSeparator} />}
-                    extraData={`${refreshing}-${products.length}`}
+                    extraData={`${refreshing}-${products.length}-${isLoadingMore}`}
                 />
             );
         }
@@ -635,9 +784,9 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
             />
         );
     }, [
-        isLoading, error, products, renderProductItem, refreshing, onRefresh,
-        handleRetry, categoryName, navigation, styles, colors, isDark,
-        refreshColors, refreshTint, refreshProgressBg,
+        categoryId, isLoading, isLoadingMore, error, products, renderProductItem, refreshing, onRefresh,
+        handleRetry, handleLoadMore, renderListFooter, categoryName, navigation, styles, colors, isDark,
+        refreshColors, refreshTint, refreshProgressBg, insets.bottom,
     ]);
 
     const headerGradientColors = isDark
@@ -660,10 +809,6 @@ export const ProductsByCategoryScreen = ({ route, navigation }) => {
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
             >
-                {isIOS && !isDark && (
-                    <BlurView intensity={20} style={styles.headerBlur} />
-                )}
-
                 <View style={[styles.header, { height: normalize(70) }]}>
                     <ModernBackArrow onPress={handleBackPress} color={backArrowColor} styles={styles} />
 
@@ -695,13 +840,6 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     headerGradient: {
         borderBottomWidth: isDark ? 1 : 0,
         borderBottomColor: isDark ? colors.border : 'transparent',
-    },
-    headerBlur: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
     },
     header: {
         height: normalize(70),
@@ -789,66 +927,114 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        paddingHorizontal: normalize(24),
+        paddingHorizontal: normalize(20),
         position: 'relative',
+        overflow: 'hidden',
     },
-    emptyContent: {
+    emptyDecor: {
+        ...StyleSheet.absoluteFillObject,
         alignItems: 'center',
-        maxWidth: 320,
+        justifyContent: 'center',
+    },
+    emptyDecorCircle1: {
+        position: 'absolute',
+        width: normalize(280),
+        height: normalize(280),
+        borderRadius: normalize(140),
+        backgroundColor: isDark ? `${colors.primary}14` : 'rgba(181, 201, 251, 0.18)',
+        top: '18%',
+        right: -normalize(60),
+    },
+    emptyDecorCircle2: {
+        position: 'absolute',
+        width: normalize(200),
+        height: normalize(200),
+        borderRadius: normalize(100),
+        backgroundColor: isDark ? `${colors.primary}0D` : 'rgba(183, 196, 253, 0.12)',
+        bottom: '22%',
+        left: -normalize(40),
+    },
+    emptyCard: {
+        alignItems: 'center',
         width: '100%',
-        backgroundColor: 'transparent',
+        maxWidth: 340,
+        backgroundColor: isDark ? colors.surfaceElevated : 'rgba(255, 255, 255, 0.92)',
         borderRadius: 24,
-        padding: 32,
+        paddingHorizontal: normalize(24),
+        paddingTop: normalize(32),
+        paddingBottom: normalize(24),
+        borderWidth: 1,
+        borderColor: isDark ? colors.border : 'rgba(181, 201, 251, 0.35)',
+        ...(isIOS ? {
+            shadowColor: isDark ? '#000' : '#b5c9fb',
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: isDark ? 0.25 : 0.18,
+            shadowRadius: 16,
+        } : {}),
+    },
+    emptyIconWrap: {
+        marginBottom: normalize(20),
     },
     emptyIconContainer: {
-        width: 120,
-        height: 120,
+        width: 112,
+        height: 112,
         justifyContent: 'center',
         alignItems: 'center',
-        marginBottom: 24,
         position: 'relative',
         overflow: 'hidden',
     },
     emptyIconGradient: {
         position: 'absolute',
-        top: 5,
+        top: 0,
         left: 0,
         right: 0,
         bottom: 0,
-        borderRadius: 60,
+        borderRadius: 56,
     },
-    emptyIcon: {
-        fontSize: 48,
-        textAlign: 'center',
+    emptyCategoryBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        maxWidth: '100%',
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        borderRadius: 20,
+        backgroundColor: isDark ? `${colors.primary}22` : 'rgba(181, 201, 251, 0.2)',
+        marginBottom: normalize(16),
+    },
+    emptyCategoryBadgeText: {
+        flexShrink: 1,
+        fontSize: normalize(13),
+        fontWeight: '600',
+        color: colors.primary,
+        fontFamily: FontFamily?.sFProText || 'System',
     },
     emptyTitle: {
-        fontSize: normalize(24),
-        fontWeight: '800',
-        color: isDark ? colors.textPrimary : '#333',
+        fontSize: normalize(22),
+        fontWeight: '700',
+        color: isDark ? colors.textPrimary : '#1a1a2e',
         textAlign: 'center',
-        marginBottom: 12,
+        marginBottom: 10,
         fontFamily: FontFamily?.sFProText || 'System',
     },
     emptySubtitle: {
-        fontSize: normalize(16),
+        fontSize: normalize(15),
         color: isDark ? colors.textSecondary : '#666',
         textAlign: 'center',
-        marginBottom: 32,
-        lineHeight: 24,
+        marginBottom: normalize(24),
+        lineHeight: 22,
         fontFamily: FontFamily?.sFProText || 'System',
     },
     emptyActions: {
         width: '100%',
-        alignItems: 'center',
-        marginBottom: 24,
+        gap: 10,
+        marginBottom: normalize(20),
     },
-    primaryButton: {
+    emptyPrimaryButton: {
         width: '100%',
-        height: 56,
-        marginBottom: 12,
+        height: 52,
         overflow: 'hidden',
         position: 'relative',
-        backgroundColor: isDark ? colors.surfaceElevated : 'white',
     },
     fullAreaButton: {
         width: '100%',
@@ -867,61 +1053,67 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         alignItems: 'center',
         backgroundColor: 'transparent',
     },
-    primaryButtonText: {
-        color: isDark ? colors.textPrimary : Color.dark,
+    emptyButtonContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        zIndex: 1,
+    },
+    emptyPrimaryButtonText: {
+        color: '#fff',
         fontSize: normalize(16),
         fontWeight: '700',
         fontFamily: FontFamily?.sFProText || 'System',
-        textAlign: 'center',
-        backgroundColor: 'transparent',
     },
-    secondaryButton: {
+    emptySecondaryButton: {
         width: '100%',
-        height: 52,
+        height: 50,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
         backgroundColor: isDark ? colors.surface : '#fff',
-        borderWidth: 2,
+        borderWidth: 1.5,
         borderColor: isDark ? colors.primary : '#b5c9fb',
-        marginBottom: 12,
-        overflow: 'hidden',
+        borderRadius: 14,
     },
-    secondaryButtonText: {
-        color: isDark ? colors.primary : '#b5c9fb',
+    emptySecondaryButtonText: {
+        color: colors.primary,
         fontSize: normalize(15),
         fontWeight: '600',
         fontFamily: FontFamily?.sFProText || 'System',
     },
-    tertiaryButton: {
+    emptyTertiaryButton: {
         width: '100%',
-        height: 48,
-        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(181, 201, 251, 0.1)',
-        borderRadius: 24,
-        borderWidth: 1,
-        borderColor: isDark ? colors.border : 'rgba(181, 201, 251, 0.2)',
-        justifyContent: 'center',
+        height: 44,
+        flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
     },
-    tertiaryButtonText: {
-        color: isDark ? colors.textSecondary : '#666',
+    emptyTertiaryButtonText: {
+        color: colors.textSecondary,
         fontSize: normalize(14),
         fontWeight: '500',
         fontFamily: FontFamily?.sFProText || 'System',
     },
     emptyFooter: {
         width: '100%',
-        paddingHorizontal: 20,
-        paddingVertical: 16,
-        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(181, 201, 251, 0.05)',
-        borderRadius: 16,
-        borderLeftWidth: 4,
-        borderLeftColor: isDark ? colors.primary : '#b5c9fb',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 12,
+        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(181, 201, 251, 0.1)',
+        borderRadius: 12,
     },
     emptyFooterText: {
+        flex: 1,
         fontSize: normalize(13),
         color: isDark ? colors.textSecondary : '#666',
-        textAlign: 'center',
         lineHeight: 18,
         fontFamily: FontFamily?.sFProText || 'System',
-        fontStyle: 'italic',
     },
 
     errorContainer: {
@@ -982,6 +1174,11 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         paddingTop: normalize(26),
         paddingBottom: normalize(100),
         alignItems: 'center',
+    },
+    footerLoader: {
+        paddingVertical: normalize(16),
+        alignItems: 'center',
+        width: '100%',
     },
     productSeparator: {
         height: normalize(8),

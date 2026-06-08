@@ -14,6 +14,19 @@ export const driverApi = {
         }
     },
 
+    getAllEmployees: async ({ page = 1, limit = 50 } = {}) => {
+        try {
+            const response = await createProtectedRequest('get', `/api/employee/all?page=${page}&limit=${limit}`);
+            if (!response || !response.data) {
+                throw new Error('Получен некорректный ответ от сервера');
+            }
+            return response;
+        } catch (error) {
+            console.error('Error in getAllEmployees API call:', error);
+            throw error;
+        }
+    },
+
     getDriverById: async (driverId) => {
         try {
             const response = await createProtectedRequest('get', `/api/users/drivers/${driverId}`);

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text } from 'react-native';
-import { styles } from '../styles/EmployeeRewardsScreen.styles';
+import { createStyles } from '../styles/EmployeeRewardsScreen.styles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const MONTHS = [
     'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
@@ -8,6 +9,9 @@ const MONTHS = [
 ];
 
 export const EmptyState = React.memo(({ selectedMonth, selectedYear, viewMode }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     const getPeriodText = () => {
         if (selectedMonth !== null && selectedMonth !== undefined && selectedYear) {
             return `за ${MONTHS[selectedMonth]} ${selectedYear}`;

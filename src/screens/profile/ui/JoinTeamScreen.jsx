@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
     View,
     Text,
@@ -28,6 +28,7 @@ import { fetchAllDistricts } from '@entities/district/model/slice';
 import { authApi } from '@entities/auth/api/authApi';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const roleOptions = [
     { value: 'EMPLOYEE', label: 'Сотрудник', description: 'Работа в офисе или на складе' },
@@ -46,7 +47,10 @@ export const JoinTeamScreen = () => {
     const dispatch = useDispatch();
     const { currentUser } = useAuth();
     const { showError, showSuccess } = useCustomAlert();
-    
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+    const placeholderColor = isDark ? colors.textTertiary : Color.textSecondary;
+
     const { districts, isLoading: districtsLoading } = useSelector(state => state.district);
 
     const scrollViewRef = useRef(null);
@@ -254,7 +258,7 @@ export const JoinTeamScreen = () => {
                 </Text>
             </View>
             {selectedRole === item.value && (
-                <IconCheck width={20} height={20} color={Color.colorLightMode} />
+                <IconCheck width={20} height={20} color={colors.primary} />
             )}
         </TouchableOpacity>
     );
@@ -281,7 +285,7 @@ export const JoinTeamScreen = () => {
                     </View>
                     <View style={[styles.checkbox, isSelected && styles.checkedCheckbox]}>
                         {isSelected && (
-                            <IconCheck width={16} height={16} color={Color.colorLightMode} />
+                            <IconCheck width={16} height={16} color="#FFFFFF" />
                         )}
                     </View>
                 </View>
@@ -305,7 +309,7 @@ export const JoinTeamScreen = () => {
             >
                 {loadingMyApplication ? (
                     <View style={styles.statusContainer}>
-                        <ActivityIndicator size="large" color={Color.blue2} />
+                        <ActivityIndicator size="large" color={colors.primary} />
                         <Text style={styles.loadingStatusText}>Загрузка...</Text>
                     </View>
                 ) : currentApplication ? (
@@ -403,7 +407,7 @@ export const JoinTeamScreen = () => {
                                         onPress={() => setShowDistrictsModal(true)}
                                     >
                                         <View style={styles.selectorContent}>
-                                            <MapPinIcon size={20} color={Color.textSecondary} />
+                                            <MapPinIcon size={20} color={colors.textSecondary} />
                                             <Text style={[
                                                 styles.selectorText,
                                                 styles.selectorTextWithIcon,
@@ -441,6 +445,7 @@ export const JoinTeamScreen = () => {
                                     onFocus={handleInputFocus('reason')}
                                     onBlur={handleInputBlur}
                                     placeholder="Расскажите, почему хотите работать в нашей команде"
+                                    placeholderTextColor={placeholderColor}
                                     multiline
                                     numberOfLines={3}
                                 />
@@ -461,6 +466,7 @@ export const JoinTeamScreen = () => {
                                     onFocus={handleInputFocus('experience')}
                                     onBlur={handleInputBlur}
                                     placeholder="Опишите ваш опыт работы в данной сфере"
+                                    placeholderTextColor={placeholderColor}
                                     multiline
                                     numberOfLines={3}
                                 />
@@ -481,6 +487,7 @@ export const JoinTeamScreen = () => {
                                     onFocus={handleInputFocus('additionalInfo')}
                                     onBlur={handleInputBlur}
                                     placeholder="Любая дополнительная информация о себе"
+                                    placeholderTextColor={placeholderColor}
                                     multiline
                                     numberOfLines={3}
                                 />
@@ -522,7 +529,7 @@ export const JoinTeamScreen = () => {
                                 style={styles.closeButton}
                                 onPress={() => setShowRoleModal(false)}
                             >
-                                <CloseIcon width={24} height={24} color={Color.textSecondary} />
+                                <CloseIcon width={24} height={24} color={colors.textSecondary} />
                             </TouchableOpacity>
                         </View>
 
@@ -551,7 +558,7 @@ export const JoinTeamScreen = () => {
                                 style={styles.closeButton}
                                 onPress={() => setShowDistrictsModal(false)}
                             >
-                                <CloseIcon width={24} height={24} color={Color.textSecondary} />
+                                <CloseIcon width={24} height={24} color={colors.textSecondary} />
                             </TouchableOpacity>
                         </View>
 
@@ -563,7 +570,7 @@ export const JoinTeamScreen = () => {
 
                         {districtsLoading ? (
                             <View style={styles.loadingContainer}>
-                                <ActivityIndicator size="large" color={Color.blue2} />
+                                <ActivityIndicator size="large" color={colors.primary} />
                                 <Text style={styles.loadingText}>Загрузка районов...</Text>
                             </View>
                         ) : (
@@ -597,10 +604,23 @@ export const JoinTeamScreen = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => {
+    const selectedRowBg = isDark ? 'rgba(124, 127, 232, 0.15)' : '#F0F8FF';
+    const statusBadgeBg = {
+        PENDING: isDark ? 'rgba(255, 210, 74, 0.15)' : '#FFF3E0',
+        APPROVED: isDark ? 'rgba(74, 222, 128, 0.15)' : '#E8F5E9',
+        REJECTED: isDark ? 'rgba(255, 92, 82, 0.15)' : '#FFEBEE',
+    };
+    const statusBadgeText = {
+        PENDING: isDark ? '#FFD24A' : '#E65100',
+        APPROVED: isDark ? '#4ADE80' : '#2E7D32',
+        REJECTED: isDark ? '#FF5C52' : '#C62828',
+    };
+
+    return StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.background,
         paddingBottom: 120
     },
     keyboardAvoidingView: {
@@ -613,12 +633,13 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(15),
         borderBottomWidth: 0.5,
-        borderBottomColor: '#E5E5E5',
+        borderBottomColor: colors.border,
+        backgroundColor: colors.background,
     },
     headerTitle: {
         fontSize: normalizeFont(18),
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     headerRight: {
@@ -638,7 +659,7 @@ const styles = StyleSheet.create({
     },
     loadingStatusText: {
         fontSize: normalizeFont(14),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginTop: normalize(12),
     },
@@ -648,15 +669,15 @@ const styles = StyleSheet.create({
     },
     statusCard: {
         padding: normalize(24),
-        backgroundColor: '#F8F9FA',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F8F9FA',
         borderRadius: normalize(16),
         borderWidth: 1,
-        borderColor: '#E5E5E5',
+        borderColor: colors.border,
     },
     statusCardTitle: {
         fontSize: normalizeFont(20),
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(20),
         textAlign: 'center',
@@ -669,13 +690,13 @@ const styles = StyleSheet.create({
     },
     statusLabel: {
         fontSize: normalizeFont(14),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
     },
     statusValue: {
         fontSize: normalizeFont(14),
         fontWeight: '500',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     statusBadge: {
@@ -686,25 +707,25 @@ const styles = StyleSheet.create({
         marginBottom: normalize(16),
     },
     statusBadge_PENDING: {
-        backgroundColor: '#FFF3E0',
+        backgroundColor: statusBadgeBg.PENDING,
     },
     statusBadge_APPROVED: {
-        backgroundColor: '#E8F5E9',
+        backgroundColor: statusBadgeBg.APPROVED,
     },
     statusBadge_REJECTED: {
-        backgroundColor: '#FFEBEE',
+        backgroundColor: statusBadgeBg.REJECTED,
     },
     statusBadgeText: {
         fontSize: normalizeFont(14),
         fontWeight: '600',
         fontFamily: FontFamily.sFProText,
     },
-    statusBadgeText_PENDING: { color: '#E65100' },
-    statusBadgeText_APPROVED: { color: '#2E7D32' },
-    statusBadgeText_REJECTED: { color: '#C62828' },
+    statusBadgeText_PENDING: { color: statusBadgeText.PENDING },
+    statusBadgeText_APPROVED: { color: statusBadgeText.APPROVED },
+    statusBadgeText_REJECTED: { color: statusBadgeText.REJECTED },
     statusHint: {
         fontSize: normalizeFont(14),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         lineHeight: normalize(20),
         marginBottom: normalize(24),
@@ -715,13 +736,13 @@ const styles = StyleSheet.create({
     sectionTitle: {
         fontSize: normalizeFont(18),
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(8),
     },
     sectionDescription: {
         fontSize: normalizeFont(14),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(16),
         lineHeight: normalize(20),
@@ -736,9 +757,9 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(16),
         paddingVertical: normalize(14),
         borderWidth: 1,
-        borderColor: '#E5E5E5',
+        borderColor: colors.border,
         borderRadius: normalize(12),
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surfaceElevated : '#FFFFFF',
         marginBottom: normalize(8),
     },
     selectorContent: {
@@ -748,22 +769,22 @@ const styles = StyleSheet.create({
     },
     selectorText: {
         fontSize: normalizeFont(16),
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     selectorTextWithIcon: {
         marginLeft: normalize(12),
     },
     placeholderText: {
-        color: Color.textSecondary,
+        color: colors.textSecondary,
     },
     selectorIcon: {
         fontSize: normalizeFont(16),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
     },
     selectedCount: {
         fontSize: normalizeFont(12),
-        color: Color.blue2,
+        color: colors.primary,
         fontFamily: FontFamily.sFProText,
         marginTop: normalize(4),
     },
@@ -773,7 +794,7 @@ const styles = StyleSheet.create({
     inputLabel: {
         fontSize: normalizeFont(14),
         fontWeight: '500',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(8),
     },
@@ -784,49 +805,49 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(12),
         paddingBottom: normalize(12),
         borderWidth: 1.5,
-        borderColor: '#E5E5E5',
+        borderColor: colors.border,
         borderRadius: normalize(12),
-        backgroundColor: '#FAFAFA',
+        backgroundColor: isDark ? colors.surfaceElevated : '#FAFAFA',
         fontSize: normalizeFont(16),
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         shadowColor: '#000',
         shadowOffset: {
             width: 0,
             height: 1,
         },
-        shadowOpacity: 0.05,
+        shadowOpacity: isDark ? 0 : 0.05,
         shadowRadius: 2,
-        elevation: 2,
+        elevation: isDark ? 0 : 2,
     },
     textAreaFocused: {
-        borderColor: Color.blue2,
+        borderColor: colors.primary,
         borderWidth: 2,
-        backgroundColor: '#FFFFFF',
-        shadowColor: Color.blue2,
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
+        shadowColor: colors.primary,
         shadowOffset: {
             width: 0,
             height: 2,
         },
-        shadowOpacity: 0.15,
+        shadowOpacity: isDark ? 0 : 0.15,
         shadowRadius: 4,
-        elevation: 4,
+        elevation: isDark ? 0 : 4,
     },
     footer: {
         padding: normalize(20),
         borderTopWidth: 0.5,
-        borderTopColor: '#E5E5E5',
-        backgroundColor: '#FFFFFF',
+        borderTopColor: colors.border,
+        backgroundColor: colors.background,
     },
-    
+
     // Стили для модальных окон
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: colors.modalOverlay,
         justifyContent: 'flex-end',
     },
     modalContainer: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.surface,
         borderTopLeftRadius: normalize(20),
         borderTopRightRadius: normalize(20),
         maxHeight: '80%',
@@ -838,12 +859,12 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(16),
         borderBottomWidth: 0.5,
-        borderBottomColor: '#E5E5E5',
+        borderBottomColor: colors.border,
     },
     modalTitle: {
         fontSize: normalizeFont(18),
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     closeButton: {
@@ -852,14 +873,14 @@ const styles = StyleSheet.create({
     counter: {
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(12),
-        backgroundColor: '#F8F9FA',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F8F9FA',
         borderBottomWidth: 0.5,
-        borderBottomColor: '#E5E5E5',
+        borderBottomColor: colors.border,
     },
     counterText: {
         fontSize: normalizeFont(14),
         fontWeight: '500',
-        color: Color.blue2,
+        color: colors.primary,
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
     },
@@ -869,7 +890,7 @@ const styles = StyleSheet.create({
     },
     loadingText: {
         fontSize: normalizeFont(14),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginTop: normalize(12),
     },
@@ -879,16 +900,16 @@ const styles = StyleSheet.create({
     },
     emptyText: {
         fontSize: normalizeFont(16),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
     },
     modalFooter: {
         padding: normalize(20),
         borderTopWidth: 0.5,
-        borderTopColor: '#E5E5E5',
+        borderTopColor: colors.border,
     },
-    
+
     // Стили для опций роли
     optionItem: {
         flexDirection: 'row',
@@ -896,10 +917,10 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(16),
         borderBottomWidth: 0.5,
-        borderBottomColor: '#E5E5E5',
+        borderBottomColor: colors.border,
     },
     selectedOptionItem: {
-        backgroundColor: '#F0F8FF',
+        backgroundColor: selectedRowBg,
     },
     optionContent: {
         flex: 1,
@@ -907,28 +928,28 @@ const styles = StyleSheet.create({
     optionTitle: {
         fontSize: normalizeFont(16),
         fontWeight: '500',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(4),
     },
     optionDescription: {
         fontSize: normalizeFont(14),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
     },
     selectedOptionText: {
-        color: Color.blue2,
+        color: colors.primary,
     },
-    
+
     // Стили для районов
     districtItem: {
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(12),
         borderBottomWidth: 0.5,
-        borderBottomColor: '#E5E5E5',
+        borderBottomColor: colors.border,
     },
     selectedDistrictItem: {
-        backgroundColor: '#F0F8FF',
+        backgroundColor: selectedRowBg,
     },
     districtContent: {
         flexDirection: 'row',
@@ -942,30 +963,30 @@ const styles = StyleSheet.create({
     districtName: {
         fontSize: normalizeFont(16),
         fontWeight: '500',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(2),
     },
     districtDescription: {
         fontSize: normalizeFont(12),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
     },
     selectedText: {
-        color: Color.blue2,
+        color: colors.primary,
     },
     checkbox: {
         width: normalize(24),
         height: normalize(24),
         borderRadius: normalize(12),
         borderWidth: 2,
-        borderColor: '#E5E5E5',
+        borderColor: colors.border,
         alignItems: 'center',
         justifyContent: 'center',
     },
     checkedCheckbox: {
-        backgroundColor: Color.blue2,
-        borderColor: Color.blue2,
+        backgroundColor: colors.primary,
+        borderColor: colors.primary,
     },
     keyboardSpacer: {
         height: normalize(200),
@@ -975,4 +996,5 @@ const styles = StyleSheet.create({
         height: normalize(250),
         minHeight: normalize(250),
     },
-}); 
+});
+};

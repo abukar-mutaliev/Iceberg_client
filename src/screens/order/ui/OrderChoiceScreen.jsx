@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
@@ -15,7 +15,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useDispatch } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { Color, FontFamily } from '@app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { useOrderChoice } from '@entities/order';
 import {
     OrderAlternativesApi,
@@ -26,6 +27,7 @@ import {
 } from '@entities/order';
 import { getImageUrl } from '@shared/api/api';
 import { fetchCart } from '@entities/cart';
+import { calculateItemsFromBoxes } from '@shared/utils/productBoxUtils';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
 
 const normalize = (size) => {
@@ -56,6 +58,8 @@ export const OrderChoiceScreen = () => {
     const route = useRoute();
     const navigation = useNavigation();
     const dispatch = useDispatch();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const { choiceId, orderId, allChoices } = route.params || {};
 
     // Хуки
@@ -131,36 +135,31 @@ export const OrderChoiceScreen = () => {
     const getTotalItemsCount = useCallback(() => {
         if (!choiceDetails?.order) return 0;
 
-        // Пытаемся подсчитать из orderItems
-        if (choiceDetails.order.orderItems && choiceDetails.order.orderItems.length > 0) {
-            return choiceDetails.order.orderItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
-        }
+        const orderItems = choiceDetails.order.orderItems?.length
+            ? choiceDetails.order.orderItems
+            : choiceDetails.order.items;
 
-        // Пытаемся подсчитать из items
-        if (choiceDetails.order.items && choiceDetails.order.items.length > 0) {
-            return choiceDetails.order.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
-        }
+        if (!orderItems?.length) return 0;
 
-        return 0;
+        return orderItems.reduce(
+            (sum, item) => sum + calculateItemsFromBoxes(item.quantity || 0, item.product?.itemsPerBox || 1),
+            0
+        );
     }, [choiceDetails]);
 
     /**
-     * Подсчет количества коробов (уникальных позиций) в заказе
+     * Подсчет количества коробок в заказе
      */
     const getTotalBoxesCount = useCallback(() => {
         if (!choiceDetails?.order) return 0;
 
-        // Пытаемся подсчитать из orderItems
-        if (choiceDetails.order.orderItems && choiceDetails.order.orderItems.length > 0) {
-            return choiceDetails.order.orderItems.length;
-        }
+        const orderItems = choiceDetails.order.orderItems?.length
+            ? choiceDetails.order.orderItems
+            : choiceDetails.order.items;
 
-        // Пытаемся подсчитать из items
-        if (choiceDetails.order.items && choiceDetails.order.items.length > 0) {
-            return choiceDetails.order.items.length;
-        }
+        if (!orderItems?.length) return 0;
 
-        return 0;
+        return orderItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
     }, [choiceDetails]);
 
     /**
@@ -1363,7 +1362,7 @@ export const OrderChoiceScreen = () => {
     // Рендер карточки альтернативы
     const renderAlternative = (alternative) => {
         const isSelected = selectedAlternativeId === alternative.id;
-        const color = ALTERNATIVE_TYPE_COLORS[alternative.alternativeType] || '#6c757d';
+        const color = ALTERNATIVE_TYPE_COLORS[alternative.alternativeType] || colors.textSecondary;
         const icon = ALTERNATIVE_TYPE_ICONS[alternative.alternativeType] || 'help';
         const label = ALTERNATIVE_TYPE_LABELS[alternative.alternativeType] || alternative.alternativeType;
         const additionalCost = formatAdditionalCost(alternative.additionalCost);
@@ -1393,14 +1392,14 @@ export const OrderChoiceScreen = () => {
             >
                 <View style={styles.alternativeHeader}>
                     <View style={[styles.alternativeIcon, { backgroundColor: color }]}>
-                        <Icon name={icon} size={24} color="#fff" />
+                        <Icon name={icon} size={24} color={colors.textInverse} />
                     </View>
                     <View style={styles.alternativeInfo}>
                         <Text style={styles.alternativeTitle}>{label}</Text>
                         {additionalCost && (
                             <Text style={[
                                 styles.alternativeCost,
-                                { color: alternative.additionalCost > 0 ? '#dc3545' : '#28a745' }
+                                { color: alternative.additionalCost > 0 ? colors.error : colors.success }
                             ]}>
                                 {additionalCost}
                             </Text>
@@ -1432,7 +1431,7 @@ export const OrderChoiceScreen = () => {
                 {/* Индикация, что товары уже удалены */}
                 {isRemoveUnavailableDisabled && (
                     <View style={styles.alreadyProcessedBadge}>
-                        <Icon name="check-circle" size={16} color="#28a745" />
+                        <Icon name="check-circle" size={16} color={colors.success} />
                         <Text style={styles.alreadyProcessedText}>
                             Товары уже удалены
                         </Text>
@@ -1467,10 +1466,10 @@ export const OrderChoiceScreen = () => {
     // Состояние загрузки
     if (loading) {
         return (
-            <SafeAreaView style={styles.container}>
-                <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+                <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color="#667eea" />
+                    <ActivityIndicator size="large" color={colors.primary} />
                     <Text style={styles.loadingText}>Загрузка предложений...</Text>
                 </View>
             </SafeAreaView>
@@ -1480,17 +1479,17 @@ export const OrderChoiceScreen = () => {
     // Состояние ошибки
     if (error) {
         return (
-            <SafeAreaView style={styles.container}>
-                <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+                <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
                 <View style={styles.errorContainer}>
-                    <Icon name="error-outline" size={80} color="#dc3545" />
+                    <Icon name="error-outline" size={80} color={colors.error} />
                     <Text style={styles.errorTitle}>Ошибка загрузки</Text>
                     <Text style={styles.errorText}>{error}</Text>
                     <TouchableOpacity
                         style={styles.retryButton}
                         onPress={loadChoiceDetails}
                     >
-                        <Icon name="refresh" size={20} color="#fff" />
+                        <Icon name="refresh" size={20} color={colors.textInverse} />
                         <Text style={styles.retryButtonText}>Попробовать снова</Text>
                     </TouchableOpacity>
                 </View>
@@ -1501,10 +1500,10 @@ export const OrderChoiceScreen = () => {
     // Состояние истекшего предложения
     if (isExpired) {
         return (
-            <SafeAreaView style={styles.container}>
-                <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+                <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
                 <View style={styles.expiredContainer}>
-                    <Icon name="access-time" size={80} color="#fd7e14" />
+                    <Icon name="access-time" size={80} color={colors.warning} />
                     <Text style={styles.expiredTitle}>Время выбора истекло</Text>
                     <Text style={styles.expiredText}>
                         К сожалению, время для ответа на это предложение истекло. 
@@ -1523,8 +1522,8 @@ export const OrderChoiceScreen = () => {
 
     // Основной рендер
     return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+            <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
             
             {/* Заголовок */}
             <View style={styles.header}>
@@ -1532,7 +1531,7 @@ export const OrderChoiceScreen = () => {
                     style={styles.headerBackButton}
                     onPress={() => navigation.goBack()}
                 >
-                    <Icon name="arrow-back" size={24} color="#333" />
+                    <Icon name="arrow-back" size={24} color={colors.textPrimary} />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Выберите вариант</Text>
                 <View style={styles.headerPlaceholder} />
@@ -1544,7 +1543,7 @@ export const OrderChoiceScreen = () => {
                         {/* Информация о проблеме */}
                         <View style={styles.problemSection}>
                             <View style={styles.problemHeader}>
-                                <Icon name="info-outline" size={24} color="#fd7e14" />
+                                <Icon name="info-outline" size={24} color={colors.warning} />
                                 <Text style={styles.problemTitle}>
                                     {CHOICE_TYPE_LABELS[choiceDetails?.choiceType] || 'Требуется ваш выбор'}
                                 </Text>
@@ -1557,7 +1556,7 @@ export const OrderChoiceScreen = () => {
                             {choiceDetails.unavailableItems && choiceDetails.unavailableItems.length > 0 ? (
                                 <View style={styles.unavailableProductsContainer}>
                                     <View style={styles.unavailableProductsHeader}>
-                                        <Icon name="inventory-2" size={18} color="#fd7e14" />
+                                        <Icon name="inventory-2" size={18} color={colors.warning} />
                                         <Text style={styles.unavailableProductsTitle}>
                                             Недоступные товары ({choiceDetails.unavailableItems.length}):
                                         </Text>
@@ -1590,7 +1589,7 @@ export const OrderChoiceScreen = () => {
                                                     isSelectedForRemoval && styles.productCheckboxSelected
                                                 ]}>
                                                     {isSelectedForRemoval && (
-                                                        <Icon name="check" size={16} color="#fff" />
+                                                        <Icon name="check" size={16} color={colors.textInverse} />
                                                     )}
                                                 </View>
                                                 
@@ -1604,7 +1603,7 @@ export const OrderChoiceScreen = () => {
                                                         />
                                                     ) : (
                                                         <View style={[styles.productImage, styles.placeholderContainer]}>
-                                                            <Icon name="image" size={24} color="#ccc" />
+                                                            <Icon name="image" size={24} color={colors.textTertiary} />
                                                         </View>
                                                     )}
                                                 </View>
@@ -1612,7 +1611,7 @@ export const OrderChoiceScreen = () => {
                                                 <View style={styles.productDetails}>
                                                     <View style={styles.productInfo}>
                                                         <View style={styles.productNameContainer}>
-                                                            <Icon name="shopping-cart" size={12} color="#4a5568" style={{ marginTop: 2, flexShrink: 0 }} />
+                                                            <Icon name="shopping-cart" size={12} color={colors.textSecondary} style={{ marginTop: 2, flexShrink: 0 }} />
                                                             <Text style={styles.productName} numberOfLines={2} ellipsizeMode="tail">
                                                                 {item.productName}
                                                             </Text>
@@ -1643,7 +1642,7 @@ export const OrderChoiceScreen = () => {
                                     
                                     {/* Подсказка о выборе товаров */}
                                     <View style={styles.removeHintContainer}>
-                                        <Icon name="info" size={16} color="#667eea" />
+                                        <Icon name="info" size={16} color={colors.primary} />
                                         <Text style={styles.removeHintText}>
                                             💡 Нажмите на товар, чтобы выбрать/отменить его для удаления из заказа.
                                             {selectedProductsToRemove.size > 0 && (
@@ -1655,7 +1654,7 @@ export const OrderChoiceScreen = () => {
                                     {/* Подсказка о товарах на замену */}
                                     {choiceDetails?.alternatives?.some(alt => alt.alternativeType === 'SUBSTITUTE') && (
                                         <View style={styles.substituteHintContainer}>
-                                            <Icon name="swap-horiz" size={16} color="#28a745" />
+                                            <Icon name="swap-horiz" size={16} color={colors.success} />
                                             <Text style={styles.substituteHintText}>
                                                 ✨ Доступны похожие товары на замену из ближайшего склада "{getWarehouseNameForSubstitutes()}"
                                             </Text>
@@ -1673,10 +1672,10 @@ export const OrderChoiceScreen = () => {
                                         activeOpacity={0.8}
                                     >
                                         {responding ? (
-                                            <ActivityIndicator color="#fff" size="small" />
+                                            <ActivityIndicator color={colors.textInverse} size="small" />
                                         ) : (
                                             <>
-                                                <Icon name="delete-outline" size={20} color="#fff" />
+                                                <Icon name="delete-outline" size={20} color={colors.textInverse} />
                                                 <Text style={styles.quickRemoveButtonText}>
                                                     {isChoiceProcessed ? 'Предложение обработано' :
                                                      isDeletionRequestSent ? 'Товары удалены - выберите замену' :
@@ -1705,7 +1704,7 @@ export const OrderChoiceScreen = () => {
                             {/* Таймер */}
                             {timeLeft > 0 && (
                                 <View style={styles.timerContainer}>
-                                    <Icon name="schedule" size={16} color="#fd7e14" />
+                                    <Icon name="schedule" size={16} color={colors.warning} />
                                     <Text style={styles.timerText}>
                                         Время на выбор: {hoursLeft}ч {minutesLeft}мин
                                     </Text>
@@ -1724,7 +1723,7 @@ export const OrderChoiceScreen = () => {
                                     onPress={handleShowAlternativeProducts}
                                     activeOpacity={0.8}
                                 >
-                                    <Icon name="swap-horiz" size={24} color="#667eea" />
+                                    <Icon name="swap-horiz" size={24} color={colors.primary} />
                                     <View style={styles.viewProductsInfo}>
                                         <Text style={styles.viewProductsTitle}>
                                             Выбрать товары для замены
@@ -1733,7 +1732,7 @@ export const OrderChoiceScreen = () => {
                                             Доступны на складе "{getWarehouseNameForSubstitutes()}"
                                         </Text>
                                     </View>
-                                    <Icon name="chevron-right" size={24} color="#667eea" />
+                                    <Icon name="chevron-right" size={24} color={colors.primary} />
                                 </TouchableOpacity>
                             )}
                             
@@ -1758,10 +1757,10 @@ export const OrderChoiceScreen = () => {
                                 disabled={!selectedAlternativeId || responding || isChoiceProcessed}
                             >
                                 {responding ? (
-                                    <ActivityIndicator color="#fff" size="small" />
+                                    <ActivityIndicator color={colors.textInverse} size="small" />
                                 ) : (
                                     <>
-                                        <Icon name="check" size={20} color="#fff" />
+                                        <Icon name="check" size={20} color={colors.textInverse} />
                                         <Text style={styles.confirmButtonText}>
                                             {isChoiceProcessed ? 'Предложение обработано' : 'Подтвердить выбор'}
                                         </Text>
@@ -1800,7 +1799,7 @@ export const OrderChoiceScreen = () => {
                                         <Icon 
                                             name={ALTERNATIVE_TYPE_ICONS[selectedAlternative.alternativeType] || 'help'} 
                                             size={24} 
-                                            color={ALTERNATIVE_TYPE_COLORS[selectedAlternative.alternativeType] || '#6c757d'} 
+                                            color={ALTERNATIVE_TYPE_COLORS[selectedAlternative.alternativeType] || colors.textSecondary}
                                         />
                                         <Text style={styles.selectedChoiceTitle}>
                                             {ALTERNATIVE_TYPE_LABELS[selectedAlternative.alternativeType] || selectedAlternative.alternativeType}
@@ -1834,7 +1833,7 @@ export const OrderChoiceScreen = () => {
                                 return selectedAlternative?.alternativeType === 'SUBSTITUTE' && Object.keys(selectedProducts).length > 0 && (
                                 <View style={styles.selectedChoiceInfo}>
                                     <View style={styles.selectedProductHeader}>
-                                        <Icon name="shopping-basket" size={24} color="#667eea" />
+                                        <Icon name="shopping-basket" size={24} color={colors.primary} />
                                         <Text style={styles.selectedChoiceTitle}>
                                             Выбранные товары ({Object.keys(selectedProducts).length})
                                         </Text>
@@ -1911,7 +1910,7 @@ export const OrderChoiceScreen = () => {
                                 disabled={responding}
                             >
                                 {responding ? (
-                                    <ActivityIndicator color="#fff" size="small" />
+                                    <ActivityIndicator color={colors.textInverse} size="small" />
                                 ) : (
                                     <Text style={styles.modalConfirmText}>Подтвердить</Text>
                                 )}
@@ -1936,7 +1935,7 @@ export const OrderChoiceScreen = () => {
                                 style={styles.closeModalButton}
                                 onPress={() => setShowProductsModal(false)}
                             >
-                                <Icon name="close" size={24} color="#666" />
+                                <Icon name="close" size={24} color={colors.textSecondary} />
                             </TouchableOpacity>
                         </View>
                         
@@ -1971,20 +1970,20 @@ export const OrderChoiceScreen = () => {
                                                     style={styles.quantityButton}
                                                     onPress={() => handleUpdateProductQuantity(alternativeId, productData.quantity - 1)}
                                                 >
-                                                    <Icon name="remove" size={16} color="#667eea" />
+                                                    <Icon name="remove" size={16} color={colors.primary} />
                                                 </TouchableOpacity>
                                                 <Text style={styles.selectedProductQuantity}>{productData.quantity}</Text>
                                                 <TouchableOpacity
                                                     style={styles.quantityButton}
                                                     onPress={() => handleUpdateProductQuantity(alternativeId, productData.quantity + 1)}
                                                 >
-                                                    <Icon name="add" size={16} color="#667eea" />
+                                                    <Icon name="add" size={16} color={colors.primary} />
                                                 </TouchableOpacity>
                                                 <TouchableOpacity
                                                     style={styles.removeProductButton}
                                                     onPress={() => handleRemoveProduct(alternativeId)}
                                                 >
-                                                    <Icon name="close" size={16} color="#dc3545" />
+                                                    <Icon name="close" size={16} color={colors.error} />
                                                 </TouchableOpacity>
                                             </View>
                                         </View>
@@ -2033,7 +2032,7 @@ export const OrderChoiceScreen = () => {
                                                     />
                                                 ) : (
                                                     <View style={[styles.substituteProductImage, styles.substitutePlaceholderContainer]}>
-                                                        <Icon name="shopping-basket" size={24} color="#667eea" />
+                                                        <Icon name="shopping-basket" size={24} color={colors.primary} />
                                                     </View>
                                                 )}
                                                 {isSelected && selectedQuantity > 0 && (
@@ -2066,7 +2065,7 @@ export const OrderChoiceScreen = () => {
                                                         </Text>
                                                         <Text style={[
                                                             styles.substituteProductPrice,
-                                                            { color: priceDifference > 0 ? '#dc3545' : '#28a745' }
+                                                            { color: priceDifference > 0 ? colors.error : colors.success }
                                                         ]}>
                                                             {additionalCost}
                                                         </Text>
@@ -2078,7 +2077,7 @@ export const OrderChoiceScreen = () => {
                                                         <Text style={styles.substituteProductPriceLabel}>
                                                             Итого за {selectedQuantity} коробок:
                                                         </Text>
-                                                        <Text style={[styles.substituteProductPrice, { color: '#667eea', fontWeight: '700' }]}>
+                                                        <Text style={[styles.substituteProductPrice, { color: colors.primary, fontWeight: '700' }]}>
                                                             {formatAmount((alternative.product?.price || 0) * selectedQuantity)}
                                                         </Text>
                                                     </View>
@@ -2086,7 +2085,7 @@ export const OrderChoiceScreen = () => {
                                                 
                                                 {alternative.estimatedDate && (
                                                     <View style={styles.substituteProductDateContainer}>
-                                                        <Icon name="access-time" size={14} color="#666" />
+                                                        <Icon name="access-time" size={14} color={colors.textSecondary} />
                                                         <Text style={styles.substituteProductDate}>
                                                             Готов к выдаче: {formatEstimatedDate(alternative.estimatedDate)}
                                                         </Text>
@@ -2120,7 +2119,7 @@ export const OrderChoiceScreen = () => {
                                                     <Icon 
                                                         name="remove" 
                                                         size={20} 
-                                                        color={!isSelected || selectedQuantity <= 0 ? "#ccc" : "#667eea"} 
+                                                        color={!isSelected || selectedQuantity <= 0 ? colors.textTertiary : colors.primary} 
                                                     />
                                                 </TouchableOpacity>
                                                 
@@ -2140,7 +2139,7 @@ export const OrderChoiceScreen = () => {
                                                     <Icon 
                                                         name="add" 
                                                         size={20} 
-                                                        color={!isSelected ? "#ccc" : "#667eea"} 
+                                                        color={!isSelected ? colors.textTertiary : colors.primary} 
                                                     />
                                                 </TouchableOpacity>
                                             </View>
@@ -2191,10 +2190,10 @@ export const OrderChoiceScreen = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.background,
     },
     header: {
         flexDirection: 'row',
@@ -2202,15 +2201,15 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(16),
-        backgroundColor: '#fff',
+        backgroundColor: colors.surface,
         borderBottomWidth: 1,
-        borderBottomColor: 'rgba(0,0,0,0.1)',
+        borderBottomColor: colors.border,
     },
     headerBackButton: {
         width: normalize(40),
         height: normalize(40),
         borderRadius: normalize(20),
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surfaceSecondary,
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -2218,7 +2217,7 @@ const styles = StyleSheet.create({
         fontSize: normalize(18),
         fontFamily: FontFamily.sFProDisplay || 'SF Pro Display',
         fontWeight: '600',
-        color: '#333',
+        color: colors.textPrimary,
     },
     headerPlaceholder: {
         width: normalize(40),
@@ -2227,15 +2226,15 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     problemSection: {
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         margin: normalize(16),
         borderRadius: normalize(12),
         padding: normalize(20),
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
+        shadowOpacity: isDark ? 0.24 : 0.1,
+        shadowRadius: isDark ? 8 : 4,
+        elevation: isDark ? 4 : 3,
     },
     problemHeader: {
         flexDirection: 'row',
@@ -2245,76 +2244,76 @@ const styles = StyleSheet.create({
     problemTitle: {
         fontSize: normalize(18),
         fontWeight: '600',
-        color: '#333',
+        color: colors.textPrimary,
         marginLeft: normalize(12),
     },
     problemDescription: {
         fontSize: normalize(15),
-        color: '#666',
+        color: colors.textSecondary,
         lineHeight: normalize(22),
         marginBottom: normalize(16),
     },
     orderInfo: {
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surface,
         padding: normalize(12),
         borderRadius: normalize(8),
         marginBottom: normalize(12),
     },
     orderInfoLabel: {
         fontSize: normalize(13),
-        color: '#666',
+        color: colors.textSecondary,
         fontWeight: '500',
     },
     orderInfoText: {
         fontSize: normalize(15),
-        color: '#333',
+        color: colors.textPrimary,
         fontWeight: '600',
         marginTop: normalize(4),
     },
     allChoicesInfo: {
-        backgroundColor: '#e3f2fd',
+        backgroundColor: colors.primary + '14',
         padding: normalize(12),
         borderRadius: normalize(8),
         marginBottom: normalize(12),
         borderLeftWidth: 4,
-        borderLeftColor: '#2196f3',
+        borderLeftColor: colors.primary,
     },
     allChoicesLabel: {
         fontSize: normalize(14),
-        color: '#1976d2',
+        color: colors.primary,
         fontWeight: '600',
         marginBottom: normalize(4),
     },
     allChoicesText: {
         fontSize: normalize(12),
-        color: '#1565c0',
+        color: colors.primary,
         fontWeight: '500',
     },
     timerContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#fff3cd',
+        backgroundColor: colors.warning + '18',
         padding: normalize(8),
         borderRadius: normalize(6),
         borderWidth: 1,
-        borderColor: '#ffeaa7',
+        borderColor: colors.warning + '66',
     },
     timerText: {
         fontSize: normalize(13),
-        color: '#fd7e14',
+        color: colors.warning,
         fontWeight: '600',
         marginLeft: normalize(6),
     },
     // Карточка товара
     productCard: {
         flexDirection: 'row',
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surface,
         borderRadius: normalize(12),
         padding: normalize(16),
         marginVertical: normalize(12),
         borderWidth: 1,
-        borderColor: '#e9ecef',
-        shadowColor: '#000',
+        borderColor: colors.border,
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.08,
         shadowRadius: 4,
@@ -2325,9 +2324,9 @@ const styles = StyleSheet.create({
         height: normalize(50),
         borderRadius: normalize(10),
         overflow: 'hidden',
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surfaceSecondary,
         borderWidth: 1,
-        borderColor: 'rgba(0,0,0,0.05)',
+        borderColor: colors.borderSubtle,
         marginRight: normalize(8),
         flexShrink: 0,
     },
@@ -2336,11 +2335,11 @@ const styles = StyleSheet.create({
         height: '100%',
     },
     placeholderContainer: {
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surfaceSecondary,
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#e9ecef',
+        borderColor: colors.border,
     },
     productDetails: {
         flex: 1,
@@ -2358,7 +2357,7 @@ const styles = StyleSheet.create({
     },
     productName: {
         fontSize: normalize(13),
-        color: '#1a1a1a',
+        color: colors.textPrimary,
         fontWeight: '600',
         lineHeight: normalize(18),
         flex: 1,
@@ -2369,7 +2368,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        backgroundColor: 'rgba(102, 126, 234, 0.05)',
+        backgroundColor: colors.primary + '0D',
         paddingHorizontal: normalize(10),
         paddingVertical: normalize(6),
         borderRadius: normalize(6),
@@ -2378,21 +2377,21 @@ const styles = StyleSheet.create({
     },
     productPriceLabel: {
         fontSize: normalize(11),
-        color: '#667eea',
+        color: colors.primary,
         fontWeight: '600',
         flexShrink: 1,
     },
     productPrice: {
         fontSize: normalize(13),
         fontWeight: '700',
-        color: '#667eea',
+        color: colors.primary,
         flexShrink: 0,
     },
     productBoxPriceContainer: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        backgroundColor: 'rgba(40, 167, 69, 0.05)',
+        backgroundColor: colors.success + '0D',
         paddingHorizontal: normalize(12),
         paddingVertical: normalize(8),
         borderRadius: normalize(8),
@@ -2400,13 +2399,13 @@ const styles = StyleSheet.create({
     },
     productBoxPriceLabel: {
         fontSize: normalize(12),
-        color: '#28a745',
+        color: colors.success,
         fontWeight: '600',
     },
     productBoxPrice: {
         fontSize: normalize(16),
         fontWeight: '800',
-        color: '#28a745',
+        color: colors.success,
     },
     alternativesSection: {
         margin: normalize(16),
@@ -2415,18 +2414,18 @@ const styles = StyleSheet.create({
     alternativesTitle: {
         fontSize: normalize(16),
         fontWeight: '600',
-        color: '#333',
+        color: colors.textPrimary,
         marginBottom: normalize(16),
         marginLeft: normalize(4),
     },
     alternativeCard: {
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         borderRadius: normalize(12),
         padding: normalize(16),
         marginBottom: normalize(12),
         borderWidth: 2,
-        borderColor: '#e9ecef',
-        shadowColor: '#000',
+        borderColor: colors.border,
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.08,
         shadowRadius: 4,
@@ -2456,7 +2455,7 @@ const styles = StyleSheet.create({
     alternativeTitle: {
         fontSize: normalize(16),
         fontWeight: '600',
-        color: '#333',
+        color: colors.textPrimary,
         marginBottom: normalize(4),
     },
     alternativeCost: {
@@ -2466,14 +2465,14 @@ const styles = StyleSheet.create({
     },
     alternativeDate: {
         fontSize: normalize(13),
-        color: '#666',
+        color: colors.textSecondary,
     },
     radioButton: {
         width: normalize(24),
         height: normalize(24),
         borderRadius: normalize(12),
         borderWidth: 2,
-        borderColor: '#dee2e6',
+        borderColor: colors.border,
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -2487,87 +2486,87 @@ const styles = StyleSheet.create({
     },
     alternativeDescription: {
         fontSize: normalize(14),
-        color: '#666',
+        color: colors.textSecondary,
         lineHeight: normalize(20),
     },
     alternativeCardDisabled: {
         opacity: 0.6,
-        backgroundColor: '#f8f9fa',
-        borderColor: '#dee2e6',
+        backgroundColor: colors.surfaceSecondary,
+        borderColor: colors.border,
     },
     alternativeDescriptionDisabled: {
-        color: '#999',
+        color: colors.textTertiary,
         textDecorationLine: 'line-through',
     },
     alreadyProcessedBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#d4edda',
+        backgroundColor: colors.success + '18',
         padding: normalize(8),
         borderRadius: normalize(6),
         marginTop: normalize(10),
         borderWidth: 1,
-        borderColor: '#c3e6cb',
+        borderColor: colors.success + '66',
     },
     alreadyProcessedText: {
         fontSize: normalize(13),
-        color: '#155724',
+        color: colors.success,
         fontWeight: '600',
         marginLeft: normalize(6),
     },
     productInfo: {
-        backgroundColor: '#e3f2fd',
+        backgroundColor: colors.primary + '14',
         padding: normalize(12),
         borderRadius: normalize(8),
         marginTop: normalize(12),
     },
     productInfoLabel: {
         fontSize: normalize(12),
-        color: '#1976d2',
+        color: colors.primary,
         fontWeight: '600',
     },
     productInfoText: {
         fontSize: normalize(14),
-        color: '#333',
+        color: colors.textPrimary,
         marginTop: normalize(4),
     },
     warehouseInfo: {
-        backgroundColor: '#f3e5f5',
+        backgroundColor: colors.accent + '18',
         padding: normalize(12),
         borderRadius: normalize(8),
         marginTop: normalize(12),
     },
     warehouseInfoLabel: {
         fontSize: normalize(12),
-        color: '#7b1fa2',
+        color: colors.accent,
         fontWeight: '600',
     },
     warehouseInfoText: {
         fontSize: normalize(14),
-        color: '#333',
+        color: colors.textPrimary,
         fontWeight: '600',
         marginTop: normalize(4),
     },
     warehouseInfoAddress: {
         fontSize: normalize(13),
-        color: '#666',
+        color: colors.textSecondary,
         marginTop: normalize(2),
     },
     actionsSection: {
         padding: normalize(20),
-        backgroundColor: '#fff',
+        backgroundColor: colors.surface,
         borderTopWidth: 1,
-        borderTopColor: '#e9ecef',
+        borderTopColor: colors.border,
     },
     confirmButton: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#667eea',
+        backgroundColor: colors.primary,
         borderRadius: normalize(12),
         paddingVertical: normalize(16),
         marginBottom: normalize(12),
-        shadowColor: '#667eea',
+        shadowColor: colors.primary,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
         shadowRadius: 8,
@@ -2579,20 +2578,20 @@ const styles = StyleSheet.create({
     confirmButtonText: {
         fontSize: normalize(16),
         fontWeight: '600',
-        color: '#fff',
+        color: colors.textInverse,
         marginLeft: normalize(8),
     },
     rejectButton: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         borderRadius: normalize(12),
         paddingVertical: normalize(16),
         marginTop: normalize(12),
         borderWidth: 2,
-        borderColor: '#dc3545',
-        shadowColor: '#000',
+        borderColor: colors.error,
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.08,
         shadowRadius: 4,
@@ -2601,7 +2600,7 @@ const styles = StyleSheet.create({
     rejectButtonText: {
         fontSize: normalize(16),
         fontWeight: '600',
-        color: '#dc3545',
+        color: colors.error,
         marginLeft: normalize(8),
     },
     loadingContainer: {
@@ -2612,7 +2611,7 @@ const styles = StyleSheet.create({
     },
     loadingText: {
         fontSize: normalize(16),
-        color: '#666',
+        color: colors.textSecondary,
         marginTop: normalize(16),
     },
     errorContainer: {
@@ -2624,13 +2623,13 @@ const styles = StyleSheet.create({
     errorTitle: {
         fontSize: normalize(20),
         fontWeight: '600',
-        color: '#dc3545',
+        color: colors.error,
         marginTop: normalize(16),
         marginBottom: normalize(8),
     },
     errorText: {
         fontSize: normalize(14),
-        color: '#666',
+        color: colors.textSecondary,
         textAlign: 'center',
         lineHeight: normalize(20),
         marginBottom: normalize(24),
@@ -2638,7 +2637,7 @@ const styles = StyleSheet.create({
     retryButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#dc3545',
+        backgroundColor: colors.error,
         borderRadius: normalize(12),
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(12),
@@ -2646,7 +2645,7 @@ const styles = StyleSheet.create({
     retryButtonText: {
         fontSize: normalize(14),
         fontWeight: '600',
-        color: '#fff',
+        color: colors.textInverse,
         marginLeft: normalize(8),
     },
     expiredContainer: {
@@ -2658,19 +2657,19 @@ const styles = StyleSheet.create({
     expiredTitle: {
         fontSize: normalize(20),
         fontWeight: '600',
-        color: '#fd7e14',
+        color: colors.warning,
         marginTop: normalize(16),
         marginBottom: normalize(8),
     },
     expiredText: {
         fontSize: normalize(14),
-        color: '#666',
+        color: colors.textSecondary,
         textAlign: 'center',
         lineHeight: normalize(20),
         marginBottom: normalize(24),
     },
     backButton: {
-        backgroundColor: '#6c757d',
+        backgroundColor: colors.textSecondary,
         borderRadius: normalize(12),
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(12),
@@ -2678,16 +2677,16 @@ const styles = StyleSheet.create({
     backButtonText: {
         fontSize: normalize(14),
         fontWeight: '600',
-        color: '#fff',
+        color: colors.textInverse,
     },
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)',
+        backgroundColor: colors.modalOverlay,
         justifyContent: 'center',
         alignItems: 'center',
     },
     modalContent: {
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         borderRadius: normalize(16),
         padding: normalize(16),
         margin: normalize(16),
@@ -2695,7 +2694,7 @@ const styles = StyleSheet.create({
         maxHeight: '90%',
         width: normalize(600),
         height: normalize(800),
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.25,
         shadowRadius: 8,
@@ -2705,15 +2704,15 @@ const styles = StyleSheet.create({
     modalTitle: {
         fontSize: normalize(22),
         fontWeight: '700',
-        color: '#333',
+        color: colors.textPrimary,
         textAlign: 'center',
         marginBottom: normalize(0),
         paddingBottom: normalize(16),
         borderBottomWidth: 2,
-        borderBottomColor: '#667eea',
+        borderBottomColor: colors.primary,
     },
     selectedChoiceInfo: {
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surface,
         padding: normalize(12),
         borderRadius: normalize(8),
         marginBottom: normalize(2),
@@ -2721,7 +2720,7 @@ const styles = StyleSheet.create({
     selectedChoiceTitle: {
         fontSize: normalize(18),
         fontWeight: '700',
-        color: '#333',
+        color: colors.textPrimary,
         marginBottom: normalize(2),
         marginLeft: normalize(12),
         textAlign: 'center',
@@ -2734,7 +2733,7 @@ const styles = StyleSheet.create({
     },
     selectedChoiceDescription: {
         fontSize: normalize(14),
-        color: '#666',
+        color: colors.textSecondary,
         lineHeight: normalize(20),
         marginBottom: normalize(8),
     },
@@ -2744,7 +2743,7 @@ const styles = StyleSheet.create({
     },
     selectedChoiceDate: {
         fontSize: normalize(13),
-        color: '#666',
+        color: colors.textSecondary,
         fontStyle: 'italic',
     },
     selectedProductHeader: {
@@ -2758,7 +2757,7 @@ const styles = StyleSheet.create({
     selectedProductName: {
         fontSize: normalize(14),
         fontWeight: '600',
-        color: '#333',
+        color: colors.textPrimary,
         marginBottom: normalize(6),
         textAlign: 'center',
     },
@@ -2768,10 +2767,10 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingVertical: normalize(8),
         paddingHorizontal: normalize(12),
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surface,
         borderRadius: normalize(6),
         borderWidth: 1,
-        borderColor: '#e9ecef',
+        borderColor: colors.border,
     },
     selectedProductPrice: {
         flexDirection: 'row',
@@ -2779,10 +2778,10 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingVertical: normalize(8),
         paddingHorizontal: normalize(12),
-        backgroundColor: '#e3f2fd',
+        backgroundColor: colors.primary + '14',
         borderRadius: normalize(6),
         borderWidth: 1,
-        borderColor: '#bbdefb',
+        borderColor: colors.primary + '55',
     },
     selectedProductTotal: {
         flexDirection: 'row',
@@ -2790,7 +2789,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingVertical: normalize(10),
         paddingHorizontal: normalize(12),
-        backgroundColor: '#667eea',
+        backgroundColor: colors.primary,
         borderRadius: normalize(8),
         marginTop: normalize(6),
     },
@@ -2812,10 +2811,10 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingVertical: normalize(12),
         paddingHorizontal: normalize(16),
-        backgroundColor: '#667eea',
+        backgroundColor: colors.primary,
         borderRadius: normalize(8),
         marginTop: normalize(8),
-        shadowColor: '#667eea',
+        shadowColor: colors.primary,
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.2,
         shadowRadius: 4,
@@ -2824,12 +2823,12 @@ const styles = StyleSheet.create({
     grandTotalLabel: {
         fontSize: normalize(16),
         fontWeight: '700',
-        color: '#fff',
+        color: colors.textInverse,
     },
     grandTotalValue: {
         fontSize: normalize(18),
         fontWeight: '800',
-        color: '#fff',
+        color: colors.textInverse,
     },
     selectedProductAdditionalCost: {
         flexDirection: 'row',
@@ -2837,42 +2836,42 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingVertical: normalize(8),
         paddingHorizontal: normalize(12),
-        backgroundColor: '#fff3cd',
+        backgroundColor: colors.warning + '18',
         borderRadius: normalize(6),
         borderWidth: 1,
-        borderColor: '#ffeaa7',
+        borderColor: colors.warning + '66',
     },
     quantityLabel: {
         fontSize: normalize(12),
-        color: '#666',
+        color: colors.textSecondary,
     },
     quantityValue: {
         fontSize: normalize(16),
         fontWeight: '600',
-        color: '#333',
+        color: colors.textPrimary,
     },
     priceLabel: {
         fontSize: normalize(12),
-        color: '#666',
+        color: colors.textSecondary,
     },
     priceValue: {
         fontSize: normalize(16),
         fontWeight: '600',
-        color: '#333',
+        color: colors.textPrimary,
     },
     totalLabel: {
         fontSize: normalize(16),
         fontWeight: '600',
-        color: '#fff',
+        color: colors.textInverse,
     },
     totalValue: {
         fontSize: normalize(18),
         fontWeight: '700',
-        color: '#fff',
+        color: colors.textInverse,
     },
     additionalCostLabel: {
         fontSize: normalize(14),
-        color: '#856404',
+        color: colors.warning,
     },
     additionalCostValue: {
         fontSize: normalize(14),
@@ -2885,31 +2884,31 @@ const styles = StyleSheet.create({
         marginTop: normalize(8),
         paddingTop: normalize(8),
         borderTopWidth: 1,
-        borderTopColor: '#e9ecef',
+        borderTopColor: colors.border,
     },
     modalCancelButton: {
         flex: 1,
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surface,
         borderRadius: normalize(12),
         paddingVertical: normalize(12),
         paddingHorizontal: normalize(16),
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#e9ecef',
+        borderColor: colors.border,
     },
     modalCancelText: {
         fontSize: normalize(16),
         fontWeight: '600',
-        color: '#666',
+        color: colors.textSecondary,
     },
     modalConfirmButton: {
         flex: 1,
-        backgroundColor: '#667eea',
+        backgroundColor: colors.primary,
         borderRadius: normalize(12),
         paddingVertical: normalize(12),
         paddingHorizontal: normalize(16),
         alignItems: 'center',
-        shadowColor: '#667eea',
+        shadowColor: colors.primary,
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.3,
         shadowRadius: 4,
@@ -2918,21 +2917,21 @@ const styles = StyleSheet.create({
     modalConfirmText: {
         fontSize: normalize(16),
         fontWeight: '600',
-        color: '#fff',
+        color: colors.textInverse,
     },
     // Кнопка просмотра товаров
     viewProductsButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         borderRadius: normalize(12),
         padding: normalize(16),
         marginTop: normalize(16),
         marginBottom: normalize(16),
         borderWidth: 2,
-        borderColor: '#667eea',
+        borderColor: colors.primary,
         borderStyle: 'dashed',
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.08,
         shadowRadius: 4,
@@ -2946,10 +2945,10 @@ const styles = StyleSheet.create({
     unavailableProductsContainer: {
         marginVertical: normalize(12),
         padding: normalize(12),
-        backgroundColor: '#fff3e0',
+        backgroundColor: colors.warning + '18',
         borderRadius: normalize(12),
         borderWidth: 1,
-        borderColor: '#ffcc02',
+        borderColor: colors.warning + '66',
     },
     unavailableProductsHeader: {
         flexDirection: 'row',
@@ -2959,22 +2958,22 @@ const styles = StyleSheet.create({
     unavailableProductsTitle: {
         fontSize: normalize(15),
         fontWeight: '600',
-        color: '#e65100',
+        color: colors.warning,
         marginLeft: normalize(8),
     },
     unavailableProductCard: {
         flexDirection: 'row',
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         borderRadius: normalize(10),
         padding: normalize(10),
         marginBottom: normalize(8),
         borderWidth: 1,
-        borderColor: '#e9ecef',
+        borderColor: colors.border,
         alignItems: 'flex-start',
     },
     unavailableProductCardSelected: {
-        backgroundColor: '#e3f2fd',
-        borderColor: '#667eea',
+        backgroundColor: colors.primary + '14',
+        borderColor: colors.primary,
         borderWidth: 2,
     },
     productCheckbox: {
@@ -2982,8 +2981,8 @@ const styles = StyleSheet.create({
         height: normalize(22),
         borderRadius: normalize(6),
         borderWidth: 2,
-        borderColor: '#667eea',
-        backgroundColor: '#fff',
+        borderColor: colors.primary,
+        backgroundColor: colors.cardBackground,
         marginRight: normalize(8),
         marginTop: normalize(2),
         justifyContent: 'center',
@@ -2991,40 +2990,40 @@ const styles = StyleSheet.create({
         flexShrink: 0,
     },
     productCheckboxSelected: {
-        backgroundColor: '#667eea',
-        borderColor: '#667eea',
+        backgroundColor: colors.primary,
+        borderColor: colors.primary,
     },
     removeHintContainer: {
         flexDirection: 'row',
         alignItems: 'flex-start',
-        backgroundColor: '#e3f2fd',
+        backgroundColor: colors.primary + '14',
         padding: normalize(12),
         borderRadius: normalize(8),
         marginTop: normalize(8),
         borderWidth: 1,
-        borderColor: '#bbdefb',
+        borderColor: colors.primary + '55',
     },
     removeHintText: {
         flex: 1,
         fontSize: normalize(13),
-        color: '#1976d2',
+        color: colors.primary,
         marginLeft: normalize(8),
         lineHeight: normalize(18),
     },
     substituteHintContainer: {
         flexDirection: 'row',
         alignItems: 'flex-start',
-        backgroundColor: '#d4edda',
+        backgroundColor: colors.success + '18',
         padding: normalize(12),
         borderRadius: normalize(8),
         marginTop: normalize(8),
         borderWidth: 1,
-        borderColor: '#c3e6cb',
+        borderColor: colors.success + '66',
     },
     substituteHintText: {
         flex: 1,
         fontSize: normalize(13),
-        color: '#155724',
+        color: colors.success,
         marginLeft: normalize(8),
         lineHeight: normalize(18),
         fontWeight: '500',
@@ -3033,26 +3032,26 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#e83e8c',
+        backgroundColor: colors.error,
         borderRadius: normalize(12),
         padding: normalize(14),
         marginTop: normalize(12),
-        shadowColor: '#e83e8c',
+        shadowColor: colors.error,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
         shadowRadius: 8,
         elevation: 6,
     },
     quickRemoveButtonDisabled: {
-        backgroundColor: '#ccc',
-        shadowColor: '#ccc',
+        backgroundColor: colors.surfaceSecondary,
+        shadowColor: colors.shadowColor || '#000',
         shadowOpacity: 0.1,
         elevation: 2,
     },
     quickRemoveButtonText: {
         fontSize: normalize(15),
         fontWeight: '600',
-        color: '#fff',
+        color: colors.textInverse,
         marginLeft: normalize(8),
         textAlign: 'center',
         flexShrink: 1,
@@ -3061,7 +3060,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        backgroundColor: 'rgba(102, 126, 234, 0.05)',
+        backgroundColor: colors.primary + '0D',
         paddingHorizontal: normalize(10),
         paddingVertical: normalize(6),
         borderRadius: normalize(6),
@@ -3070,25 +3069,25 @@ const styles = StyleSheet.create({
     },
     productQuantityLabel: {
         fontSize: normalize(11),
-        color: '#667eea',
+        color: colors.primary,
         fontWeight: '600',
         flexShrink: 1,
     },
     productQuantityValue: {
         fontSize: normalize(12),
         fontWeight: '600',
-        color: '#667eea',
+        color: colors.primary,
         flexShrink: 0,
     },
     viewProductsTitle: {
         fontSize: normalize(15),
         fontWeight: '600',
-        color: '#667eea',
+        color: colors.primary,
         marginBottom: normalize(4),
     },
     viewProductsSubtitle: {
         fontSize: normalize(12),
-        color: '#666',
+        color: colors.textSecondary,
     },
     // Модальное окно товаров
     productsModalContent: {
@@ -3104,14 +3103,14 @@ const styles = StyleSheet.create({
     productsModalTitle: {
         fontSize: normalize(20),
         fontWeight: '600',
-        color: '#333',
+        color: colors.textPrimary,
     },
     closeModalButton: {
         padding: normalize(4),
     },
     productsModalSubtitle: {
         fontSize: normalize(14),
-        color: '#666',
+        color: colors.textSecondary,
         lineHeight: normalize(20),
         marginBottom: normalize(16),
     },
@@ -3120,17 +3119,17 @@ const styles = StyleSheet.create({
     },
     // Карточки товаров
     productCard: {
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surface,
         borderRadius: normalize(8),
         padding: normalize(12),
         marginBottom: normalize(8),
         borderWidth: 1,
-        borderColor: '#e9ecef',
+        borderColor: colors.border,
     },
     productCardSelected: {
-        backgroundColor: '#e3f2fd',
-        borderColor: '#667eea',
-        shadowColor: '#667eea',
+        backgroundColor: colors.primary + '14',
+        borderColor: colors.primary,
+        shadowColor: colors.primary,
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.15,
         shadowRadius: 4,
@@ -3144,7 +3143,7 @@ const styles = StyleSheet.create({
         width: normalize(40),
         height: normalize(40),
         borderRadius: normalize(20),
-        backgroundColor: '#e3f2fd',
+        backgroundColor: colors.primary + '14',
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: normalize(12),
@@ -3155,7 +3154,7 @@ const styles = StyleSheet.create({
     productCardTitle: {
         fontSize: normalize(13),
         fontWeight: '600',
-        color: '#333',
+        color: colors.textPrimary,
         marginBottom: normalize(4),
         lineHeight: normalize(18),
     },
@@ -3166,7 +3165,7 @@ const styles = StyleSheet.create({
     },
     productPriceLabel: {
         fontSize: normalize(11),
-        color: '#666',
+        color: colors.textSecondary,
         marginRight: normalize(6),
     },
     productPrice: {
@@ -3180,7 +3179,7 @@ const styles = StyleSheet.create({
     },
     productDate: {
         fontSize: normalize(12),
-        color: '#666',
+        color: colors.textSecondary,
         marginLeft: normalize(4),
     },
     productRadioButton: {
@@ -3188,31 +3187,31 @@ const styles = StyleSheet.create({
         height: normalize(28),
         borderRadius: normalize(14),
         borderWidth: 2,
-        borderColor: '#dee2e6',
+        borderColor: colors.border,
         justifyContent: 'center',
         alignItems: 'center',
         marginLeft: normalize(12),
     },
     productRadioButtonSelected: {
-        borderColor: '#667eea',
-        backgroundColor: '#667eea',
+        borderColor: colors.primary,
+        backgroundColor: colors.primary,
     },
     productRadioDot: {
         width: normalize(14),
         height: normalize(14),
         borderRadius: normalize(7),
-        backgroundColor: '#fff',
+        backgroundColor: colors.textInverse,
     },
     productsModalActions: {
         marginTop: normalize(16),
         paddingTop: normalize(16),
         borderTopWidth: 1,
-        borderTopColor: '#e9ecef',
+        borderTopColor: colors.border,
         flexDirection: 'column',
         gap: normalize(12),
     },
     productsModalCloseButton: {
-        backgroundColor: '#6c757d',
+        backgroundColor: colors.textSecondary,
         borderRadius: normalize(8),
         paddingVertical: normalize(12),
         paddingHorizontal: normalize(16),
@@ -3221,10 +3220,10 @@ const styles = StyleSheet.create({
     productsModalCloseText: {
         fontSize: normalize(16),
         fontWeight: '600',
-        color: '#fff',
+        color: colors.textInverse,
     },
     productsModalConfirmButton: {
-        backgroundColor: '#667eea',
+        backgroundColor: colors.primary,
         borderRadius: normalize(8),
         paddingVertical: normalize(12),
         paddingHorizontal: normalize(16),
@@ -3233,11 +3232,11 @@ const styles = StyleSheet.create({
     productsModalConfirmText: {
         fontSize: normalize(16),
         fontWeight: '600',
-        color: '#fff',
+        color: colors.textInverse,
     },
     productsModalConfirmSubtext: {
         fontSize: normalize(12),
-        color: '#fff',
+        color: colors.textInverse,
         opacity: 0.9,
         marginTop: normalize(2),
     },
@@ -3246,12 +3245,12 @@ const styles = StyleSheet.create({
         marginTop: normalize(8),
         paddingTop: normalize(8),
         borderTopWidth: 1,
-        borderTopColor: '#f0f0f0',
+        borderTopColor: colors.border,
     },
     quantityLabel: {
         fontSize: normalize(12),
         fontWeight: '600',
-        color: '#333',
+        color: colors.textPrimary,
         marginBottom: normalize(6),
     },
     quantityControls: {
@@ -3264,16 +3263,16 @@ const styles = StyleSheet.create({
         width: normalize(36),
         height: normalize(36),
         borderRadius: normalize(18),
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surfaceSecondary,
         borderWidth: 1,
-        borderColor: '#dee2e6',
+        borderColor: colors.border,
         justifyContent: 'center',
         alignItems: 'center',
     },
     quantityValue: {
         fontSize: normalize(18),
         fontWeight: '700',
-        color: '#333',
+        color: colors.textPrimary,
         marginHorizontal: normalize(16),
         minWidth: normalize(30),
         textAlign: 'center',
@@ -3281,18 +3280,18 @@ const styles = StyleSheet.create({
     quantityPrice: {
         fontSize: normalize(16),
         fontWeight: '700',
-        color: '#667eea',
+        color: colors.primary,
         textAlign: 'center',
     },
     quantityButtonDisabled: {
-        backgroundColor: '#f5f5f5',
-        borderColor: '#e0e0e0',
+        backgroundColor: colors.surface,
+        borderColor: colors.border,
     },
     quantityValueDisabled: {
-        color: '#999',
+        color: colors.textTertiary,
     },
     quantityPriceDisabled: {
-        color: '#999',
+        color: colors.textTertiary,
     },
     productCardTitleContainer: {
         flexDirection: 'row',
@@ -3301,7 +3300,7 @@ const styles = StyleSheet.create({
         marginBottom: normalize(8),
     },
     selectedBadge: {
-        backgroundColor: '#667eea',
+        backgroundColor: colors.primary,
         paddingHorizontal: normalize(8),
         paddingVertical: normalize(4),
         borderRadius: normalize(12),
@@ -3309,21 +3308,21 @@ const styles = StyleSheet.create({
     selectedBadgeText: {
         fontSize: normalize(12),
         fontWeight: '600',
-        color: '#fff',
+        color: colors.textInverse,
     },
     selectedProductsContainer: {
         marginBottom: normalize(16),
         paddingBottom: normalize(16),
         borderBottomWidth: 1,
-        borderBottomColor: '#e9ecef',
-        backgroundColor: '#f8f9fa',
+        borderBottomColor: colors.border,
+        backgroundColor: colors.surface,
         borderRadius: normalize(8),
         padding: normalize(12),
     },
     selectedProductsTitle: {
         fontSize: normalize(16),
         fontWeight: '600',
-        color: '#333',
+        color: colors.textPrimary,
         marginBottom: normalize(12),
     },
     selectedProductItem: {
@@ -3332,18 +3331,18 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingVertical: normalize(8),
         paddingHorizontal: normalize(12),
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surfaceSecondary,
         borderRadius: normalize(8),
         marginBottom: normalize(8),
     },
     modalProductItem: {
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         borderRadius: normalize(10),
         padding: normalize(12),
         marginBottom: normalize(8),
         borderWidth: 1,
-        borderColor: '#e9ecef',
-        shadowColor: '#000',
+        borderColor: colors.border,
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.08,
         shadowRadius: 3,
@@ -3355,12 +3354,12 @@ const styles = StyleSheet.create({
     selectedProductName: {
         fontSize: normalize(14),
         fontWeight: '500',
-        color: '#333',
+        color: colors.textPrimary,
         marginBottom: normalize(4),
     },
     selectedProductPrice: {
         fontSize: normalize(12),
-        color: '#666',
+        color: colors.textSecondary,
     },
     selectedProductActions: {
         flexDirection: 'row',
@@ -3370,51 +3369,51 @@ const styles = StyleSheet.create({
     selectedProductQuantity: {
         fontSize: normalize(14),
         fontWeight: '500',
-        color: '#333',
+        color: colors.textPrimary,
         minWidth: normalize(20),
         textAlign: 'center',
     },
     removeProductButton: {
         padding: normalize(4),
         borderRadius: normalize(4),
-        backgroundColor: '#f8d7da',
+        backgroundColor: colors.errorSubtle,
     },
     quantityBadge: {
         position: 'absolute',
         top: 35,
         right: 10,
-        backgroundColor: '#667eea',
+        backgroundColor: colors.primary,
         borderRadius: normalize(10),
         minWidth: normalize(20),
         height: normalize(20),
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 2,
-        borderColor: '#fff',
+        borderColor: colors.cardBackground,
     },
     quantityBadgeText: {
         fontSize: normalize(12),
         fontWeight: '600',
-        color: '#fff',
+        color: colors.textInverse,
     },
     // Стили для карточек товаров-заменителей
     substituteProductCard: {
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surface,
         borderRadius: normalize(12),
         padding: normalize(16),
         marginBottom: normalize(12),
         borderWidth: 1,
-        borderColor: '#e9ecef',
-        shadowColor: '#000',
+        borderColor: colors.border,
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.08,
         shadowRadius: 4,
         elevation: 2,
     },
     substituteProductCardSelected: {
-        backgroundColor: '#e3f2fd',
-        borderColor: '#667eea',
-        shadowColor: '#667eea',
+        backgroundColor: colors.primary + '14',
+        borderColor: colors.primary,
+        shadowColor: colors.primary,
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.15,
         shadowRadius: 4,
@@ -3429,9 +3428,9 @@ const styles = StyleSheet.create({
         height: normalize(60),
         borderRadius: normalize(12),
         overflow: 'hidden',
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surfaceSecondary,
         borderWidth: 1,
-        borderColor: 'rgba(0,0,0,0.05)',
+        borderColor: colors.borderSubtle,
         marginRight: normalize(12),
         position: 'relative',
     },
@@ -3440,29 +3439,29 @@ const styles = StyleSheet.create({
         height: '100%',
     },
     substitutePlaceholderContainer: {
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surfaceSecondary,
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#e9ecef',
+        borderColor: colors.border,
     },
     substituteQuantityBadge: {
         position: 'absolute',
         top: -5,
         right: -5,
-        backgroundColor: '#667eea',
+        backgroundColor: colors.primary,
         borderRadius: normalize(10),
         minWidth: normalize(20),
         height: normalize(20),
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 2,
-        borderColor: '#fff',
+        borderColor: colors.cardBackground,
     },
     substituteQuantityBadgeText: {
         fontSize: normalize(12),
         fontWeight: '600',
-        color: '#fff',
+        color: colors.textInverse,
     },
     substituteProductCardInfo: {
         flex: 1,
@@ -3473,7 +3472,7 @@ const styles = StyleSheet.create({
     substituteProductCardTitle: {
         fontSize: normalize(15),
         fontWeight: '600',
-        color: '#333',
+        color: colors.textPrimary,
         lineHeight: normalize(20),
     },
     substituteProductPriceContainer: {
@@ -3481,20 +3480,20 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         marginBottom: normalize(4),
-        backgroundColor: 'rgba(102, 126, 234, 0.05)',
+        backgroundColor: colors.primary + '0D',
         paddingHorizontal: normalize(8),
         paddingVertical: normalize(4),
         borderRadius: normalize(6),
     },
     substituteProductPriceLabel: {
         fontSize: normalize(11),
-        color: '#666',
+        color: colors.textSecondary,
         fontWeight: '500',
     },
     substituteProductPrice: {
         fontSize: normalize(12),
         fontWeight: '600',
-        color: '#333',
+        color: colors.textPrimary,
     },
     substituteProductDateContainer: {
         flexDirection: 'row',
@@ -3503,7 +3502,7 @@ const styles = StyleSheet.create({
     },
     substituteProductDate: {
         fontSize: normalize(12),
-        color: '#666',
+        color: colors.textSecondary,
         marginLeft: normalize(4),
     },
     substituteProductRadioButton: {
@@ -3511,20 +3510,20 @@ const styles = StyleSheet.create({
         height: normalize(24),
         borderRadius: normalize(12),
         borderWidth: 2,
-        borderColor: '#dee2e6',
+        borderColor: colors.border,
         justifyContent: 'center',
         alignItems: 'center',
         marginLeft: normalize(12),
         marginTop: normalize(8),
     },
     substituteProductRadioButtonSelected: {
-        borderColor: '#667eea',
-        backgroundColor: '#667eea',
+        borderColor: colors.primary,
+        backgroundColor: colors.primary,
     },
     substituteProductRadioDot: {
         width: normalize(10),
         height: normalize(10),
         borderRadius: normalize(5),
-        backgroundColor: '#fff',
+        backgroundColor: colors.textInverse,
     },
 });

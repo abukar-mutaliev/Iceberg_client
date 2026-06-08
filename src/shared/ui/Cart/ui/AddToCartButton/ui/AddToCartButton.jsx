@@ -39,12 +39,6 @@ const AddButtonComponent = ({
 
     const productId = product?.id || product?.originalData?.id;
 
-    // ВРЕМЕННО СКРЫТО: Кнопка корзины скрыта для всех пользователей
-    // TODO: Вернуть когда функциональность заказа будет готова
-    if (!isCartAvailable) {
-        return null;
-    }
-
     const {
         isInCart,
         quantity,
@@ -174,6 +168,12 @@ const AddButtonComponent = ({
             }
         }
     }, [onPress, onGoToCart, productId, isAvailable, isInCart, addToCart, scaleAnim, isCartAvailable, currentUser, showError, showWarning]);
+
+    // Скрываем кнопку, если корзина недоступна (например, после логаута или для не-CLIENT ролей).
+    // Размещаем проверку ПОСЛЕ всех хуков, чтобы не нарушать Rules of Hooks.
+    if (!isCartAvailable) {
+        return null;
+    }
 
     if (cartLoading) {
         return (

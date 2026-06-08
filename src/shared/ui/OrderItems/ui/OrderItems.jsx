@@ -2,11 +2,12 @@ import React from 'react';
 import { View, Text, Image, TouchableOpacity } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { formatAmount, formatBoxesCount, formatImageUrl } from '@shared/lib/orderUtils';
-import { createOrderDetailsStyles } from '@shared/ui/OrderDetailsStyles';
-
-const styles = createOrderDetailsStyles();
+import { useOrderDetailsStyles } from '@shared/ui/OrderDetailsStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const OrderItems = ({ order, onProductPress }) => {
+    const { colors } = useTheme();
+    const styles = useOrderDetailsStyles();
     if (!order) return null;
 
     const items = order?.items || order?.orderItems || [];
@@ -22,7 +23,7 @@ export const OrderItems = ({ order, onProductPress }) => {
     return (
         <View style={styles.modernCard}>
             <View style={styles.cardHeader}>
-                <Icon name="shopping-bag" size={24} color="#667eea" />
+                <Icon name="shopping-bag" size={24} color={colors.primary} />
                 <Text style={styles.cardTitle}>
                     Товары ({items.length} поз.)
                 </Text>
@@ -81,7 +82,7 @@ export const OrderItems = ({ order, onProductPress }) => {
                                     />
                                 ) : (
                                     <View style={styles.placeholderImage}>
-                                        <Icon name="image" size={30} color="#ccc" />
+                                        <Icon name="image" size={30} color={colors.textTertiary} />
                                     </View>
                                 );
                             })()}
@@ -95,7 +96,7 @@ export const OrderItems = ({ order, onProductPress }) => {
 
                             {item.product?.supplier && (
                                 <View style={styles.supplierContainer}>
-                                    <Icon name="store" size={14} color="#999" />
+                                    <Icon name="store" size={14} color={colors.textTertiary} />
                                     <Text style={styles.itemSupplier}>
                                         {item.product.supplier.companyName || item.product.supplier.name}
                                     </Text>

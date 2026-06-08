@@ -1,5 +1,6 @@
-import React, { useRef, useState, useCallback, useMemo } from 'react';
-import { View, StyleSheet, KeyboardAvoidingView, Platform, LayoutAnimation, UIManager } from 'react-native';
+import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import { View, StyleSheet, KeyboardAvoidingView, Platform, LayoutAnimation } from 'react-native';
+import { enableLayoutAnimationExperimentalAndroid } from '@shared/lib/enableLayoutAnimationAndroid';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { Composer } from '@entities/chat/ui/Composer/Composer';
@@ -28,9 +29,7 @@ const MESSAGE_DELETE_LAYOUT_ANIMATION = LayoutAnimation.create(
   LayoutAnimation.Properties.opacity
 );
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+enableLayoutAnimationExperimentalAndroid();
 
 const addIdsToSet = (prev, ids) => {
   const next = new Set(prev);
@@ -52,13 +51,31 @@ const removeIdsFromSet = (prev, ids) => {
 
 export const DirectChatScreen = ({ route, navigation }) => {
   const {
-    roomId,
+    roomId: paramRoomId,
     productId: shareProductId,
     productInfo,
     autoSendProduct,
     userId,
+    draftPeerUserId,
+    draftPeer,
   } = route.params || {};
-  
+
+  // В черновом режиме (ChatSearchScreen тапнул пользователя, с которым нет чата)
+  // roomId отсутствует, но мы храним peer-данные. Комнату создадим только при
+  // отправке первого сообщения через ensureRoomId.
+  const [roomId, setRoomId] = useState(paramRoomId || null);
+  const creatingRoomRef = useRef(null);
+
+  // Синхронизируем локальный roomId с изменениями route.params (на случай
+  // обновления параметров извне, например при навигации назад/вперёд).
+  useEffect(() => {
+    if (paramRoomId && paramRoomId !== roomId) {
+      setRoomId(paramRoomId);
+    }
+  }, [paramRoomId, roomId]);
+
+  const isDraft = !roomId && !!draftPeerUserId;
+
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const { showError, showWarning, showConfirm } = useCustomAlert();
@@ -96,6 +113,7 @@ export const DirectChatScreen = ({ route, navigation }) => {
   const [composerHeight, setComposerHeight] = useState(56);
   const [deletingMessageIds, setDeletingMessageIds] = useState(new Set());
   const [hiddenMessageIds, setHiddenMessageIds] = useState(new Set());
+  const [reactionsRenderTick, setReactionsRenderTick] = useState(0);
   
   // ============ REFS ============
   const flatListRef = useRef(null);
@@ -171,8 +189,64 @@ export const DirectChatScreen = ({ route, navigation }) => {
     showConfirm,
     navigation,
   });
+
+  const handleToggleReaction = useCallback(async (messageId, emoji) => {
+    setReactionsRenderTick((prev) => prev + 1);
+    try {
+      return await actions.handleToggleReaction(messageId, emoji);
+    } finally {
+      setReactionsRenderTick((prev) => prev + 1);
+    }
+  }, [actions]);
+
+  // В черновом режиме роль roomId берёт на себя этот резолвер: при первой
+  // отправке сообщения он создаст DIRECT-комнату и вернёт её id. Сервер
+  // дедуплицирует, если комната уже существует.
+  const ensureRoomId = useCallback(async () => {
+    if (roomId) return roomId;
+    if (!draftPeerUserId) {
+      throw new Error('Нет собеседника для создания чата');
+    }
+    if (creatingRoomRef.current) {
+      return creatingRoomRef.current;
+    }
+
+    const promise = (async () => {
+      const formData = new FormData();
+      formData.append('type', 'DIRECT');
+      if (draftPeer?.name) {
+        formData.append('title', draftPeer.name);
+      }
+      formData.append('members', JSON.stringify([draftPeerUserId]));
+
+      const response = await ChatApi.createRoom(formData);
+      const createdRoom =
+        response?.data?.data?.room ||
+        response?.data?.room ||
+        response?.data?.data ||
+        response?.data;
+      const newRoomId = createdRoom?.id;
+      if (!newRoomId) {
+        throw new Error('Сервер не вернул id комнаты');
+      }
+
+      setRoomId(newRoomId);
+      try {
+        navigation.setParams({ roomId: newRoomId });
+      } catch (e) {
+        // setParams может отсутствовать в некоторых средах — не критично
+      }
+      return newRoomId;
+    })().catch((err) => {
+      creatingRoomRef.current = null;
+      throw err;
+    });
+
+    creatingRoomRef.current = promise;
+    return promise;
+  }, [roomId, draftPeerUserId, draftPeer?.name, navigation]);
   
-  const reactions = useChatReactions(actions.handleToggleReaction, toggleMessageSelection);
+  const reactions = useChatReactions(handleToggleReaction, toggleMessageSelection);
   const {
     reactionPickerVisible,
     reactionPickerPosition,
@@ -649,7 +723,7 @@ export const DirectChatScreen = ({ route, navigation }) => {
             onContactDriver={handleContactDriver}
             onReply={handleReply}
             onReplyPress={handleReplyPress}
-            onAddReaction={actions.handleToggleReaction}
+            onAddReaction={handleToggleReaction}
             onShowReactionPicker={handleShowReactionPicker}
             onRetryMessage={(msg) => actions.handleRetryMessage(msg, setRetryingMessages)}
             onCancelMessage={actions.handleCancelMessage}
@@ -657,6 +731,7 @@ export const DirectChatScreen = ({ route, navigation }) => {
             onDismissKeyboard={dismissKeyboard}
             flatListRef={flatListRef}
             onDeleteAnimationEnd={handleDeleteAnimationEnd}
+            reactionsRenderTick={reactionsRenderTick}
           />
           
           <KeyboardAvoidingView
@@ -669,6 +744,7 @@ export const DirectChatScreen = ({ route, navigation }) => {
               <View onLayout={handleComposerLayout}>
                 <Composer
                   roomId={roomId}
+                  ensureRoomId={ensureRoomId}
                   onTyping={() => {}}
                   shareProductId={shareProductId}
                   onMenuPress={handleMenuPress}

@@ -13,10 +13,17 @@ import { waitForConnection } from '@shared/api/retryHelper';
 
 /**
  * Хук для отправки сообщений
- * Содержит всю логику создания и отправки разных типов сообщений
+ * Содержит всю логику создания и отправки разных типов сообщений.
+ *
+ * Поддерживает два режима:
+ * 1. Обычный — комната уже существует, roomId передан напрямую.
+ * 2. Черновой (draft) — roomId отсутствует, но передан ensureRoomId:
+ *    асинхронный резолвер, который создаёт DIRECT-комнату на сервере
+ *    только при первой отправке. Используется в ChatSearchScreen → новый чат.
  */
 export const useComposerSend = ({
   roomId,
+  ensureRoomId,
   replyTo,
   onCancelReply,
   isSendingRef,
@@ -27,6 +34,7 @@ export const useComposerSend = ({
   const currentUser = useSelector(state => state.auth?.user);
   const queueRef = useRef([]);
   const isProcessingRef = useRef(false);
+
   const waitForOnline = useCallback(async () => {
     while (true) {
       const isOnline = await waitForConnection(20000);
@@ -34,10 +42,20 @@ export const useComposerSend = ({
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
   }, []);
+
+  // Возвращает актуальный roomId. Если передан ensureRoomId — даём ему шанс
+  // создать/дождаться комнату (например, при первой отправке в черновом чате).
+  const resolveRoomId = useCallback(async () => {
+    if (typeof ensureRoomId === 'function') {
+      const resolved = await ensureRoomId();
+      if (resolved) return resolved;
+    }
+    return roomId;
+  }, [ensureRoomId, roomId]);
   
   // ============ HELPERS ============
   
-  const createOptimisticMessage = useCallback((type, data) => {
+  const createOptimisticMessage = useCallback((type, data, targetRoomId) => {
     const temporaryId = `temp_${type}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const replyToIdToSend = replyTo?.id || null;
     const replyToData = replyTo || null;
@@ -45,7 +63,7 @@ export const useComposerSend = ({
     const baseMessage = {
       id: temporaryId,
       temporaryId,
-      roomId,
+      roomId: targetRoomId,
       type,
       senderId: currentUserId,
       sender: {
@@ -62,98 +80,122 @@ export const useComposerSend = ({
     };
     
     return { ...baseMessage, ...data, temporaryId, replyToIdToSend, replyToData };
-  }, [roomId, currentUserId, currentUser, replyTo]);
+  }, [currentUserId, currentUser, replyTo]);
   
   // ============ SEND TEXT ============
   
-  const sendTextToServer = useCallback(async ({ text, temporaryId, replyToId }) => {
+  const sendTextToServer = useCallback(async ({ roomId: itemRoomId, text, temporaryId, replyToId }) => {
     await dispatch(sendText({ 
-      roomId, 
+      roomId: itemRoomId, 
       content: text, 
       temporaryId, 
       replyToId 
     })).unwrap();
     playSendSound();
-  }, [dispatch, roomId]);
+  }, [dispatch]);
 
-  const sendTextMessage = useCallback((text) => {
+  const sendTextMessage = useCallback(async (text) => {
+    let targetRoomId;
+    try {
+      targetRoomId = await resolveRoomId();
+    } catch (error) {
+      console.error('Ошибка создания черновой комнаты:', error);
+      return;
+    }
+    if (!targetRoomId) return;
+
     const { temporaryId, replyToIdToSend, replyToData, ...optimisticMessage } = 
       createOptimisticMessage('TEXT', {
         content: text,
-      });
+      }, targetRoomId);
     
-    // Отменяем ответ СРАЗУ для лучшего UX
     onCancelReply?.();
     
-    // Добавляем оптимистичное сообщение
-    dispatch(addOptimisticMessage({ roomId, message: optimisticMessage }));
+    dispatch(addOptimisticMessage({ roomId: targetRoomId, message: optimisticMessage }));
     queueRef.current.push({
       type: 'text',
+      roomId: targetRoomId,
       text,
       temporaryId,
       replyToId: replyToIdToSend
     });
     processQueue();
-  }, [dispatch, roomId, createOptimisticMessage, onCancelReply]);
+  }, [dispatch, resolveRoomId, createOptimisticMessage, onCancelReply]);
   
   // ============ SEND IMAGES ============
   
-  const sendImagesToServer = useCallback(async ({ files, captions, temporaryId, replyToId }) => {
+  const sendImagesToServer = useCallback(async ({ roomId: itemRoomId, files, captions, temporaryId, replyToId }) => {
     const orderedCaptions = files.map(() => captions);
     await dispatch(sendImages({ 
-      roomId, 
+      roomId: itemRoomId, 
       files, 
       captions: orderedCaptions,
       temporaryId,
       replyToId
     })).unwrap();
     playSendSound();
-  }, [dispatch, roomId]);
+  }, [dispatch]);
 
-  const sendImageMessages = useCallback((files, caption) => {
-    // Используем текст из поля ввода как подпись для всех изображений
+  const sendImageMessages = useCallback(async (files, caption) => {
+    let targetRoomId;
+    try {
+      targetRoomId = await resolveRoomId();
+    } catch (error) {
+      console.error('Ошибка создания черновой комнаты:', error);
+      return;
+    }
+    if (!targetRoomId) return;
+
     const commonCaption = typeof caption === 'string' ? caption : '';
     
     const { temporaryId, replyToIdToSend, replyToData, ...optimisticMessage } = 
       createOptimisticMessage('IMAGE', {
-        content: commonCaption, // Используем подпись из поля ввода в content
+        content: commonCaption,
         attachments: files.map((f) => ({
           type: 'IMAGE',
           path: f.uri,
           mimeType: f.type || 'image/jpeg',
           size: f.size,
-          caption: commonCaption // Все изображения получают одну подпись
+          caption: commonCaption
         })),
-      });
+      }, targetRoomId);
     
-    // Отменяем ответ СРАЗУ для лучшего UX
     onCancelReply?.();
     
-    // Добавляем оптимистичное сообщение
-    dispatch(addOptimisticMessage({ roomId, message: optimisticMessage }));
+    dispatch(addOptimisticMessage({ roomId: targetRoomId, message: optimisticMessage }));
     queueRef.current.push({
       type: 'images',
+      roomId: targetRoomId,
       files,
       captions: commonCaption,
       temporaryId,
       replyToId: replyToIdToSend
     });
     processQueue();
-  }, [dispatch, roomId, createOptimisticMessage, onCancelReply]);
+  }, [dispatch, resolveRoomId, createOptimisticMessage, onCancelReply]);
   
   // ============ SEND VOICE ============
   
-  const sendVoiceToServer = useCallback(async ({ voiceData, temporaryId, replyToId }) => {
+  const sendVoiceToServer = useCallback(async ({ roomId: itemRoomId, voiceData, temporaryId, replyToId }) => {
     await dispatch(sendVoice({ 
-      roomId, 
+      roomId: itemRoomId, 
       voice: voiceData,
       temporaryId,
       replyToId
     })).unwrap();
     playSendSound();
-  }, [dispatch, roomId]);
+  }, [dispatch]);
 
-  const sendVoiceMessage = useCallback((voiceData) => {
+  const sendVoiceMessage = useCallback(async (voiceData) => {
+    let targetRoomId;
+    try {
+      targetRoomId = await resolveRoomId();
+    } catch (error) {
+      console.error('Ошибка создания черновой комнаты:', error);
+      return;
+    }
+    if (!targetRoomId) return;
+
     const { temporaryId, replyToIdToSend, replyToData, ...optimisticMessage } = 
       createOptimisticMessage('VOICE', {
         content: '',
@@ -165,40 +207,48 @@ export const useComposerSend = ({
           duration: voiceData.duration,
           waveform: voiceData.waveform || [],
         }],
-      });
+      }, targetRoomId);
     
-    // Отменяем ответ СРАЗУ для лучшего UX
     onCancelReply?.();
     
-    // Добавляем оптимистичное сообщение
-    dispatch(addOptimisticMessage({ roomId, message: optimisticMessage }));
+    dispatch(addOptimisticMessage({ roomId: targetRoomId, message: optimisticMessage }));
     queueRef.current.push({
       type: 'voice',
+      roomId: targetRoomId,
       voiceData,
       temporaryId,
       replyToId: replyToIdToSend
     });
     processQueue();
-  }, [dispatch, roomId, createOptimisticMessage, onCancelReply]);
+  }, [dispatch, resolveRoomId, createOptimisticMessage, onCancelReply]);
   
   // ============ SEND POLL ============
   
-  const sendPollToServer = useCallback(async ({ pollData, temporaryId, replyToId }) => {
+  const sendPollToServer = useCallback(async ({ roomId: itemRoomId, pollData, temporaryId, replyToId }) => {
     await dispatch(sendPoll({ 
-      roomId, 
+      roomId: itemRoomId, 
       pollData,
       temporaryId,
       replyToId
     })).unwrap();
     playSendSound();
-  }, [dispatch, roomId]);
+  }, [dispatch]);
 
-  const sendPollMessage = useCallback((pollData) => {
+  const sendPollMessage = useCallback(async (pollData) => {
+    let targetRoomId;
+    try {
+      targetRoomId = await resolveRoomId();
+    } catch (error) {
+      console.error('Ошибка создания черновой комнаты:', error);
+      return;
+    }
+    if (!targetRoomId) return;
+
     const { temporaryId, replyToIdToSend, replyToData, ...optimisticMessage } = 
       createOptimisticMessage('POLL', {
         content: pollData.question,
         poll: {
-          id: temporaryId,
+          id: undefined,
           question: pollData.question,
           allowMultiple: pollData.allowMultiple,
           options: pollData.options.map((text, index) => ({
@@ -208,42 +258,49 @@ export const useComposerSend = ({
             votes: [],
           })),
         },
-      });
+      }, targetRoomId);
     
-    // Отменяем ответ СРАЗУ для лучшего UX
     onCancelReply?.();
     
-    // Добавляем оптимистичное сообщение
-    dispatch(addOptimisticMessage({ roomId, message: optimisticMessage }));
+    dispatch(addOptimisticMessage({ roomId: targetRoomId, message: optimisticMessage }));
     queueRef.current.push({
       type: 'poll',
+      roomId: targetRoomId,
       pollData,
       temporaryId,
       replyToId: replyToIdToSend
     });
     processQueue();
-  }, [dispatch, roomId, createOptimisticMessage, onCancelReply]);
+  }, [dispatch, resolveRoomId, createOptimisticMessage, onCancelReply]);
 
   // ============ SEND CONTACT ============
   
-  const sendContactToServer = useCallback(async ({ contactUserId, temporaryId, replyToId }) => {
+  const sendContactToServer = useCallback(async ({ roomId: itemRoomId, contactUserId, temporaryId, replyToId }) => {
     await dispatch(sendContact({ 
-      roomId, 
+      roomId: itemRoomId, 
       contactUserId,
       temporaryId,
       replyToId
     })).unwrap();
     playSendSound();
-  }, [dispatch, roomId]);
+  }, [dispatch]);
 
-  const sendContactMessage = useCallback((contactUser) => {
+  const sendContactMessage = useCallback(async (contactUser) => {
     const contactUserId = contactUser?.id;
     if (!contactUserId) {
       console.warn('sendContactMessage: contactUserId отсутствует');
       return;
     }
 
-    // Получаем имя контакта
+    let targetRoomId;
+    try {
+      targetRoomId = await resolveRoomId();
+    } catch (error) {
+      console.error('Ошибка создания черновой комнаты:', error);
+      return;
+    }
+    if (!targetRoomId) return;
+
     const contactName = contactUser.client?.name ||
                        contactUser.admin?.name ||
                        contactUser.employee?.name ||
@@ -271,21 +328,20 @@ export const useComposerSend = ({
           email: contactUser.email || null,
           avatar: contactUser.avatar || null,
         },
-      });
+      }, targetRoomId);
     
-    // Отменяем ответ СРАЗУ для лучшего UX
     onCancelReply?.();
     
-    // Добавляем оптимистичное сообщение
-    dispatch(addOptimisticMessage({ roomId, message: optimisticMessage }));
+    dispatch(addOptimisticMessage({ roomId: targetRoomId, message: optimisticMessage }));
     queueRef.current.push({
       type: 'contact',
+      roomId: targetRoomId,
       contactUserId,
       temporaryId,
       replyToId: replyToIdToSend
     });
     processQueue();
-  }, [dispatch, roomId, createOptimisticMessage, onCancelReply]);
+  }, [dispatch, resolveRoomId, createOptimisticMessage, onCancelReply]);
   
   // ============ MAIN SEND HANDLER ============
   
@@ -331,16 +387,33 @@ export const useComposerSend = ({
     sendContactToServer
   ]);
 
+  // Синхронный замок против двойного тапа по «Отправить»: даже если RN не
+  // успел дезактивировать кнопку через canSend, второй вызов мгновенно вернётся.
+  const handleSendInFlightRef = useRef(false);
+
   const handleSend = useCallback(async (text, files, captions, clearForm) => {
-    // Сохраняем текущие значения
+    if (handleSendInFlightRef.current) {
+      if (__DEV__) {
+        console.log('🚫 handleSend: проигнорирован двойной тап');
+      }
+      return;
+    }
+
     const currentText = text.trim();
     const currentFiles = [...files];
     
     if (currentText.length === 0 && currentFiles.length === 0) {
       return;
     }
+
+    handleSendInFlightRef.current = true;
+    // Снимаем замок после короткого окна — этого достаточно, чтобы пережить
+    // повторный onPress в рамках одного жеста, но не блокировать нормальную
+    // последовательную отправку нескольких сообщений.
+    setTimeout(() => {
+      handleSendInFlightRef.current = false;
+    }, 600);
     
-    // Очищаем форму немедленно для лучшего UX
     clearForm();
     stopTyping();
     

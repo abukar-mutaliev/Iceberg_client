@@ -22,9 +22,20 @@ const isCacheValid = (lastFetchTime) => {
 
 // Обработчик ошибок для более дружественных сообщений
 const handleError = (error) => {
+    const isAxiosError =
+        error &&
+        typeof error === 'object' &&
+        (error.isAxiosError === true || error.name === 'AxiosError');
+
     // Если ошибка уже является объектом с данными (после createProtectedRequest)
     // createProtectedRequest выбрасывает error.response?.data || error
     if (error && typeof error === 'object' && !error.response) {
+        if (isAxiosError) {
+            if (error.code === 'ECONNABORTED') {
+                return 'Превышено время ожидания. Проверьте подключение к сети.';
+            }
+            return 'Ошибка сети. Проверьте подключение.';
+        }
         // Проверяем, есть ли массив ошибок
         if (error.errors && Array.isArray(error.errors)) {
             return {
@@ -34,10 +45,17 @@ const handleError = (error) => {
                 code: error.code || 400
             };
         }
-        
-        // Если это объект с ошибкой, возвращаем его полностью
+
+        // Объект ошибки API (не Axios) — только сериализуемые поля
         if (error.status || error.message) {
-            return error;
+            return {
+                status: error.status || 'error',
+                message:
+                    typeof error.message === 'string'
+                        ? error.message
+                        : 'Произошла ошибка',
+                code: error.code ?? error.status ?? 400
+            };
         }
     }
     
@@ -94,9 +112,15 @@ export const fetchAllStops = createAsyncThunk(
                 params.districtId = districtId;
             }
 
-            const response = await stopApi.getAllStops(params);
+            const userRole = state.auth?.user?.role;
+            const shouldUseAdminEndpoint = userRole === 'ADMIN' || userRole === 'EMPLOYEE';
+            const response = shouldUseAdminEndpoint
+                ? await stopApi.getAllStopsAdmin(params)
+                : await stopApi.getAllStops(params);
+            const responseData = response?.data ?? response;
+
             return {
-                data: response.data.status === 'success' ? response.data.data : response.data,
+                data: responseData.status === 'success' ? responseData.data : responseData,
                 fromCache: false,
                 selectedDistrict: districtId
             };

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
     View,
     Text,
@@ -15,7 +15,8 @@ import {
     Animated
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
-import { completeRegister, completePhoneRegister, clearError } from '@entities/auth';
+import { completeRegister, completePhoneRegister, clearError, selectEmail } from '@entities/auth';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const { width, height } = Dimensions.get('window');
 const isSmallDevice = height < 700;
@@ -46,6 +47,8 @@ export const VerificationForm = ({
     registrationType = 'email', 
     onBack 
 }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const codeLength = 6;
     const resendCooldownSeconds = registrationType === 'phone' ? 120 : 60;
     const initialCode = new Array(codeLength).fill('');
@@ -58,6 +61,7 @@ export const VerificationForm = ({
     const dispatch = useDispatch();
     const isLoading = useSelector((state) => state.auth?.isLoading ?? false);
     const error = useSelector((state) => state.auth?.error);
+    const email = useSelector(selectEmail);
 
     const inputRefs = useRef([]);
     inputRefs.current = code.map((_, index) => inputRefs.current[index] ?? React.createRef());
@@ -237,6 +241,14 @@ export const VerificationForm = ({
         return 'Мы отправили код на вашу почту';
     };
 
+    const getRecipientText = () => {
+        if (registrationType !== 'email' || !email) {
+            return '';
+        }
+
+        return email;
+    };
+
     const getHintText = () => {
         if (registrationType === 'email') {
             return '💡 Проверьте папку "Спам", если код не пришёл';
@@ -270,6 +282,12 @@ export const VerificationForm = ({
                 <View style={styles.headerContainer}>
                     <Text style={styles.title}>{getTitle()}</Text>
                     {getSubtitle() && <Text style={styles.subtitle}>{getSubtitle()}</Text>}
+                    {getRecipientText() && (
+                        <View style={styles.recipientContainer}>
+                            <Text style={styles.recipientLabel}>Почта для получения кода</Text>
+                            <Text style={styles.recipientValue}>{getRecipientText()}</Text>
+                        </View>
+                    )}
                     {getHintText() && (
                         <View style={styles.hintContainer}>
                             <Text style={styles.hintText}>{getHintText()}</Text>
@@ -422,10 +440,10 @@ export const VerificationForm = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     scrollContainer: {
         flex: 1,
-        backgroundColor: '#F8F9FA',
+        backgroundColor: isDark ? colors.background : '#F8F9FA',
     },
     scrollContent: {
         flexGrow: 1,
@@ -435,7 +453,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 24,
         paddingTop: safeTopPadding + 10,
         paddingBottom: adaptiveSize(48),
-        backgroundColor: '#F8F9FA',
+        backgroundColor: isDark ? colors.background : '#F8F9FA',
     },
     progressContainer: {
         marginBottom: adaptiveSize(34),
@@ -444,19 +462,19 @@ const styles = StyleSheet.create({
     progressBar: {
         width: '100%',
         height: 4,
-        backgroundColor: '#E0E0E0',
+        backgroundColor: isDark ? colors.border : '#E0E0E0',
         borderRadius: 2,
         overflow: 'hidden',
         marginBottom: 8,
     },
     progressFill: {
         height: '100%',
-        backgroundColor: '#000CFF',
+        backgroundColor: isDark ? colors.primary : '#000CFF',
         borderRadius: 2,
     },
     progressText: {
         fontSize: adaptiveSize(12),
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         fontWeight: '500',
     },
     headerContainer: {
@@ -466,30 +484,54 @@ const styles = StyleSheet.create({
     title: {
         fontSize: adaptiveSize(24),
         fontWeight: '700',
-        color: '#1A1A1A',
+        color: isDark ? colors.textPrimary : '#1A1A1A',
         marginBottom: adaptiveSize(12),
         textAlign: 'center',
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
     },
     subtitle: {
         fontSize: adaptiveSize(16),
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         lineHeight: adaptiveSize(24),
+        textAlign: 'center',
+        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+    },
+    recipientContainer: {
+        marginTop: adaptiveSize(14),
+        paddingVertical: adaptiveSize(12),
+        paddingHorizontal: adaptiveSize(16),
+        borderRadius: adaptiveSize(12),
+        backgroundColor: isDark ? colors.surfaceElevated : '#FFFFFF',
+        borderWidth: 1,
+        borderColor: isDark ? colors.border : '#E0E0E0',
+        width: '100%',
+    },
+    recipientLabel: {
+        fontSize: adaptiveSize(12),
+        color: isDark ? colors.textSecondary : '#666',
+        textAlign: 'center',
+        marginBottom: adaptiveSize(4),
+        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+    },
+    recipientValue: {
+        fontSize: adaptiveSize(16),
+        color: isDark ? colors.textPrimary : '#1A1A1A',
+        fontWeight: '700',
         textAlign: 'center',
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
     },
     hintContainer: {
         marginTop: adaptiveSize(16),
-        backgroundColor: '#FFF9E6',
+        backgroundColor: isDark ? 'rgba(255, 210, 74, 0.12)' : '#FFF9E6',
         paddingVertical: adaptiveSize(12),
         paddingHorizontal: adaptiveSize(16),
         borderRadius: adaptiveSize(12),
         borderWidth: 1,
-        borderColor: '#FFE082',
+        borderColor: isDark ? 'rgba(255, 210, 74, 0.3)' : '#FFE082',
     },
     hintText: {
         fontSize: adaptiveSize(13),
-        color: '#856404',
+        color: isDark ? colors.warning : '#856404',
         textAlign: 'center',
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
     },
@@ -499,7 +541,7 @@ const styles = StyleSheet.create({
     },
     inputProgressText: {
         fontSize: adaptiveSize(14),
-        color: '#000CFF',
+        color: isDark ? colors.primary : '#000CFF',
         fontWeight: '600',
     },
     codeContainer: {
@@ -516,38 +558,38 @@ const styles = StyleSheet.create({
     codeInput: {
         height: adaptiveSize(64),
         borderRadius: adaptiveSize(12),
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surfaceElevated : '#FFFFFF',
         borderWidth: 2,
-        borderColor: '#E0E0E0',
+        borderColor: isDark ? colors.border : '#E0E0E0',
         textAlign: 'center',
         fontSize: adaptiveSize(28),
         fontWeight: '700',
-        color: '#1A1A1A',
+        color: isDark ? colors.textPrimary : '#1A1A1A',
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
+        shadowOpacity: isDark ? 0.3 : 0.05,
         shadowRadius: 4,
         elevation: 2,
     },
     codeInputFilled: {
-        borderColor: '#000CFF',
-        backgroundColor: '#F0F4FF',
+        borderColor: isDark ? colors.primary : '#000CFF',
+        backgroundColor: isDark ? 'rgba(124, 127, 232, 0.18)' : '#F0F4FF',
     },
     codeInputFocused: {
-        borderColor: '#000CFF',
+        borderColor: isDark ? colors.primary : '#000CFF',
         borderWidth: 2.5,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
     },
     codeInputError: {
-        borderColor: '#F44336',
-        backgroundColor: '#FFEBEE',
+        borderColor: isDark ? colors.error : '#F44336',
+        backgroundColor: isDark ? 'rgba(255, 92, 82, 0.15)' : '#FFEBEE',
     },
     checkmarkBadge: {
         position: 'absolute',
         top: -6,
         right: -6,
-        backgroundColor: '#4CAF50',
+        backgroundColor: isDark ? colors.success : '#4CAF50',
         borderRadius: 10,
         width: 20,
         height: 20,
@@ -567,12 +609,12 @@ const styles = StyleSheet.create({
     errorBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#FFEBEE',
+        backgroundColor: isDark ? 'rgba(255, 92, 82, 0.12)' : '#FFEBEE',
         paddingVertical: adaptiveSize(12),
         paddingHorizontal: adaptiveSize(16),
         borderRadius: adaptiveSize(12),
         borderWidth: 1,
-        borderColor: '#F44336',
+        borderColor: isDark ? colors.error : '#F44336',
         marginBottom: adaptiveSize(12),
         maxWidth: '100%',
     },
@@ -581,7 +623,7 @@ const styles = StyleSheet.create({
         marginRight: adaptiveSize(8),
     },
     errorText: {
-        color: '#C62828',
+        color: isDark ? colors.error : '#C62828',
         fontSize: adaptiveSize(14),
         fontWeight: '500',
         flex: 1,
@@ -592,13 +634,13 @@ const styles = StyleSheet.create({
         paddingHorizontal: adaptiveSize(16),
     },
     resetButtonText: {
-        color: '#000CFF',
+        color: isDark ? colors.primary : '#000CFF',
         fontSize: adaptiveSize(14),
         fontWeight: '600',
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
     },
     button: {
-        backgroundColor: '#E0E0E0',
+        backgroundColor: isDark ? colors.border : '#E0E0E0',
         paddingVertical: adaptiveSize(18),
         paddingHorizontal: adaptiveSize(24),
         borderRadius: adaptiveSize(16),
@@ -607,17 +649,17 @@ const styles = StyleSheet.create({
         marginBottom: adaptiveSize(20),
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0.3 : 0.1,
         shadowRadius: 8,
         elevation: 4,
     },
     buttonDisabled: {
-        backgroundColor: '#E0E0E0',
+        backgroundColor: isDark ? colors.border : '#E0E0E0',
         shadowOpacity: 0,
         elevation: 0,
     },
     buttonReady: {
-        backgroundColor: '#000CFF',
+        backgroundColor: isDark ? colors.primary : '#000CFF',
     },
     buttonContent: {
         flexDirection: 'row',
@@ -639,13 +681,13 @@ const styles = StyleSheet.create({
         width: '100%',
         marginBottom: adaptiveSize(24),
         padding: adaptiveSize(14),
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
         borderRadius: adaptiveSize(16),
         borderWidth: 1,
-        borderColor: '#E8EAEF',
+        borderColor: isDark ? colors.border : '#E8EAEF',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06,
+        shadowOpacity: isDark ? 0.3 : 0.06,
         shadowRadius: 8,
         elevation: 2,
     },
@@ -662,17 +704,17 @@ const styles = StyleSheet.create({
         gap: adaptiveSize(6),
         paddingVertical: adaptiveSize(12),
         paddingHorizontal: adaptiveSize(10),
-        backgroundColor: '#F0F4FF',
+        backgroundColor: isDark ? 'rgba(124, 127, 232, 0.15)' : '#F0F4FF',
         borderRadius: adaptiveSize(12),
         borderWidth: 1,
-        borderColor: '#D6E0FF',
+        borderColor: isDark ? 'rgba(124, 127, 232, 0.35)' : '#D6E0FF',
     },
     actionPillIcon: {
         fontSize: adaptiveSize(16),
-        color: '#000CFF',
+        color: isDark ? colors.primary : '#000CFF',
     },
     actionPillLabel: {
-        color: '#000CFF',
+        color: isDark ? colors.primary : '#000CFF',
         fontSize: adaptiveSize(14),
         fontWeight: '600',
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
@@ -683,28 +725,28 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         paddingVertical: adaptiveSize(14),
         paddingHorizontal: adaptiveSize(12),
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
         borderRadius: adaptiveSize(12),
         borderWidth: 1.5,
-        borderColor: '#000CFF',
+        borderColor: isDark ? colors.primary : '#000CFF',
     },
     resendButtonDisabled: {
-        backgroundColor: '#F5F6F8',
-        borderColor: '#C5CAD3',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F5F6F8',
+        borderColor: isDark ? colors.border : '#C5CAD3',
     },
     resendButtonTitle: {
-        color: '#000CFF',
+        color: isDark ? colors.primary : '#000CFF',
         fontSize: adaptiveSize(15),
         fontWeight: '700',
         textAlign: 'center',
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
     },
     resendButtonTitleMuted: {
-        color: '#4B5563',
+        color: isDark ? colors.textSecondary : '#4B5563',
     },
     resendButtonSubtitle: {
         marginTop: adaptiveSize(4),
-        color: '#6B7280',
+        color: isDark ? colors.textTertiary : '#6B7280',
         fontSize: adaptiveSize(13),
         fontWeight: '500',
         textAlign: 'center',

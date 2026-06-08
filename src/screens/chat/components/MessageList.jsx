@@ -97,10 +97,12 @@ const MessageItem = memo(({
   onSwipeEnd,
   isDeleting,
   onDeleteAnimationEnd,
+  reactionsRenderTick = 0,
 }) => {
   const styles = useListStyles();
   const shouldReset = activeSwipeId !== null && activeSwipeId !== item.id;
   const [measuredHeight, setMeasuredHeight] = useState(0);
+  const [isHeightLocked, setIsHeightLocked] = useState(false);
   const opacityAnim = useRef(new Animated.Value(1)).current;
   const scaleXAnim = useRef(new Animated.Value(1)).current;
   const scaleYAnim = useRef(new Animated.Value(1)).current;
@@ -117,10 +119,10 @@ const MessageItem = memo(({
     if (!nextHeight || nextHeight === measuredHeight) return;
 
     setMeasuredHeight(nextHeight);
-    if (!deleteAnimationTriggeredRef.current) {
+    if (!isHeightLocked) {
       heightAnim.setValue(nextHeight);
     }
-  }, [heightAnim, measuredHeight]);
+  }, [heightAnim, isHeightLocked, measuredHeight]);
 
   useEffect(() => {
     // Анимация "удаления" (fade + collapse) — запускается ТОЛЬКО при переходе
@@ -136,6 +138,7 @@ const MessageItem = memo(({
       const animationCycle = animationCycleRef.current;
       deleteAnimationTriggeredRef.current = true;
       wasDeletingRef.current = true;
+      setIsHeightLocked(true);
       animationRef.current?.stop?.();
       animationRef.current = Animated.parallel([
         Animated.timing(opacityAnim, {
@@ -205,6 +208,7 @@ const MessageItem = memo(({
 
     wasDeletingRef.current = false;
     animationCycleRef.current += 1;
+    setIsHeightLocked(true);
     animationRef.current?.stop?.();
     animationRef.current = Animated.parallel([
       Animated.timing(opacityAnim, {
@@ -244,7 +248,9 @@ const MessageItem = memo(({
         useNativeDriver: false,
       }),
     ]);
-    animationRef.current.start();
+    animationRef.current.start(() => {
+      setIsHeightLocked(false);
+    });
   }, [
     isDeleting,
     item.id,
@@ -263,9 +269,9 @@ const MessageItem = memo(({
       onLayout={handleLayout}
       style={[
         styles.messageDeleteAnimation,
-        measuredHeight > 0 || isDeleting ? { height: heightAnim } : null,
+        isHeightLocked || isDeleting ? { height: heightAnim } : null,
         {
-          overflow: 'hidden',
+          overflow: isHeightLocked || isDeleting ? 'hidden' : 'visible',
         },
       ]}
     >
@@ -315,6 +321,7 @@ const MessageItem = memo(({
           onSwipeStart={onSwipeStart}
           onSwipeEnd={onSwipeEnd}
           shouldReset={shouldReset}
+          reactionsRenderTick={reactionsRenderTick}
         />
       </Animated.View>
     </Animated.View>
@@ -325,6 +332,7 @@ const MessageItem = memo(({
   return (
     prevProps.item.id === nextProps.item.id &&
     prevProps.item._reactionsUpdated === nextProps.item._reactionsUpdated &&
+    prevProps.item._pollUpdated === nextProps.item._pollUpdated &&
     prevProps.isSelectionMode === nextProps.isSelectionMode &&
     prevProps.selectedMessages.has(prevProps.item.id) === nextProps.selectedMessages.has(nextProps.item.id) &&
     prevProps.highlightedMessageId === nextProps.highlightedMessageId &&
@@ -332,7 +340,8 @@ const MessageItem = memo(({
     prevProps.isRetrying === nextProps.isRetrying &&
     prevProps.item.status === nextProps.item.status &&
     prevProps.activeSwipeId === nextProps.activeSwipeId &&
-    prevProps.isDeleting === nextProps.isDeleting
+    prevProps.isDeleting === nextProps.isDeleting &&
+    prevProps.reactionsRenderTick === nextProps.reactionsRenderTick
   );
 });
 
@@ -382,6 +391,7 @@ export const MessageList = memo(({
   onDismissKeyboard,
   flatListRef,
   onDeleteAnimationEnd,
+  reactionsRenderTick = 0,
 }) => {
   const styles = useListStyles();
   const isLoadingMoreRef = useRef(false);
@@ -499,6 +509,7 @@ export const MessageList = memo(({
         onSwipeEnd={handleSwipeEnd}
         isDeleting={deletingMessageIds.has(message.id)}
         onDeleteAnimationEnd={onDeleteAnimationEnd}
+        reactionsRenderTick={reactionsRenderTick}
       />
     );
   }, [
@@ -535,6 +546,7 @@ export const MessageList = memo(({
     handleSwipeStart,
     handleSwipeEnd,
     onDeleteAnimationEnd,
+    reactionsRenderTick,
   ]);
   
   // Стабильный keyExtractor
@@ -551,6 +563,8 @@ export const MessageList = memo(({
     hiddenCount: hiddenMessageIds.size,
     // Хэш реакций для обнаружения изменений
     reactionsHash: visibleMessages.map(m => `${m.id}:${m._reactionsUpdated || 0}`).join(','),
+    pollsHash: visibleMessages.map(m => `${m.id}:${m._pollUpdated || 0}`).join(','),
+    reactionsRenderTick,
     separatorCount: listItems.length - visibleMessages.length,
   }), [
     isSelectionMode,
@@ -561,6 +575,7 @@ export const MessageList = memo(({
     deletingMessageIds.size,
     hiddenMessageIds.size,
     visibleMessages,
+    reactionsRenderTick,
     listItems.length,
   ]);
   

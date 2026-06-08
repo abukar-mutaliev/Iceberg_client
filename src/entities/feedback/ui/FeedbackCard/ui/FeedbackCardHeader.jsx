@@ -15,7 +15,8 @@ import { getImageUrl } from '@shared/api/api';
  * @param {function(number|string)} [props.onAuthorPress] - Колбэк при нажатии на аватар или имя (передаётся userId/clientId)
  */
 export const FeedbackCardHeader = ({ feedback, currentUser, onAuthorPress }) => {
-    const { colors } = useTheme();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     const {
         client = {},
@@ -57,6 +58,9 @@ export const FeedbackCardHeader = ({ feedback, currentUser, onAuthorPress }) => 
     const authorId = feedback.userId ?? client?.user?.id ?? client?.userId;
     const canPressAuthor = authorId != null && authorId !== '' && typeof onAuthorPress === 'function';
 
+    const avatarPlaceholderColor = isDark ? colors.textTertiary : '#BEBEBE';
+    const starColor = isDark ? '#A0A8FF' : '#6B4EFF';
+
     const headerContent = (
         <>
             {/* Аватар пользователя */}
@@ -77,7 +81,7 @@ export const FeedbackCardHeader = ({ feedback, currentUser, onAuthorPress }) => 
                         }}
                     />
                 ) : (
-                    <AvatarPlaceholder width={40} height={40} color="#BEBEBE" />
+                    <AvatarPlaceholder width={40} height={40} color={avatarPlaceholderColor} />
                 )}
             </View>
 
@@ -99,7 +103,7 @@ export const FeedbackCardHeader = ({ feedback, currentUser, onAuthorPress }) => 
                         filled={star <= rating}
                         width={14}
                         height={14}
-                        color="#6B4EFF"
+                        color={starColor}
                     />
                 ))}
             </View>
@@ -123,7 +127,7 @@ export const FeedbackCardHeader = ({ feedback, currentUser, onAuthorPress }) => 
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     header: {
         flexDirection: 'row',
         paddingTop: 16,
@@ -141,7 +145,7 @@ const styles = StyleSheet.create({
         width: 40,
         height: 40,
         borderRadius: 20,
-        backgroundColor: '#F0F0F0',
+        backgroundColor: isDark ? colors.surfaceElevated || '#2A2F55' : '#F0F0F0',
         justifyContent: 'center',
         alignItems: 'center',
         overflow: 'hidden',
@@ -162,14 +166,14 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
-        color: '#000000', // Черный цвет для максимального контраста
+        color: colors.textPrimary,
         backgroundColor: 'transparent',
     },
     dateText: {
         fontSize: 11,
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
-        color: '#8E8E8E',
+        color: isDark ? colors.textSecondary : '#8E8E8E',
         marginTop: 2,
     },
     rating: {

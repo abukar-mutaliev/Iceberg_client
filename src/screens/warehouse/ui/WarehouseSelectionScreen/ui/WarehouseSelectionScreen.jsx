@@ -15,9 +15,12 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
 import { useWarehouses } from '@entities/warehouse/hooks/useWarehouses';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 // Компонент для указания количества коробок и цены на склад
 const WarehouseQuantityInput = React.memo(({ warehouse, quantity, warehousePrice, stopPrice, onQuantityChange, onPriceChange, onStopPriceChange, onRemove, basePrice, isAdmin = false }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     // Используем ref для хранения текущих значений без ререндера
     const quantityRef = React.useRef(null);
     const priceRef = React.useRef(null);
@@ -130,6 +133,7 @@ const WarehouseQuantityInput = React.memo(({ warehouse, quantity, warehousePrice
                         onBlur={handleQuantityBlur}
                         keyboardType="numeric"
                         placeholder="0"
+                        placeholderTextColor={isDark ? colors.textTertiary : '#999'}
                         maxLength={5}
                         returnKeyType="done"
                     />
@@ -146,6 +150,7 @@ const WarehouseQuantityInput = React.memo(({ warehouse, quantity, warehousePrice
                                 onBlur={handlePriceBlur}
                                 keyboardType="decimal-pad"
                                 placeholder={basePrice ? basePrice.toString() : "Авто"}
+                                placeholderTextColor={isDark ? colors.textTertiary : '#999'}
                                 maxLength={10}
                                 returnKeyType="done"
                             />
@@ -160,6 +165,7 @@ const WarehouseQuantityInput = React.memo(({ warehouse, quantity, warehousePrice
                                 onBlur={handleStopPriceBlur}
                                 keyboardType="decimal-pad"
                                 placeholder={basePrice ? basePrice.toString() : "Авто"}
+                                placeholderTextColor={isDark ? colors.textTertiary : '#999'}
                                 maxLength={10}
                                 returnKeyType="done"
                             />
@@ -184,6 +190,8 @@ export const WarehouseSelectionScreen = ({ navigation: navigationProp, route: ro
     const navigation = navigationProp || useNavigation();
     const route = routeProp || useRoute();
     const { warehouses, loading: loadingWarehouses } = useWarehouses({ autoLoad: true });
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     const {
         selectedWarehouseQuantities = [],
@@ -449,7 +457,7 @@ export const WarehouseSelectionScreen = ({ navigation: navigationProp, route: ro
                         placeholder="Поиск склада..."
                         value={searchText}
                         onChangeText={setSearchText}
-                        placeholderTextColor="#999"
+                        placeholderTextColor={isDark ? colors.textTertiary : '#999'}
                     />
                 </View>
 
@@ -481,7 +489,7 @@ export const WarehouseSelectionScreen = ({ navigation: navigationProp, route: ro
                                     onChangeText={setCommonWarehousePrice}
                                     placeholder={basePrice ? basePrice.toString() : "Авто"}
                                     keyboardType="numeric"
-                                    placeholderTextColor="#999"
+                                    placeholderTextColor={isDark ? colors.textTertiary : '#999'}
                                 />
                             </View>
                             <View style={styles.commonPriceInputContainer}>
@@ -492,7 +500,7 @@ export const WarehouseSelectionScreen = ({ navigation: navigationProp, route: ro
                                     onChangeText={setCommonStopPrice}
                                     placeholder={basePrice ? basePrice.toString() : "Авто"}
                                     keyboardType="numeric"
-                                    placeholderTextColor="#999"
+                                    placeholderTextColor={isDark ? colors.textTertiary : '#999'}
                                 />
                             </View>
                             <TouchableOpacity
@@ -558,6 +566,8 @@ export const WarehouseSelectionInline = ({
     onSelectWarehouseQuantities
 }) => {
     const { warehouses, loading: loadingWarehouses } = useWarehouses({ autoLoad: true });
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     const [searchText, setSearchText] = useState('');
     const [filteredWarehouses, setFilteredWarehouses] = useState(warehouses);
@@ -793,7 +803,7 @@ export const WarehouseSelectionInline = ({
                     placeholder="Поиск склада..."
                     value={searchText}
                     onChangeText={setSearchText}
-                    placeholderTextColor="#999"
+                    placeholderTextColor={isDark ? colors.textTertiary : '#999'}
                 />
             </View>
 
@@ -824,7 +834,7 @@ export const WarehouseSelectionInline = ({
                                 onChangeText={setCommonWarehousePrice}
                                 placeholder={basePrice ? basePrice.toString() : "Авто"}
                                 keyboardType="numeric"
-                                placeholderTextColor="#999"
+                                placeholderTextColor={isDark ? colors.textTertiary : '#999'}
                             />
                         </View>
                         <View style={styles.commonPriceInputContainer}>
@@ -835,7 +845,7 @@ export const WarehouseSelectionInline = ({
                                 onChangeText={setCommonStopPrice}
                                 placeholder={basePrice ? basePrice.toString() : "Авто"}
                                 keyboardType="numeric"
-                                placeholderTextColor="#999"
+                                placeholderTextColor={isDark ? colors.textTertiary : '#999'}
                             />
                         </View>
                         <TouchableOpacity
@@ -888,16 +898,16 @@ export const WarehouseSelectionInline = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.background : Color.colorLightMode,
     },
     inlineContainer: {
         borderWidth: 1,
-        borderColor: Color.border || '#E0E0E0',
+        borderColor: colors.border,
         borderRadius: Border.radius.medium,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.surface : Color.colorLightMode,
         overflow: 'hidden',
     },
     keyboardAvoidingView: {
@@ -915,21 +925,21 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         padding: normalize(16),
         borderBottomWidth: 1,
-        borderBottomColor: Color.border || '#E0E0E0',
-        backgroundColor: Color.colorLightMode,
+        borderBottomColor: colors.border,
+        backgroundColor: isDark ? colors.surface : Color.colorLightMode,
     },
     closeButton: {
         padding: normalize(8),
     },
     closeButtonText: {
         fontSize: normalizeFont(16),
-        color: Color.blue2,
+        color: isDark ? colors.primary : Color.blue2,
         fontFamily: FontFamily.sFProText,
     },
     modalTitle: {
         fontSize: normalizeFont(18),
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProDisplay,
         flex: 1,
         textAlign: 'center',
@@ -940,18 +950,19 @@ const styles = StyleSheet.create({
     searchContainer: {
         padding: normalize(16),
         borderBottomWidth: 1,
-        borderBottomColor: Color.border || '#E0E0E0',
-        backgroundColor: Color.colorLightMode,
+        borderBottomColor: colors.border,
+        backgroundColor: isDark ? colors.surface : Color.colorLightMode,
     },
     searchInput: {
         borderWidth: 1,
-        borderColor: Color.border || '#E0E0E0',
+        borderColor: colors.border,
         borderRadius: Border.radius.small,
         paddingHorizontal: normalize(16),
         paddingVertical: normalize(12),
         fontSize: normalizeFont(16),
         fontFamily: FontFamily.sFProText,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.surfaceElevated : Color.colorLightMode,
+        color: colors.textPrimary,
     },
     selectAllContainer: {
         flexDirection: 'row',
@@ -959,12 +970,12 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         padding: normalize(16),
         borderBottomWidth: 1,
-        borderBottomColor: Color.border || '#E0E0E0',
-        backgroundColor: Color.colorLightMode,
+        borderBottomColor: colors.border,
+        backgroundColor: isDark ? colors.surface : Color.colorLightMode,
     },
     selectAllText: {
         fontSize: normalizeFont(16),
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     warehouseItem: {
@@ -973,11 +984,11 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         padding: normalize(16),
         borderBottomWidth: 1,
-        borderBottomColor: Color.border || '#E0E0E0',
-        backgroundColor: Color.colorLightMode,
+        borderBottomColor: colors.border,
+        backgroundColor: isDark ? colors.surface : Color.colorLightMode,
     },
     selectedItem: {
-        backgroundColor: '#E8F0FE',
+        backgroundColor: isDark ? 'rgba(99, 102, 241, 0.18)' : '#E8F0FE',
     },
     warehouseInfo: {
         flex: 1,
@@ -985,12 +996,12 @@ const styles = StyleSheet.create({
     warehouseName: {
         fontSize: normalizeFont(16),
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProDisplay,
         marginBottom: normalize(4),
     },
     selectedItemText: {
-        color: '#3B43A2',
+        color: isDark ? colors.primary : '#3B43A2',
     },
     checkboxContainer: {
         justifyContent: 'center',
@@ -1002,13 +1013,13 @@ const styles = StyleSheet.create({
         height: 24,
         borderRadius: 4,
         borderWidth: 2,
-        borderColor: '#C0C0C0',
+        borderColor: isDark ? colors.border : '#C0C0C0',
         justifyContent: 'center',
         alignItems: 'center',
     },
     checkboxSelected: {
-        backgroundColor: '#3B43A2',
-        borderColor: '#3B43A2',
+        backgroundColor: isDark ? colors.primary : '#3B43A2',
+        borderColor: isDark ? colors.primary : '#3B43A2',
     },
     checkmark: {
         color: '#FFFFFF',
@@ -1021,21 +1032,21 @@ const styles = StyleSheet.create({
     },
     emptyText: {
         fontSize: normalizeFont(16),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
     },
     commonPricesSection: {
         borderTopWidth: 1,
-        borderTopColor: Color.border || '#E0E0E0',
+        borderTopColor: colors.border,
         padding: normalize(16),
-        backgroundColor: Color.backgroundLight || '#F8F8F8',
+        backgroundColor: isDark ? colors.surfaceElevated : (Color.backgroundLight || '#F8F8F8'),
         marginTop: normalize(16),
     },
     commonPricesTitle: {
         fontSize: normalizeFont(14),
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProDisplay,
         marginBottom: normalize(12),
     },
@@ -1049,24 +1060,25 @@ const styles = StyleSheet.create({
     },
     commonPriceLabel: {
         fontSize: normalizeFont(10),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(4),
     },
     commonPriceInput: {
         width: '100%',
         borderWidth: 1,
-        borderColor: Color.border || '#E0E0E0',
+        borderColor: colors.border,
         borderRadius: 4,
         paddingHorizontal: normalize(8),
         paddingVertical: normalize(8),
         textAlign: 'center',
         fontSize: normalizeFont(12),
         fontFamily: FontFamily.sFProText,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.surface : Color.colorLightMode,
+        color: colors.textPrimary,
     },
     applyCommonPriceButton: {
-        backgroundColor: '#3B43A2',
+        backgroundColor: isDark ? colors.primary : '#3B43A2',
         paddingHorizontal: normalize(16),
         paddingVertical: normalize(10),
         borderRadius: 4,
@@ -1082,15 +1094,15 @@ const styles = StyleSheet.create({
     },
     quantitiesSection: {
         borderTopWidth: 1,
-        borderTopColor: Color.border || '#E0E0E0',
-        backgroundColor: Color.colorLightMode,
+        borderTopColor: colors.border,
+        backgroundColor: isDark ? colors.surface : Color.colorLightMode,
         marginTop: normalize(16),
         paddingBottom: normalize(16),
     },
     quantitiesTitle: {
         fontSize: normalizeFont(16),
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProDisplay,
         padding: normalize(16),
         paddingBottom: normalize(10),
@@ -1104,9 +1116,11 @@ const styles = StyleSheet.create({
     quantityItem: {
         paddingVertical: normalize(10),
         paddingHorizontal: normalize(12),
-        backgroundColor: Color.backgroundLight || '#F8F8F8',
+        backgroundColor: isDark ? colors.surfaceElevated : (Color.backgroundLight || '#F8F8F8'),
         borderRadius: 8,
         marginBottom: normalize(8),
+        borderWidth: isDark ? StyleSheet.hairlineWidth : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     quantityHeaderRow: {
         flexDirection: 'row',
@@ -1120,13 +1134,13 @@ const styles = StyleSheet.create({
     quantityWarehouseName: {
         fontSize: normalizeFont(14),
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(2),
     },
     quantityWarehouseAddress: {
         fontSize: normalizeFont(12),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
     },
     quantityControls: {
@@ -1141,14 +1155,14 @@ const styles = StyleSheet.create({
     },
     inputLabel: {
         fontSize: normalizeFont(10),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(4),
     },
     quantityInput: {
         width: 65,
         borderWidth: 1,
-        borderColor: Color.border || '#E0E0E0',
+        borderColor: colors.border,
         borderRadius: 4,
         paddingHorizontal: normalize(4),
         paddingVertical: normalize(6),
@@ -1156,12 +1170,13 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         fontSize: normalizeFont(11),
         fontFamily: FontFamily.sFProText,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.surface : Color.colorLightMode,
+        color: colors.textPrimary,
     },
     priceInput: {
         width: 65,
         borderWidth: 1,
-        borderColor: Color.border || '#E0E0E0',
+        borderColor: colors.border,
         borderRadius: 4,
         paddingHorizontal: normalize(4),
         paddingVertical: normalize(6),
@@ -1169,7 +1184,8 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         fontSize: normalizeFont(11),
         fontFamily: FontFamily.sFProText,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.surface : Color.colorLightMode,
+        color: colors.textPrimary,
     },
     removeButton: {
         padding: normalize(8),
@@ -1177,25 +1193,25 @@ const styles = StyleSheet.create({
     },
     removeButtonText: {
         fontSize: normalizeFont(20),
-        color: Color.red,
+        color: colors.error,
         fontFamily: FontFamily.sFProText,
     },
     footer: {
         borderTopWidth: 1,
-        borderTopColor: Color.border || '#E0E0E0',
+        borderTopColor: colors.border,
         padding: normalize(16),
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.surface : Color.colorLightMode,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: -2 },
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0 : 0.1,
         shadowRadius: 4,
-        elevation: 5,
+        elevation: isDark ? 0 : 5,
     },
     inlineFooter: {
         borderTopWidth: 1,
-        borderTopColor: Color.border || '#E0E0E0',
+        borderTopColor: colors.border,
         padding: normalize(12),
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.surface : Color.colorLightMode,
     },
     footerButton: {
         paddingVertical: normalize(14),
@@ -1203,7 +1219,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     applyButton: {
-        backgroundColor: Color.blue2,
+        backgroundColor: isDark ? colors.primary : Color.blue2,
     },
     applyButtonText: {
         fontSize: normalizeFont(16),

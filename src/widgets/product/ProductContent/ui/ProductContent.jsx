@@ -12,6 +12,9 @@ import { Border } from '@app/styles/GlobalStyles';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { ScrollableBackgroundGradient } from "@shared/ui/BackgroundGradient";
 import { HighlightChange } from "@shared/ui/HighlightChange/HighlightChange";
+import { featureFlags } from '@shared/config/featureFlags';
+import { ProductWarehouseInfo } from '@entities/product/ui/ProductWarehouseInfo';
+import { useProductStock } from '@entities/warehouse/hooks/useProductStock';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -89,10 +92,30 @@ export const ProductContent = React.memo(({
         return safeProduct.availableQuantity > 0 ? safeProduct.availableQuantity : 999;
     }, [maxQuantity, safeProduct.availableQuantity]);
 
-    const tabs = useMemo(() => [
-        { id: 'description', title: 'Описание' },
-        { id: 'reviews', title: `Отзывы (${safeProduct.feedbackCount})` },
-    ], [safeProduct.feedbackCount]);
+    const showWarehouseTab = featureFlags.warehouseTracking && !!safeProduct.id;
+    const {
+        warehousesWithStock,
+        totalStock,
+        availableStock,
+        loading: stockLoading,
+        warehousesLoading,
+        error: stockError,
+        warehousesError,
+    } = useProductStock(safeProduct.id, {
+        autoLoad: showWarehouseTab,
+        findWarehouses: showWarehouseTab,
+    });
+
+    const tabs = useMemo(() => {
+        const items = [
+            { id: 'description', title: 'Описание' },
+            { id: 'reviews', title: `Отзывы (${safeProduct.feedbackCount})` },
+        ];
+        if (showWarehouseTab) {
+            items.splice(1, 0, { id: 'availability', title: 'Наличие' });
+        }
+        return items;
+    }, [safeProduct.feedbackCount, showWarehouseTab]);
 
     const handleFeedbacksLayout = useCallback((event) => {
         const { height } = event.nativeEvent.layout;
@@ -133,8 +156,6 @@ export const ProductContent = React.memo(({
                 <View style={styles.priceContainer}>
                     <ProductPrice price={productWithNormalizedPricing.price} product={productWithNormalizedPricing} weight={productWithNormalizedPricing.weight} />
 
-                    {/* ВРЕМЕННО СКРЫТО: Контроль количества для корзины
-                        TODO: Вернуть когда функциональность заказа будет готова
                     <QuantityControl
                         quantity={quantity}
                         onQuantityChange={onQuantityChange}
@@ -148,7 +169,6 @@ export const ProductContent = React.memo(({
                         onRemoveFromCart={onRemoveFromCart}
                         autoCartManagement={autoCartManagement}
                     />
-                    */}
                    
                 </View>
 
@@ -190,6 +210,18 @@ export const ProductContent = React.memo(({
                             shortDescription={safeProduct.name}
                             fullDescription={safeProduct.description}
                             style={styles.description}
+                        />
+                    </View>
+                )}
+
+                {activeTab === 'availability' && showWarehouseTab && (
+                    <View style={styles.descriptionContainer}>
+                        <ProductWarehouseInfo
+                            warehousesWithStock={warehousesWithStock}
+                            totalStock={totalStock}
+                            availableStock={availableStock}
+                            loading={stockLoading || warehousesLoading}
+                            error={stockError || warehousesError}
                         />
                     </View>
                 )}

@@ -1,10 +1,14 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
-import { USER_ROLES, USER_ROLES_DISPLAY } from '@entities/user/model/constants';
+import { FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
+import { USER_ROLES } from '@entities/user/model/constants';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const RoleFilter = ({ selectedRole, onRoleChange }) => {
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
+
     const roles = [
         { value: '', label: 'Все' },
         { value: USER_ROLES.ADMIN, label: 'Админы' },
@@ -39,32 +43,32 @@ export const RoleFilter = ({ selectedRole, onRoleChange }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     roleFilterContainer: {
         paddingVertical: normalize(8),
         paddingHorizontal: normalize(16),
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.surface,
     },
     roleFilterItem: {
         paddingHorizontal: normalize(12),
         paddingVertical: normalize(6),
         marginRight: normalize(8),
         borderRadius: Border.radius.medium,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.cardBackground,
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: colors.border,
     },
     roleFilterItemSelected: {
-        backgroundColor: Color.blue2,
-        borderColor: Color.blue2,
+        backgroundColor: colors.primary,
+        borderColor: colors.primary,
     },
     roleFilterText: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: Color.textPrimary,
+        color: colors.textPrimary,
     },
     roleFilterTextSelected: {
-        color: Color.colorLightMode,
+        color: colors.textInverse,
         fontWeight: '500',
     },
 });

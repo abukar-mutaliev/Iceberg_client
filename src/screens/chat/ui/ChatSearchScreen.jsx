@@ -9,7 +9,6 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   Image,
   Linking
 } from 'react-native';
@@ -20,6 +19,7 @@ import * as Contacts from 'expo-contacts';
 import ChatApi from '@entities/chat/api/chatApi';
 import { ContactPicker } from '@entities/chat/ui/ContactPicker/ContactPicker';
 import { PermissionInfoModal } from '@entities/chat/ui/Composer/components/PermissionInfoModal';
+import { selectRoomsList } from '@entities/chat/model/selectors';
 import { debounce } from 'lodash';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
@@ -27,6 +27,7 @@ export const ChatSearchScreen = () => {
   const navigation = useNavigation();
   const dispatch = useDispatch();
   const currentUser = useSelector(state => state?.auth?.user);
+  const localRooms = useSelector(selectRoomsList) || [];
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
@@ -158,47 +159,60 @@ export const ChatSearchScreen = () => {
       return;
     }
 
-    // Обработка пользователей
-    setLoading(true);
-    try {
-      // Создаем FormData для отправки
-      const formData = new FormData();
-      formData.append('type', 'DIRECT');
-      formData.append('title', item.displayName);
-      formData.append('members', JSON.stringify([item.id]));
-      
-      const response = await ChatApi.createRoom(formData);
+    // Обработка пользователей.
+    // 1) Если с этим пользователем уже есть локальный DIRECT-чат — сразу открываем его.
+    // 2) Иначе открываем «черновой» чат: комната на сервере будет создана
+    //    только при отправке первого сообщения, чтобы собеседник не видел пустой чат.
+    const currentUserId = currentUser?.id;
+    const targetUserId = item?.id;
 
-      const room = response?.data?.room;
-      if (room) {
-        (rootNavigation || navigation).navigate('ChatRoom', {
-          roomId: room.id,
-          roomTitle: item.displayName,
-          roomData: {
-            ...room,
-            participants: [
-              { 
-                userId: item.id, 
-                user: {
-                  ...item,
-                  name: item.displayName,
-                  companyName: item.role === 'SUPPLIER' ? item.displayName : null,
-                  lastSeenAt: item.lastSeenAt,
-                  isOnline: item.isOnline
-                }
-              }
-            ]
-          },
-          fromScreen: 'ChatSearch',
-          currentUserId: currentUser?.id
-        });
-      }
-    } catch (error) {
-      console.error('Error creating chat:', error);
-      Alert.alert('Ошибка', 'Не удалось создать чат');
-    } finally {
-      setLoading(false);
+    const normalizedTargetId = targetUserId != null ? String(targetUserId) : null;
+    const normalizedCurrentId = currentUserId != null ? String(currentUserId) : null;
+    const existingDirect = normalizedTargetId && Array.isArray(localRooms)
+      ? localRooms.find((room) => {
+          if (!room) return false;
+          const roomType = String(room.type || '').toUpperCase();
+          if (roomType !== 'DIRECT') return false;
+          const participants = Array.isArray(room.participants) ? room.participants : [];
+          if (participants.length === 0) return false;
+          const participantIds = participants
+            .map((p) => p?.userId ?? p?.user?.id ?? p?.id)
+            .filter((id) => id != null)
+            .map((id) => String(id));
+          return participantIds.includes(normalizedTargetId)
+            && (normalizedCurrentId == null || participantIds.includes(normalizedCurrentId));
+        })
+      : null;
+
+    if (existingDirect) {
+      (rootNavigation || navigation).navigate('ChatRoom', {
+        roomId: existingDirect.id,
+        roomTitle: item.displayName,
+        fromScreen: 'ChatSearch',
+        roomData: existingDirect,
+        currentUserId,
+      });
+      return;
     }
+
+    // Черновой чат — без обращения к API.
+    // DirectChatScreen создаст комнату при первой отправке.
+    (rootNavigation || navigation).navigate('ChatRoom', {
+      roomId: null,
+      roomTitle: item.displayName,
+      roomType: 'DIRECT',
+      fromScreen: 'ChatSearch',
+      currentUserId,
+      draftPeerUserId: targetUserId,
+      draftPeer: {
+        id: targetUserId,
+        name: item.displayName,
+        role: item.role,
+        avatar: item.avatar || null,
+        lastSeenAt: item.lastSeenAt,
+        isOnline: item.isOnline,
+      },
+    });
   };
 
   // Обработчик кнопки "Пригласить друга" с проверкой разрешений

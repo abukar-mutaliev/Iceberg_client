@@ -150,10 +150,14 @@ export const CategoriesBar = ({ hideLoader = true, showInitialScrollHint = false
         if (category.isCategoriesLink) {
             navigation.navigate('Categories');
         } else {
-            navigation.navigate('ProductsByCategory', {
-                categoryId: category.id,
-                categoryName: category.name,
-                categoryDescription: category.description
+            navigation.navigate({
+                name: 'ProductsByCategory',
+                params: {
+                    categoryId: category.id,
+                    categoryName: category.name,
+                    categoryDescription: category.description,
+                },
+                key: 'ProductsByCategory-active',
             });
         }
     };

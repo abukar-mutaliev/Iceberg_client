@@ -5,7 +5,7 @@ import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import Text from '@shared/ui/Text/Text';
 import { ProductsSlider } from '@features/supplier/ui/ProductsSlider/ProductsSlider';
 import { SupplierHeader } from '@features/supplier/ui/SupplierHeader/SupplierHeader';
-import { BestFeedbacks } from '@features/supplier/ui/BestFeedbacks/BestFeedbacks';
+import { BestFeedbacks, filterDisplayableSupplierFeedbacks } from '@features/supplier/ui/BestFeedbacks/BestFeedbacks';
 import { ScrollableBackgroundGradient } from '@shared/ui/BackgroundGradient';
 import { resetCurrentProduct } from "@entities/product";
 import { useDispatch, useSelector } from 'react-redux';
@@ -42,8 +42,6 @@ const SupplierContent = React.memo(({
     const currentUser = useSelector(selectUser);
     const isSupplier = useMemo(() => currentUser?.role === 'SUPPLIER', [currentUser?.role]);
 
-    const contentHeight = SCREEN_HEIGHT * 2;
-
     const enrichedSupplier = useMemo(() => {
         if (!supplier) return null;
         
@@ -70,7 +68,7 @@ const SupplierContent = React.memo(({
     );
 
     const reviews = useMemo(() =>
-            Array.isArray(feedbacks) ? feedbacks : [],
+            filterDisplayableSupplierFeedbacks(feedbacks),
         [feedbacks]
     );
 
@@ -335,6 +333,11 @@ const SupplierContent = React.memo(({
     // Рендерим компонент
     return (
         <View style={styles.container}>
+            <ScrollableBackgroundGradient
+                contentHeight={SCREEN_HEIGHT}
+                showOverlayGradient
+                showShadowGradient={false}
+            />
             <ScrollView
                 ref={scrollViewRef}
                 style={styles.contentScrollView}
@@ -345,12 +348,6 @@ const SupplierContent = React.memo(({
                 bounces={true}
                 horizontal={false}
             >
-                <ScrollableBackgroundGradient
-                    contentHeight={contentHeight}
-                    showOverlayGradient={false}
-                    showShadowGradient={false}
-                />
-
                 <SupplierHeader
                     supplier={enrichedSupplier}
                     supplierProducts={productsCount}

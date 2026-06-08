@@ -1,8 +1,9 @@
-import React, { memo, useState, useCallback, useRef, useEffect } from 'react';
+import React, { memo, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Image, View, StyleSheet, Animated, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { formatImageUrl } from '@shared/api/api';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const MAX_RETRIES = 3;
 const BASE_RETRY_DELAY = 1500;
@@ -26,7 +27,7 @@ export function normalizeImageSource(source) {
     }
 
     if (typeof source === 'object') {
-        const raw = source.uri || source.url || source.path || source.src;
+        const raw = source.uri || source.url || source.path || source.src || source.imageUrl;
         if (raw && typeof raw === 'string') {
             const trimmed = raw.trim();
             if (!trimmed) return null;
@@ -57,6 +58,11 @@ const ReliableImageComponent = ({
     fadeDuration = FADE_DURATION,
     ...rest
 }) => {
+    const { colors, isDark } = useTheme();
+    const themedStyles = useMemo(
+        () => createStyles(colors, isDark),
+        [colors, isDark]
+    );
     const skipFade = fadeDuration === 0;
     const [retryCount, setRetryCount] = useState(0);
     const [isFailed, setIsFailed] = useState(false);
@@ -148,13 +154,13 @@ const ReliableImageComponent = ({
         }
         : effectiveSource;
 
-    const wrapperStyle = [styles.wrapper, style];
+    const wrapperStyle = [themedStyles.wrapper, style];
 
     return (
         <View style={wrapperStyle}>
             {!isLoaded && showPlaceholder && (
-                <View style={[StyleSheet.absoluteFill, styles.loadingContainer]}>
-                    <View style={styles.loadingPulse} />
+                <View style={[StyleSheet.absoluteFill, themedStyles.loadingContainer]}>
+                    <View style={themedStyles.loadingPulse} />
                 </View>
             )}
             <Animated.Image
@@ -170,29 +176,57 @@ const ReliableImageComponent = ({
     );
 };
 
-export const Placeholder = memo(({ style, iconSize = 24, text }) => (
-    <LinearGradient
-        colors={['#dfe7ff', '#cdd6ff', '#bfc7ff']}
-        style={[styles.placeholder, style]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-    >
-        <Icon name="image" size={iconSize} color="rgba(255,255,255,0.95)" />
-        {text !== undefined ? (
-            text ? <PlaceholderText>{text}</PlaceholderText> : null
-        ) : (
-            <PlaceholderText>Нет фото</PlaceholderText>
-        )}
-    </LinearGradient>
-));
+export const Placeholder = memo(({ style, iconSize = 24, text }) => {
+    const { colors, isDark } = useTheme();
+    const themedStyles = useMemo(
+        () => createStyles(colors, isDark),
+        [colors, isDark]
+    );
 
-const PlaceholderText = ({ children }) => (
-    <Animated.Text style={styles.placeholderText}>{children}</Animated.Text>
+    const gradientColors = isDark
+        ? [
+            colors.surfaceSecondary || colors.surface || '#252836',
+            colors.surfaceElevated || colors.surface || '#252836',
+            colors.cardBackground || colors.surface || '#1A1C24',
+        ]
+        : ['#dfe7ff', '#cdd6ff', '#bfc7ff'];
+    const iconColor = isDark ? (colors.textSecondary || 'rgba(255,255,255,0.85)') : 'rgba(255,255,255,0.95)';
+
+    return (
+        <LinearGradient
+            colors={gradientColors}
+            style={[themedStyles.placeholder, style]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+        >
+            <Icon name="image" size={iconSize} color={iconColor} />
+            {text !== undefined ? (
+                text ? <PlaceholderText textColor={iconColor}>{text}</PlaceholderText> : null
+            ) : (
+                <PlaceholderText textColor={iconColor}>Нет фото</PlaceholderText>
+            )}
+        </LinearGradient>
+    );
+});
+
+const PlaceholderText = ({ children, textColor }) => (
+    <Animated.Text style={[baseStyles.placeholderText, { color: textColor }]}>
+        {children}
+    </Animated.Text>
 );
 
 export const ReliableImage = memo(ReliableImageComponent);
 
-const styles = StyleSheet.create({
+const baseStyles = StyleSheet.create({
+    placeholderText: {
+        marginTop: 6,
+        fontSize: 11,
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.95)',
+    },
+});
+
+const createStyles = (colors, isDark) => StyleSheet.create({
     wrapper: {
         overflow: 'hidden',
         backgroundColor: 'transparent',
@@ -200,24 +234,18 @@ const styles = StyleSheet.create({
     loadingContainer: {
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#f0f0f0',
+        backgroundColor: isDark ? (colors.surfaceSecondary || colors.surface || '#252836') : '#f0f0f0',
     },
     loadingPulse: {
         width: '60%',
         height: '60%',
         borderRadius: 8,
-        backgroundColor: '#e5e5e5',
+        backgroundColor: isDark ? colors.surfaceElevated : '#e5e5e5',
     },
     placeholder: {
         width: '100%',
         height: '100%',
         justifyContent: 'center',
         alignItems: 'center',
-    },
-    placeholderText: {
-        marginTop: 6,
-        fontSize: 11,
-        fontWeight: '600',
-        color: 'rgba(255,255,255,0.95)',
     },
 });

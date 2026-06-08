@@ -4,14 +4,13 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
 import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, ORDER_STATUS_ICONS } from '@shared/lib/orderConstants';
 import { formatAmount, formatOrderNumber, formatDate, getOrderProgress } from '@shared/lib/orderUtils';
-import { createOrderDetailsStyles } from '@shared/ui/OrderDetailsStyles';
+import { useOrderDetailsStyles } from '@shared/ui/OrderDetailsStyles';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
-
-const styles = createOrderDetailsStyles();
 
 export const OrderHeader = ({ order }) => {
     const navigation = useNavigation();
     const { showInfo } = useCustomAlert();
+    const styles = useOrderDetailsStyles();
 
     const handleCopyOrderNumber = useCallback(() => {
         if (!order?.orderNumber) return;
@@ -83,7 +82,7 @@ export const OrderHeader = ({ order }) => {
                             <Text style={styles.amount}>{formatAmount(order.totalAmount)}</Text>
                         </View>
                         <View style={styles.amountIcon}>
-                            <Icon name="payment" size={24} color="#fff" />
+                            <Icon name="payment" size={24} color="#FFFFFF" />
                         </View>
                     </View>
                 </View>

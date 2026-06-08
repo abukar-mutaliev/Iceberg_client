@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
     View,
     Text,
@@ -6,11 +6,9 @@ import {
     TouchableOpacity,
     Dimensions,
 } from 'react-native';
-import {
-    Color,
-    FontFamily
-} from '@app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
 import { CLIENT_TYPES } from "@entities/cart";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -20,6 +18,9 @@ const normalize = (size) => {
 };
 
 export const ClientTypeModal = ({ currentType, onSelect, onClose }) => {
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
+
     return (
         <View style={styles.modalOverlay}>
             <View style={styles.clientTypeModal}>
@@ -66,10 +67,10 @@ export const ClientTypeModal = ({ currentType, onSelect, onClose }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: colors.modalOverlay,
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -77,14 +78,14 @@ const styles = StyleSheet.create({
     modalTitle: {
         fontSize: normalize(18),
         fontWeight: '600',
-        color: '#000000',
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProDisplay || 'SF Pro Display',
         marginBottom: normalize(20),
         textAlign: 'center',
     },
 
     clientTypeModal: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.cardBackground,
         borderRadius: normalize(15),
         padding: normalize(20),
         width: screenWidth * 0.85,
@@ -92,7 +93,7 @@ const styles = StyleSheet.create({
     },
 
     clientTypeOption: {
-        backgroundColor: '#F8F9FF',
+        backgroundColor: colors.surface,
         padding: normalize(15),
         borderRadius: normalize(10),
         marginVertical: normalize(8),
@@ -101,8 +102,8 @@ const styles = StyleSheet.create({
     },
 
     clientTypeOptionActive: {
-        borderColor: '#3339B0',
-        backgroundColor: '#FFFFFF',
+        borderColor: colors.primary,
+        backgroundColor: colors.cardBackground,
     },
 
     clientTypeOptionText: {
@@ -110,12 +111,12 @@ const styles = StyleSheet.create({
         fontWeight: '500',
         marginBottom: normalize(4),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: '#000000',
+        color: colors.textPrimary,
     },
 
     clientTypeOptionDesc: {
         fontSize: normalize(13),
-        color: 'rgba(60, 60, 67, 0.60)',
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
     },
 
@@ -126,7 +127,7 @@ const styles = StyleSheet.create({
     },
 
     modalCancelButtonText: {
-        color: '#3339B0',
+        color: colors.primary,
         fontSize: normalize(16),
         fontWeight: '500',
         fontFamily: FontFamily.sFProText || 'SF Pro Text',

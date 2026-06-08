@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useRef} from 'react';
+import React, {useState, useEffect, useRef, useMemo} from 'react';
 import {
     View,
     Text,
@@ -14,15 +14,23 @@ import {
     Alert
 } from 'react-native';
 import {useDispatch, useSelector} from 'react-redux';
+import {Ionicons} from '@expo/vector-icons';
 import {login, clearError, setTokens, setUser, loadUserProfile} from '@entities/auth';
 import {selectEmail, selectPassword, setEmail, setPassword} from '@entities/auth';
 import {CustomTextInput} from '@shared/ui/CustomTextInput/CustomTextInput';
 import {clearProfile, fetchProfile} from '@entities/profile';
 import {normalize, normalizeFont} from "@shared/lib/normalize";
+import {useTheme} from '@app/providers/themeProvider/ThemeProvider';
 
 
 export const LoginForm = ({ onForgotPassword }) => {
     const dispatch = useDispatch();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+    const placeholderColor = isDark ? colors.textTertiary : '#888';
+    const passwordIconColor = isLoading
+        ? (isDark ? colors.textTertiary : '#999')
+        : (isDark ? colors.primary : '#3339b0');
     const email = useSelector(selectEmail) || '';
     const password = useSelector(selectPassword) || '';
     const isLoading = useSelector((state) => state.auth?.isLoading ?? false);
@@ -33,6 +41,7 @@ export const LoginForm = ({ onForgotPassword }) => {
     const [formError, setFormError] = useState('');
     const [localEmail, setLocalEmail] = useState(email);
     const [localPassword, setLocalPassword] = useState(password);
+    const [isPasswordVisible, setIsPasswordVisible] = useState(false);
     const [keyboardVisible, setKeyboardVisible] = useState(false);
 
     // Анимированное значение для смещения формы
@@ -274,6 +283,10 @@ export const LoginForm = ({ onForgotPassword }) => {
         dispatch(setPassword(localPassword));
     };
 
+    const togglePasswordVisibility = () => {
+        setIsPasswordVisible((prev) => !prev);
+    };
+
     return (
         <Animated.View style={[
             styles.formContainer,
@@ -290,7 +303,7 @@ export const LoginForm = ({ onForgotPassword }) => {
                         keyboardType="default"
                         autoCapitalize="none"
                         placeholder="email@example.com или +7 (___)___-__-__"
-                        placeholderTextColor="#888"
+                        placeholderTextColor={placeholderColor}
                         editable={!isLoading}
                     />
                     <View style={[
@@ -304,16 +317,31 @@ export const LoginForm = ({ onForgotPassword }) => {
 
                 <View style={styles.passwordInputContainer}>
                     <Text style={styles.inputLabel}>Ваш пароль</Text>
-                    <CustomTextInput
-                        style={styles.input}
-                        value={localPassword}
-                        onChangeText={handlePasswordChange}
-                        onBlur={handlePasswordBlur}
-                        secureTextEntry
-                        placeholder="********"
-                        placeholderTextColor="#888"
-                        editable={!isLoading}
-                    />
+                    <View style={styles.passwordFieldContainer}>
+                        <CustomTextInput
+                            style={[styles.input, styles.passwordInput]}
+                            value={localPassword}
+                            onChangeText={handlePasswordChange}
+                            onBlur={handlePasswordBlur}
+                            secureTextEntry={!isPasswordVisible}
+                            placeholder="********"
+                            placeholderTextColor={placeholderColor}
+                            editable={!isLoading}
+                        />
+                        <TouchableOpacity
+                            style={styles.passwordVisibilityButton}
+                            onPress={togglePasswordVisibility}
+                            disabled={isLoading}
+                            accessibilityRole="button"
+                            accessibilityLabel={isPasswordVisible ? 'Скрыть пароль' : 'Показать пароль'}
+                        >
+                            <Ionicons
+                                name={isPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
+                                size={normalize(24)}
+                                color={passwordIconColor}
+                            />
+                        </TouchableOpacity>
+                    </View>
                     <View style={[
                         styles.inputUnderline,
                         passwordError ? styles.errorUnderline : null
@@ -358,13 +386,13 @@ const scale = width / 430;
 
 
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     formContainer: {
         flex: 1,
         paddingHorizontal: normalize(20),
         backgroundColor: 'transparent',
         borderRadius: 0,
-        paddingVertical: normalize(20),
+        paddingVertical: normalize(35),
         width: '100%',
         marginTop: 0,
     },
@@ -383,8 +411,8 @@ const styles = StyleSheet.create({
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(15),
         fontWeight: '600',
-        color: '#000',
-        opacity: 0.4,
+        color: isDark ? colors.textSecondary : '#000',
+        opacity: isDark ? 1 : 0.4,
         marginBottom: normalize(5),
         lineHeight: normalize(21),
     },
@@ -392,29 +420,46 @@ const styles = StyleSheet.create({
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(17),
         fontWeight: '600',
-        color: '#000',
+        color: isDark ? colors.textPrimary : '#000',
         paddingBottom: normalize(5),
         height: normalize(40),
         paddingHorizontal: 0,
         borderBottomWidth: 0,
     },
+    passwordFieldContainer: {
+        position: 'relative',
+        justifyContent: 'center',
+    },
+    passwordInput: {
+        paddingRight: normalize(44),
+    },
+    passwordVisibilityButton: {
+        position: 'absolute',
+        right: 0,
+        top: 0,
+        bottom: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
+        width: normalize(44),
+        paddingLeft: normalize(12),
+    },
     inputUnderline: {
         height: 1,
-        backgroundColor: '#000',
+        backgroundColor: isDark ? colors.border : '#000',
         width: '100%',
     },
     errorUnderline: {
-        backgroundColor: '#FF0000',
+        backgroundColor: isDark ? colors.error : '#FF0000',
         height: 1.5,
     },
     errorText: {
-        color: '#FF0000',
+        color: isDark ? colors.error : '#FF0000',
         fontSize: normalizeFont(12),
         marginTop: normalize(5),
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
     },
     globalErrorText: {
-        color: '#FF0000',
+        color: isDark ? colors.error : '#FF0000',
         fontSize: normalizeFont(14),
         textAlign: 'center',
         marginBottom: normalize(15),
@@ -428,12 +473,12 @@ const styles = StyleSheet.create({
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(17),
         fontWeight: '600',
-        color: '#3339b0',
+        color: isDark ? colors.primary : '#3339b0',
         lineHeight: normalize(22),
         paddingHorizontal: normalize(10),
     },
     button: {
-        backgroundColor: '#000cff',
+        backgroundColor: isDark ? colors.primary : '#000cff',
         borderRadius: 30,
         width: Math.min(width * 0.8, normalize(320)),
         height: normalize(70),
@@ -445,7 +490,7 @@ const styles = StyleSheet.create({
         paddingBottom: normalize(10),
     },
     buttonDisabled: {
-        backgroundColor: '#d3d3d3',
+        backgroundColor: isDark ? colors.border : '#d3d3d3',
     },
     buttonText: {
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',

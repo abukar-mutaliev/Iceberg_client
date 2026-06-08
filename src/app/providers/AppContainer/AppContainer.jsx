@@ -1,10 +1,7 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import { View } from 'react-native';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@entities/auth/hooks/useAuth';
-import { useDispatch, useSelector } from 'react-redux';
-import { fetchFavorites } from '@entities/favorites';
-import { loadUserProfile } from '@entities/auth';
 import { useCartAutoLoad, useCartAvailability, CartAuthHandler } from '@entities/cart';
 import { useOrderCountsBackground } from '@entities/order';
 import { AuthDialog } from "@entities/auth/ui/AuthDialog";
@@ -87,95 +84,14 @@ const useAuthNavigation = (onNavigateToAuth) => {
     };
 };
 
-// Хук для валидации токенов
-const useTokenValidation = (tokens) => {
-    const [isValid, setIsValid] = useState(false);
-
-    useEffect(() => {
-        const validateTokens = async () => {
-            if (!tokens?.accessToken || !tokens?.refreshToken) {
-                setIsValid(false);
-                return;
-            }
-
-            try {
-                const { authService } = await import('@shared/api/api');
-                const isRefreshTokenValid = authService.isTokenValid(tokens.refreshToken);
-                setIsValid(isRefreshTokenValid);
-            } catch (error) {
-                console.error('❌ Token validation error:', error);
-                setIsValid(false);
-            }
-        };
-
-        validateTokens();
-    }, [tokens]);
-
-    return isValid;
-};
-
-// Хук для инициализации данных пользователя
-const useUserDataInitialization = (isAuthenticated, tokens, isTokenValid) => {
-    const dispatch = useDispatch();
-    const [isInitialized, setIsInitialized] = useState(false);
-
-    useEffect(() => {
-        // Ранний выход если условия не выполнены
-        if (!isAuthenticated || !isTokenValid || isInitialized) {
-            if (!isAuthenticated || !tokens?.accessToken || !tokens?.refreshToken) {
-                console.log('ℹ️ AppContainer: Skipping data load', {
-                    isAuthenticated,
-                    hasAccessToken: !!tokens?.accessToken,
-                    hasRefreshToken: !!tokens?.refreshToken
-                });
-            }
-            return;
-        }
-
-        let isMounted = true;
-
-        const loadData = async () => {
-            try {
-                setIsInitialized(true);
-
-                // Загрузка профиля
-                console.log('📊 AppContainer: Loading user profile on app startup');
-                await dispatch(loadUserProfile());
-
-                // Небольшая задержка для обновления состояния
-                await new Promise(resolve => setTimeout(resolve, 100));
-
-                // Загрузка избранного
-                if (isMounted) {
-                    await dispatch(fetchFavorites());
-                }
-            } catch (error) {
-                console.error('❌ AppContainer: Error loading user data:', error?.message || error);
-            }
-        };
-
-        loadData();
-
-        return () => {
-            isMounted = false;
-        };
-    }, [isAuthenticated, isTokenValid, isInitialized, dispatch, tokens]);
-
-    return isInitialized;
-};
-
 export const AppContainer = ({ children, onNavigateToAuth }) => {
     const authDialogRef = useRef(null);
     const { isAuthenticated, setAuthDialogRef } = useAuth();
     const { isCartAvailable } = useCartAvailability();
-    const tokens = useSelector((state) => state.auth?.tokens);
     const { colors } = useTheme();
 
     // Кастомные хуки для разделения логики
     const { handleLogin, handleRegister } = useAuthNavigation(onNavigateToAuth);
-    const isTokenValid = useTokenValidation(tokens);
-    
-    useUserDataInitialization(isAuthenticated, tokens, isTokenValid);
 
     // Автоматическая загрузка корзины
     useCartAutoLoad({
@@ -206,24 +122,22 @@ export const AppContainer = ({ children, onNavigateToAuth }) => {
 
     return (
         <ErrorBoundary>
-            <SafeAreaProvider>
-                <SafeAreaView
-                    style={{ flex: 1, backgroundColor: colors.background }}
-                    edges={['top', 'right', 'left']}
-                >
-                    <ThemedStatusBar />
+            <SafeAreaView
+                style={{ flex: 1, backgroundColor: colors.background }}
+                edges={['top', 'right', 'left']}
+            >
+                <ThemedStatusBar />
 
-                    {children}
+                {children}
 
-                    <AuthDialog
-                        ref={authDialogRef}
-                        onLogin={handleLogin}
-                        onRegister={handleRegister}
-                    />
+                <AuthDialog
+                    ref={authDialogRef}
+                    onLogin={handleLogin}
+                    onRegister={handleRegister}
+                />
 
-                    <CartAuthHandler />
-                </SafeAreaView>
-            </SafeAreaProvider>
+                <CartAuthHandler />
+            </SafeAreaView>
         </ErrorBoundary>
     );
 };

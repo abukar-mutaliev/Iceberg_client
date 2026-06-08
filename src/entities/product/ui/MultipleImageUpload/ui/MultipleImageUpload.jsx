@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
     StyleSheet,
     Text,
@@ -8,18 +8,22 @@ import {
     ScrollView,
     Dimensions,
     Modal,
-    ActivityIndicator
+    ActivityIndicator,
+    Platform
 } from "react-native";
 import Slider from '@react-native-community/slider';
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 import { Entypo } from "@expo/vector-icons";
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const { width } = Dimensions.get('window');
 
 export const MultipleImageUpload = ({ photos, setPhotos, error, maxImages = 5 }) => {
     const { showWarning, showError } = useCustomAlert();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const [editorVisible, setEditorVisible] = useState(false);
     const [pendingImage, setPendingImage] = useState(null);
     const [selectedScale, setSelectedScale] = useState(1);
@@ -35,12 +39,13 @@ export const MultipleImageUpload = ({ photos, setPhotos, error, maxImages = 5 })
         }
 
         try {
-            // Запрашиваем разрешение на доступ к галерее
-            const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (Platform.OS !== 'android') {
+                const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
-            if (!permissionResult.granted) {
-                showError("Ошибка", "Необходимо предоставить доступ к галерее");
-                return;
+                if (!permissionResult.granted) {
+                    showError("Ошибка", "Необходимо предоставить доступ к галерее");
+                    return;
+                }
             }
 
             const result = await ImagePicker.launchImageLibraryAsync({
@@ -208,7 +213,7 @@ export const MultipleImageUpload = ({ photos, setPhotos, error, maxImages = 5 })
                 disabled={photos && photos.length >= maxImages}
             >
                 <View style={styles.iconContainer}>
-                    <Entypo name="camera" size={24} color="#888" />
+                    <Entypo name="camera" size={24} color={isDark ? colors.textTertiary : '#888'} />
                     <Text style={styles.uploadText}>Добавить фото</Text>
                 </View>
             </TouchableOpacity>
@@ -303,9 +308,9 @@ export const MultipleImageUpload = ({ photos, setPhotos, error, maxImages = 5 })
                                     scaleRef.current = value;
                                     setSelectedScale(value);
                                 }}
-                                minimumTrackTintColor="#3B43A2"
-                                maximumTrackTintColor="#E5E7EB"
-                                thumbTintColor="#3B43A2"
+                                minimumTrackTintColor={colors.primary}
+                                maximumTrackTintColor={isDark ? colors.border : '#E5E7EB'}
+                                thumbTintColor={colors.primary}
                                 disabled={isProcessing}
                             />
                         </View>
@@ -337,7 +342,7 @@ export const MultipleImageUpload = ({ photos, setPhotos, error, maxImages = 5 })
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         marginBottom: 10,
         width: "100%"
@@ -346,14 +351,14 @@ const styles = StyleSheet.create({
         width: "100%",
         height: 100,
         borderWidth: 1,
-        borderColor: "#ccc",
+        borderColor: isDark ? colors.border : "#ccc",
         borderRadius: 8,
         justifyContent: "center",
         alignItems: "center",
-        backgroundColor: "#f5f5f5",
+        backgroundColor: isDark ? colors.surfaceElevated : "#f5f5f5",
     },
     photoContainerError: {
-        borderColor: "#FF3B30",
+        borderColor: colors.error,
         borderWidth: 1.5,
     },
     iconContainer: {
@@ -362,11 +367,11 @@ const styles = StyleSheet.create({
     },
     uploadText: {
         marginTop: 8,
-        color: "#888",
+        color: isDark ? colors.textSecondary : "#888",
         fontSize: 14,
     },
     errorText: {
-        color: "#FF3B30",
+        color: colors.error,
         fontSize: 12,
         marginTop: 5,
     },
@@ -376,9 +381,9 @@ const styles = StyleSheet.create({
         height: 60,
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0 : 0.1,
         shadowRadius: 2,
-        elevation: 1,
+        elevation: isDark ? 0 : 1,
     },
     thumbnailsContainer: {
         flexDirection: "row",
@@ -422,12 +427,12 @@ const styles = StyleSheet.create({
     },
     helperText: {
         fontSize: 12,
-        color: "#888",
+        color: isDark ? colors.textSecondary : "#888",
         marginTop: 4,
     },
     modalOverlay: {
         flex: 1,
-        backgroundColor: "rgba(0, 0, 0, 0.6)",
+        backgroundColor: colors.modalOverlay,
         justifyContent: "center",
         alignItems: "center",
         padding: 20,
@@ -435,21 +440,23 @@ const styles = StyleSheet.create({
     modalContent: {
         width: "100%",
         maxWidth: 420,
-        backgroundColor: "#FFFFFF",
+        backgroundColor: isDark ? colors.surface : "#FFFFFF",
         borderRadius: 16,
         padding: 16,
+        borderWidth: isDark ? StyleSheet.hairlineWidth : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     modalTitle: {
         fontSize: 16,
         fontWeight: "700",
-        color: "#1A1A1A",
+        color: isDark ? colors.textPrimary : "#1A1A1A",
         marginBottom: 12,
     },
     previewWrapper: {
         width: "100%",
         height: 220,
         borderRadius: 12,
-        backgroundColor: "#F2F2F2",
+        backgroundColor: isDark ? colors.surfaceElevated : "#F2F2F2",
         overflow: "hidden",
         marginBottom: 12,
         justifyContent: "center",
@@ -472,7 +479,7 @@ const styles = StyleSheet.create({
     },
     sizeLabel: {
         fontSize: 13,
-        color: "#666",
+        color: isDark ? colors.textSecondary : "#666",
         marginBottom: 12,
         textAlign: "center",
     },
@@ -481,7 +488,7 @@ const styles = StyleSheet.create({
     },
     scaleLabel: {
         fontSize: 13,
-        color: "#374151",
+        color: isDark ? colors.textPrimary : "#374151",
         fontWeight: "600",
         marginBottom: 6,
     },
@@ -501,13 +508,13 @@ const styles = StyleSheet.create({
         justifyContent: "center",
     },
     actionSecondary: {
-        backgroundColor: "#F3F4F6",
+        backgroundColor: isDark ? colors.surfaceElevated : "#F3F4F6",
     },
     actionPrimary: {
-        backgroundColor: "#3B43A2",
+        backgroundColor: colors.primary,
     },
     actionSecondaryText: {
-        color: "#374151",
+        color: isDark ? colors.textPrimary : "#374151",
         fontSize: 14,
         fontWeight: "600",
     },

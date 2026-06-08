@@ -10,7 +10,13 @@ export const DriverPicker = ({
                                  setSelectedDriver,
                                  showDriverPicker,
                                  setShowDriverPicker,
-                                 error
+                                 error,
+                                 label = 'Водитель',
+                                 placeholder = 'Выберите водителя',
+                                 modalTitle = 'Выберите водителя',
+                                 searchPlaceholder = 'Поиск водителя...',
+                                 emptyText = 'Список водителей пуст',
+                                 notFoundText = 'Водители не найдены'
                              }) => {
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
@@ -57,10 +63,10 @@ export const DriverPicker = ({
     }, [searchText, drivers]);
 
     const selectedDriverName = React.useMemo(() => {
-        if (!selectedDriver) return 'Выберите водителя';
+        if (!selectedDriver) return placeholder;
         const driver = drivers.find(d => d.id === selectedDriver);
-        return driver ? driver.name : 'Выберите водителя';
-    }, [selectedDriver, drivers]);
+        return driver ? driver.name : placeholder;
+    }, [selectedDriver, drivers, placeholder]);
 
     const handleSelect = (driverId) => {
         setSelectedDriver(driverId);
@@ -70,7 +76,7 @@ export const DriverPicker = ({
 
     return (
         <View style={styles.container}>
-            <Text style={styles.label}>Водитель *</Text>
+            <Text style={styles.label}>{label} *</Text>
             <TouchableOpacity
                 style={[
                     styles.pickerButton,
@@ -118,7 +124,7 @@ export const DriverPicker = ({
                         ]}
                     >
                         <View style={styles.header}>
-                            <Text style={styles.modalTitle}>Выберите водителя</Text>
+                            <Text style={styles.modalTitle}>{modalTitle}</Text>
                             <TouchableOpacity
                                 style={styles.closeButton}
                                 onPress={() => setShowDriverPicker(false)}
@@ -130,7 +136,7 @@ export const DriverPicker = ({
                         <View style={styles.searchContainer}>
                             <TextInput
                                 style={styles.searchInput}
-                                placeholder="Поиск водителя..."
+                                placeholder={searchPlaceholder}
                                 value={searchText}
                                 onChangeText={setSearchText}
                                 placeholderTextColor={isDark ? colors.textTertiary : '#999'}
@@ -154,6 +160,7 @@ export const DriverPicker = ({
                                         selectedDriver === item.id && styles.selectedItemText
                                     ]}>
                                         {item.name}
+                                        {item.roleLabel ? ` (${item.roleLabel})` : ''}
                                     </Text>
                                     {item.phone && (
                                         <Text style={[
@@ -168,7 +175,7 @@ export const DriverPicker = ({
                             ListEmptyComponent={() => (
                                 <View style={styles.emptyContainer}>
                                     <Text style={styles.emptyText}>
-                                        {searchText ? 'Водители не найдены' : 'Список водителей пуст'}
+                                        {searchText ? notFoundText : emptyText}
                                     </Text>
                                 </View>
                             )}

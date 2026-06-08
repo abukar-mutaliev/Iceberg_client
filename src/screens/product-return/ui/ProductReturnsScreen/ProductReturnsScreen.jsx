@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,12 +7,14 @@ import {
   ActivityIndicator,
   RefreshControl,
   Pressable,
+  StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
-import { Color, FontFamily, FontSize, Border, Shadow, Padding } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize, Border, Shadow, Padding } from '@app/styles/GlobalStyles';
 import { normalize } from '@shared/lib/normalize';
 import { HeaderWithBackButton } from '@shared/ui/HeaderWithBackButton';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import {
   useProductReturns,
   useReturnPermissions,
@@ -26,6 +28,8 @@ import {
  */
 export const ProductReturnsScreen = () => {
   const navigation = useNavigation();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const { isAdmin, isEmployee, canView } = useReturnPermissions();
 
   // Состояние фильтров
@@ -129,7 +133,7 @@ export const ProductReturnsScreen = () => {
           pressed && styles.quickFilterPressed,
         ]}
         onPress={handleActiveFilterPress}
-        android_ripple={{ color: Color.purpleLight }}
+        android_ripple={{ color: colors.primarySoft }}
       >
         <Text style={[styles.quickFilterText, showActiveOnly && styles.quickFilterTextActive]}>
           {showActiveOnly ? '✓ ' : ''}Показать только активные
@@ -142,6 +146,8 @@ export const ProductReturnsScreen = () => {
           <Text style={styles.filtersLabel}>Фильтр по статусу:</Text>
           <View style={styles.filterButtons}>
             <StatusFilterButton
+              styles={styles}
+              colors={colors}
               label="Ожидают"
               status={ProductReturnStatus.PENDING}
               count={counts.pending}
@@ -149,6 +155,8 @@ export const ProductReturnsScreen = () => {
               onPress={() => handleFilterPress(ProductReturnStatus.PENDING)}
             />
             <StatusFilterButton
+              styles={styles}
+              colors={colors}
               label="Одобрены"
               status={ProductReturnStatus.APPROVED}
               count={counts.approved}
@@ -156,6 +164,8 @@ export const ProductReturnsScreen = () => {
               onPress={() => handleFilterPress(ProductReturnStatus.APPROVED)}
             />
             <StatusFilterButton
+              styles={styles}
+              colors={colors}
               label="Завершены"
               status={ProductReturnStatus.COMPLETED}
               count={counts.completed}
@@ -186,7 +196,7 @@ export const ProductReturnsScreen = () => {
     if (!loading || !canLoadMore) return null;
     return (
       <View style={styles.footerLoader}>
-        <ActivityIndicator size="small" color={Color.purpleSoft} />
+        <ActivityIndicator size="small" color={colors.primary} />
         <Text style={styles.footerLoaderText}>Загрузка...</Text>
       </View>
     );
@@ -196,6 +206,7 @@ export const ProductReturnsScreen = () => {
   if (error && !loading && isEmpty) {
     return (
       <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+        <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
         <HeaderWithBackButton title="Возвраты товаров" />
         <View style={styles.errorContainer}>
           <Text style={styles.errorIcon}>⚠️</Text>
@@ -211,6 +222,7 @@ export const ProductReturnsScreen = () => {
 
   return (
     <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+      <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
       <HeaderWithBackButton title="Возвраты товаров" />
       <FlatList
         data={returns}
@@ -229,8 +241,9 @@ export const ProductReturnsScreen = () => {
           <RefreshControl
             refreshing={loading && returns.length === 0}
             onRefresh={refresh}
-            tintColor={Color.purpleSoft}
-            colors={[Color.purpleSoft]}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+            progressBackgroundColor={colors.surface}
           />
         }
         onEndReached={handleLoadMore}
@@ -244,7 +257,7 @@ export const ProductReturnsScreen = () => {
 /**
  * Компонент кнопки фильтра по статусу
  */
-const StatusFilterButton = ({ label, status, count, active, onPress }) => (
+const StatusFilterButton = ({ styles, colors, label, status, count, active, onPress }) => (
   <Pressable
     style={({ pressed }) => [
       styles.filterButton,
@@ -252,7 +265,7 @@ const StatusFilterButton = ({ label, status, count, active, onPress }) => (
       pressed && styles.filterButtonPressed,
     ]}
     onPress={onPress}
-    android_ripple={{ color: Color.purpleLight }}
+    android_ripple={{ color: colors.primarySoft }}
   >
     <Text style={[styles.filterLabel, active && styles.filterLabelActive]}>
       {label}
@@ -267,10 +280,10 @@ const StatusFilterButton = ({ label, status, count, active, onPress }) => (
   </Pressable>
 );
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Color.background,
+    backgroundColor: colors.background,
   },
   listContent: {
     padding: Padding.medium,
@@ -283,13 +296,13 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xxxlarge,
     fontFamily: FontFamily.bold,
     fontWeight: '700',
-    color: Color.textPrimary,
+    color: colors.textPrimary,
     marginBottom: 4,
   },
   subtitle: {
     fontSize: FontSize.size_sm,
     fontFamily: FontFamily.regular,
-    color: Color.textSecondary,
+    color: colors.textSecondary,
     marginBottom: Padding.medium,
   },
 
@@ -301,7 +314,7 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    backgroundColor: Color.secondary,
+    backgroundColor: colors.surfaceSecondary,
     borderRadius: Border.radius.large,
     padding: Padding.medium,
     alignItems: 'center',
@@ -313,32 +326,32 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xxxlarge,
     fontFamily: FontFamily.bold,
     fontWeight: '700',
-    color: Color.purpleSoft,
+    color: colors.primary,
     marginBottom: 4,
   },
   statValuePending: {
-    color: '#007AFF',
+    color: colors.primary,
   },
   statLabel: {
     fontSize: FontSize.size_xs,
     fontFamily: FontFamily.regular,
-    color: Color.textSecondary,
+    color: colors.textSecondary,
   },
 
   // Быстрый фильтр
   quickFilter: {
-    backgroundColor: Color.colorLightMode,
+    backgroundColor: colors.cardBackground,
     borderRadius: Border.radius.medium,
     borderWidth: 1,
-    borderColor: Color.border,
+    borderColor: colors.border,
     paddingVertical: 10,
     paddingHorizontal: Padding.medium,
     marginBottom: Padding.medium,
-    ...Shadow.light,
+    ...(isDark ? {} : Shadow.light),
   },
   quickFilterActive: {
-    backgroundColor: Color.purpleSoft,
-    borderColor: Color.purpleSoft,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   quickFilterPressed: {
     opacity: 0.8,
@@ -347,11 +360,11 @@ const styles = StyleSheet.create({
     fontSize: FontSize.size_sm,
     fontFamily: FontFamily.medium,
     fontWeight: '600',
-    color: Color.textPrimary,
+    color: colors.textPrimary,
     textAlign: 'center',
   },
   quickFilterTextActive: {
-    color: Color.colorLightMode,
+    color: '#FFFFFF',
   },
 
   // Фильтры
@@ -362,7 +375,7 @@ const styles = StyleSheet.create({
     fontSize: FontSize.size_sm,
     fontFamily: FontFamily.medium,
     fontWeight: '600',
-    color: Color.textPrimary,
+    color: colors.textPrimary,
     marginBottom: 8,
   },
   filterButtons: {
@@ -374,17 +387,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Color.colorLightMode,
+    backgroundColor: colors.cardBackground,
     borderRadius: Border.radius.medium,
     borderWidth: 1,
-    borderColor: Color.border,
+    borderColor: colors.border,
     paddingVertical: 8,
     paddingHorizontal: 8,
-    ...Shadow.light,
+    ...(isDark ? {} : Shadow.light),
   },
   filterButtonActive: {
-    backgroundColor: Color.purpleSoft,
-    borderColor: Color.purpleSoft,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   filterButtonPressed: {
     opacity: 0.8,
@@ -393,13 +406,13 @@ const styles = StyleSheet.create({
     fontSize: FontSize.size_xs,
     fontFamily: FontFamily.medium,
     fontWeight: '600',
-    color: Color.textPrimary,
+    color: colors.textPrimary,
   },
   filterLabelActive: {
-    color: Color.colorLightMode,
+    color: '#FFFFFF',
   },
   filterBadge: {
-    backgroundColor: Color.purpleSoft,
+    backgroundColor: colors.primary,
     borderRadius: 10,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -408,16 +421,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   filterBadgeActive: {
-    backgroundColor: Color.colorLightMode,
+    backgroundColor: '#FFFFFF',
   },
   filterBadgeText: {
     fontSize: FontSize.size_5xs,
     fontFamily: FontFamily.bold,
     fontWeight: '700',
-    color: Color.colorLightMode,
+    color: '#FFFFFF',
   },
   filterBadgeTextActive: {
-    color: Color.purpleSoft,
+    color: colors.primary,
   },
 
   // Пустое состояние
@@ -435,14 +448,14 @@ const styles = StyleSheet.create({
     fontSize: FontSize.size_lg,
     fontFamily: FontFamily.bold,
     fontWeight: '700',
-    color: Color.textPrimary,
+    color: colors.textPrimary,
     marginBottom: 8,
     textAlign: 'center',
   },
   emptyText: {
     fontSize: FontSize.size_sm,
     fontFamily: FontFamily.regular,
-    color: Color.textSecondary,
+    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -458,7 +471,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: FontSize.size_sm,
     fontFamily: FontFamily.regular,
-    color: Color.textSecondary,
+    color: colors.textSecondary,
   },
 
   // Ошибка
@@ -476,28 +489,28 @@ const styles = StyleSheet.create({
     fontSize: FontSize.size_lg,
     fontFamily: FontFamily.bold,
     fontWeight: '700',
-    color: Color.textPrimary,
+    color: colors.textPrimary,
     marginBottom: 8,
   },
   errorText: {
     fontSize: FontSize.size_sm,
     fontFamily: FontFamily.regular,
-    color: Color.textSecondary,
+    color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: Padding.large,
   },
   retryButton: {
-    backgroundColor: Color.purpleSoft,
+    backgroundColor: colors.primary,
     borderRadius: Border.radius.medium,
     paddingVertical: 12,
     paddingHorizontal: 24,
-    ...Shadow.button,
+    ...(isDark ? {} : Shadow.button),
   },
   retryButtonText: {
     fontSize: FontSize.size_md,
     fontFamily: FontFamily.medium,
     fontWeight: '600',
-    color: Color.colorLightMode,
+    color: '#FFFFFF',
   },
 });
 

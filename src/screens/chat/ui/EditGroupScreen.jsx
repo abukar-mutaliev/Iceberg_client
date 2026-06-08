@@ -60,7 +60,7 @@ export const EditGroupScreen = ({ route, navigation }) => {
 
   // Функции для работы с изображениями
   const requestPermissions = async () => {
-    if (Platform.OS !== 'web') {
+    if (Platform.OS !== 'web' && Platform.OS !== 'android') {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
         showError('Ошибка', 'Для загрузки изображений необходимо разрешение на доступ к галерее');
@@ -424,7 +424,7 @@ export const EditGroupScreen = ({ route, navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>

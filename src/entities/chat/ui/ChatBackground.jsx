@@ -2,14 +2,11 @@ import React, { useMemo } from 'react';
 import { View, StyleSheet, Image } from 'react-native';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
-// Важно: require() вычисляется один раз при загрузке модуля — Metro
-// возвращает стабильный числовой id, Image-компонент кэширует декодирование.
-// Вычисление внутри рендера приводит к лишнему look-up на каждый кадр.
-const BG_DARK = require('@assets/chat/background-dark.png');
-const BG_LIGHT = require('@assets/chat/background-white.jpeg');
 
-// Светлый fallback соответствует среднему тону текстуры —
-// экран не "моргает" пока PNG декодируется.
+const BG_DARK = require('@assets/chat/background-dark.png');
+const BG_LIGHT = require('@assets/chat/background-white.png');
+
+
 const LIGHT_FALLBACK = '#ECE5DD';
 
 /**

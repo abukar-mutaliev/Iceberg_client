@@ -8,67 +8,61 @@ import { useOrders } from '@entities/order';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { selectHasLocalOrderAction, selectLocalOrderActions } from '@entities/order';
 import { clearLocalOrderAction, setLocalOrderAction } from '@entities/order/model/slice';
-import { CONSTANTS } from '@entities/order/lib/constants';
+import { CONSTANTS, ORDER_STATUS_LABELS, getStageCompletionHint, canEmployeeTakeOrderByRole, isOrderStatusMatchingRole } from '@entities/order';
 import { ToastSimple } from '@shared/ui/Toast/ui/ToastSimple';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
 
 // Импорты общих компонентов и утилит
 import { useOrderDetails } from '@shared/hooks/useOrderDetails';
-import { canCancelOrder, canDownloadInvoice, canViewProcessingHistory } from '@shared/lib/orderUtils';
-import { EMPLOYEE_ROLES, EMPLOYEE_ROLE_LABELS, ORDER_STATUS_LABELS } from '@shared/lib/orderConstants';
-import { createOrderDetailsStyles } from '@shared/ui/OrderDetailsStyles';
+import { canCancelOrder, canDownloadInvoice } from '@shared/lib/orderUtils';
+import { EMPLOYEE_ROLES, EMPLOYEE_ROLE_LABELS } from '@shared/lib/orderConstants';
+import { useOrderDetailsStyles, OrderDetailsScreenThemeProvider, useOrderDetailsScreenBackground, ORDER_DETAILS_CLIENT_DARK_BACKGROUND } from '@shared/ui/OrderDetailsStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { OrderHeader } from '@shared/ui/OrderHeader/ui/OrderHeader';
 import { DeliveryInfo } from '@shared/ui/DeliveryInfo/ui/DeliveryInfo';
 import { OrderItems } from '@shared/ui/OrderItems/ui/OrderItems';
-import { OrderProcessingHistory } from '@shared/ui/OrderProcessingHistory/ui/OrderProcessingHistory';
 import { OrderLoadingState, OrderErrorState } from '@shared/ui/OrderLoadingState/ui/OrderLoadingState';
 import { WaitingStockInfo } from '@shared/ui/WaitingStockInfo';
+import { OrderDetailsBackButton } from '@shared/ui/OrderDetailsBackButton/ui/OrderDetailsBackButton';
 
-const styles = createOrderDetailsStyles();
-
-// Вспомогательные функции для проверки условий
+// Вспомогательные функции для проверки условий (упрощённый флоу)
 const canEmployeeTakeOrder = (employeeRole, status, isAdmin = false) => {
-    // Админы не могут брать заказы в работу - только просматривают
     if (isAdmin) return false;
-    
-    if (employeeRole === 'PICKER' && status === 'PENDING') return true;
-    if (employeeRole === 'PACKER') return false; // PACKER больше не может брать заказы
-    if (employeeRole === 'COURIER' && status === 'IN_DELIVERY') return true;
-    return false;
+    return canEmployeeTakeOrderByRole(employeeRole, status);
 };
 
-// Проверка, соответствует ли статус заказа роли сотрудника
 const isStatusMatchingRole = (employeeRole, status) => {
-    // PICKER работает с заказами в статусе PENDING или CONFIRMED
-    if (employeeRole === 'PICKER') {
-        return ['PENDING', 'CONFIRMED'].includes(status);
-    }
-    // COURIER работает с заказами в статусе IN_DELIVERY
-    if (employeeRole === 'COURIER') {
-        return status === 'IN_DELIVERY';
-    }
-    // PACKER больше не используется, но для совместимости
-    if (employeeRole === 'PACKER') {
-        return false;
-    }
-    return false;
+    return isOrderStatusMatchingRole(employeeRole, status);
+};
+
+const shouldShowWorkButtons = (employeeRole, actualStatus, isAssignedToMe, isAdmin = false) => {
+    if (isAdmin) return false;
+    return isAssignedToMe && isStatusMatchingRole(employeeRole, actualStatus);
 };
 
 const isOrderAssignedToEmployee = (employeeId, assignedId, hasLocalReleased) => {
     return employeeId && assignedId && employeeId === assignedId && !hasLocalReleased;
 };
 
-const shouldShowWorkButtons = (isAssignedToMe, actualStatus, isAdmin = false) => {
-    // Админы не могут завершать этапы - только просматривают
-    if (isAdmin) return false;
-    
-    return isAssignedToMe && ['PENDING', 'CONFIRMED', 'IN_DELIVERY'].includes(actualStatus);
-};
+export const OrderDetailsEmployeeScreen = () => (
+    <OrderDetailsScreenThemeProvider darkScreenBackground={ORDER_DETAILS_CLIENT_DARK_BACKGROUND}>
+        <OrderDetailsEmployeeScreenContent />
+    </OrderDetailsScreenThemeProvider>
+);
 
-export const OrderDetailsEmployeeScreen = () => {
+const OrderDetailsEmployeeScreenContent = () => {
     const route = useRoute();
     const navigation = useNavigation();
     const { orderId } = route.params || {};
+    const { colors } = useTheme();
+    const styles = useOrderDetailsStyles();
+    const screenBackground = useOrderDetailsScreenBackground();
+    const insets = useSafeAreaInsets();
+    const scrollContentStyle = [
+        styles.scrollContent,
+        { paddingBottom: 32 + insets.bottom + 34 },
+    ];
 
     // Хуки
     const { currentUser: user } = useAuth();
@@ -88,19 +82,8 @@ export const OrderDetailsEmployeeScreen = () => {
     // Анимации
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(30)).current;
+    const previousOrderIdRef = useRef(null);
 
-    // Синхронизация localOrderState с Redux состоянием
-    useEffect(() => {
-        if (hasLocalReleased && localOrderState && localOrderState.lastAction !== 'released') {
-            setLocalOrderState(prevState => ({
-                ...prevState,
-                lastAction: 'released',
-                actionTimestamp: Date.now()
-            }));
-        }
-    }, [hasLocalReleased, localOrderState?.lastAction]);
-
-    // Используем общий хук для работы с деталями заказа
     const {
         order,
         loading,
@@ -115,72 +98,113 @@ export const OrderDetailsEmployeeScreen = () => {
     const [localOrderState, setLocalOrderState] = useState({
         assignedToId: null,
         status: null,
-        lastAction: null, // 'taken' | 'completed' | null
+        lastAction: null,
         actionTimestamp: null,
-        temporarySteps: [] // Массив временных этапов
+        temporarySteps: [],
+        lastKnownHistoryLength: 0
     });
 
-    // Синхронизация локального состояния с данными заказа
+    const hasLocalCompleted = useSelector(state => selectHasLocalOrderAction(orderId, 'completed')(state));
+    const hasLocalTaken = useSelector(state => selectHasLocalOrderAction(orderId, 'taken')(state));
+    const hasLocalReleased = useSelector(state => selectHasLocalOrderAction(orderId, 'released')(state));
+    const localOrderActions = useSelector(selectLocalOrderActions);
+
+    const wasReleasedByCurrentEmployee = useMemo(() => {
+        if (order?.assignedTo?.id || localOrderState.assignedToId) {
+            return false;
+        }
+
+        const employeeName = user?.employee?.name || '';
+        const employeePosition = user?.employee?.position || '';
+
+        return Boolean(order?.statusHistory?.some((historyItem) => {
+            const comment = historyItem?.comment || '';
+            const isReleaseComment = comment.includes('снят') && comment.includes('работ');
+            const isCurrentEmployee = (employeeName && comment.includes(employeeName)) ||
+                (employeePosition && comment.includes(employeePosition));
+
+            return isReleaseComment && isCurrentEmployee;
+        }));
+    }, [order?.assignedTo?.id, order?.statusHistory, localOrderState.assignedToId, user?.employee?.name, user?.employee?.position]);
+
+    const isReleasedState = hasLocalReleased ||
+        localOrderState.lastAction === 'released' ||
+        wasReleasedByCurrentEmployee;
+
     useEffect(() => {
-        if (order) {
-            setLocalOrderState(prevState => {
-                // Не перезаписываем assignedToId, если он был установлен локально
-                const newState = {
-                    ...prevState,
-                    // Только обновляем assignedToId если локальное значение не было установлено
-                    assignedToId: prevState.assignedToId !== null ? prevState.assignedToId : (order.assignedTo?.id || null),
-                    status: order.status,
-                    lastKnownHistoryLength: order?.statusHistory?.length || 0
-                };
+        if (!order) return;
 
-                console.log('🔄 Синхронизация локального состояния:', {
-                    prevAssignedToId: prevState.assignedToId,
-                    orderAssignedToId: order.assignedTo?.id,
-                    newAssignedToId: newState.assignedToId,
-                    prevLastAction: prevState.lastAction,
-                    prevStatus: prevState.status,
-                    orderStatus: order.status
-                });
+        let shouldClearRedux = false;
 
-                // Если данные изменились, проверяем нужно ли обновлять временные этапы
-                const hasDataChanged = prevState.assignedToId !== newState.assignedToId ||
-                                      prevState.status !== newState.status ||
-                                      (prevState.lastKnownHistoryLength !== (order?.statusHistory?.length || 0));
+        setLocalOrderState(prevState => {
+            const historyLength = order.statusHistory?.length || 0;
+            const latestHistory = order.statusHistory?.[0];
+            const isReleaseEntry = latestHistory?.comment?.includes('снят') &&
+                latestHistory?.comment?.includes('работ');
+            const historyLengthChanged = historyLength !== (prevState.lastKnownHistoryLength || 0);
+            const isOurAction = ['completed', 'taken', 'released'].includes(prevState.lastAction);
+            const isRecentAction = prevState.actionTimestamp &&
+                (Date.now() - prevState.actionTimestamp) < CONSTANTS.RECENT_ACTION_THRESHOLD;
 
-                if (hasDataChanged) {
-                    const historyLengthChanged = prevState.lastKnownHistoryLength !== (order?.statusHistory?.length || 0);
-
-                    if (historyLengthChanged) {
-                        if ((order?.statusHistory?.length || 0) > prevState.lastKnownHistoryLength) {
-                            // Проверяем, было ли изменение вызвано нашим действием
-                            const isOurAction = prevState.lastAction === 'completed' || prevState.lastAction === 'taken' || prevState.lastAction === 'released';
-                            const isRecentAction = prevState.actionTimestamp && (Date.now() - prevState.actionTimestamp) < 5000; // 5 секунд
-
-                            if (!isOurAction || !isRecentAction) {
-                                console.log('🔄 Обнаружено изменение статуса заказа, сбрасываем локальное состояние');
-                                newState.lastAction = null;
-                                newState.actionTimestamp = null;
-                                newState.assignedToId = order.assignedTo?.id || null; // Теперь можно обновить
-                                newState.temporarySteps = [];
-
-                                // Очищаем все локальные действия для этого заказа
-                                dispatch(clearLocalOrderAction({ orderId }));
-
-                                // Не сбрасываем флаг released автоматически - он должен оставаться true,
-                                // чтобы заказ оставался доступным для взятия в работу другими сотрудниками
-                                // Флаг released сбрасывается только при взятии заказа в работу
-                            }
-                        }
-                    }
+            if (historyLengthChanged && historyLength > (prevState.lastKnownHistoryLength || 0)) {
+                if (isReleaseEntry || prevState.lastAction === 'released' || hasLocalReleased) {
+                    return {
+                        ...prevState,
+                        assignedToId: null,
+                        status: order.status,
+                        lastAction: 'released',
+                        actionTimestamp: Date.now(),
+                        temporarySteps: [],
+                        lastKnownHistoryLength: historyLength
+                    };
                 }
 
-                return newState;
-            });
-        }
-    }, [order?.assignedTo?.id, order?.status, order?.statusHistory?.length, orderId, dispatch]);
+                if (isOurAction && isRecentAction) {
+                    return {
+                        ...prevState,
+                        status: order.status,
+                        lastKnownHistoryLength: historyLength
+                    };
+                }
 
-    // Ref для отслеживания предыдущего orderId
-    const previousOrderIdRef = useRef(null);
+                shouldClearRedux = true;
+                return {
+                    assignedToId: order.assignedTo?.id || null,
+                    status: order.status,
+                    lastAction: null,
+                    actionTimestamp: null,
+                    temporarySteps: [],
+                    lastKnownHistoryLength: historyLength
+                };
+            }
+
+            const assignedToId = isReleasedState || hasLocalReleased
+                ? null
+                : (prevState.assignedToId !== null
+                    ? prevState.assignedToId
+                    : (order.assignedTo?.id || null));
+
+            if (
+                prevState.status === order.status &&
+                prevState.assignedToId === assignedToId &&
+                prevState.lastKnownHistoryLength === historyLength
+            ) {
+                return prevState;
+            }
+
+            return {
+                ...prevState,
+                assignedToId,
+                status: order.status,
+                lastAction: (isReleasedState || hasLocalReleased) ? 'released' : prevState.lastAction,
+                lastKnownHistoryLength: historyLength
+            };
+        });
+
+        if (shouldClearRedux) {
+            dispatch(clearLocalOrderAction({ orderId }));
+        }
+    }, [order, orderId, dispatch, hasLocalReleased, isReleasedState]);
 
     // Очистка состояния при смене orderId
     useEffect(() => {
@@ -233,6 +257,10 @@ export const OrderDetailsEmployeeScreen = () => {
 
     // Проверяем, работал ли уже сотрудник с этим заказом в текущем статусе
     const hasEmployeeWorkedOnCurrentStatus = useMemo(() => {
+        if (isReleasedState) {
+            return false;
+        }
+
         const currentEmployeeId = user?.employee?.id;
         if (!currentEmployeeId) return false;
 
@@ -281,34 +309,20 @@ export const OrderDetailsEmployeeScreen = () => {
         });
 
         return tempStepsForCurrentStatus.length > 0 || historyStepsForCurrentStatus.length > 0;
-    }, [user?.employee?.id, user?.employee?.name, user?.employee?.position, user?.employee?.processingRole, localOrderState.assignedToId, localOrderState.status, localOrderState.temporarySteps, order?.assignedTo?.id, order?.status, order?.statusHistory]);
-
-    // Проверяем локальные действия
-    const hasLocalCompleted = useSelector(state => selectHasLocalOrderAction(orderId, 'completed')(state));
-    const hasLocalTaken = useSelector(state => selectHasLocalOrderAction(orderId, 'taken')(state));
-    const hasLocalReleased = useSelector(state => selectHasLocalOrderAction(orderId, 'released')(state));
-
-    console.log('🔍 Состояние селекторов:', {
-        orderId,
-        hasLocalReleased,
-        hasLocalTaken,
-        hasLocalCompleted,
-        localOrderActions: useSelector(selectLocalOrderActions)
-    });
+    }, [user?.employee?.id, user?.employee?.name, user?.employee?.position, user?.employee?.processingRole, localOrderState.assignedToId, localOrderState.status, localOrderState.temporarySteps, localOrderState.lastAction, order?.assignedTo?.id, order?.status, order?.statusHistory, isReleasedState]);
 
     // Проверяем доступность заказа для взятия
     const isOrderAvailable = useMemo(() => {
-        // Завершенные заказы недоступны для взятия в работу
         if (order?.status && CONSTANTS.COMPLETED_STATUSES.includes(order.status)) {
             return false;
         }
 
-        const notAssigned = !order?.assignedTo?.id;
-        const wasReleased = hasLocalReleased;
-        const wasTakenButNotReleased = hasLocalTaken && !hasLocalReleased;
+        const notAssigned = !order?.assignedTo?.id && localOrderState.assignedToId === null;
+        const wasReleased = isReleasedState;
+        const wasTakenButNotReleased = hasLocalTaken && !wasReleased;
 
         return notAssigned || wasReleased || wasTakenButNotReleased;
-    }, [order?.assignedTo?.id, order?.status, hasLocalTaken, hasLocalReleased]);
+    }, [order?.assignedTo?.id, order?.status, hasLocalTaken, isReleasedState, localOrderState.assignedToId]);
 
     // Логика кнопок для сотрудников
     const employeeButtonLogic = useMemo(() => {
@@ -330,8 +344,11 @@ export const OrderDetailsEmployeeScreen = () => {
         const employeeRole = user?.employee?.processingRole;
 
         // После снятия заказа используем локальное состояние
-        const actualAssignedId = localOrderState.assignedToId !== null ? localOrderState.assignedToId :
-                                (localOrderState.lastAction === 'released' ? null : order?.assignedTo?.id);
+        const actualAssignedId = isReleasedState
+            ? null
+            : (localOrderState.assignedToId !== null
+                ? localOrderState.assignedToId
+                : order?.assignedTo?.id);
         const actualStatus = localOrderState.status || order?.status;
 
         // ⚠️ ВАЖНО: Если статус заказа не соответствует роли сотрудника, не показываем кнопки
@@ -367,13 +384,13 @@ export const OrderDetailsEmployeeScreen = () => {
             };
         }
 
-        const isAssignedToMe = isOrderAssignedToEmployee(currentEmployeeId, actualAssignedId, hasLocalReleased);
+        const isAssignedToMe = isOrderAssignedToEmployee(currentEmployeeId, actualAssignedId, isReleasedState);
 
         // Если сотрудник только что взял заказ в работу
-        if (localOrderState.lastAction === 'taken' && !isAssignedToMe && localOrderState.temporarySteps.length > 0 && !hasLocalReleased) {
+        if (localOrderState.lastAction === 'taken' && !isAssignedToMe && localOrderState.temporarySteps.length > 0 && !isReleasedState) {
             return {
                 showTakeButton: false,
-                showCompleteButton: shouldShowWorkButtons(true, actualStatus, isAdmin),
+                showCompleteButton: shouldShowWorkButtons(employeeRole, actualStatus, true, isAdmin),
                 showReleaseButton: true,
                 canTakeOrder: false,
                 canCompleteStage: true,
@@ -393,16 +410,15 @@ export const OrderDetailsEmployeeScreen = () => {
             };
         }
 
-        // Если заказ был снят сотрудником - показываем кнопку "Взять в работу"
-        if (hasLocalReleased || localOrderState.lastAction === 'released') {
+        // Если заказ был снят сотрудником — можно снова взять в работу
+        if (isReleasedState) {
             const canTakeBasedOnRole = canEmployeeTakeOrder(employeeRole, actualStatus, isAdmin);
-            const canTakeOrder = canTakeBasedOnRole && !hasEmployeeWorkedOnCurrentStatus;
 
             return {
-                showTakeButton: canTakeOrder,
+                showTakeButton: canTakeBasedOnRole,
                 showCompleteButton: false,
                 showReleaseButton: false,
-                canTakeOrder,
+                canTakeOrder: canTakeBasedOnRole,
                 canCompleteStage: false,
                 canReleaseOrder: false
             };
@@ -412,7 +428,7 @@ export const OrderDetailsEmployeeScreen = () => {
         if (isAssignedToMe) {
             return {
                 showTakeButton: false,
-                showCompleteButton: shouldShowWorkButtons(isAssignedToMe, actualStatus, isAdmin),
+                showCompleteButton: shouldShowWorkButtons(employeeRole, actualStatus, isAssignedToMe, isAdmin),
                 showReleaseButton: true,
                 canTakeOrder: false,
                 canCompleteStage: true,
@@ -423,23 +439,12 @@ export const OrderDetailsEmployeeScreen = () => {
         // Если заказ доступен для взятия
         if (isOrderAvailable) {
             const canTakeBasedOnRole = canEmployeeTakeOrder(employeeRole, actualStatus, isAdmin);
-
-            // Проверяем, может ли сотрудник взять заказ повторно
-            const hasEmployeeReleasedOrder = order?.statusHistory?.some(historyItem =>
-                historyItem.comment &&
-                historyItem.comment.includes(user?.employee?.name || '') &&
-                historyItem.comment.includes('снят с работы')
-            ) || false;
-
-            const canTakeAgainAfterRelease = localOrderState.lastAction === 'released' &&
-                                            localOrderState.actionTimestamp &&
-                                            (Date.now() - localOrderState.actionTimestamp) < 30000;
-
+            const isUnassigned = !actualAssignedId && !order?.assignedTo?.id;
             const canTakeOrder = !isAssignedToMe && canTakeBasedOnRole &&
-                                (!hasEmployeeWorkedOnCurrentStatus || canTakeAgainAfterRelease || hasEmployeeReleasedOrder);
+                (isUnassigned || !hasEmployeeWorkedOnCurrentStatus);
 
             return {
-                showTakeButton: canTakeOrder && (!isAssignedToMe || hasLocalReleased),
+                showTakeButton: canTakeOrder,
                 showCompleteButton: false,
                 showReleaseButton: false,
                 canTakeOrder,
@@ -456,7 +461,7 @@ export const OrderDetailsEmployeeScreen = () => {
             canCompleteStage: false,
             canReleaseOrder: false
         };
-    }, [user?.role, user?.employee?.id, user?.employee?.processingRole, order?.assignedTo?.id, order?.status, order?.statusHistory, localOrderState.lastAction, localOrderState.temporarySteps, localOrderState.actionTimestamp, hasEmployeeWorkedOnCurrentStatus, hasLocalCompleted, hasLocalTaken, hasLocalReleased, isOrderAvailable]);
+    }, [user?.role, user?.employee?.id, user?.employee?.processingRole, order?.assignedTo?.id, order?.status, order?.statusHistory, localOrderState.lastAction, localOrderState.temporarySteps, localOrderState.actionTimestamp, localOrderState.assignedToId, hasEmployeeWorkedOnCurrentStatus, hasLocalCompleted, hasLocalTaken, isReleasedState, isOrderAvailable]);
 
     // Обработка взятия заказа в работу
     const handleTakeOrder = useCallback(async () => {
@@ -469,11 +474,9 @@ export const OrderDetailsEmployeeScreen = () => {
             const fullEmployeeName = `${user?.employee?.name || 'Сотрудник'} ${user?.employee?.position || ''}`.trim();
             const tempStep = {
                 id: `temp-${Date.now()}`,
-                status: user?.employee?.processingRole === 'PICKER' ? 'PICKING' :
-                       user?.employee?.processingRole === 'PACKER' ? 'PACKING' : 'IN_DELIVERY', // PACKER этап убран, но оставлено для совместимости
+                status: user?.employee?.processingRole === 'PICKER' ? 'PICKING' : 'IN_DELIVERY',
                 role: user?.employee?.processingRole,
-                roleLabel: user?.employee?.processingRole === 'PICKER' ? 'Сборщик' :
-                          user?.employee?.processingRole === 'PACKER' ? 'Упаковщик' : 'Курьер',
+                roleLabel: user?.employee?.processingRole === 'PICKER' ? 'Сборщик' : 'Курьер',
                 stepType: 'started',
                 employeeName: fullEmployeeName,
                 employeePosition: user?.employee?.position || '',
@@ -555,9 +558,11 @@ export const OrderDetailsEmployeeScreen = () => {
 
             if (result.success) {
                 const fullEmployeeName = `${user?.employee?.name || 'Сотрудник'} ${user?.employee?.position || ''}`.trim();
-                // Определяем следующий статус в цепочке обработки
-                const newStatus = user?.employee?.processingRole === 'PICKER' ? 'IN_DELIVERY' : // Пропускаем этап упаковки
-                               user?.employee?.processingRole === 'PACKER' ? 'PACKING_COMPLETED' : 'DELIVERED';
+                // Определяем следующий статус в цепочке обработки.
+                // Упрощённый флоу: PICKER -> IN_DELIVERY, COURIER -> DELIVERED.
+                const newStatus = user?.employee?.processingRole === 'COURIER'
+                    ? (order?.status === 'PICKING' ? 'IN_DELIVERY' : 'DELIVERED')
+                    : 'IN_DELIVERY';
 
                 console.log('🎯 Обработка заказа завершена:', {
                     employeeRole: user?.employee?.processingRole,
@@ -570,13 +575,12 @@ export const OrderDetailsEmployeeScreen = () => {
                     id: `temp-completed-${Date.now()}`,
                     status: newStatus,
                     role: user?.employee?.processingRole,
-                    roleLabel: user?.employee?.processingRole === 'PICKER' ? 'Сборщик' :
-                              user?.employee?.processingRole === 'PACKER' ? 'Упаковщик' : 'Курьер',
+                    roleLabel: user?.employee?.processingRole === 'PICKER' ? 'Сборщик' : 'Курьер',
                     stepType: 'completed',
                     employeeName: fullEmployeeName,
                     employeePosition: user?.employee?.position || '',
-                    comment: processingComment.trim() || `${user?.employee?.processingRole === 'PICKER' ? 'Сборка' :
-                             user?.employee?.processingRole === 'PACKER' ? 'Упаковка' : 'Доставка'} завершена`,
+                    comment: processingComment.trim()
+                        || `${user?.employee?.processingRole === 'PICKER' ? 'Сборка' : 'Доставка'} завершена`,
                     createdAt: new Date().toISOString(),
                     originalStatus: order?.status,
                     isTemporary: true
@@ -648,9 +652,21 @@ export const OrderDetailsEmployeeScreen = () => {
                 value: true
             }));
 
-            console.log('📝 Redux action отправлен');
+            dispatch(setLocalOrderAction({
+                orderId: orderId,
+                action: 'taken',
+                value: false
+            }));
 
-            // Локальное состояние обновится автоматически через useEffect синхронизации с Redux
+            setLocalOrderState(prevState => ({
+                ...prevState,
+                assignedToId: null,
+                status: order?.status || prevState.status,
+                lastAction: 'released',
+                actionTimestamp: Date.now(),
+                temporarySteps: [],
+                lastKnownHistoryLength: order?.statusHistory?.length || prevState.lastKnownHistoryLength || 0
+            }));
 
             setToastConfig({
                 message: 'Заказ снят с работы',
@@ -716,7 +732,8 @@ export const OrderDetailsEmployeeScreen = () => {
             showReleaseButton,
             showDownloadButton,
             isOrderAvailable,
-            hasLocalReleased,
+            isReleasedState,
+            localOrderActions,
             localOrderState: {
                 assignedToId: localOrderState.assignedToId,
                 lastAction: localOrderState.lastAction,
@@ -734,7 +751,7 @@ export const OrderDetailsEmployeeScreen = () => {
                 showDownloadButton,
                 showReleaseButton,
                 isAssignedToMe: user?.employee?.id && order?.assignedTo?.id && user.employee.id === order.assignedTo.id,
-                hasLocalReleased,
+                hasLocalReleased: isReleasedState,
                 lastAction: localOrderState.lastAction
             });
             return null;
@@ -872,7 +889,7 @@ export const OrderDetailsEmployeeScreen = () => {
 
                         <View style={styles.infoContainer}>
                             <Text style={styles.infoText}>
-                                При нажатии "Завершить этап" заказ автоматически перейдет к следующему сотруднику в цепочке обработки.
+                                {getStageCompletionHint(user?.employee?.processingRole, order?.status)}
                             </Text>
                         </View>
 
@@ -881,11 +898,13 @@ export const OrderDetailsEmployeeScreen = () => {
                             <TextInput
                                 style={styles.commentInput}
                                 placeholder="Введите комментарий к завершению этапа..."
+                                placeholderTextColor={colors.textTertiary}
                                 value={processingComment}
                                 onChangeText={setProcessingComment}
                                 multiline
                                 numberOfLines={3}
-                                maxLength={500}
+                                keyboardAppearance={colors.keyboardAppearance}
+                                selectionColor={screenBackground}
                             />
                             <Text style={styles.commentCounter}>
                                 {processingComment.length}/500
@@ -925,23 +944,32 @@ export const OrderDetailsEmployeeScreen = () => {
 
     // Рендер скелетона загрузки
     if (loading && !refreshing) {
-        return <OrderLoadingState />;
+        return (
+            <>
+                <OrderDetailsBackButton fallbackScreen="StaffOrders" />
+                <OrderLoadingState />
+            </>
+        );
     }
 
     // Рендер ошибки
     if (error && !loading) {
         return (
-            <OrderErrorState
-                error={error}
-                onRetry={() => loadOrderDetails()}
-            />
+            <>
+                <OrderDetailsBackButton fallbackScreen="StaffOrders" />
+                <OrderErrorState
+                    error={error}
+                    onRetry={() => loadOrderDetails()}
+                />
+            </>
         );
     }
 
     // Основной рендер
     return (
         <View style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor="#667eea" />
+            <StatusBar barStyle="light-content" backgroundColor={screenBackground} />
+            <OrderDetailsBackButton fallbackScreen="StaffOrders" />
 
             <Animated.View
                 style={[
@@ -954,15 +982,15 @@ export const OrderDetailsEmployeeScreen = () => {
             >
                 <ScrollView
                     style={styles.scrollContainer}
-                    contentContainerStyle={styles.scrollContent}
+                    contentContainerStyle={scrollContentStyle}
                     showsVerticalScrollIndicator={false}
                     refreshControl={
                         <RefreshControl
                             refreshing={refreshing}
                             onRefresh={refreshOrderDetails}
-                            colors={['#667eea']}
-                            tintColor="#667eea"
-                            progressBackgroundColor="#fff"
+                            colors={[colors.primary]}
+                            tintColor={colors.primary}
+                            progressBackgroundColor={colors.surface}
                         />
                     }
                 >
@@ -978,11 +1006,6 @@ export const OrderDetailsEmployeeScreen = () => {
                             <OrderItems 
                                 order={order}
                                 onProductPress={handleProductPress}
-                            />
-                            <OrderProcessingHistory
-                                order={order}
-                                userRole={user?.role}
-                                temporarySteps={localOrderState.temporarySteps}
                             />
                             {renderEmployeeActions()}
                         </>

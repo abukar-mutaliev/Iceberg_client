@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
     View,
     Text,
@@ -6,7 +6,8 @@ import {
     Dimensions
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { Color, FontFamily } from '@app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -19,6 +20,9 @@ export const WaitingStockIndicator = ({
     order, 
     style = {} 
 }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     if (order.status !== 'WAITING_STOCK') return null;
 
     // Вычисляем количество дней ожидания
@@ -110,24 +114,24 @@ export const WaitingStockIndicator = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
-        backgroundColor: '#fff3cd',
+        backgroundColor: isDark ? colors.surface : '#fff3cd',
         borderRadius: normalize(12),
         padding: normalize(16),
         marginVertical: normalize(8),
         marginHorizontal: normalize(12),
         borderWidth: 1,
-        borderColor: '#ffeaa7',
+        borderColor: isDark ? colors.border : '#ffeaa7',
         shadowColor: '#fd7e14',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0.15 : 0.1,
         shadowRadius: 4,
         elevation: 2,
     },
     containerOverdue: {
-        backgroundColor: '#f8d7da',
-        borderColor: '#f5c6cb',
+        backgroundColor: isDark ? colors.surface : '#f8d7da',
+        borderColor: isDark ? colors.error : '#f5c6cb',
         shadowColor: '#dc3545',
     },
     header: {
@@ -154,17 +158,17 @@ const styles = StyleSheet.create({
         fontSize: normalize(15),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
-        color: '#333',
+        color: colors.textPrimary,
         marginBottom: normalize(2),
     },
     subtitle: {
         fontSize: normalize(13),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: '#666',
+        color: colors.textSecondary,
     },
 
     infoSection: {
-        backgroundColor: 'rgba(255,255,255,0.7)',
+        backgroundColor: isDark ? colors.cardBackground : 'rgba(255,255,255,0.7)',
         borderRadius: normalize(8),
         padding: normalize(12),
         marginBottom: normalize(12),
@@ -178,7 +182,7 @@ const styles = StyleSheet.create({
     infoLabel: {
         fontSize: normalize(13),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: '#666',
+        color: colors.textSecondary,
         fontWeight: '500',
     },
     infoValue: {
@@ -193,7 +197,7 @@ const styles = StyleSheet.create({
     descriptionText: {
         fontSize: normalize(12),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: '#666',
+        color: colors.textSecondary,
         lineHeight: normalize(16),
     },
 
@@ -203,13 +207,13 @@ const styles = StyleSheet.create({
     progressLabel: {
         fontSize: normalize(12),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: '#666',
+        color: colors.textSecondary,
         marginBottom: normalize(6),
         fontWeight: '500',
     },
     progressBar: {
         height: normalize(6),
-        backgroundColor: 'rgba(255,255,255,0.8)',
+        backgroundColor: isDark ? colors.border : 'rgba(255,255,255,0.8)',
         borderRadius: normalize(3),
         overflow: 'hidden',
         marginBottom: normalize(4),
@@ -221,7 +225,7 @@ const styles = StyleSheet.create({
     progressText: {
         fontSize: normalize(11),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: '#666',
+        color: colors.textSecondary,
         textAlign: 'right',
     },
 });

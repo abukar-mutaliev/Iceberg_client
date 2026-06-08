@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
     View,
     Text,
@@ -11,6 +11,7 @@ import {
 import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
 import WarehouseService from '@entities/warehouse/api/warehouseApi';
 import IconEdit from '@shared/ui/Icon/Profile/IconEdit';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const WarehousePriceEditor = ({ 
     warehouseId, 
@@ -19,6 +20,8 @@ export const WarehousePriceEditor = ({
     basePrice,
     onPriceUpdated 
 }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const [isEditing, setIsEditing] = useState(false);
     const [priceValue, setPriceValue] = useState(currentPrice?.toString() || '');
     const [saving, setSaving] = useState(false);
@@ -118,6 +121,7 @@ export const WarehousePriceEditor = ({
                         value={priceValue}
                         onChangeText={setPriceValue}
                         placeholder="Цена за коробку"
+                        placeholderTextColor={isDark ? colors.textTertiary : '#999'}
                         keyboardType="numeric"
                         editable={!saving}
                     />
@@ -181,19 +185,21 @@ export const WarehousePriceEditor = ({
                 style={styles.editButton}
                 onPress={handleEditPress}
             >
-                <IconEdit width={16} height={16} color={Color.blue2} />
+                <IconEdit width={16} height={16} color={isDark ? colors.primary : Color.blue2} />
                 <Text style={styles.editButtonText}>Изменить цену</Text>
             </TouchableOpacity>
         </View>
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     viewContainer: {
         padding: 12,
-        backgroundColor: '#F9F9F9',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F9F9F9',
         borderRadius: Border.br_base,
         marginTop: 8,
+        borderWidth: isDark ? StyleSheet.hairlineWidth : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     priceRow: {
         flexDirection: 'row',
@@ -203,18 +209,18 @@ const styles = StyleSheet.create({
     },
     priceLabel: {
         fontSize: FontSize.size_sm,
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         fontFamily: FontFamily.sFProText,
     },
     priceValue: {
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.bold,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: isDark ? colors.textPrimary : Color.textPrimary,
     },
     basePriceHint: {
         fontSize: FontSize.size_xs,
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginTop: 4,
     },
@@ -226,17 +232,17 @@ const styles = StyleSheet.create({
     },
     editButtonText: {
         fontSize: FontSize.size_sm,
-        color: Color.blue2,
+        color: isDark ? colors.primary : Color.blue2,
         fontFamily: FontFamily.sFProText,
         marginLeft: 6,
     },
     editorContainer: {
         padding: 12,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
         borderRadius: Border.br_base,
         marginTop: 8,
         borderWidth: 1,
-        borderColor: Color.blue2,
+        borderColor: isDark ? colors.primary : Color.blue2,
     },
     inputRow: {
         flexDirection: 'row',
@@ -246,23 +252,24 @@ const styles = StyleSheet.create({
     priceInput: {
         flex: 1,
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: isDark ? colors.border : Color.border,
         borderRadius: Border.br_sm,
         paddingHorizontal: 12,
         paddingVertical: 8,
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
-        color: Color.textPrimary,
+        color: isDark ? colors.textPrimary : Color.textPrimary,
+        backgroundColor: isDark ? colors.surfaceElevated : 'transparent',
     },
     currency: {
         fontSize: FontSize.size_md,
-        color: Color.textPrimary,
+        color: isDark ? colors.textPrimary : Color.textPrimary,
         fontFamily: FontFamily.sFProText,
         marginLeft: 8,
     },
     hint: {
         fontSize: FontSize.size_xs,
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginBottom: 12,
     },
@@ -277,16 +284,18 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     cancelButton: {
-        backgroundColor: '#F5F5F5',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F5F5F5',
+        borderWidth: isDark ? StyleSheet.hairlineWidth : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     cancelButtonText: {
         fontSize: FontSize.size_md,
-        color: Color.textPrimary,
+        color: isDark ? colors.textPrimary : Color.textPrimary,
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
     },
     saveButton: {
-        backgroundColor: Color.blue2,
+        backgroundColor: isDark ? colors.primary : Color.blue2,
     },
     saveButtonText: {
         fontSize: FontSize.size_md,
@@ -301,7 +310,7 @@ const styles = StyleSheet.create({
     },
     removeButtonText: {
         fontSize: FontSize.size_sm,
-        color: Color.colorCrimson,
+        color: isDark ? colors.error : Color.colorCrimson,
         fontFamily: FontFamily.sFProText,
     },
 });

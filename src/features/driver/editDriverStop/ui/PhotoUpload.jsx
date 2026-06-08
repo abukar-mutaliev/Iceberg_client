@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, Alert, ActivityIndicator, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Feather } from '@expo/vector-icons';
 import { Color, FontFamily } from '@app/styles/GlobalStyles';
@@ -38,17 +38,18 @@ export const PhotoUpload = ({ photo, setPhoto, error }) => {
   const handlePickImage = async () => {
     try {
       setIsLoading(true);
-      
-      // Запрашиваем разрешение на доступ к медиа-библиотеке
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      
-      if (status !== 'granted') {
-        Alert.alert(
-          'Требуется разрешение',
-          'Для выбора фотографии необходимо разрешение на доступ к галерее.'
-        );
-        setIsLoading(false);
-        return;
+
+      if (Platform.OS !== 'android') {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+        if (status !== 'granted') {
+          Alert.alert(
+            'Требуется разрешение',
+            'Для выбора фотографии необходимо разрешение на доступ к галерее.'
+          );
+          setIsLoading(false);
+          return;
+        }
       }
       
       // Запускаем галерею для выбора изображения

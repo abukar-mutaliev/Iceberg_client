@@ -11,6 +11,7 @@ import IconAdmin from "@shared/ui/Icon/IconAdmin";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { FavouritesIcon } from '@shared/ui/Icon/TabBarIcons';
 import { getPermissionsByRole, hasPermission } from '@shared/config/permissions';
+import { featureFlags } from '@shared/config/featureFlags';
 import { selectWaitingStockCountCombined, selectSupplierWaitingStockCount } from '@entities/order';
 
 export const useProfileInfo = (isAuthenticated, tokens, currentUser, navigation) => {
@@ -104,13 +105,26 @@ export const useProfileInfo = (isAuthenticated, tokens, currentUser, navigation)
     const canAccessAdminPanel = (isAdmin || hasAdminAccess) ||
                                 (isEmployee && !restrictedRoles.includes(processingRole));
 
-    const canViewOrders = isAdmin || isEmployee;
+    const canViewStaffOrders = isAdmin || isEmployee;
+    const isClient = currentUser?.role === 'CLIENT';
 
     // Формируем пункты меню в зависимости от роли
     let menuItems = [...baseMenuItems];
 
-    // Добавляем пункт "Заказы" для админов, сотрудников и водителей
-    if (canViewOrders) {
+    if (featureFlags.orders && isClient) {
+        menuItems.splice(2, 0, {
+            id: 'myOrders',
+            title: 'Мои заказы',
+            icon: <Icon name="shopping-bag" size={24} color="#666666" />,
+            onPress: () => navigation.navigate('Cart', {
+                screen: 'MyOrders',
+                params: { fromScreen: 'Profile' },
+            }),
+        });
+    }
+
+    // Добавляем пункт "Заказы" для админов и сотрудников
+    if (featureFlags.orders && canViewStaffOrders) {
         menuItems.push({
             id: 'orders',
             title: 'Заказы',

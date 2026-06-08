@@ -287,14 +287,7 @@ const StopCardComponent = ({ stop, onPress, width, compact = true, showContactBu
         setImageError(false);
         
         if (stop.photo) {
-            const url = getPhotoUrl(stop.photo);
-            if (__DEV__) {
-                console.log('StopCard: Photo URL', {
-                    original: stop.photo,
-                    formatted: url
-                });
-            }
-            return url;
+            return getPhotoUrl(stop.photo);
         }
         return null;
     }, [stop.photo]);

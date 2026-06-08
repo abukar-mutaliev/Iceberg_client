@@ -1,4 +1,4 @@
-import React, { memo, useState, useEffect } from 'react';
+import React, { memo, useMemo, useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -6,11 +6,16 @@ import {
     TouchableOpacity,
     ActivityIndicator,
     Keyboard,
-    Dimensions,
 } from 'react-native';
 import {normalize} from "@shared/lib/normalize";
 import {CLIENT_TYPES, formatPrice} from "@entities/cart";
 import {FontFamily} from "@app/styles/GlobalStyles";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+
+// Высота кастомного нижнего таб-бара без учёта safe-area inset (см. CustomTabBar).
+// SafeAreaView у CartScreen уже учитывает insets.bottom, поэтому компенсируем
+// только базовую высоту таб-бара, чтобы блок «К оплате» не уходил под него.
+const TAB_BAR_BASE_HEIGHT = 80;
 
 export const CartSummary = memo(({
                                      stats,
@@ -22,6 +27,11 @@ export const CartSummary = memo(({
                                      clientType,
                                      showSavings = false
                                  }) => {
+    const { colors } = useTheme();
+    const styles = useMemo(
+        () => createStyles(colors, TAB_BAR_BASE_HEIGHT),
+        [colors]
+    );
     const [isKeyboardVisible, setKeyboardVisible] = useState(false);
 
     useEffect(() => {
@@ -110,13 +120,6 @@ export const CartSummary = memo(({
                     <Text style={styles.statsLabel}>Коробки:</Text>
                     <Text style={styles.statsValue}>{getBoxesText(totalBoxes)}</Text>
                 </View>
-                
-                {totalItems > totalBoxes && (
-                    <View style={styles.statsRow}>
-                        <Text style={styles.statsLabel}>Общее количество:</Text>
-                        <Text style={styles.statsValue}>{getItemsText(totalItems)}</Text>
-                    </View>
-                )}
                 {clientType === CLIENT_TYPES.WHOLESALE && totalSavings > 0 && showSavings && (
                     <View style={styles.statsRow}>
                         <Text style={styles.statsLabelSavings}>Оптовая скидка:</Text>
@@ -146,7 +149,7 @@ export const CartSummary = memo(({
 
                 <View style={styles.checkoutButtonContainer}>
                     {loading ? (
-                        <ActivityIndicator color="#FFFFFF" size="small" />
+                        <ActivityIndicator color={colors.textInverse} size="small" />
                     ) : (
                         <Text style={styles.checkoutButtonText}>
                             К оплате
@@ -158,25 +161,27 @@ export const CartSummary = memo(({
     );
 });
 
-const styles = StyleSheet.create({
+const createStyles = (colors, tabBarOffset = 0) => StyleSheet.create({
     container: {
         position: 'absolute',
-        bottom: 0,
+        bottom: tabBarOffset,
         left: 0,
         right: 0,
         backgroundColor: 'transparent',
     },
 
     containerKeyboard: {
-        // Add appropriate styles for the keyboard visible state
+        // При открытой клавиатуре прижимаемся к низу,
+        // KeyboardAvoidingView уже сдвинет содержимое выше клавиатуры.
+        bottom: 0,
     },
 
     statsContainer: {
-        backgroundColor: '#F8F9FF',
+        backgroundColor: colors.surface,
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(12),
         borderTopWidth: 1,
-        borderTopColor: 'rgba(193, 199, 222, 0.3)',
+        borderTopColor: colors.border,
     },
 
     statsRow: {
@@ -190,40 +195,40 @@ const styles = StyleSheet.create({
         fontSize: normalize(14),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '500',
-        color: '#3339B0',
+        color: colors.primary,
     },
 
     statsValue: {
         fontSize: normalize(14),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '400',
-        color: 'rgba(60, 60, 67, 0.60)',
+        color: colors.textSecondary,
     },
 
     statsLabelSavings: {
         fontSize: normalize(14),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '500',
-        color: '#34C759',
+        color: colors.success,
     },
 
     statsValueSavings: {
         fontSize: normalize(14),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
-        color: '#34C759',
+        color: colors.success,
     },
 
     summaryContainer: {
         width: '100%',
         minHeight: normalize(64),
-        backgroundColor: 'rgba(85, 0, 255, 1)',
+        backgroundColor: colors.primary,
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(12),
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        shadowColor: '#3339B0',
+        shadowColor: colors.primary,
         shadowOffset: {
             width: 0,
             height: -4,
@@ -234,7 +239,7 @@ const styles = StyleSheet.create({
     },
 
     summaryContainerDisabled: {
-        backgroundColor: 'rgba(51, 57, 176, 0.6)',
+        backgroundColor: colors.primarySoft,
     },
 
     totalContainer: {
@@ -243,7 +248,7 @@ const styles = StyleSheet.create({
     },
 
     totalLabel: {
-        color: 'white',
+        color: colors.textInverse,
         fontSize: normalize(16),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '400',
@@ -252,7 +257,7 @@ const styles = StyleSheet.create({
     },
 
     totalAmount: {
-        color: 'white',
+        color: colors.textInverse,
         fontSize: normalize(26),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
@@ -265,7 +270,7 @@ const styles = StyleSheet.create({
     },
 
     checkoutButtonText: {
-        color: 'white',
+        color: colors.textInverse,
         fontSize: normalize(16),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',

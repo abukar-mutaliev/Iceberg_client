@@ -1,55 +1,35 @@
-import { createApiModule } from "@shared/services/ApiClient";
+import { createApiModule } from '@shared/services/ApiClient';
 
 const deliveryApi = createApiModule('/api/delivery');
 
 /**
- * API модуль для работы с доставкой
+ * API доставки — контракт совпадает с server/src/controllers/delivery/delivery.controller.js
+ * и server/src/services/delivery/deliveryFee.service.js.
  */
 const DeliveryService = {
     /**
-     * Рассчитать стоимость доставки для одного адреса
-     * @param {number} warehouseId - ID склада
-     * @param {number} deliveryAddressId - ID адреса доставки
-     * @param {number} orderAmount - Сумма заказа
-     * @returns {Promise} - Результат расчета
+     * POST /api/delivery/calculate
+     * @param {Object} params
+     * @param {string} [params.deliveryType='DELIVERY'] - 'DELIVERY' | 'PICKUP'
+     * @returns {Promise<{ status: string, data: DeliveryCalculation }>}
      */
-    calculateDeliveryFee: (warehouseId, deliveryAddressId, orderAmount) =>
-        deliveryApi.post('/calculate', { 
-            warehouseId, 
-            addressId: deliveryAddressId,  // API ожидает addressId
-            orderAmount 
-        }),
+    calculateDeliveryFee: ({ deliveryType = 'DELIVERY' } = {}) =>
+        deliveryApi.post('/calculate', { deliveryType }),
 
     /**
-     * Рассчитать стоимость доставки для нескольких складов
-     * @param {number[]} warehouseIds - Массив ID складов
-     * @param {number} deliveryAddressId - ID адреса доставки
-     * @param {number} orderAmount - Сумма заказа
-     * @returns {Promise} - Результаты расчета для всех складов
+     * POST /api/delivery/calculate-multiple
+     * @param {Object} params
+     * @param {string} [params.deliveryType='DELIVERY']
+     * @param {number[]} [params.addressIds=[]]
      */
-    calculateMultipleDeliveryFees: (warehouseIds, deliveryAddressId, orderAmount) =>
-        deliveryApi.post('/calculate-multiple', { 
-            warehouseIds, 
-            addressId: deliveryAddressId,  // API ожидает addressId
-            orderAmount 
-        }),
+    calculateMultipleDeliveryFees: ({ deliveryType = 'DELIVERY', addressIds = [] } = {}) =>
+        deliveryApi.post('/calculate-multiple', { deliveryType, addressIds }),
 
-    /**
-     * Получить информацию о бесплатной доставке
-     * @param {number} distance - Расстояние в км
-     * @param {number} orderAmount - Сумма заказа
-     * @returns {Promise} - Информация о бесплатной доставке
-     */
-    getFreeDeliveryInfo: (distance, orderAmount = 0) =>
-        deliveryApi.get('/free-delivery-info', { distance, orderAmount }),
+    /** GET /api/delivery/tariff */
+    getActiveTariff: () => deliveryApi.get('/tariff'),
 
-    /**
-     * Получить активный тариф доставки
-     * @returns {Promise} - Активный тариф
-     */
-    getActiveTariff: () =>
-        deliveryApi.get('/tariff'),
+    /** GET /api/delivery/free-delivery-info */
+    getFreeDeliveryInfo: () => deliveryApi.get('/free-delivery-info')
 };
 
 export default DeliveryService;
-

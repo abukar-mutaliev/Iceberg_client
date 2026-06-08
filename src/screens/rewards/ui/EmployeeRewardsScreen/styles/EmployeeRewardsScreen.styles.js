@@ -1,11 +1,12 @@
 import { StyleSheet } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
+import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
+import { palettes } from '@app/styles/themeConfig';
 
-export const styles = StyleSheet.create({
+export const createStyles = (colors, isDark = false) => StyleSheet.create({
     screen: {
         flex: 1,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.background,
         paddingBottom: 50
     },
     container: {
@@ -16,31 +17,37 @@ export const styles = StyleSheet.create({
         paddingVertical: normalize(16),
     },
     pendingCard: {
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.cardBackground,
         borderRadius: Border.radius.medium,
         padding: normalize(20),
         marginBottom: normalize(16),
         alignItems: 'center',
-        ...Shadow.light,
+        borderWidth: 1,
+        borderColor: colors.border,
+        shadowColor: isDark ? '#000000' : Color.black,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: isDark ? 0.35 : 0.1,
+        shadowRadius: 4,
+        elevation: 3,
     },
     pendingTitle: {
         fontSize: normalizeFont(FontSize.size_lg),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         marginBottom: normalize(8),
     },
     pendingAmount: {
         fontSize: normalizeFont(FontSize.size_xl),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: 'bold',
-        color: Color.orange,
+        color: colors.warning,
         marginBottom: normalize(8),
     },
     pendingSubtitle: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         textAlign: 'center',
     },
     emptyContainer: {
@@ -54,14 +61,14 @@ export const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_lg),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         textAlign: 'center',
         marginBottom: normalize(8),
     },
     emptySubtitle: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         textAlign: 'center',
     },
     loadingContainer: {
@@ -80,22 +87,26 @@ export const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_lg),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.error,
+        color: colors.error,
         textAlign: 'center',
         marginBottom: normalize(20),
     },
     retryButton: {
-        backgroundColor: Color.blue2,
+        backgroundColor: colors.primary,
         borderRadius: Border.radius.medium,
         paddingHorizontal: normalize(24),
         paddingVertical: normalize(12),
-        ...Shadow.light,
+        shadowColor: isDark ? '#000000' : Color.black,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: isDark ? 0.35 : 0.1,
+        shadowRadius: 4,
+        elevation: 3,
     },
     retryButtonText: {
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.colorLightMode,
+        color: colors.textInverse,
     },
     searchContainer: {
         paddingHorizontal: normalize(20),
@@ -119,20 +130,24 @@ export const styles = StyleSheet.create({
         marginBottom: normalize(12),
     },
     toPayCard: {
-        backgroundColor: '#F0F9FF',
+        backgroundColor: isDark ? colors.surface : '#F0F9FF',
         borderRadius: Border.radius.medium,
         padding: normalize(20),
         marginTop: normalize(16),
         alignItems: 'center',
         borderWidth: 2,
-        borderColor: '#B3E0FF',
-        ...Shadow.light,
+        borderColor: isDark ? colors.border : '#B3E0FF',
+        shadowColor: isDark ? '#000000' : Color.black,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: isDark ? 0.35 : 0.1,
+        shadowRadius: 4,
+        elevation: 3,
     },
     toPayTitle: {
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: '#0066CC',
+        color: isDark ? colors.primary : '#0066CC',
         marginBottom: normalize(8),
         textAlign: 'center',
     },
@@ -140,13 +155,13 @@ export const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_2xl),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: 'bold',
-        color: '#0066CC',
+        color: isDark ? colors.primary : '#0066CC',
         marginBottom: normalize(4),
     },
     toPayHint: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: '#0066CC',
+        color: isDark ? colors.textSecondary : '#0066CC',
         textAlign: 'center',
         opacity: 0.8,
     },
@@ -155,24 +170,30 @@ export const styles = StyleSheet.create({
         paddingVertical: normalize(16),
     },
     batchPaymentButton: {
-        backgroundColor: '#10B981',
+        backgroundColor: colors.success,
         borderRadius: Border.radius.medium,
         padding: normalize(16),
         alignItems: 'center',
-        ...Shadow.medium,
+        shadowColor: isDark ? '#000000' : Color.black,
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: isDark ? 0.4 : 0.15,
+        shadowRadius: 5,
+        elevation: 5,
     },
     batchPaymentButtonText: {
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '700',
-        color: Color.colorLightMode,
+        color: '#FFFFFF',
         marginBottom: normalize(4),
     },
     batchPaymentAmount: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
-        color: Color.colorLightMode,
+        color: '#FFFFFF',
         opacity: 0.9,
     },
-}); 
+});
+
+export const styles = createStyles(palettes.light, false);

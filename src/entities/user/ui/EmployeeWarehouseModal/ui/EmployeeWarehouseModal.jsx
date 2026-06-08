@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -10,14 +10,17 @@ import {
     Alert} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
 import { useWarehouses } from '@entities/warehouse/hooks/useWarehouses';
 import { employeeApi } from '@entities/user/api/userApi';
 import IconClose from '@shared/ui/Icon/Profile/CloseIcon';
 import IconWarehouse from '@shared/ui/Icon/Warehouse/IconWarehouse';
 import { MapPinIcon } from '@shared/ui/Icon/DistrictManagement/MapPinIcon';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const EmployeeWarehouseModal = ({ visible, employee, onClose, onSuccess }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const [selectedIds, setSelectedIds] = useState([]);
     const [isSaving, setIsSaving] = useState(false);
 
@@ -26,8 +29,9 @@ export const EmployeeWarehouseModal = ({ visible, employee, onClose, onSuccess }
     useEffect(() => {
         if (visible && employee) {
             // Инициализация из массива warehouses (новый формат) или warehouseId (старый)
-            const initial = employee.warehouses?.map(w => w.id) ||
-                (employee.warehouseId ? [employee.warehouseId] : []);
+            const initial = employee.warehouses?.length > 0
+                ? employee.warehouses.map(w => w.id)
+                : (employee.warehouseId ? [employee.warehouseId] : []);
             setSelectedIds(initial);
             if (warehouses.length === 0) {
                 refreshWarehouses();
@@ -73,7 +77,7 @@ export const EmployeeWarehouseModal = ({ visible, employee, onClose, onSuccess }
             >
                 <View style={styles.warehouseHeader}>
                     <View style={[styles.warehouseIcon, isSelected && styles.selectedWarehouseIcon]}>
-                        <IconWarehouse width={20} height={20} color={isSelected ? Color.blue2 : Color.textSecondary} />
+                        <IconWarehouse width={20} height={20} color={isSelected ? colors.primary : colors.textSecondary} />
                     </View>
                     <View style={styles.warehouseInfo}>
                         <Text style={[styles.warehouseName, isSelected && styles.selectedWarehouseText]}>
@@ -84,7 +88,7 @@ export const EmployeeWarehouseModal = ({ visible, employee, onClose, onSuccess }
                         </Text>
                         {item.district?.name && (
                             <View style={styles.warehouseDistrict}>
-                                <MapPinIcon size={12} color={isSelected ? Color.blue2 : Color.textSecondary} />
+                                <MapPinIcon size={12} color={isSelected ? colors.primary : colors.textSecondary} />
                                 <Text style={[styles.districtName, isSelected && styles.selectedDistrictText]}>
                                     {item.district.name}
                                 </Text>
@@ -118,7 +122,7 @@ export const EmployeeWarehouseModal = ({ visible, employee, onClose, onSuccess }
                         <Text style={styles.subtitle}>Сотрудник: {employee.name}</Text>
                     </View>
                     <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-                        <IconClose width={24} height={24} color={Color.textPrimary} />
+                        <IconClose width={24} height={24} color={colors.textPrimary} />
                     </TouchableOpacity>
                 </View>
 
@@ -141,7 +145,7 @@ export const EmployeeWarehouseModal = ({ visible, employee, onClose, onSuccess }
                 <View style={styles.content}>
                     {isLoading ? (
                         <View style={styles.loadingContainer}>
-                            <ActivityIndicator size="large" color={Color.blue2} />
+                            <ActivityIndicator size="large" color={colors.primary} />
                             <Text style={styles.loadingText}>Загрузка складов...</Text>
                         </View>
                     ) : (
@@ -175,7 +179,7 @@ export const EmployeeWarehouseModal = ({ visible, employee, onClose, onSuccess }
                         disabled={isSaving}
                     >
                         {isSaving ? (
-                            <ActivityIndicator size="small" color={Color.colorLightMode} />
+                            <ActivityIndicator size="small" color={colors.textInverse} />
                         ) : (
                             <Text style={styles.saveButtonText}>Сохранить</Text>
                         )}
@@ -186,10 +190,10 @@ export const EmployeeWarehouseModal = ({ visible, employee, onClose, onSuccess }
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.background,
     },
     header: {
         flexDirection: 'row',
@@ -198,8 +202,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(16),
         borderBottomWidth: 1,
-        borderBottomColor: Color.border,
-        backgroundColor: Color.colorLightMode,
+        borderBottomColor: colors.border,
+        backgroundColor: colors.surface,
     },
     headerContent: {
         flex: 1,
@@ -208,13 +212,13 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_lg),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         marginBottom: normalize(4),
     },
     subtitle: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
     },
     closeButton: {
         padding: normalize(8),
@@ -225,26 +229,26 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(10),
-        backgroundColor: Color.colorLightGray,
+        backgroundColor: colors.surfaceSecondary,
         borderBottomWidth: 1,
-        borderBottomColor: Color.border,
+        borderBottomColor: colors.border,
     },
     selectionCount: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
     },
     selectAllButton: {
         paddingVertical: normalize(4),
         paddingHorizontal: normalize(10),
         borderRadius: Border.radius.small,
-        backgroundColor: Color.blue2,
+        backgroundColor: colors.primary,
     },
     selectAllText: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.colorLightMode,
+        color: colors.textInverse,
     },
     content: {
         flex: 1,
@@ -258,7 +262,7 @@ const styles = StyleSheet.create({
     loadingText: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginTop: normalize(8),
     },
     listContainer: {
@@ -271,20 +275,24 @@ const styles = StyleSheet.create({
     emptyText: {
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
     },
     warehouseItem: {
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.cardBackground,
         borderRadius: Border.radius.medium,
         padding: normalize(14),
         marginBottom: normalize(10),
         borderWidth: 1.5,
-        borderColor: Color.border,
-        ...Shadow.light,
+        borderColor: colors.border,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: isDark ? 0.25 : Shadow.light.shadowOpacity,
+        shadowRadius: isDark ? 6 : Shadow.light.shadowRadius,
+        elevation: isDark ? 2 : Shadow.light.elevation,
     },
     selectedWarehouseItem: {
-        borderColor: Color.blue2,
-        backgroundColor: '#EBF3FF',
+        borderColor: colors.primary,
+        backgroundColor: colors.surfaceSecondary,
     },
     warehouseHeader: {
         flexDirection: 'row',
@@ -294,13 +302,13 @@ const styles = StyleSheet.create({
         width: normalize(38),
         height: normalize(38),
         borderRadius: normalize(19),
-        backgroundColor: Color.colorLightGray,
+        backgroundColor: colors.surfaceSecondary,
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: normalize(12),
     },
     selectedWarehouseIcon: {
-        backgroundColor: '#D6E8FF',
+        backgroundColor: colors.cardBackground,
     },
     warehouseInfo: {
         flex: 1,
@@ -309,16 +317,16 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         marginBottom: normalize(2),
     },
     selectedWarehouseText: {
-        color: Color.blue2,
+        color: colors.primary,
     },
     warehouseAddress: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginBottom: normalize(2),
     },
     warehouseDistrict: {
@@ -329,40 +337,40 @@ const styles = StyleSheet.create({
     districtName: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginLeft: normalize(4),
     },
     selectedDistrictText: {
-        color: Color.blue2,
+        color: colors.primary,
     },
     checkbox: {
         width: normalize(22),
         height: normalize(22),
         borderRadius: normalize(6),
         borderWidth: 1.5,
-        borderColor: Color.border,
-        backgroundColor: Color.colorLightMode,
+        borderColor: colors.border,
+        backgroundColor: colors.cardBackground,
         justifyContent: 'center',
         alignItems: 'center',
         marginLeft: normalize(8),
     },
     checkboxSelected: {
-        borderColor: Color.blue2,
-        backgroundColor: Color.blue2,
+        borderColor: colors.primary,
+        backgroundColor: colors.primary,
     },
     checkboxMark: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '700',
-        color: Color.colorLightMode,
+        color: colors.textInverse,
     },
     footer: {
         flexDirection: 'row',
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(16),
         borderTopWidth: 1,
-        borderTopColor: Color.border,
-        backgroundColor: Color.colorLightMode,
+        borderTopColor: colors.border,
+        backgroundColor: colors.surface,
         gap: normalize(12),
     },
     cancelButton: {
@@ -370,30 +378,30 @@ const styles = StyleSheet.create({
         paddingVertical: normalize(12),
         borderRadius: Border.radius.medium,
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: colors.border,
         alignItems: 'center',
     },
     cancelButtonText: {
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
     },
     saveButton: {
         flex: 1,
         paddingVertical: normalize(12),
         borderRadius: Border.radius.medium,
-        backgroundColor: Color.blue2,
+        backgroundColor: colors.primary,
         alignItems: 'center',
     },
     disabledButton: {
-        backgroundColor: Color.colorLightGray,
+        backgroundColor: colors.surfaceSecondary,
     },
     saveButtonText: {
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.colorLightMode,
+        color: colors.textInverse,
     },
 });
 

@@ -1,17 +1,19 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { View, StyleSheet, FlatList, ActivityIndicator, Text, TouchableOpacity, InteractionManager } from 'react-native';
+import { View, StyleSheet, FlatList, ActivityIndicator, Text, TouchableOpacity, InteractionManager, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { ProductManagementHeader } from './ProductManagementHeader';
 import { ProductManagementCard } from './ProductManagementCard';
-import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { useProductManagement } from '@entities/product';
-import { smartNavigateToProductDetail } from '@shared/utils/NavigationUtils';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const ProductManagementScreen = ({ route }) => {
     const navigation = useNavigation();
     const { isAuthenticated, currentUser } = useAuth();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     const fromScreen = route?.params?.fromScreen;
     const shouldRefresh = route?.params?.refresh;
@@ -172,7 +174,7 @@ export const ProductManagementScreen = ({ route }) => {
                 </TouchableOpacity>
             </View>
         );
-    }, [currentUser?.role, handleViewStagnantProducts]);
+    }, [currentUser?.role, handleViewStagnantProducts, styles]);
 
     const moderationPendingCount = useMemo(() => {
         if (!Array.isArray(filteredProducts)) return 0;
@@ -206,7 +208,7 @@ export const ProductManagementScreen = ({ route }) => {
                 <Text style={styles.reloadButtonText}>Обновить</Text>
             </TouchableOpacity>
         </View>
-    ), [currentUser?.role, forceReloadData, moderationOnly]);
+    ), [currentUser?.role, forceReloadData, moderationOnly, styles]);
 
     const renderProductCard = useCallback(({ item, index }) => {
         if (!item || !item.id) {
@@ -240,6 +242,7 @@ export const ProductManagementScreen = ({ route }) => {
     if (!isAuthenticated) {
         return (
             <View style={styles.centered}>
+                <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
                 <Text style={styles.errorText}>
                     Для управления продуктами необходимо авторизоваться
                 </Text>
@@ -251,7 +254,8 @@ export const ProductManagementScreen = ({ route }) => {
     if (!isInitialized) {
         return (
             <View style={styles.centered}>
-                <ActivityIndicator size="large" color={Color.blue2} />
+                <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
+                <ActivityIndicator size="large" color={colors.primary} />
                 <Text style={styles.loadingText}>Инициализация...</Text>
             </View>
         );
@@ -261,7 +265,8 @@ export const ProductManagementScreen = ({ route }) => {
     if (isLoading && !isRefreshing && (!filteredProducts || filteredProducts.length === 0)) {
         return (
             <View style={styles.centered}>
-                <ActivityIndicator size="large" color={Color.blue2} />
+                <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
+                <ActivityIndicator size="large" color={colors.primary} />
                 <Text style={styles.loadingText}>
                     {currentUser?.role === 'SUPPLIER' ? 'Загрузка ваших продуктов...' : 'Загрузка продуктов...'}
                 </Text>
@@ -273,6 +278,7 @@ export const ProductManagementScreen = ({ route }) => {
     if (error && !filteredProducts?.length) {
         return (
             <View style={styles.centered}>
+                <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
                 <Text style={styles.errorText}>{error}</Text>
                 <TouchableOpacity style={styles.retryButton} onPress={forceReloadData}>
                     <Text style={styles.retryButtonText}>Попробовать снова</Text>
@@ -283,6 +289,7 @@ export const ProductManagementScreen = ({ route }) => {
 
     return (
         <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+            <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
             <ProductManagementHeader
                 title={
                     moderationOnly
@@ -314,6 +321,9 @@ export const ProductManagementScreen = ({ route }) => {
                         showsVerticalScrollIndicator={false}
                         onRefresh={handleRefresh}
                         refreshing={isRefreshing}
+                        tintColor={colors.primary}
+                        colors={[colors.primary]}
+                        progressBackgroundColor={colors.surface}
                         removeClippedSubviews={true}
                         initialNumToRender={10}
                         windowSize={5}
@@ -334,10 +344,10 @@ export const ProductManagementScreen = ({ route }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#FBFAFF',
+        backgroundColor: isDark ? colors.background : '#FBFAFF',
     },
     content: {
         flex: 1,
@@ -349,6 +359,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         padding: 20,
+        backgroundColor: colors.background,
     },
     listContainer: {
         paddingBottom: 196,
@@ -362,20 +373,20 @@ const styles = StyleSheet.create({
     emptyText: {
         fontSize: FontSize.size_lg,
         fontFamily: FontFamily.sFProText,
-        color: Color.colorSilver_100,
+        color: colors.textSecondary,
         textAlign: 'center',
         marginBottom: 10,
     },
     loadingText: {
         fontSize: FontSize.size_sm,
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginTop: 10,
     },
     infoText: {
         fontSize: FontSize.size_xs,
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         textAlign: 'center',
         marginTop: 10,
         paddingHorizontal: 20,
@@ -383,13 +394,13 @@ const styles = StyleSheet.create({
     },
     pendingInfoContainer: {
         marginBottom: 12,
-        backgroundColor: '#FFF4E5',
+        backgroundColor: isDark ? 'rgba(255, 210, 74, 0.15)' : '#FFF4E5',
         borderRadius: 10,
         paddingVertical: 8,
         paddingHorizontal: 12,
     },
     pendingInfoText: {
-        color: '#B26A00',
+        color: isDark ? '#FFD24A' : '#B26A00',
         fontFamily: FontFamily.sFProText,
         fontSize: FontSize.size_xs,
         fontWeight: '600',
@@ -397,12 +408,12 @@ const styles = StyleSheet.create({
     errorText: {
         fontSize: FontSize.size_sm,
         fontFamily: FontFamily.sFProText,
-        color: Color.red,
+        color: colors.error,
         textAlign: 'center',
         marginBottom: 20,
     },
     reloadButton: {
-        backgroundColor: Color.blue2,
+        backgroundColor: colors.primary,
         paddingHorizontal: 20,
         paddingVertical: 10,
         borderRadius: 8,
@@ -414,7 +425,7 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     retryButton: {
-        backgroundColor: Color.blue2,
+        backgroundColor: colors.primary,
         paddingHorizontal: 20,
         paddingVertical: 10,
         borderRadius: 8,
@@ -432,23 +443,25 @@ const styles = StyleSheet.create({
     supplierCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
         borderRadius: 12,
         padding: 16,
         marginBottom: 12,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0 : 0.1,
         shadowRadius: 4,
-        elevation: 3,
+        elevation: isDark ? 0 : 3,
         borderLeftWidth: 4,
-        borderLeftColor: Color.orange,
+        borderLeftColor: colors.warning,
+        borderWidth: isDark ? StyleSheet.hairlineWidth : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     cardIconContainer: {
         width: 50,
         height: 50,
         borderRadius: 25,
-        backgroundColor: 'rgba(255, 149, 0, 0.1)',
+        backgroundColor: isDark ? 'rgba(255, 149, 0, 0.18)' : 'rgba(255, 149, 0, 0.1)',
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: 12,
@@ -463,18 +476,18 @@ const styles = StyleSheet.create({
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         marginBottom: 4,
     },
     cardDescription: {
         fontSize: FontSize.size_xs,
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         lineHeight: 18,
     },
     cardArrow: {
         fontSize: 28,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginLeft: 8,
     },
 });

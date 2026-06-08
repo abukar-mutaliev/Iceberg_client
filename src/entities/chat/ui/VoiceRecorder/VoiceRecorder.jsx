@@ -5,6 +5,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Ionicons } from '@expo/vector-icons';
 import { useChatSocketActions } from '@entities/chat/hooks/useChatSocketActions';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { audioManager } from '@entities/chat/lib/audioManager';
 
 const WAVEFORM_BARS_COUNT = 20;
 const MIN_BAR_HEIGHT = 8;
@@ -312,6 +313,12 @@ export const VoiceRecorder = ({ onSend, onCancel, roomId }) => {
         console.error('VoiceRecorder открылся без разрешения микрофона!');
         onCancel();
         return;
+      }
+
+      try {
+        await audioManager.stopAll();
+      } catch (_) {
+        // не блокируем запись
       }
 
       // Настраиваем аудио режим

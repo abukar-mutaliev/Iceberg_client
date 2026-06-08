@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Modal, Pressable } from 'react-native';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const MONTHS = [
     'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
@@ -7,6 +8,8 @@ const MONTHS = [
 ];
 
 export const MonthSelector = React.memo(({ selectedMonth, selectedYear, onMonthChange }) => {
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
     const currentDate = new Date();
     const currentYear = currentDate.getFullYear();
     const currentMonth = currentDate.getMonth();
@@ -172,7 +175,7 @@ export const MonthSelector = React.memo(({ selectedMonth, selectedYear, onMonthC
 
 MonthSelector.displayName = 'MonthSelector';
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     container: {
         marginVertical: 10,
         paddingLeft: 16,
@@ -182,27 +185,27 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 15,
         fontWeight: '600',
-        color: '#333',
+        color: colors.textPrimary,
         marginBottom: 8,
     },
     triggerButton: {
         paddingHorizontal: 14,
         paddingVertical: 12,
-        backgroundColor: '#F5F5F5',
+        backgroundColor: colors.surfaceSecondary,
         borderRadius: 12,
         borderWidth: 1,
-        borderColor: '#E0E0E0',
+        borderColor: colors.border,
         alignItems: 'center',
         justifyContent: 'center',
     },
     triggerText: {
         fontSize: 14,
         fontWeight: '600',
-        color: '#333',
+        color: colors.textPrimary,
     },
     modalBackdrop: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.4)',
+        backgroundColor: colors.modalOverlay,
         alignItems: 'center',
         justifyContent: 'center',
         padding: 16,
@@ -213,7 +216,7 @@ const styles = StyleSheet.create({
     modalCard: {
         width: '100%',
         maxWidth: 360,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.surface,
         borderRadius: 16,
         padding: 16,
     },
@@ -226,20 +229,20 @@ const styles = StyleSheet.create({
     modalTitle: {
         fontSize: 16,
         fontWeight: '700',
-        color: '#333',
+        color: colors.textPrimary,
     },
     closeButton: {
         width: 28,
         height: 28,
         borderRadius: 14,
-        backgroundColor: '#F0F0F0',
+        backgroundColor: colors.surfaceSecondary,
         alignItems: 'center',
         justifyContent: 'center',
     },
     closeButtonText: {
         fontSize: 14,
         fontWeight: '700',
-        color: '#555',
+        color: colors.textSecondary,
     },
     yearRow: {
         flexDirection: 'row',
@@ -251,7 +254,7 @@ const styles = StyleSheet.create({
     yearText: {
         fontSize: 16,
         fontWeight: '600',
-        color: '#333',
+        color: colors.textPrimary,
     },
     yearArrowButton: {
         width: 32,
@@ -261,10 +264,10 @@ const styles = StyleSheet.create({
     },
     yearArrow: {
         fontSize: 22,
-        color: '#333',
+        color: colors.textPrimary,
     },
     yearArrowDisabled: {
-        color: '#C0C0C0',
+        color: colors.textTertiary,
     },
     monthGrid: {
         flexDirection: 'row',
@@ -276,19 +279,19 @@ const styles = StyleSheet.create({
         paddingVertical: 10,
         marginBottom: 10,
         borderRadius: 10,
-        backgroundColor: '#F5F5F5',
+        backgroundColor: colors.surfaceSecondary,
         borderWidth: 1,
-        borderColor: '#E0E0E0',
+        borderColor: colors.border,
         alignItems: 'center',
     },
     monthGridButtonActive: {
-        backgroundColor: '#007AFF',
-        borderColor: '#007AFF',
+        backgroundColor: colors.primary,
+        borderColor: colors.primary,
     },
     monthGridText: {
         fontSize: 13,
         fontWeight: '600',
-        color: '#444',
+        color: colors.textPrimary,
     },
     monthGridTextActive: {
         color: '#FFFFFF',
@@ -297,19 +300,19 @@ const styles = StyleSheet.create({
         marginTop: 8,
         paddingVertical: 10,
         borderRadius: 10,
-        backgroundColor: '#F5F5F5',
+        backgroundColor: colors.surfaceSecondary,
         borderWidth: 1,
-        borderColor: '#E0E0E0',
+        borderColor: colors.border,
         alignItems: 'center',
     },
     allTimeButtonActive: {
-        backgroundColor: '#007AFF',
-        borderColor: '#007AFF',
+        backgroundColor: colors.primary,
+        borderColor: colors.primary,
     },
     allTimeText: {
         fontSize: 14,
         fontWeight: '600',
-        color: '#444',
+        color: colors.textPrimary,
     },
     allTimeTextActive: {
         color: '#FFFFFF',

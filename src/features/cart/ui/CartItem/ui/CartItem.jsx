@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useMemo, useState, useRef, useCallback } from 'react';
 import {
     View,
     Text,
@@ -12,13 +12,11 @@ import {
 } from 'react-native';
 import { useCartProduct } from '@entities/cart';
 import { useFavoriteStatus } from '@entities/favorites/hooks/useFavoriteStatus';
-import { useCustomAlert } from '@shared/ui/CustomAlert';
+import { useToast } from '@shared/ui/Toast';
 
-import {
-    Color,
-    FontFamily
-} from '@app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
 import { TrashIcon } from '@shared/ui/Cart/ui/DeleteProductButton/TrashIcon';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -35,6 +33,8 @@ export const CartItem = React.memo(({
                                         isSelected = false,
                                         onToggleSelection
                                     }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const {
         quantity,
         isUpdating,
@@ -54,8 +54,7 @@ export const CartItem = React.memo(({
         isAuthenticated 
     } = useFavoriteStatus(item.productId || item.product?.id);
 
-    // Хук для кастомных алертов
-    const { showError, showInfo } = useCustomAlert();
+    const { showError, showInfo } = useToast();
 
     const product = item.product;
     const isLoading = isRemoving; // Убираем isUpdating из общего состояния загрузки
@@ -94,7 +93,7 @@ export const CartItem = React.memo(({
         const newQuantity = parseInt(inputValue, 10);
 
         if (isNaN(newQuantity) || newQuantity < 1) {
-            showError('Ошибка', 'Количество должно быть больше 0');
+            showError('Количество должно быть больше 0', { duration: 4000, position: 'top' });
             setInputValue(quantity.toString());
             setIsEditingQuantity(false);
             return;
@@ -201,10 +200,10 @@ export const CartItem = React.memo(({
     // Обработчик для кнопки избранного
     const handleFavoritePress = useCallback(async () => {
         if (!isAuthenticated) {
-            showInfo(
-                'Требуется авторизация',
-                'Для добавления товаров в избранное необходимо войти в аккаунт'
-            );
+            showInfo('Для добавления товаров в избранное необходимо войти в аккаунт', {
+                duration: 4000,
+                position: 'top',
+            });
             return;
         }
 
@@ -212,7 +211,7 @@ export const CartItem = React.memo(({
             await toggleFavorite();
         } catch (error) {
             console.error('Ошибка при работе с избранным:', error);
-            showError('Ошибка', 'Не удалось обновить избранное');
+            showError('Не удалось обновить избранное', { duration: 5000, position: 'top' });
         }
     }, [toggleFavorite, isAuthenticated, showInfo, showError]);
 
@@ -337,11 +336,11 @@ export const CartItem = React.memo(({
                                 disabled={isFavoriteLoading}
                             >
                                 {isFavoriteLoading ? (
-                                    <ActivityIndicator size="small" color="#FF6B9D" />
+                                    <ActivityIndicator size="small" color={colors.error} />
                                 ) : (
                                     <Text style={[
                                         styles.favoriteIcon,
-                                        { color: isFavorite ? '#FF6B9D' : '#8B95A7' }
+                                        { color: isFavorite ? colors.error : colors.textTertiary }
                                     ]}>
                                         {isFavorite ? '♥' : '♡'}
                                     </Text>
@@ -355,12 +354,12 @@ export const CartItem = React.memo(({
                                 disabled={isRemoving}
                             >
                                 {isRemoving ? (
-                                    <ActivityIndicator size="small" color="#666" />
+                                    <ActivityIndicator size="small" color={colors.textSecondary} />
                                 ) : (
                                     <TrashIcon
                                         width={normalize(16)}
                                         height={normalize(18)}
-                                        color="#666"
+                                        color={colors.textSecondary}
                                     />
                                 )}
                             </TouchableOpacity>
@@ -396,6 +395,8 @@ export const CartItem = React.memo(({
                                             selectTextOnFocus={true}
                                             autoFocus={true}
                                             textAlign="center"
+                                            placeholderTextColor={colors.textTertiary}
+                                            keyboardAppearance={colors.keyboardAppearance}
                                         />
                                     ) : (
                                         <TouchableOpacity onPress={handleQuantityPress} style={styles.quantityTextContainer}>
@@ -428,7 +429,7 @@ export const CartItem = React.memo(({
                         <View style={styles.loadingOverlay}>
                             <ActivityIndicator
                                 size="small"
-                                color="rgba(0, 115, 230, 0.7)"
+                                color={colors.primary}
                             />
                         </View>
                     )}
@@ -441,9 +442,9 @@ export const CartItem = React.memo(({
     );
 });
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.cardBackground,
         marginHorizontal: normalize(16),
         marginVertical: normalize(4),
         overflow: 'hidden',
@@ -454,9 +455,11 @@ const styles = StyleSheet.create({
             width: 0,
             height: 1,
         },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-        elevation: 1,
+        shadowOpacity: isDark ? 0.25 : 0.05,
+        shadowRadius: isDark ? 6 : 2,
+        elevation: isDark ? 2 : 1,
+        borderWidth: isDark ? 1 : 0,
+        borderColor: colors.border,
     },
     containerLoading: {
         opacity: 0.7,
@@ -464,14 +467,14 @@ const styles = StyleSheet.create({
 
     // Основная карточка
     cardContainer: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.cardBackground,
         borderRadius: normalize(12),
         overflow: 'hidden',
     },
     content: {
         paddingHorizontal: normalize(16),
         paddingVertical: normalize(16),
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.cardBackground,
         flexDirection: 'row',
         alignItems: 'flex-start',
     },
@@ -490,17 +493,17 @@ const styles = StyleSheet.create({
         height: normalize(20),
         borderRadius: normalize(4),
         borderWidth: 1.5,
-        borderColor: '#C1C7DE',
-        backgroundColor: '#FFFFFF',
+        borderColor: colors.border,
+        backgroundColor: colors.inputBackground,
         justifyContent: 'center',
         alignItems: 'center',
     },
     checkboxSelected: {
-        backgroundColor: '#0073E6',
-        borderColor: '#0073E6',
+        backgroundColor: colors.primary,
+        borderColor: colors.primary,
     },
     checkmark: {
-        color: '#FFFFFF',
+        color: colors.textInverse,
         fontSize: normalize(12),
         fontWeight: 'bold',
         includeFontPadding: false,
@@ -511,7 +514,7 @@ const styles = StyleSheet.create({
         width: normalize(80),
         height: normalize(80),
         borderRadius: normalize(8),
-        backgroundColor: '#F5F5F5',
+        backgroundColor: colors.surfaceSecondary,
         marginRight: normalize(12),
     },
 
@@ -528,14 +531,14 @@ const styles = StyleSheet.create({
         marginBottom: normalize(4),
     },
     productPrice: {
-        color: '#000000',
+        color: colors.textPrimary,
         fontSize: normalize(18),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '700',
         marginRight: normalize(8),
     },
     originalPrice: {
-        color: '#8B95A7',
+        color: colors.textTertiary,
         fontSize: normalize(14),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '400',
@@ -545,14 +548,14 @@ const styles = StyleSheet.create({
     // Бейдж скидки
     discountBadge: {
         alignSelf: 'flex-start',
-        backgroundColor: '#FF0080',
+        backgroundColor: colors.error,
         paddingHorizontal: normalize(8),
         paddingVertical: normalize(2),
         borderRadius: normalize(10),
         marginBottom: normalize(8),
     },
     discountText: {
-        color: '#FFFFFF',
+        color: colors.textInverse,
         fontSize: normalize(11),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
@@ -560,7 +563,7 @@ const styles = StyleSheet.create({
 
     // Название товара
     productName: {
-        color: '#000000',
+        color: colors.textPrimary,
         fontSize: normalize(14),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '400',
@@ -570,7 +573,7 @@ const styles = StyleSheet.create({
 
     // Поставщик
     supplierText: {
-        color: '#8B95A7',
+        color: colors.textSecondary,
         fontSize: normalize(12),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '400',
@@ -579,7 +582,7 @@ const styles = StyleSheet.create({
 
     // Информация о коробке
     priceLabel: {
-        color: '#8B95A7',
+        color: colors.textSecondary,
         fontSize: normalize(12),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '400',
@@ -588,7 +591,7 @@ const styles = StyleSheet.create({
 
     // Ограничение количества
     limitedQuantityText: {
-        color: '#FF0080',
+        color: colors.error,
         fontSize: normalize(12),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
@@ -611,11 +614,11 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         borderRadius: normalize(16),
-        backgroundColor: '#F8F9FB',
+        backgroundColor: colors.surfaceSecondary,
     },
     favoriteIcon: {
         fontSize: normalize(16),
-        color: '#8B95A7',
+        color: colors.textTertiary,
     },
 
     // Кнопка удаления
@@ -625,7 +628,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         borderRadius: normalize(16),
-        backgroundColor: '#F8F9FB',
+        backgroundColor: colors.surfaceSecondary,
         marginLeft: normalize(8),
     },
 
@@ -634,10 +637,10 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#E5E7EB',
+        borderColor: colors.border,
         borderRadius: normalize(8),
         marginLeft: normalize(8),
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.cardBackground,
     },
 
     quantityButton: {
@@ -648,7 +651,7 @@ const styles = StyleSheet.create({
     },
 
     quantityButtonText: {
-        color: '#0073E6',
+        color: colors.primary,
         fontSize: normalize(18),
         fontWeight: '600',
         includeFontPadding: false,
@@ -660,7 +663,7 @@ const styles = StyleSheet.create({
         minWidth: normalize(32),
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#F8F9FB',
+        backgroundColor: colors.surfaceSecondary,
     },
 
     quantityTextContainer: {
@@ -672,7 +675,7 @@ const styles = StyleSheet.create({
     },
 
     quantityText: {
-        color: '#0073E6',
+        color: colors.primary,
         fontSize: normalize(14),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
@@ -682,18 +685,18 @@ const styles = StyleSheet.create({
 
 
     quantityInput: {
-        color: '#0073E6',
+        color: colors.primary,
         fontSize: normalize(14),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
         fontWeight: '600',
         includeFontPadding: false,
         textAlign: 'center',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.inputBackground,
         borderRadius: normalize(4),
         paddingHorizontal: normalize(8),
         paddingVertical: normalize(4),
         borderWidth: 1,
-        borderColor: '#0073E6',
+        borderColor: colors.primary,
         minWidth: normalize(32),
     },
 
@@ -703,7 +706,7 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(255,255,255,0.8)',
+        backgroundColor: isDark ? 'rgba(14,15,20,0.8)' : 'rgba(255,255,255,0.8)',
         justifyContent: 'center',
         alignItems: 'center',
         borderRadius: normalize(12),
@@ -712,7 +715,7 @@ const styles = StyleSheet.create({
     // Разделительная линия
     separator: {
         height: 1,
-        backgroundColor: '#F0F2F5',
+        backgroundColor: colors.border,
         marginLeft: normalize(16),
     },
 });

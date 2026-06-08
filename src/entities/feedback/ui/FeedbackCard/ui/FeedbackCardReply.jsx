@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { FontFamily } from '@app/styles/GlobalStyles';
@@ -12,7 +12,8 @@ export const FeedbackCardReply = ({
                                       isExpanded,
                                       onToggleExpand
                                   }) => {
-    const { colors } = useTheme();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     if (!reply) return null;
 
@@ -22,16 +23,13 @@ export const FeedbackCardReply = ({
     // Проверка, нужно ли отображать кнопку "еще"
     const shouldShowButton = reply && reply.length > 80;
 
-    // Цвет фона для ответа
-    const backgroundColor = colors?.theme === 'light' ? '#F5F5F5' : '#333333';
-
     return (
         <View style={styles.container}>
-            <View style={[styles.background, { backgroundColor }]} />
+            <View style={styles.background} />
 
             <View style={styles.textContainer}>
                 <Text
-                    style={[styles.replyText, { color: colors?.text }]}
+                    style={styles.replyText}
                     numberOfLines={isExpanded ? undefined : MAX_LINES}
                 >
                     {reply}
@@ -52,7 +50,7 @@ export const FeedbackCardReply = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         marginHorizontal: 16,
         marginTop: 10,
@@ -67,6 +65,9 @@ const styles = StyleSheet.create({
         width: '100%',
         height: '100%',
         borderRadius: 10,
+        backgroundColor: isDark ? colors.surfaceElevated || '#2A2F55' : '#F5F5F5',
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     textContainer: {
         padding: 12,
@@ -76,6 +77,7 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontFamily: FontFamily.sFProText,
         lineHeight: 18,
+        color: colors.textPrimary,
     },
     showMoreButton: {
         position: 'absolute',
@@ -85,6 +87,6 @@ const styles = StyleSheet.create({
     showMoreText: {
         fontSize: 13,
         fontFamily: FontFamily.sFProText,
-        color: '#6B4EFF',
+        color: isDark ? '#A0A8FF' : '#6B4EFF',
     }
 });

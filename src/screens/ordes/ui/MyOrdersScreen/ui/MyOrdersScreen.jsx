@@ -9,20 +9,24 @@ import {
     TextInput,
     Dimensions,
     StatusBar,
-    Image,
     Animated,
     ScrollView,
     Clipboard
 } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { OrderApi } from '@entities/order';
-import { getImageUrl } from '@shared/api/api';
 import { Loader } from "@shared/ui/Loader";
+import { ReliableImage, normalizeImageSource } from '@shared/ui/ReliableImage';
 import { getOrderProgress } from '@shared/lib/orderUtils';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { ORDER_DETAILS_CLIENT_DARK_BACKGROUND, OrderDetailsScreenThemeProvider } from '@shared/ui/OrderDetailsStyles';
+import { OrderDetailsBackButton } from '@shared/ui/OrderDetailsBackButton/ui/OrderDetailsBackButton';
+import { exitMyOrdersScreen } from '@screens/payment/ui/PaymentScreen/utils/paymentNavigation';
 import { 
     useOrderAlternatives, 
     ChoiceNotificationBanner,
@@ -35,6 +39,7 @@ const ORDER_STATUSES = {
     PENDING: 'PENDING',
     PENDING_PAYMENT: 'PENDING_PAYMENT',
     CONFIRMED: 'CONFIRMED',
+    PICKING: 'PICKING',
     WAITING_STOCK: 'WAITING_STOCK',
     IN_DELIVERY: 'IN_DELIVERY',
     DELIVERED: 'DELIVERED',
@@ -46,6 +51,7 @@ const ORDER_STATUS_LABELS = {
     [ORDER_STATUSES.PENDING]: 'Ожидает',
     [ORDER_STATUSES.PENDING_PAYMENT]: 'Ожидает оплату',
     [ORDER_STATUSES.CONFIRMED]: 'Подтвержден',
+    [ORDER_STATUSES.PICKING]: 'Сборка',
     [ORDER_STATUSES.WAITING_STOCK]: 'Ожидает товар',
     [ORDER_STATUSES.IN_DELIVERY]: 'В доставке',
     [ORDER_STATUSES.DELIVERED]: 'Доставлен',
@@ -58,9 +64,10 @@ const STATUS_ICONS = {
     [ORDER_STATUSES.PENDING]: 'schedule',
     [ORDER_STATUSES.PENDING_PAYMENT]: 'payment',
     [ORDER_STATUSES.CONFIRMED]: 'check-circle',
+    [ORDER_STATUSES.PICKING]: 'inventory-2',
     [ORDER_STATUSES.WAITING_STOCK]: 'inventory',
     [ORDER_STATUSES.IN_DELIVERY]: 'local-shipping',
-    [ORDER_STATUSES.DELIVERED]: 'task-alt',
+    [ORDER_STATUSES.DELIVERED]: 'done-all',
     [ORDER_STATUSES.CANCELLED]: 'cancel',
     [ORDER_STATUSES.RETURNED]: 'undo'
 };
@@ -70,6 +77,7 @@ const STATUS_GRADIENTS = {
     [ORDER_STATUSES.PENDING]: ['#FFA726', '#FFB74D'],
     [ORDER_STATUSES.PENDING_PAYMENT]: ['#FF9800', '#FFB74D'],
     [ORDER_STATUSES.CONFIRMED]: ['#42A5F5', '#64B5F6'],
+    [ORDER_STATUSES.PICKING]: ['#FFC107', '#FFD54F'],
     [ORDER_STATUSES.WAITING_STOCK]: ['#fd7e14', '#ff8c00'],
     [ORDER_STATUSES.IN_DELIVERY]: ['#5C6BC0', '#7986CB'],
     [ORDER_STATUSES.DELIVERED]: ['#66BB6A', '#81C784'],
@@ -82,6 +90,7 @@ const ACTIVE_STATUSES = [
     ORDER_STATUSES.PENDING_PAYMENT,
     ORDER_STATUSES.PENDING,
     ORDER_STATUSES.CONFIRMED,
+    ORDER_STATUSES.PICKING,
     ORDER_STATUSES.WAITING_STOCK,
     ORDER_STATUSES.IN_DELIVERY
 ];
@@ -155,6 +164,69 @@ const formatOrderNumber = (orderNumber) => {
     return `№${orderNumber}`;
 };
 
+const normalizeProductImagePath = (value) => {
+    if (!value || typeof value !== 'string') return null;
+    if (/^https?:\/\//i.test(value)) return value;
+
+    let normalized = value.replace(/^\/+/, '').replace(/\\/g, '/');
+    if (!normalized) return null;
+
+    if (normalized.startsWith('uploads/')) {
+        normalized = normalized.replace(/^uploads\//, '');
+    }
+
+    if (!normalized.includes('/')) {
+        return `products/${normalized}`;
+    }
+
+    return normalized;
+};
+
+const extractProductImagePath = (product) => {
+    if (!product) return null;
+
+    const images = product.images;
+    let rawPath = null;
+
+    if (Array.isArray(images) && images.length > 0) {
+        const firstImage = images.find(Boolean);
+        if (typeof firstImage === 'string') {
+            rawPath = firstImage;
+        } else if (firstImage && typeof firstImage === 'object') {
+            rawPath = firstImage.url || firstImage.uri || firstImage.path || firstImage.src;
+        }
+    } else if (typeof images === 'string') {
+        const trimmed = images.trim();
+        if (trimmed) {
+            try {
+                const parsed = JSON.parse(trimmed);
+                rawPath = Array.isArray(parsed) ? parsed.find(Boolean) : trimmed;
+            } catch {
+                rawPath = trimmed;
+            }
+        }
+    }
+
+    if (!rawPath && product.image) {
+        if (typeof product.image === 'string') {
+            rawPath = product.image;
+        } else if (typeof product.image === 'object') {
+            rawPath = product.image.uri || product.image.url || product.image.path || product.image.src;
+        }
+    }
+
+    if (!rawPath && typeof product.imageUrl === 'string') {
+        rawPath = product.imageUrl;
+    }
+
+    return normalizeProductImagePath(rawPath);
+};
+
+const resolveProductImageSource = (product) => {
+    const imagePath = extractProductImagePath(product);
+    return imagePath ? normalizeImageSource(imagePath) : null;
+};
+
 const canCancelOrder = (status, userRole = 'CLIENT') => {
     if (userRole === 'CLIENT') {
         return [ORDER_STATUSES.PENDING_PAYMENT, ORDER_STATUSES.PENDING, ORDER_STATUSES.WAITING_STOCK].includes(status);
@@ -168,10 +240,29 @@ const canCancelOrder = (status, userRole = 'CLIENT') => {
 };
 
 const { width, height } = Dimensions.get('window');
+const ON_PRIMARY_COLOR = '#FFFFFF';
 
-export const MyOrdersScreen = () => {
+export const MyOrdersScreen = () => (
+    <OrderDetailsScreenThemeProvider darkScreenBackground={ORDER_DETAILS_CLIENT_DARK_BACKGROUND}>
+        <MyOrdersScreenContent />
+    </OrderDetailsScreenThemeProvider>
+);
+
+const MyOrdersScreenContent = () => {
     const navigation = useNavigation();
+    const route = useRoute();
     const dispatch = useDispatch();
+    const { colors, isDark } = useTheme();
+    const insets = useSafeAreaInsets();
+    const listContentPadding = 80 + insets.bottom + 12;
+    const screenBackground = isDark ? ORDER_DETAILS_CLIENT_DARK_BACKGROUND : colors.primary;
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
+    const handleGoBack = useCallback(() => {
+        exitMyOrdersScreen(navigation, {
+            fromScreen: route.params?.fromScreen,
+        });
+    }, [navigation, route.params?.fromScreen]);
     
     // Хук для кастомных алертов
     const { showConfirm, showSuccess, showError, showInfo } = useCustomAlert();
@@ -215,6 +306,7 @@ export const MyOrdersScreen = () => {
     const autoRefreshRef = useRef(null);
     const isMountedRef = useRef(true);
     const initialLoadRef = useRef(false);
+    const lastFetchTimeRef = useRef(0);
 
     // Анимация для карточек - используем useRef чтобы избежать пересоздания
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -232,8 +324,8 @@ export const MyOrdersScreen = () => {
 
     // Разделение заказов на активные и архивные
     const { activeOrders, archivedOrders } = useMemo(() => {
-        const active = orders.filter(order => ACTIVE_STATUSES.includes(order.status));
         const archived = orders.filter(order => ARCHIVED_STATUSES.includes(order.status));
+        const active = orders.filter(order => !ARCHIVED_STATUSES.includes(order.status));
         return { activeOrders: active, archivedOrders: archived };
     }, [orders]);
 
@@ -245,34 +337,36 @@ export const MyOrdersScreen = () => {
         }
 
         try {
-            // Пытаемся загрузить из кэша при первом запуске
+            let showedCache = false;
+
+            // Показываем кэш сразу, но всё равно обновляем с сервера
             if (!isRefresh && !dataLoaded && !initialLoadRef.current) {
                 const cachedData = await loadCacheData();
                 if (cachedData) {
-                    console.log('MyOrdersScreen: Используем данные из кэша');
+                    console.log('MyOrdersScreen: Показываем кэш, затем обновим с сервера');
                     setOrders(cachedData.orders || []);
                     setStats(cachedData.stats || {
-                    totalOrders: 0,
-                    totalAmount: 0,
-                    statusCounts: {},
-                    archivedCount: 0
-                });
+                        totalOrders: 0,
+                        totalAmount: 0,
+                        statusCounts: {},
+                        archivedCount: 0
+                    });
                     setDataLoaded(true);
                     initialLoadRef.current = true;
                     setLastFetchTime(cachedData.timestamp || Date.now());
+                    lastFetchTimeRef.current = cachedData.timestamp || Date.now();
                     setLoading(false);
-                    
-                    // Анимация появления
+                    showedCache = true;
+
                     Animated.timing(fadeAnim, {
                         toValue: 1,
                         duration: 300,
                         useNativeDriver: true,
                     }).start();
-                    return;
                 }
             }
 
-            if (!isRefresh) {
+            if (!isRefresh && !showedCache) {
                 setLoading(true);
             }
             setError(null);
@@ -298,7 +392,7 @@ export const MyOrdersScreen = () => {
                 setOrders(ordersData);
                 
                 // Вычисляем статистику только для активных заказов
-                const activeOrdersData = ordersData.filter(order => ACTIVE_STATUSES.includes(order.status));
+                const activeOrdersData = ordersData.filter(order => !ARCHIVED_STATUSES.includes(order.status));
                 const archivedOrdersData = ordersData.filter(order => ARCHIVED_STATUSES.includes(order.status));
                 
                 const totalAmount = activeOrdersData.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
@@ -319,6 +413,7 @@ export const MyOrdersScreen = () => {
                 // Сохраняем данные в кэш
                 const currentTime = Date.now();
                 setLastFetchTime(currentTime);
+                lastFetchTimeRef.current = currentTime;
                 setDataLoaded(true);
                 initialLoadRef.current = true;
 
@@ -422,35 +517,31 @@ export const MyOrdersScreen = () => {
                 if (!initialLoadRef.current) {
                     const initializeScreen = async () => {
                         try {
-                            // Пытаемся загрузить из кэша при первом запуске
                             const cachedData = await loadCacheData();
                             if (cachedData) {
-                                console.log('MyOrdersScreen: Используем данные из кэша при инициализации');
+                                console.log('MyOrdersScreen: Показываем кэш при инициализации');
                                 setOrders(cachedData.orders || []);
                                 setStats(cachedData.stats || {
-                    totalOrders: 0,
-                    totalAmount: 0,
-                    statusCounts: {},
-                    archivedCount: 0
-                });
+                                    totalOrders: 0,
+                                    totalAmount: 0,
+                                    statusCounts: {},
+                                    archivedCount: 0
+                                });
                                 setDataLoaded(true);
                                 initialLoadRef.current = true;
                                 setLastFetchTime(cachedData.timestamp || Date.now());
+                                lastFetchTimeRef.current = cachedData.timestamp || Date.now();
                                 setLoading(false);
-                                
-                                // Анимация появления
+
                                 Animated.timing(fadeAnim, {
                                     toValue: 1,
                                     duration: 300,
                                     useNativeDriver: true,
                                 }).start();
-                            } else {
-                                // Загружаем данные с сервера если кэша нет
-                                console.log('MyOrdersScreen: Инициализация - начинаем загрузку данных');
-                                loadOrdersRef.current?.();
                             }
-                            
-                            // Загружаем альтернативные предложения
+
+                            loadOrdersRef.current?.(true);
+
                             if (loadMyChoices) {
                                 loadMyChoices();
                             }
@@ -459,9 +550,13 @@ export const MyOrdersScreen = () => {
                             setLoading(false);
                         }
                     };
-                    
+
                     initializeScreen();
                 } else {
+                    const timeSinceLastFetch = Date.now() - lastFetchTimeRef.current;
+                    if (timeSinceLastFetch > 15000) {
+                        loadOrdersRef.current?.(true);
+                    }
 
                     console.log('MyOrdersScreen: Обновление предложений при возврате на экран');
                     if (loadMyChoices) {
@@ -616,7 +711,7 @@ export const MyOrdersScreen = () => {
         if (selectedTab === 'active' && hasActiveChoices) {
             // Подсчитываем заказы с активными предложениями
             const choicesCount = orders.filter(order => {
-                if (!ACTIVE_STATUSES.includes(order.status)) return false;
+                if (ARCHIVED_STATUSES.includes(order.status)) return false;
                 const orderChoices = choices.filter(choice => 
                     choice.orderId === order.id && 
                     choice.status === 'PENDING'
@@ -650,44 +745,9 @@ export const MyOrdersScreen = () => {
 
     // Получаем основной товар из заказа
     const getMainProduct = useCallback((order) => {
-        if (!order.items || order.items.length === 0) return null;
-        return order.items[0];
-    }, []);
-
-    // Получаем изображение товара
-    const getProductImage = useCallback((product) => {
-        if (!product?.images || product.images.length === 0) {
-            return null; // Возвращаем null для использования плейсхолдера
-        }
-        
-        const firstImage = product.images[0];
-
-        
-        let imageUrl = '';
-        
-        if (typeof firstImage === 'string') {
-            imageUrl = firstImage;
-        } else if (typeof firstImage === 'object' && firstImage !== null) {
-            imageUrl = firstImage.path || firstImage.url || firstImage.uri || firstImage;
-        }
-        
-        if (!imageUrl) {
-            console.log('MyOrdersScreen: Нет URL изображения, используем placeholder');
-            return null; // Возвращаем null для использования плейсхолдера
-        }
-        
-        // Если уже полный URL
-        if (imageUrl.startsWith('http') || imageUrl.startsWith('https')) {
-            console.log('MyOrdersScreen: Полный URL:', imageUrl);
-            return { uri: imageUrl };
-        }
-        
-        // Нормализуем путь: заменяем обратные слеши на прямые
-        const normalizedPath = imageUrl.replace(/\\/g, '/');
-        
-        const fullUrl = getImageUrl(normalizedPath);
-        
-        return { uri: fullUrl };
+        const items = order.orderItems || order.items;
+        if (!items || items.length === 0) return null;
+        return items[0];
     }, []);
 
     // Рендер современного заголовка со статистикой
@@ -721,7 +781,7 @@ export const MyOrdersScreen = () => {
                 <Icon 
                     name="assignment" 
                     size={20} 
-                    color={selectedTab === 'active' ? '#fff' : '#666'} 
+                    color={selectedTab === 'active' ? ON_PRIMARY_COLOR : colors.textSecondary} 
                 />
                 <Text style={[styles.tabText, selectedTab === 'active' && styles.activeTabText]}>
                     Активные ({stats.totalOrders})
@@ -735,7 +795,7 @@ export const MyOrdersScreen = () => {
                 <Icon 
                     name="archive" 
                     size={20} 
-                    color={selectedTab === 'archived' ? '#fff' : '#666'} 
+                    color={selectedTab === 'archived' ? ON_PRIMARY_COLOR : colors.textSecondary} 
                 />
                 <Text style={[styles.tabText, selectedTab === 'archived' && styles.activeTabText]}>
                     Завершенные ({stats.archivedCount})
@@ -748,20 +808,22 @@ export const MyOrdersScreen = () => {
     const renderModernSearch = () => (
         <View style={styles.searchContainer}>
             <View style={styles.searchInputContainer}>
-                <Icon name="search" size={24} color="#999" style={styles.searchIcon} />
+                <Icon name="search" size={24} color={colors.textTertiary} style={styles.searchIcon} />
                 <TextInput
                     style={styles.searchInput}
                     placeholder={selectedTab === 'active' ? "Найти активный заказ..." : "Найти из завершенных..."}
                     value={searchQuery}
                     onChangeText={setSearchQuery}
-                    placeholderTextColor="#999"
+                    placeholderTextColor={colors.textTertiary}
+                    keyboardAppearance={colors.keyboardAppearance}
+                    selectionColor={colors.primary}
                 />
                 {searchQuery.length > 0 && (
                     <TouchableOpacity
                         onPress={() => setSearchQuery('')}
                         style={styles.clearButton}
                     >
-                        <Icon name="clear" size={20} color="#999" />
+                        <Icon name="clear" size={20} color={colors.textTertiary} />
                     </TouchableOpacity>
                 )}
             </View>
@@ -815,7 +877,7 @@ export const MyOrdersScreen = () => {
     // Рендер карточки заказа
     const renderModernOrderItem = useCallback(({ item, index }) => {
         const mainProduct = getMainProduct(item);
-        const productImage = mainProduct ? getProductImage(mainProduct.product) : null;
+        const productImageSource = mainProduct ? resolveProductImageSource(mainProduct.product) : null;
         const statusProgress = getStatusProgress(item.status);
         const statusGradient = STATUS_GRADIENTS[item.status];
         const isCancelling = cancellingOrderId === item.id;
@@ -867,7 +929,7 @@ export const MyOrdersScreen = () => {
                             <Icon 
                                 name={STATUS_ICONS[item.status]} 
                                 size={12} 
-                                color="#fff" 
+                                color={colors.textInverse} 
                             />
                             <Text style={styles.statusText}>
                                 {ORDER_STATUS_LABELS[item.status]}
@@ -889,7 +951,7 @@ export const MyOrdersScreen = () => {
                             activeOpacity={0.7}
                             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                         >
-                            <Icon name="content-copy" size={14} color="#667eea" />
+                            <Icon name="content-copy" size={14} color={colors.primary} />
                         </TouchableOpacity>
                     </View>
                     
@@ -923,24 +985,18 @@ export const MyOrdersScreen = () => {
                     {/* Основной контент */}
                     <View style={styles.orderContent}>
                         <View style={styles.productImageContainer}>
-                            {productImage ? (
-                                <Image 
-                                    source={productImage}
-                                    style={styles.productImage}
-                                    resizeMode="cover"
-                                    onError={() => console.log('Error loading image')}
-                                />
-                            ) : (
-                                <View style={[styles.productImage, styles.placeholderContainer]}>
-                                    <Icon name="image" size={24} color="#ccc" />
-                                </View>
-                            )}
+                            <ReliableImage
+                                source={productImageSource}
+                                style={styles.productImage}
+                                resizeMode="cover"
+                                placeholderIconSize={24}
+                            />
                         </View>
                         
                         <View style={styles.orderDetails}>
                             <View style={styles.orderItemsInfo}>
                                 <View style={styles.itemsCountContainer}>
-                                    <Icon name="shopping-cart" size={14} color="#4a5568" />
+                                    <Icon name="shopping-cart" size={14} color={colors.textSecondary} />
                                     <Text style={styles.itemsCount}>
                                         {mainProduct?.product?.name || 'Заказ'}
                                         {item.items && item.items.length > 1 && (
@@ -951,7 +1007,7 @@ export const MyOrdersScreen = () => {
                                 
                                 {item.deliveryDate && (
                                     <View style={styles.deliveryContainer}>
-                                        <Icon name="local-shipping" size={12} color="#28a745" />
+                                        <Icon name="local-shipping" size={12} color={colors.success} />
                                         <Text style={styles.deliveryDate}>
                                             {new Date(item.deliveryDate).toLocaleDateString('ru-RU')}
                                         </Text>
@@ -965,14 +1021,14 @@ export const MyOrdersScreen = () => {
                                     <Text style={styles.amount}>{formatAmount(item.totalAmount)}</Text>
                                 </View>
                                 <View style={styles.amountIcon}>
-                                    <Icon name="account-balance-wallet" size={16} color="#667eea" />
+                                    <Icon name="account-balance-wallet" size={16} color={colors.primary} />
                                 </View>
                             </View>
 
                             {item.deliveryAddress && (
                                 <View style={styles.addressContainer}>
                                     <View style={styles.addressHeader}>
-                                        <Icon name="location-on" size={14} color="#718096" />
+                                        <Icon name="location-on" size={14} color={colors.textSecondary} />
                                         <Text style={styles.addressLabel}>Адрес доставки</Text>
                                     </View>
                                     <Text style={styles.address} numberOfLines={2}>
@@ -999,7 +1055,7 @@ export const MyOrdersScreen = () => {
                             }}
                             activeOpacity={0.7}
                         >
-                            <Icon name="compare-arrows" size={16} color="#667eea" />
+                            <Icon name="compare-arrows" size={16} color={colors.primary} />
                             <Text style={styles.choiceActionText}>
                                 Выбрать альтернативу ({orderChoices.length})
                             </Text>
@@ -1017,7 +1073,7 @@ export const MyOrdersScreen = () => {
                             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                             disabled={isCancelling}
                         >
-                            <Icon name="close" size={14} color="#EF5350" />
+                            <Icon name="close" size={14} color={colors.error} />
                             <Text style={styles.cancelActionText}>Отменить заказ</Text>
                         </TouchableOpacity>
                     )}
@@ -1027,21 +1083,21 @@ export const MyOrdersScreen = () => {
                 {isCancelling && (
                     <View style={styles.cancellingOverlay}>
                         <View style={styles.cancellingContent}>
-                            <Loader type="spinner" color="#667eea" size="large" />
+                            <Loader type="spinner" color={colors.primary} size="large" />
                             <Text style={styles.cancellingText}>Отменяем заказ...</Text>
                         </View>
                     </View>
                 )}
             </Animated.View>
         );
-    }, [handleOrderPress, handleCancelOrder, handleChoicePress, getMainProduct, getProductImage, getStatusProgress, cancellingOrderId, choices, navigation]);
+    }, [handleOrderPress, handleCancelOrder, handleChoicePress, getMainProduct, getStatusProgress, cancellingOrderId, choices, navigation, colors]);
 
     // Рендер скелетон-лоадера
     const renderSkeletonLoader = () => (
         <View style={styles.skeletonContainer}>
             <Loader 
                 type="youtube"
-                color="#667eea"
+                color={colors.primary}
             />
         </View>
     );
@@ -1054,7 +1110,7 @@ export const MyOrdersScreen = () => {
             return (
                 <View style={styles.emptyStateContainer}>
                     <View style={styles.emptyStateIconContainer}>
-                        <Icon name="search-off" size={80} color="#e0e0e0" />
+                        <Icon name="search-off" size={80} color={colors.textTertiary} />
                     </View>
                     <Text style={styles.emptyStateTitle}>Ничего не найдено</Text>
                     <Text style={styles.emptyStateSubtitle}>
@@ -1067,7 +1123,7 @@ export const MyOrdersScreen = () => {
                             setSelectedStatus('ALL');
                         }}
                     >
-                        <Icon name="clear-all" size={20} color="#fff" />
+                        <Icon name="clear-all" size={20} color={ON_PRIMARY_COLOR} />
                         <Text style={styles.modernButtonText}>Сбросить фильтры</Text>
                     </TouchableOpacity>
                 </View>
@@ -1078,7 +1134,7 @@ export const MyOrdersScreen = () => {
             return (
                 <View style={styles.emptyStateContainer}>
                     <View style={styles.emptyStateIconContainer}>
-                        <Icon name="archive" size={80} color="#e0e0e0" />
+                        <Icon name="archive" size={80} color={colors.textTertiary} />
                     </View>
                     <Text style={styles.emptyStateTitle}>Архив пуст</Text>
                     <Text style={styles.emptyStateSubtitle}>
@@ -1088,7 +1144,7 @@ export const MyOrdersScreen = () => {
                         style={styles.modernButton}
                         onPress={() => handleTabChange('active')}
                     >
-                        <Icon name="assignment" size={20} color="#fff" />
+                        <Icon name="assignment" size={20} color={ON_PRIMARY_COLOR} />
                         <Text style={styles.modernButtonText}>К активным заказам</Text>
                     </TouchableOpacity>
                 </View>
@@ -1098,7 +1154,7 @@ export const MyOrdersScreen = () => {
         return (
             <View style={styles.emptyStateContainer}>
                 <View style={styles.emptyStateIconContainer}>
-                    <Icon name="shopping-bag" size={80} color="#e0e0e0" />
+                    <Icon name="shopping-bag" size={80} color={colors.textTertiary} />
                 </View>
                 <Text style={styles.emptyStateTitle}>Нет активных заказов</Text>
                 <Text style={styles.emptyStateSubtitle}>
@@ -1109,7 +1165,7 @@ export const MyOrdersScreen = () => {
                         style={styles.primaryButton}
                         onPress={() => navigation.navigate('MainTab', { screen: 'Main' })}
                     >
-                        <Icon name="storefront" size={20} color="#fff" />
+                        <Icon name="storefront" size={20} color={ON_PRIMARY_COLOR} />
                         <Text style={styles.primaryButtonText}>Перейти в каталог</Text>
                     </TouchableOpacity>
                     {stats.archivedCount > 0 && (
@@ -1117,7 +1173,7 @@ export const MyOrdersScreen = () => {
                             style={styles.secondaryButton}
                             onPress={() => handleTabChange('archived')}
                         >
-                            <Icon name="archive" size={20} color="#667eea" />
+                            <Icon name="archive" size={20} color={isDark ? ON_PRIMARY_COLOR : screenBackground} />
                             <Text style={styles.secondaryButtonText}>
                                 Посмотреть завершенные ({stats.archivedCount})
                             </Text>
@@ -1132,7 +1188,7 @@ export const MyOrdersScreen = () => {
     const renderAccessDenied = () => (
         <View style={styles.accessDeniedContainer}>
             <View style={styles.accessDeniedGradient}>
-                <Icon name="lock" size={80} color="#fff" />
+                <Icon name="lock" size={80} color={colors.textInverse} />
                 <Text style={styles.accessDeniedTitle}>Доступ ограничен</Text>
                 <Text style={styles.accessDeniedSubtitle}>
                     Для просмотра заказов необходимо войти в систему как клиент
@@ -1141,7 +1197,7 @@ export const MyOrdersScreen = () => {
                     style={styles.loginButton}
                     onPress={() => navigation.navigate('Auth', { screen: 'Login' })}
                 >
-                    <Icon name="login" size={20} color="#ff7675" />
+                    <Icon name="login" size={20} color={colors.error} />
                     <Text style={styles.loginButtonText}>Войти в систему</Text>
                 </TouchableOpacity>
             </View>
@@ -1152,7 +1208,7 @@ export const MyOrdersScreen = () => {
     const renderError = () => (
         <View style={styles.errorContainer}>
             <View style={styles.errorIconContainer}>
-                <Icon name="error-outline" size={80} color="#f44336" />
+                <Icon name="error-outline" size={80} color={colors.error} />
             </View>
             <Text style={styles.errorTitle}>Что-то пошло не так</Text>
             <Text style={styles.errorSubtitle}>{error}</Text>
@@ -1160,7 +1216,7 @@ export const MyOrdersScreen = () => {
                 style={styles.retryButton}
                 onPress={() => loadOrders()}
             >
-                <Icon name="refresh" size={20} color="#fff" />
+                <Icon name="refresh" size={20} color={colors.textInverse} />
                 <Text style={styles.retryButtonText}>Попробовать снова</Text>
             </TouchableOpacity>
         </View>
@@ -1196,7 +1252,8 @@ export const MyOrdersScreen = () => {
     if (loading && !refreshing) {
         return (
             <View style={styles.container}>
-                <StatusBar barStyle="light-content" backgroundColor="#667eea" />
+                <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
+                <OrderDetailsBackButton onPress={handleGoBack} />
                 {renderModernHeader()}
                 <FlatList
                     data={[1,2,3,4,5,6,7,8]}
@@ -1209,7 +1266,7 @@ export const MyOrdersScreen = () => {
                             <View style={styles.skeletonFooter} />
                         </View>
                     )}
-                    contentContainerStyle={[styles.listContainer, styles.skeletonListContent]}
+                    contentContainerStyle={[styles.listContainer, styles.skeletonListContent, { paddingBottom: listContentPadding }]}
                     ItemSeparatorComponent={() => <View style={styles.separator} />}
                     showsVerticalScrollIndicator={false}
                 />
@@ -1221,7 +1278,8 @@ export const MyOrdersScreen = () => {
     if (!hasAccess) {
         return (
             <View style={styles.container}>
-                <StatusBar barStyle="light-content" backgroundColor="#ff7675" />
+                <StatusBar barStyle="light-content" backgroundColor={colors.error} />
+                <OrderDetailsBackButton onPress={handleGoBack} />
                 {renderAccessDenied()}
             </View>
         );
@@ -1231,7 +1289,8 @@ export const MyOrdersScreen = () => {
     if (error && !loading) {
         return (
             <View style={styles.container}>
-                <StatusBar barStyle="light-content" backgroundColor="#667eea" />
+                <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
+                <OrderDetailsBackButton onPress={handleGoBack} />
                 <ScrollView
                     style={styles.scrollContainer}
                     contentContainerStyle={styles.scrollContent}
@@ -1240,9 +1299,9 @@ export const MyOrdersScreen = () => {
                         <RefreshControl
                             refreshing={refreshing}
                             onRefresh={handleRefresh}
-                            colors={['#667eea']}
-                            tintColor="#667eea"
-                            progressBackgroundColor="#fff"
+                            colors={[screenBackground]}
+                            tintColor={screenBackground}
+                            progressBackgroundColor={colors.surface}
                         />
                     }
                 >
@@ -1255,7 +1314,8 @@ export const MyOrdersScreen = () => {
 
     return (
         <View style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor="#667eea" />
+            <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
+            <OrderDetailsBackButton onPress={handleGoBack} />
             
             {/* Список заказов с заголовком */}
             <FlatList
@@ -1265,6 +1325,7 @@ export const MyOrdersScreen = () => {
                 ListHeaderComponent={renderListHeader}
                 contentContainerStyle={[
                     styles.listContainer,
+                    { paddingBottom: listContentPadding },
                     filteredOrders.length === 0 && styles.listContainerEmpty
                 ]}
                 showsVerticalScrollIndicator={false}
@@ -1272,9 +1333,9 @@ export const MyOrdersScreen = () => {
                     <RefreshControl
                         refreshing={refreshing}
                         onRefresh={handleRefresh}
-                        colors={['#667eea']}
-                        tintColor="#667eea"
-                        progressBackgroundColor="#fff"
+                        colors={[screenBackground]}
+                        tintColor={screenBackground}
+                        progressBackgroundColor={colors.surface}
                     />
                 }
                 ListEmptyComponent={orders.length === 0 ? null : renderModernEmptyState}
@@ -1284,13 +1345,16 @@ export const MyOrdersScreen = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => {
+    const screenBackground = isDark ? ORDER_DETAILS_CLIENT_DARK_BACKGROUND : colors.primary;
+
+    return StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.background,
     },
     listContainer: {
-        paddingBottom: 16,
+        paddingBottom: 0,
     },
     listContainerEmpty: {
         flex: 1,
@@ -1306,10 +1370,10 @@ const styles = StyleSheet.create({
         marginBottom: 8,
     },
     headerGradient: {
-        backgroundColor: '#667eea',
+        backgroundColor: screenBackground,
         borderRadius: 16,
         padding: 20,
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.15,
         shadowRadius: 8,
@@ -1318,7 +1382,7 @@ const styles = StyleSheet.create({
     headerTitle: {
         fontSize: 24,
         fontWeight: '700',
-        color: '#fff',
+        color: ON_PRIMARY_COLOR,
         marginBottom: 16,
         textAlign: 'center',
     },
@@ -1333,24 +1397,24 @@ const styles = StyleSheet.create({
     statNumber: {
         fontSize: 28,
         fontWeight: '800',
-        color: '#fff',
+        color: ON_PRIMARY_COLOR,
         marginBottom: 4,
     },
     statLabel: {
         fontSize: 12,
-        color: 'rgba(255,255,255,0.8)',
+        color: ON_PRIMARY_COLOR,
         textAlign: 'center',
         fontWeight: '500',
     },
     // Современные табы
     tabsContainer: {
         flexDirection: 'row',
-        backgroundColor: '#fff',
+        backgroundColor: colors.surface,
         marginHorizontal: 16,
         borderRadius: 12,
         padding: 4,
         marginBottom: 8,
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.08,
         shadowRadius: 4,
@@ -1366,8 +1430,8 @@ const styles = StyleSheet.create({
         gap: 8,
     },
     activeTab: {
-        backgroundColor: '#667eea',
-        shadowColor: '#667eea',
+        backgroundColor: screenBackground,
+        shadowColor: screenBackground,
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.3,
         shadowRadius: 4,
@@ -1376,10 +1440,10 @@ const styles = StyleSheet.create({
     tabText: {
         fontSize: 14,
         fontWeight: '600',
-        color: '#666',
+        color: colors.textSecondary,
     },
     activeTabText: {
-        color: '#fff',
+        color: ON_PRIMARY_COLOR,
     },
     // Поиск
     searchContainer: {
@@ -1389,11 +1453,11 @@ const styles = StyleSheet.create({
     searchInputContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#fff',
+        backgroundColor: colors.surface,
         borderRadius: 12,
         paddingHorizontal: 16,
         paddingVertical: 12,
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.08,
         shadowRadius: 4,
@@ -1405,7 +1469,7 @@ const styles = StyleSheet.create({
     searchInput: {
         flex: 1,
         fontSize: 16,
-        color: '#1a1a1a',
+        color: colors.textPrimary,
         fontWeight: '500',
     },
     clearButton: {
@@ -1422,36 +1486,36 @@ const styles = StyleSheet.create({
     filterChip: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#fff',
+        backgroundColor: colors.surface,
         paddingHorizontal: 16,
         paddingVertical: 8,
         borderRadius: 20,
         marginRight: 8,
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.06,
         shadowRadius: 3,
         elevation: 2,
         borderWidth: 1,
-        borderColor: '#f0f0f0',
+        borderColor: colors.border,
     },
     activeFilterChip: {
-        backgroundColor: '#667eea',
-        borderColor: '#667eea',
-        shadowColor: '#667eea',
+        backgroundColor: screenBackground,
+        borderColor: screenBackground,
+        shadowColor: screenBackground,
         shadowOpacity: 0.3,
     },
     filterChipText: {
         fontSize: 13,
         fontWeight: '600',
-        color: '#666',
+        color: colors.textSecondary,
         marginRight: 6,
     },
     activeFilterChipText: {
-        color: '#fff',
+        color: ON_PRIMARY_COLOR,
     },
     filterChipCount: {
-        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+        backgroundColor: colors.primary + '1A',
         paddingHorizontal: 8,
         paddingVertical: 2,
         borderRadius: 10,
@@ -1464,25 +1528,25 @@ const styles = StyleSheet.create({
     filterCountText: {
         fontSize: 11,
         fontWeight: '700',
-        color: '#667eea',
+        color: colors.primary,
     },
     activeFilterCountText: {
-        color: '#fff',
+        color: ON_PRIMARY_COLOR,
     },
     // Заказы
     modernOrderCard: {
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         borderRadius: 16,
         padding: 20,
         marginHorizontal: 16,
         marginVertical: 6,
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.1,
         shadowRadius: 12,
         elevation: 6,
         borderWidth: 1,
-        borderColor: 'rgba(0,0,0,0.05)',
+        borderColor: colors.border,
     },
     clickableCardContent: {
         // Прозрачный стиль - не добавляет визуальных изменений
@@ -1496,7 +1560,7 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        backgroundColor: isDark ? 'rgba(14,15,20,0.92)' : 'rgba(255, 255, 255, 0.95)',
         borderRadius: 16,
         justifyContent: 'center',
         alignItems: 'center',
@@ -1509,7 +1573,7 @@ const styles = StyleSheet.create({
     cancellingText: {
         fontSize: 16,
         fontWeight: '600',
-        color: '#667eea',
+        color: colors.primary,
         textAlign: 'center',
     },
     orderHeader: {
@@ -1525,7 +1589,7 @@ const styles = StyleSheet.create({
         paddingVertical: 6,
         borderRadius: 16,
         gap: 4,
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.1,
         shadowRadius: 2,
@@ -1540,11 +1604,11 @@ const styles = StyleSheet.create({
     orderNumber: {
         fontSize: 15,
         fontWeight: '600',
-        color: '#1a1a1a',
+        color: colors.textPrimary,
     },
     orderDate: {
         fontSize: 12,
-        color: '#666',
+        color: colors.textSecondary,
         fontWeight: '500',
         marginBottom: 12,
     },
@@ -1552,16 +1616,16 @@ const styles = StyleSheet.create({
         width: 28,
         height: 28,
         borderRadius: 14,
-        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+        backgroundColor: colors.primary + '1A',
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: 'rgba(102, 126, 234, 0.2)',
+        borderColor: colors.primary + '33',
     },
     statusText: {
         fontSize: 11,
         fontWeight: '600',
-        color: '#fff',
+        color: colors.textInverse,
         textTransform: 'uppercase',
         letterSpacing: 0.5,
     },
@@ -1572,7 +1636,7 @@ const styles = StyleSheet.create({
     },
     progressBar: {
         height: 6,
-        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+        backgroundColor: colors.primary + '1A',
         borderRadius: 3,
         overflow: 'hidden',
     },
@@ -1582,7 +1646,7 @@ const styles = StyleSheet.create({
     },
     progressText: {
         fontSize: 11,
-        color: '#667eea',
+        color: colors.primary,
         fontWeight: '600',
         textAlign: 'right',
     },
@@ -1596,20 +1660,20 @@ const styles = StyleSheet.create({
         height: 60,
         borderRadius: 12,
         overflow: 'hidden',
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surfaceSecondary,
         borderWidth: 1,
-        borderColor: 'rgba(0,0,0,0.05)',
+        borderColor: colors.borderSubtle,
     },
     productImage: {
         width: '100%',
         height: '100%',
     },
     placeholderContainer: {
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surfaceSecondary,
         justifyContent: 'center',
         alignItems: 'center',
         borderWidth: 1,
-        borderColor: '#e9ecef',
+        borderColor: colors.border,
     },
     orderDetails: {
         flex: 1,
@@ -1625,7 +1689,7 @@ const styles = StyleSheet.create({
     },
     itemsCount: {
         fontSize: 15,
-        color: '#1a1a1a',
+        color: colors.textPrimary,
         fontWeight: '600',
         lineHeight: 20,
         flex: 1,
@@ -1637,7 +1701,7 @@ const styles = StyleSheet.create({
     },
     deliveryDate: {
         fontSize: 12,
-        color: '#28a745',
+        color: colors.success,
         fontWeight: '600',
     },
     // Сумма
@@ -1645,7 +1709,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        backgroundColor: 'rgba(102, 126, 234, 0.05)',
+        backgroundColor: colors.primary + '0D',
         paddingHorizontal: 12,
         paddingVertical: 8,
         borderRadius: 8,
@@ -1656,19 +1720,19 @@ const styles = StyleSheet.create({
     },
     amountLabel: {
         fontSize: 12,
-        color: '#667eea',
+        color: colors.primary,
         fontWeight: '600',
         marginBottom: 2,
     },
     amount: {
         fontSize: 18,
         fontWeight: '800',
-        color: '#667eea',
+        color: colors.primary,
     },
     amountIcon: {
         width: 28,
         height: 28,
-        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+        backgroundColor: colors.primary + '1A',
         borderRadius: 14,
         justifyContent: 'center',
         alignItems: 'center',
@@ -1685,12 +1749,12 @@ const styles = StyleSheet.create({
     },
     addressLabel: {
         fontSize: 12,
-        color: '#666',
+        color: colors.textSecondary,
         fontWeight: '600',
     },
     address: {
         fontSize: 13,
-        color: '#4a5568',
+        color: colors.textSecondary,
         lineHeight: 18,
         paddingLeft: 20,
     },
@@ -1699,7 +1763,7 @@ const styles = StyleSheet.create({
         marginTop: 12,
         paddingTop: 12,
         borderTopWidth: 1,
-        borderTopColor: '#f1f5f9',
+        borderTopColor: colors.border,
         zIndex: 10,
         gap: 8,
     },
@@ -1709,10 +1773,10 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         paddingVertical: 10,
         paddingHorizontal: 12,
-        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+        backgroundColor: colors.primary + '1A',
         borderRadius: 8,
         borderWidth: 1,
-        borderColor: 'rgba(102, 126, 234, 0.3)',
+        borderColor: colors.primary + '4D',
         gap: 6,
         minHeight: 40,
         zIndex: 10,
@@ -1720,7 +1784,7 @@ const styles = StyleSheet.create({
     choiceActionText: {
         fontSize: 12,
         fontWeight: '600',
-        color: '#667eea',
+        color: colors.primary,
     },
     cancelAction: {
         flexDirection: 'row',
@@ -1728,10 +1792,10 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         paddingVertical: 10,
         paddingHorizontal: 12,
-        backgroundColor: 'rgba(244, 67, 54, 0.1)',
+        backgroundColor: colors.error + '1A',
         borderRadius: 8,
         borderWidth: 1,
-        borderColor: 'rgba(244, 67, 54, 0.2)',
+        borderColor: colors.error + '33',
         gap: 6,
         minHeight: 40,
         zIndex: 10,
@@ -1739,7 +1803,7 @@ const styles = StyleSheet.create({
     cancelActionText: {
         fontSize: 12,
         fontWeight: '600',
-        color: '#EF5350',
+        color: colors.error,
     },
     // Скелетон загрузки
     skeletonContainer: {
@@ -1754,7 +1818,7 @@ const styles = StyleSheet.create({
         padding: 32,
     },
     emptyStateIconContainer: {
-        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+        backgroundColor: colors.primary + '1A',
         padding: 24,
         borderRadius: 50,
         marginBottom: 24,
@@ -1762,13 +1826,13 @@ const styles = StyleSheet.create({
     emptyStateTitle: {
         fontSize: 24,
         fontWeight: '700',
-        color: '#1a1a1a',
+        color: colors.textPrimary,
         marginBottom: 12,
         textAlign: 'center',
     },
     emptyStateSubtitle: {
         fontSize: 16,
-        color: '#666',
+        color: colors.textSecondary,
         textAlign: 'center',
         lineHeight: 24,
         marginBottom: 32,
@@ -1782,59 +1846,59 @@ const styles = StyleSheet.create({
     modernButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#667eea',
+        backgroundColor: screenBackground,
         paddingHorizontal: 24,
         paddingVertical: 14,
         borderRadius: 12,
         gap: 8,
-        shadowColor: '#667eea',
+        shadowColor: screenBackground,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
         shadowRadius: 8,
         elevation: 6,
     },
     modernButtonText: {
-        color: '#fff',
+        color: ON_PRIMARY_COLOR,
         fontSize: 16,
         fontWeight: '600',
     },
     primaryButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#667eea',
+        backgroundColor: screenBackground,
         paddingHorizontal: 32,
         paddingVertical: 16,
         borderRadius: 12,
         gap: 8,
-        shadowColor: '#667eea',
+        shadowColor: screenBackground,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
         shadowRadius: 8,
         elevation: 6,
     },
     primaryButtonText: {
-        color: '#fff',
+        color: ON_PRIMARY_COLOR,
         fontSize: 16,
         fontWeight: '600',
     },
     secondaryButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         paddingHorizontal: 24,
         paddingVertical: 12,
         borderRadius: 12,
         borderWidth: 2,
-        borderColor: '#667eea',
+        borderColor: screenBackground,
         gap: 8,
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.08,
         shadowRadius: 4,
         elevation: 3,
     },
     secondaryButtonText: {
-        color: '#667eea',
+        color: isDark ? ON_PRIMARY_COLOR : screenBackground,
         fontSize: 14,
         fontWeight: '600',
     },
@@ -1845,12 +1909,12 @@ const styles = StyleSheet.create({
     },
     accessDeniedGradient: {
         flex: 1,
-        backgroundColor: '#ff7675',
+        backgroundColor: colors.error,
         borderRadius: 16,
         padding: 32,
         alignItems: 'center',
         justifyContent: 'center',
-        shadowColor: '#ff7675',
+        shadowColor: colors.error,
         shadowOffset: { width: 0, height: 8 },
         shadowOpacity: 0.3,
         shadowRadius: 12,
@@ -1859,7 +1923,7 @@ const styles = StyleSheet.create({
     accessDeniedTitle: {
         fontSize: 24,
         fontWeight: '700',
-        color: '#fff',
+        color: colors.textInverse,
         marginTop: 20,
         marginBottom: 12,
         textAlign: 'center',
@@ -1875,19 +1939,19 @@ const styles = StyleSheet.create({
     loginButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         paddingHorizontal: 24,
         paddingVertical: 14,
         borderRadius: 12,
         gap: 8,
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.15,
         shadowRadius: 8,
         elevation: 6,
     },
     loginButtonText: {
-        color: '#ff7675',
+        color: colors.error,
         fontSize: 16,
         fontWeight: '600',
     },
@@ -1899,7 +1963,7 @@ const styles = StyleSheet.create({
         padding: 32,
     },
     errorIconContainer: {
-        backgroundColor: 'rgba(244, 67, 54, 0.1)',
+        backgroundColor: colors.error + '1A',
         padding: 24,
         borderRadius: 50,
         marginBottom: 24,
@@ -1907,13 +1971,13 @@ const styles = StyleSheet.create({
     errorTitle: {
         fontSize: 24,
         fontWeight: '700',
-        color: '#1a1a1a',
+        color: colors.textPrimary,
         marginBottom: 12,
         textAlign: 'center',
     },
     errorSubtitle: {
         fontSize: 16,
-        color: '#666',
+        color: colors.textSecondary,
         textAlign: 'center',
         lineHeight: 24,
         marginBottom: 32,
@@ -1922,19 +1986,19 @@ const styles = StyleSheet.create({
     retryButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#f44336',
+        backgroundColor: colors.error,
         paddingHorizontal: 24,
         paddingVertical: 14,
         borderRadius: 12,
         gap: 8,
-        shadowColor: '#f44336',
+        shadowColor: colors.error,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
         shadowRadius: 8,
         elevation: 6,
     },
     retryButtonText: {
-        color: '#fff',
+        color: colors.textInverse,
         fontSize: 16,
         fontWeight: '600',
     },
@@ -1947,45 +2011,44 @@ const styles = StyleSheet.create({
     skeletonListContent: {
         paddingHorizontal: 16,
         paddingTop: 8,
-        paddingBottom: 16,
     },
     skeletonCard: {
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         borderRadius: 16,
         padding: 16,
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.06,
         shadowRadius: 6,
         elevation: 3,
         borderWidth: 1,
-        borderColor: '#f0f0f0',
+        borderColor: colors.border,
     },
     skeletonHeader: {
         height: 16,
         width: '40%',
-        backgroundColor: '#eee',
+        backgroundColor: colors.surfaceSecondary,
         borderRadius: 6,
         marginBottom: 12,
     },
     skeletonLineWide: {
         height: 14,
         width: '85%',
-        backgroundColor: '#eee',
+        backgroundColor: colors.surfaceSecondary,
         borderRadius: 6,
         marginBottom: 8,
     },
     skeletonLine: {
         height: 14,
         width: '60%',
-        backgroundColor: '#eee',
+        backgroundColor: colors.surfaceSecondary,
         borderRadius: 6,
         marginBottom: 12,
     },
     skeletonFooter: {
         height: 24,
         width: '30%',
-        backgroundColor: '#eee',
+        backgroundColor: colors.surfaceSecondary,
         borderRadius: 12,
         alignSelf: 'flex-start',
     },
@@ -1999,4 +2062,5 @@ const styles = StyleSheet.create({
     splitOrderIndicator: {
         marginBottom: 8,
     },
-});
+    });
+};

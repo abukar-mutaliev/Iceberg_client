@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const MonthlySummaryCard = React.memo(({ 
     statistics, 
@@ -8,6 +9,9 @@ export const MonthlySummaryCard = React.memo(({
     isEmployee = false,
     alwaysShow = false // По умолчанию НЕ показываем при нулях
 }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     // Если нет статистики - скрываем
     if (!statistics) return null;
     
@@ -97,8 +101,8 @@ export const MonthlySummaryCard = React.memo(({
             
             {/* Информационное сообщение если нет данных за выбранный месяц */}
             {hasNoData && hasSelectedMonth && (
-                <View style={[styles.hintContainer, { backgroundColor: '#F5F5F5', borderLeftColor: '#999' }]}>
-                    <Text style={[styles.hintText, { color: '#666' }]}>
+                <View style={[styles.hintContainer, styles.emptyPeriodHintContainer]}>
+                    <Text style={[styles.hintText, styles.emptyPeriodHintText]}>
                         ℹ️ За выбранный период нет вознаграждений. Попробуйте выбрать другой месяц.
                     </Text>
                 </View>
@@ -118,16 +122,18 @@ const getMonthName = (month) => {
     return months[month];
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.cardBackground,
         borderRadius: 12,
         padding: 16,
         marginHorizontal: 16,
         marginVertical: 12,
+        borderWidth: 1,
+        borderColor: colors.border,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0.35 : 0.1,
         shadowRadius: 4,
         elevation: 3,
     },
@@ -140,35 +146,35 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 18,
         fontWeight: '700',
-        color: '#333',
+        color: colors.textPrimary,
     },
     period: {
         fontSize: 14,
         fontWeight: '500',
-        color: '#666',
-        backgroundColor: '#F5F5F5',
+        color: colors.textSecondary,
+        backgroundColor: colors.surfaceSecondary,
         paddingHorizontal: 12,
         paddingVertical: 4,
         borderRadius: 12,
     },
     mainAmountContainer: {
-        backgroundColor: '#F0F9FF',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F0F9FF',
         borderRadius: 8,
         padding: 16,
         marginBottom: 16,
         borderWidth: 1,
-        borderColor: '#B3E0FF',
+        borderColor: isDark ? colors.border : '#B3E0FF',
     },
     mainAmountLabel: {
         fontSize: 14,
         fontWeight: '500',
-        color: '#0066CC',
+        color: isDark ? colors.primary : '#0066CC',
         marginBottom: 4,
     },
     mainAmount: {
         fontSize: 32,
         fontWeight: '700',
-        color: '#0066CC',
+        color: isDark ? colors.primary : '#0066CC',
     },
     detailsContainer: {
         gap: 12,
@@ -191,16 +197,16 @@ const styles = StyleSheet.create({
     detailLabel: {
         fontSize: 15,
         fontWeight: '500',
-        color: '#666',
+        color: colors.textSecondary,
     },
     detailAmount: {
         fontSize: 16,
         fontWeight: '600',
-        color: '#333',
+        color: colors.textPrimary,
     },
     divider: {
         height: 1,
-        backgroundColor: '#E0E0E0',
+        backgroundColor: colors.divider,
         marginVertical: 8,
     },
     totalItem: {
@@ -212,15 +218,15 @@ const styles = StyleSheet.create({
     totalLabel: {
         fontSize: 16,
         fontWeight: '700',
-        color: '#333',
+        color: colors.textPrimary,
     },
     totalAmount: {
         fontSize: 20,
         fontWeight: '700',
-        color: '#007AFF',
+        color: colors.primary,
     },
     hintContainer: {
-        backgroundColor: '#FFF3E0',
+        backgroundColor: isDark ? '#3A2A16' : '#FFF3E0',
         borderRadius: 8,
         padding: 12,
         marginTop: 12,
@@ -229,8 +235,15 @@ const styles = StyleSheet.create({
     },
     hintText: {
         fontSize: 13,
-        color: '#E65100',
+        color: isDark ? '#FFD24A' : '#E65100',
         lineHeight: 18,
+    },
+    emptyPeriodHintContainer: {
+        backgroundColor: colors.surfaceSecondary,
+        borderLeftColor: colors.textTertiary,
+    },
+    emptyPeriodHintText: {
+        color: colors.textSecondary,
     },
 });
 

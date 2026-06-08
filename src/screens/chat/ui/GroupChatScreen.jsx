@@ -1,5 +1,6 @@
 import React, { useRef, useState, useCallback, useMemo, useEffect } from 'react';
-import { View, StyleSheet, KeyboardAvoidingView, Platform, Text, LayoutAnimation, UIManager } from 'react-native';
+import { View, StyleSheet, KeyboardAvoidingView, Platform, Text, LayoutAnimation } from 'react-native';
+import { enableLayoutAnimationExperimentalAndroid } from '@shared/lib/enableLayoutAnimationAndroid';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from 'react-redux';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
@@ -30,9 +31,7 @@ const MESSAGE_DELETE_LAYOUT_ANIMATION = LayoutAnimation.create(
   LayoutAnimation.Properties.opacity
 );
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+enableLayoutAnimationExperimentalAndroid();
 
 const addIdsToSet = (prev, ids) => {
   const next = new Set(prev);
@@ -123,6 +122,7 @@ export const GroupChatScreen = ({ route, navigation }) => {
   const [composerHeight, setComposerHeight] = useState(56);
   const [deletingMessageIds, setDeletingMessageIds] = useState(new Set());
   const [hiddenMessageIds, setHiddenMessageIds] = useState(new Set());
+  const [reactionsRenderTick, setReactionsRenderTick] = useState(0);
   
   // Действия для групп
   const actions = useGroupChatActions({
@@ -138,6 +138,15 @@ export const GroupChatScreen = ({ route, navigation }) => {
     isRoomDeletedRef,
     emitActiveRoom,
   });
+
+  const handleToggleReaction = useCallback(async (messageId, emoji) => {
+    setReactionsRenderTick((prev) => prev + 1);
+    try {
+      return await actions.handleToggleReaction(messageId, emoji);
+    } finally {
+      setReactionsRenderTick((prev) => prev + 1);
+    }
+  }, [actions]);
   
   // Модальные окна
   const modals = useChatModals();
@@ -164,7 +173,7 @@ export const GroupChatScreen = ({ route, navigation }) => {
   
   // Реакции
   const reactions = useChatReactions(
-    actions.handleToggleReaction,
+    handleToggleReaction,
     toggleMessageSelection
   );
   const {
@@ -602,7 +611,7 @@ export const GroupChatScreen = ({ route, navigation }) => {
             onContactDriver={() => {}} // Не используется в групповых чатах
             onReply={handleReply}
             onReplyPress={handleReplyPress}
-            onAddReaction={actions.handleToggleReaction}
+            onAddReaction={handleToggleReaction}
             onShowReactionPicker={handleShowReactionPicker}
             onRetryMessage={(msg) => actions.handleRetryMessage(msg, setRetryingMessages)}
             onCancelMessage={actions.handleCancelMessage}
@@ -610,6 +619,7 @@ export const GroupChatScreen = ({ route, navigation }) => {
             onDismissKeyboard={dismissKeyboard}
             flatListRef={flatListRef}
             onDeleteAnimationEnd={handleDeleteAnimationEnd}
+            reactionsRenderTick={reactionsRenderTick}
           />
           
           <KeyboardAvoidingView
@@ -658,8 +668,8 @@ export const GroupChatScreen = ({ route, navigation }) => {
                     ]}
                   >
                     {roomData?.type === 'BROADCAST'
-                      ? 'Только администраторы могут отправлять сообщения.'
-                      : 'Только администраторы могут отправлять сообщения.'}
+                      ? 'Только админы могут отправлять сообщения.'
+                      : 'Только админы могут отправлять сообщения.'}
                   </Text>
                 </View>
               </View>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
@@ -9,8 +9,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import IconAdmin from '@shared/ui/Icon/IconAdmin';
-import CustomButton from '@shared/ui/Button/CustomButton';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
 import { useAuth } from "@entities/auth/hooks/useAuth";
@@ -29,7 +29,7 @@ import AddUserIcon from "@shared/ui/Icon/AddUserIcon";
 import { adminApi } from "@entities/admin/api/adminApi";
 import productsApi from "@entities/product/api/productsApi";
 
-const AdminSection = ({ title, children }) => {
+const AdminSection = ({ title, children, styles }) => {
     return (
         <View style={styles.section}>
             <Text style={styles.sectionTitle}>{title}</Text>
@@ -44,6 +44,12 @@ const AdminSection = ({ title, children }) => {
 export const AdminPanelScreen = () => {
     const navigation = useNavigation();
     const { currentUser, hasPermission } = useAuth();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
+    // Цвет иконок пунктов меню в зависимости от темы
+    const iconBlue = isDark ? colors.primary : Color.blue2;
+    const iconOrange = isDark ? colors.warning : Color.orange;
     const [isLoading, setIsLoading] = useState(false);
     const [pendingApplicationsCount, setPendingApplicationsCount] = useState(0);
     const [pendingModerationCount, setPendingModerationCount] = useState(0);
@@ -202,8 +208,19 @@ export const AdminPanelScreen = () => {
     }, [navigation]);
 
     const handleGoBack = useCallback(() => {
-        // Возвращаемся к профилю через корневой навигатор
-        navigation.getParent().navigate('Main', {
+        if (navigation.canGoBack()) {
+            navigation.goBack();
+            return;
+        }
+
+        const parentNavigation = navigation.getParent();
+        if (parentNavigation?.canGoBack()) {
+            parentNavigation.goBack();
+            return;
+        }
+
+        // Fallback только если стек пуст (например, прямой вход на экран)
+        parentNavigation?.navigate('Main', {
             screen: 'ProfileTab',
             params: { screen: 'ProfileMain' }
         });
@@ -290,7 +307,7 @@ export const AdminPanelScreen = () => {
     if (isLoading) {
         return (
             <View style={styles.centered}>
-                <ActivityIndicator size="large" color={Color.blue2} />
+                <ActivityIndicator size="large" color={iconBlue} />
             </View>
         );
     }
@@ -307,21 +324,22 @@ export const AdminPanelScreen = () => {
         <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
             <AdminHeader
                 title={panelTitle}
-                icon={<IconAdmin width={24} height={24} color={Color.blue2} />}
-                showBackButton={false}
+                icon={<IconAdmin width={24} height={24} color={iconBlue} />}
+                onBackPress={handleGoBack}
+                showBackButton={true}
             />
 
             <ScrollView style={styles.scrollView}>
                 
                 {/* Управление складами - объединенная секция на первом месте */}
-                <AdminSection title="Управление складами">
+                <AdminSection title="Управление складами" styles={styles}>
                     <AdminMenuItem
-                        icon={<IconDistrict color={Color.blue2} />}
+                        icon={<IconDistrict color={iconBlue} />}
                         title="Список районов и складов"
                         onPress={handleDistrictsManagementPress}
                     />
                     <AdminMenuItem
-                        icon={<IconWarehouse width={24} height={24} color={Color.blue2} />}
+                        icon={<IconWarehouse width={24} height={24} color={iconBlue} />}
                         title="Статистика складов"
                         onPress={() => navigation.navigate('WarehouseList', {
                             fromScreen: 'AdminPanel'
@@ -331,14 +349,14 @@ export const AdminPanelScreen = () => {
 
                 {/* Раздел для управления вознаграждениями - только для суперадминистраторов */}
                 {isSuperAdmin && (
-                    <AdminSection title="Управление вознаграждениями">
+                    <AdminSection title="Управление вознаграждениями" styles={styles}>
                         <AdminMenuItem
-                            icon={<IconUser color={Color.blue2} />}
+                            icon={<IconUser color={iconBlue} />}
                             title="Статистика вознаграждений"
                             onPress={handleRewardsStatisticsPress}
                         />
                         <AdminMenuItem
-                            icon={<IconSettings color={Color.blue2} />}
+                            icon={<IconSettings color={iconBlue} />}
                             title="Настройки вознаграждений"
                             onPress={handleRewardSettingsPress}
                         />
@@ -346,22 +364,22 @@ export const AdminPanelScreen = () => {
                 )}
 
                 {/*Управления товарами */}
-                <AdminSection title="Управление товарами">
+                <AdminSection title="Управление товарами" styles={styles}>
                     <AdminMenuItem
-                        icon={<IconAdd width={24} height={24} color={Color.blue2} />}
+                        icon={<IconAdd width={24} height={24} color={iconBlue} />}
                         title="Добавить товар"
                         onPress={() => navigation.navigate('AddProduct', {
                             onSuccess: handleProductSuccess
                         })}
                     />
                     <AdminMenuItem
-                        icon={<IconProducts color={Color.blue2} />}
+                        icon={<IconProducts color={iconBlue} />}
                         title="Список товаров"
                         onPress={handleProductManagementPress}
                     />
                     {isAdmin && (
                         <AdminMenuItem
-                            icon={<Icon name="gavel" size={24} color={Color.orange} />}
+                            icon={<Icon name="gavel" size={24} color={iconOrange} />}
                             title="Очередь модерации"
                             badgeCount={pendingModerationCount}
                             onPress={() => navigation.navigate('ProductModerationQueue', {
@@ -372,7 +390,7 @@ export const AdminPanelScreen = () => {
                     )}
                     {canViewStockAlerts && (
                         <AdminMenuItem
-                            icon={<Icon name="inventory" size={24} color={Color.blue2} />}
+                            icon={<Icon name="inventory" size={24} color={iconBlue} />}
                             title="Остатки товаров"
                             onPress={() => navigation.navigate('StockAlerts', {
                                 fromScreen: 'AdminPanel'
@@ -382,27 +400,27 @@ export const AdminPanelScreen = () => {
                 </AdminSection>
 
                 {/* Управление возвратами товаров - показываем всем (ADMIN, EMPLOYEE) */}
-                <AdminSection title="Возвраты товаров">
+                <AdminSection title="Возвраты товаров" styles={styles}>
                     <AdminMenuItem
-                        icon={<IconProducts color={Color.orange} />}
+                        icon={<IconProducts color={iconOrange} />}
                         title="Залежавшиеся товары"
                         onPress={handleStagnantProductsPress}
                     />
                     <AdminMenuItem
-                        icon={<IconDelivery color={Color.blue2} />}
+                        icon={<IconDelivery color={iconBlue} />}
                         title="Список возвратов"
                         onPress={handleProductReturnsPress}
                     />
                 </AdminSection>
 
-                <AdminSection title="Управление остановками">
+                <AdminSection title="Управление остановками" styles={styles}>
                     <AdminMenuItem
-                        icon={<IconDelivery color={Color.blue2} />}
+                        icon={<IconDelivery color={iconBlue} />}
                         title="Добавить остановку"
                         onPress={handleAddStopPress}
                     />
                     <AdminMenuItem
-                        icon={<IconDelivery color={Color.blue2} />}
+                        icon={<IconDelivery color={iconBlue} />}
                         title="Список остановок"
                         onPress={handleStopsListPress}
                     />
@@ -410,31 +428,31 @@ export const AdminPanelScreen = () => {
 
                 {/* Секцию управления пользователями показываем только суперадминистраторам */}
                 {isSuperAdmin && (
-                    <AdminSection title="Управление пользователями">
+                    <AdminSection title="Управление пользователями" styles={styles}>
                         <AdminMenuItem
-                            icon={<IconUser color={Color.blue2} />}
+                            icon={<IconUser color={iconBlue} />}
                             title="Пользователи и права"
                             onPress={handleUsersManagementPress}
                         />
                         <AdminMenuItem
-                            icon={<AddUserIcon width={24} height={24} color={Color.blue2} />}
+                            icon={<AddUserIcon width={24} height={24} color={iconBlue} />}
                             title="Добавить пользователя"
                             onPress={handleUserAddPress}
                         />
                         <AdminMenuItem
-                            icon={<IconDistrict color={Color.blue2} />}
+                            icon={<IconDistrict color={iconBlue} />}
                             title="Районы и склады сотрудников"
                             onPress={handleEmployeeManagementPress}
                         />
                         <AdminMenuItem
-                            icon={<IconDelivery color={Color.blue2} />}
+                            icon={<IconDelivery color={iconBlue} />}
                             title="Районы и склады водителей"
                             onPress={handleDriverManagementPress}
                         />
                         {/* Управление заявками на присоединение - только для суперадминов */}
                         {isSuperAdmin && (
                             <AdminMenuItem
-                                icon={<IconUser color={Color.orange} />}
+                                icon={<IconUser color={iconOrange} />}
                                 title="Заявки на присоединение"
                                 badgeCount={pendingApplicationsCount}
                                 onPress={() => navigation.navigate('StaffApplications')}
@@ -443,7 +461,7 @@ export const AdminPanelScreen = () => {
                         {/* Управление должностями - только для суперадминов */}
                         {isSuperAdmin && (
                             <AdminMenuItem
-                                icon={<IconSettings color={Color.orange} />}
+                                icon={<IconSettings color={iconOrange} />}
                                 title="Должности сотрудников"
                                 onPress={() => navigation.navigate('ProcessingRolesScreen')}
                             />
@@ -452,40 +470,30 @@ export const AdminPanelScreen = () => {
                 )}
 
                 {/* Раздел для управления категориями */}
-                <AdminSection title="Управление категориями">
+                <AdminSection title="Управление категориями" styles={styles}>
                     <AdminMenuItem
-                        icon={<IconCategory color={Color.blue2} />}
+                        icon={<IconCategory color={iconBlue} />}
                         title="Список категорий"
                         onPress={handleCategoriesManagementPress}
                     />
                 </AdminSection>
             </ScrollView>
 
-            <View style={styles.footer}>
-                <CustomButton
-                    title="Вернуться в профиль"
-                    onPress={handleGoBack}
-                    outlined={true}
-                    color={Color.blue2}
-                    activeColor="#FFFFFF"
-                />
-            </View>
-
         </SafeAreaView>
     );
 };
 
-// Стили остаются прежними
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.background : Color.colorLightMode,
     },
     centered: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
         padding: normalize(20),
+        backgroundColor: isDark ? colors.background : Color.colorLightMode,
     },
     scrollView: {
         flex: 1,
@@ -499,24 +507,19 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.grey7D7D7D,
+        color: isDark ? colors.textSecondary : Color.grey7D7D7D,
         marginBottom: normalize(8),
     },
     sectionContent: {
         borderRadius: Border.radius.large,
-        backgroundColor: Color.colorLightMode,
-        ...Shadow.light,
+        backgroundColor: isDark ? colors.cardBackground : Color.colorLightMode,
+        ...(isDark ? {} : Shadow.light),
         overflow: 'hidden',
-    },
-    footer: {
-        padding: normalize(15),
-        borderTopWidth: 0.5,
-        borderTopColor: Color.border,
-        backgroundColor: Color.colorLightMode,
+        ...(isDark ? { borderWidth: StyleSheet.hairlineWidth, borderColor: colors.divider } : {}),
     },
     loadingText: {
         fontSize: normalizeFont(14),
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         marginTop: normalize(10),
     },
 });

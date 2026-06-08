@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     View,
     Modal,
@@ -36,7 +36,10 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MIN_SCALE = 0.6;
 const MAX_SCALE = 1.4;
 
-const StarRating = ({ rating, onRatingChange }) => {
+const StarRating = ({ rating, onRatingChange, colors, isDark }) => {
+    const activeColor = isDark ? '#A0A8FF' : '#5E00FF';
+    const inactiveColor = isDark ? colors.border : '#E0E0E0';
+
     return (
         <View style={styles.starsContainer}>
             {[1, 2, 3, 4, 5].map((star) => (
@@ -48,8 +51,7 @@ const StarRating = ({ rating, onRatingChange }) => {
                     <View style={styles.star}>
                         <Text style={{
                             fontSize: 30,
-                            color: star <= rating ? '#5E00FF' : '#E0E0E0',
-                            borderColor: star <= rating ? '#E0E0E0' : '#5E00FF',
+                            color: star <= rating ? activeColor : inactiveColor,
                         }}>
                             ★
                         </Text>
@@ -85,7 +87,9 @@ export const FeedbackAddModal = ({
                                      initialRating = 0,
                                      productId,
                                  }) => {
-    const { colors } = useTheme();
+    const { colors, isDark } = useTheme();
+    const themedStyles = useMemo(() => createThemedStyles(colors, isDark), [colors, isDark]);
+    const accentColor = isDark ? '#A0A8FF' : '#5E00FF';
     const dispatch = useDispatch();
     const currentUser = useSelector((state) => selectUser(state));
 
@@ -191,16 +195,7 @@ export const FeedbackAddModal = ({
 
         try {
             if (Platform.OS === 'android') {
-                // На Android: автоматический запрос разрешения (как раньше)
-                const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
-                
-                if (currentStatus !== 'granted') {
-                    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-                    
-                    if (permissionResult.status !== 'granted') {
-                        return;
-                    }
-                }
+                // Android: открываем системный Photo Picker без READ_MEDIA_* permissions.
             } else {
                 // iOS: сначала запрашиваем разрешение, и только после отказа показываем экран настроек
                 const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
@@ -460,7 +455,7 @@ export const FeedbackAddModal = ({
             visible={visible}
             onRequestClose={handleClose}
         >
-            <View style={styles.centeredView}>
+            <View style={themedStyles.centeredView}>
                 <KeyboardAvoidingView
                     behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                     style={styles.keyboardAvoidingView}
@@ -469,11 +464,8 @@ export const FeedbackAddModal = ({
                 >
                     <View
                         style={[
-                            styles.modalView,
-                            {
-                                backgroundColor: '#FFFFFF', // Всегда белый фон
-                                maxHeight: SCREEN_HEIGHT * 0.9
-                            }
+                            themedStyles.modalView,
+                            { maxHeight: SCREEN_HEIGHT * 0.9 }
                         ]}
                     >
                         <ScrollView
@@ -485,43 +477,38 @@ export const FeedbackAddModal = ({
                             bounces={false}
                             automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
                         >
-                            <Text style={[styles.title, { color: '#000000' }]}>
+                            <Text style={themedStyles.title}>
                                 Оставить отзыв
                             </Text>
 
                             <StarRating
                                 rating={rating}
                                 onRatingChange={handleRatingChange}
+                                colors={colors}
+                                isDark={isDark}
                             />
 
-                            <Text style={[styles.ratingText, { color: '#5E00FF' }]}>
+                            <Text style={[styles.ratingText, { color: accentColor }]}>
                                 {rating > 0 ? `Ваша оценка: ${rating}` : 'Выберите оценку'}
                             </Text>
 
                             {error ? (
-                                <Text style={styles.errorText}>{error}</Text>
+                                <Text style={[styles.errorText, { color: colors.error || '#FF3B30' }]}>{error}</Text>
                             ) : null}
 
                             {(isLoading || isPhotoUploading) && (
                                 <View style={styles.loadingContainer}>
-                                    <ActivityIndicator size="small" color="#5E00FF" />
-                                    <Text style={[styles.loadingText, { color: '#000000' }]}>
+                                    <ActivityIndicator size="small" color={accentColor} />
+                                    <Text style={[styles.loadingText, { color: colors.textPrimary }]}>
                                         {isPhotoUploading ? 'Загрузка фотографий...' : 'Отправка отзыва...'}
                                     </Text>
                                 </View>
                             )}
 
                             <TextInput
-                                style={[
-                                    styles.commentInput,
-                                    {
-                                        backgroundColor: '#F9F9F9',
-                                        color: '#000000',
-                                        borderColor: '#E0E0E0',
-                                    },
-                                ]}
+                                style={themedStyles.commentInput}
                                 placeholder="Напишите ваш отзыв"
-                                placeholderTextColor="#999999"
+                                placeholderTextColor={isDark ? colors.textTertiary : '#999999'}
                                 multiline
                                 value={comment}
                                 onChangeText={setComment}
@@ -529,7 +516,7 @@ export const FeedbackAddModal = ({
                             />
 
                             <View style={styles.photosSection}>
-                                <Text style={[styles.photosTitle, { color: '#000000' }]}>
+                                <Text style={[styles.photosTitle, { color: colors.textPrimary }]}>
                                     Фотографии: {photos.length}/{MAX_PHOTOS}
                                 </Text>
 
@@ -561,7 +548,7 @@ export const FeedbackAddModal = ({
                                 {photos.length < MAX_PHOTOS && (
                                     <View style={styles.photoButtonsContainer}>
                                         <TouchableOpacity
-                                            style={[styles.photoButton, { backgroundColor: '#5E00FF', opacity: (isLoading || isPhotoUploading) ? 0.5 : 1 }]}
+                                            style={[styles.photoButton, { backgroundColor: accentColor, opacity: (isLoading || isPhotoUploading) ? 0.5 : 1 }]}
                                             onPress={pickImages}
                                             disabled={isLoading || isPhotoUploading}
                                         >
@@ -570,7 +557,7 @@ export const FeedbackAddModal = ({
                                         </TouchableOpacity>
 
                                         <TouchableOpacity
-                                            style={[styles.photoButton, { backgroundColor: '#5E00FF', opacity: (isLoading || isPhotoUploading) ? 0.5 : 1 }]}
+                                            style={[styles.photoButton, { backgroundColor: accentColor, opacity: (isLoading || isPhotoUploading) ? 0.5 : 1 }]}
                                             onPress={takePhoto}
                                             disabled={isLoading || isPhotoUploading}
                                         >
@@ -587,13 +574,13 @@ export const FeedbackAddModal = ({
                                         styles.button,
                                         styles.cancelButton,
                                         {
-                                            borderColor: '#E0E0E0',
+                                            borderColor: isDark ? colors.border : '#E0E0E0',
                                             opacity: (isLoading || isPhotoUploading) ? 0.7 : 1
                                         }
                                     ]}
                                     onPress={handleClose}
                                 >
-                                    <Text style={[styles.buttonText, { color: '#5E00FF' }]}>
+                                    <Text style={[styles.buttonText, { color: accentColor }]}>
                                         Отмена
                                     </Text>
                                 </TouchableOpacity>
@@ -603,7 +590,9 @@ export const FeedbackAddModal = ({
                                         styles.button,
                                         styles.submitButton,
                                         {
-                                            backgroundColor: isSubmitDisabled ? '#A0A0A0' : '#5E00FF',
+                                            backgroundColor: isSubmitDisabled
+                                                ? (isDark ? colors.surfaceElevated || '#3D4478' : '#A0A0A0')
+                                                : accentColor,
                                             opacity: isSubmitDisabled ? 0.7 : 1
                                         },
                                     ]}
@@ -634,10 +623,10 @@ export const FeedbackAddModal = ({
                 onRequestClose={closeEditor}
             >
                 <View style={styles.editorOverlay}>
-                    <View style={styles.editorContent}>
-                        <Text style={styles.editorTitle}>Настройка изображения</Text>
+                    <View style={themedStyles.editorContent}>
+                        <Text style={themedStyles.editorTitle}>Настройка изображения</Text>
                         {pendingImage?.uri ? (
-                            <View style={styles.editorPreview}>
+                            <View style={themedStyles.editorPreview}>
                                 <Image
                                     source={{ uri: pendingImage.uri }}
                                     style={styles.editorPreviewBackground}
@@ -654,12 +643,12 @@ export const FeedbackAddModal = ({
                             </View>
                         ) : null}
 
-                        <Text style={styles.editorSizeLabel}>
+                        <Text style={themedStyles.editorSizeLabel}>
                             Размер: {getSizeLabel() || 'неизвестен'}
                         </Text>
 
                         <View style={styles.editorScaleRow}>
-                            <Text style={styles.editorScaleLabel}>
+                            <Text style={themedStyles.editorScaleLabel}>
                                 Масштаб: {Math.round(selectedScale * 100)}%
                             </Text>
                             <Slider
@@ -669,23 +658,23 @@ export const FeedbackAddModal = ({
                                 step={0.05}
                                 value={selectedScale}
                                 onValueChange={setSelectedScale}
-                                minimumTrackTintColor="#3B43A2"
-                                maximumTrackTintColor="#E5E7EB"
-                                thumbTintColor="#3B43A2"
+                                minimumTrackTintColor={isDark ? '#737DFF' : '#3B43A2'}
+                                maximumTrackTintColor={isDark ? colors.border : '#E5E7EB'}
+                                thumbTintColor={isDark ? '#737DFF' : '#3B43A2'}
                                 disabled={isProcessing}
                             />
                         </View>
 
                         <View style={styles.editorActions}>
                             <TouchableOpacity
-                                style={[styles.editorButton, styles.editorSecondaryButton]}
+                                style={[styles.editorButton, themedStyles.editorSecondaryButton]}
                                 onPress={keepOriginal}
                                 disabled={isProcessing}
                             >
-                                <Text style={styles.editorSecondaryText}>Оставить как есть</Text>
+                                <Text style={themedStyles.editorSecondaryText}>Оставить как есть</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
-                                style={[styles.editorButton, styles.editorPrimaryButton]}
+                                style={[styles.editorButton, themedStyles.editorPrimaryButton]}
                                 onPress={applyImage}
                                 disabled={isProcessing}
                             >
@@ -703,41 +692,108 @@ export const FeedbackAddModal = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createThemedStyles = (colors, isDark) => StyleSheet.create({
     centeredView: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: isDark ? 'rgba(0, 0, 0, 0.7)' : 'rgba(0, 0, 0, 0.5)',
         padding: 10,
-    },
-    keyboardAvoidingView: {
-        width: '100%',
-        alignItems: 'center',
-        justifyContent: 'center',
     },
     modalView: {
         width: '95%',
         borderRadius: 15,
         padding: 20,
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
         shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 2,
-        },
-        shadowOpacity: 0.25,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: isDark ? 0 : 0.25,
         shadowRadius: 4,
-        elevation: 5,
-    },
-    scrollContent: {
-        flexGrow: 1,
-        paddingBottom: 20,
+        elevation: isDark ? 0 : 5,
     },
     title: {
         fontSize: 20,
         fontWeight: '600',
         marginBottom: 20,
         textAlign: 'center',
+        color: colors.textPrimary,
+    },
+    commentInput: {
+        width: '100%',
+        minHeight: 100,
+        borderWidth: 1,
+        borderRadius: 8,
+        padding: 10,
+        marginBottom: 20,
+        textAlignVertical: 'top',
+        backgroundColor: isDark ? colors.surfaceElevated || '#2A2F55' : '#F9F9F9',
+        color: colors.textPrimary,
+        borderColor: isDark ? colors.border : '#E0E0E0',
+    },
+    editorContent: {
+        width: '100%',
+        maxWidth: 420,
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
+        borderRadius: 16,
+        padding: 16,
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
+    },
+    editorTitle: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: colors.textPrimary,
+        marginBottom: 12,
+        textAlign: 'center',
+    },
+    editorPreview: {
+        width: '100%',
+        height: 220,
+        borderRadius: 12,
+        backgroundColor: isDark ? colors.surfaceElevated || '#2A2F55' : '#F2F2F2',
+        overflow: 'hidden',
+        marginBottom: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    editorSizeLabel: {
+        fontSize: 13,
+        color: isDark ? colors.textSecondary : '#666',
+        marginBottom: 12,
+        textAlign: 'center',
+    },
+    editorScaleLabel: {
+        fontSize: 13,
+        color: isDark ? colors.textPrimary : '#374151',
+        fontWeight: '600',
+        marginBottom: 6,
+    },
+    editorSecondaryButton: {
+        backgroundColor: isDark ? colors.surfaceElevated || '#3D4478' : '#F3F4F6',
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
+    },
+    editorSecondaryText: {
+        color: isDark ? colors.textSecondary : '#374151',
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    editorPrimaryButton: {
+        backgroundColor: isDark ? '#737DFF' : '#3B43A2',
+    },
+});
+
+const styles = StyleSheet.create({
+    keyboardAvoidingView: {
+        width: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    scrollContent: {
+        flexGrow: 1,
+        paddingBottom: 20,
     },
     starsContainer: {
         flexDirection: 'row',
@@ -757,7 +813,6 @@ const styles = StyleSheet.create({
         textAlign: 'center',
     },
     errorText: {
-        color: '#FF3B30',
         marginBottom: 10,
         textAlign: 'center',
         fontSize: 14,
@@ -771,15 +826,6 @@ const styles = StyleSheet.create({
     loadingText: {
         marginLeft: 8,
         fontSize: 14,
-    },
-    commentInput: {
-        width: '100%',
-        minHeight: 100,
-        borderWidth: 1,
-        borderRadius: 8,
-        padding: 10,
-        marginBottom: 20,
-        textAlignVertical: 'top',
     },
     photosSection: {
         marginBottom: 20,
@@ -862,30 +908,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         padding: 20,
     },
-    editorContent: {
-        width: '100%',
-        maxWidth: 420,
-        backgroundColor: '#FFFFFF',
-        borderRadius: 16,
-        padding: 16,
-    },
-    editorTitle: {
-        fontSize: 16,
-        fontWeight: '700',
-        color: '#1A1A1A',
-        marginBottom: 12,
-        textAlign: 'center',
-    },
-    editorPreview: {
-        width: '100%',
-        height: 220,
-        borderRadius: 12,
-        backgroundColor: '#F2F2F2',
-        overflow: 'hidden',
-        marginBottom: 12,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
     editorPreviewBackground: {
         position: 'absolute',
         top: 0,
@@ -901,20 +923,8 @@ const styles = StyleSheet.create({
         width: '100%',
         height: '100%',
     },
-    editorSizeLabel: {
-        fontSize: 13,
-        color: '#666',
-        marginBottom: 12,
-        textAlign: 'center',
-    },
     editorScaleRow: {
         marginBottom: 16,
-    },
-    editorScaleLabel: {
-        fontSize: 13,
-        color: '#374151',
-        fontWeight: '600',
-        marginBottom: 6,
     },
     editorScaleSlider: {
         width: '100%',
@@ -930,17 +940,6 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
-    },
-    editorSecondaryButton: {
-        backgroundColor: '#F3F4F6',
-    },
-    editorPrimaryButton: {
-        backgroundColor: '#3B43A2',
-    },
-    editorSecondaryText: {
-        color: '#374151',
-        fontSize: 14,
-        fontWeight: '600',
     },
     editorPrimaryText: {
         color: '#FFFFFF',

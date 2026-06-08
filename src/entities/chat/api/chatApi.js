@@ -47,6 +47,7 @@ const ChatApi = {
 
   // Открыть/закрыть группу
   toggleRoomLock: (roomId, isLocked) => chatApiModule.post(`/rooms/${roomId}/lock`, { isLocked }),
+  toggleGlobalPin: (roomId, isPinned) => chatApiModule.post(`/rooms/${roomId}/pin-for-all`, { isPinned }),
 
   // Опросы
   votePoll: (pollId, optionIds) => {

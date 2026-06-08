@@ -14,11 +14,33 @@ import { StopProductsList } from '@entities/stop/ui/StopProductsList';
 import { ShareStopModal } from './ShareStopModal';
 import ChatApi from '@entities/chat/api/chatApi';
 import { selectRoomsList } from '@entities/chat/model/selectors';
+import { fetchRooms } from '@entities/chat/model/slice';
 import { useToast } from '@shared/ui/Toast';
 import { deleteStop } from '@entities/stop';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
+
+// Тёмная схема для Google Maps (Android)
+const DARK_MAP_STYLE = [
+    { elementType: 'geometry', stylers: [{ color: '#1d2030' }] },
+    { elementType: 'labels.text.stroke', stylers: [{ color: '#1d2030' }] },
+    { elementType: 'labels.text.fill', stylers: [{ color: '#8a92b2' }] },
+    { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#d1d5db' }] },
+    { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#8a92b2' }] },
+    { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#1f3a2a' }] },
+    { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#6b9a76' }] },
+    { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2b2f44' }] },
+    { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#1d2030' }] },
+    { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#9ca0b8' }] },
+    { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#3a3f5c' }] },
+    { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#1d2030' }] },
+    { featureType: 'road.highway', elementType: 'labels.text.fill', stylers: [{ color: '#f3d19c' }] },
+    { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#2f3344' }] },
+    { featureType: 'transit.station', elementType: 'labels.text.fill', stylers: [{ color: '#d59563' }] },
+    { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0e1626' }] },
+    { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#4e6d92' }] },
+];
 
 const getPhotoUrl = (photoPath) => {
     if (!photoPath) return null;
@@ -358,28 +380,22 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
         (user?.id && stop?.driver?.userId === user.id) ||
         (user?.driver?.id && stop?.driverId === user.driver.id)
     );
-    const canEdit = isAdminOrEmployee || (user?.role === 'DRIVER' && isDriverOwnedStop);
-    const canDelete = isAdminOrEmployee || (user?.role === 'DRIVER' && isDriverOwnedStop);
+    const isEmployeeOwnedStop = !!(
+        (user?.id && stop?.employee?.userId === user.id) ||
+        (user?.employee?.id && stop?.employeeId === user.employee.id)
+    );
+    const canEdit = isAdminOrEmployee || (user?.role === 'DRIVER' && isDriverOwnedStop) || isEmployeeOwnedStop;
+    const canDelete = isAdminOrEmployee || (user?.role === 'DRIVER' && isDriverOwnedStop) || isEmployeeOwnedStop;
     const isAuthenticated = !!user;
 
     const isExpoGo = Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
 
-    const driver = stop?.driver;
-    const hasDriverInfo = driver && (driver.name || driver.phone);
-    const canCallDriver = !!driver?.phone && user?.id !== driver?.userId;
-    const canChatWithDriver = isAuthenticated && hasDriverInfo && user?.id !== driver?.userId;
-
-    const existingChatWithDriver = React.useMemo(() => {
-        if (!user?.id || !driver?.userId) return null;
-
-        return rooms.find(room => {
-            if (room.type !== 'DIRECT') return false;
-            return room.participants?.some(participant => {
-                const participantId = participant?.userId ?? participant?.user?.id ?? participant?.id;
-                return participantId === driver.userId;
-            });
-        });
-    }, [rooms, user?.id, driver?.userId]);
+    const contactPerson = stop?.employee || stop?.driver;
+    const contactType = stop?.employee ? 'employee' : 'driver';
+    const contactRoleLabel = contactType === 'employee' ? 'Сотрудник' : 'Водитель';
+    const contactRoleInstrumental = contactType === 'employee' ? 'сотрудником' : 'водителем';
+    const hasContactInfo = contactPerson && (contactPerson.name || contactPerson.phone);
+    const canCallContact = !!contactPerson?.phone && user?.id !== contactPerson?.userId;
 
     const accentColor = isDark ? colors.primary : Color.blue2;
     const shareIconColor = isDark ? colors.primary : Color.purpleSoft;
@@ -467,13 +483,13 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
         });
     };
 
-    const handleCallDriver = () => {
-        if (!driver?.phone) {
-            Alert.alert('Ошибка', 'Номер телефона водителя не указан');
+    const handleCallContact = () => {
+        if (!contactPerson?.phone) {
+            Alert.alert('Ошибка', `Номер телефона ${contactRoleInstrumental} не указан`);
             return;
         }
 
-        const phoneNumber = driver.phone.replace(/[^0-9+]/g, '');
+        const phoneNumber = contactPerson.phone.replace(/[^0-9+]/g, '');
         const phoneUrl = Platform.select({
             ios: `tel:${phoneNumber}`,
             android: `tel:${phoneNumber}`
@@ -493,65 +509,111 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
             });
     };
 
-    const handleChatWithDriver = async () => {
+    const handleChatWithContact = async () => {
         if (!isAuthenticated) {
             goToAuth('login');
-            return;
-        }
-
-        if (!driver?.userId) {
-            Alert.alert('Ошибка', 'Информация о водителе недоступна');
-            return;
-        }
-
-        const driverName = driver.name || 'Водитель';
-
-        if (existingChatWithDriver) {
-            const rootNavigation =
-                navigation?.getParent?.('AppStack') ||
-                navigation?.getParent?.()?.getParent?.() ||
-                null;
-
-            (rootNavigation || navigation).navigate('ChatRoom', {
-                roomId: existingChatWithDriver.id,
-                roomTitle: driverName,
-                roomData: existingChatWithDriver,
-                userId: driver.userId,
-                fromScreen: 'StopDetails'
-            });
             return;
         }
 
         setIsCreatingChat(true);
 
         try {
-            const formData = new FormData();
-            formData.append('type', 'DIRECT');
-            formData.append('title', driverName);
-            formData.append('members', JSON.stringify([driver.userId]));
+            const contactUserId = contactPerson?.userId;
 
-            const response = await ChatApi.createRoom(formData);
-            const room = response?.data?.room || response?.data;
-
-            if (room?.id) {
-                const rootNavigation =
-                    navigation?.getParent?.('AppStack') ||
-                    navigation?.getParent?.()?.getParent?.() ||
-                    null;
-
-                (rootNavigation || navigation).navigate('ChatRoom', {
-                    roomId: room.id,
-                    roomTitle: driverName,
-                    roomData: room,
-                    userId: driver.userId,
-                    fromScreen: 'StopDetails'
-                });
-            } else {
-                Alert.alert('Ошибка', 'Не удалось создать чат с водителем');
+            if (!contactUserId) {
+                Alert.alert('Ошибка', `Информация о ${contactRoleInstrumental} недоступна`);
+                return;
             }
+
+            const normalizedContactUserId = Number(contactUserId);
+            const normalizedCurrentUserId = Number(user?.id);
+
+            if (normalizedContactUserId === normalizedCurrentUserId) {
+                Alert.alert('Недоступно', 'Нельзя открыть чат с самим собой');
+                return;
+            }
+
+            const contactName = contactPerson?.name || contactRoleLabel;
+
+            const isChatWithContact = (room) => {
+                const roomData = room?.room || room;
+                if (roomData?.type !== 'DIRECT') return false;
+
+                const participants = roomData.participants || [];
+                return participants.some(participant => {
+                    const participantId = participant?.userId ?? participant?.user?.id ?? participant?.id;
+                    if (!participantId) return false;
+
+                    const normalizedParticipantId = Number(participantId);
+                    return normalizedParticipantId === normalizedContactUserId &&
+                        normalizedParticipantId !== normalizedCurrentUserId;
+                });
+            };
+
+            let existingChat = (rooms || []).find(isChatWithContact);
+
+            if (!existingChat) {
+                try {
+                    await dispatch(fetchRooms({ page: 1, forceRefresh: true }));
+                } catch (fetchError) {
+                    logData('Ошибка при обновлении списка комнат', fetchError);
+                }
+            }
+
+            if (!existingChat) {
+                try {
+                    const roomsResponse = await ChatApi.getRooms({ type: 'DIRECT' });
+                    const allRooms = roomsResponse?.data?.rooms || roomsResponse?.data?.data?.rooms || [];
+                    existingChat = allRooms.find(isChatWithContact);
+                } catch (apiError) {
+                    logData('Ошибка при получении комнат через API', apiError);
+                }
+            }
+
+            let roomId;
+            let roomObj;
+
+            if (existingChat) {
+                roomObj = existingChat.room || existingChat;
+                roomId = roomObj.id || existingChat.id;
+            } else {
+                const formData = new FormData();
+                formData.append('type', 'DIRECT');
+                formData.append('title', contactName);
+                formData.append('members', JSON.stringify([contactUserId]));
+
+                const createResponse = await ChatApi.createRoom(formData);
+                roomObj = createResponse?.data?.room || createResponse?.data?.data?.room || createResponse?.data;
+
+                if (!roomObj?.id) {
+                    throw new Error('Не удалось создать чат');
+                }
+
+                roomId = roomObj.id;
+
+                try {
+                    await dispatch(fetchRooms({ page: 1, forceRefresh: true }));
+                } catch (updateError) {
+                    logData('Ошибка при обновлении списка комнат после создания', updateError);
+                }
+            }
+
+            const rootNavigation =
+                navigation?.getParent?.('AppStack') ||
+                navigation?.getParent?.()?.getParent?.() ||
+                null;
+
+            (rootNavigation || navigation).navigate('ChatRoom', {
+                roomId,
+                roomTitle: contactName,
+                roomData: roomObj,
+                userId: contactUserId,
+                currentUserId: user?.id,
+                fromScreen: 'StopDetails'
+            });
         } catch (error) {
-            logData('Ошибка при создании чата с водителем', error);
-            Alert.alert('Ошибка', 'Не удалось открыть чат с водителем');
+            logData(`Ошибка при открытии чата с ${contactRoleInstrumental}`, error);
+            Alert.alert('Ошибка', `Не удалось открыть чат с ${contactRoleInstrumental}. Попробуйте позже.`);
         } finally {
             setIsCreatingChat(false);
         }
@@ -834,29 +896,33 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                     </View>
                 )}
 
-                {hasDriverInfo && (
+                {hasContactInfo && (
                     <View style={styles.driverSection}>
                         <Text style={styles.driverSectionTitle}>Связь с водителем</Text>
                         <View style={styles.driverHeader}>
                             <View style={styles.driverIconContainer}>
-                                <Icon name="local-shipping" size={24} color={accentColor} />
+                                <Icon
+                                    name={contactType === 'employee' ? 'badge' : 'local-shipping'}
+                                    size={24}
+                                    color={accentColor}
+                                />
                             </View>
                             <View style={styles.driverInfo}>
-                                <Text style={styles.driverName}>{driver.name || 'Водитель'}</Text>
-                                {driver.phone && (
-                                    <Text style={styles.driverPhone}>{driver.phone}</Text>
+                                <Text style={styles.driverName}>{contactPerson.name || contactRoleLabel}</Text>
+                                {contactPerson.phone && (
+                                    <Text style={styles.driverPhone}>{contactPerson.phone}</Text>
                                 )}
                             </View>
                         </View>
 
-                        {hasDriverInfo && (
+                        {hasContactInfo && (
                             <View style={styles.driverActions}>
-                                {driver.phone && (
+                                {contactPerson.phone && (
                                     <TouchableOpacity
                                         style={[styles.driverButton, styles.callButton]}
-                                        onPress={handleCallDriver}
+                                        onPress={handleCallContact}
                                         activeOpacity={0.7}
-                                        disabled={!canCallDriver}
+                                        disabled={!canCallContact}
                                     >
                                         <Icon name="phone" size={20} color="#fff" />
                                         <Text style={styles.callButtonText}>Позвонить</Text>
@@ -866,9 +932,9 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                                 {isAuthenticated ? (
                                     <TouchableOpacity
                                         style={[styles.driverButton, styles.chatButton]}
-                                        onPress={handleChatWithDriver}
+                                        onPress={handleChatWithContact}
                                         activeOpacity={0.7}
-                                        disabled={isCreatingChat || !canChatWithDriver}
+                                        disabled={isCreatingChat}
                                     >
                                         {isCreatingChat ? (
                                             <ActivityIndicator size="small" color="#fff" />
@@ -938,6 +1004,7 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                     ) : (
                         <View style={styles.mapWrapper}>
                             <MapView
+                                key={isDark ? 'stop-map-dark' : 'stop-map-light'}
                                 style={styles.map}
                                 initialRegion={{
                                     latitude: mapCoordinates.latitude,
@@ -966,6 +1033,8 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                                 minZoomLevel={10}
                                 maxZoomLevel={20}
                                 provider={undefined}
+                                userInterfaceStyle={isDark ? 'dark' : 'light'}
+                                customMapStyle={isDark ? DARK_MAP_STYLE : []}
                             >
                                 <Marker
                                     coordinate={{
@@ -975,7 +1044,7 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                                     title={stop.address || 'Остановка'}
                                     description="Нажмите для навигации"
                                     onPress={handleMarkerPress}
-                                    pinColor="#3B43A2"
+                                    pinColor={isDark ? '#737DFF' : '#3B43A2'}
                                 />
                             </MapView>
                         </View>

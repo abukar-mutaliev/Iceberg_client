@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const CustomButton = ({
                                  title,
@@ -23,6 +24,7 @@ export const CustomButton = ({
                                  disabled = false,
                              }) => {
     const [isActive, setIsActive] = useState(false);
+    const { colors, isDark } = useTheme();
 
     const handlePress = () => {
         if (disabled) return;
@@ -34,11 +36,13 @@ export const CustomButton = ({
         }, 150);
     };
 
+    const outlinedInactiveBg = isDark ? colors.surface : '#fff';
+
     const buttonStyles = [
         styles.button,
         { height: normalize(height), borderRadius: normalize(borderRadius) },
         outlined ? {
-            backgroundColor: isActive ? color : '#fff',
+            backgroundColor: isActive ? color : outlinedInactiveBg,
             borderWidth: 0.5,
             borderColor: color,
         } : {

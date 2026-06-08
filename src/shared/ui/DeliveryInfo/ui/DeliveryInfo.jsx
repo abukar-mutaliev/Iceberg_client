@@ -2,12 +2,16 @@ import React, { useCallback } from 'react';
 import { View, Text, TouchableOpacity, Clipboard } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { formatDate, canViewProcessingHistory } from '@shared/lib/orderUtils';
-import { createOrderDetailsStyles } from '@shared/ui/OrderDetailsStyles';
+import { useOrderDetailsStyles } from '@shared/ui/OrderDetailsStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
 
-const styles = createOrderDetailsStyles();
+const ON_PRIMARY_COLOR = '#FFFFFF';
 
 export const DeliveryInfo = ({ order, userRole, assignedTo }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useOrderDetailsStyles();
+    const copyIconColor = isDark ? ON_PRIMARY_COLOR : colors.primary;
     if (!order) return null;
 
     const { showInfo } = useCustomAlert();
@@ -23,14 +27,14 @@ export const DeliveryInfo = ({ order, userRole, assignedTo }) => {
     return (
         <View style={styles.modernCard}>
             <View style={styles.cardHeader}>
-                <Icon name="local-shipping" size={24} color="#667eea" />
+                <Icon name="local-shipping" size={24} color={colors.primary} />
                 <Text style={styles.cardTitle}>Информация о доставке</Text>
             </View>
 
             {order.deliveryAddress && (
                 <View style={styles.infoRow}>
                     <View style={styles.infoIconContainer}>
-                        <Icon name="location-on" size={20} color="#667eea" />
+                        <Icon name="location-on" size={20} color={colors.primary} />
                     </View>
                     <View style={styles.infoContent}>
                         <View style={styles.infoLabelRow}>
@@ -42,7 +46,7 @@ export const DeliveryInfo = ({ order, userRole, assignedTo }) => {
                                     activeOpacity={0.7}
                                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                                 >
-                                    <Icon name="content-copy" size={16} color="#667eea" />
+                                    <Icon name="content-copy" size={16} color={copyIconColor} />
                                 </TouchableOpacity>
                             )}
                         </View>
@@ -54,7 +58,7 @@ export const DeliveryInfo = ({ order, userRole, assignedTo }) => {
             {order.expectedDeliveryDate && (
                 <View style={styles.infoRow}>
                     <View style={styles.infoIconContainer}>
-                        <Icon name="schedule" size={20} color="#667eea" />
+                        <Icon name="schedule" size={20} color={colors.primary} />
                     </View>
                     <View style={styles.infoContent}>
                         <Text style={styles.infoLabel}>Ожидаемая дата доставки</Text>
@@ -68,7 +72,7 @@ export const DeliveryInfo = ({ order, userRole, assignedTo }) => {
             {order.comment && (
                 <View style={styles.infoRow}>
                     <View style={styles.infoIconContainer}>
-                        <Icon name="comment" size={20} color="#667eea" />
+                        <Icon name="comment" size={20} color={colors.primary} />
                     </View>
                     <View style={styles.infoContent}>
                         <Text style={styles.infoLabel}>Комментарий</Text>
@@ -81,7 +85,7 @@ export const DeliveryInfo = ({ order, userRole, assignedTo }) => {
             {canViewProcessingHistory(userRole) && assignedTo && (
                 <View style={styles.infoRow}>
                     <View style={styles.infoIconContainer}>
-                        <Icon name="person" size={20} color="#667eea" />
+                        <Icon name="person" size={20} color={colors.primary} />
                     </View>
                     <View style={styles.infoContent}>
                         <Text style={styles.infoLabel}>Текущий ответственный</Text>

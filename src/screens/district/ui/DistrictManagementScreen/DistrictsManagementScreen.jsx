@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, TextInput } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import { useRoute } from '@react-navigation/native';
@@ -36,6 +36,7 @@ import { ErrorState } from "@shared/ui/states/ErrorState";
 import IconDistrict from "@shared/ui/Icon/DistrictManagement/IconDistrict";
 import IconWarehouse from "@shared/ui/Icon/Warehouse/IconWarehouse";
 import { IconSearch } from '@shared/ui/Icon/DistrictManagement/IconSearch';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const DistrictsManagementScreen = () => {
     const dispatch = useDispatch();
@@ -43,6 +44,10 @@ export const DistrictsManagementScreen = () => {
     const route = useRoute();
     const { openAddModal } = route.params || {};
     const { showSuccess, showError, showConfirm } = useCustomAlert();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+    const tabIconColor = isDark ? colors.primary : Color.blue2;
+    const activeTabIconColor = Color.colorLightMode;
 
     const districts = useSelector(selectDistrictsWithStats) || [];
     const isLoading = useSelector(selectDistrictLoading);
@@ -62,6 +67,7 @@ export const DistrictsManagementScreen = () => {
     const [warehouses, setWarehouses] = useState([]);
     const [filteredWarehouses, setFilteredWarehouses] = useState([]);
     const [isWarehouseModalVisible, setWarehouseModalVisible] = useState(false);
+    const [warehouseModalOpenKey, setWarehouseModalOpenKey] = useState(0);
     const [selectedWarehouse, setSelectedWarehouse] = useState(null);
     const [warehousesLoading, setWarehousesLoading] = useState(false);
 
@@ -224,11 +230,13 @@ export const DistrictsManagementScreen = () => {
 
     const handleAddWarehouse = () => {
         setSelectedWarehouse(null);
+        setWarehouseModalOpenKey((k) => k + 1);
         setWarehouseModalVisible(true);
     };
 
     const handleEditWarehouse = (warehouse) => {
         setSelectedWarehouse(warehouse);
+        setWarehouseModalOpenKey((k) => k + 1);
         setWarehouseModalVisible(true);
     };
 
@@ -317,7 +325,6 @@ export const DistrictsManagementScreen = () => {
             <AdminHeader
                 title="Управление районами и складами"
                 onBackPress={handleBackPress}
-                icon={<IconDistrict width={24} height={24} color={Color.blue2} />}
             />
 
             {/* Табы */}
@@ -329,7 +336,7 @@ export const DistrictsManagementScreen = () => {
                         setSearchQuery('');
                     }}
                 >
-                    <IconDistrict width={20} height={20} color={activeTab === 'districts' ? Color.colorLightMode : Color.blue2} />
+                    <IconDistrict width={20} height={20} color={activeTab === 'districts' ? activeTabIconColor : tabIconColor} />
                     <Text style={[styles.tabText, activeTab === 'districts' && styles.activeTabText]}>
                         Районы
                     </Text>
@@ -345,7 +352,7 @@ export const DistrictsManagementScreen = () => {
                         }
                     }}
                 >
-                    <IconWarehouse width={20} height={20} color={activeTab === 'warehouses' ? Color.colorLightMode : Color.blue2} />
+                    <IconWarehouse width={20} height={20} color={activeTab === 'warehouses' ? activeTabIconColor : tabIconColor} />
                     <Text style={[styles.tabText, activeTab === 'warehouses' && styles.activeTabText]}>
                         Склады
                     </Text>
@@ -371,12 +378,12 @@ export const DistrictsManagementScreen = () => {
                 {/* Поиск */}
                 <View style={styles.searchContainer}>
                     <View style={styles.searchInputContainer}>
-                        <IconSearch width={20} height={20} color={Color.grey7D7D7D} style={styles.searchIcon} />
+                        <IconSearch width={20} height={20} color={isDark ? colors.textSecondary : Color.grey7D7D7D} style={styles.searchIcon} />
                         <TextInput
                             value={searchQuery}
                             onChangeText={setSearchQuery}
                             placeholder={activeTab === 'districts' ? 'Поиск районов...' : 'Поиск складов...'}
-                            placeholderTextColor={Color.grey7D7D7D}
+                            placeholderTextColor={isDark ? colors.textSecondary : Color.grey7D7D7D}
                             style={styles.searchInput}
                             clearButtonMode="while-editing"
                         />
@@ -388,7 +395,7 @@ export const DistrictsManagementScreen = () => {
                     // Контент для районов
                     isLoading && !refreshing ? (
                         <View style={styles.centered}>
-                            <ActivityIndicator size="large" color={Color.blue2} />
+                            <ActivityIndicator size="large" color={tabIconColor} />
                             <Text style={styles.loadingText}>Загрузка районов...</Text>
                         </View>
                     ) : error ? (
@@ -427,7 +434,7 @@ export const DistrictsManagementScreen = () => {
                     // Контент для складов
                     warehousesLoading ? (
                         <View style={styles.centered}>
-                            <ActivityIndicator size="large" color={Color.blue2} />
+                            <ActivityIndicator size="large" color={tabIconColor} />
                             <Text style={styles.loadingText}>Загрузка складов...</Text>
                         </View>
                     ) : filteredWarehouses.length === 0 ? (
@@ -472,22 +479,23 @@ export const DistrictsManagementScreen = () => {
                 onClose={handleWarehouseModalClose}
                 onSubmit={handleWarehouseFormSubmit}
                 warehouse={selectedWarehouse}
+                openKey={warehouseModalOpenKey}
                 isSubmitting={operationInProgress}
             />
         </View>
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.background : Color.colorLightMode,
     },
     tabContainer: {
         flexDirection: 'row',
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.background : Color.colorLightMode,
         borderBottomWidth: 1,
-        borderBottomColor: Color.border,
+        borderBottomColor: isDark ? colors.divider : Color.border,
         paddingHorizontal: normalize(16),
     },
     tab: {
@@ -501,14 +509,14 @@ const styles = StyleSheet.create({
         borderBottomColor: 'transparent',
     },
     activeTab: {
-        backgroundColor: Color.blue2,
-        borderBottomColor: Color.blue2,
+        backgroundColor: isDark ? colors.primary : Color.blue2,
+        borderBottomColor: isDark ? colors.primary : Color.blue2,
     },
     tabText: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
-        color: Color.blue2,
+        color: isDark ? colors.primary : Color.blue2,
         marginLeft: normalize(8),
     },
     activeTabText: {
@@ -528,7 +536,7 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_lg),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: isDark ? colors.text : Color.textPrimary,
     },
     searchContainer: {
         marginBottom: normalize(16),
@@ -536,12 +544,12 @@ const styles = StyleSheet.create({
     searchInputContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#F5F5F5',
+        backgroundColor: isDark ? colors.cardBackground : '#F5F5F5',
         borderRadius: Border.radius.small,
         paddingHorizontal: normalize(12),
         height: normalize(44),
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: isDark ? colors.divider : Color.border,
     },
     searchIcon: {
         marginRight: normalize(8),
@@ -550,18 +558,18 @@ const styles = StyleSheet.create({
         flex: 1,
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textPrimary,
+        color: isDark ? colors.text : Color.textPrimary,
         padding: 0,
         height: '100%',
     },
     addButton: {
-        backgroundColor: Color.blue2,
+        backgroundColor: isDark ? colors.primary : Color.blue2,
         paddingVertical: normalize(8),
         paddingHorizontal: normalize(12),
         borderRadius: Border.radius.small,
     },
     addEmptyButton: {
-        backgroundColor: Color.blue2,
+        backgroundColor: isDark ? colors.primary : Color.blue2,
         paddingVertical: normalize(10),
         paddingHorizontal: normalize(16),
         borderRadius: Border.radius.small,
@@ -581,13 +589,13 @@ const styles = StyleSheet.create({
     loadingText: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         marginTop: normalize(10),
     },
     emptyText: {
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
     },
     listContainer: {
         paddingBottom: normalize(16),

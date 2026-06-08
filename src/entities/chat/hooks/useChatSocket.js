@@ -2,14 +2,15 @@ import { useEffect, useRef } from 'react';
 // Use UMD build to avoid engine.io webtransport resolution issues in React Native/Expo
 // eslint-disable-next-line import/no-unresolved
 import io from 'socket.io-client/dist/socket.io.js';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useDispatch, useSelector, useStore } from 'react-redux';
 import { AppState } from 'react-native';
 import { getBaseUrl } from '@shared/api/api';
 import { featureFlags } from '@shared/config/featureFlags';
+import { enrichStopChatMessageFromStore } from '@entities/chat/lib/enrichStopChatMessageFromStore';
 import {
   fetchRooms,
   fetchRoom,
+  fetchMessages,
   receiveSocketMessage,
   receiveMessageDeleted,
   receiveMessageUpdated,
@@ -112,21 +113,25 @@ export const useChatSocket = () => {
     }
 
     let isMounted = true;
-    const setup = async () => {
+    const setup = async (attempt = 0) => {
       try {
-        const tokensStr = await AsyncStorage.getItem('tokens');
-        const tokens = tokensStr ? JSON.parse(tokensStr) : null;
+        const { authService } = await import('@shared/api/api');
+        // Единая точка чтения токенов (восстанавливает AsyncStorage из Redux при рассинхроне)
+        const tokens = await authService.getStoredTokens();
         let token = tokens?.accessToken;
         const refreshToken = tokens?.refreshToken;
         const baseUrl = getBaseUrl();
 
         if (!token || !refreshToken) {
           console.log('🔌 No tokens available, skipping WebSocket connection');
-          return; // not authenticated; skip sockets
+          if (attempt < 2 && isMounted) {
+            setTimeout(() => {
+              if (isMounted) setup(attempt + 1);
+            }, 700);
+          }
+          return;
         }
 
-        // Проверяем валидность refresh token перед подключением
-        const { authService } = await import('@shared/api/api');
         const isRefreshTokenValid = authService.isTokenValid(refreshToken);
         
         if (!isRefreshTokenValid) {
@@ -146,10 +151,20 @@ export const useChatSocket = () => {
               console.log('✅ Access token refreshed successfully for WebSocket');
             } else {
               console.error('❌ Failed to refresh access token, skipping WebSocket connection');
+              if (attempt < 1 && isMounted) {
+                setTimeout(() => {
+                  if (isMounted) setup(attempt + 1);
+                }, 900);
+              }
               return;
             }
           } catch (refreshError) {
             console.error('❌ Error refreshing token for WebSocket:', refreshError?.message || refreshError);
+            if (attempt < 1 && isMounted) {
+              setTimeout(() => {
+                if (isMounted) setup(attempt + 1);
+              }, 900);
+            }
             return;
           }
         }
@@ -198,6 +213,23 @@ export const useChatSocket = () => {
               console.log('🏠 ✅ Joined room:', roomId);
             }
           });
+
+          // Подтягиваем актуальные сообщения активной комнаты после (ре)коннекта.
+          // Пока сокет был отключен, могли прийти удаления (chat:message:deleted)
+          // и обновления, которых мы не получили. fetchMessages вернет свежий
+          // снапшот, а reconciliation в fetchMessages.fulfilled удалит из стора
+          // и кэша сообщения, которые были удалены на сервере.
+          try {
+            const currentActiveRoomId = store.getState()?.chat?.activeRoomId;
+            if (currentActiveRoomId) {
+              dispatch(fetchMessages({ roomId: currentActiveRoomId, limit: 100 }));
+            }
+          } catch (e) {
+            // Не должно ломать обработчик connect
+            if (__DEV__) {
+              console.warn('useChatSocket: failed to refresh active room on connect', e?.message);
+            }
+          }
         });
 
         socket.on('disconnect', (reason) => {
@@ -222,16 +254,14 @@ export const useChatSocket = () => {
         socket.io.on('reconnect_attempt', async (attempt) => {
           console.log(`🔄 Reconnection attempt #${attempt} - refreshing token...`);
           try {
-            const currentTokensStr = await AsyncStorage.getItem('tokens');
-            const currentTokens = currentTokensStr ? JSON.parse(currentTokensStr) : null;
-            
+            const currentTokens = await authService.getStoredTokens();
+
             if (currentTokens?.accessToken && currentTokens?.refreshToken) {
-              const { authService: reconnectAuthService } = await import('@shared/api/api');
-              const isAccessTokenValid = reconnectAuthService.isTokenValid(currentTokens.accessToken);
-              
+              const isAccessTokenValid = authService.isTokenValid(currentTokens.accessToken);
+
               if (!isAccessTokenValid) {
                 console.log('🔄 Access token expired on reconnect, refreshing...');
-                const refreshed = await reconnectAuthService.refreshAccessToken();
+                const refreshed = await authService.refreshAccessToken();
                 if (refreshed?.accessToken) {
                   socket.auth = { token: refreshed.accessToken };
                   console.log('✅ Token refreshed for reconnection attempt');
@@ -262,18 +292,15 @@ export const useChatSocket = () => {
               error.message?.includes('unauthorized')) {
             try {
               console.log('🔄 JWT error, attempting to refresh token...');
-              
-              // Проверяем валидность refresh token перед попыткой обновления
-              const currentTokensStr = await AsyncStorage.getItem('tokens');
-              const currentTokens = currentTokensStr ? JSON.parse(currentTokensStr) : null;
-              
+
+              const currentTokens = await authService.getStoredTokens();
+
               if (!currentTokens?.refreshToken) {
                 console.error('❌ No refresh token available, cannot reconnect WebSocket');
                 socket.disconnect();
                 return;
               }
-              
-              const { authService } = await import('@shared/api/api');
+
               const isRefreshTokenValid = authService.isTokenValid(currentTokens.refreshToken);
               
               if (!isRefreshTokenValid) {
@@ -367,6 +394,8 @@ export const useChatSocket = () => {
           const freshUserId = currentAuthUser?.id || currentUserId;
           const userDistrictIds = getUserDistrictIdsFromUser(currentAuthUser);
 
+          const enrichedMessage = enrichStopChatMessageFromStore(message, freshState);
+
           if (__DEV__ && message?.type === 'STOP') {
             console.log('[useChatSocket] STOP message received', {
               roomId,
@@ -374,11 +403,19 @@ export const useChatSocket = () => {
               userRole: currentAuthUser?.role,
               clientDistrictId: currentAuthUser?.client?.districtId,
               userDistrictIds,
-              stopDistrictId: message?.stop?.districtId,
+              stopDistrictId:
+                enrichedMessage?.stop?.districtId ?? message?.stop?.districtId,
             });
           }
 
-          dispatch(receiveSocketMessage({ ...payload, currentUserId: freshUserId, userDistrictIds }));
+          dispatch(
+            receiveSocketMessage({
+              ...payload,
+              message: enrichedMessage,
+              currentUserId: freshUserId,
+              userDistrictIds,
+            })
+          );
         });
 
         socket.on('chat:message:deleted', (payload) => {
@@ -411,7 +448,13 @@ export const useChatSocket = () => {
             return;
           }
 
-          dispatch(receiveMessageUpdated(payload));
+          const s = store.getState();
+          dispatch(
+            receiveMessageUpdated({
+              ...payload,
+              message: enrichStopChatMessageFromStore(payload.message, s),
+            })
+          );
         });
 
         socket.on('chat:poll:updated', (payload) => {
@@ -441,11 +484,18 @@ export const useChatSocket = () => {
           
           // Если пришло полное сообщение, обновляем его
           if (payload.message) {
-            dispatch(receiveSocketMessage({ 
-              roomId: payload.roomId, 
-              message: payload.message,
-              currentUserId 
-            }));
+            const s = store.getState();
+            const currentAuthUser = s?.auth?.user;
+            const freshUserId = currentAuthUser?.id || currentUserId;
+            const userDistrictIdsPoll = getUserDistrictIdsFromUser(currentAuthUser);
+            dispatch(
+              receiveSocketMessage({
+                roomId: payload.roomId,
+                message: enrichStopChatMessageFromStore(payload.message, s),
+                currentUserId: freshUserId,
+                userDistrictIds: userDistrictIdsPoll,
+              })
+            );
           }
         });
 

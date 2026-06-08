@@ -1,8 +1,8 @@
-import React, {useState} from 'react';
+import React, {useMemo} from 'react';
 import {View, Text, Pressable, StyleSheet, ActivityIndicator, TouchableOpacity} from 'react-native';
 import {AndroidShadow} from '@shared/ui/Shadow';
 import {MinusIcon, PlusIcon} from '@shared/ui/Icon/DetailScreenIcons';
-import {FontFamily, FontSize, Border, Color} from '@app/styles/GlobalStyles';
+import {FontFamily, FontSize, Border} from '@app/styles/GlobalStyles';
 import {useTheme} from "@app/providers/themeProvider/ThemeProvider";
 import {useAuth} from '@entities/auth/hooks/useAuth';
 import {useCartAvailability} from '@entities/cart';
@@ -24,7 +24,8 @@ export const QuantityControl = ({
                                     onRemoveFromCart,
                                     autoCartManagement = false
                                 }) => {
-    const {colors} = useTheme();
+    const {colors, isDark} = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
     const {isAuthenticated, currentUser} = useAuth();
     const {isCartAvailable} = useCartAvailability();
     const {showWarning, showError} = useToast();
@@ -107,14 +108,14 @@ export const QuantityControl = ({
                     styles.control,
                     disabled && styles.disabledControl
                 ]}
-                shadowColor="rgba(51, 57, 176, 0.05)"
+                shadowColor={isDark ? 'rgba(0, 0, 0, 0.35)' : 'rgba(51, 57, 176, 0.08)'}
                 borderRadius={Border.br_3xs}
             >
                 <View style={[
                     styles.controlInner,
                     {
-                        borderColor: disabled || !isCartControlAvailable ? Color.colorSilver_100 : Color.primary,
-                        backgroundColor: disabled || !isCartControlAvailable ? Color.colorSilver_200 : Color.card,
+                        borderColor: disabled || !isCartControlAvailable ? colors.border : colors.primary,
+                        backgroundColor: disabled || !isCartControlAvailable ? colors.surfaceSecondary : colors.cardBackground,
                         opacity: disabled || !isCartControlAvailable ? 0.6 : 1
                     }
                 ]}>
@@ -133,7 +134,7 @@ export const QuantityControl = ({
                             />
                         ) : (
                             <MinusIcon
-                                color={canDecrease ? colors.primary : Color.colorSilver_100}
+                                color={canDecrease ? colors.primary : colors.textTertiary}
                             />
                         )}
                     </Pressable>
@@ -143,7 +144,7 @@ export const QuantityControl = ({
                             <Text style={[
                                 styles.quantityText,
                                 {
-                                    color: disabled ? Color.colorSilver_100 : colors.primary
+                                    color: disabled || !isCartControlAvailable ? colors.textTertiary : colors.primary
                                 }
                             ]}>
                                 {displayQuantity}
@@ -168,7 +169,7 @@ export const QuantityControl = ({
                         disabled={!canIncrease}
                     >
                         <PlusIcon
-                            color={canIncrease ? colors.primary : Color.colorSilver_100}
+                            color={canIncrease ? colors.primary : colors.textTertiary}
                         />
                     </Pressable>
 
@@ -179,7 +180,7 @@ export const QuantityControl = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     container: {},
     control: {
         width: 112,
@@ -196,6 +197,7 @@ const styles = StyleSheet.create({
         height: '100%',
         borderWidth: 1,
         borderRadius: Border.br_3xs,
+        backgroundColor: colors.cardBackground,
     },
     button: {
         width: 30,
@@ -211,6 +213,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         minWidth: 40,
+        backgroundColor: colors.cardBackground,
     },
     quantityText: {
         fontFamily: FontFamily.montserratMedium,

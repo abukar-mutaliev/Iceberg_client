@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
@@ -7,9 +7,14 @@ import { MapPinIcon } from '@shared/ui/Icon/DistrictManagement/MapPinIcon';
 import IconEdit from '@shared/ui/Icon/Profile/IconEdit';
 import IconDelete from '@shared/ui/Icon/Profile/IconDelete';
 import { useNavigation } from '@react-navigation/native';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const WarehouseListItem = ({ warehouse, onEdit, onDelete, onViewStatistics }) => {
     const navigation = useNavigation();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+    const primaryColor = isDark ? colors.primary : Color.blue2;
+    const iconSecondaryColor = isDark ? colors.textSecondary : Color.textSecondary;
     const handleDelete = () => {
         Alert.alert(
             'Подтверждение удаления',
@@ -30,12 +35,12 @@ export const WarehouseListItem = ({ warehouse, onEdit, onDelete, onViewStatistic
             <View style={styles.content}>
                 <View style={styles.header}>
                     <View style={styles.iconContainer}>
-                        <IconWarehouse width={24} height={24} color={Color.blue2} />
+                        <IconWarehouse width={24} height={24} color={primaryColor} />
                     </View>
                     <View style={styles.info}>
                         <Text style={styles.name}>{warehouse.name}</Text>
                         <View style={styles.addressContainer}>
-                            <MapPinIcon size={14} color={Color.textSecondary} />
+                            <MapPinIcon size={14} color={iconSecondaryColor} />
                             <Text style={styles.address}>{warehouse.address}</Text>
                         </View>
                         {warehouse.district && (
@@ -93,7 +98,7 @@ export const WarehouseListItem = ({ warehouse, onEdit, onDelete, onViewStatistic
                     style={styles.actionButton}
                     onPress={() => onEdit(warehouse)}
                 >
-                    <IconEdit width={16} height={16} color={Color.blue2} />
+                    <IconEdit width={16} height={16} color={primaryColor} />
                 </TouchableOpacity>
                 <TouchableOpacity
                     style={[styles.actionButton, styles.deleteButton]}
@@ -106,16 +111,16 @@ export const WarehouseListItem = ({ warehouse, onEdit, onDelete, onViewStatistic
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flexDirection: 'row',
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.cardBackground : Color.colorLightMode,
         borderRadius: Border.radius.medium,
         marginBottom: normalize(12),
         padding: normalize(16),
-        ...Shadow.light,
+        ...(isDark ? {} : Shadow.light),
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: isDark ? colors.divider : Color.border,
     },
     content: {
         flex: 1,
@@ -128,7 +133,7 @@ const styles = StyleSheet.create({
         width: normalize(40),
         height: normalize(40),
         borderRadius: normalize(20),
-        backgroundColor: Color.colorLightGray,
+        backgroundColor: isDark ? colors.backgroundSecondary : Color.colorLightGray,
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: normalize(12),
@@ -140,7 +145,7 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: isDark ? (colors.textPrimary || colors.text || Color.colorLightMode) : Color.textPrimary,
         marginBottom: normalize(4),
     },
     addressContainer: {
@@ -151,14 +156,14 @@ const styles = StyleSheet.create({
     address: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         marginLeft: normalize(4),
         flex: 1,
     },
     district: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: Color.blue2,
+        color: isDark ? colors.primary : Color.blue2,
         fontWeight: '500',
     },
     stats: {
@@ -173,14 +178,14 @@ const styles = StyleSheet.create({
     statLabel: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         marginRight: normalize(4),
     },
     statValue: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: isDark ? colors.text : Color.textPrimary,
     },
     actions: {
         flexDirection: 'column',
@@ -191,7 +196,7 @@ const styles = StyleSheet.create({
         width: normalize(32),
         height: normalize(32),
         borderRadius: normalize(16),
-        backgroundColor: Color.colorLightGray,
+        backgroundColor: isDark ? colors.backgroundSecondary : Color.colorLightGray,
         justifyContent: 'center',
         alignItems: 'center',
     },

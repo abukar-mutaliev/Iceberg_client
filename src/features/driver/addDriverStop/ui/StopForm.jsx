@@ -89,7 +89,7 @@ export const StopForm = memo(({
     const commentInputRef = useRef(null);
     const commentInputYPosition = useRef(0);
     const isLoading = useSelector(selectDriverLoading);
-    const allDrivers = useSelector(state => state.driver?.allDrivers || []);
+    const routeAssignees = useSelector(state => state.driver?.routeAssignees || []);
     const { showError, showInfo } = useToast();
     const { 
         showWarning: showAlertWarning,
@@ -129,7 +129,7 @@ export const StopForm = memo(({
         truckNumber: '',
         startTime: '',
         endTime: '',
-        driver: '',
+            driver: '',
         schedule: ''
     });
 
@@ -435,7 +435,7 @@ export const StopForm = memo(({
         };
 
         if (isAdminOrEmployee && !selectedDriver) {
-            newErrors.driver = 'Необходимо выбрать водителя';
+            newErrors.driver = 'Необходимо выбрать водителя или сотрудника';
             isFormValid = false;
         }
 
@@ -639,7 +639,12 @@ export const StopForm = memo(({
             }
 
             if (isAdminOrEmployee && selectedDriver) {
-                stopData.driverId = selectedDriver;
+                const [assigneeType, assigneeId] = String(selectedDriver).split(':');
+                if (assigneeType === 'EMPLOYEE') {
+                    stopData.employeeId = assigneeId;
+                } else {
+                    stopData.driverId = assigneeId || selectedDriver;
+                }
             }
 
             logData('Данные для отправки', {
@@ -849,7 +854,7 @@ export const StopForm = memo(({
                                 fieldErrors.startTime = err.message;
                             } else if (err.message.includes('окончан')) {
                                 fieldErrors.endTime = err.message;
-                            } else if (err.message.includes('водит')) {
+                            } else if (err.message.includes('водит') || err.message.includes('сотрудник') || err.message.includes('ответствен')) {
                                 fieldErrors.driver = err.message;
                             }
                         });
@@ -959,13 +964,13 @@ export const StopForm = memo(({
       
 
                 {isAdminOrEmployee && (
-                    <FormSection title="Водитель">
+                    <FormSection title="Ответственный">
                         <FormField
                             required={isAdminOrEmployee}
                             error={errors.driver}
                         >
                             <DriverPicker
-                                drivers={allDrivers}
+                                drivers={routeAssignees}
                                 selectedDriver={selectedDriver}
                                 setSelectedDriver={(driverId) => {
                                     setSelectedDriver(driverId);
@@ -974,6 +979,12 @@ export const StopForm = memo(({
                                 showDriverPicker={showDriverPicker}
                                 setShowDriverPicker={setShowDriverPicker}
                                 error={errors.driver}
+                                label="Водитель или сотрудник"
+                                placeholder="Выберите ответственного"
+                                modalTitle="Выберите ответственного"
+                                searchPlaceholder="Поиск по имени или телефону..."
+                                emptyText="Список ответственных пуст"
+                                notFoundText="Ответственные не найдены"
                             />
                         </FormField>
                     </FormSection>

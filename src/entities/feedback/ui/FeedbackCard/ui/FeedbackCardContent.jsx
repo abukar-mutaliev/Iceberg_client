@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { FontFamily } from '@app/styles/GlobalStyles';
 
 /**
@@ -11,6 +12,9 @@ export const FeedbackCardContent = ({
                                         isExpanded,
                                         onToggleExpand
                                     }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     // Максимальное количество строк в свёрнутом состоянии
     const MAX_LINES = 3;
 
@@ -40,7 +44,7 @@ export const FeedbackCardContent = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         paddingHorizontal: 16,
         marginTop: 8,
@@ -50,6 +54,7 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontFamily: FontFamily.sFProText,
         lineHeight: 18,
+        color: colors.textPrimary,
     },
     showMoreButton: {
         alignItems: 'flex-end',
@@ -58,6 +63,6 @@ const styles = StyleSheet.create({
     showMoreText: {
         fontSize: 13,
         fontFamily: FontFamily.sFProText,
-        color: '#6B4EFF',
+        color: isDark ? '#A0A8FF' : '#6B4EFF',
     }
 });

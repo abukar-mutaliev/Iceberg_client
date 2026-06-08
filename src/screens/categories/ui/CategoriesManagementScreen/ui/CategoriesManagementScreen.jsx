@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, Alert, RefreshControl, StatusBar } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
 import {
     fetchCategories,
@@ -12,7 +12,7 @@ import {
     clearError
 } from '@entities/category';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
 import { AdminHeader } from '@widgets/admin/AdminHeader';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { CategoryListItem } from './CategoryListItem';
@@ -20,11 +20,14 @@ import { AddCategoryModal } from './AddCategoryModal';
 import {ErrorState} from "@shared/ui/states/ErrorState";
 import {fetchProducts, selectProducts} from "@entities/product";
 import {CategoryIcon} from "@entities/category/ui/CategoryIcon";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const CategoriesManagementScreen = () => {
     const dispatch = useDispatch();
     const navigation = useNavigation();
     const route = useRoute();
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
     const categories = useSelector(selectCategories);
     const products = useSelector(selectProducts);
     const isLoading = useSelector(selectCategoriesLoading);
@@ -174,10 +177,11 @@ export const CategoriesManagementScreen = () => {
 
     return (
         <View style={styles.container}>
+            <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
             <AdminHeader
                 title="Управление категориями"
                 onBackPress={handleBackPress}
-                icon={<CategoryIcon width={24} height={24} color={Color.blue2} />}
+                icon={<CategoryIcon width={24} height={24} color={colors.primary} />}
             />
 
             <View style={styles.content}>
@@ -194,7 +198,7 @@ export const CategoriesManagementScreen = () => {
 
                 {isLoading && !refreshing ? (
                     <View style={styles.centered}>
-                        <ActivityIndicator size="large" color={Color.blue2} />
+                        <ActivityIndicator size="large" color={colors.primary} />
                         <Text style={styles.loadingText}>Загрузка категорий...</Text>
                     </View>
                 ) : error ? (
@@ -220,8 +224,15 @@ export const CategoriesManagementScreen = () => {
                         renderItem={renderCategoryItem}
                         keyExtractor={(item) => item.id.toString()}
                         contentContainerStyle={styles.listContainer}
-                        refreshing={refreshing}
-                        onRefresh={loadCategories}
+                        refreshControl={
+                            <RefreshControl
+                                refreshing={refreshing}
+                                onRefresh={loadCategories}
+                                tintColor={colors.primary}
+                                colors={[colors.primary]}
+                                progressBackgroundColor={colors.surface}
+                            />
+                        }
                     />
                 )}
             </View>
@@ -237,10 +248,10 @@ export const CategoriesManagementScreen = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.background,
     },
     content: {
         flex: 1,
@@ -256,23 +267,23 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_lg),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
     },
     addButton: {
-        backgroundColor: Color.blue2,
+        backgroundColor: colors.primary,
         paddingVertical: normalize(8),
         paddingHorizontal: normalize(12),
         borderRadius: Border.radius.small,
     },
     addEmptyButton: {
-        backgroundColor: Color.blue2,
+        backgroundColor: colors.primary,
         paddingVertical: normalize(10),
         paddingHorizontal: normalize(16),
         borderRadius: Border.radius.small,
         marginTop: normalize(16),
     },
     addButtonText: {
-        color: Color.colorLightMode,
+        color: colors.textInverse,
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
@@ -285,13 +296,13 @@ const styles = StyleSheet.create({
     loadingText: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginTop: normalize(10),
     },
     emptyText: {
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
     },
     listContainer: {
         paddingBottom: normalize(16),

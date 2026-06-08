@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert } from 'reac
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily } from '@app/styles/GlobalStyles';
 import { useWarehouses } from '@entities/warehouse/hooks/useWarehouses';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const ProductWarehouseStockManager = ({
     productStocks = [], // [{ warehouseId, quantity }]
@@ -12,6 +13,8 @@ export const ProductWarehouseStockManager = ({
     onTotalQuantityChange, // Теперь необязательный  
     title = "Остатки по складам"
 }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const { warehouses, loading: loadingWarehouses } = useWarehouses({ autoLoad: true });
     const [stocks, setStocks] = useState({});
     const [showAllWarehouses, setShowAllWarehouses] = useState(false);
@@ -196,6 +199,7 @@ export const ProductWarehouseStockManager = ({
                                     onChangeText={(text) => handleStockChange(warehouse.id, text)}
                                     keyboardType="numeric"
                                     placeholder="0"
+                                    placeholderTextColor={isDark ? colors.textTertiary : '#999'}
                                 />
                                 <Text style={styles.quantityLabel}>коробок</Text>
                                 <TouchableOpacity
@@ -270,12 +274,14 @@ export const ProductWarehouseStockManager = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.surface : Color.colorLightMode,
         borderRadius: normalize(12),
         padding: normalize(16),
         marginBottom: normalize(16),
+        borderWidth: isDark ? StyleSheet.hairlineWidth : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     header: {
         flexDirection: 'row',
@@ -286,7 +292,7 @@ const styles = StyleSheet.create({
     title: {
         fontSize: normalizeFont(16),
         fontWeight: '600',
-        color: Color.dark,
+        color: isDark ? colors.textPrimary : Color.dark,
         fontFamily: FontFamily.sFProDisplay,
     },
     totalContainer: {
@@ -294,13 +300,13 @@ const styles = StyleSheet.create({
     },
     totalLabel: {
         fontSize: normalizeFont(12),
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         fontFamily: FontFamily.sFProText,
     },
     totalValue: {
         fontSize: normalizeFont(16),
         fontWeight: '600',
-        color: Color.primary,
+        color: isDark ? colors.primary : Color.primary,
         fontFamily: FontFamily.sFProDisplay,
     },
     stocksList: {
@@ -310,10 +316,12 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        backgroundColor: '#f8f9fa',
+        backgroundColor: isDark ? colors.surfaceElevated : '#f8f9fa',
         borderRadius: normalize(8),
         padding: normalize(12),
         marginBottom: normalize(8),
+        borderWidth: isDark ? StyleSheet.hairlineWidth : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     warehouseInfo: {
         flex: 1,
@@ -322,12 +330,12 @@ const styles = StyleSheet.create({
     warehouseName: {
         fontSize: normalizeFont(14),
         fontWeight: '600',
-        color: Color.dark,
+        color: isDark ? colors.textPrimary : Color.dark,
         fontFamily: FontFamily.sFProText,
     },
     warehouseAddress: {
         fontSize: normalizeFont(12),
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginTop: normalize(2),
     },
@@ -336,9 +344,9 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     quantityInput: {
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.surface : Color.colorLightMode,
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: isDark ? colors.border : Color.border,
         borderRadius: normalize(6),
         paddingHorizontal: normalize(8),
         paddingVertical: normalize(6),
@@ -346,16 +354,17 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         minWidth: normalize(60),
         fontFamily: FontFamily.sFProText,
+        color: isDark ? colors.textPrimary : Color.dark,
     },
     quantityLabel: {
         fontSize: normalizeFont(12),
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         marginLeft: normalize(6),
         fontFamily: FontFamily.sFProText,
     },
     removeButton: {
         marginLeft: normalize(8),
-        backgroundColor: '#ff4757',
+        backgroundColor: isDark ? colors.error : '#ff4757',
         borderRadius: normalize(12),
         width: normalize(24),
         height: normalize(24),
@@ -363,7 +372,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     removeButtonText: {
-        color: Color.colorLightMode,
+        color: '#FFFFFF',
         fontSize: normalizeFont(12),
         fontWeight: 'bold',
     },
@@ -374,41 +383,45 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        backgroundColor: '#e9ecef',
+        backgroundColor: isDark ? colors.surfaceElevated : '#e9ecef',
         borderRadius: normalize(8),
         padding: normalize(12),
+        borderWidth: isDark ? StyleSheet.hairlineWidth : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     toggleButtonText: {
         fontSize: normalizeFont(14),
         fontWeight: '500',
-        color: Color.dark,
+        color: isDark ? colors.textPrimary : Color.dark,
         fontFamily: FontFamily.sFProText,
     },
     toggleIcon: {
         fontSize: normalizeFont(12),
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
     },
     availableWarehouses: {
         marginTop: normalize(8),
-        backgroundColor: '#f1f3f4',
+        backgroundColor: isDark ? colors.surfaceElevated : '#f1f3f4',
         borderRadius: normalize(8),
         padding: normalize(4),
     },
     warehouseOption: {
         padding: normalize(12),
         borderRadius: normalize(6),
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.surface : Color.colorLightMode,
         marginBottom: normalize(4),
+        borderWidth: isDark ? StyleSheet.hairlineWidth : 0,
+        borderColor: isDark ? colors.border : 'transparent',
     },
     warehouseOptionName: {
         fontSize: normalizeFont(14),
         fontWeight: '500',
-        color: Color.dark,
+        color: isDark ? colors.textPrimary : Color.dark,
         fontFamily: FontFamily.sFProText,
     },
     warehouseOptionAddress: {
         fontSize: normalizeFont(12),
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginTop: normalize(2),
     },
@@ -416,38 +429,40 @@ const styles = StyleSheet.create({
         marginBottom: normalize(8),
     },
     distributeButton: {
-        backgroundColor: Color.primary,
+        backgroundColor: colors.primary,
         borderRadius: normalize(8),
         padding: normalize(12),
         alignItems: 'center',
     },
     distributeButtonText: {
-        color: Color.colorLightMode,
+        color: '#FFFFFF',
         fontSize: normalizeFont(14),
         fontWeight: '500',
         fontFamily: FontFamily.sFProText,
     },
     warningContainer: {
-        backgroundColor: '#fff3cd',
+        backgroundColor: isDark ? 'rgba(255, 210, 74, 0.12)' : '#fff3cd',
         borderRadius: normalize(6),
         padding: normalize(12),
         marginTop: normalize(8),
+        borderWidth: isDark ? StyleSheet.hairlineWidth : 0,
+        borderColor: isDark ? 'rgba(255, 210, 74, 0.35)' : 'transparent',
     },
     warningText: {
         fontSize: normalizeFont(13),
-        color: '#856404',
+        color: isDark ? '#FFD24A' : '#856404',
         textAlign: 'center',
         fontFamily: FontFamily.sFProText,
     },
     errorText: {
-        color: '#dc3545',
+        color: colors.error,
         fontSize: normalizeFont(12),
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(8),
     },
     loadingText: {
         fontSize: normalizeFont(14),
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         textAlign: 'center',
         fontFamily: FontFamily.sFProText,
         marginTop: normalize(20),

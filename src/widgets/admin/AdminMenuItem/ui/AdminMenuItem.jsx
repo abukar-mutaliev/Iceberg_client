@@ -1,20 +1,27 @@
-import React, {useCallback, useState} from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
     TouchableOpacity,
     View,
     Text,
-    StyleSheet
+    StyleSheet,
 } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color, FontFamily, Border } from '@app/styles/GlobalStyles';
+import { Color, FontFamily } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import IconRight from '@shared/ui/Icon/Profile/IconRight';
 
-export const AdminMenuItem = ({ icon, title, onPress, color = Color.blue2, badgeCount = 0 }) => {
+export const AdminMenuItem = ({ icon, title, onPress, color, badgeCount = 0 }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     const [isActive, setIsActive] = useState(false);
     const hasBadge = Number(badgeCount) > 0;
     const badgeText = badgeCount > 99 ? '99+' : String(badgeCount);
 
-    const handlePress = () => {
+    const resolvedIconColor = color || (isDark ? colors.primary : Color.blue2);
+    const inactiveChevronColor = isDark ? colors.textTertiary : Color.grayDarker;
+
+    const handlePress = useCallback(() => {
         setIsActive(true);
 
         const timer = setTimeout(() => {
@@ -29,27 +36,27 @@ export const AdminMenuItem = ({ icon, title, onPress, color = Color.blue2, badge
         return () => {
             clearTimeout(timer);
         };
-    };
+    }, [onPress]);
 
     return (
         <TouchableOpacity
             style={[
                 styles.menuItem,
-                isActive && styles.activeMenuItem
+                isActive && styles.activeMenuItem,
             ]}
             onPress={handlePress}
         >
             <View style={styles.menuItemIcon}>
                 {React.isValidElement(icon)
                     ? React.cloneElement(icon, {
-                        color: isActive ? '#fff' : color
+                        color: isActive ? '#fff' : resolvedIconColor,
                     })
                     : icon
                 }
             </View>
             <Text style={[
                 styles.menuItemText,
-                isActive && styles.activeMenuItemText
+                isActive && styles.activeMenuItemText,
             ]}>
                 {title}
             </Text>
@@ -59,21 +66,21 @@ export const AdminMenuItem = ({ icon, title, onPress, color = Color.blue2, badge
                         <Text style={styles.badgeText}>{badgeText}</Text>
                     </View>
                 )}
-                <IconRight color={isActive ? '#fff' : Color.grayDarker} />
+                <IconRight color={isActive ? '#fff' : inactiveChevronColor} />
             </View>
         </TouchableOpacity>
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     menuItem: {
         flexDirection: 'row',
         alignItems: 'center',
         paddingVertical: normalize(15),
         paddingHorizontal: normalize(16),
         borderBottomWidth: 0.5,
-        borderBottomColor: Color.border,
-        backgroundColor: Color.colorLightMode,
+        borderBottomColor: isDark ? colors.divider : Color.border,
+        backgroundColor: isDark ? colors.cardBackground : Color.colorLightMode,
         position: 'relative',
     },
     menuItemIcon: {
@@ -85,11 +92,11 @@ const styles = StyleSheet.create({
         flex: 1,
         marginLeft: normalize(15),
         fontSize: normalizeFont(16),
-        color: Color.dark,
+        color: isDark ? colors.textPrimary : Color.dark,
         fontFamily: FontFamily.sFProText,
     },
     activeMenuItem: {
-        backgroundColor: Color.blue2,
+        backgroundColor: isDark ? colors.primary : Color.blue2,
     },
     activeMenuItemText: {
         color: '#fff',
@@ -105,7 +112,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(6),
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: Color.red,
+        backgroundColor: isDark ? colors.error : Color.red,
         marginRight: normalize(8),
     },
     badgeText: {

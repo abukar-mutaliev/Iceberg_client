@@ -105,6 +105,10 @@ export const PhotoSection = React.forwardRef(({ photo, setPhoto, error }, ref) =
 
     const ensureGalleryPermission = async () => {
         try {
+            if (Platform.OS === 'android') {
+                return true;
+            }
+
             const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
 
             if (currentStatus === 'granted') {

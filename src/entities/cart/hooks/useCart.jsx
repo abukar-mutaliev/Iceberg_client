@@ -1,6 +1,9 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { featureFlags } from '@shared/config/featureFlags';
+import { useToast } from '@shared/ui/Toast';
+import { showCartToast } from '../lib/showCartToast';
 // Импортируем напрямую из файлов, чтобы избежать циклической зависимости
 import {
     fetchCart,
@@ -22,10 +25,7 @@ import {
     bulkUpdateQuantities,
     bulkRemoveItems,
     calculateShipping,
-    applyDiscount,
-    addNotification,
-    removeNotification,
-    clearNotifications
+    applyDiscount
 } from '../model/slice';
 
 import {
@@ -52,9 +52,56 @@ import {
 
 const GUEST_CART_KEY = 'guest_cart';
 
+const useCartToastHelpers = () => {
+    const { showSuccess, showError, showWarning, showInfo, hideToast, hideAllToasts } = useToast();
+
+    const showCartNotification = useCallback((notification) => {
+        return showCartToast(notification);
+    }, []);
+
+    const addSuccessNotification = useCallback((message) => {
+        if (!message || typeof message !== 'string') return null;
+        return showSuccess(message, { duration: 3000, position: 'top' });
+    }, [showSuccess]);
+
+    const addErrorNotification = useCallback((message) => {
+        if (!message || typeof message !== 'string') return null;
+        return showError(message, { duration: 5000, position: 'top' });
+    }, [showError]);
+
+    const addWarningNotification = useCallback((message) => {
+        if (!message || typeof message !== 'string') return null;
+        return showWarning(message, { duration: 4000, position: 'top' });
+    }, [showWarning]);
+
+    const addInfoNotification = useCallback((message) => {
+        if (!message || typeof message !== 'string') return null;
+        return showInfo(message, { duration: 3000, position: 'top' });
+    }, [showInfo]);
+
+    return {
+        showCartNotification,
+        addSuccessNotification,
+        addErrorNotification,
+        addWarningNotification,
+        addInfoNotification,
+        removeNotification: hideToast,
+        clearAllNotifications: hideAllToasts,
+    };
+};
+
 // ===== ОСНОВНОЙ ХУК ДЛЯ РАБОТЫ С КОРЗИНОЙ (ТОЛЬКО КОРОБКИ) =====
 export const useCart = () => {
     const dispatch = useDispatch();
+    const {
+        showCartNotification,
+        addSuccessNotification,
+        addErrorNotification,
+        addWarningNotification,
+        addInfoNotification,
+        removeNotification,
+        clearAllNotifications,
+    } = useCartToastHelpers();
 
     const items = useSelector(selectCartItems);
     const stats = useSelector(selectCartStats);
@@ -75,7 +122,6 @@ export const useCart = () => {
         breakdown,
         shippingCost,
         appliedDiscount,
-        notifications,
         validating,
         preparingCheckout
     } = cartState;
@@ -172,23 +218,9 @@ export const useCart = () => {
         dispatch(resetValidation());
     }, [dispatch]);
 
-    const addCartNotification = useCallback((notification) => {
-        const notificationWithId = {
-            id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            ...notification,
-            timestamp: new Date().toISOString()
-        };
-        dispatch(addNotification(notificationWithId));
-        return notificationWithId.id;
-    }, [dispatch]);
-
-    const removeCartNotification = useCallback((notificationId) => {
-        dispatch(removeNotification(notificationId));
-    }, [dispatch]);
-
-    const clearCartNotifications = useCallback(() => {
-        dispatch(clearNotifications());
-    }, [dispatch]);
+    const addCartNotification = showCartNotification;
+    const removeCartNotification = removeNotification;
+    const clearCartNotifications = clearAllNotifications;
 
     // Загрузка гостевой корзины при инициализации
     const loadGuestCartFromStorage = useCallback(async () => {
@@ -227,9 +259,6 @@ export const useCart = () => {
         validating,
         preparingCheckout,
 
-        // Уведомления
-        notifications,
-
         // Операции (только коробками)
         loadCart,
         loadCartStats,
@@ -257,7 +286,11 @@ export const useCart = () => {
         resetCartValidation,
         addCartNotification,
         removeCartNotification,
-        clearCartNotifications
+        clearCartNotifications,
+        addSuccessNotification,
+        addErrorNotification,
+        addWarningNotification,
+        addInfoNotification,
     };
 };
 
@@ -829,81 +862,25 @@ export const useBulkCartOperations = () => {
 
 // ===== ХУК ДЛЯ УВЕДОМЛЕНИЙ КОРЗИНЫ =====
 export const useCartNotifications = () => {
-    const dispatch = useDispatch();
-    const notifications = useSelector(state => state.cart.notifications || []);
-
-    const addCartNotification = useCallback((notification) => {
-        const notificationWithId = {
-            id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            ...notification,
-            timestamp: new Date().toISOString()
-        };
-        dispatch(addNotification(notificationWithId));
-        return notificationWithId.id;
-    }, [dispatch]);
-
-    const removeCartNotification = useCallback((notificationId) => {
-        dispatch(removeNotification(notificationId));
-    }, [dispatch]);
-
-    const clearAllNotifications = useCallback(() => {
-        dispatch(clearNotifications());
-    }, [dispatch]);
-
-    // Стабилизируем функции создания уведомлений
-    const addSuccessNotification = useCallback((message) => {
-        if (!message || typeof message !== 'string') return null;
-
-        return addCartNotification({
-            type: 'success',
-            message,
-            autoHide: true,
-            duration: 3000
-        });
-    }, [addCartNotification]);
-
-    const addErrorNotification = useCallback((message) => {
-        if (!message || typeof message !== 'string') return null;
-
-        return addCartNotification({
-            type: 'error',
-            message,
-            autoHide: true,
-            duration: 5000
-        });
-    }, [addCartNotification]);
-
-    const addWarningNotification = useCallback((message) => {
-        if (!message || typeof message !== 'string') return null;
-
-        return addCartNotification({
-            type: 'warning',
-            message,
-            autoHide: true,
-            duration: 4000
-        });
-    }, [addCartNotification]);
-
-    const addInfoNotification = useCallback((message) => {
-        if (!message || typeof message !== 'string') return null;
-
-        return addCartNotification({
-            type: 'info',
-            message,
-            autoHide: true,
-            duration: 3000
-        });
-    }, [addCartNotification]);
+    const {
+        showCartNotification,
+        addSuccessNotification,
+        addErrorNotification,
+        addWarningNotification,
+        addInfoNotification,
+        removeNotification,
+        clearAllNotifications,
+    } = useCartToastHelpers();
 
     return {
-        notifications,
-        addNotification: addCartNotification,
-        removeNotification: removeCartNotification,
+        notifications: [],
+        addNotification: showCartNotification,
+        removeNotification,
         clearAllNotifications,
         addSuccessNotification,
         addErrorNotification,
         addWarningNotification,
-        addInfoNotification
+        addInfoNotification,
     };
 };
 
@@ -1062,11 +1039,8 @@ export const useCartAvailability = () => {
     const userRole = useSelector(state => state.auth?.user?.role);
     const isAuthenticated = useSelector(state => !!state.auth?.user?.id);
     
-    // ВРЕМЕННО ОТКЛЮЧЕНО: Корзина скрыта для всех пользователей
-    // Для выпуска приложения без онлайн заказа
-    // TODO: Вернуть когда функциональность заказа будет готова:
-    // const isCartAvailable = userRole === 'CLIENT' || !isAuthenticated;
-    const isCartAvailable = false;
+    const isCartAvailable =
+        featureFlags.cart && (userRole === 'CLIENT' || !isAuthenticated);
     
     return {
         isCartAvailable,

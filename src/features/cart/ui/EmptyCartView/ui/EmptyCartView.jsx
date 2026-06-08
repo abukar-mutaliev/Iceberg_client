@@ -17,10 +17,13 @@ import {
     Border,
     Padding
 } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const { width } = Dimensions.get('window');
 
 export const EmptyCartView = ({ navigation }) => {
+    const { colors, isDark } = useTheme();
+    const emptyStyles = React.useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     // Проверяем авторизацию пользователя
     const isAuthenticated = useSelector(state => state.auth?.isAuthenticated);
     const userRole = useSelector(state => state.auth?.user?.role);
@@ -157,10 +160,10 @@ export const EmptyCartView = ({ navigation }) => {
     );
 };
 
-const emptyStyles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Color.background,
+        backgroundColor: colors.background,
     },
     content: {
         flex: 1,
@@ -178,21 +181,21 @@ const emptyStyles = StyleSheet.create({
         fontSize: FontSize.xxxlarge + 4,
         fontWeight: '700',
         fontFamily: FontFamily.sFProDisplay,
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         marginBottom: Padding.medium,
         textAlign: 'center',
     },
     description: {
         fontSize: FontSize.size_md,
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         textAlign: 'center',
         marginBottom: Padding.large * 2,
         lineHeight: 24,
         maxWidth: width * 0.8,
     },
     button: {
-        backgroundColor: Color.purpleSoft,
+        backgroundColor: colors.primary,
         paddingVertical: Padding.medium + 2,
         paddingHorizontal: Padding.large * 2,
         borderRadius: Border.br_xl,
@@ -201,7 +204,7 @@ const emptyStyles = StyleSheet.create({
         alignItems: 'center',
     },
     buttonText: {
-        color: Color.background,
+        color: colors.textInverse,
         fontSize: FontSize.size_md,
         fontWeight: '600',
         fontFamily: FontFamily.sFProText,
@@ -217,7 +220,7 @@ const emptyStyles = StyleSheet.create({
         width: 90,
         height: 50,
         borderRadius: Border.br_3xs,
-        backgroundColor: Color.purpleSoft,
+        backgroundColor: colors.primary,
         position: 'absolute',
         bottom: 20,
     },
@@ -226,7 +229,7 @@ const emptyStyles = StyleSheet.create({
         height: 20,
         borderTopLeftRadius: Border.br_3xs,
         borderTopRightRadius: Border.br_3xs,
-        backgroundColor: Color.primary,
+        backgroundColor: colors.primarySoft,
         position: 'absolute',
         top: 0,
     },
@@ -234,7 +237,7 @@ const emptyStyles = StyleSheet.create({
         width: 40,
         height: 40,
         borderWidth: 8,
-        borderColor: Color.purpleSoft,
+        borderColor: colors.primary,
         borderRadius: 20,
         position: 'absolute',
         top: 15,
@@ -244,7 +247,7 @@ const emptyStyles = StyleSheet.create({
         width: 16,
         height: 16,
         borderRadius: 8,
-        backgroundColor: Color.primary,
+        backgroundColor: colors.primarySoft,
         position: 'absolute',
         bottom: 10,
         left: 25,
@@ -253,7 +256,7 @@ const emptyStyles = StyleSheet.create({
         width: 16,
         height: 16,
         borderRadius: 8,
-        backgroundColor: Color.primary,
+        backgroundColor: colors.primarySoft,
         position: 'absolute',
         bottom: 10,
         right: 25,
@@ -274,8 +277,8 @@ const emptyStyles = StyleSheet.create({
         width: width * 0.8,
         height: width * 0.8,
         borderRadius: width * 0.4,
-        backgroundColor: Color.purpleLight,
-        opacity: 0.3,
+        backgroundColor: colors.primarySoft,
+        opacity: isDark ? 0.08 : 0.2,
     },
     circle2: {
         position: 'absolute',
@@ -284,8 +287,8 @@ const emptyStyles = StyleSheet.create({
         width: width * 0.6,
         height: width * 0.6,
         borderRadius: width * 0.3,
-        backgroundColor: Color.colorLavender,
-        opacity: 0.4,
+        backgroundColor: colors.surfaceSecondary,
+        opacity: isDark ? 0.45 : 0.4,
     },
     circle3: {
         position: 'absolute',
@@ -294,8 +297,8 @@ const emptyStyles = StyleSheet.create({
         width: width * 0.3,
         height: width * 0.3,
         borderRadius: width * 0.15,
-        backgroundColor: Color.purpleLight,
-        opacity: 0.2,
+        backgroundColor: colors.primarySoft,
+        opacity: isDark ? 0.08 : 0.16,
     },
 
     buttonsContainer: {
@@ -308,7 +311,7 @@ const emptyStyles = StyleSheet.create({
     ordersButton: {
         backgroundColor: 'transparent',
         borderWidth: 2,
-        borderColor: Color.purpleSoft,
+        borderColor: colors.primary,
         paddingVertical: Padding.medium,
         paddingHorizontal: Padding.large * 1.5,
         borderRadius: Border.br_xl,
@@ -316,7 +319,7 @@ const emptyStyles = StyleSheet.create({
         alignItems: 'center',
     },
     ordersButtonText: {
-        color: Color.purpleSoft,
+        color: colors.primary,
         fontSize: FontSize.size_md,
         fontWeight: '600',
         fontFamily: FontFamily.sFProText,

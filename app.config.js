@@ -6,7 +6,7 @@ export default {
     expo: {
         name: IS_DEV ? 'Iceberg (Dev)' : 'Iceberg',
         slug: 'iceberg',
-        version: '1.4.0',
+        version: '1.4.2',
         scheme: 'iceberg',
         icon: './assets/notification-icon.png',
         userInterfaceStyle: 'automatic',
@@ -32,21 +32,6 @@ export default {
                 {
                     locationWhenInUsePermission: 'Приложению требуется доступ к геолокации для определения вашего текущего местоположения на карте.',
                     locationAlwaysAndWhenInUsePermission: 'Приложению требуется доступ к геолокации для определения вашего текущего местоположения на карте.',
-                },
-            ],
-            [
-                'expo-image-picker',
-                {
-                    photosPermission: 'Приложению требуется доступ к вашим фотографиям для отправки изображений в чате.',
-                    cameraPermission: 'Приложению требуется доступ к камере для съемки фотографий в чате.',
-                },
-            ],
-            [
-                'expo-media-library',
-                {
-                    photosPermission: 'Приложению требуется доступ к вашим фотографиям для сохранения изображений.',
-                    savePhotosPermission: 'Приложению требуется доступ к вашей галерее для сохранения изображений.',
-                    granularPermissions: ['photo'],
                 },
             ],
             ...(IS_DEV || IS_PREVIEW ? ['expo-dev-client'] : []),
@@ -87,7 +72,7 @@ export default {
             eas: {
                 projectId: '934456aa-74ef-4c35-844b-aa0c0c2899f3',
             },
-            apiUrl: 'http://85.192.33.223:5000',
+            apiUrl: 'это сделано на :5000',
             environment: IS_DEV ? 'development' : IS_PREVIEW ? 'preview' : 'production',
             googleMapsApiKey: 'AIzaSyDev-AMb24bvlQn3a-b4DGsItiYB6su6_E',
             yandexMapsApiKey: '17ee620d-aee1-482c-acc9-c7144fd46087',
@@ -105,8 +90,8 @@ export default {
         android: {
             googleServicesFile: './google-services.json',
             package: 'com.abuingush.iceberg',
-            versionCode: 51,
-            versionName: '1.5.1',
+            versionCode: 54,
+            versionName: '1.5.4',
             icon: './assets/icon.png',
             userInterfaceStyle: 'automatic',
             adaptiveIcon: {
@@ -127,6 +112,7 @@ export default {
                 'VIBRATE',
                 'WAKE_LOCK',
                 'RECORD_AUDIO',
+                'CAMERA',
                 'POST_NOTIFICATIONS',
                 'INTERNET',
                 'ACCESS_NETWORK_STATE',
@@ -137,11 +123,19 @@ export default {
                 'android.permission.VIBRATE',
                 'android.permission.WAKE_LOCK',
                 'android.permission.RECORD_AUDIO',
+                'android.permission.CAMERA',
                 'android.permission.POST_NOTIFICATIONS',
                 'android.permission.INTERNET',
                 'android.permission.ACCESS_NETWORK_STATE',
                 'android.permission.SYSTEM_ALERT_WINDOW',
                 'android.permission.FOREGROUND_SERVICE',
+            ],
+            blockedPermissions: [
+                'android.permission.READ_MEDIA_IMAGES',
+                'android.permission.READ_MEDIA_VIDEO',
+                'android.permission.READ_MEDIA_VISUAL_USER_SELECTED',
+                'android.permission.READ_EXTERNAL_STORAGE',
+                'android.permission.WRITE_EXTERNAL_STORAGE',
             ],
             intentFilters: [
                 {

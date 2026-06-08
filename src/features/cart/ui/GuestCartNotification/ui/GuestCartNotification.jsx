@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
     View,
     Text,
@@ -6,7 +6,8 @@ import {
     TouchableOpacity,
     Dimensions,
 } from 'react-native';
-import { Color, FontFamily } from '@app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -21,6 +22,9 @@ export const GuestCartNotification = ({
     onDismiss,
     visible = true
 }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     if (!visible) return null;
 
     return (
@@ -75,21 +79,21 @@ export const GuestCartNotification = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
-        backgroundColor: '#F0F8FF',
+        backgroundColor: colors.surface,
         marginHorizontal: normalize(20),
         marginVertical: normalize(10),
         borderRadius: normalize(12),
         padding: normalize(16),
         borderLeftWidth: 4,
-        borderLeftColor: '#3339B0',
+        borderLeftColor: colors.primary,
         shadowColor: '#000',
         shadowOffset: {
             width: 0,
             height: 2,
         },
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0.25 : 0.1,
         shadowRadius: 4,
         elevation: 3,
     },
@@ -110,13 +114,13 @@ const styles = StyleSheet.create({
     title: {
         fontSize: normalize(14),
         fontWeight: '600',
-        color: '#000000',
+        color: colors.textPrimary,
         marginBottom: normalize(4),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
     },
     description: {
         fontSize: normalize(12),
-        color: '#666666',
+        color: colors.textSecondary,
         lineHeight: normalize(16),
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
     },
@@ -126,7 +130,7 @@ const styles = StyleSheet.create({
         position: 'relative',
     },
     loginButton: {
-        backgroundColor: '#3339B0',
+        backgroundColor: colors.primary,
         borderRadius: normalize(8),
         paddingVertical: normalize(8),
         paddingHorizontal: normalize(16),
@@ -135,7 +139,7 @@ const styles = StyleSheet.create({
     loginButtonText: {
         fontSize: normalize(12),
         fontWeight: '600',
-        color: '#FFFFFF',
+        color: colors.textInverse,
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
     },
     registerButton: {
@@ -144,26 +148,26 @@ const styles = StyleSheet.create({
         paddingVertical: normalize(8),
         paddingHorizontal: normalize(16),
         borderWidth: 1,
-        borderColor: '#3339B0',
+        borderColor: colors.primary,
         marginRight: normalize(8),
     },
     registerButtonText: {
         fontSize: normalize(12),
         fontWeight: '600',
-        color: '#3339B0',
+        color: colors.primary,
         fontFamily: FontFamily.sFProText || 'SF Pro Text',
     },
     dismissButton: {
         width: normalize(24),
         height: normalize(24),
         borderRadius: normalize(12),
-        backgroundColor: 'rgba(102, 102, 102, 0.1)',
+        backgroundColor: colors.surfaceSecondary,
         justifyContent: 'center',
         alignItems: 'center',
     },
     dismissButtonText: {
         fontSize: normalize(12),
-        color: '#666666',
+        color: colors.textSecondary,
         fontWeight: '600',
     },
 }); 

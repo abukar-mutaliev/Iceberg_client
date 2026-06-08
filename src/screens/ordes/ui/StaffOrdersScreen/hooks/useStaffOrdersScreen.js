@@ -20,7 +20,7 @@ import {
     fetchStaffOrders, 
     clearStaffOrdersData 
 } from '@entities/order';
-import { getAvailableStatuses } from '@entities/order';
+import { getAvailableStatuses, getNextStatusAfterComplete } from '@entities/order';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
 
 export const useStaffOrdersScreen = () => {
@@ -384,12 +384,13 @@ export const useStaffOrdersScreen = () => {
         }
 
         const availableStatuses = getAvailableStatuses(order.status);
-        const canEmployeeCancel = !canViewAllOrders && actualProcessingRole && ['PICKER','PACKER','COURIER'].includes(actualProcessingRole);
+        const canEmployeeCancel = !canViewAllOrders && actualProcessingRole && ['PICKER','COURIER'].includes(actualProcessingRole);
+        const canEmployeeCompleteStage = !canViewAllOrders && ['PENDING', 'CONFIRMED', 'PICKING', 'IN_DELIVERY'].includes(order.status);
         const extendedStatuses = canEmployeeCancel
             ? [...availableStatuses, { value: 'CANCELLED', label: 'Отменить заказ', color: '#dc3545' }]
             : availableStatuses;
 
-        if (availableStatuses.length === 0) {
+        if (availableStatuses.length === 0 && !canEmployeeCompleteStage) {
             showInfo('Информация', 'Для этого заказа нет доступных статусов для изменения');
             return;
         }
@@ -439,9 +440,7 @@ export const useStaffOrdersScreen = () => {
                         value: true
                     }));
                     
-                    const newStatus = actualProcessingRole === 'PICKER' ? 'IN_DELIVERY' : 
-                                     actualProcessingRole === 'COURIER' ? 'DELIVERED' : 
-                                     selectedOrder.status;
+                    const newStatus = getNextStatusAfterComplete(actualProcessingRole, selectedOrder.status);
                     
                     dispatch(updateOrderInList({
                         orderId: selectedOrder.id,

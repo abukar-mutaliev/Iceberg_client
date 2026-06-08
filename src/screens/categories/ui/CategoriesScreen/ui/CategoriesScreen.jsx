@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { CategoryIcon } from '@entities/category/ui/CategoryIcon';
+import { logCategoryProducts } from '@entities/category/lib/categoryProductsDebug';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { ThemedStatusBar } from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
 
@@ -171,13 +172,42 @@ export const CategoriesScreen = ({ navigation }) => {
         loadCategories();
     }, [dispatch, categories, isLoading]);
 
+    useEffect(() => {
+        if (!Array.isArray(categories) || categories.length === 0) {
+            return;
+        }
+
+        logCategoryProducts('CategoriesScreen.list', {
+            count: categories.length,
+            categories: categories.map((cat) => ({
+                id: cat?.id,
+                idType: typeof cat?.id,
+                name: cat?.name,
+                description: cat?.description,
+            })),
+        });
+    }, [categories]);
+
     const handleCategoryPress = useCallback((category) => {
         try {
-            if (navigation && typeof navigation.navigate === 'function' && category && category.id) {
-                navigation.navigate('ProductsByCategory', {
+            if (navigation && category && category.id) {
+                const params = {
                     categoryId: category.id,
                     categoryName: category.name || 'Категория',
                     categoryDescription: category.description || 'Описание отсутствует',
+                };
+
+                logCategoryProducts('CategoriesScreen.navigate', {
+                    method: 'navigate',
+                    params,
+                    category,
+                });
+
+                // Один экран: фиксированный key, обновляются params при смене категории
+                navigation.navigate({
+                    name: 'ProductsByCategory',
+                    params,
+                    key: 'ProductsByCategory-active',
                 });
             }
         } catch (error) {

@@ -20,7 +20,6 @@ import { CONSTANTS } from './lib/constants';
 
 // Slice и actions
 export { default as orderReducer } from './model/slice';
-export { default as orderProcessingReducer } from './model/slice';
 
 // Actions
 export {
@@ -128,6 +127,7 @@ export {
     ORDER_STATUSES,
     ORDER_STATUS_LABELS,
     ORDER_STATUS_COLORS,
+    ORDER_STATUS_ICONS,
     getStatusLabel,
     getStatusColor,
     formatOrderNumber,
@@ -136,6 +136,11 @@ export {
     canCancelOrder,
     canLeaveReview,
     getAvailableStatuses,
+    getStageCompletionHint,
+    canEmployeeTakeOrderByRole,
+    isOrderStatusMatchingRole,
+    getNextStatusAfterComplete,
+    getOrderStatusProgress,
     calculateEstimatedDelivery
 } from './lib/utils';
 

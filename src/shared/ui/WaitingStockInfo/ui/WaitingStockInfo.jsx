@@ -1,11 +1,10 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { createOrderDetailsStyles } from '@shared/ui/OrderDetailsStyles';
-
-const styles = createOrderDetailsStyles();
+import { useOrderDetailsStyles } from '@shared/ui/OrderDetailsStyles';
 
 export const WaitingStockInfo = ({ order }) => {
+    const styles = useOrderDetailsStyles();
     if (!order || order.status !== 'WAITING_STOCK') return null;
 
     // Вычисляем количество дней ожидания

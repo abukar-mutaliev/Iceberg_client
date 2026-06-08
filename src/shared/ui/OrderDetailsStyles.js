@@ -1,11 +1,45 @@
+import { createContext, useContext, useMemo } from 'react';
 import { StyleSheet } from 'react-native';
-import { ORDER_STATUS_COLORS } from '@shared/lib/orderConstants';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
-export const createOrderDetailsStyles = () => StyleSheet.create({
+const ON_PRIMARY_COLOR = '#FFFFFF';
+export const ORDER_DETAILS_CLIENT_DARK_BACKGROUND = '#3E3A73';
+
+const OrderDetailsScreenThemeContext = createContext({ darkScreenBackground: null });
+
+export const OrderDetailsScreenThemeProvider = ({ darkScreenBackground = null, children }) => {
+    const value = useMemo(() => ({ darkScreenBackground }), [darkScreenBackground]);
+    return (
+        <OrderDetailsScreenThemeContext.Provider value={value}>
+            {children}
+        </OrderDetailsScreenThemeContext.Provider>
+    );
+};
+
+export const useOrderDetailsScreenBackground = () => {
+    const { colors, isDark } = useTheme();
+    const { darkScreenBackground } = useContext(OrderDetailsScreenThemeContext);
+    return isDark && darkScreenBackground ? darkScreenBackground : colors.primary;
+};
+
+export const useOrderDetailsStyles = () => {
+    const { colors, isDark } = useTheme();
+    const { darkScreenBackground } = useContext(OrderDetailsScreenThemeContext);
+    return useMemo(
+        () => createOrderDetailsStyles(colors, isDark, darkScreenBackground),
+        [colors, isDark, darkScreenBackground]
+    );
+};
+
+export const createOrderDetailsStyles = (colors, isDark, darkScreenBackground = null) => {
+    const screenBackground = isDark && darkScreenBackground ? darkScreenBackground : colors.primary;
+    const hasDarkPurpleTheme = isDark && !!darkScreenBackground;
+
+    return StyleSheet.create({
     // Основные контейнеры
     container: {
         flex: 1,
-        backgroundColor: '#667eea',
+        backgroundColor: screenBackground,
     },
     animatedContainer: {
         flex: 1,
@@ -21,16 +55,31 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     headerContainer: {
         marginBottom: 20,
     },
+    backButtonContainer: {
+        position: 'absolute',
+        left: 16,
+        zIndex: 20,
+    },
+    backButton: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.3)',
+    },
     headerGradient: {
-        backgroundColor: '#667eea',
+        backgroundColor: screenBackground,
         paddingTop: 16,
         paddingBottom: 24,
         paddingHorizontal: 20,
         borderBottomLeftRadius: 24,
         borderBottomRightRadius: 24,
-        shadowColor: '#667eea',
+        shadowColor: screenBackground,
         shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.3,
+        shadowOpacity: isDark ? 0.4 : 0.3,
         shadowRadius: 16,
         elevation: 12,
     },
@@ -57,7 +106,7 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     orderNumber: {
         fontSize: 18,
         fontWeight: '700',
-        color: '#fff',
+        color: ON_PRIMARY_COLOR,
     },
     copyButtonHeader: {
         width: 32,
@@ -90,7 +139,7 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     statusText: {
         fontSize: 12,
         fontWeight: '700',
-        color: '#fff',
+        color: ON_PRIMARY_COLOR,
         textTransform: 'uppercase',
         letterSpacing: 0.5,
     },
@@ -138,7 +187,7 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     amount: {
         fontSize: 24,
         fontWeight: '800',
-        color: '#fff',
+        color: ON_PRIMARY_COLOR,
     },
     amountIcon: {
         width: 48,
@@ -151,16 +200,18 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
 
     // Современные карточки
     modernCard: {
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         marginHorizontal: 20,
         marginBottom: 20,
         borderRadius: 20,
         padding: 24,
-        shadowColor: '#667eea',
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.15,
-        shadowRadius: 20,
-        elevation: 10,
+        shadowOpacity: isDark ? 0.22 : 0.15,
+        shadowRadius: isDark ? 12 : 20,
+        elevation: isDark ? 6 : 10,
+        borderWidth: isDark ? 1 : 0,
+        borderColor: colors.border,
     },
     cardHeader: {
         flexDirection: 'row',
@@ -171,7 +222,7 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     cardTitle: {
         fontSize: 20,
         fontWeight: '700',
-        color: '#2d3748',
+        color: colors.textPrimary,
         flex: 1,
     },
 
@@ -185,7 +236,7 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     infoIconContainer: {
         width: 32,
         height: 32,
-        backgroundColor: '#f7fafc',
+        backgroundColor: colors.surface,
         borderRadius: 16,
         justifyContent: 'center',
         alignItems: 'center',
@@ -200,7 +251,7 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     },
     infoLabel: {
         fontSize: 12,
-        color: '#718096',
+        color: colors.textSecondary,
         fontWeight: '600',
         marginBottom: 4,
         textTransform: 'uppercase',
@@ -212,20 +263,24 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
         borderRadius: 14,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(102, 126, 234, 0.08)',
+        backgroundColor: hasDarkPurpleTheme
+            ? 'rgba(255, 255, 255, 0.15)'
+            : (colors.primarySoft || (colors.primary + '14')),
         borderWidth: 1,
-        borderColor: 'rgba(102, 126, 234, 0.15)',
+        borderColor: hasDarkPurpleTheme
+            ? 'rgba(255, 255, 255, 0.3)'
+            : (colors.primary + '26'),
         marginLeft: 8,
     },
     infoValue: {
         fontSize: 16,
-        color: '#2d3748',
+        color: colors.textPrimary,
         lineHeight: 22,
         fontWeight: '500',
     },
     infoSubtext: {
         fontSize: 12,
-        color: '#718096',
+        color: colors.textSecondary,
         marginTop: 2,
     },
 
@@ -237,7 +292,7 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
         flexDirection: 'row',
         paddingVertical: 16,
         borderBottomWidth: 1,
-        borderBottomColor: '#f1f5f9',
+        borderBottomColor: colors.border,
         gap: 16,
     },
     lastItem: {
@@ -248,7 +303,7 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
         height: 80,
         borderRadius: 16,
         overflow: 'hidden',
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surface,
     },
     itemImage: {
         width: '100%',
@@ -259,7 +314,7 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
         height: '100%',
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#f1f5f9',
+        backgroundColor: colors.surfaceSecondary || colors.surface,
     },
     itemInfo: {
         flex: 1,
@@ -268,7 +323,7 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     itemName: {
         fontSize: 16,
         fontWeight: '700',
-        color: '#2d3748',
+        color: colors.textPrimary,
         lineHeight: 22,
     },
     supplierContainer: {
@@ -278,7 +333,7 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     },
     itemSupplier: {
         fontSize: 12,
-        color: '#718096',
+        color: colors.textSecondary,
         fontWeight: '500',
     },
     itemDetails: {
@@ -291,12 +346,12 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     },
     quantityLabel: {
         fontSize: 14,
-        color: '#718096',
+        color: colors.textSecondary,
         fontWeight: '500',
     },
     itemQuantity: {
         fontSize: 14,
-        color: '#2d3748',
+        color: colors.textPrimary,
         fontWeight: '600',
     },
     priceContainer: {
@@ -306,12 +361,12 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     },
     priceLabel: {
         fontSize: 14,
-        color: '#718096',
+        color: colors.textSecondary,
         fontWeight: '500',
     },
     itemPrice: {
         fontSize: 14,
-        color: '#2d3748',
+        color: colors.textPrimary,
         fontWeight: '600',
     },
     totalContainer: {
@@ -320,17 +375,17 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
         alignItems: 'center',
         paddingTop: 8,
         borderTopWidth: 1,
-        borderTopColor: '#f1f5f9',
+        borderTopColor: colors.border,
     },
     totalLabel: {
         fontSize: 16,
-        color: '#4a5568',
+        color: colors.textSecondary,
         fontWeight: '600',
     },
     itemTotal: {
         fontSize: 18,
         fontWeight: '800',
-        color: '#667eea',
+        color: colors.primary,
     },
 
     // Действия
@@ -351,68 +406,68 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
 
     // Общие стили кнопок
     downloadButton: {
-        backgroundColor: '#667eea',
+        backgroundColor: colors.primary,
         borderRadius: 16,
         overflow: 'hidden',
-        shadowColor: '#667eea',
+        shadowColor: colors.primary,
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
+        shadowOpacity: isDark ? 0.35 : 0.3,
         shadowRadius: 8,
         elevation: 6,
     },
     processButton: {
-        backgroundColor: '#4CAF50',
+        backgroundColor: colors.success,
         borderRadius: 16,
         overflow: 'hidden',
-        shadowColor: '#4CAF50',
+        shadowColor: colors.success,
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
+        shadowOpacity: isDark ? 0.35 : 0.3,
         shadowRadius: 8,
         elevation: 6,
         marginBottom: 10
     },
     cancelButton: {
-        backgroundColor: '#EF5350',
+        backgroundColor: colors.error,
         borderRadius: 16,
         overflow: 'hidden',
-        shadowColor: '#EF5350',
+        shadowColor: colors.error,
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
+        shadowOpacity: isDark ? 0.35 : 0.3,
         shadowRadius: 8,
         elevation: 6,
     },
     releaseButton: {
-        backgroundColor: '#FF9800',
+        backgroundColor: colors.warning || '#FF9800',
         borderRadius: 16,
         overflow: 'hidden',
-        shadowColor: '#FF9800',
+        shadowColor: colors.warning || '#FF9800',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
+        shadowOpacity: isDark ? 0.35 : 0.3,
         shadowRadius: 8,
         elevation: 6,
     },
 
     // Тексты кнопок
     downloadButtonText: {
-        color: '#fff',
+        color: ON_PRIMARY_COLOR,
         fontSize: 16,
         fontWeight: '700',
         letterSpacing: 0.5,
     },
     processButtonText: {
-        color: '#fff',
+        color: ON_PRIMARY_COLOR,
         fontSize: 16,
         fontWeight: '700',
         letterSpacing: 0.5,
     },
     cancelButtonText: {
-        color: '#fff',
+        color: ON_PRIMARY_COLOR,
         fontSize: 16,
         fontWeight: '700',
         letterSpacing: 0.5,
     },
     releaseButtonText: {
-        color: '#fff',
+        color: ON_PRIMARY_COLOR,
         fontSize: 16,
         fontWeight: '700',
         letterSpacing: 0.5,
@@ -424,26 +479,26 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         paddingHorizontal: 32,
-        backgroundColor: '#667eea',
+        backgroundColor: screenBackground,
     },
     errorIconContainer: {
         width: 120,
         height: 120,
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         borderRadius: 60,
         justifyContent: 'center',
         alignItems: 'center',
         marginBottom: 24,
-        shadowColor: '#EF5350',
+        shadowColor: colors.error,
         shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.15,
+        shadowOpacity: isDark ? 0.25 : 0.15,
         shadowRadius: 20,
         elevation: 10,
     },
     errorTitle: {
         fontSize: 24,
         fontWeight: '700',
-        color: '#fff',
+        color: ON_PRIMARY_COLOR,
         marginBottom: 12,
         textAlign: 'center',
     },
@@ -457,19 +512,19 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     retryButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         paddingHorizontal: 32,
         paddingVertical: 16,
         borderRadius: 16,
         gap: 8,
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
+        shadowOpacity: isDark ? 0.2 : 0.15,
         shadowRadius: 8,
         elevation: 6,
     },
     retryButtonText: {
-        color: '#667eea',
+        color: colors.primary,
         fontSize: 16,
         fontWeight: '700',
     },
@@ -490,39 +545,45 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     // Стили для модального окна обработки заказа
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: hasDarkPurpleTheme
+            ? 'rgba(0, 0, 0, 0.65)'
+            : (colors.overlay || 'rgba(0, 0, 0, 0.5)'),
         justifyContent: 'center',
         alignItems: 'center',
         padding: 20,
     },
     modalContent: {
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         borderRadius: 16,
         width: '100%',
         maxWidth: 500,
         maxHeight: '85%',
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
+        shadowOpacity: isDark ? 0.3 : 0.3,
         shadowRadius: 8,
         elevation: 8,
+        borderWidth: hasDarkPurpleTheme ? 1 : 0,
+        borderColor: colors.border,
+        overflow: 'hidden',
     },
     modalHeader: {
         padding: 20,
         borderBottomWidth: 1,
-        borderBottomColor: '#f0f0f0',
+        borderBottomColor: hasDarkPurpleTheme ? 'rgba(255, 255, 255, 0.15)' : colors.border,
         alignItems: 'center',
+        backgroundColor: hasDarkPurpleTheme ? screenBackground : undefined,
     },
     modalTitle: {
         fontSize: 18,
         fontWeight: '700',
-        color: '#1a1a1a',
+        color: hasDarkPurpleTheme ? ON_PRIMARY_COLOR : colors.textPrimary,
         marginBottom: 4,
         textAlign: 'center',
     },
     modalSubtitle: {
         fontSize: 14,
-        color: '#666',
+        color: hasDarkPurpleTheme ? 'rgba(255, 255, 255, 0.75)' : colors.textSecondary,
         textAlign: 'center',
     },
     modalBody: {
@@ -532,32 +593,34 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     currentStatusContainer: {
         marginBottom: 20,
         padding: 12,
-        backgroundColor: '#f8f9fa',
+        backgroundColor: hasDarkPurpleTheme ? (colors.surfaceElevated || colors.surface) : colors.surface,
         borderRadius: 8,
+        borderWidth: hasDarkPurpleTheme ? 1 : 0,
+        borderColor: colors.border,
     },
     currentStatusLabel: {
         fontSize: 12,
-        color: '#666',
+        color: colors.textSecondary,
         marginBottom: 4,
         fontWeight: '600',
         textTransform: 'uppercase',
     },
     currentStatusText: {
         fontSize: 16,
-        color: '#1a1a1a',
+        color: colors.textPrimary,
         fontWeight: '600',
     },
     infoContainer: {
-        backgroundColor: '#f0f2ff',
+        backgroundColor: hasDarkPurpleTheme ? 'rgba(255, 255, 255, 0.1)' : (colors.primarySoft || (colors.primary + '14')),
         padding: 12,
         borderRadius: 8,
         borderLeftWidth: 4,
-        borderLeftColor: '#667eea',
+        borderLeftColor: hasDarkPurpleTheme ? ON_PRIMARY_COLOR : colors.primary,
         marginBottom: 20,
     },
     infoText: {
         fontSize: 14,
-        color: '#1a1a1a',
+        color: colors.textSecondary,
         lineHeight: 20,
     },
     commentContainer: {
@@ -565,24 +628,24 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     },
     commentLabel: {
         fontSize: 14,
-        color: '#1a1a1a',
+        color: colors.textPrimary,
         marginBottom: 8,
         fontWeight: '600',
     },
     commentInput: {
         borderWidth: 1,
-        borderColor: '#e0e0e0',
+        borderColor: colors.border,
         borderRadius: 8,
         padding: 12,
         fontSize: 14,
-        color: '#1a1a1a',
-        backgroundColor: '#fff',
+        color: colors.textPrimary,
+        backgroundColor: hasDarkPurpleTheme ? (colors.surfaceElevated || colors.surface) : colors.surface,
         textAlignVertical: 'top',
         minHeight: 80,
     },
     commentCounter: {
         fontSize: 12,
-        color: '#999',
+        color: colors.textTertiary,
         textAlign: 'right',
         marginTop: 4,
     },
@@ -590,39 +653,41 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
         flexDirection: 'row',
         padding: 20,
         borderTopWidth: 1,
-        borderTopColor: '#f0f0f0',
+        borderTopColor: colors.border,
         gap: 12,
     },
     modalCancelButton: {
         flex: 1,
         padding: 12,
         borderRadius: 8,
-        backgroundColor: '#f8f9fa',
+        backgroundColor: hasDarkPurpleTheme ? 'transparent' : colors.surface,
         borderWidth: 1,
-        borderColor: '#e0e0e0',
+        borderColor: hasDarkPurpleTheme ? ON_PRIMARY_COLOR : colors.border,
         alignItems: 'center',
     },
     modalCancelButtonText: {
         fontSize: 14,
-        color: '#666',
+        color: hasDarkPurpleTheme ? ON_PRIMARY_COLOR : colors.textSecondary,
         fontWeight: '600',
     },
     modalConfirmButton: {
         flex: 1,
         padding: 12,
         borderRadius: 8,
-        backgroundColor: '#4CAF50',
+        backgroundColor: hasDarkPurpleTheme ? screenBackground : colors.success,
         alignItems: 'center',
         justifyContent: 'center',
         minHeight: 44,
     },
     modalConfirmButtonText: {
         fontSize: 14,
-        color: '#fff',
+        color: ON_PRIMARY_COLOR,
         fontWeight: '600',
     },
     modalButtonDisabled: {
-        backgroundColor: '#ccc',
+        backgroundColor: hasDarkPurpleTheme
+            ? 'rgba(255, 255, 255, 0.12)'
+            : (colors.surfaceSecondary || colors.border),
         opacity: 0.6,
     },
 
@@ -633,7 +698,7 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     processingStep: {
         paddingBottom: 16,
         borderBottomWidth: 1,
-        borderBottomColor: '#f1f5f9',
+        borderBottomColor: colors.border,
     },
     lastProcessingStep: {
         borderBottomWidth: 0,
@@ -661,18 +726,18 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     roleLabel: {
         fontSize: 12,
         fontWeight: '700',
-        color: '#fff',
+        color: ON_PRIMARY_COLOR,
         textTransform: 'uppercase',
         letterSpacing: 0.5,
     },
     stepStatus: {
         fontSize: 14,
         fontWeight: '600',
-        color: '#2d3748',
+        color: colors.textPrimary,
     },
     stepDate: {
         fontSize: 12,
-        color: '#718096',
+        color: colors.textSecondary,
         fontWeight: '500',
     },
     stepEmployee: {
@@ -687,12 +752,12 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     employeeName: {
         fontSize: 14,
         fontWeight: '600',
-        color: '#2d3748',
+        color: colors.textPrimary,
         marginBottom: 2,
     },
     employeePosition: {
         fontSize: 12,
-        color: '#718096',
+        color: colors.textSecondary,
     },
     stepComment: {
         flexDirection: 'row',
@@ -700,29 +765,29 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
         gap: 6,
         paddingTop: 8,
         borderTopWidth: 1,
-        borderTopColor: '#f1f5f9',
+        borderTopColor: colors.border,
     },
     commentText: {
         flex: 1,
         fontSize: 12,
-        color: '#718096',
+        color: colors.textSecondary,
         fontStyle: 'italic',
         lineHeight: 16,
     },
     virtualStep: {
         opacity: 0.8,
-        backgroundColor: '#f8f9fa',
+        backgroundColor: colors.surface,
         borderRadius: 8,
         padding: 12,
     },
     virtualComment: {
         fontStyle: 'normal',
-        color: '#6b7280',
+        color: colors.textTertiary,
     },
     temporaryStep: {
-        backgroundColor: '#e8f5e8',
+        backgroundColor: colors.success + '20',
         borderLeftWidth: 4,
-        borderLeftColor: '#4CAF50',
+        borderLeftColor: colors.success,
         borderRadius: 8,
         padding: 12,
         opacity: 0.9,
@@ -731,7 +796,7 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     // Загрузка
     loadingContainer: {
         flex: 1,
-        backgroundColor: '#667eea',
+        backgroundColor: screenBackground,
     },
     loadingContent: {
         flex: 1,
@@ -742,22 +807,22 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     loadingText: {
         marginTop: 16,
         fontSize: 16,
-        color: '#fff',
+        color: ON_PRIMARY_COLOR,
         fontWeight: '500',
     },
 
     // WaitingStockInfo стили
     waitingStockInfo: {
-        backgroundColor: '#fff3cd',
+        backgroundColor: isDark ? colors.surface : '#fff3cd',
         borderRadius: 12,
         padding: 16,
         marginHorizontal: 20,
         marginBottom: 16,
         borderWidth: 1,
-        borderColor: '#ffeaa7',
+        borderColor: isDark ? colors.border : '#ffeaa7',
         shadowColor: '#fd7e14',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0.15 : 0.1,
         shadowRadius: 4,
         elevation: 2,
     },
@@ -784,15 +849,15 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     waitingStockTitle: {
         fontSize: 16,
         fontWeight: '600',
-        color: '#333',
+        color: colors.textPrimary,
         marginBottom: 4,
     },
     waitingStockSubtitle: {
         fontSize: 14,
-        color: '#666',
+        color: colors.textSecondary,
     },
     waitingStockDetails: {
-        backgroundColor: 'rgba(255,255,255,0.7)',
+        backgroundColor: isDark ? colors.cardBackground : 'rgba(255,255,255,0.7)',
         borderRadius: 8,
         padding: 12,
         marginBottom: 12,
@@ -805,7 +870,7 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
     },
     waitingStockDetailLabel: {
         fontSize: 14,
-        color: '#666',
+        color: colors.textSecondary,
         fontWeight: '500',
     },
     waitingStockDetailValue: {
@@ -817,14 +882,15 @@ export const createOrderDetailsStyles = () => StyleSheet.create({
         color: '#dc3545',
     },
     waitingStockMessage: {
-        backgroundColor: 'rgba(255,255,255,0.5)',
+        backgroundColor: isDark ? colors.surface : 'rgba(255,255,255,0.5)',
         borderRadius: 8,
         padding: 12,
     },
     waitingStockMessageText: {
         fontSize: 13,
-        color: '#666',
+        color: colors.textSecondary,
         lineHeight: 18,
         fontStyle: 'italic',
     },
-});
+    });
+};

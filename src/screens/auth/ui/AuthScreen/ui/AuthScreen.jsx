@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
     View,
     Image,
@@ -30,6 +30,7 @@ import { useAuth } from "@entities/auth/hooks/useAuth";
 import { selectRequiresTwoFactor, selectTempToken } from "@entities/auth";
 import { BackButton } from "@shared/ui/Button/BackButton";
 import { ProfileIcon } from '@shared/ui/Icon/TabBarIcons';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const { width, height } = Dimensions.get('window');
 const scale = width / 430;
@@ -60,6 +61,8 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
     const { isAuthenticated } = useAuth();
     const requiresTwoFactor = useSelector(selectRequiresTwoFactor);
     const tempToken = useSelector(selectTempToken);
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     const [activeTab, setActiveTab] = useState('login');
     const [formState, setFormState] = useState('register');
@@ -345,7 +348,7 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
 
                             <View style={styles.logoContainer}>
                                 <Image
-                                    source={require('@assets/logo/logo-image.jpg')}
+                                    source={require('@assets/logo/logo.png')}
                                     style={styles.logo}
                                     resizeMode="contain"
                                 />
@@ -386,40 +389,80 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
                             </View>
 
                             {/* Переключатель типа регистрации */}
-                            {activeTab === 'register' && formState === 'register' && (
-                                <View style={styles.registrationTypeContainer}>
-                                    <TouchableOpacity
-                                        style={[
-                                            styles.registrationTypeButton,
-                                            registrationType === 'email' && styles.registrationTypeButtonActive
-                                        ]}
-                                        onPress={() => setRegistrationType('email')}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Text style={[
-                                            styles.registrationTypeText,
-                                            registrationType === 'email' && styles.registrationTypeTextActive
-                                        ]}>
-                                            📧 Email
-                                        </Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={[
-                                            styles.registrationTypeButton,
-                                            registrationType === 'phone' && styles.registrationTypeButtonActive
-                                        ]}
-                                        onPress={() => setRegistrationType('phone')}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Text style={[
-                                            styles.registrationTypeText,
-                                            registrationType === 'phone' && styles.registrationTypeTextActive
-                                        ]}>
-                                            📱 Телефон
-                                        </Text>
-                                    </TouchableOpacity>
-                                </View>
-                            )}
+                            {activeTab === 'register' && formState === 'register' && (() => {
+                                const isEmailActive = registrationType === 'email';
+                                const isPhoneActive = registrationType === 'phone';
+                                const activeBg = isDark ? colors.primary : '#000cff';
+                                const inactiveBg = isDark ? colors.surfaceElevated : '#FFFFFF';
+                                const inactiveBorder = isDark ? colors.border : '#E0E0E0';
+                                const inactiveText = isDark ? colors.textSecondary : '#666666';
+                                return (
+                                    <View style={styles.registrationTypeContainer}>
+                                        <TouchableOpacity
+                                            key={`reg-type-email-${isEmailActive ? 'on' : 'off'}`}
+                                            style={{
+                                                flex: 1,
+                                                paddingVertical: normalize(12),
+                                                paddingHorizontal: normalize(15),
+                                                borderRadius: normalize(12),
+                                                borderWidth: 1.5,
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                opacity: 1,
+                                                backgroundColor: isEmailActive ? activeBg : inactiveBg,
+                                                borderColor: isEmailActive ? activeBg : inactiveBorder,
+                                            }}
+                                            onPress={() => setRegistrationType('email')}
+                                            activeOpacity={0.7}
+                                        >
+                                            <Text
+                                                key={`reg-type-email-text-${isEmailActive ? 'on' : 'off'}`}
+                                                style={{
+                                                    fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+                                                    fontSize: normalizeFont(14),
+                                                    fontWeight: isEmailActive ? '700' : '600',
+                                                    color: isEmailActive ? '#FFFFFF' : inactiveText,
+                                                    opacity: 1,
+                                                    includeFontPadding: false,
+                                                }}
+                                            >
+                                                📧 Email
+                                            </Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            key={`reg-type-phone-${isPhoneActive ? 'on' : 'off'}`}
+                                            style={{
+                                                flex: 1,
+                                                paddingVertical: normalize(12),
+                                                paddingHorizontal: normalize(15),
+                                                borderRadius: normalize(12),
+                                                borderWidth: 1.5,
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                opacity: 1,
+                                                backgroundColor: isPhoneActive ? activeBg : inactiveBg,
+                                                borderColor: isPhoneActive ? activeBg : inactiveBorder,
+                                            }}
+                                            onPress={() => setRegistrationType('phone')}
+                                            activeOpacity={0.7}
+                                        >
+                                            <Text
+                                                key={`reg-type-phone-text-${isPhoneActive ? 'on' : 'off'}`}
+                                                style={{
+                                                    fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+                                                    fontSize: normalizeFont(14),
+                                                    fontWeight: isPhoneActive ? '700' : '600',
+                                                    color: isPhoneActive ? '#FFFFFF' : inactiveText,
+                                                    opacity: 1,
+                                                    includeFontPadding: false,
+                                                }}
+                                            >
+                                                📱 Телефон
+                                            </Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                );
+                            })()}
                         </View>
                     </Animated.View>
 
@@ -495,14 +538,14 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     safeArea: {
         flex: 1,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.background : '#FFFFFF',
     },
     container: {
         flex: 1,
-        backgroundColor: '#F5F5F5',
+        backgroundColor: isDark ? colors.background : '#F5F5F5',
     },
     innerContainer: {
         flex: 1,
@@ -525,7 +568,7 @@ const styles = StyleSheet.create({
         height: normalize(150),
     },
     containerView: {
-        shadowColor: 'rgba(0, 0, 0, 0.06)',
+        shadowColor: isDark ? 'rgba(0, 0, 0, 0.4)' : 'rgba(0, 0, 0, 0.06)',
         shadowOffset: {
             width: 0,
             height: 4,
@@ -535,10 +578,12 @@ const styles = StyleSheet.create({
         shadowOpacity: 1,
         borderBottomRightRadius: normalize(30),
         borderBottomLeftRadius: normalize(30),
-        backgroundColor: '#FFFFFF',
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
         width: '100%',
         paddingTop: Platform.OS === 'android' ? statusBarHeight : normalize(10),
         paddingBottom: 0,
+        borderBottomWidth: isDark ? 1 : 0,
+        borderBottomColor: isDark ? colors.border : 'transparent',
     },
     header: {
         paddingHorizontal: normalize(20),
@@ -579,16 +624,16 @@ const styles = StyleSheet.create({
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(17),
         fontWeight: '700',
-        color: Color.dark,
+        color: isDark ? colors.textSecondary : Color.dark,
         textAlign: 'center',
         lineHeight: normalizeFont(22),
     },
     activeTabText: {
-        color: Color.dark,
+        color: isDark ? colors.textPrimary : Color.dark,
     },
     activeTabIndicator: {
         height: normalize(2),
-        backgroundColor: '#000cff',
+        backgroundColor: isDark ? colors.primary : '#000cff',
         width: '100%',
         marginTop: normalize(4),
         marginBottom: 0,
@@ -599,6 +644,7 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(16),
         textAlign: 'center',
         marginTop: normalize(20),
+        color: isDark ? colors.textPrimary : '#000',
     },
     registrationTypeContainer: {
         flexDirection: 'row',
@@ -608,29 +654,5 @@ const styles = StyleSheet.create({
         paddingTop: normalize(12),
         paddingBottom: normalize(5),
         gap: normalize(10),
-    },
-    registrationTypeButton: {
-        flex: 1,
-        paddingVertical: normalize(12),
-        paddingHorizontal: normalize(15),
-        borderRadius: normalize(12),
-        borderWidth: 1.5,
-        borderColor: '#E0E0E0',
-        backgroundColor: '#FFFFFF',
-        alignItems: 'center',
-    },
-    registrationTypeButtonActive: {
-        borderColor: '#000cff',
-        backgroundColor: 'rgba(0, 12, 255, 0.05)',
-    },
-    registrationTypeText: {
-        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
-        fontSize: normalizeFont(14),
-        fontWeight: '600',
-        color: '#666',
-    },
-    registrationTypeTextActive: {
-        color: '#000cff',
-        fontWeight: '700',
     },
 });

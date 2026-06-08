@@ -11,8 +11,8 @@ export const useOrderPermissions = (currentUser) => {
         if (!currentUser) return false;
         // Админы всегда могут видеть все заказы
         const isAdmin = currentUser?.role === 'ADMIN';
-        // Обычные сотрудники (не PICKER/PACKER/COURIER) тоже могут видеть все заказы
-        const isGeneralStaff = currentUser?.role === 'EMPLOYEE' && !['PICKER', 'PACKER', 'COURIER'].includes(actualProcessingRole);
+        // Обычные сотрудники (не PICKER/COURIER) тоже могут видеть все заказы
+        const isGeneralStaff = currentUser?.role === 'EMPLOYEE' && !['PICKER', 'COURIER'].includes(actualProcessingRole);
         return isAdmin || isGeneralStaff;
     }, [currentUser, actualProcessingRole]);
 

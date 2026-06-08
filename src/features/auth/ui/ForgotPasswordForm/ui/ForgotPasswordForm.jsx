@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     View,
     Text,
@@ -11,9 +11,13 @@ import { useDispatch, useSelector } from 'react-redux';
 import { initiatePasswordReset, clearError, clearPasswordReset } from '@entities/auth';
 import { CustomTextInput } from '@shared/ui/CustomTextInput/CustomTextInput';
 import { normalize, normalizeFont } from "@shared/lib/normalize";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const ForgotPasswordForm = ({ onCodeSent, resetToken, onUseExistingCode }) => {
     const dispatch = useDispatch();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+    const placeholderColor = isDark ? colors.textTertiary : '#888';
     const isLoading = useSelector((state) => state.auth?.isLoading ?? false);
     const error = useSelector((state) => state.auth?.error);
 
@@ -174,6 +178,7 @@ export const ForgotPasswordForm = ({ onCodeSent, resetToken, onUseExistingCode }
                         keyboardType="default"
                         autoCapitalize="none"
                         placeholder="email@example.com или +7 (999) 123-45-67"
+                        placeholderTextColor={placeholderColor}
                         editable={!isLoading}
                     />
                     <View style={[
@@ -218,7 +223,7 @@ export const ForgotPasswordForm = ({ onCodeSent, resetToken, onUseExistingCode }
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     formContainer: {
         flex: 1,
         paddingHorizontal: normalize(20),
@@ -232,7 +237,7 @@ const styles = StyleSheet.create({
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(24),
         fontWeight: '700',
-        color: '#000',
+        color: isDark ? colors.textPrimary : '#000',
         marginBottom: normalize(10),
         textAlign: 'center',
     },
@@ -240,7 +245,7 @@ const styles = StyleSheet.create({
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(15),
         fontWeight: '400',
-        color: '#666',
+        color: isDark ? colors.textSecondary : '#666',
         marginBottom: normalize(30),
         textAlign: 'center',
         lineHeight: normalizeFont(21),
@@ -256,8 +261,8 @@ const styles = StyleSheet.create({
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(15),
         fontWeight: '600',
-        color: '#000',
-        opacity: 0.4,
+        color: isDark ? colors.textSecondary : '#000',
+        opacity: isDark ? 1 : 0.4,
         marginBottom: normalize(5),
         lineHeight: normalize(21),
     },
@@ -265,7 +270,7 @@ const styles = StyleSheet.create({
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(17),
         fontWeight: '600',
-        color: '#000',
+        color: isDark ? colors.textPrimary : '#000',
         paddingBottom: normalize(5),
         height: normalize(40),
         paddingHorizontal: 0,
@@ -273,28 +278,28 @@ const styles = StyleSheet.create({
     },
     inputUnderline: {
         height: 1,
-        backgroundColor: '#000',
+        backgroundColor: isDark ? colors.border : '#000',
         width: '100%',
     },
     errorUnderline: {
-        backgroundColor: '#FF0000',
+        backgroundColor: isDark ? colors.error : '#FF0000',
         height: 1.5,
     },
     errorText: {
-        color: '#FF0000',
+        color: isDark ? colors.error : '#FF0000',
         fontSize: normalizeFont(12),
         marginTop: normalize(5),
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
     },
     globalErrorText: {
-        color: '#FF0000',
+        color: isDark ? colors.error : '#FF0000',
         fontSize: normalizeFont(14),
         textAlign: 'center',
         marginBottom: normalize(15),
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
     },
     button: {
-        backgroundColor: '#000cff',
+        backgroundColor: isDark ? colors.primary : '#000cff',
         borderRadius: 30,
         width: '100%',
         maxWidth: normalize(320),
@@ -308,7 +313,7 @@ const styles = StyleSheet.create({
         marginTop: normalize(10),
     },
     buttonDisabled: {
-        backgroundColor: '#d3d3d3',
+        backgroundColor: isDark ? colors.border : '#d3d3d3',
     },
     buttonText: {
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
@@ -326,6 +331,6 @@ const styles = StyleSheet.create({
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(14),
         fontWeight: '600',
-        color: '#3339b0',
+        color: isDark ? colors.primary : '#3339b0',
     },
 });

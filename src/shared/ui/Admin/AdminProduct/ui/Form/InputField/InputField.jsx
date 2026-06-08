@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, TextInput, StyleSheet } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily, Border } from '@app/styles/GlobalStyles';
 import ValidationMessage from "@shared/ui/Admin/AdminProduct/ui/ValidationMessage/ValidationMessage";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const InputField = ({
                                label,
@@ -21,6 +22,8 @@ export const InputField = ({
                                secureTextEntry = false,
                                minHeight = 44
                            }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     // Состояние для адаптивной высоты (как в модальном окне)
     const [inputHeight, setInputHeight] = useState(multiline ? 60 : minHeight);
 
@@ -71,7 +74,7 @@ export const InputField = ({
                     editable={editable}
                     secureTextEntry={secureTextEntry}
                     textAlignVertical={multiline ? 'top' : 'center'}
-                    placeholderTextColor={Color.textSecondary}
+                    placeholderTextColor={isDark ? colors.textTertiary : Color.textSecondary}
                     blurOnSubmit={multiline ? true : false}
                     returnKeyType={multiline ? "done" : "default"}
                 />
@@ -88,31 +91,31 @@ export const InputField = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         marginBottom: normalize(16),
     },
     label: {
         fontSize: normalizeFont(14),
         fontWeight: '600',
-        color: Color.dark,
+        color: isDark ? colors.textSecondary : Color.dark,
         marginBottom: normalize(8),
         fontFamily: FontFamily.sFProText,
     },
     required: {
-        color: '#f44336',
+        color: colors.error,
     },
     inputContainer: {
         flexDirection: 'row',
         alignItems: 'flex-start', // Изменено для многострочных полей
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: isDark ? colors.border : Color.border,
         borderRadius: Border.radius.small,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.surfaceElevated : Color.colorLightMode,
         minHeight: normalize(44),
     },
     inputError: {
-        borderColor: '#f44336',
+        borderColor: colors.error,
         borderWidth: 1.5,
     },
     iconContainer: {
@@ -122,13 +125,13 @@ const styles = StyleSheet.create({
     },
     icon: {
         fontSize: normalizeFont(16),
-        color: Color.blue2,
+        color: isDark ? colors.primary : Color.blue2,
     },
     input: {
         flex: 1,
         padding: normalize(12),
         fontSize: normalizeFont(16),
-        color: Color.dark,
+        color: isDark ? colors.textPrimary : Color.dark,
         fontFamily: FontFamily.sFProText,
         minHeight: normalize(44),
     },
@@ -140,12 +143,12 @@ const styles = StyleSheet.create({
         textAlignVertical: 'top',
     },
     inputDisabled: {
-        backgroundColor: '#F5F5F5',
-        color: Color.textSecondary,
+        backgroundColor: isDark ? colors.surfaceSecondary || colors.surfaceElevated : '#F5F5F5',
+        color: isDark ? colors.textTertiary : Color.textSecondary,
     },
     characterCount: {
         fontSize: normalizeFont(12),
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         textAlign: 'right',
         marginTop: normalize(4),
         fontFamily: FontFamily.sFProText,

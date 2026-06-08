@@ -1,4 +1,5 @@
 import { createProtectedRequest } from '@shared/api/api';
+import { logCategoryProducts } from '@entities/category/lib/categoryProductsDebug';
 
 export const categoryApi = {
     // Создание новой категории (только для ADMIN)
@@ -38,8 +39,26 @@ export const categoryApi = {
         if (params.sortOrder) queryParams.append('sortOrder', params.sortOrder);
 
         const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+        const url = `/api/categories/${id}/products${queryString}`;
 
-        const response = await createProtectedRequest('get', `/api/categories/${id}/products${queryString}`);
+        logCategoryProducts('API.request', {
+            categoryId: id,
+            params,
+            url,
+        });
+
+        const response = await createProtectedRequest('get', url);
+
+        const apiProducts = response?.data?.products;
+        logCategoryProducts('API.response', {
+            categoryId: id,
+            status: response?.status,
+            productsCount: Array.isArray(apiProducts) ? apiProducts.length : 0,
+            productIds: Array.isArray(apiProducts) ? apiProducts.map((p) => p?.id) : [],
+            pagination: response?.data?.pagination ?? null,
+            responseCategory: response?.data?.category ?? null,
+        });
+
         return response;
     },
 };

@@ -1,7 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { authApi } from '@entities/auth/api/authApi';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {api, authService, getBaseUrl, createProtectedRequest} from '@shared/api/api';
+import {api, authService, getBaseUrl, createProtectedRequest, isNetworkError} from '@shared/api/api';
 import { fetchNotificationSettings } from '@entities/notification/model/slice';
 
 const STORAGE_KEYS = {
@@ -460,22 +460,21 @@ export const refreshToken = createAsyncThunk(
             const newTokens = await authService.refreshAccessToken();
 
             if (!newTokens?.accessToken || !newTokens?.refreshToken) {
+                // refreshAccessToken() returns null on offline/transient errors without clearing storage.
+                // If refresh JWT is still valid locally, treat as network — do not chain into hard failure.
+                const stored = await authService.getStoredTokens();
+                if (stored?.refreshToken && authService.isTokenValid(stored.refreshToken)) {
+                    return rejectWithValue('Нет подключения к интернету. Попробуйте позже.');
+                }
                 throw new Error('Не удалось обновить токены');
             }
 
             await saveTokensToStorage(newTokens);
             return newTokens;
         } catch (error) {
-            const isNetwork =
-                !error.response &&
-                (error.code === 'ERR_NETWORK' ||
-                 error.code === 'ECONNABORTED' ||
-                 error.message?.includes('Network') ||
-                 error.message?.includes('timeout'));
-
             // При сетевой ошибке НЕ сбрасываем авторизацию —
             // токены на сервере могут быть валидны, просто нет связи
-            if (isNetwork) {
+            if (isNetworkError(error)) {
                 return rejectWithValue('Нет подключения к интернету. Попробуйте позже.');
             }
 

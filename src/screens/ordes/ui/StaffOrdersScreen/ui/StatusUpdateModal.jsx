@@ -1,8 +1,12 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, ActivityIndicator } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { TextInput } from 'react-native';
-import { ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, ORDER_STATUS_ICONS, CONSTANTS } from '@entities/order';
+import { ORDER_STATUS_COLORS, ORDER_STATUS_ICONS, CONSTANTS, getStageCompletionHint, getStatusLabel } from '@entities/order';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { useOrderDetailsScreenBackground } from '@shared/ui/OrderDetailsStyles';
+
+const ON_PRIMARY_COLOR = '#FFFFFF';
 
 export const StatusUpdateModal = ({
     visible,
@@ -12,11 +16,23 @@ export const StatusUpdateModal = ({
     statusComment,
     updatingStatus,
     canViewAllOrders,
+    employeeProcessingRole,
     onClose,
     onStatusSelect,
     onCommentChange,
     onConfirm
 }) => {
+    const { colors, isDark } = useTheme();
+    const screenBackground = useOrderDetailsScreenBackground();
+    const styles = useMemo(
+        () => createStyles(colors, isDark, screenBackground),
+        [colors, isDark, screenBackground]
+    );
+    const headerIconColor = isDark ? ON_PRIMARY_COLOR : colors.primary;
+    const closeIconColor = isDark ? 'rgba(255, 255, 255, 0.75)' : colors.textTertiary;
+    const selectedCheckColor = isDark ? ON_PRIMARY_COLOR : colors.primary;
+    const statusAccentColor = isDark ? screenBackground : colors.primary;
+
     if (!selectedOrder) return null;
 
     return (
@@ -30,7 +46,7 @@ export const StatusUpdateModal = ({
                 <View style={styles.modalContent}>
                     <View style={styles.modalHeader}>
                         <View style={styles.modalTitleContainer}>
-                            <Icon name="tune" size={24} color="#667eea" />
+                            <Icon name="tune" size={24} color={headerIconColor} />
                             <Text style={styles.modalTitle}>
                                 {canViewAllOrders ? 'Изменить статус заказа' : 'Завершить этап обработки'}
                             </Text>
@@ -40,7 +56,7 @@ export const StatusUpdateModal = ({
                             style={styles.modalCloseButton}
                             activeOpacity={0.7}
                         >
-                            <Icon name="close" size={24} color="#a0aec0" />
+                            <Icon name="close" size={24} color={closeIconColor} />
                         </TouchableOpacity>
                     </View>
 
@@ -48,7 +64,7 @@ export const StatusUpdateModal = ({
                         <View style={styles.currentStatusContainer}>
                             <Text style={styles.currentStatusLabel}>Текущий статус:</Text>
                             <Text style={styles.currentStatusText}>
-                                {ORDER_STATUS_LABELS[selectedOrder.status] || selectedOrder.status}
+                                {getStatusLabel(selectedOrder.status)}
                             </Text>
                         </View>
 
@@ -68,12 +84,12 @@ export const StatusUpdateModal = ({
                                         <View style={styles.statusOptionContent}>
                                             <View style={[
                                                 styles.statusIconContainer,
-                                                { backgroundColor: (ORDER_STATUS_COLORS[statusOption.value] || '#667eea') + '20' }
+                                                { backgroundColor: (ORDER_STATUS_COLORS[statusOption.value] || statusAccentColor) + '20' }
                                             ]}>
                                                 <Icon
                                                     name={ORDER_STATUS_ICONS[statusOption.value] || 'help'}
                                                     size={20}
-                                                    color={ORDER_STATUS_COLORS[statusOption.value] || '#667eea'}
+                                                    color={ORDER_STATUS_COLORS[statusOption.value] || statusAccentColor}
                                                 />
                                             </View>
                                             <Text style={[
@@ -84,17 +100,17 @@ export const StatusUpdateModal = ({
                                             </Text>
                                         </View>
                                         {selectedStatus === statusOption.value && (
-                                            <Icon name="check" size={20} color="#667eea" />
+                                            <Icon name="check" size={20} color={selectedCheckColor} />
                                         )}
                                     </TouchableOpacity>
                                 ))}
                             </View>
                         ) : (
                             <View style={styles.newStatusContainer}>
-                                <Text style={styles.newStatusLabel}>Информация:</Text>
+                                <Text style={styles.newStatusLabel}>Следующий этап:</Text>
                                 <View style={styles.infoContainer}>
                                     <Text style={styles.infoText}>
-                                        При нажатии "Завершить этап" заказ автоматически перейдет к следующему сотруднику в цепочке обработки.
+                                        {getStageCompletionHint(employeeProcessingRole, selectedOrder.status)}
                                     </Text>
                                 </View>
                             </View>
@@ -105,11 +121,14 @@ export const StatusUpdateModal = ({
                             <TextInput
                                 style={styles.commentInput}
                                 placeholder="Введите комментарий к изменению статуса..."
+                                placeholderTextColor={colors.textTertiary}
                                 value={statusComment}
                                 onChangeText={onCommentChange}
                                 multiline
                                 numberOfLines={3}
                                 maxLength={CONSTANTS.COMMENT_MAX_LENGTH}
+                                keyboardAppearance={colors.keyboardAppearance}
+                                selectionColor={statusAccentColor}
                             />
                             <Text style={styles.commentCounter}>
                                 {statusComment.length}/{CONSTANTS.COMMENT_MAX_LENGTH}
@@ -118,12 +137,11 @@ export const StatusUpdateModal = ({
                     </ScrollView>
 
                     <View style={styles.modalActions}>
-                        {!canViewAllOrders && ['PICKER','PACKER','COURIER'].includes(selectedOrder?.employeeRole) &&
+                        {!canViewAllOrders && ['PICKER', 'COURIER'].includes(employeeProcessingRole) &&
                          CONSTANTS.CANCELLABLE_STATUSES.includes(selectedOrder?.status) && (
                             <TouchableOpacity
                                 style={styles.modalDangerButton}
                                 onPress={async () => {
-                                    // TODO: Implement cancel order logic
                                     onClose();
                                 }}
                                 disabled={updatingStatus}
@@ -141,7 +159,7 @@ export const StatusUpdateModal = ({
                             disabled={(canViewAllOrders && !selectedStatus) || updatingStatus}
                         >
                             {updatingStatus ? (
-                                <ActivityIndicator color="#fff" />
+                                <ActivityIndicator color={ON_PRIMARY_COLOR} />
                             ) : (
                                 <Text style={styles.modalConfirmButtonText}>
                                     {canViewAllOrders ? 'Изменить статус' : 'Завершить этап'}
@@ -163,28 +181,44 @@ export const StatusUpdateModal = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark, screenBackground) => {
+    const headerBackground = isDark ? screenBackground : colors.cardBackground;
+    const headerBorderColor = isDark ? 'rgba(255, 255, 255, 0.15)' : colors.border;
+    const accentColor = isDark ? screenBackground : colors.primary;
+    const selectedOptionBackground = isDark ? screenBackground : (colors.primarySoft || (colors.primary + '14'));
+    const selectedOptionBorder = isDark ? screenBackground : colors.primary;
+    const infoBackground = isDark ? 'rgba(255, 255, 255, 0.1)' : (colors.primarySoft || (colors.primary + '14'));
+    const infoBorderColor = isDark ? ON_PRIMARY_COLOR : colors.primary;
+
+    return StyleSheet.create({
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: isDark ? 'rgba(0, 0, 0, 0.65)' : (colors.overlay || 'rgba(0, 0, 0, 0.5)'),
         justifyContent: 'flex-end',
     },
     modalContent: {
-        backgroundColor: '#ffffff',
+        backgroundColor: colors.cardBackground,
         borderTopLeftRadius: 24,
         borderTopRightRadius: 24,
         maxHeight: '90%',
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0.35 : 0.1,
         shadowRadius: 12,
         elevation: 20,
+        borderWidth: isDark ? 1 : 0,
+        borderColor: colors.border,
     },
     modalHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
         padding: 24,
+        backgroundColor: headerBackground,
+        borderBottomWidth: 1,
+        borderBottomColor: headerBorderColor,
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
     },
     modalTitleContainer: {
         flexDirection: 'row',
@@ -195,7 +229,7 @@ const styles = StyleSheet.create({
     modalTitle: {
         fontSize: 20,
         fontWeight: '700',
-        color: '#2d3748',
+        color: isDark ? ON_PRIMARY_COLOR : colors.textPrimary,
     },
     modalCloseButton: {
         padding: 4,
@@ -207,19 +241,21 @@ const styles = StyleSheet.create({
     currentStatusContainer: {
         marginBottom: 20,
         padding: 12,
-        backgroundColor: '#f8f9fa',
+        backgroundColor: isDark ? colors.surfaceElevated || colors.surface : colors.surface,
         borderRadius: 8,
+        borderWidth: isDark ? 1 : 0,
+        borderColor: colors.border,
     },
     currentStatusLabel: {
         fontSize: 12,
-        color: '#666',
+        color: colors.textSecondary,
         marginBottom: 4,
         fontWeight: '600',
         textTransform: 'uppercase',
     },
     currentStatusText: {
         fontSize: 16,
-        color: '#1a1a1a',
+        color: colors.textPrimary,
         fontWeight: '600',
     },
     newStatusContainer: {
@@ -227,7 +263,7 @@ const styles = StyleSheet.create({
     },
     newStatusLabel: {
         fontSize: 14,
-        color: '#1a1a1a',
+        color: colors.textPrimary,
         marginBottom: 12,
         fontWeight: '600',
     },
@@ -239,13 +275,13 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         borderRadius: 16,
         marginBottom: 8,
-        backgroundColor: '#f8f9ff',
+        backgroundColor: colors.surface,
         borderWidth: 1,
-        borderColor: '#e2e8f0',
+        borderColor: colors.border,
     },
     statusOptionSelected: {
-        backgroundColor: '#e3f2fd',
-        borderColor: '#667eea',
+        backgroundColor: selectedOptionBackground,
+        borderColor: selectedOptionBorder,
     },
     statusOptionContent: {
         flexDirection: 'row',
@@ -259,28 +295,28 @@ const styles = StyleSheet.create({
         borderRadius: 20,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#f1f5f9',
+        backgroundColor: colors.surfaceSecondary || colors.surface,
     },
     statusOptionText: {
         fontSize: 16,
-        color: '#2d3748',
+        color: colors.textPrimary,
         fontWeight: '500',
         flex: 1,
     },
     statusOptionTextSelected: {
-        color: '#667eea',
+        color: isDark ? ON_PRIMARY_COLOR : colors.primary,
         fontWeight: '700',
     },
     infoContainer: {
-        backgroundColor: '#f0f2ff',
+        backgroundColor: infoBackground,
         padding: 12,
         borderRadius: 8,
         borderLeftWidth: 4,
-        borderLeftColor: '#667eea',
+        borderLeftColor: infoBorderColor,
     },
     infoText: {
         fontSize: 14,
-        color: '#1a1a1a',
+        color: colors.textSecondary,
         lineHeight: 20,
     },
     commentContainer: {
@@ -288,24 +324,24 @@ const styles = StyleSheet.create({
     },
     commentLabel: {
         fontSize: 14,
-        color: '#1a1a1a',
+        color: colors.textPrimary,
         marginBottom: 8,
         fontWeight: '600',
     },
     commentInput: {
         borderWidth: 1,
-        borderColor: '#e0e0e0',
+        borderColor: colors.border,
         borderRadius: 8,
         padding: 12,
         fontSize: 14,
-        color: '#1a1a1a',
-        backgroundColor: '#fff',
+        color: colors.textPrimary,
+        backgroundColor: isDark ? colors.surfaceElevated || colors.surface : colors.surface,
         textAlignVertical: 'top',
         minHeight: 80,
     },
     commentCounter: {
         fontSize: 12,
-        color: '#999',
+        color: colors.textTertiary,
         textAlign: 'right',
         marginTop: 4,
     },
@@ -313,52 +349,53 @@ const styles = StyleSheet.create({
         flexDirection: 'column',
         padding: 20,
         borderTopWidth: 1,
-        borderTopColor: '#f0f0f0',
+        borderTopColor: colors.border,
         gap: 12,
     },
     modalConfirmButton: {
         padding: 12,
         borderRadius: 8,
-        backgroundColor: '#667eea',
+        backgroundColor: accentColor,
         alignItems: 'center',
         justifyContent: 'center',
         minHeight: 44,
     },
     modalConfirmButtonText: {
         fontSize: 14,
-        color: '#fff',
+        color: ON_PRIMARY_COLOR,
         fontWeight: '600',
     },
     modalDangerButton: {
         padding: 12,
         borderRadius: 8,
-        backgroundColor: '#dc3545',
+        backgroundColor: colors.error,
         alignItems: 'center',
         justifyContent: 'center',
         minHeight: 44,
     },
     modalDangerButtonText: {
         fontSize: 14,
-        color: '#fff',
+        color: colors.textInverse,
         fontWeight: '600',
     },
     modalCancelButton: {
         padding: 12,
         borderRadius: 8,
-        backgroundColor: '#f8f9fa',
+        backgroundColor: isDark ? 'transparent' : colors.surface,
         borderWidth: 1,
-        borderColor: '#e0e0e0',
+        borderColor: isDark ? ON_PRIMARY_COLOR : colors.border,
         alignItems: 'center',
         minHeight: 44,
         justifyContent: 'center',
     },
     modalCancelButtonText: {
         fontSize: 14,
-        color: '#666',
+        color: isDark ? ON_PRIMARY_COLOR : colors.textSecondary,
         fontWeight: '600',
     },
     modalButtonDisabled: {
-        backgroundColor: '#ccc',
+        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.12)' : (colors.surfaceSecondary || colors.border),
         opacity: 0.6,
     },
 });
+};

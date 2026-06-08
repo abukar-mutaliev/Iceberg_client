@@ -1,7 +1,10 @@
 import { createSelector } from '@reduxjs/toolkit';
+import { normalizeCategoryId } from './slice';
 
 // Базовый селектор состояния категорий
 const selectCategoryState = (state) => state.category || {};
+
+const selectNormalizedCategoryId = (state, categoryId) => normalizeCategoryId(categoryId);
 
 // Мемоизированные селекторы для избежания лишних ререндеров
 export const selectCategories = createSelector(
@@ -38,38 +41,74 @@ export const selectCategoryCacheValid = createSelector(
     }
 );
 
-// Мемоизированный селектор для продуктов по категориям
 export const selectProductsByCategory = createSelector(
-    [selectCategoryState, (state, categoryId) => categoryId],
-    (categoryState, categoryId) => {
-        if (!categoryId) return [];
-        return categoryState.productsByCategory?.[categoryId] || [];
+    [selectCategoryState, selectNormalizedCategoryId],
+    (categoryState, normalizedId) => {
+        if (!normalizedId) return [];
+        return categoryState.productsByCategory?.[normalizedId] || [];
     }
 );
 
 export const selectProductsByCategoryLoading = createSelector(
-    [selectCategoryState],
-    (categoryState) => categoryState.productsLoading || false
+    [selectCategoryState, selectNormalizedCategoryId],
+    (categoryState, normalizedId) => {
+        if (!normalizedId) return false;
+        return categoryState.productsLoadingByCategory?.[normalizedId] || false;
+    }
 );
 
 export const selectProductsByCategoryError = createSelector(
-    [selectCategoryState],
-    (categoryState) => categoryState.productsError || null
+    [selectCategoryState, selectNormalizedCategoryId],
+    (categoryState, normalizedId) => {
+        if (!normalizedId) return null;
+        return categoryState.productsErrorByCategory?.[normalizedId] || null;
+    }
+);
+
+export const selectProductsByCategoryLoadingMore = createSelector(
+    [selectCategoryState, selectNormalizedCategoryId],
+    (categoryState, normalizedId) => {
+        if (!normalizedId) return false;
+        return categoryState.productsLoadingMoreByCategory?.[normalizedId] || false;
+    }
+);
+
+export const selectProductsByCategoryPagination = createSelector(
+    [selectCategoryState, selectNormalizedCategoryId],
+    (categoryState, normalizedId) => {
+        if (!normalizedId) {
+            return { currentPage: 1, totalPages: 1, totalItems: 0, hasMore: false };
+        }
+        return categoryState.productsPaginationByCategory?.[normalizedId] || {
+            currentPage: 1,
+            totalPages: 1,
+            totalItems: 0,
+            hasMore: false,
+        };
+    }
+);
+
+export const selectProductsByCategoryHasMore = createSelector(
+    [selectProductsByCategoryPagination],
+    (pagination) => pagination.hasMore || false
+);
+
+export const selectProductsByCategoryCurrentPage = createSelector(
+    [selectProductsByCategoryPagination],
+    (pagination) => pagination.currentPage || 1
 );
 
 // Селектор для получения категории по ID
 export const selectCategoryById = createSelector(
-    [selectCategories, (state, categoryId) => categoryId],
-    (categories, categoryId) => {
-        if (!categoryId || !Array.isArray(categories)) return null;
-        return categories.find(category => category.id === categoryId) || null;
+    [selectCategories, selectNormalizedCategoryId],
+    (categories, normalizedId) => {
+        if (!normalizedId || !Array.isArray(categories)) return null;
+        return categories.find((category) => normalizeCategoryId(category.id) === normalizedId) || null;
     }
 );
 
 // Селектор для проверки наличия продуктов в категории
 export const selectHasProductsInCategory = createSelector(
     [selectProductsByCategory],
-    (products) => {
-        return Array.isArray(products) && products.length > 0;
-    }
+    (products) => Array.isArray(products) && products.length > 0
 );

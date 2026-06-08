@@ -246,14 +246,7 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
         }
 
         if (isFocused) {
-            // Нажатие на уже активный таб.
-            // В React Navigation v7 вызов navigation.emit('tabPress') для активного таба
-            // запускает внутренние листенеры v7, которые диспатчат navigate('MainTab', {merge: true})
-            // — это трактуется как forward-push, и на iOS Main начинает анимацию slide-in справа,
-            // которая «зависает» на половине экрана (правая половина пустая).
-            // Решение: НЕ эмитим tabPress, а напрямую диспатчим popToTop в nested-стек.
-            // Это гарантирует корректную close-анимацию (ProductDetail плавно исчезает),
-            // а Main просто «размораживается» без лишней анимации.
+
             const nestedState = state.routes[actualIndex]?.state;
             if (nestedState?.routes?.length > 1) {
                 isNavigating.current = true;
@@ -350,12 +343,15 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
                 { paddingBottom: insets.bottom, height: tabBarHeight }
             ]}
         >
-            <BlurView
-                intensity={blurIntensity}
-                tint={blurTint}
-                experimentalBlurMethod="dimezisBlurView"
-                style={StyleSheet.absoluteFill}
-            />
+            {isAndroid ? (
+                <View pointerEvents="none" style={styles.tabBarBackground} />
+            ) : (
+                <BlurView
+                    intensity={blurIntensity}
+                    tint={blurTint}
+                    style={StyleSheet.absoluteFill}
+                />
+            )}
             <View pointerEvents="none" style={styles.glassOverlay} />
             <View style={styles.iconMenuHomeParent}>
                 {visibleRoutes.map((route, visibleIndex) => {
@@ -445,6 +441,10 @@ const createStyles = (colors, isDark, isAndroid) => StyleSheet.create({
         backgroundColor: isAndroid
             ? (isDark ? 'rgba(26, 28, 36, 0.42)' : 'rgba(255, 255, 255, 0.50)')
             : (isDark ? 'rgba(26, 28, 36, 0.62)' : 'rgba(255, 255, 255, 0.72)'),
+    },
+    tabBarBackground: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: isDark ? colors.surface : 'rgba(255, 255, 255, 0.92)',
     },
     iconMenuHomeParent: {
         flexDirection: "row",

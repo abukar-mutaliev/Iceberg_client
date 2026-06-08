@@ -54,8 +54,10 @@ export const canDownloadInvoice = (userRole) => {
 
 export const getOrderProgress = (status) => {
     const statusOrder = [
+        'PENDING_PAYMENT',
         'PENDING',
-        'CONFIRMED', 
+        'CONFIRMED',
+        'PICKING',
         'WAITING_STOCK',
         'IN_DELIVERY',
         'DELIVERED'
@@ -64,12 +66,10 @@ export const getOrderProgress = (status) => {
     const currentIndex = statusOrder.indexOf(status);
     if (currentIndex === -1) return 0;
     
-    // Для WAITING_STOCK показываем промежуточный прогресс
     if (status === 'WAITING_STOCK') {
-        return 20; // 20% - между PENDING и CONFIRMED
+        return 25;
     }
     
-    // Для остальных статусов рассчитываем прогресс
     const progress = Math.round(((currentIndex + 1) / statusOrder.length) * 100);
     return progress;
 };

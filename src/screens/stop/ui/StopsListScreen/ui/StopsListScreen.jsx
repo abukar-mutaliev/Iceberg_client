@@ -24,6 +24,57 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { ThemedStatusBar } from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
 
+const parseStopDateTime = (value) => {
+    if (!value) {
+        return null;
+    }
+
+    if (value instanceof Date) {
+        return isNaN(value.getTime()) ? null : value;
+    }
+
+    const directDate = new Date(value);
+    if (!isNaN(directDate.getTime())) {
+        return directDate;
+    }
+
+    if (typeof value !== 'string') {
+        return null;
+    }
+
+    const normalizedValue = value.trim();
+    const match = normalizedValue.match(
+        /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?(?:([Zz])|([+-]\d{2}:?\d{2}))?$/
+    );
+
+    if (!match) {
+        return null;
+    }
+
+    const [, year, month, day, hours = '0', minutes = '0', seconds = '0', milliseconds = '0', utcMark, offset] = match;
+
+    if (utcMark || offset) {
+        const isoOffset = offset && !offset.includes(':')
+            ? `${offset.slice(0, 3)}:${offset.slice(3)}`
+            : offset;
+        const isoValue = `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${milliseconds.padEnd(3, '0')}${utcMark || isoOffset}`;
+        const date = new Date(isoValue);
+        return isNaN(date.getTime()) ? null : date;
+    }
+
+    const date = new Date(
+        Number(year),
+        Number(month) - 1,
+        Number(day),
+        Number(hours),
+        Number(minutes),
+        Number(seconds),
+        Number(milliseconds.padEnd(3, '0'))
+    );
+
+    return isNaN(date.getTime()) ? null : date;
+};
+
 export const StopsListScreen = ({ navigation }) => {
     const dispatch = useDispatch();
     const route = useRoute();
@@ -207,29 +258,34 @@ export const StopsListScreen = ({ navigation }) => {
 
     const isPrivilegedUser = userRole === 'ADMIN' || userRole === 'EMPLOYEE' || userRole === 'DRIVER';
 
-    const isTodayStop = (stop) => {
+    const hasPublicVisibleTime = (stop) => {
         const now = new Date();
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-        const todayEnd   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
-        const start = stop.startTime ? new Date(stop.startTime) : null;
-        const end   = stop.endTime   ? new Date(stop.endTime)   : null;
+        if (stop.schedule?.daysOfWeek?.length) {
+            const days = stop.schedule.daysOfWeek
+                .map(day => Number(day))
+                .filter(day => Number.isInteger(day) && day >= 0 && day <= 6);
+            const start = parseStopDateTime(stop.startTime);
+            const isSkipToday = (stop.status || '').toUpperCase() === 'SKIPPED' ||
+                (stop.skipReason && start && start >= todayStart && start <= todayEnd);
 
-        if (!start && !end) return false;
-        if (start && start >= todayStart && start <= todayEnd) return true;
-        if (end && end >= todayStart && end <= todayEnd) return true;
-        if (start && end && start < todayStart && end > todayEnd) return true;
+            return days.includes(now.getDay()) && !isSkipToday;
+        }
+
+        const start = parseStopDateTime(stop.startTime);
+        const end   = parseStopDateTime(stop.endTime);
+
+        if (start && end) return start <= todayEnd && end >= todayStart;
+        if (end) return end >= todayStart && end <= todayEnd;
+        if (start) return start >= todayStart && start <= todayEnd;
 
         return false;
     };
 
-    const isNotExpired = (stop) => {
-        if (!stop.endTime) return true;
-        return new Date(stop.endTime) > new Date();
-    };
-
     const filteredStops = safeStops.filter(stop => {
-        if (!isPrivilegedUser && (!isTodayStop(stop) || !isNotExpired(stop))) return false;
+        if (!isPrivilegedUser && !hasPublicVisibleTime(stop)) return false;
 
         const districtFilter = selectedDistrictId
             ? stop.districtId === selectedDistrictId
@@ -249,10 +305,10 @@ export const StopsListScreen = ({ navigation }) => {
             if (aActive !== bActive) return aActive - bActive;
 
             const now = new Date();
-            const aEnd = a.endTime ? new Date(a.endTime) : null;
-            const bEnd = b.endTime ? new Date(b.endTime) : null;
-            const aStart = a.startTime ? new Date(a.startTime) : null;
-            const bStart = b.startTime ? new Date(b.startTime) : null;
+            const aEnd = parseStopDateTime(a.endTime);
+            const bEnd = parseStopDateTime(b.endTime);
+            const aStart = parseStopDateTime(a.startTime);
+            const bStart = parseStopDateTime(b.startTime);
 
             const aExpired = aEnd && aEnd < now;
             const bExpired = bEnd && bEnd < now;

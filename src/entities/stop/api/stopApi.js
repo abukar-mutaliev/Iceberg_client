@@ -28,7 +28,7 @@ export const stopApi = {
 
     getAllStopsAdmin: async (params = {}) => {
         try {
-            const response = await createProtectedRequest('get', '/api/stops/admin', params);
+            const response = await createProtectedRequest('get', '/api/stops/admin', null, { params });
             if (!response || !response.data) {
                 throw new Error('Получен некорректный ответ от сервера');
             }

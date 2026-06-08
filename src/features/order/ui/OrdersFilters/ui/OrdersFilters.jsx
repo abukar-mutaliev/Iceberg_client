@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { DatePickerWheel } from '@shared/ui/Pickers/DatePickerWheel';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { ORDER_DETAILS_CLIENT_DARK_BACKGROUND } from '@shared/ui/OrderDetailsStyles';
 
 const { width, height } = Dimensions.get('window');
 
@@ -66,8 +68,19 @@ export const OrdersFilters = React.memo(({
                            filters = {},
                            onFiltersChange,
                            onFiltersExpandedChange,
+                           embeddedInDarkHeader = false,
                            style
                        }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(
+        () => createStyles(colors, isDark, embeddedInDarkHeader),
+        [colors, isDark, embeddedInDarkHeader]
+    );
+    const accentColor = colors.primary;
+    const mutedIconColor = embeddedInDarkHeader ? 'rgba(255, 255, 255, 0.7)' : colors.textTertiary;
+    const inputTextColor = embeddedInDarkHeader ? '#FFFFFF' : colors.textPrimary;
+    const placeholderColor = embeddedInDarkHeader ? 'rgba(255, 255, 255, 0.55)' : colors.textTertiary;
+    const onPrimaryColor = '#FFFFFF';
     const [isExpanded, setIsExpanded] = useState(false);
     const [showStatusModal, setShowStatusModal] = useState(false);
     const [localFilters, setLocalFilters] = useState(filters);
@@ -194,12 +207,12 @@ export const OrdersFilters = React.memo(({
     const renderSearchInput = useCallback(() => (
         <View style={styles.searchContainer}>
             <View style={styles.searchInputContainer}>
-                <Icon name="search" size={20} color="#667eea" style={styles.searchIcon} />
+                <Icon name="search" size={20} color={accentColor} style={styles.searchIcon} />
                 <TextInput
                     ref={searchInputRef}
-                    style={styles.searchInput}
+                    style={[styles.searchInput, { color: inputTextColor }]}
                     placeholder="Поиск по номеру, клиенту, адресу..."
-                    placeholderTextColor="#a0aec0"
+                    placeholderTextColor={placeholderColor}
                     value={searchValueRef.current}
                     onChangeText={handleSearchChange}
                     returnKeyType="search"
@@ -212,12 +225,12 @@ export const OrdersFilters = React.memo(({
                         style={styles.clearSearchButton}
                         activeOpacity={0.7}
                     >
-                        <Icon name="clear" size={18} color="#a0aec0" />
+                        <Icon name="clear" size={18} color={mutedIconColor} />
                     </TouchableOpacity>
                 )}
             </View>
         </View>
-    ), [handleSearchChange, handleClearSearch]);
+    ), [handleSearchChange, handleClearSearch, styles, accentColor, inputTextColor, placeholderColor, mutedIconColor]);
 
     // Рендер быстрых фильтров
     const renderQuickFilters = useCallback(() => {
@@ -252,7 +265,7 @@ export const OrdersFilters = React.memo(({
                             <Icon
                                 name={filter.icon}
                                 size={16}
-                                color={localFilters[filter.key] ? '#ffffff' : filter.color}
+                                color={localFilters[filter.key] ? onPrimaryColor : filter.color}
                             />
                             <Text style={[
                                 styles.quickFilterText,
@@ -279,7 +292,7 @@ export const OrdersFilters = React.memo(({
                         <Icon
                             name={localFilters.status ? ORDER_STATUS_ICONS[localFilters.status] : 'tune'}
                             size={16}
-                            color={localFilters.status ? '#ffffff' : '#667eea'}
+                            color={localFilters.status ? onPrimaryColor : accentColor}
                         />
                         <Text style={[
                             styles.statusFilterText,
@@ -291,7 +304,7 @@ export const OrdersFilters = React.memo(({
                 </ScrollView>
             </View>
         );
-    }, [type, localFilters, handleFilterChange, handleOpenStatusModal]);
+    }, [type, localFilters, handleFilterChange, handleOpenStatusModal, styles, accentColor, onPrimaryColor]);
 
     // Рендер расширенных фильтров
     const renderAdvancedFilters = useCallback(() => {
@@ -309,7 +322,7 @@ export const OrdersFilters = React.memo(({
                     {/* Период */}
                     <View style={styles.filterGroup}>
                         <View style={styles.filterGroupHeader}>
-                            <Icon name="date-range" size={20} color="#667eea" />
+                            <Icon name="date-range" size={20} color={accentColor} />
                             <Text style={styles.filterGroupTitle}>Период</Text>
                         </View>
                         <View style={styles.dateInputsContainer}>
@@ -339,18 +352,18 @@ export const OrdersFilters = React.memo(({
                     {/* Сумма заказа */}
                     <View style={styles.filterGroup}>
                         <View style={styles.filterGroupHeader}>
-                            <Text style={[styles.filterGroupTitle, { fontSize: 20, color: '#667eea' }]}>₽</Text>
+                            <Text style={[styles.filterGroupTitle, { fontSize: 20, color: accentColor }]}>₽</Text>
                             <Text style={styles.filterGroupTitle}>Сумма заказа</Text>
                         </View>
                         <View style={styles.amountInputsContainer}>
                             <View style={styles.amountInputGroup}>
                                 <Text style={styles.amountInputLabel}>От:</Text>
                                 <View style={styles.amountInputContainer}>
-                                    <Text style={[styles.amountInput, { fontSize: 16, color: '#a0aec0', marginRight: 8 }]}>₽</Text>
+                                    <Text style={[styles.amountInput, { fontSize: 16, color: mutedIconColor, marginRight: 8 }]}>₽</Text>
                                     <TextInput
-                                        style={styles.amountInput}
+                                        style={[styles.amountInput, { color: inputTextColor }]}
                                         placeholder="0"
-                                        placeholderTextColor="#a0aec0"
+                                        placeholderTextColor={placeholderColor}
                                         value={localFilters.minAmount || ''}
                                         onChangeText={handleMinAmountChange}
                                         keyboardType="numeric"
@@ -360,11 +373,11 @@ export const OrdersFilters = React.memo(({
                             <View style={styles.amountInputGroup}>
                                 <Text style={styles.amountInputLabel}>До:</Text>
                                 <View style={styles.amountInputContainer}>
-                                    <Text style={[styles.amountInput, { fontSize: 16, color: '#a0aec0', marginRight: 8 }]}>₽</Text>
+                                    <Text style={[styles.amountInput, { fontSize: 16, color: mutedIconColor, marginRight: 8 }]}>₽</Text>
                                     <TextInput
-                                        style={styles.amountInput}
+                                        style={[styles.amountInput, { color: inputTextColor }]}
                                         placeholder="∞"
-                                        placeholderTextColor="#a0aec0"
+                                        placeholderTextColor={placeholderColor}
                                         value={localFilters.maxAmount || ''}
                                         onChangeText={handleMaxAmountChange}
                                         keyboardType="numeric"
@@ -379,15 +392,15 @@ export const OrdersFilters = React.memo(({
                         <>
                             <View style={styles.filterGroup}>
                                 <View style={styles.filterGroupHeader}>
-                                    <Icon name="store" size={20} color="#667eea" />
+                                    <Icon name="store" size={20} color={accentColor} />
                                     <Text style={styles.filterGroupTitle}>Склад</Text>
                                 </View>
                                 <View style={styles.textInputContainer}>
-                                    <Icon name="store" size={16} color="#a0aec0" />
+                                    <Icon name="store" size={16} color={mutedIconColor} />
                                     <TextInput
-                                        style={styles.textInput}
+                                        style={[styles.textInput, { color: inputTextColor }]}
                                         placeholder="ID склада"
-                                        placeholderTextColor="#a0aec0"
+                                        placeholderTextColor={placeholderColor}
                                         value={localFilters.warehouseId || ''}
                                         onChangeText={handleWarehouseIdChange}
                                         keyboardType="numeric"
@@ -397,15 +410,15 @@ export const OrdersFilters = React.memo(({
 
                             <View style={styles.filterGroup}>
                                 <View style={styles.filterGroupHeader}>
-                                    <Icon name="location-city" size={20} color="#667eea" />
+                                    <Icon name="location-city" size={20} color={accentColor} />
                                     <Text style={styles.filterGroupTitle}>Район</Text>
                                 </View>
                                 <View style={styles.textInputContainer}>
-                                    <Icon name="location-city" size={16} color="#a0aec0" />
+                                    <Icon name="location-city" size={16} color={mutedIconColor} />
                                     <TextInput
-                                        style={styles.textInput}
+                                        style={[styles.textInput, { color: inputTextColor }]}
                                         placeholder="ID района"
-                                        placeholderTextColor="#a0aec0"
+                                        placeholderTextColor={placeholderColor}
                                         value={localFilters.districtId || ''}
                                         onChangeText={handleDistrictIdChange}
                                         keyboardType="numeric"
@@ -417,7 +430,7 @@ export const OrdersFilters = React.memo(({
                 </View>
             </ScrollView>
         );
-    }, [isExpanded, type, localFilters, showDateFromPicker, showDateToPicker, handleDateFromChange, handleDateToChange, handleMinAmountChange, handleMaxAmountChange, handleWarehouseIdChange, handleDistrictIdChange]);
+    }, [isExpanded, type, localFilters, showDateFromPicker, showDateToPicker, handleDateFromChange, handleDateToChange, handleMinAmountChange, handleMaxAmountChange, handleWarehouseIdChange, handleDistrictIdChange, styles, accentColor, mutedIconColor, inputTextColor, placeholderColor]);
 
     // Рендер модального окна выбора статуса
     const renderStatusModal = useCallback(() => (
@@ -432,7 +445,7 @@ export const OrdersFilters = React.memo(({
                 <View style={styles.modalContent}>
                     <View style={styles.modalHeader}>
                         <View style={styles.modalTitleContainer}>
-                            <Icon name="tune" size={24} color="#667eea" />
+                            <Icon name="tune" size={24} color={accentColor} />
                             <Text style={styles.modalTitle}>Выберите статус</Text>
                         </View>
                         <TouchableOpacity
@@ -440,7 +453,7 @@ export const OrdersFilters = React.memo(({
                             style={styles.modalCloseButton}
                             activeOpacity={0.7}
                         >
-                            <Icon name="close" size={24} color="#a0aec0" />
+                            <Icon name="close" size={24} color={mutedIconColor} />
                         </TouchableOpacity>
                     </View>
 
@@ -459,7 +472,7 @@ export const OrdersFilters = React.memo(({
                         >
                             <View style={styles.statusOptionContent}>
                                 <View style={styles.statusIconContainer}>
-                                    <Icon name="all-inclusive" size={20} color="#667eea" />
+                                    <Icon name="all-inclusive" size={20} color={accentColor} />
                                 </View>
                                 <Text style={[
                                     styles.statusOptionText,
@@ -469,7 +482,7 @@ export const OrdersFilters = React.memo(({
                                 </Text>
                             </View>
                             {!localFilters.status && (
-                                <Icon name="check" size={20} color="#667eea" />
+                                <Icon name="check" size={20} color={accentColor} />
                             )}
                         </TouchableOpacity>
 
@@ -502,7 +515,7 @@ export const OrdersFilters = React.memo(({
                                     </Text>
                                 </View>
                                 {localFilters.status === status && (
-                                    <Icon name="check" size={20} color="#667eea" />
+                                    <Icon name="check" size={20} color={accentColor} />
                                 )}
                             </TouchableOpacity>
                         ))}
@@ -510,7 +523,7 @@ export const OrdersFilters = React.memo(({
                 </View>
             </View>
         </Modal>
-    ), [showStatusModal, handleCloseStatusModal, localFilters, handleStatusSelect]);
+    ), [showStatusModal, handleCloseStatusModal, localFilters, handleStatusSelect, styles, accentColor, mutedIconColor]);
 
     return (
         <View style={[styles.container, style]}>
@@ -530,7 +543,7 @@ export const OrdersFilters = React.memo(({
                     <Icon
                         name={isExpanded ? "expand-less" : "expand-more"}
                         size={20}
-                        color="#667eea"
+                        color={accentColor}
                     />
                     <Text style={styles.expandButtonText}>
                         {isExpanded ? 'Скрыть фильтры' : 'Больше фильтров'}
@@ -543,7 +556,7 @@ export const OrdersFilters = React.memo(({
                         onPress={handleClearFilters}
                         activeOpacity={0.7}
                     >
-                        <Icon name="clear-all" size={16} color="#EF5350" />
+                        <Icon name="clear-all" size={16} color={colors.error} />
                         <Text style={styles.clearFiltersText}>
                             Очистить ({activeFiltersCount})
                         </Text>
@@ -560,17 +573,26 @@ export const OrdersFilters = React.memo(({
     );
 });
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark, embeddedInDarkHeader) => {
+    const embedded = embeddedInDarkHeader && isDark;
+    const fieldBackground = embedded ? 'rgba(255, 255, 255, 0.12)' : (colors.surfaceSecondary || colors.surface);
+    const fieldBorder = embedded ? 'rgba(255, 255, 255, 0.2)' : colors.border;
+    const panelBackground = embedded ? 'rgba(255, 255, 255, 0.08)' : (colors.surfaceSecondary || colors.surface);
+    const titleColor = embedded ? '#FFFFFF' : colors.textPrimary;
+    const secondaryText = embedded ? 'rgba(255, 255, 255, 0.75)' : colors.textSecondary;
+    const tertiaryText = embedded ? 'rgba(255, 255, 255, 0.65)' : colors.textTertiary;
+
+    return StyleSheet.create({
     container: {
-        backgroundColor: '#fff',
+        backgroundColor: embedded ? 'transparent' : colors.cardBackground,
         paddingHorizontal: 20,
         paddingVertical: 16,
         paddingBottom: 24,
-        shadowColor: '#667eea',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 12,
-        elevation: 8,
+        shadowColor: embedded ? 'transparent' : colors.primary,
+        shadowOffset: { width: 0, height: embedded ? 0 : 4 },
+        shadowOpacity: embedded ? 0 : 0.1,
+        shadowRadius: embedded ? 0 : 12,
+        elevation: embedded ? 0 : 8,
     },
 
     // Поиск
@@ -580,12 +602,12 @@ const styles = StyleSheet.create({
     searchInputContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#f8f9ff',
+        backgroundColor: fieldBackground,
         borderRadius: 16,
         paddingHorizontal: 16,
         height: 48,
         borderWidth: 1,
-        borderColor: '#e2e8f0',
+        borderColor: fieldBorder,
     },
     searchIcon: {
         marginRight: 12,
@@ -593,7 +615,6 @@ const styles = StyleSheet.create({
     searchInput: {
         flex: 1,
         fontSize: 16,
-        color: '#2d3748',
         paddingVertical: 0,
     },
     clearSearchButton: {
@@ -614,10 +635,10 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: 16,
         paddingVertical: 8,
-        backgroundColor: '#f8f9ff',
+        backgroundColor: fieldBackground,
         borderRadius: 20,
         borderWidth: 1,
-        borderColor: '#e2e8f0',
+        borderColor: fieldBorder,
         gap: 6,
     },
     quickFilterButtonActive: {
@@ -640,10 +661,10 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: 16,
         paddingVertical: 8,
-        backgroundColor: '#f8f9ff',
+        backgroundColor: fieldBackground,
         borderRadius: 20,
         borderWidth: 1,
-        borderColor: '#e2e8f0',
+        borderColor: fieldBorder,
         gap: 6,
         minWidth: 100,
     },
@@ -658,7 +679,7 @@ const styles = StyleSheet.create({
     statusFilterText: {
         fontSize: 14,
         fontWeight: '600',
-        color: '#667eea',
+        color: embedded ? '#FFFFFF' : colors.primary,
     },
     statusFilterTextActive: {
         color: '#ffffff',
@@ -680,7 +701,7 @@ const styles = StyleSheet.create({
     },
     expandButtonText: {
         fontSize: 14,
-        color: '#667eea',
+        color: embedded ? '#FFFFFF' : colors.primary,
         fontWeight: '600',
     },
     clearFiltersButton: {
@@ -689,24 +710,24 @@ const styles = StyleSheet.create({
         gap: 4,
         paddingHorizontal: 12,
         paddingVertical: 8,
-        backgroundColor: '#ffebee',
+        backgroundColor: embedded ? 'rgba(239, 83, 80, 0.15)' : (colors.errorSoft || '#ffebee'),
         borderRadius: 12,
         borderWidth: 1,
-        borderColor: '#ffcdd2',
+        borderColor: embedded ? 'rgba(239, 83, 80, 0.35)' : (colors.errorBorder || '#ffcdd2'),
     },
     clearFiltersText: {
         fontSize: 12,
-        color: '#EF5350',
+        color: colors.error,
         fontWeight: '600',
     },
 
     // Расширенные фильтры
     advancedFiltersContainer: {
-        backgroundColor: '#f8f9ff',
+        backgroundColor: panelBackground,
         borderRadius: 16,
         marginTop: 12,
         borderWidth: 1,
-        borderColor: '#e2e8f0',
+        borderColor: fieldBorder,
         maxHeight: 300,
     },
     advancedFiltersContent: {
@@ -724,7 +745,7 @@ const styles = StyleSheet.create({
     filterGroupTitle: {
         fontSize: 16,
         fontWeight: '700',
-        color: '#2d3748',
+        color: titleColor,
     },
 
     // Инпуты дат
@@ -738,24 +759,24 @@ const styles = StyleSheet.create({
     },
     dateInputLabel: {
         fontSize: 12,
-        color: '#718096',
+        color: secondaryText,
         fontWeight: '600',
     },
     dateInputContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#ffffff',
+        backgroundColor: embedded ? 'rgba(255, 255, 255, 0.1)' : colors.cardBackground,
         borderRadius: 12,
         paddingHorizontal: 12,
         height: 44,
         borderWidth: 1,
-        borderColor: '#e2e8f0',
+        borderColor: fieldBorder,
         gap: 8,
     },
     dateInput: {
         flex: 1,
         fontSize: 14,
-        color: '#2d3748',
+        color: titleColor,
         paddingVertical: 0,
     },
 
@@ -770,24 +791,23 @@ const styles = StyleSheet.create({
     },
     amountInputLabel: {
         fontSize: 12,
-        color: '#718096',
+        color: secondaryText,
         fontWeight: '600',
     },
     amountInputContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#ffffff',
+        backgroundColor: embedded ? 'rgba(255, 255, 255, 0.1)' : colors.cardBackground,
         borderRadius: 12,
         paddingHorizontal: 12,
         height: 44,
         borderWidth: 1,
-        borderColor: '#e2e8f0',
+        borderColor: fieldBorder,
         gap: 8,
     },
     amountInput: {
         flex: 1,
         fontSize: 14,
-        color: '#2d3748',
         paddingVertical: 0,
     },
 
@@ -795,35 +815,34 @@ const styles = StyleSheet.create({
     textInputContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#ffffff',
+        backgroundColor: embedded ? 'rgba(255, 255, 255, 0.1)' : colors.cardBackground,
         borderRadius: 12,
         paddingHorizontal: 12,
         height: 44,
         borderWidth: 1,
-        borderColor: '#e2e8f0',
+        borderColor: fieldBorder,
         gap: 8,
     },
     textInput: {
         flex: 1,
         fontSize: 14,
-        color: '#2d3748',
         paddingVertical: 0,
     },
 
     // Модальное окно
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: colors.overlay || 'rgba(0, 0, 0, 0.5)',
         justifyContent: 'flex-end',
     },
     modalContent: {
-        backgroundColor: '#ffffff',
+        backgroundColor: colors.cardBackground,
         borderTopLeftRadius: 24,
         borderTopRightRadius: 24,
         maxHeight: height * 0.8,
-        shadowColor: '#000',
+        shadowColor: colors.shadowColor || '#000',
         shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0.3 : 0.1,
         shadowRadius: 12,
         elevation: 20,
     },
@@ -842,7 +861,7 @@ const styles = StyleSheet.create({
     modalTitle: {
         fontSize: 20,
         fontWeight: '700',
-        color: '#2d3748',
+        color: colors.textPrimary,
     },
     modalCloseButton: {
         padding: 4,
@@ -860,13 +879,13 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         borderRadius: 16,
         marginBottom: 8,
-        backgroundColor: '#f8f9ff',
+        backgroundColor: colors.surface,
         borderWidth: 1,
-        borderColor: '#e2e8f0',
+        borderColor: colors.border,
     },
     statusOptionSelected: {
-        backgroundColor: '#e3f2fd',
-        borderColor: '#667eea',
+        backgroundColor: colors.primarySoft || (colors.primary + '14'),
+        borderColor: colors.primary,
     },
     statusOptionContent: {
         flexDirection: 'row',
@@ -880,16 +899,17 @@ const styles = StyleSheet.create({
         borderRadius: 20,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#f1f5f9',
+        backgroundColor: colors.surfaceSecondary || colors.surface,
     },
     statusOptionText: {
         fontSize: 16,
-        color: '#2d3748',
+        color: colors.textPrimary,
         fontWeight: '500',
         flex: 1,
     },
     statusOptionTextSelected: {
-        color: '#667eea',
+        color: colors.primary,
         fontWeight: '700',
     },
 });
+};

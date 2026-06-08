@@ -87,6 +87,10 @@ const ViewerOverlay = ({
   }, []);
 
   const ensureGalleryPermission = useCallback(async () => {
+    if (Platform.OS === 'android') {
+      return { status: 'granted', granted: true };
+    }
+
     const currentPermission = await MediaLibrary.getPermissionsAsync(true, ['photo']);
 
     if (currentPermission.granted) {

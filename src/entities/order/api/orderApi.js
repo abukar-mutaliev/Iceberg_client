@@ -1,6 +1,7 @@
 import { createProtectedRequest, createPublicRequest, getBaseUrl } from "@shared/api/api";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import { getStatusLabel, getStatusColor, getAvailableStatuses as getAvailableStatusesFromUtils } from '../lib/utils';
 
 export const OrderApi = {
     // ===== ПОЛУЧЕНИЕ ЗАКАЗОВ =====
@@ -305,58 +306,13 @@ export const OrderApi = {
     // ===== ДОПОЛНИТЕЛЬНЫЕ УТИЛИТЫ =====
 
     // Получить возможные статусы для заказа
-    getAvailableStatuses: (currentStatus) => {
-        const statusTransitions = {
-            'PENDING': [
-                { value: 'CONFIRMED', label: 'Подтвердить', color: '#28a745' },
-                { value: 'CANCELLED', label: 'Отменить', color: '#dc3545' }
-            ],
-            'CONFIRMED': [
-                { value: 'IN_DELIVERY', label: 'В доставку', color: '#fd7e14' },
-                { value: 'CANCELLED', label: 'Отменить', color: '#dc3545' }
-            ],
-            'IN_DELIVERY': [
-                { value: 'DELIVERED', label: 'Доставлено', color: '#28a745' },
-                { value: 'CANCELLED', label: 'Отменить', color: '#dc3545' }
-            ],
-            'DELIVERED': [
-                { value: 'RETURNED', label: 'Вернуть', color: '#6c757d' }
-            ],
-            'CANCELLED': [],
-            'RETURNED': []
-        };
-
-        return statusTransitions[currentStatus] || [];
-    },
+    getAvailableStatuses: (currentStatus) => getAvailableStatusesFromUtils(currentStatus),
 
     // Получить локализованное название статуса
-    getStatusLabel: (status) => {
-        const statusLabels = {
-            'PENDING': 'Ожидает обработки',
-            'CONFIRMED': 'Подтвержден',
-            'WAITING_STOCK': 'Ожидает поступления', // ИСПРАВЛЕНО: синхронизировано с utils.js
-            'IN_DELIVERY': 'В доставке',
-            'DELIVERED': 'Доставлен',
-            'CANCELLED': 'Отменен',
-            'RETURNED': 'Возвращен'
-        };
-
-        return statusLabels[status] || status;
-    },
+    getStatusLabel,
 
     // Получить цвет статуса
-    getStatusColor: (status) => {
-        const statusColors = {
-            'PENDING': '#ffc107',
-            'CONFIRMED': '#17a2b8',
-            'IN_DELIVERY': '#007bff',
-            'DELIVERED': '#28a745',
-            'CANCELLED': '#dc3545',
-            'RETURNED': '#6c757d'
-        };
-
-        return statusColors[status] || '#6c757d';
-    },
+    getStatusColor,
 
     // Проверить, можно ли отменить заказ
     canCancelOrder: (status, userRole = 'CLIENT') => {

@@ -1,0 +1,372 @@
+diff --git a/src/entities/chat/ui/CachedVoice/CachedVoice.jsx b/src/entities/chat/ui/CachedVoice/CachedVoice.jsx
+index ad242d7..6485e21 100644
+--- a/src/entities/chat/ui/CachedVoice/CachedVoice.jsx
++++ b/src/entities/chat/ui/CachedVoice/CachedVoice.jsx
+@@ -11,7 +11,7 @@
+ import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
+ import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing, Pressable, Platform, AppState } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+-import { Audio } from 'expo-av';
++import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
+ import * as FileSystem from 'expo-file-system/legacy';
+ import { getBaseUrl, getImageUrl } from '@shared/api/api';
+ import { audioManager } from '../../lib/audioManager';
+@@ -55,6 +55,22 @@ const formatTime = (seconds) => {
+   return `${mins}:${secs.toString().padStart(2, '0')}`;
+ };
+ 
++/** expo-av может вернуть объект Sound до полной готовности нативного декодера — setRateAsync/playAsync тогда дают "sound is not loaded". */
++const waitUntilSoundLoaded = async (sound, { timeoutMs = 4000, intervalMs = 40 } = {}) => {
++  if (!sound?.getStatusAsync) return false;
++  const deadline = Date.now() + timeoutMs;
++  while (Date.now() < deadline) {
++    try {
++      const status = await sound.getStatusAsync();
++      if (status?.isLoaded) return true;
++    } catch {
++      return false;
++    }
++    await new Promise((r) => setTimeout(r, intervalMs));
++  }
++  return false;
++};
++
+ // Генерация waveform на основе duration и размера файла (детерминированная)
+ const generateWaveform = (attachment, length = 40) => {
+   if (!attachment) {
+@@ -295,18 +311,39 @@ const useAudioPlayer = (audioUri, cachedPath, messageId, onPlaybackStatusUpdate,
+   // Android: content:// нужен редко (обычно для расшаривания файла наружу),
+   // а в некоторых случаях может ломать/подвешивать загрузку в expo-av.
+   // Поэтому: сначала пробуем file://, и только если не загрузилось — пробуем content://.
++  //
++  // Прод-Android (release + Hermes + newArch) на «холодном» процессе раскачивает
++  // ExoPlayer заметно медленнее, чем dev — раньше тут ловили таймаут на ровном
++  // месте и поверх него ещё «утекал» уже почти готовый Sound (мы его потом не
++  // выгружали). Делаем таймаут существенно больше и обязательно глушим звук,
++  // если он пришёл, но мы по факту не уложились в окно.
+   const createSoundAndroidFileFirst = useCallback(async (fileUri, soundOptions) => {
+     const baseSource = { uri: fileUri };
+     if (__DEV__) {
+       devLog('🎧 [Android] createAsync(file://) attempt', { messageId, uri: fileUri });
+     }
++    const safeCreate = async (source, label, timeoutMs) => {
++      let createdSound = null;
++      const createPromise = Audio.Sound.createAsync(source, soundOptions, onPlaybackStatusUpdate)
++        .then((res) => {
++          createdSound = res?.sound || null;
++          return res;
++        });
++      try {
++        const { sound } = await withTimeout(createPromise, timeoutMs, label);
++        return sound;
++      } catch (err) {
++        // Если createAsync всё-таки доехал после таймаута — не оставляем «зомби».
++        createPromise.then(() => {
++          if (createdSound) {
++            createdSound.unloadAsync().catch(() => {});
++          }
++        }).catch(() => {});
++        throw err;
++      }
++    };
+     try {
+-        const { sound } = await withTimeout(
+-          Audio.Sound.createAsync(baseSource, soundOptions, onPlaybackStatusUpdate),
+-          3000, // Увеличено с 1500 до 3000ms для медленных сетей
+-          'Audio.Sound.createAsync(file://)'
+-        );
+-      return sound;
++      return await safeCreate(baseSource, 'Audio.Sound.createAsync(file://)', 8000);
+     } catch (e1) {
+       if (__DEV__) {
+         devWarn('🎧 [Android] createAsync(file://) failed', { messageId, error: e1.message, uri: fileUri });
+@@ -314,18 +351,13 @@ const useAudioPlayer = (audioUri, cachedPath, messageId, onPlaybackStatusUpdate,
+       try {
+         const contentUri = await withTimeout(
+           FileSystem.getContentUriAsync(fileUri),
+-          2000, // Увеличено с 1000 до 2000ms
++          3000,
+           'FileSystem.getContentUriAsync'
+         );
+         if (__DEV__) {
+           devLog('🎧 [Android] createAsync(content://) attempt', { messageId, uri: contentUri });
+         }
+-        const { sound } = await withTimeout(
+-          Audio.Sound.createAsync({ uri: contentUri }, soundOptions, onPlaybackStatusUpdate),
+-          3000, // Увеличено с 1500 до 3000ms
+-          'Audio.Sound.createAsync(content://)'
+-        );
+-        return sound;
++        return await safeCreate({ uri: contentUri }, 'Audio.Sound.createAsync(content://)', 8000);
+       } catch (e2) {
+         if (__DEV__) {
+           devWarn('🎧 [Android] createAsync(content://) failed', { messageId, error: e2.message, uri: fileUri });
+@@ -443,6 +475,8 @@ const useAudioPlayer = (audioUri, cachedPath, messageId, onPlaybackStatusUpdate,
+       playThroughEarpieceAndroid: false,
+       staysActiveInBackground: false,
+       shouldDuckAndroid: true,
++      interruptionModeIOS: InterruptionModeIOS.DoNotMix,
++      interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+     });
+ 
+     // Сначала проверяем кэш
+@@ -569,16 +603,17 @@ const useAudioPlayer = (audioUri, cachedPath, messageId, onPlaybackStatusUpdate,
+           };
+         }
+         
+-        // Для сетевых URL добавляем заголовки и на iOS, и на Android:
+-        // - Accept: помогает корректно выбрать тип
+-        // - Range: позволяет стриминг/перемотку (сервер поддерживает Accept-Ranges)
++        // Для сетевых URL отдаём только Accept. Range='bytes=0-' раньше
++        // отправлялся «на всякий случай», но Android ExoPlayer на ответ
++        // 206 Partial Content для AAC/M4A иногда не способен запустить
++        // воспроизведение в release-сборке (приходит «sound is not loaded»
++        // или просто тишина). expo-av сам сделает Range при перемотке.
+         const isNetworkUrl = !urlToTry.startsWith('file://');
+         const sourceOptions = isNetworkUrl
+           ? {
+               uri: urlToTry,
+               headers: {
+                 'Accept': 'audio/aac, audio/mpeg, audio/mp4, audio/*',
+-                'Range': 'bytes=0-'
+               }
+             }
+           : { uri: urlToTry };
+@@ -588,11 +623,12 @@ const useAudioPlayer = (audioUri, cachedPath, messageId, onPlaybackStatusUpdate,
+         }
+ 
+         // Для Android локальные файлы пробуем file:// -> content:// (если понадобится)
++        const networkTimeoutMs = Platform.OS === 'android' ? 12000 : 8000;
+         const newSound = (Platform.OS === 'android' && !isNetworkUrl)
+           ? await createSoundAndroidFileFirst(sourceOptions.uri, soundOptions)
+           : (await withTimeout(
+               Audio.Sound.createAsync(sourceOptions, soundOptions, onPlaybackStatusUpdate),
+-              5000, // Увеличено с 2000 до 5000ms для медленных сетей
++              networkTimeoutMs,
+               'Audio.Sound.createAsync(network)'
+             )).sound;
+ 
+@@ -817,7 +853,6 @@ const useAudioPlayer = (audioUri, cachedPath, messageId, onPlaybackStatusUpdate,
+                         uri: urlToTry,
+                         headers: {
+                           'Accept': 'audio/aac, audio/mpeg, audio/mp4, audio/*',
+-                          'Range': 'bytes=0-'
+                         }
+                       }
+                     : { uri: urlToTry };
+@@ -1057,26 +1092,8 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
+     return () => audioManager.removeListener(handleAudioEvent);
+   }, [progressAnim]);
+ 
+-  // Применяем скорость воспроизведения при изменении playbackRate во время воспроизведения
+-  useEffect(() => {
+-    const applyPlaybackRate = async () => {
+-      if (!soundRef.current || !isPlaying) return;
+-      
+-      try {
+-        const soundStatus = await soundRef.current.getStatusAsync();
+-        if (soundStatus.isLoaded) {
+-          await soundRef.current.setRateAsync(playbackRate, true);
+-        }
+-      } catch (err) {
+-        // Игнорируем ошибки, если звук не загружен
+-        if (err.message && !err.message.includes('not loaded')) {
+-          console.error('Error applying playback rate:', err);
+-        }
+-      }
+-    };
+-
+-    applyPlaybackRate();
+-  }, [playbackRate, isPlaying]);
++  // Скорость задаём только из togglePlayPause / togglePlaybackRate — отдельный useEffect давал параллельный
++  // второй setRateAsync и гонки с expo-av ("Cannot complete operation because sound is not loaded").
+ 
+   // Функция для переключения скорости воспроизведения
+   const togglePlaybackRate = useCallback(async () => {
+@@ -1090,16 +1107,16 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
+     }
+     
+     setPlaybackRate(nextRate);
+-    
+-    // Если аудио сейчас воспроизводится, применяем новую скорость
++
+     if (soundRef.current && isPlaying) {
+       try {
++        const ok = await waitUntilSoundLoaded(soundRef.current);
++        if (!ok) return;
+         const soundStatus = await soundRef.current.getStatusAsync();
+         if (soundStatus.isLoaded) {
+           await soundRef.current.setRateAsync(nextRate, true);
+         }
+       } catch (err) {
+-        // Игнорируем ошибки, если звук не загружен
+         if (err.message && !err.message.includes('not loaded')) {
+           console.error('Error setting playback rate:', err);
+         }
+@@ -1174,6 +1191,8 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
+                   staysActiveInBackground: false,
+                   shouldDuckAndroid: true,
+                   playThroughEarpieceAndroid: false,
++                  interruptionModeIOS: InterruptionModeIOS.DoNotMix,
++                  interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+                 });
+               } catch (audioModeErr) {
+                 if (__DEV__) {
+@@ -1181,7 +1200,17 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
+                 }
+                 // Продолжаем попытку воспроизведения даже если не удалось настроить режим
+               }
+-              
++
++              const ready = await waitUntilSoundLoaded(soundRef.current);
++              if (!ready) {
++                audioManager.unregisterSound(messageIdRef.current);
++                setSound(null);
++                soundRef.current = null;
++                setIsPlaying(false);
++                setError('Не удалось воспроизвести');
++                return;
++              }
++
+               // Применяем текущую скорость воспроизведения
+               try {
+                 // Проверяем AppState перед вызовом setRateAsync
+@@ -1198,21 +1227,12 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
+                   return;
+                 }
+                 
+-                try {
+-                  await soundRef.current.setRateAsync(playbackRate, true);
+-                } catch (rateErr) {
+-                  // Если setRateAsync не удался из-за AudioFocusNotAcquiredException, обрабатываем
+-                  if (rateErr.message && rateErr.message.includes('AudioFocusNotAcquiredException')) {
+-                    if (__DEV__) {
+-                      console.warn('⚠️ Error applying playback rate:', rateErr);
+-                    }
+-                    setError('Не удалось получить аудио-фокус. Попробуйте еще раз.');
+-                    setIsPlaying(false);
+-                    return;
+-                  }
+-                  throw rateErr;
+-                }
+-                
++                // На Android setRateAsync ДО playAsync часто кидает
++                // AudioFocusNotAcquiredException, потому что фокус берётся в
++                // playAsync. setRateAsync(1.0, true) при дефолтной скорости —
++                // вообще лишний вызов, который может уронить воспроизведение.
++                // Поэтому сначала играем, а скорость подкручиваем уже после.
++
+                 // Пытаемся воспроизвести с повторной попыткой при ошибке AudioFocusNotAcquiredException
+                 let playAttempts = 0;
+                 const maxPlayAttempts = 2;
+@@ -1232,6 +1252,17 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
+                       isLoaded: (await soundRef.current.getStatusAsync())?.isLoaded,
+                       isPlaying: (await soundRef.current.getStatusAsync())?.isPlaying,
+                     });
++
++                    if (playbackRate !== 1.0) {
++                      try {
++                        await soundRef.current.setRateAsync(playbackRate, true);
++                      } catch (rateAfterPlayErr) {
++                        if (__DEV__) {
++                          devWarn('⚠️ setRateAsync after play failed (cached path):', rateAfterPlayErr?.message);
++                        }
++                        // Скорость не критична — продолжаем воспроизведение на 1.0
++                      }
++                    }
+                     break; // Успешно воспроизвели, выходим из цикла
+                   } catch (playErr) {
+                     lastError = playErr;
+@@ -1270,6 +1301,8 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
+                           staysActiveInBackground: false,
+                           shouldDuckAndroid: true,
+                           playThroughEarpieceAndroid: false,
++                          interruptionModeIOS: InterruptionModeIOS.DoNotMix,
++                          interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+                         });
+                       } catch (audioModeErr) {
+                         // Игнорируем ошибку настройки режима
+@@ -1360,6 +1393,8 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
+             staysActiveInBackground: false,
+             shouldDuckAndroid: true,
+             playThroughEarpieceAndroid: false,
++            interruptionModeIOS: InterruptionModeIOS.DoNotMix,
++            interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+           });
+         } catch (audioModeErr) {
+           if (__DEV__) {
+@@ -1367,7 +1402,20 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
+           }
+           // Продолжаем попытку воспроизведения даже если не удалось настроить режим
+         }
+-        
++
++        const readyNew = await waitUntilSoundLoaded(newSound);
++        if (!readyNew) {
++          try {
++            await newSound.unloadAsync();
++          } catch (_) {}
++          audioManager.unregisterSound(messageIdRef.current);
++          setSound(null);
++          soundRef.current = null;
++          setIsPlaying(false);
++          setError('Не удалось воспроизвести');
++          return;
++        }
++
+         // Проверяем AppState перед вызовом setRateAsync
+         const currentAppState = AppState.currentState;
+         if (currentAppState !== 'active') {
+@@ -1382,21 +1430,10 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
+           return;
+         }
+         
+-        try {
+-          await newSound.setRateAsync(playbackRate, true);
+-        } catch (rateErr) {
+-          // Если setRateAsync не удался из-за AudioFocusNotAcquiredException, обрабатываем
+-          if (rateErr.message && rateErr.message.includes('AudioFocusNotAcquiredException')) {
+-            if (__DEV__) {
+-              console.warn('⚠️ Error applying playback rate:', rateErr);
+-            }
+-            setError('Не удалось получить аудио-фокус. Попробуйте еще раз.');
+-            setIsPlaying(false);
+-            return;
+-          }
+-          throw rateErr;
+-        }
+-        
++        // Тот же порядок, что и в ветке «звук уже загружен»: сначала
++        // playAsync (он берёт аудиофокус на Android), потом — при
++        // необходимости — setRateAsync. На rate=1.0 не трогаем вовсе.
++
+         // Пытаемся воспроизвести с повторной попыткой при ошибке AudioFocusNotAcquiredException
+         let playAttempts = 0;
+         const maxPlayAttempts = 2;
+@@ -1417,6 +1454,17 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
+               isLoaded: (await newSound.getStatusAsync())?.isLoaded,
+               isPlaying: (await newSound.getStatusAsync())?.isPlaying,
+             });
++
++            if (playbackRate !== 1.0) {
++              try {
++                await newSound.setRateAsync(playbackRate, true);
++              } catch (rateAfterPlayErr) {
++                if (__DEV__) {
++                  devWarn('⚠️ setRateAsync after play failed (fresh sound):', rateAfterPlayErr?.message);
++                }
++                // Скорость не критична — продолжаем воспроизведение на 1.0
++              }
++            }
+             break; // Успешно воспроизвели, выходим из цикла
+           } catch (playErr) {
+             lastError = playErr;
+@@ -1455,6 +1503,8 @@ const CachedVoiceComponent = ({ messageId, attachment, isOwnMessage, time, statu
+                   staysActiveInBackground: false,
+                   shouldDuckAndroid: true,
+                   playThroughEarpieceAndroid: false,
++                  interruptionModeIOS: InterruptionModeIOS.DoNotMix,
++                  interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+                 });
+               } catch (audioModeErr) {
+                 // Игнорируем ошибку настройки режима

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -9,12 +9,13 @@ import {
     RefreshControl,
     Modal,
     TextInput,
-    ScrollView
+    ScrollView,
+    StatusBar
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
 import { AdminHeader } from '@widgets/admin/AdminHeader';
 import { SearchBar } from '@shared/ui/SearchBar';
 import IconUser from '@shared/ui/Icon/Profile/IconPersona';
@@ -28,17 +29,12 @@ import {
     PROCESSING_ROLE_LABELS,
     PROCESSING_ROLE_DESCRIPTIONS
 } from '@entities/admin/lib/constants';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const STATUS_LABELS = {
     PENDING: 'На рассмотрении',
     APPROVED: 'Одобрена',
     REJECTED: 'Отклонена'
-};
-
-const STATUS_COLORS = {
-    PENDING: Color.orange,
-    APPROVED: Color.green,
-    REJECTED: Color.red
 };
 
 const ROLE_LABELS = {
@@ -55,6 +51,12 @@ const EMPLOYEE_PROCESSING_ROLE_OPTIONS = Object.values(PROCESSING_ROLES).map((va
 
 export const StaffApplicationsScreen = () => {
     const navigation = useNavigation();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+    const inputThemeProps = useMemo(() => ({
+        placeholderTextColor: colors.textTertiary,
+        keyboardAppearance: colors.keyboardAppearance
+    }), [colors]);
     const { showError, showSuccess } = useCustomAlert();
     
     const [applications, setApplications] = useState([]);
@@ -70,6 +72,7 @@ export const StaffApplicationsScreen = () => {
     const [selectedApplication, setSelectedApplication] = useState(null);
     const [selectedProcessingRole, setSelectedProcessingRole] = useState(null);
     const [selectedWarehouse, setSelectedWarehouse] = useState(null);
+    const [selectedWarehouses, setSelectedWarehouses] = useState([]);
     const [selectedDistricts, setSelectedDistricts] = useState([]);
     const [warehouses, setWarehouses] = useState([]);
     const [districts, setDistricts] = useState([]);
@@ -148,17 +151,48 @@ export const StaffApplicationsScreen = () => {
             const searchLower = searchQuery.toLowerCase();
             const nameMatch = app.user?.client?.name?.toLowerCase().includes(searchLower);
             const emailMatch = app.user?.email?.toLowerCase().includes(searchLower);
+            const phoneMatch = (app.user?.phone || app.user?.client?.phone || '')
+                .toLowerCase()
+                .includes(searchLower);
             
-            return nameMatch || emailMatch;
+            return nameMatch || emailMatch || phoneMatch;
         });
 
         setFilteredApplications(filtered);
     };
 
+    const getClientInfo = useCallback((application) => {
+        const user = application?.user || {};
+        const client = user.client || {};
+        const profile = user.profile || {};
+
+        return {
+            id: user.id,
+            name: client.name || profile.name || user.name || 'Пользователь',
+            phone: user.phone || client.phone || profile.phone || 'Телефон не указан',
+            email: user.email || 'Email не указан',
+            address: client.address || profile.address || user.address || '',
+        };
+    }, []);
+
+    const handleOpenUserProfile = useCallback((application) => {
+        const userId = application?.user?.id;
+        if (!userId) {
+            showError('Ошибка', 'Не удалось открыть профиль: пользователь не указан');
+            return;
+        }
+
+        navigation.navigate('UserPublicProfile', {
+            userId,
+            fromScreen: 'StaffApplications',
+        });
+    }, [navigation, showError]);
+
     const handleOpenApprove = (application) => {
         setSelectedApplication(application);
         setSelectedProcessingRole(null);
         setSelectedWarehouse(null);
+        setSelectedWarehouses([]);
         // Устанавливаем районы из заявки, если они есть
         setSelectedDistricts(application.districts || []);
         setProcessingRoleSelectVisible(false);
@@ -189,15 +223,15 @@ export const StaffApplicationsScreen = () => {
                 showError('Ошибка', 'Необходимо выбрать должность сотрудника');
                 return;
             }
-            if (!selectedWarehouse) {
-                showError('Ошибка', 'Необходимо выбрать склад работы');
+            if (selectedWarehouses.length === 0) {
+                showError('Ошибка', 'Необходимо выбрать хотя бы один склад работы');
                 return;
             }
             if (selectedDistricts.length === 0) {
                 showError('Ошибка', 'Необходимо выбрать хотя бы один район обслуживания');
                 return;
             }
-            requestData.warehouseId = selectedWarehouse.id;
+            requestData.warehouseIds = selectedWarehouses.map(warehouse => warehouse.id);
             requestData.districts = selectedDistricts.map(d => d.id);
         }
 
@@ -289,13 +323,42 @@ export const StaffApplicationsScreen = () => {
         });
     };
 
+    const toggleWarehouseSelection = (warehouse) => {
+        setSelectedWarehouses(prev => {
+            const isSelected = prev.some(item => item.id === warehouse.id);
+            return isSelected
+                ? prev.filter(item => item.id !== warehouse.id)
+                : [...prev, warehouse];
+        });
+    };
+
+    const handleToggleAllWarehouses = () => {
+        setSelectedWarehouses(prev => (
+            prev.length === warehouses.length ? [] : warehouses
+        ));
+    };
+
+    const getSelectedWarehousesLabel = () => {
+        if (selectedWarehouses.length === 0) return 'Выберите склады';
+        if (selectedWarehouses.length === warehouses.length) return 'Все склады';
+        if (selectedWarehouses.length === 1) return selectedWarehouses[0].name;
+        return `Выбрано: ${selectedWarehouses.length}`;
+    };
+
     const selectedProcessingRoleOption = EMPLOYEE_PROCESSING_ROLE_OPTIONS.find(
         (role) => role.value === selectedProcessingRole
     );
 
+    const getStatusColor = useCallback((status) => {
+        if (status === 'APPROVED') return colors.success;
+        if (status === 'REJECTED') return colors.error;
+        return colors.warning;
+    }, [colors]);
+
     // Рендер карточки заявки
     const renderApplicationCard = ({ item }) => {
         const isPending = item.status === 'PENDING';
+        const clientInfo = getClientInfo(item);
         
         console.log('🎴 Рендер карточки заявки:', {
             id: item.id,
@@ -307,20 +370,45 @@ export const StaffApplicationsScreen = () => {
         });
 
         return (
-            <View style={styles.applicationCard}>
+            <TouchableOpacity
+                style={styles.applicationCard}
+                activeOpacity={0.85}
+                onPress={() => handleOpenUserProfile(item)}
+            >
                 {/* Заголовок карточки */}
                 <View style={styles.cardHeader}>
                     <View style={styles.userInfo}>
                         <Text style={styles.userName}>
-                            {item.user?.client?.name || 'Пользователь'}
+                            {clientInfo.name}
                         </Text>
-                        <Text style={styles.userEmail}>{item.user?.email}</Text>
+                        <Text style={styles.userEmail}>{clientInfo.email}</Text>
                     </View>
-                    <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[item.status] }]}>
+                    <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
                         <Text style={styles.statusText}>
                             {STATUS_LABELS[item.status]}
                         </Text>
                     </View>
+                </View>
+
+                <View style={styles.clientDetails}>
+                    <View style={styles.clientDetailRow}>
+                        <Text style={styles.clientDetailLabel}>Имя:</Text>
+                        <Text style={styles.clientDetailValue}>{clientInfo.name}</Text>
+                    </View>
+                    <View style={styles.clientDetailRow}>
+                        <Text style={styles.clientDetailLabel}>Телефон:</Text>
+                        <Text style={styles.clientDetailValue}>{clientInfo.phone}</Text>
+                    </View>
+                    <View style={styles.clientDetailRow}>
+                        <Text style={styles.clientDetailLabel}>Email:</Text>
+                        <Text style={styles.clientDetailValue}>{clientInfo.email}</Text>
+                    </View>
+                    {clientInfo.address ? (
+                        <View style={styles.clientDetailRow}>
+                            <Text style={styles.clientDetailLabel}>Адрес:</Text>
+                            <Text style={styles.clientDetailValue}>{clientInfo.address}</Text>
+                        </View>
+                    ) : null}
                 </View>
 
                 {/* Желаемая роль */}
@@ -395,14 +483,14 @@ export const StaffApplicationsScreen = () => {
                         </TouchableOpacity>
                     </View>
                 )}
-            </View>
+            </TouchableOpacity>
         );
     };
 
     // Рендер пустого списка
     const renderEmptyList = () => (
         <View style={styles.emptyContainer}>
-            <IconUser width={48} height={48} color={Color.textSecondary} />
+            <IconUser width={48} height={48} color={colors.textSecondary} />
             <Text style={styles.emptyTitle}>
                 {searchQuery ? 'Заявки не найдены' : 'Нет заявок'}
             </Text>
@@ -467,13 +555,13 @@ export const StaffApplicationsScreen = () => {
                                 </View>
 
                                 <View style={styles.inputContainer}>
-                                    <Text style={styles.inputLabel}>Склад работы *</Text>
+                                    <Text style={styles.inputLabel}>Склады работы *</Text>
                                     <TouchableOpacity
                                         style={styles.selectButton}
                                         onPress={() => setWarehouseSelectVisible(true)}
                                     >
-                                        <Text style={selectedWarehouse ? styles.selectButtonTextSelected : styles.selectButtonText}>
-                                            {selectedWarehouse ? selectedWarehouse.name : 'Выберите склад'}
+                                        <Text style={selectedWarehouses.length > 0 ? styles.selectButtonTextSelected : styles.selectButtonText}>
+                                            {getSelectedWarehousesLabel()}
                                         </Text>
                                     </TouchableOpacity>
                                 </View>
@@ -530,14 +618,14 @@ export const StaffApplicationsScreen = () => {
                                 title="Отмена"
                                 onPress={() => setApproveModalVisible(false)}
                                 outlined
-                                color={Color.textSecondary}
+                                color={colors.textSecondary}
                                 disabled={isSubmitting}
                                 style={{ flex: 1 }}
                             />
                             <CustomButton
                                 title={isSubmitting ? 'Обработка...' : 'Одобрить'}
                                 onPress={handleApprove}
-                                color={Color.green}
+                                color={colors.success}
                                 disabled={isSubmitting}
                                 style={{ flex: 1 }}
                             />
@@ -570,6 +658,7 @@ export const StaffApplicationsScreen = () => {
                             value={rejectionReason}
                             onChangeText={setRejectionReason}
                             placeholder="Укажите причину отклонения заявки"
+                            {...inputThemeProps}
                             multiline
                             numberOfLines={4}
                             textAlignVertical="top"
@@ -581,14 +670,14 @@ export const StaffApplicationsScreen = () => {
                             title="Отмена"
                             onPress={() => setRejectModalVisible(false)}
                             outlined
-                            color={Color.textSecondary}
+                            color={colors.textSecondary}
                             disabled={isSubmitting}
                             style={{ flex: 1 }}
                         />
                         <CustomButton
                             title={isSubmitting ? 'Обработка...' : 'Отклонить'}
                             onPress={handleReject}
-                            color={Color.red}
+                            color={colors.error}
                             disabled={isSubmitting}
                             style={{ flex: 1 }}
                         />
@@ -599,7 +688,11 @@ export const StaffApplicationsScreen = () => {
     );
 
     // Модальное окно выбора склада
-    const renderWarehouseSelectModal = () => (
+    const renderWarehouseSelectModal = () => {
+        const isEmployeeSelection = selectedApplication?.desiredRole === 'EMPLOYEE';
+        const allWarehousesSelected = warehouses.length > 0 && selectedWarehouses.length === warehouses.length;
+
+        return (
         <Modal
             visible={warehouseSelectVisible}
             animationType="slide"
@@ -608,36 +701,78 @@ export const StaffApplicationsScreen = () => {
         >
             <View style={styles.modalOverlay}>
                 <View style={styles.modalContainer}>
-                    <Text style={styles.modalTitle}>Выберите склад</Text>
+                    <Text style={styles.modalTitle}>
+                        {isEmployeeSelection ? 'Выберите склады' : 'Выберите склад'}
+                    </Text>
+                    {isEmployeeSelection && (
+                        <TouchableOpacity
+                            style={[styles.selectItem, allWarehousesSelected && styles.selectItemSelected]}
+                            onPress={handleToggleAllWarehouses}
+                        >
+                            <View style={styles.checkboxContainer}>
+                                <View style={[styles.checkbox, allWarehousesSelected && styles.checkboxChecked]}>
+                                    {allWarehousesSelected && <Text style={styles.checkmark}>✓</Text>}
+                                </View>
+                                <Text style={styles.selectItemText}>
+                                    {allWarehousesSelected ? 'Снять все склады' : 'Выбрать все склады'}
+                                </Text>
+                            </View>
+                        </TouchableOpacity>
+                    )}
                     <FlatList
                         data={warehouses}
                         keyExtractor={(item) => item.id.toString()}
-                        renderItem={({ item }) => (
-                            <TouchableOpacity
-                                style={[
-                                    styles.selectItem,
-                                    selectedWarehouse?.id === item.id && styles.selectItemSelected
-                                ]}
-                                onPress={() => {
-                                    setSelectedWarehouse(item);
-                                    setWarehouseSelectVisible(false);
-                                }}
-                            >
-                                <Text style={styles.selectItemText}>{item.name}</Text>
-                                <Text style={styles.selectItemSubtext}>{item.address}</Text>
-                            </TouchableOpacity>
-                        )}
+                        renderItem={({ item }) => {
+                            const isSelected = isEmployeeSelection
+                                ? selectedWarehouses.some(warehouse => warehouse.id === item.id)
+                                : selectedWarehouse?.id === item.id;
+
+                            return (
+                                <TouchableOpacity
+                                    style={[
+                                        styles.selectItem,
+                                        isSelected && styles.selectItemSelected
+                                    ]}
+                                    onPress={() => {
+                                        if (isEmployeeSelection) {
+                                            toggleWarehouseSelection(item);
+                                        } else {
+                                            setSelectedWarehouse(item);
+                                            setWarehouseSelectVisible(false);
+                                        }
+                                    }}
+                                >
+                                    {isEmployeeSelection ? (
+                                        <View style={styles.checkboxContainer}>
+                                            <View style={[styles.checkbox, isSelected && styles.checkboxChecked]}>
+                                                {isSelected && <Text style={styles.checkmark}>✓</Text>}
+                                            </View>
+                                            <View style={styles.selectItemInfo}>
+                                                <Text style={styles.selectItemText}>{item.name}</Text>
+                                                <Text style={styles.selectItemSubtext}>{item.address}</Text>
+                                            </View>
+                                        </View>
+                                    ) : (
+                                        <>
+                                            <Text style={styles.selectItemText}>{item.name}</Text>
+                                            <Text style={styles.selectItemSubtext}>{item.address}</Text>
+                                        </>
+                                    )}
+                                </TouchableOpacity>
+                            );
+                        }}
                     />
                     <CustomButton
-                        title="Закрыть"
+                        title={isEmployeeSelection ? 'Готово' : 'Закрыть'}
                         onPress={() => setWarehouseSelectVisible(false)}
-                        outlined
-                        color={Color.textSecondary}
+                        outlined={!isEmployeeSelection}
+                        color={isEmployeeSelection ? colors.primary : colors.textSecondary}
                     />
                 </View>
             </View>
         </Modal>
-    );
+        );
+    };
 
     // Модальное окно выбора районов
     const renderDistrictsSelectModal = () => (
@@ -679,7 +814,7 @@ export const StaffApplicationsScreen = () => {
                     <CustomButton
                         title="Готово"
                         onPress={() => setDistrictsSelectVisible(false)}
-                        color={Color.blue2}
+                        color={colors.primary}
                     />
                 </View>
             </View>
@@ -688,9 +823,10 @@ export const StaffApplicationsScreen = () => {
 
     return (
         <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+            <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
             <AdminHeader
                 title="Заявки на присоединение"
-                icon={<IconUser width={24} height={24} color={Color.blue2} />}
+                icon={<IconUser width={24} height={24} color={colors.primary} />}
                 onBackPress={() => navigation.goBack()}
             />
 
@@ -708,15 +844,15 @@ export const StaffApplicationsScreen = () => {
                     <Text style={styles.statLabel}>Всего</Text>
                 </View>
                 <View style={styles.statItem}>
-                    <Text style={[styles.statValue, { color: Color.orange }]}>{statistics.pending || 0}</Text>
+                    <Text style={[styles.statValue, { color: colors.warning }]}>{statistics.pending || 0}</Text>
                     <Text style={styles.statLabel}>Ожидают</Text>
                 </View>
                 <View style={styles.statItem}>
-                    <Text style={[styles.statValue, { color: Color.success }]}>{statistics.approved || 0}</Text>
+                    <Text style={[styles.statValue, { color: colors.success }]}>{statistics.approved || 0}</Text>
                     <Text style={styles.statLabel}>Одобрено</Text>
                 </View>
                 <View style={styles.statItem}>
-                    <Text style={[styles.statValue, { color: Color.red }]}>{statistics.rejected || 0}</Text>
+                    <Text style={[styles.statValue, { color: colors.error }]}>{statistics.rejected || 0}</Text>
                     <Text style={styles.statLabel}>Отклонено</Text>
                 </View>
             </View>
@@ -744,7 +880,7 @@ export const StaffApplicationsScreen = () => {
 
             {isLoading ? (
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={Color.blue2} />
+                    <ActivityIndicator size="large" color={colors.primary} />
                     <Text style={styles.loadingText}>Загрузка заявок...</Text>
                 </View>
             ) : (
@@ -757,7 +893,9 @@ export const StaffApplicationsScreen = () => {
                         <RefreshControl
                             refreshing={refreshing}
                             onRefresh={handleRefresh}
-                            colors={[Color.blue2]}
+                            colors={[colors.primary]}
+                            tintColor={colors.primary}
+                            progressBackgroundColor={colors.surface}
                         />
                     }
                     contentContainerStyle={styles.listContainer}
@@ -789,18 +927,18 @@ export const StaffApplicationsScreen = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.background,
     },
     statsContainer: {
         flexDirection: 'row',
         justifyContent: 'space-around',
         paddingVertical: normalize(16),
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.surface,
         borderBottomWidth: 1,
-        borderBottomColor: Color.border,
+        borderBottomColor: colors.border,
     },
     statItem: {
         alignItems: 'center',
@@ -808,12 +946,12 @@ const styles = StyleSheet.create({
     statValue: {
         fontSize: normalizeFont(24),
         fontWeight: 'bold',
-        color: Color.blue2,
+        color: colors.primary,
         fontFamily: FontFamily.sFProDisplay,
     },
     statLabel: {
         fontSize: normalizeFont(12),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginTop: normalize(4),
     },
@@ -821,7 +959,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(12),
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.surface,
         gap: normalize(8),
     },
     filterButton: {
@@ -830,32 +968,38 @@ const styles = StyleSheet.create({
         paddingHorizontal: normalize(12),
         borderRadius: Border.radius.small,
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: colors.border,
         alignItems: 'center',
     },
     filterButtonActive: {
-        backgroundColor: Color.blue2,
-        borderColor: Color.blue2,
+        backgroundColor: colors.primary,
+        borderColor: colors.primary,
     },
     filterButtonText: {
         fontSize: normalizeFont(12),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
     },
     filterButtonTextActive: {
-        color: '#FFFFFF',
+        color: colors.textInverse,
     },
     listContainer: {
         paddingHorizontal: normalize(20),
         paddingBottom: normalize(20),
     },
     applicationCard: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.cardBackground,
         borderRadius: Border.radius.medium,
         padding: normalize(16),
         marginVertical: normalize(8),
-        ...Shadow.light,
+        borderWidth: isDark ? 1 : 0,
+        borderColor: colors.border,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: isDark ? 0.25 : Shadow.light.shadowOpacity,
+        shadowRadius: isDark ? 6 : Shadow.light.shadowRadius,
+        elevation: isDark ? 2 : Shadow.light.elevation,
     },
     cardHeader: {
         flexDirection: 'row',
@@ -869,14 +1013,41 @@ const styles = StyleSheet.create({
     userName: {
         fontSize: normalizeFont(16),
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProDisplay,
         marginBottom: normalize(4),
     },
     userEmail: {
         fontSize: normalizeFont(14),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
+    },
+    clientDetails: {
+        backgroundColor: colors.surfaceSecondary,
+        borderRadius: Border.radius.small,
+        padding: normalize(12),
+        marginBottom: normalize(12),
+        borderWidth: isDark ? 1 : 0,
+        borderColor: colors.border,
+    },
+    clientDetailRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        marginBottom: normalize(6),
+    },
+    clientDetailLabel: {
+        width: normalize(74),
+        fontSize: normalizeFont(12),
+        color: colors.textSecondary,
+        fontFamily: FontFamily.sFProText,
+        fontWeight: '500',
+    },
+    clientDetailValue: {
+        flex: 1,
+        fontSize: normalizeFont(13),
+        color: colors.textPrimary,
+        fontFamily: FontFamily.sFProText,
+        lineHeight: normalize(18),
     },
     statusBadge: {
         paddingHorizontal: normalize(12),
@@ -885,7 +1056,7 @@ const styles = StyleSheet.create({
     },
     statusText: {
         fontSize: normalizeFont(12),
-        color: '#FFFFFF',
+        color: colors.textInverse,
         fontWeight: '600',
         fontFamily: FontFamily.sFProText,
     },
@@ -896,14 +1067,14 @@ const styles = StyleSheet.create({
     },
     roleLabel: {
         fontSize: normalizeFont(14),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginRight: normalize(8),
     },
     roleValue: {
         fontSize: normalizeFont(14),
         fontWeight: '600',
-        color: Color.blue2,
+        color: colors.primary,
         fontFamily: FontFamily.sFProDisplay,
     },
     districtsContainer: {
@@ -911,7 +1082,7 @@ const styles = StyleSheet.create({
     },
     sectionLabel: {
         fontSize: normalizeFont(14),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(8),
     },
@@ -921,14 +1092,14 @@ const styles = StyleSheet.create({
         gap: normalize(8),
     },
     districtChip: {
-        backgroundColor: Color.blue2,
+        backgroundColor: colors.primary,
         paddingHorizontal: normalize(8),
         paddingVertical: normalize(4),
         borderRadius: Border.radius.small,
     },
     districtChipText: {
         fontSize: normalizeFont(12),
-        color: '#FFFFFF',
+        color: colors.textInverse,
         fontWeight: '500',
         fontFamily: FontFamily.sFProText,
     },
@@ -937,38 +1108,40 @@ const styles = StyleSheet.create({
     },
     infoLabel: {
         fontSize: normalizeFont(12),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(4),
     },
     infoText: {
         fontSize: normalizeFont(14),
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         lineHeight: normalize(20),
     },
     dateText: {
         fontSize: normalizeFont(12),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginTop: normalize(8),
     },
     rejectionSection: {
-        backgroundColor: '#FFF0F0',
+        backgroundColor: colors.errorSubtle,
         padding: normalize(12),
         borderRadius: Border.radius.small,
         marginTop: normalize(8),
+        borderWidth: 1,
+        borderColor: colors.errorBorder,
     },
     rejectionLabel: {
         fontSize: normalizeFont(12),
-        color: Color.red,
+        color: colors.error,
         fontWeight: '600',
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(4),
     },
     rejectionText: {
         fontSize: normalizeFont(14),
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     actionButtons: {
@@ -983,15 +1156,15 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     approveButton: {
-        backgroundColor: Color.green,
+        backgroundColor: colors.success,
     },
     rejectButton: {
-        backgroundColor: Color.red,
+        backgroundColor: colors.error,
     },
     actionButtonText: {
         fontSize: normalizeFont(14),
         fontWeight: '600',
-        color: '#FFFFFF',
+        color: colors.textInverse,
         fontFamily: FontFamily.sFProDisplay,
     },
     loadingContainer: {
@@ -1001,7 +1174,7 @@ const styles = StyleSheet.create({
     },
     loadingText: {
         fontSize: normalizeFont(14),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginTop: normalize(8),
     },
@@ -1014,13 +1187,13 @@ const styles = StyleSheet.create({
     emptyTitle: {
         fontSize: normalizeFont(18),
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProDisplay,
         marginTop: normalize(16),
     },
     emptySubtitle: {
         fontSize: normalizeFont(14),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         textAlign: 'center',
         marginTop: normalize(8),
@@ -1028,13 +1201,13 @@ const styles = StyleSheet.create({
     },
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: colors.modalOverlay,
         justifyContent: 'center',
         alignItems: 'center',
         padding: normalize(20),
     },
     modalContainer: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.cardBackground,
         borderRadius: Border.radius.large,
         padding: normalize(20),
         width: '100%',
@@ -1043,29 +1216,29 @@ const styles = StyleSheet.create({
     modalTitle: {
         fontSize: normalizeFont(20),
         fontWeight: '600',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProDisplay,
         marginBottom: normalize(8),
     },
     modalSubtitle: {
         fontSize: normalizeFont(16),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(8),
     },
     modalRole: {
         fontSize: normalizeFont(14),
-        color: Color.blue2,
+        color: colors.primary,
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(8),
     },
     modalNote: {
         fontSize: normalizeFont(12),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         fontStyle: 'italic',
         marginBottom: normalize(20),
-        backgroundColor: '#F5F5F5',
+        backgroundColor: colors.surfaceSecondary,
         padding: normalize(8),
         borderRadius: Border.radius.small,
     },
@@ -1075,18 +1248,19 @@ const styles = StyleSheet.create({
     inputLabel: {
         fontSize: normalizeFont(14),
         fontWeight: '500',
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
         marginBottom: normalize(8),
     },
     textInput: {
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: colors.inputBorder,
         borderRadius: Border.radius.medium,
         paddingHorizontal: normalize(12),
         paddingVertical: normalize(10),
         fontSize: normalizeFont(14),
-        color: Color.dark,
+        color: colors.textPrimary,
+        backgroundColor: colors.inputBackground,
         fontFamily: FontFamily.sFProText,
     },
     textArea: {
@@ -1095,19 +1269,20 @@ const styles = StyleSheet.create({
     },
     selectButton: {
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: colors.inputBorder,
+        backgroundColor: colors.inputBackground,
         borderRadius: Border.radius.medium,
         paddingHorizontal: normalize(12),
         paddingVertical: normalize(12),
     },
     selectButtonText: {
         fontSize: normalizeFont(14),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
     },
     selectButtonTextSelected: {
         fontSize: normalizeFont(14),
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
     modalButtons: {
@@ -1119,19 +1294,22 @@ const styles = StyleSheet.create({
         paddingVertical: normalize(12),
         paddingHorizontal: normalize(16),
         borderBottomWidth: 1,
-        borderBottomColor: Color.border,
+        borderBottomColor: colors.border,
     },
     selectItemSelected: {
-        backgroundColor: '#F0F8FF',
+        backgroundColor: colors.surfaceSecondary,
     },
     selectItemText: {
         fontSize: normalizeFont(14),
-        color: Color.dark,
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
+    },
+    selectItemInfo: {
+        flex: 1,
     },
     selectItemSubtext: {
         fontSize: normalizeFont(12),
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontFamily: FontFamily.sFProText,
         marginTop: normalize(4),
     },
@@ -1144,18 +1322,18 @@ const styles = StyleSheet.create({
         width: normalize(20),
         height: normalize(20),
         borderWidth: 2,
-        borderColor: Color.border,
+        borderColor: colors.border,
         borderRadius: Border.radius.small,
         alignItems: 'center',
         justifyContent: 'center',
     },
     checkboxChecked: {
-        backgroundColor: Color.blue2,
-        borderColor: Color.blue2,
+        backgroundColor: colors.primary,
+        borderColor: colors.primary,
     },
     checkmark: {
         fontSize: normalizeFont(14),
-        color: '#FFFFFF',
+        color: colors.textInverse,
         fontWeight: 'bold',
     },
 });

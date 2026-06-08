@@ -12,7 +12,7 @@ import {
     selectDriverError,
     selectDriverLoading,
     clearDriverError,
-    fetchAllDrivers
+    fetchRouteAssignees
 } from "@entities/driver";
 
 import {
@@ -262,7 +262,7 @@ export const AddStopScreen = ({ navigation, route }) => {
                 const promises = [dispatch(fetchAllDistricts())];
 
                 if (isAdminOrEmployee) {
-                    promises.push(dispatch(fetchAllDrivers()));
+                    promises.push(dispatch(fetchRouteAssignees()));
                 }
 
                 await Promise.all(promises);

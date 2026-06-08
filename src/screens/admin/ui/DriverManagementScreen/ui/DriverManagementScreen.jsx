@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -7,12 +7,13 @@ import {
     StyleSheet,
     Alert,
     ActivityIndicator,
-    RefreshControl
+    RefreshControl,
+    StatusBar
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color, FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
 import { AdminHeader } from '@widgets/admin/AdminHeader';
 import { SearchBar } from '@shared/ui/SearchBar';
 import { userApi } from '@entities/user/api/userApi';
@@ -21,9 +22,12 @@ import { MapPinIcon } from '@shared/ui/Icon/DistrictManagement/MapPinIcon';
 import IconEdit from '@shared/ui/Icon/Profile/IconEdit';
 import { DriverDistrictsModal } from "@entities/user/ui/DriverDistrictsModal";
 import { DriverWarehouseModal } from "@entities/user/ui/DriverWarehouseModal";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const DriverManagementScreen = () => {
     const navigation = useNavigation();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     
     const [drivers, setDrivers] = useState([]);
     const [filteredDrivers, setFilteredDrivers] = useState([]);
@@ -144,7 +148,7 @@ export const DriverManagementScreen = () => {
             <View style={styles.driverCard}>
                 <View style={styles.driverHeader}>
                     <View style={styles.driverAvatar}>
-                        <IconDriver width={24} height={24} color={Color.blue2} />
+                        <IconDriver width={24} height={24} color={colors.primary} />
                     </View>
                     <View style={styles.driverInfo}>
                         <Text style={styles.driverName}>{item.name}</Text>
@@ -159,7 +163,7 @@ export const DriverManagementScreen = () => {
 
                 <View style={styles.driverStats}>
                     <View style={styles.statItem}>
-                        <MapPinIcon size={16} color={Color.textSecondary} />
+                        <MapPinIcon size={16} color={colors.textSecondary} />
                         <Text style={styles.statText}>
                             {districtsCount === 0 
                                 ? 'Районы не назначены' 
@@ -212,7 +216,7 @@ export const DriverManagementScreen = () => {
                         style={[styles.editButton, styles.editButtonHalf]}
                         onPress={() => handleEditDistricts(item)}
                     >
-                        <IconEdit width={16} height={16} color={Color.colorLightMode} />
+                        <IconEdit width={16} height={16} color={colors.textInverse} />
                         <Text style={styles.editButtonText}>Районы</Text>
                     </TouchableOpacity>
                     
@@ -220,7 +224,7 @@ export const DriverManagementScreen = () => {
                         style={[styles.editButton, styles.editButtonHalf]}
                         onPress={() => handleEditWarehouse(item)}
                     >
-                        <IconEdit width={16} height={16} color={Color.colorLightMode} />
+                        <IconEdit width={16} height={16} color={colors.textInverse} />
                         <Text style={styles.editButtonText}>Склад</Text>
                     </TouchableOpacity>
                 </View>
@@ -231,7 +235,7 @@ export const DriverManagementScreen = () => {
     // Рендер пустого списка
     const renderEmptyList = () => (
         <View style={styles.emptyContainer}>
-            <IconDriver width={48} height={48} color={Color.textSecondary} />
+            <IconDriver width={48} height={48} color={colors.textSecondary} />
             <Text style={styles.emptyTitle}>
                 {searchQuery ? 'Водители не найдены' : 'Список водителей пуст'}
             </Text>
@@ -246,9 +250,10 @@ export const DriverManagementScreen = () => {
 
     return (
         <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+            <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
             <AdminHeader
                 title="Районы водителей"
-                icon={<IconDriver width={24} height={24} color={Color.blue2} />}
+                icon={<IconDriver width={24} height={24} color={colors.primary} />}
                 onBackPress={() => navigation.goBack()}
             />
 
@@ -271,7 +276,7 @@ export const DriverManagementScreen = () => {
 
             {isLoading ? (
                 <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={Color.blue2} />
+                    <ActivityIndicator size="large" color={colors.primary} />
                     <Text style={styles.loadingText}>Загрузка водителей...</Text>
                 </View>
             ) : (
@@ -284,7 +289,9 @@ export const DriverManagementScreen = () => {
                         <RefreshControl
                             refreshing={refreshing}
                             onRefresh={handleRefresh}
-                            colors={[Color.blue2]}
+                            colors={[colors.primary]}
+                            tintColor={colors.primary}
+                            progressBackgroundColor={colors.surface}
                         />
                     }
                     contentContainerStyle={styles.listContainer}
@@ -317,24 +324,24 @@ export const DriverManagementScreen = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.background,
     },
     statsContainer: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         paddingHorizontal: normalize(20),
         paddingVertical: normalize(12),
-        backgroundColor: Color.colorLightGray,
+        backgroundColor: colors.surface,
         borderBottomWidth: 1,
-        borderBottomColor: Color.border,
+        borderBottomColor: colors.border,
     },
     statsText: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         fontWeight: '500',
     },
     listContainer: {
@@ -342,11 +349,17 @@ const styles = StyleSheet.create({
         paddingBottom: normalize(20),
     },
     driverCard: {
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.cardBackground,
         borderRadius: Border.radius.medium,
         padding: normalize(16),
         marginVertical: normalize(8),
-        ...Shadow.light,
+        borderWidth: isDark ? 1 : 0,
+        borderColor: colors.border,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: isDark ? 0.25 : Shadow.light.shadowOpacity,
+        shadowRadius: isDark ? 6 : Shadow.light.shadowRadius,
+        elevation: isDark ? 2 : Shadow.light.elevation,
     },
     driverHeader: {
         flexDirection: 'row',
@@ -356,7 +369,7 @@ const styles = StyleSheet.create({
         width: normalize(48),
         height: normalize(48),
         borderRadius: normalize(24),
-        backgroundColor: Color.colorLightGray,
+        backgroundColor: colors.surfaceSecondary,
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: normalize(12),
@@ -368,20 +381,20 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         marginBottom: normalize(2),
     },
     driverPhone: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.blue2,
+        color: colors.primary,
         fontWeight: '500',
         marginBottom: normalize(2),
     },
     driverEmail: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
     },
     driverStats: {
         flexDirection: 'row',
@@ -395,7 +408,7 @@ const styles = StyleSheet.create({
     statText: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginLeft: normalize(4),
     },
     districtsContainer: {
@@ -404,7 +417,7 @@ const styles = StyleSheet.create({
     districtsTitle: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginBottom: normalize(8),
     },
     districtsChips: {
@@ -413,7 +426,7 @@ const styles = StyleSheet.create({
         gap: normalize(8),
     },
     districtChip: {
-        backgroundColor: Color.blue2,
+        backgroundColor: colors.primary,
         paddingHorizontal: normalize(8),
         paddingVertical: normalize(4),
         borderRadius: Border.radius.small,
@@ -421,20 +434,20 @@ const styles = StyleSheet.create({
     districtChipText: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: Color.colorLightMode,
+        color: colors.textInverse,
         fontWeight: '500',
     },
     warehouseContainer: {
         marginBottom: normalize(12),
         padding: normalize(12),
-        backgroundColor: Color.colorLightGray,
+        backgroundColor: colors.surfaceSecondary,
         borderRadius: Border.radius.small,
     },
     warehouseTitle: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         marginBottom: normalize(6),
     },
     warehouseInfo: {
@@ -444,19 +457,19 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.blue2,
+        color: colors.primary,
         marginBottom: normalize(2),
     },
     warehouseAddress: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginBottom: normalize(2),
     },
     warehouseDistrict: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
     },
     actionButtons: {
         flexDirection: 'row',
@@ -467,7 +480,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: Color.blue2,
+        backgroundColor: colors.primary,
         paddingVertical: normalize(10),
         borderRadius: Border.radius.medium,
     },
@@ -478,7 +491,7 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.colorLightMode,
+        color: colors.textInverse,
         marginLeft: normalize(8),
     },
     loadingContainer: {
@@ -489,7 +502,7 @@ const styles = StyleSheet.create({
     loadingText: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginTop: normalize(8),
     },
     emptyContainer: {
@@ -502,14 +515,14 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_lg),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         textAlign: 'center',
         marginTop: normalize(16),
     },
     emptySubtitle: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         textAlign: 'center',
         marginTop: normalize(8),
         paddingHorizontal: normalize(20),

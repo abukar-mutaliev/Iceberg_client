@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
@@ -8,6 +8,7 @@ import {
     ActivityIndicator,
     Alert,
     TouchableOpacity,
+    StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
@@ -23,17 +24,20 @@ import {
 } from '@entities/stockAlert';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color, FontFamily } from '@app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { HeaderWithBackButton } from '@shared/ui/HeaderWithBackButton';
 import ModernStockStatsCard from '@widgets/stockAlerts/StockStatsCard';
 import ModernCriticalStockList from '@widgets/stockAlerts/CriticalStockList';
 import ModernStockAlertActions from '@widgets/stockAlerts/StockAlertActions';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const StockAlertsScreen = () => {
     const dispatch = useDispatch();
     const navigation = useNavigation();
     const { currentUser } = useAuth();
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
 
     const [refreshing, setRefreshing] = useState(false);
     const [selectedFilter, setSelectedFilter] = useState(null); // null - показать все
@@ -98,9 +102,7 @@ export const StockAlertsScreen = () => {
     // Загрузка данных при фокусе экрана
     useFocusEffect(
         useCallback(() => {
-            console.log('StockAlertsScreen focused, hasAccess:', hasAccess, 'currentUser:', currentUser?.role, 'isInitialLoad:', isInitialLoad);
             if (hasAccess && isInitialLoad) {
-                console.log('Loading data for StockAlertsScreen (initial load)');
                 loadData();
                 setIsInitialLoad(false);
             } else if (hasAccess) {
@@ -166,8 +168,9 @@ export const StockAlertsScreen = () => {
     if (!hasAccess) {
         return (
             <SafeAreaView style={styles.container}>
+                <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
                 <View style={styles.centered}>
-                    <Icon name="block" size={normalize(48)} color="#FF3B30" />
+                    <Icon name="block" size={normalize(48)} color={colors.error} />
                     <Text style={styles.accessDeniedTitle}>{String('Нет доступа')}</Text>
                     <Text style={styles.accessDeniedText}>
                         {String('Уведомления об остатках доступны только администраторам и менеджерам или сотрудникам без роли.')}
@@ -179,6 +182,7 @@ export const StockAlertsScreen = () => {
 
     return (
         <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+            <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
             <HeaderWithBackButton title="Контроль остатков" />
             <ScrollView
                 contentContainerStyle={styles.scrollContainer}
@@ -186,7 +190,9 @@ export const StockAlertsScreen = () => {
                     <RefreshControl
                         refreshing={refreshing}
                         onRefresh={handleRefresh}
-                        colors={[Color.blue2]}
+                        colors={[colors.primary]}
+                        tintColor={colors.primary}
+                        progressBackgroundColor={colors.surface}
                     />
                 }
             >
@@ -194,7 +200,7 @@ export const StockAlertsScreen = () => {
                 <View style={styles.header}>
                         <View style={styles.headerContent}>
                             <View style={styles.iconCircle}>
-                                <Icon name="inventory" size={normalize(24)} color="#007AFF" />
+                                <Icon name="inventory" size={normalize(24)} color={colors.primary} />
                             </View>
                             <View style={styles.textContainer}>
                                 <Text style={styles.title}>{String('Контроль остатков')}</Text>
@@ -258,7 +264,7 @@ export const StockAlertsScreen = () => {
                             </View>
                         ) : selectedFilter ? (
                             <View style={styles.emptyState}>
-                                <Icon name="filter-list" size={normalize(48)} color="#8E8E93" />
+                                <Icon name="filter-list" size={normalize(48)} color={colors.textTertiary} />
                                 <Text style={styles.emptyTitle}>{String('Нет товаров в этой категории')}</Text>
                                 <Text style={styles.emptyText}>
                                     {String('Попробуйте выбрать другой фильтр или обновите данные.')}
@@ -287,10 +293,10 @@ export const StockAlertsScreen = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#F5F7FA',
+        backgroundColor: colors.background,
     },
     scrollContainer: {
         flexGrow: 1,
@@ -315,7 +321,7 @@ const styles = StyleSheet.create({
         width: normalize(40),
         height: normalize(40),
         borderRadius: normalize(20),
-        backgroundColor: '#007AFF15',
+        backgroundColor: `${colors.primary}15`,
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: normalize(10),
@@ -331,14 +337,14 @@ const styles = StyleSheet.create({
     title: {
         fontSize: normalizeFont(24),
         fontFamily: FontFamily.sFProTextBold,
-        color: '#1C1C1E',
+        color: colors.textPrimary,
         flex: 1,
     },
     badge: {
         position: 'absolute',
         top: 0,
         right: 0,
-        backgroundColor: '#FF3B30',
+        backgroundColor: colors.error,
         borderRadius: normalize(10),
         minWidth: normalize(18),
         height: normalize(18),
@@ -354,19 +360,19 @@ const styles = StyleSheet.create({
     },
     subtitle: {
         fontSize: normalizeFont(14),
-        color: '#8E8E93',
+        color: colors.textSecondary,
         lineHeight: normalize(20),
     },
     accessDeniedTitle: {
         fontSize: normalizeFont(20),
         fontFamily: FontFamily.sFProTextBold,
-        color: '#1C1C1E',
+        color: colors.textPrimary,
         marginTop: normalize(16),
         marginBottom: normalize(8),
     },
     accessDeniedText: {
         fontSize: normalizeFont(16),
-        color: '#8E8E93',
+        color: colors.textSecondary,
         textAlign: 'center',
         lineHeight: normalize(22),
     },
@@ -380,18 +386,18 @@ const styles = StyleSheet.create({
     emptyTitle: {
         fontSize: normalizeFont(18),
         fontFamily: FontFamily.sFProTextBold,
-        color: '#1C1C1E',
+        color: colors.textPrimary,
         marginTop: normalize(16),
         marginBottom: normalize(8),
     },
     emptyText: {
         fontSize: normalizeFont(14),
-        color: '#8E8E93',
+        color: colors.textSecondary,
         textAlign: 'center',
         lineHeight: normalize(20),
     },
     clearFilterButton: {
-        backgroundColor: Color.blue2,
+        backgroundColor: colors.primary,
         paddingHorizontal: normalize(16),
         paddingVertical: normalize(8),
         borderRadius: normalize(16),

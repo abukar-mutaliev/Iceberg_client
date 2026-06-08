@@ -5,9 +5,9 @@ import {
     StyleSheet,
     TouchableOpacity,
     LayoutAnimation,
-    UIManager,
     Platform
 } from 'react-native';
+import { enableLayoutAnimationExperimentalAndroid } from '@shared/lib/enableLayoutAnimationAndroid';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { FontFamily } from '@app/styles/GlobalStyles';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
@@ -15,10 +15,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { faqData } from '../model/faqData';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 
-// Включаем LayoutAnimation для Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-    UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+enableLayoutAnimationExperimentalAndroid();
 
 // Конфигурация анимации
 const layoutAnimationConfig = {

@@ -1,32 +1,58 @@
-import React from 'react';
-import { View, Text, StyleSheet, Image, Pressable } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { UrgencyLevelBadge } from './UrgencyLevelBadge';
-import { formatDaysSinceLastSale } from '../lib/utils';
-import { Color, FontFamily, FontSize, Border, Shadow, Padding } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize, Border, Shadow, Padding } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { ReliableImage, Placeholder as ImagePlaceholder } from '@shared/ui/ReliableImage';
 
 /**
- * Карточка залежавшегося товара
+ * Карточка зalежавшегося товара
  * @param {Object} props
- * @param {Object} props.product - Данные залежавшегося товара
+ * @param {Object} props.product - Данные зalежавшегося товара
  * @param {Function} [props.onPress] - Обработчик нажатия
  * @param {Function} [props.onCreateReturn] - Обработчик создания возврата
  */
-export const StagnantProductCard = React.memo(({ 
-  product, 
+export const StagnantProductCard = React.memo(({
+  product,
   onPress,
   onCreateReturn,
 }) => {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const {
-    productImage,
     productName,
     supplierName,
     warehouseName,
     quantity,
     daysSinceLastSale,
     urgencyLevel,
-    warehouses = [], // Массив складов (если товар на нескольких складах)
-    warehousesCount = 0, // Количество складов
+    warehouses = [],
   } = product;
+
+  const imageArray = useMemo(() => {
+    let images = [];
+
+    if (product?.images && Array.isArray(product.images) && product.images.length > 0) {
+      images = product.images.filter((item) => {
+        if (!item) return false;
+        if (typeof item === 'string') return item.trim() !== '';
+        if (item.uri || item.url || item.path || item.src) return true;
+        return false;
+      });
+    } else if (product?.originalData?.images && Array.isArray(product.originalData.images) && product.originalData.images.length > 0) {
+      images = product.originalData.images.filter((item) => {
+        if (!item) return false;
+        if (typeof item === 'string') return item.trim() !== '';
+        if (item.uri || item.url || item.path || item.src) return true;
+        return false;
+      });
+    } else if (product?.image) {
+      images = [product.image];
+    }
+
+    return images.length > 0 ? images : [];
+  }, [product?.images, product?.originalData?.images, product?.image]);
 
   const handlePress = () => {
     if (onPress) {
@@ -41,30 +67,25 @@ export const StagnantProductCard = React.memo(({
   };
 
   return (
-    <Pressable 
+    <Pressable
       style={({ pressed }) => [
         styles.container,
         pressed && styles.pressed,
       ]}
       onPress={handlePress}
-      android_ripple={{ color: Color.purpleLight }}
+      android_ripple={{ color: colors.primarySoft }}
     >
-      {/* Изображение товара */}
-      {productImage ? (
-        <Image
-          source={{ uri: productImage }}
+      {imageArray.length > 0 ? (
+        <ReliableImage
+          source={imageArray[0]}
           style={styles.image}
           resizeMode="cover"
         />
       ) : (
-        <View style={[styles.image, styles.imagePlaceholder]}>
-          <Text style={styles.imagePlaceholderText}>📦</Text>
-        </View>
+        <ImagePlaceholder style={styles.image} iconSize={24} text="Нет фото" />
       )}
 
-      {/* Контент */}
       <View style={styles.content}>
-        {/* Верхняя часть: название и бейдж */}
         <View style={styles.header}>
           <Text style={styles.productName} numberOfLines={2}>
             {productName}
@@ -72,7 +93,6 @@ export const StagnantProductCard = React.memo(({
           <UrgencyLevelBadge level={urgencyLevel} size="small" />
         </View>
 
-        {/* Информация о поставщике */}
         <View style={styles.infoContainer}>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Поставщик:</Text>
@@ -80,15 +100,13 @@ export const StagnantProductCard = React.memo(({
               {supplierName}
             </Text>
           </View>
-          
-          {/* Список складов */}
+
           {warehouses.length > 0 ? (
             <View style={styles.warehousesContainer}>
               <Text style={styles.infoLabel}>
-                {warehouses.length > 1 
+                {warehouses.length > 1
                   ? `Склады (${warehouses.length}):`
-                  : 'Склад:'
-                }
+                  : 'Склад:'}
               </Text>
               {warehouses.map((warehouse, index) => (
                 <View key={warehouse.id || index} style={styles.warehouseItem}>
@@ -112,7 +130,6 @@ export const StagnantProductCard = React.memo(({
           )}
         </View>
 
-        {/* Нижняя часть: статистика */}
         <View style={styles.footer}>
           <View style={styles.statsContainer}>
             <View style={styles.statItem}>
@@ -126,7 +143,6 @@ export const StagnantProductCard = React.memo(({
             </View>
           </View>
 
-          {/* Кнопка создания возврата */}
           {onCreateReturn && (
             <Pressable
               style={({ pressed }) => [
@@ -134,7 +150,7 @@ export const StagnantProductCard = React.memo(({
                 pressed && styles.createButtonPressed,
               ]}
               onPress={handleCreateReturn}
-              android_ripple={{ color: Color.colorLightMode, radius: 20 }}
+              android_ripple={{ color: colors.textInverse, radius: 20 }}
             >
               <Text style={styles.createButtonText}>Создать возврат</Text>
             </Pressable>
@@ -143,24 +159,26 @@ export const StagnantProductCard = React.memo(({
       </View>
     </Pressable>
   );
-}, (prevProps, nextProps) => {
-  // Оптимизация: ререндер только если изменились данные товара
-  return (
-    prevProps.product.productId === nextProps.product.productId &&
-    prevProps.product.daysSinceLastSale === nextProps.product.daysSinceLastSale &&
-    prevProps.product.quantity === nextProps.product.quantity &&
-    prevProps.product.urgencyLevel === nextProps.product.urgencyLevel
-  );
-});
+}, (prevProps, nextProps) => (
+  prevProps.product.productId === nextProps.product.productId &&
+  prevProps.product.daysSinceLastSale === nextProps.product.daysSinceLastSale &&
+  prevProps.product.quantity === nextProps.product.quantity &&
+  prevProps.product.urgencyLevel === nextProps.product.urgencyLevel &&
+  prevProps.product.images === nextProps.product.images &&
+  prevProps.product.image === nextProps.product.image &&
+  prevProps.product.originalData?.images === nextProps.product.originalData?.images
+));
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flexDirection: 'row',
-    backgroundColor: Color.colorLightMode,
+    backgroundColor: colors.cardBackground,
     borderRadius: Border.br_base,
     padding: Padding.medium,
     marginBottom: 12,
-    ...Shadow.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...(isDark ? {} : Shadow.card),
   },
   pressed: {
     opacity: 0.8,
@@ -170,15 +188,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: Border.radius.large,
-    backgroundColor: Color.secondary,
-  },
-  imagePlaceholder: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: Color.secondary,
-  },
-  imagePlaceholderText: {
-    fontSize: 32,
+    backgroundColor: colors.surfaceSecondary,
   },
   content: {
     flex: 1,
@@ -195,7 +205,7 @@ const styles = StyleSheet.create({
     fontSize: FontSize.size_md,
     fontFamily: FontFamily.medium,
     fontWeight: '600',
-    color: Color.textPrimary,
+    color: colors.textPrimary,
     marginRight: 8,
   },
   infoContainer: {
@@ -209,14 +219,14 @@ const styles = StyleSheet.create({
   infoLabel: {
     fontSize: FontSize.size_xs,
     fontFamily: FontFamily.regular,
-    color: Color.textSecondary,
+    color: colors.textSecondary,
     marginRight: 6,
   },
   infoValue: {
     flex: 1,
     fontSize: FontSize.size_xs,
     fontFamily: FontFamily.medium,
-    color: Color.textPrimary,
+    color: colors.textPrimary,
   },
   warehousesContainer: {
     marginTop: 4,
@@ -229,7 +239,7 @@ const styles = StyleSheet.create({
   },
   warehouseDot: {
     fontSize: FontSize.size_xs,
-    color: Color.purpleSoft,
+    color: colors.primary,
     marginRight: 4,
     fontWeight: '700',
   },
@@ -237,12 +247,12 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: FontSize.size_5xs,
     fontFamily: FontFamily.regular,
-    color: Color.textPrimary,
+    color: colors.textPrimary,
   },
   warehouseQuantity: {
     fontSize: FontSize.size_5xs,
     fontFamily: FontFamily.regular,
-    color: Color.textSecondary,
+    color: colors.textSecondary,
     marginLeft: 4,
   },
   footer: {
@@ -251,7 +261,7 @@ const styles = StyleSheet.create({
   statsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Color.secondary,
+    backgroundColor: colors.surfaceSecondary,
     borderRadius: Border.radius.medium,
     padding: 8,
     marginBottom: 8,
@@ -263,36 +273,35 @@ const styles = StyleSheet.create({
   divider: {
     width: 1,
     height: 24,
-    backgroundColor: Color.border,
+    backgroundColor: colors.divider,
   },
   statValue: {
     fontSize: FontSize.size_lg,
     fontFamily: FontFamily.bold,
     fontWeight: '700',
-    color: Color.purpleSoft,
+    color: colors.primary,
     marginBottom: 2,
   },
   statLabel: {
     fontSize: FontSize.size_5xs,
     fontFamily: FontFamily.regular,
-    color: Color.textSecondary,
+    color: colors.textSecondary,
   },
   createButton: {
-    backgroundColor: Color.purpleSoft,
+    backgroundColor: colors.primary,
     borderRadius: Border.radius.medium,
     paddingVertical: 8,
     alignItems: 'center',
-    ...Shadow.button,
+    ...(isDark ? {} : Shadow.button),
   },
   createButtonPressed: {
-    backgroundColor: Color.primary,
+    backgroundColor: colors.accentPressed,
     opacity: 0.9,
   },
   createButtonText: {
     fontSize: FontSize.size_sm,
     fontFamily: FontFamily.medium,
     fontWeight: '600',
-    color: Color.colorLightMode,
+    color: '#FFFFFF',
   },
 });
-

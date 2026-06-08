@@ -2,6 +2,62 @@ const { withAndroidManifest, withDangerousMod, withGradleProperties, withEntitle
 const fs = require('fs');
 const path = require('path');
 
+const BLOCKED_MEDIA_PERMISSIONS = [
+  'android.permission.READ_MEDIA_IMAGES',
+  'android.permission.READ_MEDIA_VIDEO',
+  'android.permission.READ_MEDIA_VISUAL_USER_SELECTED',
+  'android.permission.READ_EXTERNAL_STORAGE',
+  'android.permission.WRITE_EXTERNAL_STORAGE',
+];
+
+/**
+ * Google Play запрещает широкий доступ к фото/видео, если приложение
+ * использует изображения эпизодически. Оставляем системный Photo Picker,
+ * а media/storage permissions явно удаляем на этапе manifest merge.
+ */
+const withBlockedMediaPermissions = (config) => {
+  return withAndroidManifest(config, (config) => {
+    const { manifest } = config.modResults;
+
+    if (!manifest.$) {
+      manifest.$ = {};
+    }
+    if (!manifest.$['xmlns:tools']) {
+      manifest.$['xmlns:tools'] = 'http://schemas.android.com/tools';
+    }
+
+    const permissionTags = ['uses-permission', 'uses-permission-sdk-23'];
+
+    for (const tag of permissionTags) {
+      const existingPermissions = Array.isArray(manifest[tag]) ? manifest[tag] : [];
+      manifest[tag] = existingPermissions.filter(
+        (permission) => !BLOCKED_MEDIA_PERMISSIONS.includes(permission.$?.['android:name'])
+      );
+    }
+
+    manifest['uses-permission'] = manifest['uses-permission'] || [];
+
+    for (const permissionName of BLOCKED_MEDIA_PERMISSIONS) {
+      const alreadyBlocked = manifest['uses-permission'].some(
+        (permission) =>
+          permission.$?.['android:name'] === permissionName &&
+          permission.$?.['tools:node'] === 'remove'
+      );
+
+      if (!alreadyBlocked) {
+        manifest['uses-permission'].push({
+          $: {
+            'android:name': permissionName,
+            'tools:node': 'remove',
+          },
+        });
+      }
+    }
+
+    return config;
+  });
+};
+
 /**
  * Плагин для настройки windowSoftInputMode в AndroidManifest.xml
  * Обеспечивает корректное поведение клавиатуры в production AAB бандлах
@@ -467,6 +523,7 @@ const withRuStorePush = (config) => {
 };
 
 module.exports = (config) => {
+  config = withBlockedMediaPermissions(config);
   config = withAndroidWindowSoftInputMode(config);
   config = withAndroid15Compatibility(config);
   config = withFirebaseNotificationIcon(config);

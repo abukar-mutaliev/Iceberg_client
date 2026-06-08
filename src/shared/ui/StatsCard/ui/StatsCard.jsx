@@ -1,9 +1,13 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const StatsCard = ({ title, stats = [], containerStyle }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     return (
         <View style={[styles.container, containerStyle]}>
             {title && (
@@ -21,19 +25,21 @@ export const StatsCard = ({ title, stats = [], containerStyle }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.cardBackground,
         borderRadius: Border.radius.medium,
         padding: normalize(16),
         marginHorizontal: normalize(16),
         marginVertical: normalize(8),
+        borderWidth: 1,
+        borderColor: colors.border,
         shadowColor: Color.black,
         shadowOffset: {
             width: 0,
             height: 2,
         },
-        shadowOpacity: 0.1,
+        shadowOpacity: isDark ? 0.35 : 0.1,
         shadowRadius: 4,
         elevation: 3,
     },
@@ -41,7 +47,7 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_lg),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         marginBottom: normalize(12),
         textAlign: 'center',
     },
@@ -59,7 +65,7 @@ const styles = StyleSheet.create({
     statLabel: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.grey7D7D7D,
+        color: colors.textSecondary,
         marginBottom: normalize(4),
         textAlign: 'center',
     },
@@ -67,7 +73,7 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.blue2,
+        color: colors.primary,
         textAlign: 'center',
     },
 });

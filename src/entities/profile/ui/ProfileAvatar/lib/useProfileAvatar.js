@@ -236,17 +236,7 @@ export const useProfileAvatar = (
             }
 
             if (Platform.OS === 'android') {
-                // На Android: автоматический запрос разрешения (как раньше)
-                const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
-                
-                if (currentStatus !== 'granted') {
-                    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-                    
-                    if (!permissionResult.granted) {
-                        setDebugText('Доступ к галерее не предоставлен');
-                        return;
-                    }
-                }
+                setDebugText('Android: открываем системный Photo Picker без доступа ко всей галерее');
             } else {
                 // iOS: сначала запрашиваем разрешение, и только после отказа показываем экран настроек
                 const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();

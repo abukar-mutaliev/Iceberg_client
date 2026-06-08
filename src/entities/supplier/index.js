@@ -32,6 +32,7 @@ export {
     selectBestFeedbacks,
     selectSupplierRating,
     selectSupplierTotalFeedbacks,
+    selectSupplierRatingFromFeedbacks,
     selectAllSupplierFeedbacks
 
 } from './model/selectors';

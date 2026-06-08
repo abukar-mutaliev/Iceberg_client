@@ -58,14 +58,13 @@ export const useOrderFiltering = (staffOrders, filters, canViewAllOrders, actual
                 filtered = filtered.filter(order => !excludedStatuses.includes(order.status));
             } else if (actualProcessingRole) {
                 // Для ограниченных ролей - специфичная фильтрация
-                const restrictedRoles = ['PICKER', 'PACKER', 'COURIER'];
+                const restrictedRoles = ['PICKER', 'COURIER'];
                 
                 if (restrictedRoles.includes(actualProcessingRole)) {
                     // Роли с жесткой фильтрацией по статусам
                     const roleStatusMapping = {
-                        'PICKER': ['PENDING', 'CONFIRMED'], // Сборщик: ожидающие и подтвержденные
-                        'COURIER': ['IN_DELIVERY'], // Курьер: только в доставке
-                        'PACKER': [] // Упаковщик - пока не используется
+                        'PICKER': ['PENDING', 'CONFIRMED', 'PICKING'],
+                        'COURIER': ['PICKING', 'IN_DELIVERY']
                     };
                     
                     const allowedStatuses = roleStatusMapping[actualProcessingRole];

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
     View,
     Text,
@@ -7,14 +7,18 @@ import {
     ActivityIndicator,
 } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color, FontFamily } from '@app/styles/GlobalStyles';
+import { FontFamily } from '@app/styles/GlobalStyles';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const ModernStockStatsCard = ({ stats, loading, selectedFilter, onFilterPress }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={Color.blue2} />
+                <ActivityIndicator size="large" color={colors.primary} />
                 <Text style={styles.loadingText}>{String('Загрузка статистики...')}</Text>
             </View>
         );
@@ -66,7 +70,7 @@ const ModernStockStatsCard = ({ stats, loading, selectedFilter, onFilterPress })
             <View style={styles.header}>
                 <View style={styles.headerLeft}>
                     <View style={styles.iconCircle}>
-                        <Icon name="analytics" size={normalize(24)} color="#007AFF" />
+                        <Icon name="analytics" size={normalize(24)} color={colors.primary} />
                     </View>
                     <View>
                         <Text style={styles.title}>{String('Состояние складов')}</Text>
@@ -109,33 +113,37 @@ const ModernStockStatsCard = ({ stats, loading, selectedFilter, onFilterPress })
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.cardBackground,
         borderRadius: normalize(16),
         padding: normalize(12),
         marginBottom: normalize(12),
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
+        shadowOpacity: isDark ? 0.35 : 0.08,
         shadowRadius: 12,
         elevation: 3,
+        borderWidth: 1,
+        borderColor: colors.border,
     },
     loadingContainer: {
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.cardBackground,
         borderRadius: normalize(16),
         padding: normalize(32),
         marginBottom: normalize(16),
         alignItems: 'center',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
+        shadowOpacity: isDark ? 0.35 : 0.08,
         shadowRadius: 12,
         elevation: 3,
+        borderWidth: 1,
+        borderColor: colors.border,
     },
     loadingText: {
         fontSize: normalizeFont(14),
-        color: '#8E8E93',
+        color: colors.textSecondary,
         marginTop: normalize(8),
     },
     header: {
@@ -152,7 +160,7 @@ const styles = StyleSheet.create({
         width: normalize(40),
         height: normalize(40),
         borderRadius: normalize(20),
-        backgroundColor: '#007AFF15',
+        backgroundColor: `${colors.primary}15`,
         justifyContent: 'center',
         alignItems: 'center',
         marginRight: normalize(10),
@@ -160,12 +168,12 @@ const styles = StyleSheet.create({
     title: {
         fontSize: normalizeFont(18),
         fontFamily: FontFamily.sFProTextBold,
-        color: '#1C1C1E',
+        color: colors.textPrimary,
         marginBottom: normalize(2),
     },
     subtitle: {
         fontSize: normalizeFont(13),
-        color: '#8E8E93',
+        color: colors.textSecondary,
     },
     statsContainer: {
         flexDirection: 'row',
@@ -174,7 +182,7 @@ const styles = StyleSheet.create({
     },
     statCard: {
         width: '48%',
-        backgroundColor: '#F8F9FA',
+        backgroundColor: colors.surfaceSecondary,
         borderRadius: normalize(10),
         padding: normalize(10),
         alignItems: 'center',
@@ -183,8 +191,8 @@ const styles = StyleSheet.create({
         borderColor: 'transparent',
     },
     selectedStatCard: {
-        backgroundColor: '#F0F8FF',
-        borderColor: '#007AFF',
+        backgroundColor: isDark ? colors.surfaceElevated : '#F0F8FF',
+        borderColor: colors.primary,
     },
     statIconBg: {
         width: normalize(32),
@@ -202,13 +210,13 @@ const styles = StyleSheet.create({
     statLabel: {
         fontSize: normalizeFont(12),
         fontFamily: FontFamily.sFProTextBold,
-        color: '#1C1C1E',
+        color: colors.textPrimary,
         marginBottom: normalize(2),
         textAlign: 'center',
     },
     statDescription: {
         fontSize: normalizeFont(10),
-        color: '#8E8E93',
+        color: colors.textSecondary,
         textAlign: 'center',
     },
     selectedIndicator: {

@@ -4,8 +4,12 @@ import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { IconEdit, IconDelete } from '@shared/ui/Icon/ProductManagement';
 import { MapPinIcon } from '@shared/ui/Icon/DistrictManagement/MapPinIcon';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const DistrictListItem = ({ district, onEdit, onDelete }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+    const primaryColor = isDark ? colors.primary : Color.blue2;
     const driversCount = district._count?.drivers || 0;
     const clientsCount = district._count?.clients || 0;
     const stopsCount = district._count?.stops || 0;
@@ -15,9 +19,9 @@ export const DistrictListItem = ({ district, onEdit, onDelete }) => {
     }, [driversCount, clientsCount, stopsCount]);
 
     const getBadgeColor = () => {
-        if (totalCount > 20) return Color.green;
-        if (totalCount > 5) return Color.blue2;
-        return Color.grey7D7D7D;
+        if (totalCount > 20) return isDark ? (colors.success || Color.green) : Color.green;
+        if (totalCount > 5) return isDark ? colors.primary : Color.blue2;
+        return isDark ? colors.textSecondary : Color.grey7D7D7D;
     };
     console.log("DISCTRICTS:", district);
 
@@ -28,7 +32,7 @@ export const DistrictListItem = ({ district, onEdit, onDelete }) => {
                     <MapPinIcon
                         style={styles.districtIcon}
                         size={24}
-                        color={Color.blue2}
+                        color={primaryColor}
                     />
                 </View>
             </View>
@@ -61,7 +65,7 @@ export const DistrictListItem = ({ district, onEdit, onDelete }) => {
                     activeOpacity={0.7}
                     onPress={onEdit}
                 >
-                    <IconEdit width={18} height={18} color={Color.blue2} />
+                    <IconEdit width={18} height={18} color={primaryColor} />
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -76,21 +80,28 @@ export const DistrictListItem = ({ district, onEdit, onDelete }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         marginTop: normalize(12),
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.cardBackground : Color.colorLightMode,
         borderRadius: normalize(20),
         padding: normalize(16),
         marginBottom: normalize(12),
         marginHorizontal: normalize(2),
         flexDirection: 'row',
         alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 3,
-        elevation: 2,
+        ...(isDark
+            ? {
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: colors.divider,
+            }
+            : {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.08,
+                shadowRadius: 3,
+                elevation: 2,
+            }),
     },
     leftContent: {
         marginRight: normalize(12),
@@ -118,7 +129,7 @@ const styles = StyleSheet.create({
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProDisplay,
         fontWeight: '600',
-        color: Color.textPrimary,
+        color: isDark ? (colors.textPrimary || colors.text || Color.colorLightMode) : Color.textPrimary,
         flex: 1,
     },
     badgeContainer: {
@@ -138,7 +149,7 @@ const styles = StyleSheet.create({
     description: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         lineHeight: normalizeFont(FontSize.size_xs) * 1.4,
         marginBottom: normalize(4),
     },
@@ -148,7 +159,7 @@ const styles = StyleSheet.create({
     statsText: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
     },
     actionsContainer: {
         flexDirection: 'row',
@@ -158,6 +169,7 @@ const styles = StyleSheet.create({
         width: normalize(36),
         height: normalize(36),
         borderRadius: normalize(18),
+        backgroundColor: isDark ? colors.backgroundSecondary : 'transparent',
         justifyContent: 'center',
         alignItems: 'center',
         marginLeft: normalize(8),

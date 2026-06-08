@@ -1,32 +1,27 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Clipboard } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize } from '@app/styles/GlobalStyles';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 /**
- * Компонент отображения информации о доставке
- * @param {Object} props
- * @param {string} props.deliveryType - Тип доставки ('DELIVERY' или 'PICKUP')
- * @param {number} props.deliveryCost - Стоимость доставки
- * @param {number} props.deliveryDistance - Расстояние доставки в км
- * @param {boolean} props.isFreeDelivery - Флаг бесплатной доставки
- * @param {boolean} props.calculating - Идет ли расчет
- * @param {string} props.warehouseName - Название склада
- * @param {Object} props.freeDeliveryInfo - Информация о порогах бесплатной доставки
- * @param {string} props.warehouseAddress - Адрес склада для самовывоза
+ * Компонент отображения информации о доставке.
+ * После упрощения системы:
+ *  - DELIVERY: фиксированная цена (по умолчанию 200 ₽);
+ *  - PICKUP: бесплатно;
+ *  - никаких "бесплатной доставки от X" и расстояний.
  */
-export const DeliveryInfo = ({ 
+export const DeliveryInfo = ({
     deliveryType = 'DELIVERY',
     deliveryCost = 0,
-    deliveryDistance = null,
-    isFreeDelivery = false,
     calculating = false,
     warehouseName = null,
-    freeDeliveryInfo = null,
-    warehouseAddress = null,
+    warehouseAddress = null
 }) => {
     const { showInfo } = useCustomAlert();
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     const handleCopyWarehouseAddress = useCallback(() => {
         if (!warehouseAddress) return;
@@ -34,13 +29,12 @@ export const DeliveryInfo = ({
         showInfo('Скопировано', 'Адрес склада скопирован в буфер обмена');
     }, [warehouseAddress, showInfo]);
 
-    // Если самовывоз
     if (deliveryType === 'PICKUP') {
         return (
             <View style={styles.container}>
                 <View style={styles.header}>
                     <View style={styles.iconContainer}>
-                        <Icon name="store" size={24} color="#667eea" />
+                        <Icon name="store" size={24} color={colors.primary} />
                     </View>
                     <View style={styles.headerTextContainer}>
                         <Text style={styles.headerTitle}>Самовывоз</Text>
@@ -58,28 +52,25 @@ export const DeliveryInfo = ({
                                     activeOpacity={0.7}
                                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                                 >
-                                    <Icon name="content-copy" size={16} color="#667eea" />
+                                    <Icon name="content-copy" size={16} color={colors.primary} />
                                 </TouchableOpacity>
                             </View>
                         )}
                     </View>
                 </View>
-                
-                {/* Для самовывоза стоимость не отображаем */}
             </View>
         );
     }
 
-    // Если идет расчет
     if (calculating) {
         return (
             <View style={styles.container}>
                 <View style={styles.header}>
                     <View style={styles.iconContainer}>
-                        <ActivityIndicator size="small" color="#667eea" />
+                        <ActivityIndicator size="small" color={colors.primary} />
                     </View>
                     <View style={styles.headerTextContainer}>
-                        <Text style={styles.headerTitle}>Расчет доставки...</Text>
+                        <Text style={styles.headerTitle}>Расчёт доставки...</Text>
                         <Text style={styles.headerSubtitle}>Пожалуйста, подождите</Text>
                     </View>
                 </View>
@@ -87,104 +78,83 @@ export const DeliveryInfo = ({
         );
     }
 
-    // Если доставка
-    const hasDeliveryInfo = deliveryDistance !== null && deliveryCost !== null && deliveryCost > 0;
-
-    // Если нет информации о доставке, не показываем компонент
-    if (!hasDeliveryInfo) {
-        return null;
-    }
-
     return (
         <View style={styles.container}>
             <View style={styles.header}>
                 <View style={styles.iconContainer}>
-                    <Icon name="local-shipping" size={24} color="#667eea" />
+                    <Icon name="local-shipping" size={24} color={colors.primary} />
                 </View>
                 <View style={styles.headerTextContainer}>
-                    <Text style={styles.headerTitle}>
-                        {isFreeDelivery ? 'Бесплатная доставка' : 'Стоимость доставки'}
-                    </Text>
+                    <Text style={styles.headerTitle}>Стоимость доставки</Text>
                     <Text style={styles.headerSubtitle}>
-                        {deliveryDistance.toFixed(1)} км
-                        {warehouseName && ` • ${warehouseName}`}
+                        Доставка по всем районам — единая цена
                     </Text>
                 </View>
-            </View>
-            
-            <View style={styles.priceContainer}>
-                <Text style={isFreeDelivery ? styles.freePrice : styles.price}>
-                    {isFreeDelivery ? '0 ₽' : `${deliveryCost.toFixed(0)} ₽`}
-                </Text>
             </View>
 
-            {/* Информация о бесплатной доставке */}
-            {freeDeliveryInfo && !isFreeDelivery && freeDeliveryInfo.minOrderAmountForFreeDelivery && (
-                <View style={styles.freeDeliveryHint}>
-                    <Icon name="info-outline" size={18} color="#667eea" style={styles.hintIcon} />
-                    <Text style={styles.freeDeliveryHintText}>
-                        {freeDeliveryInfo.message}
-                    </Text>
-                </View>
-            )}
+            <View style={styles.priceContainer}>
+                <Text style={styles.price}>
+                    {`${Number(deliveryCost || 0).toFixed(0)} ₽`}
+                </Text>
+            </View>
         </View>
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
-        backgroundColor: '#fff',
+        backgroundColor: colors.cardBackground,
         borderRadius: 16,
         padding: 16,
         borderWidth: 2,
-        borderColor: '#f0f0f0',
+        borderColor: colors.border,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.06,
-        shadowRadius: 4,
-        elevation: 2,
+        shadowOpacity: isDark ? 0.22 : 0.06,
+        shadowRadius: isDark ? 8 : 4,
+        elevation: isDark ? 3 : 2
     },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 12,
+        marginBottom: 12
     },
     iconContainer: {
         width: 48,
         height: 48,
         borderRadius: 24,
-        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+        backgroundColor: colors.primary + '1A',
         justifyContent: 'center',
         alignItems: 'center',
-        marginRight: 12,
+        marginRight: 12
     },
     headerTextContainer: {
-        flex: 1,
+        flex: 1
     },
     headerTitle: {
         fontSize: FontSize.size_base || 16,
         fontFamily: FontFamily.sFProDisplayMedium || 'SF Pro Display Medium',
         fontWeight: '600',
-        color: '#1a1a1a',
-        marginBottom: 2,
+        color: colors.textPrimary,
+        marginBottom: 2
     },
     headerSubtitle: {
         fontSize: FontSize.size_sm || 14,
         fontFamily: FontFamily.sFProDisplay || 'SF Pro Display',
-        color: '#666',
+        color: colors.textSecondary
     },
     pickupAddressRow: {
         flexDirection: 'row',
         alignItems: 'flex-start',
         marginTop: 6,
-        gap: 8,
+        gap: 8
     },
     pickupAddress: {
         flex: 1,
         fontSize: FontSize.size_sm || 14,
         fontFamily: FontFamily.sFProDisplay || 'SF Pro Display',
-        color: '#4a5568',
-        lineHeight: 20,
+        color: colors.textSecondary,
+        lineHeight: 20
     },
     copyButtonInline: {
         width: 26,
@@ -192,49 +162,18 @@ const styles = StyleSheet.create({
         borderRadius: 13,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(102, 126, 234, 0.08)',
+        backgroundColor: colors.primary + '14',
         borderWidth: 1,
-        borderColor: 'rgba(102, 126, 234, 0.15)',
-        marginTop: 2,
+        borderColor: colors.primary + '26',
+        marginTop: 2
     },
     priceContainer: {
-        alignItems: 'flex-end',
+        alignItems: 'flex-end'
     },
     price: {
         fontSize: 28,
         fontFamily: FontFamily.sFProDisplayMedium || 'SF Pro Display Medium',
         fontWeight: '700',
-        color: '#1a1a1a',
-    },
-    freePrice: {
-        fontSize: 28,
-        fontFamily: FontFamily.sFProDisplayMedium || 'SF Pro Display Medium',
-        fontWeight: '700',
-        color: '#28a745',
-    },
-    freeDeliveryHint: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        marginTop: 12,
-        paddingTop: 12,
-        borderTopWidth: 1,
-        borderTopColor: '#f0f0f0',
-        backgroundColor: 'rgba(102, 126, 234, 0.05)',
-        padding: 12,
-        borderRadius: 8,
-        marginHorizontal: -4,
-    },
-    hintIcon: {
-        marginRight: 8,
-        marginTop: 1,
-    },
-    freeDeliveryHintText: {
-        flex: 1,
-        fontSize: FontSize.size_sm || 14,
-        fontFamily: FontFamily.sFProDisplay || 'SF Pro Display',
-        color: '#667eea',
-        lineHeight: 20,
-        fontWeight: '500',
-    },
+        color: colors.textPrimary
+    }
 });
-

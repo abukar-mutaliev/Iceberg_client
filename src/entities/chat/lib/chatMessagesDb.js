@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 // Условный импорт expo-sqlite с обработкой ошибок
 let SQLite = null;
 try {
@@ -104,8 +106,22 @@ async function getAll(db, sql, params = []) {
 }
 
 async function withTransaction(db, fn) {
+  // withTransactionAsync is non-exclusive: concurrent runAsync/execAsync on the same db can
+  // interleave and trigger nested BEGIN / bogus ROLLBACK (see expo SQLiteDatabase.withTransactionAsync).
+  // Exclusive transaction uses a dedicated connection so saves don't collide with each other or stray writes.
+  const useExclusive =
+    Platform.OS !== 'web' &&
+    isAsyncDb(db) &&
+    typeof db.withExclusiveTransactionAsync === 'function';
+  if (useExclusive) {
+    return await db.withExclusiveTransactionAsync(async (txn) => {
+      await fn(txn);
+    });
+  }
   if (isAsyncDb(db) && typeof db.withTransactionAsync === 'function') {
-    return await db.withTransactionAsync(fn);
+    return await db.withTransactionAsync(async () => {
+      await fn(db);
+    });
   }
   // Legacy transaction
   return await new Promise((resolve, reject) => {
@@ -167,10 +183,12 @@ function parseStopData(message) {
 
 function isStopMessage(message) {
   if (!message) return false;
-  if (String(message.type || '').toUpperCase() === 'STOP') return true;
+  const type = String(message.type || '').toUpperCase();
+  if (type === 'WAREHOUSE' || type === 'PRODUCT') return false;
+  if (type === 'STOP') return true;
   const stopData = parseStopData(message);
   if (!stopData) return false;
-  return Boolean(stopData?.id || stopData?.stopId || stopData?.startTime || stopData?.endTime);
+  return Boolean(stopData?.stopId || stopData?.stop_id || stopData?.startTime || stopData?.endTime);
 }
 
 function isStopMessageExpired(message, nowMs = Date.now()) {

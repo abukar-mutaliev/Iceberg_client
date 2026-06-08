@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { Color, FontFamily, Border, Shadow } from '@app/styles/GlobalStyles';
 import {InfoCard} from "@shared/ui/Admin/AdminProduct";
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const AdminProductBasicInfo = ({
                                      product,
@@ -10,6 +11,8 @@ export const AdminProductBasicInfo = ({
                                      showAdditionalInfo = false,
                                      supplier = null
                                  }) => {
+    const { colors, isDark } = useTheme();
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const moderationStatus = product?.moderationStatus || 'APPROVED';
     const moderationLabel = moderationStatus === 'PENDING'
         ? 'На модерации'
@@ -175,24 +178,24 @@ export const AdminProductBasicInfo = ({
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,
     },
     mainInfoContainer: {
         padding: normalize(20),
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.background : Color.colorLightMode,
     },
     productName: {
         fontSize: normalizeFont(24),
         fontWeight: '700',
-        color: Color.dark,
+        color: isDark ? colors.textPrimary : Color.dark,
         marginBottom: normalize(8),
         fontFamily: FontFamily.sFProDisplay,
     },
     productDescription: {
         fontSize: normalizeFont(16),
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         lineHeight: normalize(22),
         fontFamily: FontFamily.sFProText,
     },
@@ -207,15 +210,17 @@ const styles = StyleSheet.create({
     },
     additionalInfoContainer: {
         margin: normalize(16),
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: isDark ? colors.surface : Color.colorLightMode,
         borderRadius: Border.radius.medium,
         padding: normalize(16),
-        ...Shadow.light,
+        borderWidth: isDark ? StyleSheet.hairlineWidth : 0,
+        borderColor: isDark ? colors.border : 'transparent',
+        ...(isDark ? {} : Shadow.light),
     },
     sectionTitle: {
         fontSize: normalizeFont(18),
         fontWeight: '600',
-        color: Color.dark,
+        color: isDark ? colors.textPrimary : Color.dark,
         marginBottom: normalize(16),
         fontFamily: FontFamily.sFProDisplay,
     },
@@ -225,18 +230,18 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingVertical: normalize(8),
         borderBottomWidth: 0.5,
-        borderBottomColor: Color.border,
+        borderBottomColor: isDark ? colors.border : Color.border,
     },
     additionalInfoLabel: {
         fontSize: normalizeFont(14),
-        color: Color.textSecondary,
+        color: isDark ? colors.textSecondary : Color.textSecondary,
         fontFamily: FontFamily.sFProText,
         flex: 1,
     },
     additionalInfoValue: {
         fontSize: normalizeFont(14),
         fontWeight: '500',
-        color: Color.dark,
+        color: isDark ? colors.textPrimary : Color.dark,
         fontFamily: FontFamily.sFProText,
         textAlign: 'right',
         flex: 1,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -10,8 +10,9 @@ import {
     Switch
 } from 'react-native';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
-import { Color, FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
+import { FontFamily, FontSize, Border } from '@app/styles/GlobalStyles';
 import { ReusableModal } from '@shared/ui/Modal/ui/ReusableModal';
+import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 // Функция для генерации slug из имени
 const generateSlug = (name) => {
@@ -24,6 +25,13 @@ const generateSlug = (name) => {
 };
 
 export const AddCategoryModal = ({ visible, onClose, onSubmit, category, isSubmitting }) => {
+    const { colors } = useTheme();
+    const styles = useMemo(() => createStyles(colors), [colors]);
+    const inputThemeProps = useMemo(() => ({
+        placeholderTextColor: colors.textTertiary,
+        keyboardAppearance: colors.keyboardAppearance,
+    }), [colors]);
+
     const [formData, setFormData] = useState({
         name: '',
         slug: '',
@@ -157,6 +165,7 @@ export const AddCategoryModal = ({ visible, onClose, onSubmit, category, isSubmi
                         value={formData.name}
                         onChangeText={(text) => handleChange('name', text)}
                         placeholder="Введите название"
+                        {...inputThemeProps}
                         editable={!isProcessing}
                     />
                     {errors.name ? <Text style={styles.errorText}>{errors.name}</Text> : null}
@@ -170,8 +179,8 @@ export const AddCategoryModal = ({ visible, onClose, onSubmit, category, isSubmi
                             <Switch
                                 value={autoGenerateSlug}
                                 onValueChange={toggleAutoGenerate}
-                                trackColor={{ false: '#d3d3d3', true: '#c0d5ff' }}
-                                thumbColor={autoGenerateSlug ? Color.blue2 : '#f4f3f4'}
+                                trackColor={{ false: colors.surfaceSecondary, true: colors.primarySoft }}
+                                thumbColor={autoGenerateSlug ? colors.primary : colors.textSecondary}
                                 disabled={isProcessing}
                             />
                         </View>
@@ -184,6 +193,7 @@ export const AddCategoryModal = ({ visible, onClose, onSubmit, category, isSubmi
                         value={formData.slug}
                         onChangeText={(text) => handleChange('slug', text)}
                         placeholder="Введите slug или он будет создан автоматически"
+                        {...inputThemeProps}
                         editable={!isProcessing && !autoGenerateSlug}
                     />
                     {errors.slug ? <Text style={styles.errorText}>{errors.slug}</Text> : null}
@@ -196,6 +206,7 @@ export const AddCategoryModal = ({ visible, onClose, onSubmit, category, isSubmi
                         value={formData.description}
                         onChangeText={(text) => handleChange('description', text)}
                         placeholder="Введите описание (необязательно)"
+                        {...inputThemeProps}
                         multiline
                         numberOfLines={3}
                         editable={!isProcessing}
@@ -208,7 +219,7 @@ export const AddCategoryModal = ({ visible, onClose, onSubmit, category, isSubmi
                     disabled={isProcessing}
                 >
                     {isProcessing ? (
-                        <ActivityIndicator size="small" color={Color.colorLightMode} />
+                        <ActivityIndicator size="small" color={colors.textInverse} />
                     ) : (
                         <Text style={styles.submitButtonText}>
                             {category ? 'Сохранить изменения' : 'Добавить категорию'}
@@ -220,7 +231,7 @@ export const AddCategoryModal = ({ visible, onClose, onSubmit, category, isSubmi
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
     container: {
         padding: normalize(16),
     },
@@ -239,35 +250,35 @@ const styles = StyleSheet.create({
     autoGenerateText: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginRight: normalize(8),
     },
     label: {
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
-        color: Color.textPrimary,
+        color: colors.textPrimary,
         marginBottom: normalize(4),
     },
     helperText: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: Color.textSecondary,
+        color: colors.textSecondary,
         marginBottom: normalize(4),
     },
     input: {
-        backgroundColor: Color.colorLightMode,
+        backgroundColor: colors.inputBackground,
         borderWidth: 1,
-        borderColor: Color.border,
+        borderColor: colors.inputBorder,
         borderRadius: Border.radius.small,
         paddingHorizontal: normalize(12),
         paddingVertical: normalize(8),
         fontSize: normalizeFont(FontSize.size_sm),
         fontFamily: FontFamily.sFProText,
-        color: Color.textPrimary,
+        color: colors.textPrimary,
     },
     inputError: {
-        borderColor: Color.red,
+        borderColor: colors.error,
     },
     textArea: {
         minHeight: normalize(80),
@@ -276,11 +287,11 @@ const styles = StyleSheet.create({
     errorText: {
         fontSize: normalizeFont(FontSize.size_xs),
         fontFamily: FontFamily.sFProText,
-        color: Color.red,
+        color: colors.error,
         marginTop: normalize(4),
     },
     submitButton: {
-        backgroundColor: Color.blue2,
+        backgroundColor: colors.primary,
         borderRadius: Border.radius.small,
         paddingVertical: normalize(12),
         alignItems: 'center',
@@ -288,10 +299,10 @@ const styles = StyleSheet.create({
         marginTop: normalize(16),
     },
     disabledButton: {
-        backgroundColor: Color.gray,
+        backgroundColor: colors.surfaceSecondary,
     },
     submitButtonText: {
-        color: Color.colorLightMode,
+        color: colors.textInverse,
         fontSize: normalizeFont(FontSize.size_md),
         fontFamily: FontFamily.sFProText,
         fontWeight: '500',
