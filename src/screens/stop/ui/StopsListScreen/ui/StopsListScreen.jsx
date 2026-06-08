@@ -14,7 +14,9 @@ import {
     fetchAllStops,
     clearStopCache,
 } from '@entities/stop';
-import { StopCard, isStopActive } from "@entities/driver/ui/StopCard";
+import { StopCard, isStopActive } from '@entities/driver/ui/StopCard';
+import { canEditStop } from '@entities/stop/lib/canEditStop';
+import { QuickEditStopTimeModal } from '@features/stop/quickEditStopTime';
 import { BackButton } from "@shared/ui/Button/BackButton";
 import { InteractiveMap } from "@shared/ui/InteractiveMapIngushetia";
 import { SearchIcon } from "@shared/ui/Icon/SearchIcon";
@@ -89,7 +91,8 @@ export const StopsListScreen = ({ navigation }) => {
     const stops = useSelector(selectStops);
     const loading = useSelector(selectStopLoading);
     const error = useSelector(selectStopError);
-    const userRole = useSelector(state => state.auth?.user?.role);
+    const user = useSelector(state => state.auth?.user);
+    const userRole = user?.role;
     const safeStops = Array.isArray(stops) ? stops : [];
 
     const highlightedStop = useSelector(state =>
@@ -103,6 +106,7 @@ export const StopsListScreen = ({ navigation }) => {
     const [selectedDistrictName, setSelectedDistrictName] = useState(routeDistrictName || null);
     const [searchQuery, setSearchQuery] = useState('');
     const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+    const [editingStop, setEditingStop] = useState(null);
 
     const getErrorMessage = (errorValue) => {
         if (!errorValue) {
@@ -354,6 +358,18 @@ export const StopsListScreen = ({ navigation }) => {
         navigation.navigate('AddStop');
     };
 
+    const handleEditStopTime = useCallback((stop) => {
+        setEditingStop(stop);
+    }, []);
+
+    const handleCloseEditModal = useCallback(() => {
+        setEditingStop(null);
+    }, []);
+
+    const handleStopTimeSaved = useCallback(() => {
+        loadStops({ forceRefresh: true });
+    }, [loadStops]);
+
     const loaderAccent = isDark ? colors.primary : Color.purpleSoft;
     const iconMuted = isDark ? colors.textSecondary : Color.gray;
 
@@ -443,17 +459,35 @@ export const StopsListScreen = ({ navigation }) => {
                     />
                 ) : (
                     <View style={styles.locationsList}>
-                        {sortedStops.map((stop) => (
-                            <View style={styles.stopCardWrapper} key={stop.id}>
-                                <View style={styles.stopCardInner}>
-                                    <StopCard
-                                        stop={stop}
-                                        onPress={handleStopPress}
-                                        isHighlighted={stop.id === highlightStopId}
-                                    />
+                        {sortedStops.map((stop) => {
+                            const showEditButton = canEditStop(stop, user);
+
+                            return (
+                                <View style={styles.stopCardWrapper} key={stop.id}>
+                                    <View style={styles.stopCardInner}>
+                                        <StopCard
+                                            stop={stop}
+                                            onPress={handleStopPress}
+                                            isHighlighted={stop.id === highlightStopId}
+                                        />
+                                        {showEditButton && (
+                                            <TouchableOpacity
+                                                style={styles.editTimeButton}
+                                                onPress={() => handleEditStopTime(stop)}
+                                                activeOpacity={0.7}
+                                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                            >
+                                                <Ionicons
+                                                    name="time-outline"
+                                                    size={18}
+                                                    color={isDark ? colors.primary : Color.blue3}
+                                                />
+                                            </TouchableOpacity>
+                                        )}
+                                    </View>
                                 </View>
-                            </View>
-                        ))}
+                            );
+                        })}
                     </View>
                 )}
             </ScrollView>
@@ -550,6 +584,13 @@ export const StopsListScreen = ({ navigation }) => {
             </View>
 
             {renderContent()}
+
+            <QuickEditStopTimeModal
+                visible={!!editingStop}
+                stop={editingStop}
+                onClose={handleCloseEditModal}
+                onSaved={handleStopTimeSaved}
+            />
         </View>
     );
 };
@@ -739,9 +780,25 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         borderColor: isDark ? colors.border : 'transparent',
     },
     stopCardInner: {
+        position: 'relative',
         borderRadius: 16,
         overflow: 'hidden',
         backgroundColor: isDark ? colors.cardBackground : '#ffffff',
+    },
+    editTimeButton: {
+        position: 'absolute',
+        right: 32,
+        top: '50%',
+        marginTop: -16,
+        zIndex: 2,
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: isDark ? colors.surfaceElevated : '#eef2ff',
+        borderWidth: 1,
+        borderColor: isDark ? colors.border : '#dbe4ff',
     },
     filterContainer: {
         flexDirection: 'row',

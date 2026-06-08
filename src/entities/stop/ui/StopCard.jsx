@@ -195,6 +195,8 @@ const ContactDriverModal = ({ visible, onClose, driverName, driverPhone, onChat,
     );
 };
 
+const getStopId = (stop) => stop?.stopId ?? stop?.id ?? null;
+
 const StopCardComponent = ({ stop, onPress, width, compact = true, showContactButton = false, onContactDriver }) => {
     const styles = useStopStyles();
     const [imageError, setImageError] = React.useState(false);
@@ -215,7 +217,9 @@ const StopCardComponent = ({ stop, onPress, width, compact = true, showContactBu
     const driverPhone = stop?.driver?.phone || stop?.driverPhone;
     const hasDriverInfo = driverName || driverPhone;
 
-    if (!stop || !stop.stopId) {
+    const stopId = getStopId(stop);
+
+    if (!stop || !stopId) {
         return null;
     }
 
@@ -223,13 +227,13 @@ const StopCardComponent = ({ stop, onPress, width, compact = true, showContactBu
         if (__DEV__) {
             console.log('StopCard: handlePress called', {
                 hasOnPress: !!onPress,
-                stopId: stop.stopId,
+                stopId,
                 stopData: stop
             });
         }
         
-        if (onPress && stop.stopId) {
-            const numericId = typeof stop.stopId === 'string' ? parseInt(stop.stopId, 10) : stop.stopId;
+        if (onPress && stopId) {
+            const numericId = typeof stopId === 'string' ? parseInt(stopId, 10) : stopId;
             if (__DEV__) {
                 console.log('StopCard: Calling onPress with stopId', numericId);
             }
@@ -238,18 +242,18 @@ const StopCardComponent = ({ stop, onPress, width, compact = true, showContactBu
             if (__DEV__) {
                 console.warn('StopCard: Cannot call onPress', {
                     hasOnPress: !!onPress,
-                    hasStopId: !!stop.stopId
+                    hasStopId: !!stopId
                 });
             }
         }
-    }, [onPress, stop.stopId, stop]);
+    }, [onPress, stopId, stop]);
 
     const handleImageError = useCallback(() => {
         if (__DEV__) {
-            console.log('StopCard: Image load error for stop', stop.stopId);
+            console.log('StopCard: Image load error for stop', stopId);
         }
         setImageError(true);
-    }, [stop.stopId]);
+    }, [stopId]);
 
     const handleContactPress = useCallback(() => {
         // Если есть данные о водителе - показываем модальное окно
@@ -257,12 +261,12 @@ const StopCardComponent = ({ stop, onPress, width, compact = true, showContactBu
             setContactModalVisible(true);
         } else {
             // Если данных нет - открываем страницу остановки
-            if (onPress && stop.stopId) {
-                const numericId = typeof stop.stopId === 'string' ? parseInt(stop.stopId, 10) : stop.stopId;
+            if (onPress && stopId) {
+                const numericId = typeof stopId === 'string' ? parseInt(stopId, 10) : stopId;
                 onPress(numericId);
             }
         }
-    }, [driverName, driverPhone, onPress, stop.stopId]);
+    }, [driverName, driverPhone, onPress, stopId]);
 
     const handleCloseModal = useCallback(() => {
         setContactModalVisible(false);
@@ -394,7 +398,7 @@ const arePropsEqual = (prevProps, nextProps) => {
     if (!prevStop || !nextStop) return false;
 
     return (
-        prevStop.stopId === nextStop.stopId &&
+        getStopId(prevStop) === getStopId(nextStop) &&
         prevStop.address === nextStop.address &&
         prevStop.startTime === nextStop.startTime &&
         prevStop.endTime === nextStop.endTime &&
