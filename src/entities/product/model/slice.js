@@ -297,10 +297,27 @@ export const deleteProduct = createAsyncThunk(
     'products/deleteProduct',
     async (productId, { rejectWithValue }) => {
         try {
-            await productsApi.deleteProduct(productId);
-            return productId;
+            const response = await productsApi.deleteProduct(productId);
+
+            if (response?.status !== 'success') {
+                return rejectWithValue(
+                    response?.message || 'Не удалось удалить продукт'
+                );
+            }
+
+            const numericProductId = parseInt(productId, 10);
+
+            return {
+                productId: numericProductId,
+                action: response?.data?.action || 'deleted',
+                message: response?.message || null,
+            };
         } catch (error) {
-            return rejectWithValue(error.message || 'Ошибка при удалении продукта');
+            const errorMessage =
+                error?.message ||
+                error?.response?.data?.message ||
+                'Ошибка при удалении продукта';
+            return rejectWithValue(errorMessage);
         }
     }
 );
@@ -613,16 +630,19 @@ const productsSlice = createSlice({
             })
             .addCase(deleteProduct.fulfilled, (state, action) => {
                 state.loading = false;
-                const deletedProductId = parseInt(action.payload, 10);
+                const payload = action.payload;
+                const deletedProductId = parseInt(
+                    typeof payload === 'object' ? payload?.productId : payload,
+                    10
+                );
                 if (!isNaN(deletedProductId)) {
-                    // Помечаем как удаленный
                     if (!state.deletedProductIds.includes(deletedProductId)) {
                         state.deletedProductIds.push(deletedProductId);
                     }
-                    // Удаляем из списков
                     state.items = state.items.filter(item => item?.id !== deletedProductId);
                     delete state.byId[deletedProductId];
-                    state.lastFetchTime = Date.now();
+                    state.lastFetchTime = null;
+                    state.fetchCompleted = false;
                     if (state.currentProduct?.id === deletedProductId) {
                         state.currentProduct = null;
                     }

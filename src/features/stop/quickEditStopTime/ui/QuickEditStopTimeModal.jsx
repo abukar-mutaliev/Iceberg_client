@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     View,
     Text,
@@ -72,10 +72,42 @@ const parseScheduleData = (schedule) => {
     return { enabled };
 };
 
+const STOP_DURATION_MS = 60 * 60 * 1000;
+
 const buildDateTime = (datePart, timePart) => {
     const dateTime = new Date(datePart);
     dateTime.setHours(timePart.getHours(), timePart.getMinutes(), 0, 0);
     return dateTime;
+};
+
+const addStopDuration = (dateTime) => {
+    return new Date(dateTime.getTime() + STOP_DURATION_MS);
+};
+
+const getTodayDate = () => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+};
+
+const combineDateAndTime = (datePart, timeSource) => {
+    const combined = new Date(datePart);
+    const time = parseDateTimeValue(timeSource, new Date()) || new Date();
+    combined.setHours(time.getHours(), time.getMinutes(), 0, 0);
+    return combined;
+};
+
+const getInitialFormValues = (stop) => {
+    const today = getTodayDate();
+    const stopStart = parseDateTimeValue(stop?.startTime, new Date()) || new Date();
+    const startDateTime = combineDateAndTime(today, stopStart);
+    const endDateTime = addStopDuration(startDateTime);
+
+    return {
+        startDate: today,
+        startTime: startDateTime,
+        endDate: new Date(endDateTime.getFullYear(), endDateTime.getMonth(), endDateTime.getDate()),
+        endTime: endDateTime,
+    };
 };
 
 export const QuickEditStopTimeModal = ({ visible, stop, onClose, onSaved }) => {
@@ -85,33 +117,92 @@ export const QuickEditStopTimeModal = ({ visible, stop, onClose, onSaved }) => {
 
     const scheduleEnabled = useMemo(() => parseScheduleData(stop?.schedule).enabled, [stop?.schedule]);
 
-    const initialStart = useMemo(() => {
-        return parseDateTimeValue(stop?.startTime, new Date()) || new Date();
-    }, [stop?.startTime]);
+    const initialValues = useMemo(() => getInitialFormValues(stop), [stop]);
 
-    const initialEnd = useMemo(() => {
-        const fallback = new Date(initialStart.getTime() + 2 * 60 * 60 * 1000);
-        return parseDateTimeValue(stop?.endTime, fallback) || fallback;
-    }, [stop?.endTime, initialStart]);
-
-    const [startDate, setStartDate] = useState(initialStart);
-    const [startTime, setStartTime] = useState(initialStart);
-    const [endDate, setEndDate] = useState(initialEnd);
-    const [endTime, setEndTime] = useState(initialEnd);
+    const [startDate, setStartDate] = useState(initialValues.startDate);
+    const [startTime, setStartTime] = useState(initialValues.startTime);
+    const [endDate, setEndDate] = useState(initialValues.endDate);
+    const [endTime, setEndTime] = useState(initialValues.endTime);
     const [errors, setErrors] = useState({ startTime: '', endTime: '' });
     const [isSaving, setIsSaving] = useState(false);
+    const endTimeManuallyEditedRef = useRef(false);
+
+    const applyAutoEndTime = useCallback((nextStartDate, nextStartTime) => {
+        const startDateTime = buildDateTime(nextStartDate, nextStartTime);
+        const autoEnd = addStopDuration(startDateTime);
+        setEndDate(new Date(autoEnd.getFullYear(), autoEnd.getMonth(), autoEnd.getDate()));
+        setEndTime(autoEnd);
+    }, []);
 
     useEffect(() => {
         if (!visible || !stop) {
             return;
         }
 
-        setStartDate(initialStart);
-        setStartTime(initialStart);
-        setEndDate(initialEnd);
-        setEndTime(initialEnd);
+        const values = getInitialFormValues(stop);
+        endTimeManuallyEditedRef.current = false;
+        setStartDate(values.startDate);
+        setStartTime(values.startTime);
+        setEndDate(values.endDate);
+        setEndTime(values.endTime);
         setErrors({ startTime: '', endTime: '' });
-    }, [visible, stop, initialStart, initialEnd]);
+    }, [visible, stop]);
+
+    const onStartDateChange = useCallback((date) => {
+        setStartDate(date);
+        if (!endTimeManuallyEditedRef.current) {
+            applyAutoEndTime(date, startTime);
+        } else if (date > endDate) {
+            setEndDate(date);
+        }
+        setErrors((prev) => ({ ...prev, startTime: '', endTime: '' }));
+    }, [applyAutoEndTime, startTime, endDate]);
+
+    const onStartTimeChange = useCallback((time) => {
+        setStartTime(time);
+        if (!endTimeManuallyEditedRef.current) {
+            applyAutoEndTime(startDate, time);
+        }
+        setErrors((prev) => ({ ...prev, startTime: '', endTime: '' }));
+    }, [applyAutoEndTime, startDate]);
+
+    const onEndDateChange = useCallback((date) => {
+        endTimeManuallyEditedRef.current = true;
+        if (date < startDate) {
+            setErrors((prev) => ({
+                ...prev,
+                endTime: 'Дата окончания не может быть раньше даты начала',
+            }));
+            return;
+        }
+        setEndDate(date);
+        setErrors((prev) => ({ ...prev, endTime: '' }));
+    }, [startDate]);
+
+    const onEndTimeChange = useCallback((time) => {
+        endTimeManuallyEditedRef.current = true;
+        const isSameDay =
+            startDate.getDate() === endDate.getDate() &&
+            startDate.getMonth() === endDate.getMonth() &&
+            startDate.getFullYear() === endDate.getFullYear();
+
+        if (
+            isSameDay &&
+            (
+                time.getHours() < startTime.getHours() ||
+                (time.getHours() === startTime.getHours() && time.getMinutes() < startTime.getMinutes())
+            )
+        ) {
+            setErrors((prev) => ({
+                ...prev,
+                endTime: 'Время окончания не может быть раньше времени начала',
+            }));
+            return;
+        }
+
+        setEndTime(time);
+        setErrors((prev) => ({ ...prev, endTime: '' }));
+    }, [startDate, endDate, startTime]);
 
     const validate = useCallback(() => {
         const startDateTime = buildDateTime(startDate, startTime);
@@ -172,7 +263,7 @@ export const QuickEditStopTimeModal = ({ visible, stop, onClose, onSaved }) => {
             visible={visible}
             onClose={onClose}
             title="Изменить время"
-            height={scheduleEnabled ? 55 : 70}
+            height={scheduleEnabled ? 75 : 90}
             disableSwipe={isSaving}
         >
             <View style={styles.content}>
@@ -195,12 +286,12 @@ export const QuickEditStopTimeModal = ({ visible, stop, onClose, onSaved }) => {
                             {!scheduleEnabled && (
                                 <View style={styles.dateTimeColumn}>
                                     <Text style={styles.sublabel}>Дата</Text>
-                                    <CustomDatePicker date={startDate} onDateChange={setStartDate} />
+                                    <CustomDatePicker date={startDate} onDateChange={onStartDateChange} />
                                 </View>
                             )}
                             <View style={styles.dateTimeColumn}>
                                 <Text style={styles.sublabel}>Время</Text>
-                                <CustomTimePicker date={startTime} onTimeChange={setStartTime} />
+                                <CustomTimePicker date={startTime} onTimeChange={onStartTimeChange} />
                             </View>
                         </View>
                     </FormField>
@@ -214,12 +305,12 @@ export const QuickEditStopTimeModal = ({ visible, stop, onClose, onSaved }) => {
                             {!scheduleEnabled && (
                                 <View style={styles.dateTimeColumn}>
                                     <Text style={styles.sublabel}>Дата</Text>
-                                    <CustomDatePicker date={endDate} onDateChange={setEndDate} />
+                                    <CustomDatePicker date={endDate} onDateChange={onEndDateChange} />
                                 </View>
                             )}
                             <View style={styles.dateTimeColumn}>
                                 <Text style={styles.sublabel}>Время</Text>
-                                <CustomTimePicker date={endTime} onTimeChange={setEndTime} />
+                                <CustomTimePicker date={endTime} onTimeChange={onEndTimeChange} />
                             </View>
                         </View>
                     </FormField>

@@ -49,13 +49,16 @@ export const ProductListScreen = () => {
 
     const handleDeleteProduct = async (productId) => {
         try {
-            await dispatch(deleteProduct(productId)).unwrap();
-            Alert.alert('Готово', 'Продукт удален');
+            const result = await dispatch(deleteProduct(productId)).unwrap();
 
-            // После удаления принудительно обновляем данные
+            const successMessage = result?.action === 'archived'
+                ? (result?.message || 'Товар архивирован и скрыт из каталога')
+                : 'Продукт удален';
+
+            Alert.alert('Готово', successMessage);
             await forceReloadData();
         } catch (err) {
-            Alert.alert('Ошибка', err.message || 'Не удалось удалить продукт');
+            Alert.alert('Ошибка', err.message || err || 'Не удалось удалить продукт');
         }
     };
 

@@ -23,3 +23,14 @@
 -keep class org.vinuxproject.sonic.** { *; }
 
 # Add any project specific keep options here:
+
+# @generated begin expo-build-properties - expo prebuild (DO NOT MODIFY)
+# Prevent ClassCastException: MainApplication -> ReactApplication at startup (R8 release builds)
+-keep interface com.facebook.react.ReactApplication { *; }
+-keep class * implements com.facebook.react.ReactApplication { *; }
+-keep class com.abuingush.iceberg.MainApplication { *; }
+-keep class com.abuingush.iceberg.MainActivity { *; }
+-keep class com.facebook.react.** { *; }
+-keep class expo.modules.** { *; }
+-keepattributes *Annotation*
+# @generated end expo-build-properties
