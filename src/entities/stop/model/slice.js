@@ -185,7 +185,7 @@ export const createStop = createAsyncThunk(
 
 export const updateStop = createAsyncThunk(
     'stop/updateStop',
-    async ({ stopId, stopData }, { rejectWithValue }) => {
+    async ({ stopId, stopData, silent = false }, { rejectWithValue }) => {
         try {
             let formData = stopData;
 
@@ -339,6 +339,33 @@ const stopSlice = createSlice({
         setCurrentStop: (state, action) => {
             state.currentStop = action.payload;
         },
+        patchStopTimes: (state, action) => {
+            const { stopId, startTime, endTime, status } = action.payload;
+            const id = Number(stopId);
+
+            if (!Number.isFinite(id)) {
+                return;
+            }
+
+            const index = state.stops.findIndex(stop => stop.id === id);
+            if (index !== -1) {
+                state.stops[index] = {
+                    ...state.stops[index],
+                    ...(startTime !== undefined ? { startTime } : {}),
+                    ...(endTime !== undefined ? { endTime } : {}),
+                    ...(status !== undefined ? { status } : {}),
+                };
+            }
+
+            if (state.currentStop?.id === id) {
+                state.currentStop = {
+                    ...state.currentStop,
+                    ...(startTime !== undefined ? { startTime } : {}),
+                    ...(endTime !== undefined ? { endTime } : {}),
+                    ...(status !== undefined ? { status } : {}),
+                };
+            }
+        },
     },
     extraReducers: (builder) => {
         builder
@@ -410,12 +437,16 @@ const stopSlice = createSlice({
                 state.error = action.payload;
             })
 
-            .addCase(updateStop.pending, (state) => {
-                state.loading = true;
+            .addCase(updateStop.pending, (state, action) => {
+                if (!action.meta?.arg?.silent) {
+                    state.loading = true;
+                }
                 state.error = null;
             })
             .addCase(updateStop.fulfilled, (state, action) => {
-                state.loading = false;
+                if (!action.meta?.arg?.silent) {
+                    state.loading = false;
+                }
                 const index = state.stops.findIndex(stop => stop.id === action.payload.id);
                 if (index !== -1) {
                     // Сохраняем текущие координаты для логирования
@@ -459,7 +490,9 @@ const stopSlice = createSlice({
                 state.lastFetchTime = null;
             })
             .addCase(updateStop.rejected, (state, action) => {
-                state.loading = false;
+                if (!action.meta?.arg?.silent) {
+                    state.loading = false;
+                }
                 state.error = action.payload;
             })
 
@@ -545,7 +578,8 @@ const stopSlice = createSlice({
 export const {
     clearStopCache,
     clearStopError,
-    setCurrentStop
+    setCurrentStop,
+    patchStopTimes,
 } = stopSlice.actions;
 
 export default stopSlice.reducer;

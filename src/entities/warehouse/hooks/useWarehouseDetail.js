@@ -4,7 +4,8 @@ import {
     fetchWarehouseById,
     fetchWarehouseProducts,
     clearCurrentWarehouse,
-    clearWarehouseProducts
+    clearWarehouseProducts,
+    WAREHOUSE_PRODUCTS_PAGE_SIZE
 } from '../model/slice';
 import {
     selectCurrentWarehouse,
@@ -12,7 +13,10 @@ import {
     selectCurrentWarehouseError,
     selectWarehouseProducts,
     selectWarehouseProductsLoading,
+    selectWarehouseProductsLoadingMore,
     selectWarehouseProductsError,
+    selectWarehouseProductsHasMore,
+    selectWarehouseProductsPagination,
     selectWarehouseById
 } from '../model/selectors';
 
@@ -56,8 +60,17 @@ export const useWarehouseDetail = (warehouseId, {
     const warehouseProductsLoading = useSelector(state =>
         validWarehouseId ? selectWarehouseProductsLoading(state, validWarehouseId) : false
     );
+    const warehouseProductsLoadingMore = useSelector(state =>
+        validWarehouseId ? selectWarehouseProductsLoadingMore(state, validWarehouseId) : false
+    );
     const warehouseProductsError = useSelector(state =>
         validWarehouseId ? selectWarehouseProductsError(state, validWarehouseId) : null
+    );
+    const warehouseProductsHasMore = useSelector(state =>
+        validWarehouseId ? selectWarehouseProductsHasMore(state, validWarehouseId) : false
+    );
+    const warehouseProductsPagination = useSelector(state =>
+        validWarehouseId ? selectWarehouseProductsPagination(state, validWarehouseId) : null
     );
 
     // Обработка размонтирования
@@ -79,20 +92,51 @@ export const useWarehouseDetail = (warehouseId, {
         }
     }, [dispatch, validWarehouseId]);
 
-    // Загрузка товаров склада
+    // Загрузка товаров склада (первая страница / обновление)
     const loadWarehouseProducts = useCallback(async (params = {}) => {
         if (!validWarehouseId) return;
 
         try {
             await dispatch(fetchWarehouseProducts({
                 warehouseId: validWarehouseId,
-                params
+                params: { page: 1, limit: WAREHOUSE_PRODUCTS_PAGE_SIZE, ...params }
             })).unwrap();
         } catch (error) {
             console.error(`Ошибка загрузки товаров склада ${validWarehouseId}:`, error);
             throw error;
         }
     }, [dispatch, validWarehouseId]);
+
+    // Догрузка следующей страницы товаров при прокрутке
+    const loadMoreProducts = useCallback(async () => {
+        if (!validWarehouseId) return;
+        // Не догружаем, если уже идёт загрузка или больше нет данных
+        if (warehouseProductsLoading || warehouseProductsLoadingMore || !warehouseProductsHasMore) {
+            return;
+        }
+
+        const currentPage = warehouseProductsPagination?.page || 1;
+        const nextPage = currentPage + 1;
+
+        try {
+            await dispatch(fetchWarehouseProducts({
+                warehouseId: validWarehouseId,
+                params: { page: nextPage, limit: WAREHOUSE_PRODUCTS_PAGE_SIZE }
+            })).unwrap();
+        } catch (error) {
+            // 429 не считаем фатальной — просто прекращаем подгрузку
+            if (error?.response?.status !== 429) {
+                console.error(`Ошибка догрузки товаров склада ${validWarehouseId}:`, error);
+            }
+        }
+    }, [
+        dispatch,
+        validWarehouseId,
+        warehouseProductsLoading,
+        warehouseProductsLoadingMore,
+        warehouseProductsHasMore,
+        warehouseProductsPagination?.page
+    ]);
 
     // Обновление данных
     const refreshWarehouse = useCallback(async () => {
@@ -163,6 +207,9 @@ export const useWarehouseDetail = (warehouseId, {
         // Состояние загрузки
         loading: isLoading,
         productsLoading: isProductsLoading,
+        productsLoadingMore: warehouseProductsLoadingMore,
+        productsHasMore: warehouseProductsHasMore,
+        productsPagination: warehouseProductsPagination,
         
         // Ошибки
         error: currentWarehouseError,
@@ -171,6 +218,7 @@ export const useWarehouseDetail = (warehouseId, {
         // Методы
         loadWarehouse,
         loadWarehouseProducts,
+        loadMoreProducts,
         refreshWarehouse,
         clearWarehouseData,
         

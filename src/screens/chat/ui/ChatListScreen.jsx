@@ -18,6 +18,7 @@ import IconWarehouse from '@shared/ui/Icon/Warehouse/IconWarehouse';
 import {Ionicons} from '@expo/vector-icons';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
+import { ASSISTANT_CHAT_TITLE, isAssistantRoom } from '@features/ai-assistant';
 
 // Компонент для отображения иконки голосового сообщения
 const VoiceMessageIcon = React.memo(({ styles, iconColor }) => (
@@ -582,6 +583,11 @@ export const ChatListScreen = ({navigation}) => {
             return room.title || (room?.type === 'BROADCAST' ? 'Канал' : 'Группа');
         }
 
+        // Персональная комната ИИ-помощника
+        if (isAssistantRoom(room)) {
+            return room?.title || ASSISTANT_CHAT_TITLE;
+        }
+
         return room?.id ? `Комната ${room.id}` : 'Чат';
     }, [currentUserId, currentUser, productsById, deletedProductIds]);
 
@@ -674,6 +680,20 @@ export const ChatListScreen = ({navigation}) => {
             if (__DEV__) {
                 console.log('⚠️ ChatListScreen: Попытка открыть удаленную комнату, пропускаем', { roomId: rid });
             }
+            return;
+        }
+
+        // ASSISTANT-комната открывается на экране ИИ-помощника в стеке чатов
+        if (isAssistantRoom(room)) {
+            isNavigatingRef.current = true;
+            requestAnimationFrame(() => {
+                InteractionManager.runAfterInteractions(() => {
+                    navigation.navigate('AssistantChat', { roomId: rid, fromScreen: 'ChatList' });
+                    setTimeout(() => {
+                        isNavigatingRef.current = false;
+                    }, 300);
+                });
+            });
             return;
         }
         
@@ -923,7 +943,9 @@ export const ChatListScreen = ({navigation}) => {
                         <Image source={{uri: avatarUri}} style={styles.avatarImg} resizeMode="cover"/>
                     ) : (
                         <View style={styles.avatarPlaceholder}>
-                            {item.type === 'BROADCAST' ? (
+                            {isAssistantRoom(item) ? (
+                                <Text style={styles.groupPlaceholderText}>🤖</Text>
+                            ) : item.type === 'BROADCAST' ? (
                                 <Text style={styles.groupPlaceholderText}>📢</Text>
                             ) : item.type === 'GROUP' ? (
                                 <Text style={styles.groupPlaceholderText}>👥</Text>

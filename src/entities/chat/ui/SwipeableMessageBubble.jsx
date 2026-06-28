@@ -169,13 +169,15 @@ export const SwipeableMessageBubble = ({
 const styles = StyleSheet.create({
   container: {
     position: 'relative',
+    width: '100%',
   },
   messageWrapper: {
+    width: '100%',
     zIndex: 2,
   },
   replyIconContainer: {
     position: 'absolute',
-    left: 20,
+    left: 10,
     top: 0,
     bottom: 0,
     justifyContent: 'center',

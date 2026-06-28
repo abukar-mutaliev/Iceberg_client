@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, Linking, ActivityIndicator, Clipboard, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Alert, Linking, ActivityIndicator, Clipboard, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSelector, useDispatch } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -90,7 +90,7 @@ const geocodeAddress = async (address, districtName = '') => {
     }
 };
 
-export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, productsLoading, navigation, onRefresh }) => {
+export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, productsLoading, productsLoadingMore, productsHasMore, onLoadMoreProducts, navigation, onRefresh }) => {
     const dispatch = useDispatch();
     const user = useSelector(selectUser);
     const { showSuccess, showError } = useCustomAlert();
@@ -341,21 +341,8 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
 
     const bottomPadding = 80 + insets.bottom + 20;
 
-    return (
-        <ScrollView
-            style={styles.container}
-            contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}
-            nestedScrollEnabled={true}
-            showsVerticalScrollIndicator={true}
-            showsHorizontalScrollIndicator={false}
-            scrollEnabled={true}
-            bounces={true}
-            keyboardShouldPersistTaps="handled"
-            automaticallyAdjustContentInsets={false}
-            contentInsetAdjustmentBehavior="never"
-            contentInset={{ top: 0, left: 0, bottom: 0, right: 0 }}
-            keyboardDismissMode="on-drag"
-        >
+    const warehouseHeader = (
+        <View>
             <View style={styles.header}>
                 <TouchableOpacity
                     style={styles.backButton}
@@ -760,14 +747,28 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
                     </View>
                 )}
 
-                {/* Товары на складе */}
-                <WarehouseProductsList
-                    warehouseId={warehouse.id}
-                    products={warehouseProducts}
-                    loading={productsLoading}
-                />
             </View>
-            
+        </View>
+    );
+
+    return (
+        <View style={styles.container}>
+            {/* Товары на складе рендерятся виртуализированным списком,
+                а вся «шапка» (детали склада, карта, сотрудники) — через ListHeaderComponent.
+                Это исключает одновременный монтаж всех карточек и убирает подтормаживание. */}
+            <WarehouseProductsList
+                products={warehouseProducts}
+                loading={productsLoading}
+                loadingMore={productsLoadingMore}
+                hasMore={productsHasMore}
+                onLoadMore={onLoadMoreProducts}
+                ListHeaderComponent={warehouseHeader}
+                style={styles.container}
+                contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+            />
+
             {/* Модальное окно редактирования склада */}
             {(isSuperAdmin || editModalVisible) && (
                 <AddWarehouseModal
@@ -787,7 +788,7 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
                 warehouseId={warehouse.id}
                 warehouse={warehouse}
             />
-        </ScrollView>
+        </View>
     );
 };
 

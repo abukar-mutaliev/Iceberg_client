@@ -1619,7 +1619,9 @@ export const MessageBubble = memo(({
                                        onSenderNamePress = null
                                    }) => {
     const styles = useMessageStyles();
-    const isOwn = message?.senderId === currentUserId;
+    const senderId = message?.senderId ?? message?.sender?.id;
+    const isOwn = senderId != null && currentUserId != null
+        && Number(senderId) === Number(currentUserId);
     const createdAt = message?.createdAt ? new Date(message.createdAt) : null;
     const time = createdAt ? createdAt.toLocaleTimeString('ru-RU', {
         hour: '2-digit',
@@ -1726,7 +1728,6 @@ export const MessageBubble = memo(({
 
     const senderName = getSenderName();
     const showSenderName = Boolean(senderName);
-    const senderId = message?.senderId || message?.sender?.id;
     const senderNameColor = getColorForUserId(senderId);
     const isForwarded = Boolean(message?.originalMessageId || message?.isForwarded || message?.forwardedFrom || message?.forwardedFromId);
 
@@ -2513,11 +2514,12 @@ export const MessageBubble = memo(({
 
 const createStyles = (colors, isDark) => StyleSheet.create({
     messageContainer: {
+        width: '100%',
         flexDirection: 'row',
         marginVertical: 0,
         alignItems: 'flex-start',
         marginHorizontal: -8,
-        paddingHorizontal: 16,
+        paddingHorizontal: 6,
         paddingVertical: 2,
         position: 'relative',
     },
@@ -2941,7 +2943,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     // Системные сообщения
     systemMessageContainer: {
         marginVertical: 8,
-        paddingHorizontal: 16,
+        paddingHorizontal: 6,
         alignItems: 'center',
     },
     systemMessageBubble: {
@@ -3032,8 +3034,10 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     reactionsWrapper: {
         marginTop: -6, // Поднимаем реакции чтобы они заходили на пузырек
         marginBottom: 4,
-        paddingHorizontal: 16,
+        marginHorizontal: -8,
+        paddingHorizontal: 6,
         zIndex: 10,
+        width: '100%',
     },
     reactionsWrapperOwn: {
         alignItems: 'flex-end',

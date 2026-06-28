@@ -439,6 +439,26 @@ export const MessageList = memo(({
       return currentId === messageId ? null : currentId;
     });
   }, []);
+
+  // Отслеживаем, инициировано ли движение списка реальным касанием пользователя.
+  // На MIUI (Xiaomi) inverted-список переанкеривается при отложенных обновлениях
+  // данных (markAsRead/fetchRoom/fetchMessages) и сообщает это как scroll-drag,
+  // из-за чего клавиатура закрывалась через пару секунд после открытия.
+  const userDraggingRef = useRef(false);
+
+  const handleTouchStart = useCallback(() => {
+    userDraggingRef.current = true;
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    userDraggingRef.current = false;
+  }, []);
+
+  const handleScrollBeginDrag = useCallback(() => {
+    if (userDraggingRef.current) {
+      onDismissKeyboard?.();
+    }
+  }, [onDismissKeyboard]);
   
   // Стабильный стиль контента списка
   const listContentStyle = useMemo(() => [
@@ -599,9 +619,12 @@ export const MessageList = memo(({
         onEndReachedThreshold={0.8}
         onEndReached={onLoadMore}
         onScroll={checkAndLoadMore}
-        onScrollBeginDrag={onDismissKeyboard}
+        onScrollBeginDrag={handleScrollBeginDrag}
         onScrollEndDrag={checkAndLoadMore}
         onMomentumScrollEnd={checkAndLoadMore}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
         scrollEventThrottle={32}
         contentContainerStyle={listContentStyle}
         initialNumToRender={12}
@@ -609,12 +632,19 @@ export const MessageList = memo(({
         maxToRenderPerBatch={8}
         updateCellsBatchingPeriod={50}
         legacyImplementation={false}
-        // На Android removeClippedSubviews значительно снижает нагрузку
-        // GPU/JS при наличии десятков и более сообщений. На iOS включение
-        // этого флага известно конфликтами с gesture-handler, держим false.
-        removeClippedSubviews={Platform.OS === 'android'}
+        // ВАЖНО: держим removeClippedSubviews=false на всех платформах.
+        // При true на Android отсоединение/переподключение нативных вью
+        // клипнутых ячеек при обновлении данных (markAsRead/fetchRoom через
+        // несколько секунд после открытия) вызывает relayout окна, из-за
+        // которого MIUI/Xiaomi сбрасывает фокус и закрывает клавиатуру.
+        // На iOS true конфликтует с gesture-handler.
+        removeClippedSubviews={false}
         keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
+        // Нативный on-drag dismiss оставляем только на iOS. На Android (особенно
+        // MIUI/Xiaomi) он закрывает клавиатуру при программном переанкеривании
+        // inverted-списка; закрытием по реальному жесту управляет
+        // handleScrollBeginDrag с проверкой касания пользователя.
+        keyboardDismissMode={Platform.OS === 'ios' ? 'on-drag' : 'none'}
         onScrollToIndexFailed={onScrollToIndexFailed}
       />
     </TouchableWithoutFeedback>

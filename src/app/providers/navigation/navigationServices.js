@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Linking } from 'react-native';
 import { getBaseUrl } from '@shared/api/api';
+import { buildAssistantChatTabParams } from '@features/ai-assistant/lib/assistantNavigation';
 
 let navigationHandlers = {};
 
@@ -85,6 +86,58 @@ export const useDeepLinking = () => {
 };
 
 export const createNavigationFunctions = (navigation) => {
+    const isAssistantChatNavigation = (data) => {
+        const roomType = String(data?.roomType || data?.room_type || '').toUpperCase();
+        return roomType === 'ASSISTANT';
+    };
+
+    const buildAssistantChatParams = (roomId, data = {}) => ({
+        roomId,
+        fromNotification: Boolean(data.fromNotification),
+        fromScreen: data.fromScreen || (data.fromNotification ? 'Notification' : 'DeepLink'),
+        messageId: data.messageId ? parseInt(String(data.messageId), 10) : null,
+    });
+
+    const buildChatRoomParams = (roomId, data = {}) => ({
+        roomId,
+        fromNotification: Boolean(data.fromNotification),
+        messageId: data.messageId ? parseInt(String(data.messageId), 10) : null,
+        autoFocusInput: data.autoFocusInput || false,
+    });
+
+    const dispatchChatNavigation = (roomId, data = {}) => {
+        const { CommonActions } = require('@react-navigation/native');
+
+        if (isAssistantChatNavigation(data)) {
+            navigation.dispatch(
+                CommonActions.reset({
+                    index: 0,
+                    routes: [{
+                        name: 'Main',
+                        params: {
+                            screen: 'ChatList',
+                            params: buildAssistantChatTabParams(buildAssistantChatParams(roomId, data)),
+                        },
+                    }],
+                })
+            );
+            return;
+        }
+
+        navigation.dispatch(
+            CommonActions.reset({
+                index: 1,
+                routes: [
+                    { name: 'Main' },
+                    {
+                        name: 'ChatRoom',
+                        params: buildChatRoomParams(roomId, data),
+                    },
+                ],
+            })
+        );
+    };
+
     const navigateToStops = (params = {}) => {
         try {
             if (!params.stopId) {
@@ -203,17 +256,17 @@ export const createNavigationFunctions = (navigation) => {
                 return;
             }
 
-            const roomId = parseInt(data.roomId || data.room_id);
+            const roomId = parseInt(data.roomId || data.room_id, 10);
             if (__DEV__) {
                 console.log('[AppNavigator] 🔄 navigateToChat вызван', {
                     roomId,
+                    roomType: data.roomType || data.room_type || null,
                     autoFocusInput: data.autoFocusInput,
                     messageId: data.messageId
                 });
             }
 
             const { InteractionManager } = require('react-native');
-            const { CommonActions } = require('@react-navigation/native');
 
             setTimeout(() => {
                 requestAnimationFrame(() => {
@@ -225,23 +278,10 @@ export const createNavigationFunctions = (navigation) => {
                                 }
                                 setTimeout(() => {
                                     if (navigation && typeof navigation.navigate === 'function') {
-                                        navigation.dispatch(
-                                            CommonActions.reset({
-                                                index: 1,
-                                                routes: [
-                                                    { name: 'Main' },
-                                                    {
-                                                        name: 'ChatRoom',
-                                                        params: {
-                                                            roomId,
-                                                            fromNotification: true,
-                                                            messageId: data.messageId || null,
-                                                            autoFocusInput: data.autoFocusInput || false,
-                                                        }
-                                                    }
-                                                ]
-                                            })
-                                        );
+                                        dispatchChatNavigation(roomId, {
+                                            ...data,
+                                            fromNotification: data.fromNotification ?? true,
+                                        });
                                         if (__DEV__) {
                                             console.log('[AppNavigator] ✅ Навигация к чату выполнена (повторная попытка, reset)', { roomId });
                                         }
@@ -250,23 +290,12 @@ export const createNavigationFunctions = (navigation) => {
                                 return;
                             }
 
-                            navigation.dispatch(
-                                CommonActions.reset({
-                                    index: 1,
-                                    routes: [
-                                        { name: 'Main' },
-                                        {
-                                            name: 'ChatRoom',
-                                            params: {
-                                                roomId,
-                                                fromNotification: true,
-                                                messageId: data.messageId || null,
-                                                autoFocusInput: data.autoFocusInput || false,
-                                            }
-                                        }
-                                    ]
-                                })
-                            );
+                            dispatchChatNavigation(roomId, {
+                                ...data,
+                                fromNotification: data.fromNotification ?? Boolean(
+                                    data.source === 'deep_link' || data.messageId
+                                ),
+                            });
 
                             if (__DEV__) {
                                 console.log('[AppNavigator] ✅ Навигация к чату выполнена (reset stack)', { roomId });

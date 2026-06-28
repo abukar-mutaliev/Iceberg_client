@@ -498,6 +498,25 @@ export const ProductDetailScreen = ({ route, navigation }) => {
             return;
         }
 
+        // Клиент задаёт вопрос ИИ-помощнику с прикреплённой карточкой товара
+        if (userRole === 'CLIENT' && enrichedProduct?.id) {
+            const rootNavigation =
+                navigation?.getParent?.('AppStack') ||
+                navigation?.getParent?.()?.getParent?.() ||
+                null;
+            (rootNavigation || navigation).navigate('AssistantChat', {
+                product: {
+                    id: enrichedProduct.id,
+                    name: enrichedProduct.name,
+                    price: enrichedProduct.price,
+                    images: enrichedProduct.images,
+                    image: enrichedProduct.image,
+                },
+                fromScreen: 'ProductDetail',
+            });
+            return;
+        }
+
         const clientDistrictId = currentUser?.client?.districtId;
         const singleDriverDistrictId = userRole === 'DRIVER' && driverDistrictIds.length === 1
             ? driverDistrictIds[0]
@@ -557,7 +576,8 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         openChatWithManagerByDistrict,
         districts.length,
         dispatch,
-        enrichedProduct?.id
+        navigation,
+        enrichedProduct
     ]);
 
     // Загрузка районов — откладываем до завершения анимации перехода,

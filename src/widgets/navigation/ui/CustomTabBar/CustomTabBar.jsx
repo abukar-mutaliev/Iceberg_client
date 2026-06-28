@@ -25,6 +25,13 @@ const { width } = Dimensions.get('window');
 
 const TABS_HIDE_ON_KEYBOARD = new Set(['Search', 'ProfileTab']);
 
+const getNestedRouteName = (tabRoute) => {
+    const nestedState = tabRoute?.state;
+    if (!nestedState?.routes?.length) return null;
+    const nestedIndex = nestedState.index ?? nestedState.routes.length - 1;
+    return nestedState.routes[nestedIndex]?.name ?? null;
+};
+
 const useKeyboardVisibility = () => {
     const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
 
@@ -66,6 +73,11 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
         () => state.routes[state.index]?.name,
         [state.index, state.routes]
     );
+
+    const getActiveNestedRouteName = useCallback(
+        () => getNestedRouteName(state.routes[state.index]),
+        [state.index, state.routes]
+    );
     
     // Логируем изменения активного таба
     const prevIndexRef = useRef(state.index);
@@ -90,6 +102,15 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
     // а при смене таба событие keyboardWillHide не пришло (iOS).
     useEffect(() => {
         const currentTab = getCurrentTab();
+        const nestedRoute = getActiveNestedRouteName();
+        const shouldHideForAssistantChat =
+            currentTab === 'ChatList' && nestedRoute === 'AssistantChat';
+
+        if (shouldHideForAssistantChat) {
+            hideTabBar();
+            return;
+        }
+
         const shouldHideForKeyboard = TABS_HIDE_ON_KEYBOARD.has(currentTab);
 
         if (isKeyboardVisible && shouldHideForKeyboard) {
@@ -108,7 +129,7 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
         if (!isKeyboardVisible) {
             showTabBar();
         }
-    }, [getCurrentTab, hideTabBar, isKeyboardVisible, showTabBar]);
+    }, [getCurrentTab, getActiveNestedRouteName, hideTabBar, isKeyboardVisible, showTabBar]);
     
     // Получаем ID поставщика, если пользователь является поставщиком
     const supplierId = currentUser?.supplier?.id;

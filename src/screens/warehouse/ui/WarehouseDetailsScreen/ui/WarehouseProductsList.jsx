@@ -1,9 +1,10 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import {
     View,
     Text,
     StyleSheet,
-    ActivityIndicator
+    ActivityIndicator,
+    FlatList
 } from 'react-native';
 import { useSelector } from 'react-redux';
 import { Color, FontFamily, FontSize } from '@app/styles/GlobalStyles';
@@ -36,7 +37,25 @@ function resolveCatalogPricing(catalogProduct) {
     return { unitPrice, boxPrice, itemsPerBox };
 }
 
-export const WarehouseProductsList = ({ warehouseId, products, loading }) => {
+/**
+ * Виртуализированный список товаров склада.
+ *
+ * Является корневым скролл-контейнером экрана: вся «шапка» (детали склада, карта,
+ * сотрудники и т.д.) передаётся через `ListHeaderComponent`, а сами карточки
+ * рендерятся через FlatList с numColumns=2. Это позволяет монтировать только
+ * видимые ProductTile вместо всех сразу, устраняя подтормаживание при открытии
+ * экрана с большим количеством товаров.
+ */
+export const WarehouseProductsList = ({
+    products,
+    loading,
+    loadingMore = false,
+    hasMore = false,
+    onLoadMore,
+    ListHeaderComponent,
+    contentContainerStyle,
+    ...flatListProps
+}) => {
     const deletedProductIds = useSelector(selectDeletedProductIds);
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
@@ -128,74 +147,80 @@ export const WarehouseProductsList = ({ warehouseId, products, loading }) => {
         });
     }, [products, deletedProductIdSet]);
 
-    // Разбиваем товары на строки по 2 элемента
-    const productRows = useMemo(() => {
-        const rows = [];
-        for (let i = 0; i < normalizedProducts.length; i += 2) {
-            rows.push(normalizedProducts.slice(i, i + 2));
+    const renderItem = useCallback(({ item }) => (
+        <View style={styles.productCardWrapper}>
+            <ProductTile product={item} hideAddToCart />
+        </View>
+    ), [styles.productCardWrapper]);
+
+    const keyExtractor = useCallback(
+        (item) => `warehouse-product-${item.id}`,
+        []
+    );
+
+    const handleEndReached = useCallback(() => {
+        if (!loading && !loadingMore && hasMore && typeof onLoadMore === 'function') {
+            onLoadMore();
         }
-        return rows;
-    }, [normalizedProducts]);
+    }, [loading, loadingMore, hasMore, onLoadMore]);
 
-    if (loading) {
+    const listFooter = useMemo(() => {
+        if (!loadingMore) return null;
         return (
-            <View style={styles.loadingContainer}>
+            <View style={styles.footerLoader}>
                 <ActivityIndicator size="small" color={isDark ? colors.primary : Color.blue2} />
-                <Text style={styles.loadingText}>Загрузка товаров...</Text>
             </View>
         );
-    }
+    }, [loadingMore, styles.footerLoader, isDark, colors.primary]);
 
-    if (normalizedProducts.length === 0) {
-        return (
-            <View style={styles.container}>
+    // «Шапка» экрана + заголовок ассортимента и состояния загрузки/пустоты.
+    const listHeader = useMemo(() => (
+        <>
+            {ListHeaderComponent}
+            <View style={styles.sectionContainer}>
                 <Text style={styles.title}>Ассортимент склада</Text>
-                <Text style={styles.hint}>
-                    На этом складе пока нет товаров
-                </Text>
+                {loading ? (
+                    <View style={styles.loadingContainer}>
+                        <ActivityIndicator size="small" color={isDark ? colors.primary : Color.blue2} />
+                        <Text style={styles.loadingText}>Загрузка товаров...</Text>
+                    </View>
+                ) : normalizedProducts.length === 0 ? (
+                    <Text style={styles.hint}>
+                        На этом складе пока нет товаров
+                    </Text>
+                ) : null}
             </View>
-        );
-    }
+        </>
+    ), [ListHeaderComponent, loading, normalizedProducts.length, styles, isDark, colors.primary]);
 
     return (
-        <View style={styles.container}>
-            <Text style={styles.title}>Ассортимент склада</Text>
-            <View style={styles.productsContainer}>
-                {productRows.map((row, rowIndex) => (
-                    <View 
-                        key={`row-${rowIndex}`} 
-                        style={[
-                            styles.row,
-                            row.length === 1 && styles.rowCenter
-                        ]}
-                    >
-                        {row.map((item, itemIndex) => (
-                            <View 
-                                key={`warehouse-product-${item.id}`} 
-                                style={[
-                                    styles.productCardWrapper,
-                                    row.length === 1 && styles.productCardWrapperCenter,
-                                    row.length === 2 && itemIndex === 0 && styles.productCardWrapperLeft,
-                                    row.length === 2 && itemIndex === 1 && styles.productCardWrapperRight
-                                ]}
-                            >
-                                <ProductTile
-                                    product={item}
-                                    hideAddToCart
-                                />
-                            </View>
-                        ))}
-                    </View>
-                ))}
-            </View>
-        </View>
+        <FlatList
+            data={loading ? [] : normalizedProducts}
+            renderItem={renderItem}
+            keyExtractor={keyExtractor}
+            numColumns={2}
+            columnWrapperStyle={styles.row}
+            ListHeaderComponent={listHeader}
+            ListFooterComponent={listFooter}
+            contentContainerStyle={contentContainerStyle}
+            showsVerticalScrollIndicator={false}
+            removeClippedSubviews={false}
+            initialNumToRender={4}
+            maxToRenderPerBatch={4}
+            windowSize={7}
+            updateCellsBatchingPeriod={50}
+            onEndReached={handleEndReached}
+            onEndReachedThreshold={0.5}
+            {...flatListProps}
+        />
     );
 };
 
 const createStyles = (colors, isDark) => StyleSheet.create({
-    container: {
+    sectionContainer: {
         marginTop: normalize(16),
-        marginBottom: normalize(16),
+        marginBottom: normalize(12),
+        paddingHorizontal: normalize(20),
     },
     title: {
         fontSize: normalizeFont(18),
@@ -224,32 +249,18 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         color: colors.textSecondary,
     },
-    productsContainer: {
-        paddingBottom: normalize(8),
-    },
     row: {
-        flexDirection: 'row',
         justifyContent: 'center',
-        marginBottom: normalize(20),
+        gap: normalize(24),
         paddingHorizontal: normalize(20),
-        alignItems: 'center',
-    },
-    rowCenter: {
-        justifyContent: 'center',
-        alignItems: 'center',
-        paddingHorizontal: 0,
-        width: '100%',
+        marginBottom: normalize(20),
     },
     productCardWrapper: {
         width: normalize(192),
     },
-    productCardWrapperCenter: {
-        // Без дополнительных отступов для центрированной карточки
-    },
-    productCardWrapperLeft: {
-        marginRight: normalize(12),
-    },
-    productCardWrapperRight: {
-        marginLeft: normalize(12),
+    footerLoader: {
+        paddingVertical: normalize(16),
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 });

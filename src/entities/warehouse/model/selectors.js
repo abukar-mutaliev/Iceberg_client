@@ -82,6 +82,18 @@ export const selectWarehouseProductsError = (state, warehouseId) => {
     return state.warehouse?.warehouseProductsError?.[warehouseId] || null;
 };
 
+export const selectWarehouseProductsLoadingMore = (state, warehouseId) => {
+    return state.warehouse?.warehouseProductsLoadingMore?.[warehouseId] || false;
+};
+
+export const selectWarehouseProductsPagination = (state, warehouseId) => {
+    return state.warehouse?.warehouseProductsPagination?.[warehouseId] || EMPTY_OBJECT;
+};
+
+export const selectWarehouseProductsHasMore = (state, warehouseId) => {
+    return state.warehouse?.warehouseProductsPagination?.[warehouseId]?.hasMore || false;
+};
+
 // Селекторы для остатков товара
 export const selectProductStocks = (state, productId) => {
     return state.warehouse?.productStocks?.[productId] || EMPTY_ARRAY;

@@ -14,10 +14,12 @@ const initialState = {
     currentWarehouseLoading: false,
     currentWarehouseError: null,
 
-    // Товары на складе
+    // Товары на складе (с пагинацией)
     warehouseProducts: {},
     warehouseProductsLoading: {},
+    warehouseProductsLoadingMore: {},
     warehouseProductsError: {},
+    warehouseProductsPagination: {},
 
     // Остатки товаров по складам
     productStocks: {},
@@ -31,6 +33,9 @@ const initialState = {
 };
 
 const CACHE_EXPIRY_TIME = 5 * 60 * 1000; // 5 минут
+
+// Размер страницы товаров склада по умолчанию (совпадает с дефолтом бэкенда)
+export const WAREHOUSE_PRODUCTS_PAGE_SIZE = 20;
 
 const isCacheValid = (lastFetchTime) => {
     return lastFetchTime && Date.now() - lastFetchTime < CACHE_EXPIRY_TIME;
@@ -169,25 +174,51 @@ export const fetchWarehousesByDistrict = createAsyncThunk(
     }
 );
 
-// Получить товары на складе
+// Получить товары на складе (с пагинацией)
 export const fetchWarehouseProducts = createAsyncThunk(
     'warehouse/fetchWarehouseProducts',
     async ({ warehouseId, params = {} }, { rejectWithValue }) => {
         try {
-            const response = await WarehouseService.getWarehouseProducts(warehouseId, params);
-            
+            const page = parseInt(params.page, 10) || 1;
+            const limit = parseInt(params.limit, 10) || WAREHOUSE_PRODUCTS_PAGE_SIZE;
+            const requestParams = { ...params, page, limit };
+
+            const response = await WarehouseService.getWarehouseProducts(warehouseId, requestParams);
+
             let products = [];
+            let pagination = null;
             if (response.data?.status === 'success') {
-                // Формат: { status: 'success', data: { products: [...] } }
+                // Формат: { status: 'success', data: { products: [...], pagination: {...} } }
                 products = response.data.data?.products || response.data.data || [];
+                pagination = response.data.data?.pagination || null;
             } else if (response.data?.products) {
-                // Формат: { products: [...] }
+                // Формат: { products: [...], pagination: {...} }
                 products = response.data.products;
+                pagination = response.data.pagination || null;
             } else if (Array.isArray(response.data)) {
                 products = response.data;
             }
 
-            return { warehouseId, products };
+            // Нормализуем сведения о пагинации. Если бэкенд их не вернул —
+            // выводим hasMore из того, заполнена ли страница полностью.
+            const normalizedPagination = pagination
+                ? {
+                    page: parseInt(pagination.page, 10) || page,
+                    limit: parseInt(pagination.limit, 10) || limit,
+                    total: parseInt(pagination.total, 10) || 0,
+                    pages: parseInt(pagination.pages, 10)
+                        || Math.ceil((parseInt(pagination.total, 10) || 0) / limit)
+                        || 1,
+                }
+                : {
+                    page,
+                    limit,
+                    total: (page - 1) * limit + products.length,
+                    pages: products.length < limit ? page : page + 1,
+                };
+            normalizedPagination.hasMore = normalizedPagination.page < normalizedPagination.pages;
+
+            return { warehouseId, products, page, pagination: normalizedPagination };
         } catch (error) {
             console.error(`Ошибка при загрузке товаров склада ${warehouseId}:`, error);
             
@@ -551,11 +582,15 @@ const warehouseSlice = createSlice({
             if (warehouseId) {
                 delete state.warehouseProducts[warehouseId];
                 delete state.warehouseProductsLoading[warehouseId];
+                delete state.warehouseProductsLoadingMore[warehouseId];
                 delete state.warehouseProductsError[warehouseId];
+                delete state.warehouseProductsPagination[warehouseId];
             } else {
                 state.warehouseProducts = {};
                 state.warehouseProductsLoading = {};
+                state.warehouseProductsLoadingMore = {};
                 state.warehouseProductsError = {};
+                state.warehouseProductsPagination = {};
             }
         },
         clearProductStocks: (state, action) => {
@@ -628,20 +663,47 @@ const warehouseSlice = createSlice({
                 });
             })
 
-            // Загрузка товаров склада
+            // Загрузка товаров склада (с пагинацией)
             .addCase(fetchWarehouseProducts.pending, (state, action) => {
                 const warehouseId = action.meta.arg.warehouseId;
-                state.warehouseProductsLoading[warehouseId] = true;
+                const requestedPage = parseInt(action.meta.arg.params?.page, 10) || 1;
+                if (requestedPage > 1) {
+                    state.warehouseProductsLoadingMore[warehouseId] = true;
+                } else {
+                    state.warehouseProductsLoading[warehouseId] = true;
+                }
                 state.warehouseProductsError[warehouseId] = null;
             })
             .addCase(fetchWarehouseProducts.fulfilled, (state, action) => {
-                const { warehouseId, products } = action.payload;
+                const { warehouseId, products, page, pagination } = action.payload;
                 state.warehouseProductsLoading[warehouseId] = false;
-                state.warehouseProducts[warehouseId] = products;
+                state.warehouseProductsLoadingMore[warehouseId] = false;
+                state.warehouseProductsPagination[warehouseId] = pagination;
+
+                if (page > 1) {
+                    // Догрузка следующей страницы — добавляем без дубликатов
+                    const existing = state.warehouseProducts[warehouseId] || [];
+                    const seen = new Set(
+                        existing.map(p => p?.id ?? p?.productId ?? p?.product?.id)
+                    );
+                    const merged = existing.slice();
+                    products.forEach(p => {
+                        const key = p?.id ?? p?.productId ?? p?.product?.id;
+                        if (key == null || !seen.has(key)) {
+                            seen.add(key);
+                            merged.push(p);
+                        }
+                    });
+                    state.warehouseProducts[warehouseId] = merged;
+                } else {
+                    // Первая страница / обновление — заменяем список
+                    state.warehouseProducts[warehouseId] = products;
+                }
             })
             .addCase(fetchWarehouseProducts.rejected, (state, action) => {
                 const warehouseId = action.meta.arg.warehouseId;
                 state.warehouseProductsLoading[warehouseId] = false;
+                state.warehouseProductsLoadingMore[warehouseId] = false;
                 state.warehouseProductsError[warehouseId] = action.payload;
             })
 

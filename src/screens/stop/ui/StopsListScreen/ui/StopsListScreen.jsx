@@ -366,9 +366,7 @@ export const StopsListScreen = ({ navigation }) => {
         setEditingStop(null);
     }, []);
 
-    const handleStopTimeSaved = useCallback(() => {
-        loadStops({ forceRefresh: true });
-    }, [loadStops]);
+    const handleStopTimeSaved = useCallback(() => {}, []);
 
     const loaderAccent = isDark ? colors.primary : Color.purpleSoft;
     const iconMuted = isDark ? colors.textSecondary : Color.gray;

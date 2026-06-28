@@ -27,10 +27,13 @@ export const WarehouseDetailsScreen = ({ navigation }) => {
         warehouseProducts,
         loading: warehouseLoading,
         productsLoading,
+        productsLoadingMore,
+        productsHasMore,
         error: warehouseError,
         productsError,
         loadWarehouse,
         loadWarehouseProducts,
+        loadMoreProducts,
         refreshWarehouse
     } = useWarehouseDetail(warehouseId, {
         autoLoad: true,
@@ -136,6 +139,9 @@ export const WarehouseDetailsScreen = ({ navigation }) => {
                 warehouse={warehouse} 
                 warehouseProducts={warehouseProducts}
                 productsLoading={productsLoading}
+                productsLoadingMore={productsLoadingMore}
+                productsHasMore={productsHasMore}
+                onLoadMoreProducts={loadMoreProducts}
                 navigation={navigation}
                 onRefresh={refreshWarehouse}
             />

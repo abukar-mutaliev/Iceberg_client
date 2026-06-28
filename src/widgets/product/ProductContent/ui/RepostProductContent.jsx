@@ -280,6 +280,32 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
     </LinearGradient>
   ), [isDark, styles.avatarPlaceholderBase]);
 
+  // Переход к ИИ-помощнику с прикреплённым товаром (вопрос о товаре).
+  // НЕ отправляем товар через обычный /messages (для ASSISTANT он запрещён),
+  // вместо этого открываем экран помощника, где клиент пишет свой вопрос.
+  const handleSendToAssistant = () => {
+    if (!product?.id) return;
+    if (shareBlockReason) {
+      Alert.alert('Недоступно', shareBlockReason);
+      return;
+    }
+    onClose();
+    const rootNavigation =
+      navigation?.getParent?.('AppStack') ||
+      navigation?.getParent?.()?.getParent?.() ||
+      null;
+    (rootNavigation || navigation).navigate('AssistantChat', {
+      product: {
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        images: product.images,
+        image: product.image,
+      },
+      fromScreen: 'ProductDetail',
+    });
+  };
+
   // Отправка товара в существующий чат
   const handleSendToExistingChat = async (room) => {
     if (!product?.id) return;
@@ -413,6 +439,12 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
       if (!room || !room.id) {
         return false;
       }
+
+      // Исключаем комнату ИИ-помощника — для неё показываем отдельный пункт «Помощник»
+      const roomType = String(room.type || '').toUpperCase();
+      if (roomType === 'ASSISTANT' || room.title === 'Помощник') {
+        return false;
+      }
       
       // Исключаем все PRODUCT чаты (чаты с поставщиками по товарам)
       if (room.type === 'PRODUCT') {
@@ -467,8 +499,20 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
     });
   }, [rooms, currentUserId, currentUserRole, product?.id]);
 
+  // Для клиентов добавляем пункт «Помощник» первым в списке чатов
+  const chatsListData = useMemo(() => {
+    if (currentUserRole === 'CLIENT') {
+      return [{ id: '__assistant__', __assistant: true }, ...filteredRooms];
+    }
+    return filteredRooms;
+  }, [filteredRooms, currentUserRole]);
+
   // Получение заголовка чата
   const getChatTitle = useCallback((room) => {
+    // Комната ИИ-помощника
+    if (String(room?.type || '').toUpperCase() === 'ASSISTANT') {
+      return 'Помощник';
+    }
     // Для групповых чатов и каналов BROADCAST сразу возвращаем название
     if ((room?.type === 'GROUP' || room?.type === 'BROADCAST') && room?.title) {
       return room.title;
@@ -673,6 +717,38 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
 
   // Рендер элемента списка чатов
   const renderChatItem = ({ item }) => {
+    // Специальный пункт «Помощник»
+    if (item.__assistant) {
+      return (
+        <TouchableOpacity
+          style={[styles.chatItem, adaptiveStyles.chatItem]}
+          onPress={handleSendToAssistant}
+          disabled={sending || !!shareBlockReason}
+        >
+          <View style={[styles.avatarContainer, adaptiveStyles.avatarContainer, styles.assistantAvatar]}>
+            <Icon name="smart-toy" size={adaptiveStyles.iconSize + 2} color="#ffffff" />
+          </View>
+          <View style={styles.chatInfo}>
+            <Text style={[styles.chatTitle, adaptiveStyles.chatTitle]} numberOfLines={1}>Помощник</Text>
+            <Text style={[styles.chatPreview, adaptiveStyles.chatPreview]} numberOfLines={1}>
+              Задайте вопрос о товаре
+            </Text>
+          </View>
+          <View style={styles.chatMeta}>
+            <TouchableOpacity
+              style={[styles.sendButton, adaptiveStyles.sendButton]}
+              onPress={handleSendToAssistant}
+              disabled={sending || !!shareBlockReason}
+            >
+              <View style={[styles.iconContainer, adaptiveStyles.iconContainer]}>
+                <Icon name="send" size={adaptiveStyles.iconSize} color="#ffffff" />
+              </View>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      );
+    }
+
     const title = getChatTitle(item);
     const avatar = getChatAvatar(item);
     
@@ -917,7 +993,7 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
       {activeTab === 'chats' ? (
         <View style={styles.listContainer}>
           <FlatList
-            data={filteredRooms}
+            data={chatsListData}
             keyExtractor={(item) => String(item.id)}
             renderItem={renderChatItem}
             contentContainerStyle={styles.listContent}
@@ -1161,6 +1237,11 @@ const createStyles = (colors, isDark) => StyleSheet.create({
   avatar: {
     width: 40,
     height: 40,
+  },
+  assistantAvatar: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: isDark ? colors.primary : '#075E54',
   },
   avatarPlaceholderBase: {
     justifyContent: 'center',

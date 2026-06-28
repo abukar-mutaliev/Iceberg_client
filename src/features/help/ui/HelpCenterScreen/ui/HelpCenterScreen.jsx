@@ -16,6 +16,7 @@ import { HeaderWithBackButton } from '@shared/ui/HeaderWithBackButton';
 import { FAQSection } from '../../FAQSection';
 import { ContactSection } from '../../ContactSection';
 import { AppFeedbackSection } from '../../AppFeedbackSection';
+import { AssistantSection } from '@features/ai-assistant';
 
 /**
  * Главный экран Центра помощи
@@ -103,6 +104,8 @@ export const HelpCenterScreen = () => {
                     keyboardShouldPersistTaps="handled"
                     keyboardDismissMode="on-drag"
                 >
+                    <AssistantSection />
+                    <View style={styles.divider} />
                     <FAQSection />
                     <View style={styles.divider} />
                     <ContactSection />

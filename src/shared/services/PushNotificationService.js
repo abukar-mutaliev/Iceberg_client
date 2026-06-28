@@ -334,10 +334,11 @@ class PushNotificationService {
         const roomId = source.roomId || source.room_id || source.chatRoomId || source.chat_room_id || null;
         const senderId = source.senderId || source.sender_id || null;
         const messageId = source.messageId || source.message_id || null;
+        const roomType = source.roomType || source.room_type || null;
         const rawType = source.type || source.notificationType || source.notification_type || null;
         const type = rawType ? String(rawType).toUpperCase() : null;
 
-        return { ...source, roomId, senderId, messageId, type };
+        return { ...source, roomId, senderId, messageId, roomType, type };
     }
 
     _handleNotificationAction(actionId, data) {
@@ -905,6 +906,15 @@ class PushNotificationService {
     }
 
     navigateToChat(data) {
+        if (this.navigateToChatFunc && typeof this.navigateToChatFunc === 'function') {
+            this.navigateToChatFunc({
+                ...data,
+                fromNotification: data?.fromNotification ?? true,
+            });
+            setTimeout(() => { this.hasPendingNotificationNavigation = false; }, 4000);
+            return;
+        }
+
         const roomId = data?.roomId ? parseInt(String(data.roomId), 10) : null;
         if (!roomId) return;
 

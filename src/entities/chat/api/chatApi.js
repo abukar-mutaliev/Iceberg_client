@@ -25,6 +25,15 @@ const ChatApi = {
 
   sendMessage: (roomId, form) => chatApiModule.post(`/rooms/${roomId}/messages`, form, { headers: { 'Content-Type': 'multipart/form-data' } }),
 
+  // ИИ-помощник: вопрос обрабатывается на сервере (БД → FAQ → GigaChat → оператор).
+  // productId (опционально) — вопрос о конкретном товаре (карточка репостится в чат).
+  askAssistant: (content, temporaryId, productId = null) =>
+    chatApiModule.post(
+      '/ai/ask',
+      { content, temporaryId, ...(productId ? { productId } : {}) },
+      { headers: { 'Content-Type': 'application/json' } }
+    ),
+
   deleteMessage: (messageId, payload = {}) => chatApiModule.delete(`/messages/${messageId}`, payload),
 
   hideMessage: (messageId) => chatApiModule.post(`/messages/${messageId}/hide`),

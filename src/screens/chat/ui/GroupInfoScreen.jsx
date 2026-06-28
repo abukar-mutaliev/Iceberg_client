@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   FlatList,
   Image,
-  ScrollView,
   Modal,
   Platform,
   ActivityIndicator,
@@ -79,6 +78,61 @@ const switchStyles = StyleSheet.create({
     shadowRadius: 2.5,
     elevation: 4,
   },
+});
+
+// Мемоизированная строка участника — предотвращает повторный рендер невидимых/неизменившихся строк
+const ParticipantRow = React.memo(function ParticipantRow({
+  item,
+  displayName,
+  avatarUri,
+  roleLabel,
+  isOwnerRole,
+  isAdminRole,
+  employeePosition,
+  isCurrentUser,
+  canManageThis,
+  styles,
+  androidRipple,
+  onPress,
+  onLongPress,
+}) {
+  return (
+    <Pressable
+      style={styles.participantItem}
+      onPress={() => onPress(item)}
+      onLongPress={canManageThis ? () => onLongPress(item) : undefined}
+      android_ripple={androidRipple}
+    >
+      <View style={styles.participantAvatar}>
+        {avatarUri ? (
+          <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+        ) : (
+          <View style={styles.avatarPlaceholder}>
+            <Text style={styles.avatarPlaceholderText}>👤</Text>
+          </View>
+        )}
+      </View>
+      <View style={styles.participantInfo}>
+        <Text style={styles.participantName} numberOfLines={1}>
+          {displayName}{isCurrentUser ? ' (Вы)' : ''}
+        </Text>
+        {roleLabel ? (
+          <Text style={[
+            styles.participantRole,
+            isOwnerRole && styles.ownerRole,
+            isAdminRole && styles.adminRole
+          ]}>
+            {roleLabel}
+          </Text>
+        ) : null}
+        {employeePosition ? (
+          <Text style={styles.participantPosition} numberOfLines={2}>
+            {employeePosition}
+          </Text>
+        ) : null}
+      </View>
+    </Pressable>
+  );
 });
 
 export const GroupInfoScreen = ({ route, navigation }) => {
@@ -291,7 +345,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
     return toAbsoluteUri(avatarPath);
   }, [toAbsoluteUri]);
 
-  const getRoleLabel = (participant) => {
+  const getRoleLabel = useCallback((participant) => {
     switch (participant.role) {
       case 'OWNER':
         return 'Владелец';
@@ -300,7 +354,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
       default:
         return '';
     }
-  };
+  }, []);
 
   const getParticipantId = useCallback((participant) => {
     return getParticipantUserId(participant);
@@ -315,7 +369,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
   }, [getParticipantId, roleOverrides]);
 
   // Функция для получения должности/роли и склада участника
-  const getEmployeePosition = (participant) => {
+  const getEmployeePosition = useCallback((participant) => {
     const user = participant.user || participant;
     if (!user) return null;
     
@@ -371,7 +425,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
     }
     
     return null;
-  };
+  }, []);
 
   // Функция для обработки длинного описания
   const getDescriptionText = (description) => {
@@ -647,14 +701,14 @@ export const GroupInfoScreen = ({ route, navigation }) => {
     await updateGroupAvatar({ remove: true });
   };
 
-  const handleMemberLongPress = (member) => {
+  const handleMemberLongPress = useCallback((member) => {
     if (shouldDisableMemberAdminMenu) return;
     if (!canEditGroup) return;
     if ((member.userId || member.user?.id) === currentUser?.id) return;
     
     setSelectedMember(member);
     setAdminMenuVisible(true);
-  };
+  }, [shouldDisableMemberAdminMenu, canEditGroup, currentUser?.id]);
 
   const assignAdmin = async (userId) => {
     try {
@@ -813,7 +867,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
     });
   };
 
-  const handleParticipantPress = (participant) => {
+  const handleParticipantPress = useCallback((participant) => {
     const userId = participant.userId || participant.user?.id;
     if (!userId || userId === currentUser?.id) return;
 
@@ -823,9 +877,14 @@ export const GroupInfoScreen = ({ route, navigation }) => {
       roomId: roomId
     };
     navigation.navigate('UserPublicProfile', navParams);
-  };
+  }, [currentUser?.id, roomId, navigation]);
 
-  const renderParticipant = ({ item }) => {
+  const participantRipple = useMemo(
+    () => ({ color: isDark ? 'rgba(255,255,255,0.08)' : '#f0f0f0' }),
+    [isDark]
+  );
+
+  const renderParticipant = useCallback(({ item }) => {
     const displayName = getUserDisplayName(item);
     const avatarUri = getUserAvatar(item);
     const effectiveRole = getEffectiveRole(item);
@@ -835,187 +894,206 @@ export const GroupInfoScreen = ({ route, navigation }) => {
     const canManageThis = canEditGroup && !isCurrentUser && effectiveRole !== 'OWNER' && !shouldDisableMemberAdminMenu;
 
     return (
-      <Pressable
-        style={styles.participantItem}
-        onPress={() => handleParticipantPress(item)}
-        onLongPress={() => canManageThis && handleMemberLongPress(item)}
-        android_ripple={{ color: isDark ? 'rgba(255,255,255,0.08)' : '#f0f0f0' }}
-      >
-        <View style={styles.participantAvatar}>
-          {avatarUri ? (
-            <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-              <Text style={styles.avatarPlaceholderText}>👤</Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.participantInfo}>
-          <Text style={styles.participantName}>
-            {displayName}{isCurrentUser ? ' (Вы)' : ''}
-          </Text>
-          {roleLabel && (
-            <Text style={[
-              styles.participantRole,
-              item.role === 'OWNER' && styles.ownerRole,
-              item.role === 'ADMIN' && styles.adminRole
-            ]}>
-              {roleLabel}
-            </Text>
-          )}
-          {employeePosition && (
-            <Text style={styles.participantPosition}>
-              {employeePosition}
-            </Text>
-          )}
-        </View>
-      </Pressable>
+      <ParticipantRow
+        item={item}
+        displayName={displayName}
+        avatarUri={avatarUri}
+        roleLabel={roleLabel}
+        isOwnerRole={effectiveRole === 'OWNER'}
+        isAdminRole={effectiveRole === 'ADMIN'}
+        employeePosition={employeePosition}
+        isCurrentUser={isCurrentUser}
+        canManageThis={canManageThis}
+        styles={styles}
+        androidRipple={participantRipple}
+        onPress={handleParticipantPress}
+        onLongPress={handleMemberLongPress}
+      />
     );
-  };
+  }, [
+    getUserDisplayName,
+    getUserAvatar,
+    getEffectiveRole,
+    getRoleLabel,
+    getEmployeePosition,
+    currentUser?.id,
+    canEditGroup,
+    shouldDisableMemberAdminMenu,
+    styles,
+    participantRipple,
+    handleParticipantPress,
+    handleMemberLongPress,
+  ]);
+
+  const keyExtractor = useCallback(
+    (item) => String(item.userId || item.user?.id || item.id),
+    []
+  );
+
+  const renderSeparator = useCallback(
+    () => <View style={styles.separator} />,
+    [styles]
+  );
+
+  // Сообщаем FlatList, какие внешние данные влияют на рендер строк
+  const listExtraData = useMemo(
+    () => ({
+      roleOverrides,
+      canEditGroup,
+      shouldDisableMemberAdminMenu,
+      currentUserId: currentUser?.id,
+    }),
+    [roleOverrides, canEditGroup, shouldDisableMemberAdminMenu, currentUser?.id]
+  );
 
   const groupAvatarUri = getGroupAvatar();
   const participantsCount = participants.length;
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.groupHeader}>
-          <View style={styles.navigationButtons}>
-            <TouchableOpacity onPress={handleBackPress} style={styles.backButton}>
-              <Text style={styles.backButtonText}>←</Text>
-            </TouchableOpacity>
-            
-            {/* Кнопка меню только для владельца и админов */}
-            {canEditGroup && !shouldHideEditMenu && (
-              <TouchableOpacity style={styles.menuButton} onPress={handleMenuPress}>
-                <Text style={styles.menuButtonText}>⋮</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+      <FlatList
+        style={styles.content}
+        data={participants}
+        renderItem={renderParticipant}
+        keyExtractor={keyExtractor}
+        extraData={listExtraData}
+        ItemSeparatorComponent={renderSeparator}
+        showsVerticalScrollIndicator={false}
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={11}
+        updateCellsBatchingPeriod={50}
+        removeClippedSubviews={Platform.OS === 'android'}
+        ListHeaderComponent={
+          <>
+            <View style={styles.groupHeader}>
+              <View style={styles.navigationButtons}>
+                <TouchableOpacity onPress={handleBackPress} style={styles.backButton}>
+                  <Text style={styles.backButtonText}>←</Text>
+                </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={styles.groupAvatarContainer}
-            onPress={handleAvatarPress}
-            activeOpacity={0.7}
-          >
-            {groupAvatarUri ? (
-              <Image source={{ uri: groupAvatarUri }} style={styles.groupAvatar} />
-            ) : (
-              <View style={styles.groupAvatarPlaceholder}>
-                <Text style={styles.groupAvatarPlaceholderText}>👥</Text>
+                {/* Кнопка меню только для владельца и админов */}
+                {canEditGroup && !shouldHideEditMenu && (
+                  <TouchableOpacity style={styles.menuButton} onPress={handleMenuPress}>
+                    <Text style={styles.menuButtonText}>⋮</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-            )}
-          </TouchableOpacity>
-                     <Text style={styles.groupName}>{roomData?.title || (roomData?.type === 'BROADCAST' ? 'Канал' : 'Группа')}</Text>
-           {roomData?.description && (
-             <View style={styles.descriptionContainer}>
-               <View style={styles.descriptionRow}>
-                 <Text style={styles.groupDescription}>
-                   {getDescriptionText(roomData.description)}
-                 </Text>
-                 {roomData.description.length > 100 && (
-                   <TouchableOpacity
-                     style={styles.showMoreButton}
-                     onPress={toggleDescription}
-                     activeOpacity={0.7}
-                   >
-                     <Text style={styles.showMoreButtonText}>
-                       {showFullDescription ? 'Скрыть' : 'Далее'}
-                     </Text>
-                   </TouchableOpacity>
-                 )}
-               </View>
-             </View>
-           )}
-          <Text style={styles.groupSubtitle}>
-            {roomData?.type === 'BROADCAST' ? '📢 Канал' : 'Группа'} · {participantsCount} {
-              roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT' 
-                ? (participantsCount === 1 ? 'контакт' : participantsCount < 5 ? 'контакта' : 'контактов')
-                : roomData?.type === 'BROADCAST' 
-                  ? (participantsCount === 1 ? 'подписчик' : participantsCount < 5 ? 'подписчика' : 'подписчиков')
-                  : (participantsCount === 1 ? 'участник' : participantsCount < 5 ? 'участника' : 'участников')
-            }
-          </Text>
-        </View>
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>
-                {roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT' 
-                  ? `Контакты (${participantsCount})`
-                  : `${participantsCount} ${roomData?.type === 'BROADCAST' ? 'подписчик' : 'участник'}${participantsCount === 1 ? '' : participantsCount < 5 ? 'а' : 'ов'}`
+              <TouchableOpacity
+                style={styles.groupAvatarContainer}
+                onPress={handleAvatarPress}
+                activeOpacity={0.7}
+              >
+                {groupAvatarUri ? (
+                  <Image source={{ uri: groupAvatarUri }} style={styles.groupAvatar} />
+                ) : (
+                  <View style={styles.groupAvatarPlaceholder}>
+                    <Text style={styles.groupAvatarPlaceholderText}>👥</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              <Text style={styles.groupName}>{roomData?.title || (roomData?.type === 'BROADCAST' ? 'Канал' : 'Группа')}</Text>
+              {roomData?.description && (
+                <View style={styles.descriptionContainer}>
+                  <View style={styles.descriptionRow}>
+                    <Text style={styles.groupDescription}>
+                      {getDescriptionText(roomData.description)}
+                    </Text>
+                    {roomData.description.length > 100 && (
+                      <TouchableOpacity
+                        style={styles.showMoreButton}
+                        onPress={toggleDescription}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.showMoreButtonText}>
+                          {showFullDescription ? 'Скрыть' : 'Далее'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              )}
+              <Text style={styles.groupSubtitle}>
+                {roomData?.type === 'BROADCAST' ? '📢 Канал' : 'Группа'} · {participantsCount} {
+                  roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT'
+                    ? (participantsCount === 1 ? 'контакт' : participantsCount < 5 ? 'контакта' : 'контактов')
+                    : roomData?.type === 'BROADCAST'
+                      ? (participantsCount === 1 ? 'подписчик' : participantsCount < 5 ? 'подписчика' : 'подписчиков')
+                      : (participantsCount === 1 ? 'участник' : participantsCount < 5 ? 'участника' : 'участников')
                 }
               </Text>
             </View>
-            {roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT' && (
-              <Text style={styles.contactsHelpText}>
-                Нажмите на контакт, чтобы начать чат и задать вопрос
-              </Text>
-            )}
-          </View>
 
-          {/* Add Members Button - только для владельца и админов */}
-          {canEditGroup && (
-            <TouchableOpacity 
-              style={styles.addMembersButton} 
-              onPress={handleAddMembers}
-              activeOpacity={0.7}
-              disabled={loading}
-            >
-              <View style={styles.addMembersIcon}>
-                {loading ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <AddUserIcon width={18} height={18} color="#FFFFFF" />
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionHeaderRow}>
+                  <Text style={styles.sectionTitle}>
+                    {roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT'
+                      ? `Контакты (${participantsCount})`
+                      : `${participantsCount} ${roomData?.type === 'BROADCAST' ? 'подписчик' : 'участник'}${participantsCount === 1 ? '' : participantsCount < 5 ? 'а' : 'ов'}`
+                    }
+                  </Text>
+                </View>
+                {roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT' && (
+                  <Text style={styles.contactsHelpText}>
+                    Нажмите на контакт, чтобы начать чат и задать вопрос
+                  </Text>
                 )}
               </View>
-              <Text style={styles.addMembersText}>Добавить участников</Text>
-            </TouchableOpacity>
-          )}
 
-          {/* Переключатель закрытия группы - только для обычных групп, не для каналов */}
-          {canEditGroup && roomData?.type !== 'BROADCAST' && (
-            <TouchableOpacity 
-              style={styles.lockGroupContainer}
-              onPress={handleToggleLock}
-              activeOpacity={0.7}
-              disabled={loading}
-            >
-              <View style={styles.lockGroupIcon}>
-                <Text style={styles.lockGroupIconText}>
-                  {roomData?.isLocked ? '🔒' : '💬'}
-                </Text>
-              </View>
-              <View style={styles.lockGroupInfo}>
-                <Text style={styles.lockGroupTitle}>
-                  Отправлять сообщения
-                </Text>
-                <Text style={styles.lockGroupDescription}>
-                  {roomData?.isLocked 
-                    ? 'Только администраторы'
-                    : 'Все участники'}
-                </Text>
-              </View>
-              <AnimatedSwitch 
-                value={!roomData?.isLocked} 
-                disabled={loading}
-              />
-            </TouchableOpacity>
-          )}
+              {/* Add Members Button - только для владельца и админов */}
+              {canEditGroup && (
+                <TouchableOpacity
+                  style={styles.addMembersButton}
+                  onPress={handleAddMembers}
+                  activeOpacity={0.7}
+                  disabled={loading}
+                >
+                  <View style={styles.addMembersIcon}>
+                    {loading ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <AddUserIcon width={18} height={18} color="#FFFFFF" />
+                    )}
+                  </View>
+                  <Text style={styles.addMembersText}>Добавить участников</Text>
+                </TouchableOpacity>
+              )}
 
-           
-
-          <FlatList
-            data={participants}
-            renderItem={renderParticipant}
-            keyExtractor={(item) => String(item.userId || item.user?.id || item.id)}
-            extraData={roleOverrides}
-            scrollEnabled={false}
-            ItemSeparatorComponent={() => <View style={styles.separator} />}
-          />
-        </View>
-      </ScrollView>
+              {/* Переключатель закрытия группы - только для обычных групп, не для каналов */}
+              {canEditGroup && roomData?.type !== 'BROADCAST' && (
+                <TouchableOpacity
+                  style={styles.lockGroupContainer}
+                  onPress={handleToggleLock}
+                  activeOpacity={0.7}
+                  disabled={loading}
+                >
+                  <View style={styles.lockGroupIcon}>
+                    <Text style={styles.lockGroupIconText}>
+                      {roomData?.isLocked ? '🔒' : '💬'}
+                    </Text>
+                  </View>
+                  <View style={styles.lockGroupInfo}>
+                    <Text style={styles.lockGroupTitle}>
+                      Отправлять сообщения
+                    </Text>
+                    <Text style={styles.lockGroupDescription}>
+                      {roomData?.isLocked
+                        ? 'Только администраторы'
+                        : 'Все участники'}
+                    </Text>
+                  </View>
+                  <AnimatedSwitch
+                    value={!roomData?.isLocked}
+                    disabled={loading}
+                  />
+                </TouchableOpacity>
+              )}
+            </View>
+          </>
+        }
+      />
 
       {/* Menu Overlay (inline, чтобы не затрагивать system navigation bar на Android) */}
       {menuVisible && (
