@@ -1,7 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { useSelector } from 'react-redux';
+import { useFocusEffect } from '@react-navigation/native';
+import { useDispatch, useSelector } from 'react-redux';
 import ChatApi from '@entities/chat/api/chatApi';
+import { markAsRead } from '@entities/chat/model/slice';
 import { isAssistantRoom } from '@features/ai-assistant';
 import { buildAssistantChatTabParams } from '@features/ai-assistant/lib/assistantNavigation';
 import { DirectChatScreen } from './DirectChatScreen';
@@ -11,7 +13,9 @@ import { GroupChatScreen } from './GroupChatScreen';
  * Роутер для чатов - определяет тип комнаты и рендерит соответствующий компонент
  */
 export const ChatRoomScreen = ({route, navigation}) => {
+    const dispatch = useDispatch();
     const {roomId, roomType: routeRoomType, draftPeerUserId} = route.params;
+    const currentUserId = useSelector((s) => s.auth?.user?.id);
     const redirectedRef = useRef(false);
     const [assistantCheckDone, setAssistantCheckDone] = useState(!roomId);
 
@@ -96,6 +100,17 @@ export const ChatRoomScreen = ({route, navigation}) => {
         return normalizedRoomType === 'GROUP' || normalizedRoomType === 'BROADCAST';
     }, [normalizedRoomType]);
 
+    // markAsRead здесь — ChatRoomScreen зарегистрирован в навигаторе, focus срабатывает надёжно.
+    // В GROUP сообщения часто уже READ (другой участник прочитал), поэтому markAsRead в дочернем
+    // экране по статусу сообщений не вызывался — бейдж зависал.
+    useFocusEffect(
+        useCallback(() => {
+            if (!roomId || !currentUserId || isAssistantChat) return undefined;
+            dispatch(markAsRead({ roomId, currentUserId }));
+            return undefined;
+        }, [dispatch, roomId, currentUserId, isAssistantChat])
+    );
+
     if (roomId && (!assistantCheckDone || isAssistantChat)) {
         return (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -113,3 +128,4 @@ export const ChatRoomScreen = ({route, navigation}) => {
     // По умолчанию рендерим DirectChatScreen (для DIRECT и если тип не определен)
     return <DirectChatScreen route={route} navigation={navigation} />;
 };
+

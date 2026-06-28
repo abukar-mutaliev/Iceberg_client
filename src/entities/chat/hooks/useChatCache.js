@@ -106,7 +106,7 @@ export const useCachedRooms = () => {
     setIsLoadingFromServer(true);
 
     try {
-      const result = await dispatch(fetchRooms({ page: 1, limit: 20, forceRefresh }));
+      const result = await dispatch(fetchRooms({ page: 1, limit: 100, forceRefresh }));
       
       if (!result.error && result.payload?.rooms) {
         // Сохраняем в кэш
@@ -337,7 +337,7 @@ export const useChatBackgroundSync = (activeRoomId = null) => {
         });
         
         // Синхронизируем комнаты
-        dispatch(fetchRooms({ page: 1, limit: 20, forceRefresh: true }));
+        dispatch(fetchRooms({ page: 1, limit: 100, forceRefresh: true }));
         
         // КРИТИЧНО: Синхронизируем сообщения активной комнаты если она открыта
         if (currentActiveRoomId) {

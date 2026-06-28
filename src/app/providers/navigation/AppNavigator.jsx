@@ -989,13 +989,6 @@ export const AppNavigator = () => {
                         component={ProductDetailScreen}
                         options={createProductDetailScreenOptions()}
                     />
-                    {/* AssistantChat в AppStack нужен для перехода из ProductDetail
-                       (репост товара помощнику): экран ложится поверх и back возвращает к товару. */}
-                    <Stack.Screen
-                        name="AssistantChat"
-                        component={AssistantChatScreen}
-                        options={createScreenOptions({ headerShown: false })}
-                    />
                     {/* SupplierScreen в AppStack нужен для переходов из ChatRoom.
                        Тогда экран поставщика ложится поверх ChatRoom и back возвращает обратно в комнату. */}
                     <Stack.Screen

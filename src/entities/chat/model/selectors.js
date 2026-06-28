@@ -23,8 +23,9 @@ const isMessageStop = (message) => {
   // Склад/товар: JSON с id не считается остановкой — иначе фильтр по району канала их ломает
   if (type === 'WAREHOUSE' || type === 'PRODUCT') return false;
   if (type === 'STOP') return true;
+  if (message.stop) return true;
   const stopData = parseStopDataFromMessage(message);
-  return Boolean(stopData?.stopId || stopData?.stop_id || stopData?.startTime || stopData?.endTime);
+  return Boolean(stopData?.stopId || stopData?.stop_id);
 };
 
 const isStopMessageExpired = (message) => {
@@ -131,9 +132,8 @@ export const selectRoomsList = createSelector(
       const room = roomsById[id];
       if (!room) return null;
       
-      let actualUnread = unreadByRoomId?.[id] ?? 0;
+      let actualUnread = Number(unreadByRoomId?.[Number(id)]) || 0;
       const roomType = String(room.type || '').toUpperCase();
-      const isGroupOrBroadcast = roomType === 'GROUP' || roomType === 'BROADCAST';
       const isBroadcastRoom = roomType === 'BROADCAST';
       const userDistrictIds = isBroadcastRoom ? getUserDistrictIds(currentUser) : EMPTY_ARRAY;
 
@@ -205,13 +205,14 @@ export const selectRoomsList = createSelector(
         lastMessage = room.lastMessage;
       }
 
-      // Для GROUP/BROADCAST серверный unreadCount — источник истины.
-      // Глобальный message.status в группах может стать READ из-за другого участника,
-      // поэтому локально только вычитаем невидимые STOP из окна непрочитанных.
-      if (isGroupOrBroadcast) {
+      // GROUP: серверный unreadCount — единственный источник (без пересчёта по bucket).
+      // BROADCAST: вычитаем невидимые STOP из окна непрочитанных.
+      if (roomType === 'GROUP') {
+        actualUnread = Number(unreadByRoomId?.[Number(id)]) || 0;
+      } else if (isBroadcastRoom) {
         const bucket = messages?.[id];
         if (bucket?.ids?.length) {
-          const rawUnread = Number(unreadByRoomId?.[id]) || 0;
+          const rawUnread = Number(unreadByRoomId?.[Number(id)]) || 0;
           if (rawUnread <= 0) {
             actualUnread = 0;
           } else {
@@ -226,30 +227,20 @@ export const selectRoomsList = createSelector(
               if (currentUserId && Number(msg.senderId) === Number(currentUserId)) continue;
 
               countedServerUnread += 1;
-              if (isStopVisibleForUser(msg, userDistrictIds, isBroadcastRoom)) {
+              if (isStopVisibleForUser(msg, userDistrictIds, true)) {
                 visibleUnread += 1;
               }
             }
 
-            // Если bucket не покрывает весь unreadCount, оставшаяся часть неизвестна,
-            // поэтому сохраняем её, чтобы не прятать реальные новые сообщения.
             actualUnread = visibleUnread + Math.max(rawUnread - countedServerUnread, 0);
           }
         } else if (serverLastMessageHidden) {
           actualUnread = 0;
         } else if (!lastMessage) {
-          // Нет загруженных сообщений в bucket и нет видимого lastMessage — «зависший»
-          // unread (например после истечения стоянки / удаления STOP) не показываем.
           actualUnread = 0;
-        } else if (
-          roomType === 'BROADCAST' &&
-          String(room.lastMessage?.type || '').toUpperCase() === 'SYSTEM'
-        ) {
-          // Bucket пуст: lastMessage с сервера — SYSTEM (баннер/служебное), а unread в Redux
-          // мог остаться от удалённой STOP (WS не дошёл до receiveMessageDeleted без bucket).
+        } else if (String(room.lastMessage?.type || '').toUpperCase() === 'SYSTEM') {
           actualUnread = 0;
         }
-        // Иначе bucket пуст, но last — STOP/TEXT и т.д.: оставляем unreadByRoomId до загрузки истории.
       } else if (!lastMessage && hadExpiredStopLastMessage && actualUnread > 0) {
         actualUnread = 0;
       }

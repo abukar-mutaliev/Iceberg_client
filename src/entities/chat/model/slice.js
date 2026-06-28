@@ -7,6 +7,7 @@ import { userApi } from '@entities/user/api/userApi';
 import { chatCacheService } from '../lib/chatCacheService';
 import { resolveStopDistrictId } from '../lib/resolveStopDistrictId';
 import { enrichStopChatMessageFromStore } from '../lib/enrichStopChatMessageFromStore';
+import { isEssentialListRoom } from '../lib/isEssentialListRoom';
 import { waitForConnection } from '@shared/api/retryHelper';
 
 const initialState = {
@@ -20,6 +21,7 @@ const initialState = {
   },
   messages: {},
   unreadByRoomId: {},
+  lastMarkedReadAtByRoomId: {},
   // Время последней загрузки комнат - используется для предотвращения дублирования счетчиков
   lastRoomsFetchTime: null,
   typingByRoomId: {}, // { [roomId]: { [userId]: { type: 'text' | 'voice', timestamp: number } } }
@@ -416,7 +418,7 @@ export const preloadRoomMedia = createAsyncThunk('chat/preloadRoomMedia', async 
 
 export const fetchRooms = createAsyncThunk(
     'chat/fetchRooms',
-    async ({ page = 1, limit = 20, forceRefresh = false } = {}, { rejectWithValue, dispatch, getState }) => {
+    async ({ page = 1, limit = 100, forceRefresh = false } = {}, { rejectWithValue, dispatch, getState }) => {
         try {
             // Проверяем авторизацию перед загрузкой
             const state = getState();
@@ -481,8 +483,17 @@ export const fetchRooms = createAsyncThunk(
         const pagination = root?.pagination ?? dataNode?.pagination ?? dataNode?.meta ?? null;
 
         if (page === 1) {
-          try { 
-            await chatCacheService.saveRooms(rooms);
+          try {
+            const cachedRooms = await chatCacheService.getRooms();
+            const essentialCached = (cachedRooms || []).filter(isEssentialListRoom);
+            const mergedForCache = [];
+            const seenIds = new Set();
+            for (const room of [...(rooms || []), ...essentialCached]) {
+              if (!room?.id || seenIds.has(room.id)) continue;
+              seenIds.add(room.id);
+              mergedForCache.push(room);
+            }
+            await chatCacheService.saveRooms(mergedForCache);
           } catch {}
         }
 
@@ -1548,7 +1559,20 @@ const chatSlice = createSlice({
   initialState,
   reducers: {
     setActiveRoom(state, action) {
+      const prevRoomId = state.activeRoomId != null ? Number(state.activeRoomId) : null;
+      const nextRoomId = action.payload != null && action.payload !== ''
+        ? Number(action.payload)
+        : null;
+
       state.activeRoomId = action.payload || null;
+
+      if (prevRoomId && !nextRoomId) {
+        state.unreadByRoomId[prevRoomId] = 0;
+        if (!state.lastMarkedReadAtByRoomId) {
+          state.lastMarkedReadAtByRoomId = {};
+        }
+        state.lastMarkedReadAtByRoomId[prevRoomId] = Date.now();
+      }
     },
     tickTime(state) {
       state.timeTick = Date.now();
@@ -2561,7 +2585,7 @@ const chatSlice = createSlice({
       // - STOP-сообщение видимо для пользователя (не из чужого района, не просрочено)
       const isOwnMessage = currentUserId && (message.senderId === currentUserId || Number(message.senderId) === Number(currentUserId));
 
-      if (state.activeRoomId !== roomId && !isOwnMessage) {
+      if (Number(state.activeRoomId) !== Number(roomId) && !isOwnMessage) {
         const messageTime = new Date(message.createdAt).getTime();
         const shouldIncrement = !state.lastRoomsFetchTime || messageTime > state.lastRoomsFetchTime;
 
@@ -2620,8 +2644,12 @@ const chatSlice = createSlice({
           }
 
           if (isVisible) {
-            const oldUnread = state.unreadByRoomId[roomId] || 0;
-            state.unreadByRoomId[roomId] = oldUnread + 1;
+            const normalizedRoomId = Number(roomId);
+            const oldUnread = state.unreadByRoomId[normalizedRoomId] || 0;
+            state.unreadByRoomId[normalizedRoomId] = oldUnread + 1;
+            if (state.lastMarkedReadAtByRoomId?.[normalizedRoomId]) {
+              delete state.lastMarkedReadAtByRoomId[normalizedRoomId];
+            }
           }
         }
       }
@@ -3249,27 +3277,72 @@ const chatSlice = createSlice({
         })
         .addCase(fetchRooms.fulfilled, (state, action) => {
           const { rooms, page, hasMore } = action.payload;
-          if (page === 1) {
+          const forceRefresh = Boolean(action.meta?.arg?.forceRefresh);
+          const essentialBackup = page === 1
+            ? state.rooms.ids
+                .map((id) => state.rooms.byId[id])
+                .filter(isEssentialListRoom)
+            : [];
+
+          if (page === 1 && forceRefresh) {
             state.rooms.ids = [];
             state.rooms.byId = {};
             state.avatarFetchAttemptedByRoomId = {};
+          } else if (page === 1) {
+            const serverIds = new Set((rooms || []).map((room) => Number(room.id)).filter(Boolean));
+            state.rooms.ids = state.rooms.ids.filter((id) => {
+              const room = state.rooms.byId[id];
+              if (!room) return false;
+              if (serverIds.has(Number(id))) return true;
+              return isEssentialListRoom(room);
+            });
+            Object.keys(state.rooms.byId).forEach((id) => {
+              const numericId = Number(id);
+              if (!state.rooms.ids.includes(numericId) && !state.rooms.ids.includes(id)) {
+                delete state.rooms.byId[id];
+              }
+            });
           }
 
           if (rooms && Array.isArray(rooms)) {
             rooms.forEach(room => {
               if (!room.id) return;
-              const serverUnread = room.unreadCount ?? room.unread ?? 0;
-              // page 1: перезаписываем счётчик с сервера (устраняет «зависший» unread в Redux).
-              // Иначе значение задаётся только при undefined и никогда не синхронизируется.
+              const roomId = Number(room.id);
+              const serverUnread = Number(room.unreadCount ?? room.unread ?? 0) || 0;
+              const localUnread = Number(state.unreadByRoomId[roomId]) || 0;
+              const lastMarkedReadAt = state.lastMarkedReadAtByRoomId?.[roomId] || 0;
+              const recentlyMarkedRead = lastMarkedReadAt && (Date.now() - lastMarkedReadAt) < 120000;
+
               if (page === 1) {
-                state.unreadByRoomId[room.id] = serverUnread;
-              } else if (state.unreadByRoomId[room.id] === undefined) {
-                state.unreadByRoomId[room.id] = serverUnread;
+                const roomType = String(
+                  room.type || state.rooms.byId[roomId]?.type || ''
+                ).toUpperCase();
+                const keepLocalZero = localUnread === 0 && serverUnread > 0 && !forceRefresh && (
+                  recentlyMarkedRead || roomType === 'GROUP' || roomType === 'BROADCAST'
+                );
+                if (keepLocalZero) {
+                  state.unreadByRoomId[roomId] = 0;
+                } else {
+                  state.unreadByRoomId[roomId] = serverUnread;
+                }
+              } else if (state.unreadByRoomId[roomId] === undefined) {
+                state.unreadByRoomId[roomId] = serverUnread;
               }
             });
           }
 
           upsertRooms(state, rooms || []);
+
+          if (page === 1 && essentialBackup.length) {
+            const serverRoomIds = new Set((rooms || []).map((room) => Number(room.id)).filter(Boolean));
+            const missingEssential = essentialBackup.filter(
+              (room) => room.id && !serverRoomIds.has(Number(room.id)) && !state.deletedRoomIds.includes(room.id)
+            );
+            if (missingEssential.length) {
+              upsertRooms(state, missingEssential);
+            }
+          }
+
           state.rooms.page = page;
           state.rooms.hasMore = !!hasMore;
           state.rooms.loading = false;
@@ -4002,10 +4075,30 @@ const chatSlice = createSlice({
             // Обновляем кэш сообщений для синхронизации состояния
             updateMessageCache(roomId, state.messages[roomId]);
         })
+        .addCase(markAsRead.pending, (state, action) => {
+          const roomId = action.meta?.arg?.roomId;
+          if (roomId == null || roomId === '') return;
+          const normalizedId = Number(roomId);
+          state.unreadByRoomId[normalizedId] = 0;
+          if (!state.lastMarkedReadAtByRoomId) {
+            state.lastMarkedReadAtByRoomId = {};
+          }
+          state.lastMarkedReadAtByRoomId[normalizedId] = Date.now();
+          if (String(roomId) !== String(normalizedId)) {
+            delete state.unreadByRoomId[roomId];
+          }
+        })
         .addCase(markAsRead.fulfilled, (state, action) => {
           const { roomId } = action.payload;
-
-          state.unreadByRoomId[roomId] = 0;
+          const normalizedId = Number(roomId);
+          state.unreadByRoomId[normalizedId] = 0;
+          if (!state.lastMarkedReadAtByRoomId) {
+            state.lastMarkedReadAtByRoomId = {};
+          }
+          state.lastMarkedReadAtByRoomId[normalizedId] = Date.now();
+          if (String(roomId) !== String(normalizedId)) {
+            delete state.unreadByRoomId[roomId];
+          }
 
           const currentUserId = action.meta?.arg?.currentUserId;
           const roomMessages = state.messages[roomId];

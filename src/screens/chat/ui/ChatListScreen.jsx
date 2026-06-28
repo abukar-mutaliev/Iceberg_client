@@ -20,6 +20,8 @@ import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
 import { ASSISTANT_CHAT_TITLE, isAssistantRoom } from '@features/ai-assistant';
 
+const ROOMS_PAGE_LIMIT = 100;
+
 // Компонент для отображения иконки голосового сообщения
 const VoiceMessageIcon = React.memo(({ styles, iconColor }) => (
     <View style={styles.voiceIconContainer}>
@@ -243,9 +245,26 @@ export const ChatListScreen = ({navigation}) => {
     }, [rooms]);
 
     useEffect(() => {
-        dispatch(loadRoomsCache());
-        dispatch(fetchRooms({page: 1}));
+        let cancelled = false;
+
+        (async () => {
+            await dispatch(loadRoomsCache());
+            if (!cancelled) {
+                dispatch(fetchRooms({ page: 1, limit: ROOMS_PAGE_LIMIT }));
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
     }, [dispatch]);
+
+    // Догружаем следующие страницы сразу — иначе BROADCAST-каналы (ассортимент и т.п.)
+    // выпадают из списка, когда fetchRooms(page: 1) перезаписывает store.
+    useEffect(() => {
+        if (loading || !hasMore) return;
+        dispatch(fetchRooms({ page: (page || 1) + 1, limit: ROOMS_PAGE_LIMIT }));
+    }, [dispatch, loading, hasMore, page]);
 
     useEffect(() => {
         if (prefetchedUserIdRef.current === currentUserId) return;
@@ -304,7 +323,7 @@ export const ChatListScreen = ({navigation}) => {
     // Обработчик для pull-to-refresh
     const handleRefresh = useCallback(() => {
         setIsRefreshing(true);
-        dispatch(fetchRooms({page: 1, forceRefresh: true}))
+        dispatch(fetchRooms({ page: 1, limit: ROOMS_PAGE_LIMIT, forceRefresh: true }))
             .finally(() => setIsRefreshing(false));
     }, [dispatch]);
 
@@ -658,14 +677,14 @@ export const ChatListScreen = ({navigation}) => {
 
     const onRefresh = useCallback(() => {
         setIsRefreshing(true);
-        dispatch(fetchRooms({page: 1}))
+        dispatch(fetchRooms({ page: 1, limit: ROOMS_PAGE_LIMIT }))
             .finally(() => setIsRefreshing(false));
     }, [dispatch]);
 
     const handleLoadMore = useCallback(() => {
         if (loading || !hasMore) return;
 
-        dispatch(fetchRooms({page: page + 1}));
+        dispatch(fetchRooms({ page: page + 1, limit: ROOMS_PAGE_LIMIT }));
     }, [dispatch, loading, hasMore, page]);
 
     const openRoom = (room) => {

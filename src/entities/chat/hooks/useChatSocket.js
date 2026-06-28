@@ -381,7 +381,8 @@ export const useChatSocket = () => {
           
           // Получаем актуальное значение activeRoomId из store
           const currentActiveRoomId = store.getState()?.chat?.activeRoomId;
-          const isActiveRoom = currentActiveRoomId && roomId && currentActiveRoomId === roomId;
+          const isActiveRoom = currentActiveRoomId && roomId &&
+            Number(currentActiveRoomId) === Number(roomId);
           
           if (isIncomingMessage && isActiveRoom) {
             // Воспроизводим звук входящего сообщения
@@ -738,15 +739,12 @@ export const useChatSocket = () => {
         });
 
         socket.on('chat:room:updated', (payload) => {
-          const { room } = payload || {};
-          // Если данные комнаты пришли в payload, обновляем напрямую
+          const { room, roomId } = payload || {};
           if (room && room.id) {
             dispatch(updateRoomFromSocket(room));
-            // Также перезагружаем полные данные комнаты для обновления участников
             dispatch(fetchRoom(room.id));
-          } else {
-            // Если данных нет, просто перезагружаем список комнат
-            dispatch(fetchRooms({ page: 1 }));
+          } else if (roomId) {
+            dispatch(fetchRoom(roomId));
           }
         });
 

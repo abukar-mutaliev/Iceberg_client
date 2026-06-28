@@ -9,7 +9,6 @@ import {
     ActivityIndicator,
     KeyboardAvoidingView,
     Platform,
-    Image,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -21,21 +20,8 @@ import { HeaderWithBackButton } from '@shared/ui/HeaderWithBackButton';
 import { useOpenManagerChat } from '@features/help/hooks/useOpenManagerChat';
 import { useChatKeyboard } from '@screens/chat/hooks/useChatKeyboard';
 import { useTabBar } from '@widgets/navigation/context';
-import { getImageUrl } from '@shared/api/api';
 import { useAiAssistant } from '../../../hooks/useAiAssistant';
 import { ASSISTANT_CHAT_TITLE } from '../../../constants';
-
-const resolveProductImage = (product) => {
-    if (!product) return null;
-    const img = Array.isArray(product.images) ? product.images[0] : (product.image || null);
-    return img ? getImageUrl(img) : null;
-};
-
-const formatProductPrice = (product) => {
-    const value = product?.price ?? product?.boxPrice;
-    if (value === null || value === undefined || value === '') return null;
-    return `${Number(value).toLocaleString('ru-RU')} ₽`;
-};
 
 const TAB_BAR_HEIGHT = 80;
 
@@ -49,14 +35,13 @@ export const AssistantChatScreen = () => {
     const roomId = route.params?.roomId ?? null;
     const fromScreen = route.params?.fromScreen ?? null;
     const [input, setInput] = React.useState('');
-    const [attachedProduct, setAttachedProduct] = React.useState(route.params?.product ?? null);
     const listRef = useRef(null);
     const insets = useSafeAreaInsets();
     const { hideTabBar, showTabBar, isTabBarVisible } = useTabBar();
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const { messages, sending, loadingHistory, escalationSuggested, sendQuestion } = useAiAssistant(roomId);
-    const { handleGoBack } = useAssistantChatNavigation(fromScreen, attachedProduct);
+    const { handleGoBack } = useAssistantChatNavigation(fromScreen, route.params?.product);
     const { openManagerChat, loading: openingManager } = useOpenManagerChat('Assistant');
     const {
         keyboardVisible,
@@ -94,42 +79,13 @@ export const AssistantChatScreen = () => {
     const handleSend = useCallback(() => {
         const text = input.trim();
         if (!text || sending) return;
-        const attachment = attachedProduct ? { productId: attachedProduct.id, product: attachedProduct } : null;
         setInput('');
-        setAttachedProduct(null);
-        sendQuestion(text, attachment);
+        sendQuestion(text);
         scrollToEnd();
-    }, [input, sending, attachedProduct, sendQuestion, scrollToEnd]);
+    }, [input, sending, sendQuestion, scrollToEnd]);
 
     const renderItem = useCallback(({ item }) => {
         const isUser = item.role === 'user';
-
-        if (item.type === 'product') {
-            const image = resolveProductImage(item.product);
-            const price = formatProductPrice(item.product);
-            return (
-                <View style={[styles.bubbleRow, isUser ? styles.rowUser : styles.rowBot]}>
-                    <View style={[styles.bubbleWrapper, isUser && styles.bubbleWrapperUser]}>
-                        <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleBot, styles.productBubble]}>
-                            {image ? (
-                                <Image source={{ uri: image }} style={styles.productImage} resizeMode="cover" />
-                            ) : (
-                                <View style={[styles.productImage, styles.productImagePlaceholder]}>
-                                    <Icon name="image" size={22} color={colors.textTertiary} />
-                                </View>
-                            )}
-                            <View style={styles.productInfo}>
-                                <Text style={styles.productName} numberOfLines={2}>
-                                    {item.product?.name || 'Товар'}
-                                </Text>
-                                {price ? <Text style={styles.productPrice}>{price}</Text> : null}
-                            </View>
-                        </View>
-                    </View>
-                </View>
-            );
-        }
-
         return (
             <View style={[styles.bubbleRow, isUser ? styles.rowUser : styles.rowBot]}>
                 <View style={[styles.bubbleWrapper, isUser && styles.bubbleWrapperUser]}>
@@ -196,43 +152,12 @@ export const AssistantChatScreen = () => {
                                 </TouchableOpacity>
                             )}
 
-                            {attachedProduct && (
-                                <View style={styles.attachmentChip}>
-                                    {resolveProductImage(attachedProduct) ? (
-                                        <Image
-                                            source={{ uri: resolveProductImage(attachedProduct) }}
-                                            style={styles.attachmentImage}
-                                            resizeMode="cover"
-                                        />
-                                    ) : (
-                                        <View style={[styles.attachmentImage, styles.productImagePlaceholder]}>
-                                            <Icon name="image" size={18} color={colors.textTertiary} />
-                                        </View>
-                                    )}
-                                    <View style={styles.attachmentInfo}>
-                                        <Text style={styles.attachmentLabel} numberOfLines={1}>
-                                            Вопрос о товаре
-                                        </Text>
-                                        <Text style={styles.attachmentName} numberOfLines={1}>
-                                            {attachedProduct.name || 'Товар'}
-                                        </Text>
-                                    </View>
-                                    <TouchableOpacity
-                                        style={styles.attachmentRemove}
-                                        onPress={() => setAttachedProduct(null)}
-                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                    >
-                                        <Icon name="close" size={18} color={colors.textSecondary} />
-                                    </TouchableOpacity>
-                                </View>
-                            )}
-
                             <View style={[styles.inputBar, { paddingBottom: inputBarBottomPadding }]}>
                                 <TextInput
                                     style={styles.input}
                                     value={input}
                                     onChangeText={setInput}
-                                    placeholder={attachedProduct ? 'Спросите что-нибудь о товаре...' : 'Напишите вопрос...'}
+                                    placeholder="Напишите вопрос..."
                                     placeholderTextColor={colors.textTertiary}
                                     keyboardAppearance={isDark ? 'dark' : 'light'}
                                     multiline
@@ -338,75 +263,6 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         borderBottomColor: isDark ? colors.surfaceElevated : '#FFFFFF',
         borderTopColor: 'transparent',
         transform: [{ rotate: '180deg' }],
-    },
-
-    productBubble: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 8,
-        paddingVertical: 8,
-        minWidth: 220,
-    },
-    productImage: {
-        width: 54,
-        height: 54,
-        borderRadius: 8,
-        marginRight: 10,
-        backgroundColor: isDark ? colors.surface : '#EFEFEF',
-    },
-    productImagePlaceholder: {
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    productInfo: {
-        flex: 1,
-        justifyContent: 'center',
-    },
-    productName: {
-        fontSize: 15,
-        fontWeight: '600',
-        color: isDark ? colors.textPrimary : '#000000',
-        marginBottom: 2,
-    },
-    productPrice: {
-        fontSize: 14,
-        color: isDark ? colors.textSecondary : '#444444',
-    },
-
-    attachmentChip: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: isDark ? colors.surfaceElevated : '#F0F2F5',
-        borderRadius: 12,
-        paddingHorizontal: 10,
-        paddingVertical: 8,
-        marginHorizontal: 12,
-        marginBottom: 8,
-        borderLeftWidth: 3,
-        borderLeftColor: colors.primary,
-    },
-    attachmentImage: {
-        width: 38,
-        height: 38,
-        borderRadius: 6,
-        marginRight: 10,
-        backgroundColor: isDark ? colors.surface : '#E4E4E4',
-    },
-    attachmentInfo: {
-        flex: 1,
-    },
-    attachmentLabel: {
-        fontSize: 12,
-        color: colors.primary,
-        fontWeight: '600',
-    },
-    attachmentName: {
-        fontSize: 14,
-        color: colors.textPrimary,
-    },
-    attachmentRemove: {
-        padding: 4,
-        marginLeft: 6,
     },
 
     escalateButton: {

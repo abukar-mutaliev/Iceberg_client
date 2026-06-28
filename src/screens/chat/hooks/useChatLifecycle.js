@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useCallback } from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { useFocusEffect } from '@react-navigation/native';
 import { AppState, Animated, Keyboard } from 'react-native';
 import { 
@@ -103,29 +103,32 @@ export const useChatLifecycle = ({
       // Игнорируем ошибки — они обрабатываются в fetchRoom.rejected.
     });
 
-    let markAsReadTimeout;
-    const unsubscribe = navigation.addListener('focus', () => {
-      if (!isRoomDeletedRef?.current && !isRoomDeleted) {
-        PushNotificationService.setActiveChatRoomId(roomId);
-        PushNotificationService.setActiveChatPeerUserId(userId);
-        PushNotificationService.clearChatNotifications(roomId);
-        PushNotificationService.clearChatNotificationsForPeerUser(userId);
-        
-        clearTimeout(markAsReadTimeout);
-        markAsReadTimeout = setTimeout(() => {
-          dispatch(markAsRead({roomId, currentUserId}));
-        }, 300);
-      }
-    });
-    
     return () => {
-      unsubscribe();
-      clearTimeout(markAsReadTimeout);
-      // НЕ сбрасываем активную комнату здесь - это делается в useLayoutEffect cleanup
+      // НЕ сбрасываем activeRoomId здесь — это делает useLayoutEffect cleanup
       dispatch(setActiveRoom(null));
       emitActiveRoom?.(null);
     };
-  }, [dispatch, roomId, navigation, currentUserId, emitActiveRoom, isRoomDeleted, userId, isRoomDeletedRef]);
+  }, [dispatch, roomId, emitActiveRoom, isRoomDeleted, isRoomDeletedRef]);
+
+  // Отметка прочтения при каждом фокусе и при уходе с экрана
+  useFocusEffect(
+    useCallback(() => {
+      if (isRoomDeletedRef?.current || isRoomDeleted || !roomId) {
+        return undefined;
+      }
+
+      PushNotificationService.setActiveChatRoomId(roomId);
+      PushNotificationService.setActiveChatPeerUserId(userId);
+      PushNotificationService.clearChatNotifications(roomId);
+      PushNotificationService.clearChatNotificationsForPeerUser(userId);
+
+      dispatch(markAsRead({ roomId, currentUserId }));
+
+      return () => {
+        dispatch(markAsRead({ roomId, currentUserId }));
+      };
+    }, [dispatch, roomId, currentUserId, isRoomDeleted, userId, isRoomDeletedRef])
+  );
   
   // Проверка удаления комнаты
   useEffect(() => {
@@ -245,24 +248,24 @@ export const useChatLifecycle = ({
     return () => clearTimeout(timeoutId);
   }, [autoSendProduct, productInfo, roomId, dispatch, messages]);
   
-  // Отметка непрочитанных
-  useEffect(() => {
-    if (!messages?.length || !currentUserId) return;
+  // Отметка непрочитанных: в GROUP статус сообщений может быть READ (прочитал другой
+  // участник), но unreadCount на сервере > 0 — ориентируемся на store и вызываем markAsRead.
+  const unreadFromStore = useSelector(
+    (s) => Number(s.chat?.unreadByRoomId?.[Number(roomId)]) || 0
+  );
 
-    const unreadMessages = messages.filter(msg =>
-      msg.senderId !== currentUserId &&
-      (msg.status === 'SENT' || msg.status === 'DELIVERED')
+  useEffect(() => {
+    if (!roomId || !currentUserId) return;
+
+    const hasUnreadByStatus = Array.isArray(messages) && messages.some((msg) =>
+      Number(msg.senderId) !== Number(currentUserId) &&
+      ['SENT', 'DELIVERED'].includes(String(msg.status || '').toUpperCase())
     );
 
-    if (unreadMessages.length > 0) {
-      const timeoutId = setTimeout(() => {
-        const messageIds = unreadMessages.map(msg => msg.id);
-        dispatch(markAsRead({roomId, currentUserId, messageIds}));
-      }, 500);
+    if (!hasUnreadByStatus && unreadFromStore <= 0) return;
 
-      return () => clearTimeout(timeoutId);
-    }
-  }, [messages, currentUserId, roomId, dispatch]);
+    dispatch(markAsRead({ roomId, currentUserId }));
+  }, [messages, unreadFromStore, currentUserId, roomId, dispatch]);
   
   // Функция загрузки дополнительных сообщений
   const loadMoreMessages = useCallback(() => {

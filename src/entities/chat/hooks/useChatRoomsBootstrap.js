@@ -3,6 +3,7 @@ import { useDispatch, useSelector, useStore } from 'react-redux';
 import { loadRoomsCache, fetchRooms, fetchMessages } from '@entities/chat/model/slice';
 
 // Совпадает с лимитом в ChatListScreen, чтобы бейджи считались одинаково.
+const BOOTSTRAP_ROOMS_LIMIT = 100;
 const BOOTSTRAP_MESSAGES_LIMIT = 50;
 // Сколько комнат максимум подгружаем за один проход, чтобы не перегружать сеть.
 const MAX_PREFETCH_PER_PASS = 5;
@@ -47,8 +48,11 @@ export function useChatRoomsBootstrap() {
 
     bootstrappedUserIdRef.current = userId;
     prefetchedRoomIdsRef.current = new Set();
-    dispatch(loadRoomsCache());
-    dispatch(fetchRooms({ page: 1 }));
+
+    (async () => {
+      await dispatch(loadRoomsCache());
+      await dispatch(fetchRooms({ page: 1, limit: BOOTSTRAP_ROOMS_LIMIT }));
+    })();
   }, [dispatch, isAuthenticated, userId, role]);
 
   // Подгружаем последние сообщения для GROUP/BROADCAST комнат с непрочитанными,
