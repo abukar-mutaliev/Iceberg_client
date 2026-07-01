@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import productsApi from "@entities/product/api/productsApi";
 import ProductsService from "@shared/services/ProductsService";
+import { productMatchesSearchQuery } from '@shared/lib/searchText';
 
 const initialState = {
     items: [],
@@ -212,7 +213,8 @@ export const searchProducts = createAsyncThunk(
             }
 
             return {
-                data: products.filter((item) => item?.id),
+                data: products
+                    .filter((item) => item?.id && productMatchesSearchQuery(item, trimmedSearch)),
                 pagination,
                 page,
                 search: trimmedSearch,
@@ -558,13 +560,20 @@ const productsSlice = createSlice({
                 const { page = 1 } = action.meta.arg || {};
                 state.searchLoading = true;
                 state.searchError = null;
-                if (page === 1) {
-                    state.searchResults = [];
+                if (page > 1) {
+                    state.loadingMore = true;
                 }
             })
             .addCase(searchProducts.fulfilled, (state, action) => {
-                state.searchLoading = false;
+                const requestedSearch = action.meta.arg?.search?.trim() || '';
                 const { data: products, pagination, page = 1, search = '' } = action.payload;
+
+                if (requestedSearch && search !== requestedSearch) {
+                    return;
+                }
+
+                state.searchLoading = false;
+                state.loadingMore = false;
                 const validProducts = Array.isArray(products)
                     ? products.filter((item) => item?.id)
                     : [];
@@ -593,6 +602,7 @@ const productsSlice = createSlice({
             })
             .addCase(searchProducts.rejected, (state, action) => {
                 state.searchLoading = false;
+                state.loadingMore = false;
                 state.searchError = action.payload;
             })
 

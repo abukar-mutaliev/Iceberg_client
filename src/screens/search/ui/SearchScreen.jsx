@@ -49,12 +49,13 @@ import {
     ProductSuggestions,
     SearchHistory
 } from "@features/search";
+import { productMatchesSearchQuery } from '@shared/lib/searchText';
 
 export const SearchScreen = ({ navigation }) => {
     const { colors } = useTheme();
     const styles = useMemo(() => createStyles(colors), [colors]);
     const [suggestedTags, setSuggestedTags] = useState([]);
-    const [searchQuery, setSearchQuery] = useState('');
+    const [inputText, setInputText] = useState('');
     const [isFocused, setIsFocused] = useState(false);
     const [keyboardVisible, setKeyboardVisible] = useState(false);
     const searchInputRef = useRef(null);
@@ -72,6 +73,15 @@ export const SearchScreen = ({ navigation }) => {
     const error = useSelector(selectProductsError);
     const searchError = useSelector(selectSearchError);
     const safeProducts = Array.isArray(products) ? products : [];
+
+    const filteredSuggestions = useMemo(() => {
+        const query = inputText.trim();
+        if (!query) {
+            return [];
+        }
+
+        return searchResults.filter((product) => productMatchesSearchQuery(product, query));
+    }, [searchResults, inputText]);
 
     const getReadableErrorMessage = useCallback((errorValue) => {
         if (!errorValue) {
@@ -221,18 +231,19 @@ export const SearchScreen = ({ navigation }) => {
 
     // Серверный поиск по всему каталогу с debounce
     useEffect(() => {
-        const trimmedQuery = searchQuery.trim();
-        if (!trimmedQuery) {
-            dispatch(clearSearchResults());
-            return undefined;
-        }
+        const trimmedQuery = inputText.trim();
 
         const timeoutId = setTimeout(() => {
+            if (!trimmedQuery) {
+                dispatch(clearSearchResults());
+                return;
+            }
+
             dispatch(searchProducts({ search: trimmedQuery, page: 1, limit: 50 }));
         }, 300);
 
         return () => clearTimeout(timeoutId);
-    }, [dispatch, searchQuery]);
+    }, [dispatch, inputText]);
 
     const handleProductPress = (product) => {
         console.log('SearchScreen: handleProductPress called with product:', product);
@@ -255,7 +266,7 @@ export const SearchScreen = ({ navigation }) => {
 
     // Обработчик нажатия на элемент истории
     const handleSearchHistoryPress = (historyItem) => {
-        setSearchQuery(historyItem);
+        setInputText(historyItem);
         dispatch(addSearchQuery(historyItem));
         Keyboard.dismiss();
         navigation.navigate('SearchResults', {
@@ -265,23 +276,22 @@ export const SearchScreen = ({ navigation }) => {
 
 
     const handleSearch = () => {
-        if (searchQuery.trim()) {
-            // Добавляем запрос в историю поиска
-            dispatch(addSearchQuery(searchQuery));
+        const trimmed = inputText.trim();
+        if (trimmed) {
+            dispatch(addSearchQuery(trimmed));
+            dispatch(searchProducts({ search: trimmed, page: 1, limit: 50 }));
 
-            // Закрываем клавиатуру перед навигацией
             Keyboard.dismiss();
 
-            // Переходим на экран с результатами поиска (карточками)
             navigation.navigate('SearchResults', {
-                searchQuery: searchQuery
+                searchQuery: trimmed
             });
         }
     };
 
     // Обработчик нажатия на тег
     const handleTagPress = (tag) => {
-        setSearchQuery(tag);
+        setInputText(tag);
         dispatch(addSearchQuery(tag));
         Keyboard.dismiss();
         navigation.navigate('SearchResults', {
@@ -291,7 +301,7 @@ export const SearchScreen = ({ navigation }) => {
 
     // Обработчик очистки поля поиска
     const handleClearSearch = () => {
-        setSearchQuery('');
+        setInputText('');
         dispatch(clearSearchResults());
     };
 
@@ -309,7 +319,7 @@ export const SearchScreen = ({ navigation }) => {
     // Обработчик фокуса на поле поиска
     const handleFocus = () => {
         setIsFocused(true);
-        if (!searchQuery.trim()) {
+        if (!inputText.trim()) {
             setShowingHistory(true);
         }
     };
@@ -321,8 +331,7 @@ export const SearchScreen = ({ navigation }) => {
     };
 
     const handleSearchTextChange = (text) => {
-        setSearchQuery(text);
-        // Если текст пустой и поле в фокусе, показываем историю
+        setInputText(text);
         if (!text.trim() && isFocused) {
             setShowingHistory(true);
         } else {
@@ -348,8 +357,8 @@ export const SearchScreen = ({ navigation }) => {
             <View style={styles.header}>
                 <ScreenSearchBar
                     ref={searchInputRef}
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
+                    value={inputText}
+                    onChangeText={handleSearchTextChange}
                     onClear={handleClearSearch}
                     onFocus={handleFocus}
                     onBlur={handleBlur}
@@ -372,36 +381,39 @@ export const SearchScreen = ({ navigation }) => {
                     ) : (
                         <>
                             {/* Когда поле поиска в фокусе и пустое - показываем историю поиска */}
-                            {isFocused && !searchQuery && (
+                            {isFocused && !inputText.trim() && (
                                 <SearchHistory
                                     onItemPress={handleSearchHistoryPress}
                                     searchInputRef={searchInputRef}
                                 />
                             )}
 
-                            {/* Когда поле поиска не пустое - показываем результаты поиска */}
-                            {searchQuery.trim() !== '' && (
+                            {inputText.trim() !== '' && (
                                 <>
-                                    {isSearchLoading ? (
-                                        <Loader />
-                                    ) : searchError ? (
+                                    {searchError ? (
                                         <View style={styles.errorContainer}>
                                             <Text style={styles.errorText}>
                                                 {getReadableErrorMessage(searchError)}
                                             </Text>
                                         </View>
                                     ) : (
-                                        <ProductSuggestions
-                                            products={searchResults}
-                                            searchQuery={searchQuery}
-                                            onProductPress={handleProductPress}
-                                        />
+                                        <>
+                                            {isSearchLoading && filteredSuggestions.length === 0 && (
+                                                <Loader />
+                                            )}
+                                            {(filteredSuggestions.length > 0 || !isSearchLoading) && (
+                                                <ProductSuggestions
+                                                    products={filteredSuggestions}
+                                                    searchQuery={inputText}
+                                                    onProductPress={handleProductPress}
+                                                />
+                                            )}
+                                        </>
                                     )}
                                 </>
                             )}
 
-                            {/* Когда поле поиска не в фокусе - показываем популярные теги */}
-                            {!isFocused && !searchQuery && (
+                            {!isFocused && !inputText.trim() && (
                                 <PopularTags
                                     tags={suggestedTags}
                                     onTagPress={handleTagPress}

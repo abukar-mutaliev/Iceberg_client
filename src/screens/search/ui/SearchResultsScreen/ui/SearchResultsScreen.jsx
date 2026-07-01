@@ -23,6 +23,7 @@ import { AppliedFilters } from '@features/filter/AppliedFilters';
 
 import {
     searchProducts,
+    clearSearchResults,
     selectProductsError,
     selectSearchLoading,
     selectSearchError,
@@ -66,12 +67,12 @@ export const SearchResultsScreen = () => {
     const searchQuery = route.params?.searchQuery || '';
     const filterApplied = route.params?.filterApplied || false;
 
-    const [searchText, setSearchText] = useState(searchQuery);
+    const [inputText, setInputText] = useState(searchQuery);
+    const [activeSearch, setActiveSearch] = useState(searchQuery.trim());
     const searchInputRef = useRef(null);
-    const [isLoading, setIsLoading] = useState(false);
     const [forceUpdate, setForceUpdate] = useState(0);
 
-    const filteredProducts = useSelector((state) => selectFilteredProductsBySearch(state, searchText));
+    const filteredProducts = useSelector((state) => selectFilteredProductsBySearch(state, activeSearch));
     const isFilterActive = useSelector(selectIsFilterActive);
     const isSearchLoading = useSelector(selectSearchLoading);
     const productsError = useSelector(selectProductsError);
@@ -107,38 +108,40 @@ export const SearchResultsScreen = () => {
     }, []);
 
     useEffect(() => {
-        const trimmedQuery = searchText.trim();
-        if (!trimmedQuery) {
-            return;
-        }
+        const trimmedQuery = inputText.trim();
 
         const timeoutId = setTimeout(() => {
+            setActiveSearch(trimmedQuery);
+
+            if (!trimmedQuery) {
+                dispatch(clearSearchResults());
+                return;
+            }
+
             dispatch(searchProducts({ search: trimmedQuery, page: 1, limit: 50 }));
         }, 300);
 
         return () => clearTimeout(timeoutId);
-    }, [dispatch, searchText]);
+    }, [dispatch, inputText]);
 
     useEffect(() => {
         if (searchQuery) {
-            setSearchText(searchQuery);
+            setInputText(searchQuery);
+            setActiveSearch(searchQuery.trim());
         }
     }, [searchQuery]);
 
     useEffect(() => {
         if (filterApplied) {
-            setIsLoading(true);
-            const timer = setTimeout(() => {
-                setIsLoading(false);
-                setForceUpdate(prev => prev + 1);
-            }, 300);
-            return () => clearTimeout(timer);
+            setForceUpdate((prev) => prev + 1);
         }
     }, [filterApplied]);
 
     const handleClearSearch = () => {
-        setSearchText('');
-        setForceUpdate(prev => prev + 1);
+        setInputText('');
+        setActiveSearch('');
+        dispatch(clearSearchResults());
+        setForceUpdate((prev) => prev + 1);
     };
 
     const handleGoBack = () => {
@@ -152,7 +155,7 @@ export const SearchResultsScreen = () => {
 
     const handleOpenFilters = () => {
         navigation.navigate('FilterScreen', {
-            searchQuery: searchText,
+            searchQuery: inputText,
             fromScreen: 'SearchResults'
         });
     };
@@ -163,9 +166,12 @@ export const SearchResultsScreen = () => {
     }, [dispatch]);
 
     const handleSubmitSearch = () => {
-        if (searchText.trim()) {
-            dispatch(addSearchQuery(searchText));
-            setForceUpdate(prev => prev + 1);
+        const trimmed = inputText.trim();
+        if (trimmed) {
+            dispatch(addSearchQuery(trimmed));
+            setActiveSearch(trimmed);
+            dispatch(searchProducts({ search: trimmed, page: 1, limit: 50 }));
+            setForceUpdate((prev) => prev + 1);
         }
     };
 
@@ -185,29 +191,23 @@ export const SearchResultsScreen = () => {
         }
     }, [dispatch, navigation]);
 
-    const renderItem = ({ item, index }) => {
+    const renderItem = useCallback(({ item, index }) => {
         const isEven = index % 2 === 0;
         const marginRight = isEven ? GRID_SPACING : 0;
 
         return (
             <View style={[styles.itemContainer, { marginRight }]}>
-                <ProductTile 
-                    product={item} 
-                    onPress={handleProductPress} 
+                <ProductTile
+                    product={item}
+                    onPress={handleProductPress}
                     testID={`search-product-${item?.id || index}`}
                     hideAddToCart
                 />
             </View>
         );
-    };
+    }, [handleProductPress, styles.itemContainer]);
 
-    if ((isSearchLoading && !filteredProducts.length) || isLoading) {
-        return (
-            <View style={[styles.container, styles.loadingContainer]}>
-                <ActivityIndicator size="large" color={colors.primary} />
-            </View>
-        );
-    }
+    const showInitialLoader = isSearchLoading && !filteredProducts.length && !!activeSearch;
 
     const renderHeaderBackground = (children) => {
         if (isDark) {
@@ -266,8 +266,8 @@ export const SearchResultsScreen = () => {
                         <View style={styles.searchBarContainer}>
                             <ScreenSearchBar
                                 ref={searchInputRef}
-                                value={searchText}
-                                onChangeText={setSearchText}
+                                value={inputText}
+                                onChangeText={setInputText}
                                 onClear={handleClearSearch}
                                 onSubmitEditing={handleSubmitSearch}
                                 placeholder="Запрос"
@@ -284,7 +284,11 @@ export const SearchResultsScreen = () => {
 
             {/* Нижняя часть с белым фоном и сеткой продуктов */}
             <View style={styles.contentWrapper}>
-                {activeError ? (
+                {showInitialLoader ? (
+                    <View style={styles.loadingContainer}>
+                        <ActivityIndicator size="large" color={colors.primary} />
+                    </View>
+                ) : activeError ? (
                     <View style={styles.emptyResultsContainer}>
                         <Text style={styles.emptyResultsText}>
                             Не удалось загрузить товары
@@ -298,7 +302,7 @@ export const SearchResultsScreen = () => {
                         style={styles.list}
                         data={filteredProducts}
                         renderItem={renderItem}
-                        keyExtractor={(item) => item.id?.toString() || Math.random().toString()}
+                        keyExtractor={(item) => item.id?.toString()}
                         numColumns={NUM_COLUMNS}
                         contentContainerStyle={[
                             styles.listContent,
@@ -308,10 +312,19 @@ export const SearchResultsScreen = () => {
                         scrollIndicatorInsets={{ bottom: tabBarHeight }}
                         columnWrapperStyle={styles.columnWrapper}
                         extraData={forceUpdate}
+                        keyboardShouldPersistTaps="handled"
+                        keyboardDismissMode="none"
+                        ListFooterComponent={
+                            isSearchLoading ? (
+                                <View style={styles.inlineLoader}>
+                                    <ActivityIndicator size="small" color={colors.primary} />
+                                </View>
+                            ) : null
+                        }
                     />
                 ) : (
                     <View style={styles.emptyResultsContainer}>
-                        {searchText || isFilterActive ? (
+                        {inputText.trim() || isFilterActive ? (
                             <>
                                 <Text style={styles.emptyResultsText}>
                                     По вашему запросу ничего не найдено
@@ -346,7 +359,12 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         backgroundColor: colors.background,
     },
     loadingContainer: {
+        flex: 1,
         justifyContent: 'center',
+        alignItems: 'center',
+    },
+    inlineLoader: {
+        paddingVertical: normalize(16),
         alignItems: 'center',
     },
     headerSection: {

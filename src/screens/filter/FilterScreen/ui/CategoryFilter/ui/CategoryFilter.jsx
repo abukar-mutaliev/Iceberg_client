@@ -12,7 +12,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronRight } from 'lucide-react-native';
 import { FontFamily } from '@app/styles/GlobalStyles';
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { ScrollableBackgroundGradient } from '@shared/ui/BackgroundGradient';
 import { Checkbox } from '@shared/ui/Checkbox';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
@@ -32,40 +32,69 @@ const normalizeFont = (size) => {
     return Math.round(PixelRatio.roundToNearestPixel(newSize));
 };
 
+const buildAvailableCategories = (productsList = []) => {
+    const uniqueCategories = [];
+
+    productsList.forEach((product) => {
+        if (product.categories && Array.isArray(product.categories)) {
+            product.categories.forEach((category) => {
+                if (category && category.id && category.name) {
+                    const exists = uniqueCategories.find((item) => item.id === category.id);
+                    if (!exists) {
+                        uniqueCategories.push({
+                            id: category.id,
+                            name: category.name,
+                            description: category.description || '',
+                        });
+                    }
+                }
+            });
+        }
+    });
+
+    return uniqueCategories.sort((a, b) => a.name.localeCompare(b.name));
+};
+
 export const CategoryFilter = ({ categories = [], onChange, products = [] }) => {
     const [modalVisible, setModalVisible] = useState(false);
     const [searchText, setSearchText] = useState('');
-    const [availableCategories, setAvailableCategories] = useState([]);
+    const [modalProducts, setModalProducts] = useState([]);
     const [selectedCategories, setSelectedCategories] = useState(categories);
-    const [contentHeight, setContentHeight] = useState(0);
     const insets = useSafeAreaInsets();
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     useEffect(() => {
-        if (products && products.length > 0) {
-            const uniqueCategories = [];
+        setSelectedCategories(categories);
+    }, [categories]);
 
-            products.forEach(product => {
-                if (product.categories && Array.isArray(product.categories)) {
-                    product.categories.forEach(category => {
-                        if (category && category.id && category.name) {
-                            const exists = uniqueCategories.find(c => c.id === category.id);
-                            if (!exists) {
-                                uniqueCategories.push({
-                                    id: category.id,
-                                    name: category.name,
-                                    description: category.description || ''
-                                });
-                            }
-                        }
-                    });
-                }
-            });
+    const availableCategories = useMemo(
+        () => buildAvailableCategories(modalProducts),
+        [modalProducts]
+    );
 
-            setAvailableCategories(uniqueCategories.sort((a, b) => a.name.localeCompare(b.name)));
+    const filteredCategories = useMemo(() => {
+        const query = searchText.trim().toLowerCase();
+        if (!query) {
+            return availableCategories;
         }
+
+        return availableCategories.filter((cat) =>
+            cat.name.toLowerCase().includes(query) ||
+            (cat.description && cat.description.toLowerCase().includes(query))
+        );
+    }, [availableCategories, searchText]);
+
+    const openModal = useCallback(() => {
+        setModalProducts(products);
+        setSearchText('');
+        setModalVisible(true);
     }, [products]);
+
+    const closeModal = useCallback(() => {
+        setModalVisible(false);
+        setSearchText('');
+    }, []);
 
     // Обработчик выбора категории
     const handleSelectCategory = (category) => {
@@ -83,26 +112,14 @@ export const CategoryFilter = ({ categories = [], onChange, products = [] }) => 
     // Обработчик применения выбранных категорий
     const handleApplyCategories = () => {
         onChange(selectedCategories);
-        setModalVisible(false);
-    };
-
-    // Фильтрация категорий по поисковому запросу
-    const filteredCategories = searchText.trim()
-        ? availableCategories.filter(cat =>
-            cat.name.toLowerCase().includes(searchText.toLowerCase()) ||
-            (cat.description && cat.description.toLowerCase().includes(searchText.toLowerCase()))
-        )
-        : availableCategories;
-
-    const onContentSizeChange = (width, height) => {
-        setContentHeight(height);
+        closeModal();
     };
 
     return (
         <View style={styles.container}>
             <TouchableOpacity
                 style={styles.selector}
-                onPress={() => setModalVisible(true)}
+                onPress={openModal}
                 activeOpacity={0.7}
             >
                 <Text style={styles.selectorText}>Категория</Text>
@@ -113,19 +130,19 @@ export const CategoryFilter = ({ categories = [], onChange, products = [] }) => 
                 animationType="slide"
                 transparent={false}
                 visible={modalVisible}
-                onRequestClose={() => setModalVisible(false)}
+                onRequestClose={closeModal}
             >
                 <View style={styles.modalContainer}>
                     <ThemedStatusBar />
                     <ScrollableBackgroundGradient
-                        contentHeight={contentHeight + 200}
+                        contentHeight={SCREEN_WIDTH * 2}
                         showOverlayGradient={false}
                     />
 
                     <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
                         <View style={[styles.modalHeader, { paddingTop: insets.top + normalize(4) }]}>
                             <TouchableOpacity
-                                onPress={() => setModalVisible(false)}
+                                onPress={closeModal}
                                 style={styles.closeButton}
                             >
                                 <Text style={styles.closeButtonText}>Закрыть</Text>
@@ -175,6 +192,8 @@ export const CategoryFilter = ({ categories = [], onChange, products = [] }) => 
                                     keyExtractor={(item) => item.id.toString()}
                                     contentContainerStyle={styles.listContent}
                                     scrollIndicatorInsets={{ bottom: normalize(12) }}
+                                    keyboardShouldPersistTaps="handled"
+                                    keyboardDismissMode="none"
                                     renderItem={({ item }) => (
                                         <TouchableOpacity
                                             style={styles.categoryItem}
@@ -189,7 +208,6 @@ export const CategoryFilter = ({ categories = [], onChange, products = [] }) => 
                                             />
                                         </TouchableOpacity>
                                     )}
-                                    onContentSizeChange={onContentSizeChange}
                                     ListEmptyComponent={() => (
                                         <Text style={styles.emptyMessage}>Категории не найдены</Text>
                                     )}

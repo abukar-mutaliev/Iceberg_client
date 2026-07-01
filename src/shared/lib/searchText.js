@@ -3,12 +3,20 @@ export const normalizeSearchText = (text) => {
     return text.toLowerCase().replace(/ё/g, 'е').trim();
 };
 
-export const productMatchesSearchQuery = (product, rawQuery) => {
-    const query = normalizeSearchText(rawQuery);
-    if (!query) return true;
-    if (!product) return false;
+export const getSearchTerms = (rawQuery) => {
+    const normalized = normalizeSearchText(rawQuery);
+    if (!normalized) return [];
 
-    const searchableFields = [
+    return normalized
+        .split(/\s+/)
+        .map((term) => term.trim())
+        .filter((term) => term.length >= 2);
+};
+
+export const getProductSearchableText = (product) => {
+    if (!product) return '';
+
+    const parts = [
         product.name,
         product.description,
         product.brand,
@@ -16,26 +24,24 @@ export const productMatchesSearchQuery = (product, rawQuery) => {
         product.supplier?.contactPerson,
     ];
 
-    if (searchableFields.some((field) => field && normalizeSearchText(field).includes(query))) {
-        return true;
+    if (Array.isArray(product.categories)) {
+        product.categories.forEach((category) => {
+            if (typeof category === 'string') {
+                parts.push(category);
+            } else if (category && typeof category === 'object') {
+                parts.push(category.name, category.description);
+            }
+        });
     }
 
-    if (!Array.isArray(product.categories)) {
-        return false;
-    }
+    return normalizeSearchText(parts.filter(Boolean).join(' '));
+};
 
-    return product.categories.some((category) => {
-        if (typeof category === 'string') {
-            return normalizeSearchText(category).includes(query);
-        }
+export const productMatchesSearchQuery = (product, rawQuery) => {
+    const terms = getSearchTerms(rawQuery);
+    if (!terms.length) return true;
+    if (!product) return false;
 
-        if (typeof category !== 'object' || category === null) {
-            return false;
-        }
-
-        return (
-            (category.name && normalizeSearchText(category.name).includes(query)) ||
-            (category.description && normalizeSearchText(category.description).includes(query))
-        );
-    });
+    const haystack = getProductSearchableText(product);
+    return terms.every((term) => haystack.includes(term));
 };
