@@ -12,9 +12,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import {
     fetchProducts,
+    searchProducts,
+    clearSearchResults,
     selectProducts,
     selectProductsLoading,
-    selectProductsError, resetCurrentProduct
+    selectProductsError,
+    selectSearchResults,
+    selectSearchLoading,
+    selectSearchError,
+    resetCurrentProduct
 } from '@entities/product';
 import { Loader } from '@shared/ui/Loader';
 import { FontFamily, FontSize } from '@app/styles/GlobalStyles';
@@ -47,7 +53,6 @@ import {
 export const SearchScreen = ({ navigation }) => {
     const { colors } = useTheme();
     const styles = useMemo(() => createStyles(colors), [colors]);
-    const [filteredProducts, setFilteredProducts] = useState([]);
     const [suggestedTags, setSuggestedTags] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [isFocused, setIsFocused] = useState(false);
@@ -61,8 +66,11 @@ export const SearchScreen = ({ navigation }) => {
 
     const dispatch = useDispatch();
     const products = useSelector(selectProducts);
+    const searchResults = useSelector(selectSearchResults);
     const isLoading = useSelector(selectProductsLoading);
+    const isSearchLoading = useSelector(selectSearchLoading);
     const error = useSelector(selectProductsError);
+    const searchError = useSelector(selectSearchError);
     const safeProducts = Array.isArray(products) ? products : [];
 
     const getReadableErrorMessage = useCallback((errorValue) => {
@@ -175,11 +183,15 @@ export const SearchScreen = ({ navigation }) => {
                 if (product.name) {
                     tags.add(product.name);
                 }
-                if (product.category) {
-                    tags.add(product.category);
+                if (Array.isArray(product.categories)) {
+                    product.categories.forEach((category) => {
+                        if (typeof category === 'object' && category?.name) {
+                            tags.add(category.name);
+                        }
+                    });
                 }
-                if (product.brand) {
-                    tags.add(product.brand);
+                if (product.supplier?.companyName) {
+                    tags.add(product.supplier.companyName);
                 }
             });
 
@@ -207,22 +219,20 @@ export const SearchScreen = ({ navigation }) => {
         }
     }, [keyboardVisible, navigation]);
 
-    // Фильтрация продуктов по поисковому запросу
+    // Серверный поиск по всему каталогу с debounce
     useEffect(() => {
-        if (searchQuery.trim() === '') {
-            setFilteredProducts([]);
-            return;
+        const trimmedQuery = searchQuery.trim();
+        if (!trimmedQuery) {
+            dispatch(clearSearchResults());
+            return undefined;
         }
 
-        const lowercaseQuery = searchQuery.toLowerCase();
-        const filtered = safeProducts.filter(product =>
-            (product.name && product.name.toLowerCase().includes(lowercaseQuery)) ||
-            (product.description && product.description.toLowerCase().includes(lowercaseQuery)) ||
-            (product.category && product.category.toLowerCase().includes(lowercaseQuery))
-        );
+        const timeoutId = setTimeout(() => {
+            dispatch(searchProducts({ search: trimmedQuery, page: 1, limit: 50 }));
+        }, 300);
 
-        setFilteredProducts(filtered);
-    }, [searchQuery, safeProducts]);
+        return () => clearTimeout(timeoutId);
+    }, [dispatch, searchQuery]);
 
     const handleProductPress = (product) => {
         console.log('SearchScreen: handleProductPress called with product:', product);
@@ -282,7 +292,7 @@ export const SearchScreen = ({ navigation }) => {
     // Обработчик очистки поля поиска
     const handleClearSearch = () => {
         setSearchQuery('');
-        // Важно: не вызываем здесь safelyFocusInput, это создает цикл
+        dispatch(clearSearchResults());
     };
 
     // Обработчик нажатия "Отмена"
@@ -371,11 +381,23 @@ export const SearchScreen = ({ navigation }) => {
 
                             {/* Когда поле поиска не пустое - показываем результаты поиска */}
                             {searchQuery.trim() !== '' && (
-                                <ProductSuggestions
-                                    products={filteredProducts}
-                                    searchQuery={searchQuery}
-                                    onProductPress={handleProductPress}
-                                />
+                                <>
+                                    {isSearchLoading ? (
+                                        <Loader />
+                                    ) : searchError ? (
+                                        <View style={styles.errorContainer}>
+                                            <Text style={styles.errorText}>
+                                                {getReadableErrorMessage(searchError)}
+                                            </Text>
+                                        </View>
+                                    ) : (
+                                        <ProductSuggestions
+                                            products={searchResults}
+                                            searchQuery={searchQuery}
+                                            onProductPress={handleProductPress}
+                                        />
+                                    )}
+                                </>
                             )}
 
                             {/* Когда поле поиска не в фокусе - показываем популярные теги */}

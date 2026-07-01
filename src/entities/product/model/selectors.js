@@ -51,6 +51,13 @@ export const selectProductsCurrentPage = (state) => state.products?.currentPage 
 export const selectProductsTotalPages = (state) => state.products?.totalPages || 1;
 export const selectProductsTotalItems = (state) => state.products?.totalItems || 0;
 
+export const selectSearchResults = (state) => state.products?.searchResults || EMPTY_ARRAY;
+export const selectSearchLoading = (state) => state.products?.searchLoading || false;
+export const selectSearchError = (state) => state.products?.searchError || null;
+export const selectSearchQuery = (state) => state.products?.searchQuery || '';
+export const selectSearchHasMore = (state) => state.products?.searchHasMore || false;
+export const selectSearchCurrentPage = (state) => state.products?.searchCurrentPage || 1;
+
 // Check if a specific product is deleted
 export const selectIsProductDeleted = (state, productId) => {
     if (!productId) return false;

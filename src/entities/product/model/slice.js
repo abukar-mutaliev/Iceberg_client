@@ -16,6 +16,14 @@ const initialState = {
     totalPages: 1,
     totalItems: 0,
     lastFetchScope: 'default',
+    searchResults: [],
+    searchLoading: false,
+    searchError: null,
+    searchQuery: '',
+    searchCurrentPage: 1,
+    searchTotalPages: 1,
+    searchTotalItems: 0,
+    searchHasMore: false,
     // Tracks product IDs that are actually deleted/not found.
     // Temporarily unavailable products must not be stored here,
     // otherwise detail navigation breaks for the whole session.
@@ -140,6 +148,66 @@ export const fetchProducts = createAsyncThunk(
         } catch (error) {
             console.error('Ошибка запроса продуктов:', error);
             return rejectWithValue(error.message || 'Ошибка при загрузке продуктов');
+        }
+    }
+);
+
+export const searchProducts = createAsyncThunk(
+    'products/searchProducts',
+    async ({ search, page = 1, limit = 50, inStock = false } = {}, { rejectWithValue }) => {
+        try {
+            const trimmedSearch = search?.trim();
+            if (!trimmedSearch) {
+                return {
+                    data: [],
+                    pagination: {
+                        currentPage: 1,
+                        totalPages: 1,
+                        totalItems: 0,
+                        hasMore: false,
+                    },
+                    page: 1,
+                    search: '',
+                };
+            }
+
+            const response = await productsApi.searchProducts({
+                search: trimmedSearch,
+                page,
+                limit,
+                inStock: inStock ? 'true' : 'false',
+            });
+
+            let products = [];
+            let pagination = {
+                currentPage: page,
+                totalPages: 1,
+                totalItems: 0,
+                hasMore: false,
+            };
+
+            if (response?.status === 'success' && response?.data) {
+                products = Array.isArray(response.data.products) ? response.data.products : [];
+                const serverPagination = response.data.pagination || {};
+                const totalPages = serverPagination.pages || serverPagination.totalPages || 1;
+
+                pagination = {
+                    currentPage: serverPagination.page || page,
+                    totalPages,
+                    totalItems: serverPagination.total || products.length,
+                    hasMore: page < totalPages,
+                };
+            }
+
+            return {
+                data: products.filter((item) => item?.id),
+                pagination,
+                page,
+                search: trimmedSearch,
+            };
+        } catch (error) {
+            console.error('Ошибка поиска продуктов:', error);
+            return rejectWithValue(error.message || 'Ошибка при поиске продуктов');
         }
     }
 );
@@ -398,6 +466,16 @@ const productsSlice = createSlice({
         clearDeletedProductIds: (state) => {
             state.deletedProductIds = [];
         },
+        clearSearchResults: (state) => {
+            state.searchResults = [];
+            state.searchLoading = false;
+            state.searchError = null;
+            state.searchQuery = '';
+            state.searchCurrentPage = 1;
+            state.searchTotalPages = 1;
+            state.searchTotalItems = 0;
+            state.searchHasMore = false;
+        },
     },
     extraReducers: (builder) => {
         builder
@@ -460,6 +538,48 @@ const productsSlice = createSlice({
                 state.loadingMore = false;
                 state.error = action.payload;
                 state.fetchCompleted = true;
+            })
+
+            .addCase(searchProducts.pending, (state, action) => {
+                const { page = 1 } = action.meta.arg || {};
+                state.searchLoading = true;
+                state.searchError = null;
+                if (page === 1) {
+                    state.searchResults = [];
+                }
+            })
+            .addCase(searchProducts.fulfilled, (state, action) => {
+                state.searchLoading = false;
+                const { data: products, pagination, page = 1, search = '' } = action.payload;
+                const validProducts = Array.isArray(products)
+                    ? products.filter((item) => item?.id)
+                    : [];
+
+                if (page === 1) {
+                    state.searchResults = validProducts;
+                } else {
+                    const existingIds = new Set(state.searchResults.map((item) => item.id));
+                    const newProducts = validProducts.filter((product) => !existingIds.has(product.id));
+                    state.searchResults = [...state.searchResults, ...newProducts];
+                }
+
+                validProducts.forEach((product) => {
+                    if (product?.id) {
+                        state.byId[product.id] = product;
+                    }
+                });
+
+                state.searchQuery = search;
+                if (pagination) {
+                    state.searchCurrentPage = pagination.currentPage;
+                    state.searchTotalPages = pagination.totalPages;
+                    state.searchTotalItems = pagination.totalItems;
+                    state.searchHasMore = pagination.hasMore;
+                }
+            })
+            .addCase(searchProducts.rejected, (state, action) => {
+                state.searchLoading = false;
+                state.searchError = action.payload;
             })
 
             .addCase(fetchProductById.pending, (state) => {
@@ -665,6 +785,7 @@ export const {
     setProducts,
     clearProductsError,
     markProductAsDeleted,
-    clearDeletedProductIds
+    clearDeletedProductIds,
+    clearSearchResults
 } = productsSlice.actions;
 export default productsSlice.reducer;

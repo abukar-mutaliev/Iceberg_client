@@ -1,7 +1,10 @@
 import { createSelector } from '@reduxjs/toolkit';
 // Импортируем напрямую из файлов, чтобы избежать циклической зависимости
-import { selectProducts } from '@entities/product/model/selectors';
+import { selectProducts, selectSearchResults } from '@entities/product/model/selectors';
 import { applyFiltersToProducts } from "../lib/applyFiltersToProducts";
+import { productMatchesSearchQuery } from '@shared/lib/searchText';
+
+const EMPTY_ARRAY = [];
 
 export const selectFilterCriteria = (state) => {
     return state.filter?.criteria;
@@ -98,33 +101,33 @@ export const selectAppliedFilters = createSelector(
 export const selectFilteredProductsBySearch = createSelector(
     [
         selectProducts,
+        selectSearchResults,
         selectFilterCriteria,
         selectIsFilterActive,
         (state, searchQuery) => searchQuery || ''
     ],
-    (products, filterCriteria, isFilterActive, searchQuery) => {
+    (products, searchResults, filterCriteria, isFilterActive, searchQuery) => {
+        const trimmedQuery = searchQuery?.trim() || '';
+        const sourceProducts = trimmedQuery
+            ? (Array.isArray(searchResults) ? searchResults : EMPTY_ARRAY)
+            : (Array.isArray(products) ? products : EMPTY_ARRAY);
 
-        if (!products || !Array.isArray(products) || products.length === 0) {
+        if (!sourceProducts.length) {
             return [];
         }
 
-        let filteredProducts = [...products];
+        let filteredProducts = [...sourceProducts];
 
         if (isFilterActive && filterCriteria) {
             filteredProducts = applyFiltersToProducts(filteredProducts, filterCriteria);
         }
 
-        if (searchQuery && searchQuery.trim() !== '') {
-            const query = searchQuery.toLowerCase().trim();
-            filteredProducts = filteredProducts.filter(product =>
-                (product.name && product.name.toLowerCase().includes(query)) ||
-                (product.description && product.description.toLowerCase().includes(query)) ||
-                (product.categories && Array.isArray(product.categories) && product.categories.some(cat =>
-                    (typeof cat === 'object' && cat.name && cat.name.toLowerCase().includes(query)) ||
-                    (typeof cat === 'object' && cat.description && cat.description.toLowerCase().includes(query))
-                ))
+        if (trimmedQuery) {
+            filteredProducts = filteredProducts.filter((product) =>
+                productMatchesSearchQuery(product, trimmedQuery)
             );
         }
+
         return filteredProducts;
     }
 );

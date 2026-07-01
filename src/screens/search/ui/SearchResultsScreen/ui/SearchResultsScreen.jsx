@@ -22,17 +22,16 @@ import { FilterIcon } from '@shared/ui/Icon/SearchIcons/FilterIcon';
 import { AppliedFilters } from '@features/filter/AppliedFilters';
 
 import {
-    fetchProducts,
-    selectProducts,
-    selectProductsLoading,
+    searchProducts,
     selectProductsError,
+    selectSearchLoading,
+    selectSearchError,
     ProductTile
 } from '@entities/product';
 
 import {
     selectIsFilterActive,
-    selectFilterCriteria,
-    applyFiltersToProducts,
+    selectFilteredProductsBySearch,
     clearFilterCriteria
 } from '@entities/filter';
 
@@ -72,11 +71,12 @@ export const SearchResultsScreen = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [forceUpdate, setForceUpdate] = useState(0);
 
-    const products = useSelector(selectProducts);
+    const filteredProducts = useSelector((state) => selectFilteredProductsBySearch(state, searchText));
     const isFilterActive = useSelector(selectIsFilterActive);
-    const filterCriteria = useSelector(selectFilterCriteria);
-    const isProductsLoading = useSelector(selectProductsLoading);
+    const isSearchLoading = useSelector(selectSearchLoading);
     const productsError = useSelector(selectProductsError);
+    const searchError = useSelector(selectSearchError);
+    const activeError = searchError || productsError;
 
     const getReadableErrorMessage = useCallback((errorValue) => {
         if (!errorValue) {
@@ -106,33 +106,18 @@ export const SearchResultsScreen = () => {
         return rawMessage || 'Не удалось загрузить результаты поиска. Попробуйте снова.';
     }, []);
 
-    const filteredProducts = useMemo(() => {
-        let result = Array.isArray(products) ? [...products] : [];
-
-        if (isFilterActive && filterCriteria) {
-            result = applyFiltersToProducts(result, filterCriteria);
-        }
-
-        if (searchText && searchText.trim() !== '') {
-            const query = searchText.toLowerCase().trim();
-            result = result.filter(product =>
-                (product.name && product.name.toLowerCase().includes(query)) ||
-                (product.description && product.description.toLowerCase().includes(query)) ||
-                (product.categories && Array.isArray(product.categories) && product.categories.some(cat =>
-                    (typeof cat === 'object' && cat.name && cat.name.toLowerCase().includes(query)) ||
-                    (typeof cat === 'object' && cat.description && cat.description.toLowerCase().includes(query))
-                ))
-            );
-        }
-
-        return result;
-    }, [products, isFilterActive, filterCriteria, searchText]);
-
     useEffect(() => {
-        if (!products?.length) {
-            dispatch(fetchProducts());
+        const trimmedQuery = searchText.trim();
+        if (!trimmedQuery) {
+            return;
         }
-    }, [dispatch, products]);
+
+        const timeoutId = setTimeout(() => {
+            dispatch(searchProducts({ search: trimmedQuery, page: 1, limit: 50 }));
+        }, 300);
+
+        return () => clearTimeout(timeoutId);
+    }, [dispatch, searchText]);
 
     useEffect(() => {
         if (searchQuery) {
@@ -216,7 +201,7 @@ export const SearchResultsScreen = () => {
         );
     };
 
-    if (isProductsLoading || isLoading) {
+    if ((isSearchLoading && !filteredProducts.length) || isLoading) {
         return (
             <View style={[styles.container, styles.loadingContainer]}>
                 <ActivityIndicator size="large" color={colors.primary} />
@@ -299,13 +284,13 @@ export const SearchResultsScreen = () => {
 
             {/* Нижняя часть с белым фоном и сеткой продуктов */}
             <View style={styles.contentWrapper}>
-                {productsError ? (
+                {activeError ? (
                     <View style={styles.emptyResultsContainer}>
                         <Text style={styles.emptyResultsText}>
                             Не удалось загрузить товары
                         </Text>
                         <Text style={styles.emptyResultsHint}>
-                            {getReadableErrorMessage(productsError)}
+                            {getReadableErrorMessage(activeError)}
                         </Text>
                     </View>
                 ) : filteredProducts.length > 0 ? (
