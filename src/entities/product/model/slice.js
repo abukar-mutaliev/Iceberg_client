@@ -154,7 +154,7 @@ export const fetchProducts = createAsyncThunk(
 
 export const searchProducts = createAsyncThunk(
     'products/searchProducts',
-    async ({ search, page = 1, limit = 50, inStock = false } = {}, { rejectWithValue }) => {
+    async ({ search, page = 1, limit = 50 } = {}, { rejectWithValue }) => {
         try {
             const trimmedSearch = search?.trim();
             if (!trimmedSearch) {
@@ -171,11 +171,10 @@ export const searchProducts = createAsyncThunk(
                 };
             }
 
-            const response = await productsApi.searchProducts({
+            const response = await productsApi.getProducts({
                 search: trimmedSearch,
                 page,
                 limit,
-                inStock: inStock ? 'true' : 'false',
             });
 
             let products = [];
@@ -186,17 +185,30 @@ export const searchProducts = createAsyncThunk(
                 hasMore: false,
             };
 
-            if (response?.status === 'success' && response?.data) {
-                products = Array.isArray(response.data.products) ? response.data.products : [];
-                const serverPagination = response.data.pagination || {};
-                const totalPages = serverPagination.pages || serverPagination.totalPages || 1;
+            if (response?.status === 'success') {
+                if (Array.isArray(response.data)) {
+                    products = response.data;
+                } else if (Array.isArray(response.data?.products)) {
+                    products = response.data.products;
+                }
 
-                pagination = {
-                    currentPage: serverPagination.page || page,
-                    totalPages,
-                    totalItems: serverPagination.total || products.length,
-                    hasMore: page < totalPages,
-                };
+                if (response.pagination) {
+                    pagination = {
+                        currentPage: response.pagination.currentPage || page,
+                        totalPages: response.pagination.totalPages || 1,
+                        totalItems: response.pagination.totalItems || products.length,
+                        hasMore: response.pagination.hasMore ?? (page < (response.pagination.totalPages || 1)),
+                    };
+                } else if (response.data?.pagination) {
+                    const serverPagination = response.data.pagination;
+                    const totalPages = serverPagination.pages || serverPagination.totalPages || 1;
+                    pagination = {
+                        currentPage: serverPagination.page || page,
+                        totalPages,
+                        totalItems: serverPagination.total || products.length,
+                        hasMore: page < totalPages,
+                    };
+                }
             }
 
             return {
@@ -207,7 +219,9 @@ export const searchProducts = createAsyncThunk(
             };
         } catch (error) {
             console.error('Ошибка поиска продуктов:', error);
-            return rejectWithValue(error.message || 'Ошибка при поиске продуктов');
+            return rejectWithValue(
+                error?.message || error?.response?.data?.message || 'Ошибка при поиске продуктов'
+            );
         }
     }
 );
