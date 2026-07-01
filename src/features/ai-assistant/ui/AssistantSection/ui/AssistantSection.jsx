@@ -1,12 +1,13 @@
 import React, { useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { CommonActions, useNavigation } from '@react-navigation/native';
-import { buildAssistantChatNavigatorState } from '../../../lib/assistantNavigation';
+import { useNavigation } from '@react-navigation/native';
+import { navigateToAssistantChat } from '../../../lib/assistantNavigation';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { FontFamily } from '@app/styles/GlobalStyles';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { ASSISTANT_CHAT_TITLE } from '../../../constants';
+import { AssistantAvatar } from '../../AssistantAvatar';
 
 /**
  * Секция-вход в чат с ИИ-помощником (на экране Центра помощи).
@@ -17,18 +18,7 @@ export const AssistantSection = () => {
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     const openAssistantChat = useCallback(() => {
-        const assistantParams = { fromScreen: 'HelpCenter' };
-        const tabNavigation = navigation.getParent?.();
-        if (tabNavigation) {
-            tabNavigation.dispatch(
-                CommonActions.navigate({
-                    name: 'ChatList',
-                    params: { state: buildAssistantChatNavigatorState(assistantParams) },
-                })
-            );
-            return;
-        }
-        navigation.navigate('AssistantChat', assistantParams);
+        navigateToAssistantChat(navigation, { fromScreen: 'HelpCenter' });
     }, [navigation]);
 
     return (
@@ -39,7 +29,7 @@ export const AssistantSection = () => {
                 onPress={openAssistantChat}
                 activeOpacity={0.8}
             >
-                <Icon name="smart-toy" size={normalize(28)} color={colors.primary} />
+                <AssistantAvatar size="card" />
                 <View style={styles.cardText}>
                     <Text style={styles.cardTitle}>Спросить помощника</Text>
                     <Text style={styles.cardSubtitle}>

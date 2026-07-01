@@ -18,7 +18,7 @@ import IconWarehouse from '@shared/ui/Icon/Warehouse/IconWarehouse';
 import {Ionicons} from '@expo/vector-icons';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
-import { ASSISTANT_CHAT_TITLE, isAssistantRoom } from '@features/ai-assistant';
+import { ASSISTANT_CHAT_TITLE, AssistantAvatar, isAssistantRoom } from '@features/ai-assistant';
 
 const ROOMS_PAGE_LIMIT = 100;
 
@@ -957,14 +957,14 @@ export const ChatListScreen = ({navigation}) => {
                 onLongPress={() => handleRoomLongPress(item)}
                 delayLongPress={300}
             >
-                <View style={styles.avatarBox}>
-                    {avatarUri ? (
+                <View style={[styles.avatarBox, isAssistantRoom(item) && styles.avatarBoxAssistant]}>
+                    {isAssistantRoom(item) ? (
+                        <AssistantAvatar size="list" />
+                    ) : avatarUri ? (
                         <Image source={{uri: avatarUri}} style={styles.avatarImg} resizeMode="cover"/>
                     ) : (
                         <View style={styles.avatarPlaceholder}>
-                            {isAssistantRoom(item) ? (
-                                <Text style={styles.groupPlaceholderText}>🤖</Text>
-                            ) : item.type === 'BROADCAST' ? (
+                            {item.type === 'BROADCAST' ? (
                                 <Text style={styles.groupPlaceholderText}>📢</Text>
                             ) : item.type === 'GROUP' ? (
                                 <Text style={styles.groupPlaceholderText}>👥</Text>
@@ -1173,6 +1173,11 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         shadowOpacity: isDark ? 0.3 : 0.1,
         shadowRadius: 2,
         elevation: 2,
+    },
+    avatarBoxAssistant: {
+        backgroundColor: 'transparent',
+        shadowOpacity: 0,
+        elevation: 0,
     },
     avatarImg: {
         width: '100%',

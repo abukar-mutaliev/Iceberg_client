@@ -25,6 +25,8 @@ import { getImageUrl } from '@shared/api/api';
 import { debounce } from 'lodash';
 import { getProductChatShareBlockReason } from '@shared/lib/productChatShare';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { AssistantAvatar } from '@features/ai-assistant';
+import { navigateToAssistantChat } from '@features/ai-assistant/lib/assistantNavigation';
 
 export const RepostProductContent = ({ product, currentUser, onClose }) => {
   const navigation = useNavigation();
@@ -290,11 +292,7 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
       return;
     }
     onClose();
-    const rootNavigation =
-      navigation?.getParent?.('AppStack') ||
-      navigation?.getParent?.()?.getParent?.() ||
-      null;
-    (rootNavigation || navigation).navigate('AssistantChat', {
+    navigateToAssistantChat(navigation, {
       product: {
         id: product.id,
         name: product.name,
@@ -725,9 +723,7 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
           onPress={handleSendToAssistant}
           disabled={sending || !!shareBlockReason}
         >
-          <View style={[styles.avatarContainer, adaptiveStyles.avatarContainer, styles.assistantAvatar]}>
-            <Icon name="smart-toy" size={adaptiveStyles.iconSize + 2} color="#ffffff" />
-          </View>
+          <AssistantAvatar size="compact" />
           <View style={styles.chatInfo}>
             <Text style={[styles.chatTitle, adaptiveStyles.chatTitle]} numberOfLines={1}>Помощник</Text>
             <Text style={[styles.chatPreview, adaptiveStyles.chatPreview]} numberOfLines={1}>

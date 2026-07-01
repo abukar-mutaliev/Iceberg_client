@@ -34,6 +34,7 @@ import { employeeApiMethods } from '@entities/user/api/userApi';
 import { profileApi } from '@entities/profile/api/profileApi';
 import { fetchAllDistricts } from '@entities/district/model/slice';
 import { loadUserProfile } from '@entities/auth/model/slice';
+import { navigateToAssistantChat } from '@features/ai-assistant/lib/assistantNavigation';
 
 import {
     StaticBackgroundGradient,
@@ -500,11 +501,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
 
         // Клиент задаёт вопрос ИИ-помощнику с прикреплённой карточкой товара
         if (userRole === 'CLIENT' && enrichedProduct?.id) {
-            const rootNavigation =
-                navigation?.getParent?.('AppStack') ||
-                navigation?.getParent?.()?.getParent?.() ||
-                null;
-            (rootNavigation || navigation).navigate('AssistantChat', {
+            navigateToAssistantChat(navigation, {
                 product: {
                     id: enrichedProduct.id,
                     name: enrichedProduct.name,
