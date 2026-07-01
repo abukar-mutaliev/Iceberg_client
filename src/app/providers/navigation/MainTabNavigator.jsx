@@ -19,12 +19,6 @@ const MainTabNavigatorContent = ({
     const insets = useSafeAreaInsets();
     const tabBarHeight = 80 + insets.bottom;
 
-    React.useEffect(() => {
-        if (__DEV__) {
-            console.log('🎯 TabBar visibility changed:', isTabBarVisible);
-        }
-    }, [isTabBarVisible]);
-
     const tabBarStyle = React.useMemo(() => {
         const baseStyle = {
             position: 'absolute',
@@ -48,9 +42,6 @@ const MainTabNavigatorContent = ({
             opacity: 0,
             overflow: 'hidden',
         };
-        if (__DEV__) {
-            console.log('📐 TabBar style:', style);
-        }
         return style;
     }, [isTabBarVisible, tabBarHeight]);
 

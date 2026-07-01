@@ -518,6 +518,11 @@ export const GroupChatScreen = ({ route, navigation }) => {
       roomId 
     });
   }, [currentUserId, navigation, roomId]);
+
+  const handleAvatarPress = useCallback((senderId) => {
+    if (isSelectionMode) return;
+    handleSenderNamePress(senderId);
+  }, [isSelectionMode, handleSenderNamePress]);
   
   const handleLeaveGroup = useCallback(() => {
     closeMenuModal();
@@ -607,7 +612,7 @@ export const GroupChatScreen = ({ route, navigation }) => {
             onOpenContact={handleOpenContact}
             onOpenWarehouse={handleOpenWarehouse}
             onImagePress={(imageUri) => handleImagePress(imageUri, messages)}
-            onAvatarPress={() => {}} // В групповых чатах аватар не кликабелен
+            onAvatarPress={handleAvatarPress}
             onContactDriver={() => {}} // Не используется в групповых чатах
             onReply={handleReply}
             onReplyPress={handleReplyPress}

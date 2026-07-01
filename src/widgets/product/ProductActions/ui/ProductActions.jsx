@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { StyleSheet, View, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
-import {deleteProduct, fetchProductById, resetCurrentProduct, updateProductOptimistic} from '@entities/product';
+import {deleteProduct, fetchProductById, resetCurrentProduct, updateProductOptimistic, clearProductsCache, fetchProducts} from '@entities/product';
 import { fetchCategories } from '@entities/category';
 import { fetchProfile } from '@entities/profile';
 import Text from '@shared/ui/Text/Text';
@@ -261,19 +261,27 @@ export const ProductActions = React.memo(({
             `Вы уверены, что хотите удалить товар "${product.name}"?`,
             async () => {
                 try {
-                    // Сначала сбрасываем текущий продукт в Redux, чтобы предотвратить загрузку удаленного товара
                     dispatch(resetCurrentProduct());
 
-                    await dispatch(deleteProduct(product.id)).unwrap();
-                    
-                    // Показываем алерт успеха сразу
-                    GlobalAlert.showSuccess('', 'Товар успешно удален');
+                    const result = await dispatch(deleteProduct(product.id)).unwrap();
 
-                    // Возвращаемся назад к списку продуктов (без задержки)
+                    dispatch(clearProductsCache());
+                    dispatch(fetchProducts({
+                        page: 1,
+                        limit: 200,
+                        refresh: true,
+                        usePublicCatalog: false,
+                    }));
+
+                    const successMessage = result?.action === 'archived'
+                        ? (result?.message || 'Товар архивирован и скрыт из каталога')
+                        : 'Товар успешно удален';
+
+                    GlobalAlert.showSuccess('', successMessage);
+
                     if (navigation.canGoBack()) {
                         navigation.goBack();
                     } else {
-                        // Если нельзя вернуться назад, возвращаемся к главному экрану
                         navigation.navigate('Main');
                     }
                 } catch (error) {

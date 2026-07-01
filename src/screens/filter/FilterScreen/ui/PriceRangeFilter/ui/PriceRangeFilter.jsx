@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
     View,
     Text,
@@ -31,13 +31,23 @@ export const PriceRangeFilter = ({
                                  }) => {
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+    const [localMinPrice, setLocalMinPrice] = useState(minPrice ? String(minPrice) : '');
+    const [localMaxPrice, setLocalMaxPrice] = useState(maxPrice ? String(maxPrice) : '');
 
-    const handleMinPriceChange = (text) => {
+    useEffect(() => {
+        setLocalMinPrice(minPrice ? String(minPrice) : '');
+    }, [minPrice]);
+
+    useEffect(() => {
+        setLocalMaxPrice(maxPrice ? String(maxPrice) : '');
+    }, [maxPrice]);
+
+    const commitMinPrice = (text) => {
         const value = text.replace(/[^0-9]/g, '');
         onChangeMinPrice(value ? parseInt(value, 10) : 0);
     };
 
-    const handleMaxPriceChange = (text) => {
+    const commitMaxPrice = (text) => {
         const value = text.replace(/[^0-9]/g, '');
         onChangeMaxPrice(value ? parseInt(value, 10) : 0);
     };
@@ -48,8 +58,9 @@ export const PriceRangeFilter = ({
             <View style={styles.inputsContainer}>
                 <TextInput
                     style={styles.input}
-                    value={minPrice?.toString() || ''}
-                    onChangeText={handleMinPriceChange}
+                    value={localMinPrice}
+                    onChangeText={setLocalMinPrice}
+                    onBlur={() => commitMinPrice(localMinPrice)}
                     keyboardType="numeric"
                     keyboardAppearance={colors.keyboardAppearance}
                     placeholder="45"
@@ -58,8 +69,9 @@ export const PriceRangeFilter = ({
                 <View style={styles.separator} />
                 <TextInput
                     style={styles.input}
-                    value={maxPrice?.toString() || ''}
-                    onChangeText={handleMaxPriceChange}
+                    value={localMaxPrice}
+                    onChangeText={setLocalMaxPrice}
+                    onBlur={() => commitMaxPrice(localMaxPrice)}
                     keyboardType="numeric"
                     keyboardAppearance={colors.keyboardAppearance}
                     placeholder="180"

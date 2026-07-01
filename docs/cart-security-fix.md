@@ -27,7 +27,6 @@ export const fetchCart = createAsyncThunk(
         
         // Для неавторизованных пользователей НЕ делаем запрос к серверу
         if (!isAuthenticated) {
-            console.log(`🛒 fetchCart: Guest user detected, returning local cart state`);
             return { 
                 data: {
                     items: state.cart?.items || [],

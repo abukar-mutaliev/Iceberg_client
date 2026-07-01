@@ -4,6 +4,17 @@ import { createPublicRequest } from '@shared/api/api';
 const productsApi = createApiModule('/api/products');
 
 const ProductsService = {
+    searchProducts: (params = {}) => {
+        const requestConfig = {
+            headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache',
+            },
+        };
+
+        return productsApi.get('/search', params, requestConfig);
+    },
+
     getProducts: (params = {}, options = {}) => {
         const requestConfig = {
             headers: {

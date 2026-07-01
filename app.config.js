@@ -6,7 +6,7 @@ export default {
     expo: {
         name: IS_DEV ? 'Iceberg (Dev)' : 'Iceberg',
         slug: 'iceberg',
-        version: '1.4.2',
+        version: '1.4.3',
         scheme: 'iceberg',
         icon: './assets/notification-icon.png',
         userInterfaceStyle: 'automatic',
@@ -47,6 +47,16 @@ export default {
                         networkSecurityConfig: './network_security_config.xml',
                         enableProguardInReleaseBuilds: true,
                         enableShrinkResourcesInReleaseBuilds: true,
+                        extraProguardRules: `
+# Prevent ClassCastException: MainApplication -> ReactApplication at startup (R8 release builds)
+-keep interface com.facebook.react.ReactApplication { *; }
+-keep class * implements com.facebook.react.ReactApplication { *; }
+-keep class com.abuingush.iceberg.MainApplication { *; }
+-keep class com.abuingush.iceberg.MainActivity { *; }
+-keep class com.facebook.react.** { *; }
+-keep class expo.modules.** { *; }
+-keepattributes *Annotation*
+                        `.trim(),
                         ...(IS_PREVIEW_DEBUG && {
                             enableHermes: true,
                             enableProfiling: true,
@@ -90,8 +100,8 @@ export default {
         android: {
             googleServicesFile: './google-services.json',
             package: 'com.abuingush.iceberg',
-            versionCode: 54,
-            versionName: '1.5.4',
+            versionCode: 55,
+            versionName: '1.5.5',
             icon: './assets/icon.png',
             userInterfaceStyle: 'automatic',
             adaptiveIcon: {

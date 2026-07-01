@@ -4,7 +4,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import { useRoute, useFocusEffect } from '@react-navigation/native';
 import { Color, FontFamily, FontSize, CommonStyles } from '@app/styles/GlobalStyles';
-import { EmptyState } from '@shared/ui/states/EmptyState';
 import { Loader } from "@shared/ui/Loader";
 import {
     selectStops,
@@ -337,16 +336,57 @@ export const StopsListScreen = ({ navigation }) => {
         return 'Все остановки';
     };
 
-    const getEmptyMessage = () => {
+    const clientTodayStops = useMemo(() => {
+        if (isPrivilegedUser) {
+            return [];
+        }
+        return safeStops.filter(hasPublicVisibleTime);
+    }, [safeStops, isPrivilegedUser]);
+
+    const getEmptyStateContent = () => {
         if (debouncedSearchQuery.trim() !== '') {
             const cleanQuery = debouncedSearchQuery.trim();
-            return `По запросу "${cleanQuery}" ничего не найдено`;
-        } else if (selectedDistrictId && selectedDistrictName) {
-            return `В районе "${selectedDistrictName}" нет остановок`;
-        } else if (selectedDistrictId) {
-            return "В этом районе нет остановок";
+            return {
+                title: 'Ничего не найдено',
+                message: `По запросу «${cleanQuery}» остановок не найдено.`,
+            };
         }
-        return "Список остановок пуст";
+
+        if (!isPrivilegedUser) {
+            if (clientTodayStops.length === 0) {
+                return {
+                    title: 'Сегодня остановок нет',
+                    message: 'Вся информация об остановках публикуется в канале «Маршруты» в чате.',
+                };
+            }
+
+            if (selectedDistrictId) {
+                const districtLabel = selectedDistrictName ? `«${selectedDistrictName}»` : 'выбранном районе';
+                return {
+                    title: 'Сегодня в этом районе нет остановок',
+                    message: `В районе ${districtLabel} сегодня остановок нет. Следите за обновлениями в канале «Маршруты» в чате.`,
+                };
+            }
+        }
+
+        if (selectedDistrictId && selectedDistrictName) {
+            return {
+                title: 'Остановок нет',
+                message: `В районе «${selectedDistrictName}» остановок не найдено.`,
+            };
+        }
+
+        if (selectedDistrictId) {
+            return {
+                title: 'Остановок нет',
+                message: 'В этом районе остановок не найдено.',
+            };
+        }
+
+        return {
+            title: 'Список остановок пуст',
+            message: 'Пока нет доступных остановок.',
+        };
     };
 
     const resetFilter = () => {
@@ -370,6 +410,22 @@ export const StopsListScreen = ({ navigation }) => {
 
     const loaderAccent = isDark ? colors.primary : Color.purpleSoft;
     const iconMuted = isDark ? colors.textSecondary : Color.gray;
+
+    const renderEmptyState = () => {
+        const { title, message } = getEmptyStateContent();
+
+        return (
+            <View style={styles.emptySection}>
+                <View style={styles.emptyCard}>
+                    <View style={styles.emptyIconWrap}>
+                        <Ionicons name="bus-outline" size={28} color={loaderAccent} />
+                    </View>
+                    <Text style={styles.emptyTitle}>{title}</Text>
+                    <Text style={styles.emptyText}>{message}</Text>
+                </View>
+            </View>
+        );
+    };
 
     const renderSearchBar = () => (
         <View style={styles.searchContainer}>
@@ -452,9 +508,7 @@ export const StopsListScreen = ({ navigation }) => {
                         </View>
                     </View>
                 ) : sortedStops.length === 0 && !loading ? (
-                    <EmptyState
-                        message={getEmptyMessage()}
-                    />
+                    renderEmptyState()
                 ) : (
                     <View style={styles.locationsList}>
                         {sortedStops.map((stop) => {
@@ -701,6 +755,48 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     clearButton: {
         padding: 4,
         marginLeft: 8,
+    },
+    emptySection: {
+        paddingHorizontal: 16,
+        paddingTop: 12,
+    },
+    emptyCard: {
+        alignItems: 'center',
+        backgroundColor: isDark ? colors.cardBackground : '#ffffff',
+        borderRadius: 16,
+        paddingHorizontal: 20,
+        paddingVertical: 24,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: isDark ? 0.35 : 0.08,
+        shadowRadius: 10,
+        elevation: 3,
+        borderWidth: isDark ? 1 : 0,
+        borderColor: isDark ? colors.border : 'transparent',
+    },
+    emptyIconWrap: {
+        width: 56,
+        height: 56,
+        borderRadius: 16,
+        backgroundColor: isDark ? colors.surfaceElevated : '#f3f0ff',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 14,
+    },
+    emptyTitle: {
+        fontSize: FontSize.size_lg,
+        fontWeight: '700',
+        color: colors.textPrimary,
+        fontFamily: FontFamily.sFProText,
+        textAlign: 'center',
+        marginBottom: 8,
+    },
+    emptyText: {
+        fontSize: FontSize.size_md,
+        color: colors.textSecondary,
+        fontFamily: FontFamily.sFProText,
+        textAlign: 'center',
+        lineHeight: 22,
     },
     errorSection: {
         paddingHorizontal: 16,

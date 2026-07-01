@@ -80,13 +80,11 @@ export const fetchCart = createAsyncThunk(
             const isCartAvailable = userRole === 'CLIENT' || !isAuthenticated;
 
             if (!isCartAvailable) {
-                console.log(`🛒 fetchCart: Cart not available for role ${userRole || 'unknown'}, skipping fetch`);
                 return rejectWithValue('Корзина недоступна для данной роли');
             }
 
             // Для неавторизованных пользователей НЕ делаем запрос к серверу
             if (!isAuthenticated) {
-                console.log(`🛒 fetchCart: Guest user detected, returning local cart state`);
                 return { 
                     data: {
                         items: state.cart?.items || [],
@@ -112,11 +110,9 @@ export const fetchCart = createAsyncThunk(
                 return { data: state.cart, fromCache: true };
             }
 
-            console.log(`🛒 fetchCart: Making API request (forceRefresh: ${forceRefresh})`);
             const response = await CartService.getCart();
 
             if (response.status === 'success') {
-                console.log(`🛒 fetchCart: API response received, items: ${response.data?.items?.length || 0}`);
                 return { data: response.data, fromCache: false };
             } else {
                 throw new Error(response.message || 'Ошибка при загрузке корзины');
@@ -148,13 +144,11 @@ export const fetchCartStats = createAsyncThunk(
             const isCartAvailable = userRole === 'CLIENT' || !isAuthenticated;
 
             if (!isCartAvailable) {
-                console.log(`🛒 fetchCartStats: Cart stats not available for role ${userRole || 'unknown'}, skipping fetch`);
                 return rejectWithValue('Статистика корзины недоступна для данной роли');
             }
 
             // Для неавторизованных пользователей возвращаем локальную статистику
             if (!isAuthenticated) {
-                console.log(`🛒 fetchCartStats: Guest user detected, returning local cart stats`);
                 return {
                     totalBoxes: state.cart?.totalBoxes || 0,
                     totalItems: state.cart?.totalItems || 0,

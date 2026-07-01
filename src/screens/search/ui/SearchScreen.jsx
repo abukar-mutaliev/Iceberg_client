@@ -12,9 +12,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDispatch, useSelector } from 'react-redux';
 import {
     fetchProducts,
+    searchProducts,
+    clearSearchResults,
     selectProducts,
     selectProductsLoading,
-    selectProductsError, resetCurrentProduct
+    selectProductsError,
+    selectSearchResults,
+    selectSearchLoading,
+    selectSearchError,
+    resetCurrentProduct
 } from '@entities/product';
 import { Loader } from '@shared/ui/Loader';
 import { FontFamily, FontSize } from '@app/styles/GlobalStyles';
@@ -43,13 +49,13 @@ import {
     ProductSuggestions,
     SearchHistory
 } from "@features/search";
+import { productMatchesSearchQuery } from '@shared/lib/searchText';
 
 export const SearchScreen = ({ navigation }) => {
     const { colors } = useTheme();
     const styles = useMemo(() => createStyles(colors), [colors]);
-    const [filteredProducts, setFilteredProducts] = useState([]);
     const [suggestedTags, setSuggestedTags] = useState([]);
-    const [searchQuery, setSearchQuery] = useState('');
+    const [inputText, setInputText] = useState('');
     const [isFocused, setIsFocused] = useState(false);
     const [keyboardVisible, setKeyboardVisible] = useState(false);
     const searchInputRef = useRef(null);
@@ -61,9 +67,21 @@ export const SearchScreen = ({ navigation }) => {
 
     const dispatch = useDispatch();
     const products = useSelector(selectProducts);
+    const searchResults = useSelector(selectSearchResults);
     const isLoading = useSelector(selectProductsLoading);
+    const isSearchLoading = useSelector(selectSearchLoading);
     const error = useSelector(selectProductsError);
+    const searchError = useSelector(selectSearchError);
     const safeProducts = Array.isArray(products) ? products : [];
+
+    const filteredSuggestions = useMemo(() => {
+        const query = inputText.trim();
+        if (!query) {
+            return [];
+        }
+
+        return searchResults.filter((product) => productMatchesSearchQuery(product, query));
+    }, [searchResults, inputText]);
 
     const getReadableErrorMessage = useCallback((errorValue) => {
         if (!errorValue) {
@@ -175,11 +193,15 @@ export const SearchScreen = ({ navigation }) => {
                 if (product.name) {
                     tags.add(product.name);
                 }
-                if (product.category) {
-                    tags.add(product.category);
+                if (Array.isArray(product.categories)) {
+                    product.categories.forEach((category) => {
+                        if (typeof category === 'object' && category?.name) {
+                            tags.add(category.name);
+                        }
+                    });
                 }
-                if (product.brand) {
-                    tags.add(product.brand);
+                if (product.supplier?.companyName) {
+                    tags.add(product.supplier.companyName);
                 }
             });
 
@@ -207,22 +229,21 @@ export const SearchScreen = ({ navigation }) => {
         }
     }, [keyboardVisible, navigation]);
 
-    // Фильтрация продуктов по поисковому запросу
+    // Серверный поиск по всему каталогу с debounce
     useEffect(() => {
-        if (searchQuery.trim() === '') {
-            setFilteredProducts([]);
-            return;
-        }
+        const trimmedQuery = inputText.trim();
 
-        const lowercaseQuery = searchQuery.toLowerCase();
-        const filtered = safeProducts.filter(product =>
-            (product.name && product.name.toLowerCase().includes(lowercaseQuery)) ||
-            (product.description && product.description.toLowerCase().includes(lowercaseQuery)) ||
-            (product.category && product.category.toLowerCase().includes(lowercaseQuery))
-        );
+        const timeoutId = setTimeout(() => {
+            if (!trimmedQuery) {
+                dispatch(clearSearchResults());
+                return;
+            }
 
-        setFilteredProducts(filtered);
-    }, [searchQuery, safeProducts]);
+            dispatch(searchProducts({ search: trimmedQuery, page: 1, limit: 50 }));
+        }, 300);
+
+        return () => clearTimeout(timeoutId);
+    }, [dispatch, inputText]);
 
     const handleProductPress = (product) => {
         console.log('SearchScreen: handleProductPress called with product:', product);
@@ -245,7 +266,7 @@ export const SearchScreen = ({ navigation }) => {
 
     // Обработчик нажатия на элемент истории
     const handleSearchHistoryPress = (historyItem) => {
-        setSearchQuery(historyItem);
+        setInputText(historyItem);
         dispatch(addSearchQuery(historyItem));
         Keyboard.dismiss();
         navigation.navigate('SearchResults', {
@@ -255,23 +276,22 @@ export const SearchScreen = ({ navigation }) => {
 
 
     const handleSearch = () => {
-        if (searchQuery.trim()) {
-            // Добавляем запрос в историю поиска
-            dispatch(addSearchQuery(searchQuery));
+        const trimmed = inputText.trim();
+        if (trimmed) {
+            dispatch(addSearchQuery(trimmed));
+            dispatch(searchProducts({ search: trimmed, page: 1, limit: 50 }));
 
-            // Закрываем клавиатуру перед навигацией
             Keyboard.dismiss();
 
-            // Переходим на экран с результатами поиска (карточками)
             navigation.navigate('SearchResults', {
-                searchQuery: searchQuery
+                searchQuery: trimmed
             });
         }
     };
 
     // Обработчик нажатия на тег
     const handleTagPress = (tag) => {
-        setSearchQuery(tag);
+        setInputText(tag);
         dispatch(addSearchQuery(tag));
         Keyboard.dismiss();
         navigation.navigate('SearchResults', {
@@ -281,8 +301,8 @@ export const SearchScreen = ({ navigation }) => {
 
     // Обработчик очистки поля поиска
     const handleClearSearch = () => {
-        setSearchQuery('');
-        // Важно: не вызываем здесь safelyFocusInput, это создает цикл
+        setInputText('');
+        dispatch(clearSearchResults());
     };
 
     // Обработчик нажатия "Отмена"
@@ -299,7 +319,7 @@ export const SearchScreen = ({ navigation }) => {
     // Обработчик фокуса на поле поиска
     const handleFocus = () => {
         setIsFocused(true);
-        if (!searchQuery.trim()) {
+        if (!inputText.trim()) {
             setShowingHistory(true);
         }
     };
@@ -311,8 +331,7 @@ export const SearchScreen = ({ navigation }) => {
     };
 
     const handleSearchTextChange = (text) => {
-        setSearchQuery(text);
-        // Если текст пустой и поле в фокусе, показываем историю
+        setInputText(text);
         if (!text.trim() && isFocused) {
             setShowingHistory(true);
         } else {
@@ -338,8 +357,8 @@ export const SearchScreen = ({ navigation }) => {
             <View style={styles.header}>
                 <ScreenSearchBar
                     ref={searchInputRef}
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
+                    value={inputText}
+                    onChangeText={handleSearchTextChange}
                     onClear={handleClearSearch}
                     onFocus={handleFocus}
                     onBlur={handleBlur}
@@ -362,24 +381,39 @@ export const SearchScreen = ({ navigation }) => {
                     ) : (
                         <>
                             {/* Когда поле поиска в фокусе и пустое - показываем историю поиска */}
-                            {isFocused && !searchQuery && (
+                            {isFocused && !inputText.trim() && (
                                 <SearchHistory
                                     onItemPress={handleSearchHistoryPress}
                                     searchInputRef={searchInputRef}
                                 />
                             )}
 
-                            {/* Когда поле поиска не пустое - показываем результаты поиска */}
-                            {searchQuery.trim() !== '' && (
-                                <ProductSuggestions
-                                    products={filteredProducts}
-                                    searchQuery={searchQuery}
-                                    onProductPress={handleProductPress}
-                                />
+                            {inputText.trim() !== '' && (
+                                <>
+                                    {searchError ? (
+                                        <View style={styles.errorContainer}>
+                                            <Text style={styles.errorText}>
+                                                {getReadableErrorMessage(searchError)}
+                                            </Text>
+                                        </View>
+                                    ) : (
+                                        <>
+                                            {isSearchLoading && filteredSuggestions.length === 0 && (
+                                                <Loader />
+                                            )}
+                                            {(filteredSuggestions.length > 0 || !isSearchLoading) && (
+                                                <ProductSuggestions
+                                                    products={filteredSuggestions}
+                                                    searchQuery={inputText}
+                                                    onProductPress={handleProductPress}
+                                                />
+                                            )}
+                                        </>
+                                    )}
+                                </>
                             )}
 
-                            {/* Когда поле поиска не в фокусе - показываем популярные теги */}
-                            {!isFocused && !searchQuery && (
+                            {!isFocused && !inputText.trim() && (
                                 <PopularTags
                                     tags={suggestedTags}
                                     onTagPress={handleTagPress}

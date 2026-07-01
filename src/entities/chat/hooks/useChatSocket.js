@@ -72,25 +72,29 @@ export const useChatSocket = () => {
   const processedMessageIdsRef = useRef(new Set()); // Дедупликация сообщений
   const processedReactionUpdatesRef = useRef(new Map()); // Дедупликация обновлений реакций: messageId -> timestamp
 
+  // Троттлим полный перезапрос списка комнат: при нестабильном соединении
+  // (частые reconnect в dev) события chat:room:updated без данных комнаты
+  // могут прилетать пачками и дёргать fetchRooms по несколько раз в секунду,
+  // из-за чего список "мигает"/перезагружается. Ограничиваем не чаще 1 раза в 5с.
+  const throttledFetchRoomsRef = useRef(
+    throttle(() => {
+      dispatch(fetchRooms({ page: 1 }));
+    }, 5000)
+  );
+
   // Отслеживаем состояние приложения для управления соединением
   useEffect(() => {
     const handleAppStateChange = (nextAppState) => {
-      console.log('🔄 App state changed:', appStateRef.current, '->', nextAppState);
-      
       if (socketRef.current) {
         if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
           // Приложение вернулось в активное состояние - проверяем соединение
-          console.log('📱 App became active - checking WebSocket connection');
           if (!socketRef.current.connected) {
-            console.log('🔌 Reconnecting WebSocket...');
             socketRef.current.connect();
           }
-        } else if (nextAppState.match(/inactive|background/)) {
-          // Приложение ушло в фон - НЕ отключаем WebSocket для получения уведомлений
-          console.log('📱 App went to background - keeping WebSocket alive for push notifications');
         }
+        // В фоне НЕ отключаем WebSocket - держим соединение для push-уведомлений
       }
-      
+
       appStateRef.current = nextAppState;
     };
 
@@ -102,7 +106,6 @@ export const useChatSocket = () => {
     if (!featureFlags.chat || !isAuthenticated) {
       // Отключаем WebSocket если пользователь не авторизован
       if (socketRef.current) {
-        console.log('🔌 Disconnecting WebSocket - user not authenticated');
         socketRef.current.disconnect();
         socketRef.current = null;
         setGlobalSocket(null); // Очищаем глобальную ссылку
@@ -123,7 +126,6 @@ export const useChatSocket = () => {
         const baseUrl = getBaseUrl();
 
         if (!token || !refreshToken) {
-          console.log('🔌 No tokens available, skipping WebSocket connection');
           if (attempt < 2 && isMounted) {
             setTimeout(() => {
               if (isMounted) setup(attempt + 1);
@@ -135,7 +137,7 @@ export const useChatSocket = () => {
         const isRefreshTokenValid = authService.isTokenValid(refreshToken);
         
         if (!isRefreshTokenValid) {
-          console.error('❌ Refresh token expired, skipping WebSocket connection');
+          if (__DEV__) console.warn('Refresh token expired, skipping WebSocket connection');
           return;
         }
 
@@ -143,14 +145,11 @@ export const useChatSocket = () => {
         const isAccessTokenValid = authService.isTokenValid(token);
         
         if (!isAccessTokenValid) {
-          console.log('🔄 Access token expired, refreshing before WebSocket connection...');
           try {
             const refreshed = await authService.refreshAccessToken();
             if (refreshed?.accessToken) {
               token = refreshed.accessToken;
-              console.log('✅ Access token refreshed successfully for WebSocket');
             } else {
-              console.error('❌ Failed to refresh access token, skipping WebSocket connection');
               if (attempt < 1 && isMounted) {
                 setTimeout(() => {
                   if (isMounted) setup(attempt + 1);
@@ -159,7 +158,7 @@ export const useChatSocket = () => {
               return;
             }
           } catch (refreshError) {
-            console.error('❌ Error refreshing token for WebSocket:', refreshError?.message || refreshError);
+            if (__DEV__) console.warn('Error refreshing token for WebSocket:', refreshError?.message || refreshError);
             if (attempt < 1 && isMounted) {
               setTimeout(() => {
                 if (isMounted) setup(attempt + 1);
@@ -171,8 +170,6 @@ export const useChatSocket = () => {
 
         // Socket.IO автоматически добавляет /socket.io/ к URL, поэтому используем HTTP URL
         // но принудительно включаем WebSocket transport
-        console.log('🔌 Attempting to connect to WebSocket:', { baseUrl, hasToken: !!token });
-        
         const socket = io(baseUrl, {
           transports: ['websocket', 'polling'], // Добавляем polling как fallback для проблемных устройств
           auth: { token }, // Используем текущий токен
@@ -186,16 +183,7 @@ export const useChatSocket = () => {
 
         socket.on('connect', () => {
           const transport = socket.io.engine.transport.name;
-          console.log('🔌 Chat socket connected successfully!', {
-            socketId: socket.id,
-            transport,
-            connected: socket.connected,
-            deviceInfo: {
-              platform: require('react-native').Platform.OS,
-              version: require('react-native').Platform.Version
-            }
-          });
-          
+
           // Обновляем статус соединения в Redux
           dispatch(setConnectionStatus({
             isConnected: true,
@@ -210,7 +198,6 @@ export const useChatSocket = () => {
             if (!joinedRoomsRef.current.has(roomId)) {
               socket.emit('chat:join', { roomId });
               joinedRoomsRef.current.add(roomId);
-              console.log('🏠 ✅ Joined room:', roomId);
             }
           });
 
@@ -233,13 +220,8 @@ export const useChatSocket = () => {
         });
 
         socket.on('disconnect', (reason) => {
-          console.warn('⚠️ Chat socket disconnected:', {
-            reason,
-            transport: socket?.io?.engine?.transport?.name,
-            socketId: socket?.id,
-            timestamp: new Date().toISOString()
-          });
-          
+          if (__DEV__) console.warn('Chat socket disconnected:', reason);
+
           // Обновляем статус соединения в Redux
           dispatch(setConnectionStatus({
             isConnected: false,
@@ -251,8 +233,7 @@ export const useChatSocket = () => {
         });
 
         // Обработчик попытки переподключения - обновляем токен перед каждой попыткой
-        socket.io.on('reconnect_attempt', async (attempt) => {
-          console.log(`🔄 Reconnection attempt #${attempt} - refreshing token...`);
+        socket.io.on('reconnect_attempt', async () => {
           try {
             const currentTokens = await authService.getStoredTokens();
 
@@ -260,43 +241,29 @@ export const useChatSocket = () => {
               const isAccessTokenValid = authService.isTokenValid(currentTokens.accessToken);
 
               if (!isAccessTokenValid) {
-                console.log('🔄 Access token expired on reconnect, refreshing...');
                 const refreshed = await authService.refreshAccessToken();
                 if (refreshed?.accessToken) {
                   socket.auth = { token: refreshed.accessToken };
-                  console.log('✅ Token refreshed for reconnection attempt');
-                } else {
-                  console.warn('⚠️ Failed to refresh token on reconnect attempt');
                 }
               }
             }
           } catch (err) {
-            console.error('❌ Error refreshing token on reconnect:', err?.message || err);
+            if (__DEV__) console.warn('Error refreshing token on reconnect:', err?.message || err);
           }
         });
 
         socket.on('connect_error', async (error) => {
-          console.error('❌ Chat socket connection error:', {
-            error: error.message,
-            type: error.type,
-            description: error.description,
-            context: error.context,
-            timestamp: new Date().toISOString(),
-            baseUrl
-          });
-          
+          if (__DEV__) console.warn('Chat socket connection error:', error?.message);
+
           // Если ошибка связана с JWT, пытаемся обновить токен и переподключиться
           if (error.message?.includes('jwt expired') || 
               error.message?.includes('Token expired') || 
               error.message?.includes('jwt invalid') ||
               error.message?.includes('unauthorized')) {
             try {
-              console.log('🔄 JWT error, attempting to refresh token...');
-
               const currentTokens = await authService.getStoredTokens();
 
               if (!currentTokens?.refreshToken) {
-                console.error('❌ No refresh token available, cannot reconnect WebSocket');
                 socket.disconnect();
                 return;
               }
@@ -304,33 +271,26 @@ export const useChatSocket = () => {
               const isRefreshTokenValid = authService.isTokenValid(currentTokens.refreshToken);
               
               if (!isRefreshTokenValid) {
-                console.error('❌ Refresh token expired, cannot reconnect WebSocket');
                 socket.disconnect();
                 return;
               }
               
-              console.log('🔄 Refresh token is valid, trying to refresh access token...');
               const refreshed = await authService.refreshAccessToken();
               
               if (refreshed?.accessToken) {
-                console.log('✅ Token refreshed successfully');
                 // Обновляем токен в socket auth и переподключаемся
                 socket.auth = { token: refreshed.accessToken };
-                console.log('🔌 Reconnecting with fresh token...');
                 setTimeout(() => {
                   if (socket && !socket.connected) {
                     socket.connect();
                   }
                 }, 1000);
-              } else {
-                console.warn('⚠️ Could not refresh token for WebSocket');
+              } else if (socket) {
                 // Отключаем WebSocket если не удалось обновить токен
-                if (socket) {
-                  socket.disconnect();
-                }
+                socket.disconnect();
               }
             } catch (refreshError) {
-              console.error('❌ Error refreshing token for WebSocket:', refreshError?.message || refreshError);
+              if (__DEV__) console.warn('Error refreshing token for WebSocket:', refreshError?.message || refreshError);
               // Отключаем WebSocket при критической ошибке
               if (socket) {
                 socket.disconnect();
@@ -339,16 +299,12 @@ export const useChatSocket = () => {
           }
         });
 
-        socket.on('reconnect', (attemptNumber) => {
-          console.log('🔄 Chat socket reconnected after', attemptNumber, 'attempts');
-        });
-
         socket.on('reconnect_error', (error) => {
-          console.error('🔄❌ Chat socket reconnection failed:', error.message);
+          if (__DEV__) console.warn('Chat socket reconnection error:', error?.message);
         });
 
         socket.on('reconnect_failed', () => {
-          console.error('🔄💀 Chat socket reconnection completely failed');
+          if (__DEV__) console.warn('Chat socket reconnection failed');
         });
 
         // incoming events
@@ -723,11 +679,9 @@ export const useChatSocket = () => {
         // Обновление статусов сообщений в real-time
         socket.on('chat:message:status', (payload) => {
           // payload: { roomId, messageId, status, deliveredAt?, readAt?, updatedBy }
-          console.log('📡 [WEBSOCKET] Status update:', payload);
-
           // Дополнительная проверка перед диспатчем
           if (!payload.roomId || !payload.messageId) {
-            console.error('❌ [WEBSOCKET] Invalid payload:', payload);
+            if (__DEV__) console.warn('[WEBSOCKET] Invalid status payload');
             return;
           }
 
@@ -740,28 +694,28 @@ export const useChatSocket = () => {
 
         socket.on('chat:room:updated', (payload) => {
           const { room, roomId } = payload || {};
+          // Если данные комнаты пришли в payload, обновляем напрямую (дёшево, без сети)
           if (room && room.id) {
             dispatch(updateRoomFromSocket(room));
             dispatch(fetchRoom(room.id));
           } else if (roomId) {
             dispatch(fetchRoom(roomId));
+          } else {
+            // Данных комнаты нет — перезапрашиваем список, но не чаще раза в 5с,
+            // чтобы серия событий (в т.ч. при reconnect) не перегружала список.
+            throttledFetchRoomsRef.current();
           }
         });
 
         socket.on('chat:room:deleted', (payload) => {
-          console.log('🗑️ [WEBSOCKET] Room deleted:', payload);
           const { roomId } = payload || {};
           if (roomId) {
             dispatch(handleRoomDeleted({ roomId }));
           }
         });
 
-        socket.on('chat:join:success', (payload) => {
-          console.log('🏠 ✅ Successfully joined room:', payload);
-        });
-
         socket.on('chat:join:error', (payload) => {
-          console.error('🏠 ❌ Failed to join room:', payload);
+          if (__DEV__) console.warn('[WEBSOCKET] Failed to join room:', payload?.roomId);
           if (payload?.roomId) {
             joinedRoomsRef.current.delete(payload.roomId);
           }

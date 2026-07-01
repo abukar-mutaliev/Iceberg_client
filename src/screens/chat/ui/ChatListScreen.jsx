@@ -153,6 +153,9 @@ export const ChatListScreen = ({navigation}) => {
     const mutedIconColor = isDark ? colors.textSecondary : '#8696A0';
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [timeTick, setTimeTick] = useState(Date.now());
+    // Debounce индикатора отключения: не мигаем при коротких reconnect'ах,
+    // показываем предупреждение только если соединения нет дольше нескольких секунд.
+    const [showDisconnectedWarning, setShowDisconnectedWarning] = useState(false);
     const rooms = useSelector(selectRoomsList) || [];
     const loading = useSelector((s) => s.chat?.rooms?.loading);
     const currentUser = useSelector((s) => s.auth?.user);
@@ -313,6 +316,21 @@ export const ChatListScreen = ({navigation}) => {
 
         return () => clearInterval(interval);
     }, [dispatch]);
+
+    // Debounce индикатора соединения: при обрыве ждём 4с прежде чем показать
+    // предупреждение. Если сокет успевает переподключиться (частый случай в dev),
+    // индикатор не мелькает. При восстановлении соединения прячем сразу.
+    useEffect(() => {
+        if (!__DEV__) return;
+
+        if (connection?.isConnected) {
+            setShowDisconnectedWarning(false);
+            return;
+        }
+
+        const timer = setTimeout(() => setShowDisconnectedWarning(true), 4000);
+        return () => clearTimeout(timer);
+    }, [connection?.isConnected]);
 
     // Убрано автоматическое обновление при фокусе - WebSocket обновляет данные в реальном времени
     // Пользователь может использовать pull-to-refresh для ручного обновления
@@ -1075,8 +1093,8 @@ export const ChatListScreen = ({navigation}) => {
 
     return (
         <View style={styles.container}>
-            {/* Индикатор соединения только в dev режиме и только если отключен */}
-            {__DEV__ && !connection?.isConnected && (
+            {/* Индикатор соединения только в dev режиме и только если отключение затянулось */}
+            {__DEV__ && showDisconnectedWarning && !connection?.isConnected && (
                 <View style={styles.connectionIndicator}>
                     <Text style={styles.connectionWarning}>
                         ⚠️ WebSocket отключен - сообщения могут не обновляться в реальном времени

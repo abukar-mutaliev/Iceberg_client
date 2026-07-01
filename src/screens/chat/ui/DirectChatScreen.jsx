@@ -544,19 +544,22 @@ export const DirectChatScreen = ({ route, navigation }) => {
     }
   }, [isSelectionMode, navigation, roomId]);
   
-  const handleAvatarPress = useCallback(() => {
-    if (!chatPartner) return;
-    
-    const partnerId = chatPartner?.userId ?? chatPartner?.user?.id ?? chatPartner?.id;
-    if (!partnerId || partnerId === currentUserId) return;
-    
+  const handleAvatarPress = useCallback((senderIdFromMessage) => {
+    if (isSelectionMode) return;
+
+    const partnerId = senderIdFromMessage
+      ?? chatPartner?.userId
+      ?? chatPartner?.user?.id
+      ?? chatPartner?.id;
+    if (!partnerId || Number(partnerId) === Number(currentUserId)) return;
+
     const rootNav = navigation?.getParent?.('AppStack') || navigation?.getParent?.() || navigation;
     rootNav.navigate('UserPublicProfile', {
       userId: partnerId,
       fromScreen: 'ChatRoom',
       roomId,
     });
-  }, [chatPartner, currentUserId, navigation, roomId]);
+  }, [isSelectionMode, chatPartner, currentUserId, navigation, roomId]);
   
   const handleContactDriver = useCallback(async (type, stopData) => {
     if (!stopData) return;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     View,
     Text,
@@ -33,36 +33,64 @@ const normalizeFont = (size) => {
     return Math.round(PixelRatio.roundToNearestPixel(newSize));
 };
 
+const buildAvailableBrands = (productsList = []) => {
+    const uniqueBrands = [];
+
+    productsList.forEach((product) => {
+        if (product.supplier && product.supplier.id && product.supplier.companyName) {
+            const exists = uniqueBrands.find((item) => item.id === product.supplier.id);
+            if (!exists) {
+                uniqueBrands.push({
+                    id: product.supplier.id,
+                    name: product.supplier.companyName,
+                });
+            }
+        }
+    });
+
+    return uniqueBrands.sort((a, b) => a.name.localeCompare(b.name));
+};
+
 export const BrandFilter = ({ brands = [], onChange, products = [] }) => {
     const [modalVisible, setModalVisible] = useState(false);
     const [searchText, setSearchText] = useState('');
-    const [availableBrands, setAvailableBrands] = useState([]);
+    const [modalProducts, setModalProducts] = useState([]);
     const [selectedBrands, setSelectedBrands] = useState(brands);
-    const [contentHeight, setContentHeight] = useState(0);
     const insets = useSafeAreaInsets();
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
-    // Получаем доступные бренды (поставщиков) из продуктов
     useEffect(() => {
-        if (products && products.length > 0) {
-            const uniqueBrands = [];
+        setSelectedBrands(brands);
+    }, [brands]);
 
-            products.forEach(product => {
-                if (product.supplier && product.supplier.id && product.supplier.companyName) {
-                    const exists = uniqueBrands.find(b => b.id === product.supplier.id);
-                    if (!exists) {
-                        uniqueBrands.push({
-                            id: product.supplier.id,
-                            name: product.supplier.companyName,
-                        });
-                    }
-                }
-            });
+    const availableBrands = useMemo(
+        () => buildAvailableBrands(modalProducts),
+        [modalProducts]
+    );
 
-            setAvailableBrands(uniqueBrands.sort((a, b) => a.name.localeCompare(b.name)));
+    const filteredBrands = useMemo(() => {
+        const query = searchText.trim().toLowerCase();
+        if (!query) {
+            return availableBrands;
         }
+
+        return availableBrands.filter((brand) =>
+            brand.name.toLowerCase().includes(query) ||
+            (brand.contactPerson && brand.contactPerson.toLowerCase().includes(query))
+        );
+    }, [availableBrands, searchText]);
+
+    const openModal = useCallback(() => {
+        setModalProducts(products);
+        setSearchText('');
+        setModalVisible(true);
     }, [products]);
+
+    const closeModal = useCallback(() => {
+        setModalVisible(false);
+        setSearchText('');
+    }, []);
 
     // Обработчик выбора бренда
     const handleSelectBrand = (brand) => {
@@ -82,26 +110,14 @@ export const BrandFilter = ({ brands = [], onChange, products = [] }) => {
     // Обработчик применения выбранных брендов
     const handleApplyBrands = () => {
         onChange(selectedBrands);
-        setModalVisible(false);
-    };
-
-    // Фильтрация брендов по поисковому запросу
-    const filteredBrands = searchText.trim()
-        ? availableBrands.filter(brand =>
-            brand.name.toLowerCase().includes(searchText.toLowerCase()) ||
-            (brand.contactPerson && brand.contactPerson.toLowerCase().includes(searchText.toLowerCase()))
-        )
-        : availableBrands;
-
-    const onContentSizeChange = (width, height) => {
-        setContentHeight(height);
+        closeModal();
     };
 
     return (
         <View style={styles.container}>
             <TouchableOpacity
                 style={styles.selector}
-                onPress={() => setModalVisible(true)}
+                onPress={openModal}
                 activeOpacity={0.7}
             >
                 <Text style={styles.selectorText}>Бренд</Text>
@@ -112,19 +128,19 @@ export const BrandFilter = ({ brands = [], onChange, products = [] }) => {
                 animationType="slide"
                 transparent={false}
                 visible={modalVisible}
-                onRequestClose={() => setModalVisible(false)}
+                onRequestClose={closeModal}
             >
                 <View style={styles.modalContainer}>
                     <ThemedStatusBar />
                     <ScrollableBackgroundGradient
-                        contentHeight={contentHeight + 200}
+                        contentHeight={SCREEN_WIDTH * 2}
                         showOverlayGradient={false}
                     />
 
                     <SafeAreaView style={styles.safeArea}>
                         <View style={styles.modalHeader}>
                             <TouchableOpacity
-                                onPress={() => setModalVisible(false)}
+                                onPress={closeModal}
                                 style={styles.closeButton}
                             >
                                 <Text style={styles.closeButtonText}>Закрыть</Text>
@@ -174,6 +190,8 @@ export const BrandFilter = ({ brands = [], onChange, products = [] }) => {
                                     keyExtractor={(item) => item.id.toString()}
                                     contentContainerStyle={styles.listContent}
                                     scrollIndicatorInsets={{ bottom: normalize(12) }}
+                                    keyboardShouldPersistTaps="handled"
+                                    keyboardDismissMode="none"
                                     renderItem={({ item }) => (
                                         <TouchableOpacity
                                             style={styles.brandItem}
@@ -191,7 +209,6 @@ export const BrandFilter = ({ brands = [], onChange, products = [] }) => {
                                             />
                                         </TouchableOpacity>
                                     )}
-                                    onContentSizeChange={onContentSizeChange}
                                     ListEmptyComponent={() => (
                                         <Text style={styles.emptyMessage}>Бренды не найдены</Text>
                                     )}

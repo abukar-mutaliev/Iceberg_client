@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
     View,
     Text,
@@ -36,7 +36,8 @@ import {
     selectProductsCurrentPage,
     selectProductsHasMore,
     selectProductsLoading,
-    selectProductsLoadingMore
+    selectProductsLoadingMore,
+    selectProductsTotalItems,
 } from '@entities/product';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -72,14 +73,16 @@ export const FilterScreen = () => {
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
-    const [contentHeight, setContentHeight] = useState(0);
-
     const filterCriteria = useSelector(selectFilterCriteria);
     const products = useSelector(selectProducts);
     const currentPage = useSelector(selectProductsCurrentPage);
     const hasMoreProducts = useSelector(selectProductsHasMore);
     const isProductsLoading = useSelector(selectProductsLoading);
     const isProductsLoadingMore = useSelector(selectProductsLoadingMore);
+    const totalItems = useSelector(selectProductsTotalItems);
+
+    const [filterCatalog, setFilterCatalog] = useState([]);
+    const catalogLoadStartedRef = useRef(false);
 
     const [localFilterCriteria, setLocalFilterCriteria] = useState(buildFilterCriteria());
 
@@ -104,37 +107,40 @@ export const FilterScreen = () => {
     }, [resetFilters, filterCriteria, navigation, route?.params?.resetFilters]);
 
     useEffect(() => {
-        if (!products.length && !isProductsLoading && !isProductsLoadingMore) {
-            dispatch(fetchProducts());
+        if (!catalogLoadStartedRef.current && !isProductsLoading && !isProductsLoadingMore) {
+            catalogLoadStartedRef.current = true;
+            dispatch(fetchProducts({ page: 1, limit: 50 }));
         }
-    }, [dispatch, products.length, isProductsLoading, isProductsLoadingMore]);
+    }, [dispatch, isProductsLoading, isProductsLoadingMore]);
 
     useEffect(() => {
-        if (!products.length) {
+        if (!products.length || isProductsLoading || isProductsLoadingMore) {
             return;
         }
 
-        if (hasMoreProducts && !isProductsLoading && !isProductsLoadingMore) {
-            dispatch(fetchProducts({ page: currentPage + 1 }));
+        const catalogComplete = !hasMoreProducts || (totalItems > 0 && products.length >= totalItems);
+        if (catalogComplete) {
+            setFilterCatalog(products);
+            return;
         }
+
+        dispatch(fetchProducts({ page: currentPage + 1, limit: 50 }));
     }, [
         dispatch,
         products.length,
-        hasMoreProducts,
         currentPage,
+        hasMoreProducts,
+        totalItems,
         isProductsLoading,
-        isProductsLoadingMore
+        isProductsLoadingMore,
     ]);
 
-    const handleFilterChange = (filterName, value) => {
-        setLocalFilterCriteria(prev => {
-            const updated = {
-                ...prev,
-                [filterName]: value
-            };
-            return updated;
-        });
-    };
+    const handleFilterChange = useCallback((filterName, value) => {
+        setLocalFilterCriteria((prev) => ({
+            ...prev,
+            [filterName]: value,
+        }));
+    }, []);
 
     const handleClose = () => {
         navigation.goBack();
@@ -157,16 +163,14 @@ export const FilterScreen = () => {
         });
     };
 
-    const onContentSizeChange = (width, height) => {
-        setContentHeight(height);
-    };
+    const catalogProducts = filterCatalog.length > 0 ? filterCatalog : products;
 
     return (
         <View style={styles.container}>
             <ThemedStatusBar />
 
             <ScrollableBackgroundGradient
-                contentHeight={contentHeight + 150}
+                contentHeight={SCREEN_WIDTH * 2}
                 showOverlayGradient={false}
             />
 
@@ -194,7 +198,8 @@ export const FilterScreen = () => {
                         style={styles.content}
                         contentContainerStyle={styles.contentContainer}
                         showsVerticalScrollIndicator={false}
-                        onContentSizeChange={onContentSizeChange}
+                        keyboardShouldPersistTaps="handled"
+                        keyboardDismissMode="none"
                     >
                         {/* Фильтр по цене */}
                         <PriceRangeFilter
@@ -210,7 +215,7 @@ export const FilterScreen = () => {
                         <CategoryFilter
                             categories={localFilterCriteria.categories}
                             onChange={(value) => handleFilterChange('categories', value)}
-                            products={products}
+                            products={catalogProducts}
                         />
 
                         <View style={styles.separator} />
@@ -219,7 +224,7 @@ export const FilterScreen = () => {
                         <BrandFilter
                             brands={localFilterCriteria.brands}
                             onChange={(value) => handleFilterChange('brands', value)}
-                            products={products}
+                            products={catalogProducts}
                         />
 
                         <View style={styles.separator} />
@@ -237,7 +242,7 @@ export const FilterScreen = () => {
                         <QuantityFilter
                             quantity={localFilterCriteria.quantity}
                             onChange={(value) => handleFilterChange('quantity', value)}
-                            products={products}
+                            products={catalogProducts}
                         />
 
                         {/* Разделительная линия */}

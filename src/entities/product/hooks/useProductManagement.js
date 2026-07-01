@@ -11,7 +11,8 @@ import {
 import {
     selectProducts,
     selectProductsLoading,
-    selectProductsError
+    selectProductsError,
+    selectDeletedProductIds
 } from '../model/selectors';
 import {
     fetchProfile,
@@ -252,6 +253,7 @@ export const useProductManagement = ({
     const products = useSelector(selectProducts);
     const productsLoading = useSelector(selectProductsLoading);
     const productsError = useSelector(selectProductsError);
+    const deletedProductIds = useSelector(selectDeletedProductIds);
 
     const profile = useSelector(selectProfile);
     const profileLoading = useSelector(selectProfileLoading);
@@ -274,7 +276,15 @@ export const useProductManagement = ({
             const response = await productsApiService.getProducts({ page: 1, limit: 100 });
 
             if (response && response.status === 'success' && response.data) {
-                let processedProducts = response.data;
+                let processedProducts = response.data.filter((product) => {
+                    if (product?.status === 'ARCHIVED') return false;
+                    if (product?.isActive === false &&
+                        product?.moderationStatus !== 'PENDING' &&
+                        product?.moderationStatus !== 'REJECTED') {
+                        return false;
+                    }
+                    return true;
+                });
 
                 if (normalizeForBoxes) {
                     processedProducts = response.data.map(product => {
@@ -392,9 +402,35 @@ export const useProductManagement = ({
         }
     }, [loadData, currentUser?.role, profile?.supplier?.id, dispatch, loadSupplierProducts]);
 
-    const filteredProducts = currentUser?.role === 'SUPPLIER'
-        ? supplierProducts
-        : normalizedProducts;
+    const isProductVisibleInCatalog = useCallback((product) => {
+        if (!product?.id) return false;
+        if (deletedProductIds.includes(product.id)) return false;
+
+        if (currentUser?.role !== 'SUPPLIER') {
+            return true;
+        }
+
+        if (product.status === 'ARCHIVED') return false;
+        if (product.isActive === false &&
+            product.moderationStatus !== 'PENDING' &&
+            product.moderationStatus !== 'REJECTED') {
+            return false;
+        }
+        return true;
+    }, [deletedProductIds, currentUser?.role]);
+
+    const filteredProducts = useMemo(() => {
+        const baseProducts = currentUser?.role === 'SUPPLIER'
+            ? supplierProducts
+            : normalizedProducts;
+
+        return (baseProducts || []).filter(isProductVisibleInCatalog);
+    }, [
+        currentUser?.role,
+        supplierProducts,
+        normalizedProducts,
+        isProductVisibleInCatalog
+    ]);
 
     const isLoading = currentUser?.role === 'SUPPLIER'
         ? (profileLoading || supplierProductsLoading)

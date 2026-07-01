@@ -1,5 +1,6 @@
 import React, {memo, useState, useCallback, useRef, useEffect, useMemo} from 'react';
 import {View, Text, Image, TouchableOpacity, StyleSheet} from 'react-native';
+import { TouchableOpacity as GestureTouchableOpacity } from 'react-native-gesture-handler';
 import {Ionicons} from '@expo/vector-icons';
 import {useDispatch, useSelector} from 'react-redux';
 import {ProductCard} from '@entities/product/ui/ProductCard';
@@ -35,22 +36,27 @@ const useMutedIconColor = () => {
 const Avatar = ({uri, onPress}) => {
     const styles = useMessageStyles();
     const imageSource = uri ? {uri} : null;
+    const content = imageSource ? (
+        <Image source={imageSource} style={styles.avatarImage} resizeMode="cover"/>
+    ) : (
+        <View style={styles.avatarPlaceholder}>
+            <Text style={styles.avatarPlaceholderText}>👤</Text>
+        </View>
+    );
+
+    if (!onPress) {
+        return <View style={styles.avatar}>{content}</View>;
+    }
 
     return (
-        <TouchableOpacity 
-            style={styles.avatar} 
+        <GestureTouchableOpacity
+            style={styles.avatar}
             onPress={onPress}
-            activeOpacity={onPress ? 0.7 : 1}
-            disabled={!onPress}
+            activeOpacity={0.7}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
         >
-            {imageSource ? (
-                <Image source={imageSource} style={styles.avatarImage} resizeMode="cover"/>
-            ) : (
-                <View style={styles.avatarPlaceholder}>
-                    <Text style={styles.avatarPlaceholderText}>👤</Text>
-                </View>
-            )}
-        </TouchableOpacity>
+            {content}
+        </GestureTouchableOpacity>
     );
 };
 
@@ -470,9 +476,14 @@ const BubbleContainer = ({
     const isVoiceMessage = text === '' && !hasImage && !replyTo;
     const canPress = isSelectionMode || (hasContextMenu && !isVoiceMessage) || (onPress && !isSelectionMode);
 
+    const handleAvatarPressInternal = useCallback(() => {
+        if (onAvatarPress && !isSelectionMode) {
+            onAvatarPress(senderId);
+        }
+    }, [onAvatarPress, isSelectionMode, senderId]);
+
     return (
-        <TouchableOpacity
-            ref={containerRef}
+        <View
             style={[
                 styles.messageContainer,
                 isOwn ? styles.ownMessageContainer : styles.otherMessageContainer,
@@ -480,11 +491,6 @@ const BubbleContainer = ({
                 !isSelectionMode && isContextMenuActive && (isOwn ? styles.contextMenuActiveContainerOwn : styles.contextMenuActiveContainerOther),
                 isPressed && !isSelectionMode && (isOwn ? styles.pressedBubbleOwn : styles.pressedBubbleOther)
             ]}
-            onLongPress={handleLongPress}
-            delayLongPress={150}
-            onPress={canPress ? handlePress : undefined}
-            activeOpacity={canPress ? 0.7 : 1}
-            disabled={false}
         >
             {isSelectionMode && isSelected && (
                 <View
@@ -507,12 +513,24 @@ const BubbleContainer = ({
 
             {!isOwn && showAvatar && (
                 <View style={styles.avatarContainer}>
-                    <Avatar uri={avatarUri} onPress={onAvatarPress}/>
+                    <Avatar
+                        uri={avatarUri}
+                        onPress={onAvatarPress ? handleAvatarPressInternal : undefined}
+                    />
                 </View>
             )}
 
             {!isOwn && !showAvatar && <View style={styles.avatarSpacer}/>}
 
+            <TouchableOpacity
+                ref={containerRef}
+                style={styles.bubblePressArea}
+                onLongPress={handleLongPress}
+                delayLongPress={150}
+                onPress={canPress ? handlePress : undefined}
+                activeOpacity={canPress ? 0.7 : 1}
+                disabled={false}
+            >
             <View style={[styles.bubbleWrapper, isOwn && styles.ownBubbleWrapper]}>
                     <View
                     style={[
@@ -593,7 +611,8 @@ const BubbleContainer = ({
                     )}
                 </View>
             </View>
-        </TouchableOpacity>
+            </TouchableOpacity>
+        </View>
     );
 };
 
@@ -2683,6 +2702,10 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     },
     avatarSpacer: {
         width: 40,
+    },
+    bubblePressArea: {
+        flex: 1,
+        flexShrink: 1,
     },
 
     // Пузырь
