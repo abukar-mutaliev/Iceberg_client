@@ -524,7 +524,10 @@ const BubbleContainer = ({
 
             <TouchableOpacity
                 ref={containerRef}
-                style={styles.bubblePressArea}
+                style={[
+                    styles.bubblePressArea,
+                    isOwn && styles.ownBubblePressArea,
+                ]}
                 onLongPress={handleLongPress}
                 delayLongPress={150}
                 onPress={canPress ? handlePress : undefined}
@@ -2707,6 +2710,11 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         flex: 1,
         flexShrink: 1,
     },
+    ownBubblePressArea: {
+        flex: 0,
+        flexGrow: 0,
+        alignItems: 'flex-end',
+    },
 
     // Пузырь
     bubbleWrapper: {
@@ -2715,6 +2723,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     },
     ownBubbleWrapper: {
         alignItems: 'flex-end',
+        alignSelf: 'flex-end',
     },
     bubble: {
         paddingHorizontal: 7,
