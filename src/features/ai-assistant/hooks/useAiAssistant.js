@@ -78,6 +78,7 @@ export const useAiAssistant = (roomId = null) => {
         () => Boolean(resolvedRoomId) && !hasAssistantMessagesCache(resolvedRoomId)
     );
     const [escalationSuggested, setEscalationSuggested] = useState(false);
+    const [developerContactSuggested, setDeveloperContactSuggested] = useState(false);
     const roomIdRef = useRef(resolvedRoomId || null);
 
     const setMessages = useCallback((updater) => {
@@ -177,6 +178,7 @@ export const useAiAssistant = (roomId = null) => {
         const productMsgId = `prod_${temporaryId}`;
 
         setEscalationSuggested(false);
+        setDeveloperContactSuggested(false);
         setMessages((prev) => [
             ...prev,
             ...(product ? [{ id: productMsgId, role: 'user', type: 'product', product }] : []),
@@ -199,6 +201,7 @@ export const useAiAssistant = (roomId = null) => {
 
             roomIdRef.current = newRoomId || roomIdRef.current;
             setEscalationSuggested(Boolean(data?.escalationSuggested));
+            setDeveloperContactSuggested(Boolean(data?.developerContactSuggested));
 
             const serverProductId = data?.productMessage?.id;
             setMessages((prev) =>
@@ -241,6 +244,7 @@ export const useAiAssistant = (roomId = null) => {
         sending,
         loadingHistory,
         escalationSuggested,
+        developerContactSuggested,
         sendQuestion,
         roomId: resolvedRoomId,
         title: ASSISTANT_CHAT_TITLE,

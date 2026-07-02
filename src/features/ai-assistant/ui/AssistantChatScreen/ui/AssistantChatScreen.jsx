@@ -19,6 +19,7 @@ import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { ChatBackground } from '@entities/chat/ui/ChatBackground';
 import { HeaderWithBackButton } from '@shared/ui/HeaderWithBackButton';
 import { useOpenManagerChat } from '@features/help/hooks/useOpenManagerChat';
+import { useOpenDeveloperChat } from '@features/help/hooks/useOpenDeveloperChat';
 import { useChatKeyboard } from '@screens/chat/hooks/useChatKeyboard';
 import { useTabBar } from '@widgets/navigation/context';
 import { getImageUrl } from '@shared/api/api';
@@ -55,9 +56,10 @@ export const AssistantChatScreen = () => {
     const { hideTabBar, showTabBar, isTabBarVisible } = useTabBar();
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
-    const { messages, sending, loadingHistory, escalationSuggested, sendQuestion } = useAiAssistant(roomId);
+    const { messages, sending, loadingHistory, escalationSuggested, developerContactSuggested, sendQuestion } = useAiAssistant(roomId);
     const { handleGoBack } = useAssistantChatNavigation(fromScreen, attachedProduct);
     const { openManagerChat, loading: openingManager } = useOpenManagerChat('Assistant');
+    const { openDeveloperChat, loading: openingDeveloper } = useOpenDeveloperChat('Assistant');
     const {
         keyboardVisible,
         composerContainerStyle,
@@ -192,6 +194,20 @@ export const AssistantChatScreen = () => {
                                     <Icon name="support-agent" size={20} color="#fff" />
                                     <Text style={styles.escalateText}>
                                         {openingManager ? 'Открываем чат...' : 'Передать оператору'}
+                                    </Text>
+                                </TouchableOpacity>
+                            )}
+
+                            {developerContactSuggested && (
+                                <TouchableOpacity
+                                    style={styles.escalateButton}
+                                    onPress={openDeveloperChat}
+                                    disabled={openingDeveloper}
+                                    activeOpacity={0.8}
+                                >
+                                    <Icon name="code" size={20} color="#fff" />
+                                    <Text style={styles.escalateText}>
+                                        {openingDeveloper ? 'Открываем чат...' : 'Написать разработчику'}
                                     </Text>
                                 </TouchableOpacity>
                             )}
