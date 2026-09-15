@@ -72,19 +72,19 @@ export const fetchCart = createAsyncThunk(
     async (forceRefresh = false, { rejectWithValue, getState }) => {
         try {
             const state = getState();
-            const isAuthenticated = state.auth?.user?.id;
+            const hasSession = Boolean(state.auth?.user?.id && state.auth?.tokens?.accessToken);
             const userRole = state.auth?.user?.role;
 
             // Проверяем, доступна ли корзина для текущей роли
             // Корзина доступна для клиентов и неавторизованных пользователей (гостей)
-            const isCartAvailable = userRole === 'CLIENT' || !isAuthenticated;
+            const isCartAvailable = userRole === 'CLIENT' || !hasSession;
 
             if (!isCartAvailable) {
                 return rejectWithValue('Корзина недоступна для данной роли');
             }
 
             // Для неавторизованных пользователей НЕ делаем запрос к серверу
-            if (!isAuthenticated) {
+            if (!hasSession) {
                 return { 
                     data: {
                         items: state.cart?.items || [],

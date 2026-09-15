@@ -1,38 +1,73 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useDispatch } from 'react-redux';
-import { useNavigation } from '@react-navigation/native';
+import { CommonActions } from '@react-navigation/native';
 import { useAuth } from '@entities/auth/hooks/useAuth';
+import { useTabBar } from '@widgets/navigation/context';
+import { stopRoomsPagination } from '@entities/chat/model/slice';
 import PushNotificationService from '@shared/services/PushNotificationService';
 import { GlobalAlert } from '@shared/ui/CustomAlert';
+import { navigationRef } from '@shared/utils/NavigationRef';
+
+const resetNavigationToAuth = () => {
+    if (!navigationRef.isReady()) {
+        return false;
+    }
+
+    navigationRef.dispatch(
+        CommonActions.reset({
+            index: 0,
+            routes: [{ name: 'Auth' }],
+        })
+    );
+    return true;
+};
 
 export const useLogout = () => {
     const dispatch = useDispatch();
-    const navigation = useNavigation();
     const { logout } = useAuth();
+    const { resetTabBarLocks } = useTabBar();
+    const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-    const proceedWithLogout = useCallback(() => {
-        setTimeout(() => {
-            dispatch({ type: 'RESET_APP_STATE' });
+    const prepareLogoutCleanup = useCallback(() => {
+        GlobalAlert.hide();
+        resetTabBarLocks();
+        dispatch(stopRoomsPagination());
+    }, [dispatch, resetTabBarLocks]);
 
-            logout().then(() => {
-                navigation.reset({
-                    index: 0,
-                    routes: [{ name: 'Auth' }],
-                });
-            }).catch(() => {
-                GlobalAlert.showError('Ошибка', 'Не удалось выйти из системы. Попробуйте еще раз.');
-            });
-        }, 300);
-    }, [dispatch, logout, navigation]);
+    const proceedWithLogout = useCallback(async () => {
+        setIsLoggingOut(true);
+        prepareLogoutCleanup();
+
+        try {
+            await logout();
+        } catch (error) {
+            console.warn('[useLogout] Logout failed:', error?.message || error);
+        } finally {
+            GlobalAlert.hide();
+            resetTabBarLocks();
+            if (!resetNavigationToAuth()) {
+                console.warn('[useLogout] Navigation ref is not ready for Auth reset');
+            }
+            setIsLoggingOut(false);
+        }
+    }, [logout, prepareLogoutCleanup, resetTabBarLocks]);
 
     const handleLogout = useCallback(async () => {
+        if (isLoggingOut) {
+            return;
+        }
+
+        setIsLoggingOut(true);
+
         try {
             const deactivationResult = await PushNotificationService.clearUserContext();
 
             if (deactivationResult?.success) {
-                proceedWithLogout();
+                await proceedWithLogout();
                 return;
             }
+
+            setIsLoggingOut(false);
 
             GlobalAlert.show(
                 'Предупреждение',
@@ -43,9 +78,10 @@ export const useLogout = () => {
                 ]
             );
         } catch {
+            setIsLoggingOut(false);
             GlobalAlert.showError('Ошибка', 'Произошла неизвестная ошибка при выходе из системы.');
         }
-    }, [proceedWithLogout]);
+    }, [isLoggingOut, proceedWithLogout]);
 
-    return { handleLogout };
+    return { handleLogout, isLoggingOut };
 };

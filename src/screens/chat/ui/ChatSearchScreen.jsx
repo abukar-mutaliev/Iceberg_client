@@ -22,6 +22,13 @@ import { PermissionInfoModal } from '@entities/chat/ui/Composer/components/Permi
 import { selectRoomsList } from '@entities/chat/model/selectors';
 import { debounce } from 'lodash';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import {
+  AssistantAvatar,
+  ASSISTANT_CHAT_TITLE,
+  isAssistantRoom,
+  isAssistantUser,
+  navigateToAssistantChat,
+} from '@features/ai-assistant';
 
 export const ChatSearchScreen = () => {
   const navigation = useNavigation();
@@ -136,6 +143,14 @@ export const ChatSearchScreen = () => {
 
   // Открыть или создать чат с пользователем
   const handleUserPress = async (item) => {
+    if (isAssistantRoom(item) || isAssistantUser(item)) {
+      navigateToAssistantChat(navigation, {
+        roomId: item.type === 'room' ? item.id : null,
+        fromScreen: 'ChatSearch',
+      });
+      return;
+    }
+
     const rootNavigation =
       navigation?.getParent?.('AppStack') ||
       navigation?.getParent?.()?.getParent?.() ||
@@ -250,6 +265,8 @@ export const ChatSearchScreen = () => {
   // Рендер элемента списка
   const renderUserItem = ({ item }) => {
     if (item.type === 'room') {
+      const isAssistant = isAssistantRoom(item);
+
       // Рендер комнаты/группы
       return (
         <TouchableOpacity
@@ -258,7 +275,9 @@ export const ChatSearchScreen = () => {
           disabled={loading}
         >
           <View style={styles.avatarContainer}>
-            {item.avatar ? (
+            {isAssistant ? (
+              <AssistantAvatar size={50} />
+            ) : item.avatar ? (
               <Image 
                 source={{ uri: item.avatar }}
                 style={styles.avatar}
@@ -278,13 +297,16 @@ export const ChatSearchScreen = () => {
           </View>
           
           <View style={styles.userInfo}>
-            <Text style={styles.userName}>{item.displayName}</Text>
+            <Text style={styles.userName}>
+              {isAssistant ? ASSISTANT_CHAT_TITLE : item.displayName}
+            </Text>
             <Text style={styles.userSubtitle}>{item.subtitle}</Text>
           </View>
 
           <View style={styles.existingChatBadge}>
             <Text style={styles.existingChatText}>
-              {item.roomType === 'GROUP' ? 'Группа' : 
+              {isAssistant ? 'Помощник' :
+               item.roomType === 'GROUP' ? 'Группа' : 
                item.roomType === 'DIRECT' ? 'Чат' : 'Товар'}
             </Text>
           </View>
@@ -293,6 +315,7 @@ export const ChatSearchScreen = () => {
     }
 
     // Рендер пользователя
+    const isAssistant = isAssistantUser(item);
     const avatarUri = item.avatar;
 
     return (
@@ -302,7 +325,9 @@ export const ChatSearchScreen = () => {
         disabled={loading}
       >
         <View style={styles.avatarContainer}>
-          {avatarUri ? (
+          {isAssistant ? (
+            <AssistantAvatar size={50} />
+          ) : avatarUri ? (
             <Image 
               source={{ uri: avatarUri }}
               style={styles.avatar}
@@ -318,7 +343,9 @@ export const ChatSearchScreen = () => {
         </View>
         
         <View style={styles.userInfo}>
-          <Text style={styles.userName}>{item.displayName}</Text>
+          <Text style={styles.userName}>
+            {isAssistant ? ASSISTANT_CHAT_TITLE : item.displayName}
+          </Text>
           <Text style={styles.userSubtitle}>{item.subtitle}</Text>
         </View>
       </TouchableOpacity>

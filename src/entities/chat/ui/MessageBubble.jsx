@@ -1,5 +1,5 @@
 import React, {memo, useState, useCallback, useRef, useEffect, useMemo} from 'react';
-import {View, Text, Image, TouchableOpacity, StyleSheet} from 'react-native';
+import {View, Text, Image, TouchableOpacity, StyleSheet, Dimensions} from 'react-native';
 import { TouchableOpacity as GestureTouchableOpacity } from 'react-native-gesture-handler';
 import {Ionicons} from '@expo/vector-icons';
 import {useDispatch, useSelector} from 'react-redux';
@@ -112,16 +112,17 @@ const StatusTicks = memo(({status}) => {
     );
 });
 
-const MeasureText = ({text, onLayout, style}) => {
+const MessageTimeFooter = memo(({time, status, isOwn, style}) => {
+    const styles = useMessageStyles();
+    if (!time) return null;
+
     return (
-        <Text
-            style={[style, {position: 'absolute', opacity: 0, top: -1000}]}
-            onLayout={onLayout}
-        >
-            {text}
-        </Text>
+        <View style={[styles.messageFooter, style]}>
+            <Text style={styles.timestamp}>{time}</Text>
+            {isOwn && <StatusTicks status={status}/>}
+        </View>
     );
-};
+});
 
 // ============= КОМПОНЕНТ ОПРОСА =============
 
@@ -433,26 +434,12 @@ const BubbleContainer = ({
     onSenderNamePress = null,
     isForwarded = false,
     participantsById = null,
-    participants = null
+    participants = null,
+    suppressFooter = false
 }) => {
     const styles = useMessageStyles();
     const mutedIconColor = useMutedIconColor();
     const containerRef = useRef(null);
-    const [textWidth, setTextWidth] = useState(0);
-    const [timeWidth, setTimeWidth] = useState(0);
-
-    const handleTextLayout = (event) => {
-        setTextWidth(event.nativeEvent.layout.width);
-    };
-
-    const handleTimeLayout = (event) => {
-        setTimeWidth(event.nativeEvent.layout.width);
-    };
-
-    const timeSpace = isOwn ? timeWidth + 20 : timeWidth;
-    const canFitInline = textWidth + timeSpace < 280;
-    const isShortMessage = text && text.length < 30;
-    const shouldShowTimeInline = !hasImage && canFitInline && isShortMessage;
 
     const handleLongPress = useCallback(() => {
         if (onLongPress && containerRef.current) {
@@ -498,18 +485,6 @@ const BubbleContainer = ({
                     style={styles.selectedMessageBackground}
                 />
             )}
-            {text && (
-                <MeasureText
-                    text={text}
-                    style={styles.messageText}
-                    onLayout={handleTextLayout}
-                />
-            )}
-            <MeasureText
-                text={time}
-                style={styles.timestamp}
-                onLayout={handleTimeLayout}
-            />
 
             {!isOwn && showAvatar && (
                 <View style={styles.avatarContainer}>
@@ -539,6 +514,7 @@ const BubbleContainer = ({
                     style={[
                         styles.bubble, 
                         isOwn ? styles.ownBubble : styles.otherBubble,
+                        hasImage && styles.mediaBubble,
                         isHighlighted && styles.highlightedBubble,
                         isPressed && !isSelectionMode && (isOwn ? styles.pressedBubbleInnerOwn : styles.pressedBubbleInnerOther)
                     ]}
@@ -578,26 +554,19 @@ const BubbleContainer = ({
                             />
                         )}
                         
-                        {shouldShowTimeInline ? (
-                            <View style={styles.inlineContainer}>
-                                <View style={styles.textContainer}>
-                                    {children}
-                                </View>
-                                <View style={styles.inlineTimeContainer}>
-                                    <Text style={styles.timestamp}>{time}</Text>
-                                    {isOwn && <StatusTicks status={status}/>}
-                                </View>
-                            </View>
+                        {suppressFooter ? (
+                            children
                         ) : (
                             <>
                                 <View style={styles.textContainer}>
                                     {children}
                                 </View>
                                 {time && (
-                                    <View style={styles.messageFooter}>
-                                        <Text style={styles.timestamp}>{time}</Text>
-                                        {isOwn && <StatusTicks status={status}/>}
-                                    </View>
+                                    <MessageTimeFooter
+                                        time={time}
+                                        status={status}
+                                        isOwn={isOwn}
+                                    />
                                 )}
                             </>
                         )}
@@ -758,6 +727,18 @@ const TextMessage = ({
 
 // ============= ОСТАЛЬНЫЕ КОМПОНЕНТЫ СООБЩЕНИЙ =============
 
+// Фиксированная ширина блока изображений: процентные ширины внутри
+// пузырька с автоподбором размера дают непредсказуемый layout (переполнение
+// экрана, съезжающий текст), поэтому считаем ширину от экрана один раз.
+const IMAGE_GRID_WIDTH = Math.min(
+    280,
+    Math.floor(Dimensions.get('window').width * 0.72),
+);
+
+// Максимальная ширина текстового пузырька в px (не % — иначе Yoga ломает перенос).
+const getBubbleMaxWidth = () => Math.floor(Dimensions.get('window').width * 0.75);
+const getBubbleContentMaxWidth = () => getBubbleMaxWidth() - 14;
+
 const ImageMessage = ({
     attachments = [],
     caption,
@@ -793,6 +774,7 @@ const ImageMessage = ({
 }) => {
     const styles = useMessageStyles();
     const imageCount = attachments.length;
+    const hasCaption = Boolean(caption?.trim());
     
     // Определяем размеры сетки в зависимости от количества изображений (максимум 4)
     const getGridLayout = (count) => {
@@ -804,9 +786,9 @@ const ImageMessage = ({
     };
     
     const { rows, cols } = getGridLayout(imageCount);
-    const containerWidth = 250;
+    const containerWidth = IMAGE_GRID_WIDTH;
     const gap = 2;
-    const imageSize = (containerWidth - (gap * (cols - 1))) / cols;
+    const imageSize = Math.max(1, Math.floor((containerWidth - (gap * (cols - 1))) / cols));
     
     // Функция для определения позиции изображения в сетке
     const getImageStyle = (index) => {
@@ -836,8 +818,8 @@ const ImageMessage = ({
             const borderRadius = {
                 borderTopLeftRadius: 0,
                 borderTopRightRadius: 0,
-                borderBottomLeftRadius: index === 1 ? 0 : 13,
-                borderBottomRightRadius: index === 2 ? 13 : 0,
+                borderBottomLeftRadius: hasCaption ? 0 : (index === 1 ? 0 : 13),
+                borderBottomRightRadius: hasCaption ? 0 : (index === 2 ? 13 : 0),
             };
             return {
                 width: imageSize,
@@ -860,10 +842,10 @@ const ImageMessage = ({
             borderRadius.borderTopRightRadius = 13;
         }
         if (isLastRow && isFirstCol) {
-            borderRadius.borderBottomLeftRadius = 13;
+            borderRadius.borderBottomLeftRadius = hasCaption ? 0 : 13;
         }
         if (isLastRow && isLastCol) {
-            borderRadius.borderBottomRightRadius = 13;
+            borderRadius.borderBottomRightRadius = hasCaption ? 0 : 13;
         }
         
         return {
@@ -877,6 +859,70 @@ const ImageMessage = ({
     
     // Показываем счетчик для изображений больше 4
     const remainingCount = imageCount > 4 ? imageCount - 4 : 0;
+
+    const renderImages = () => {
+        if (imageCount === 1) {
+            const attachment = attachments[0];
+            const singleImageRadius = {
+                borderTopLeftRadius: 13,
+                borderTopRightRadius: 13,
+                borderBottomLeftRadius: hasCaption ? 0 : 13,
+                borderBottomRightRadius: hasCaption ? 0 : 13,
+            };
+
+            return (
+                <TouchableOpacity
+                    onPress={() => onImagePress?.(attachment.path)}
+                    activeOpacity={0.8}
+                    style={[styles.singleImageWrapper, singleImageRadius]}
+                >
+                    <CachedImage
+                        source={{uri: attachment.path}}
+                        style={[styles.messageImage, styles.singleMessageImage, singleImageRadius]}
+                        resizeMode="cover"
+                    />
+                </TouchableOpacity>
+            );
+        }
+
+        return (
+            <View style={styles.imageGrid}>
+                {attachments.slice(0, 4).map((attachment, index) => {
+                    const imageStyle = getImageStyle(index);
+                    const { borderTopLeftRadius, borderTopRightRadius, borderBottomLeftRadius, borderBottomRightRadius, ...containerStyle } = imageStyle;
+                    return (
+                        <TouchableOpacity
+                            key={attachment.id || index}
+                            onPress={() => onImagePress?.(attachment.path)}
+                            activeOpacity={0.8}
+                            style={[styles.imageWrapper, containerStyle]}
+                        >
+                            <CachedImage
+                                source={{uri: attachment.path}}
+                                style={[
+                                    styles.messageImage,
+                                    {
+                                        width: imageStyle.width,
+                                        height: imageStyle.height,
+                                        borderTopLeftRadius: borderTopLeftRadius || 0,
+                                        borderTopRightRadius: borderTopRightRadius || 0,
+                                        borderBottomLeftRadius: borderBottomLeftRadius || 0,
+                                        borderBottomRightRadius: borderBottomRightRadius || 0,
+                                    }
+                                ]}
+                                resizeMode="cover"
+                            />
+                            {index === 3 && remainingCount > 0 && (
+                                <View style={styles.imageOverlay}>
+                                    <Text style={styles.imageOverlayText}>+{remainingCount}</Text>
+                                </View>
+                            )}
+                        </TouchableOpacity>
+                    );
+                })}
+            </View>
+        );
+    };
     
     return (
         <>
@@ -886,8 +932,9 @@ const ImageMessage = ({
                 status={status}
                 avatarUri={avatarUri}
                 showAvatar={showAvatar}
-                text={caption || ''}
+                text=""
                 hasImage={true}
+                suppressFooter={true}
                 isSelectionMode={isSelectionMode}
                 isSelected={isSelected}
                 isHighlighted={isHighlighted}
@@ -911,45 +958,27 @@ const ImageMessage = ({
                 isForwarded={isForwarded}
             >
                 <View style={styles.imageContainer}>
-                    <View style={styles.imageGrid}>
-                        {attachments.slice(0, 4).map((attachment, index) => {
-                            const imageStyle = getImageStyle(index);
-                            const { borderTopLeftRadius, borderTopRightRadius, borderBottomLeftRadius, borderBottomRightRadius, ...containerStyle } = imageStyle;
-                            return (
-                                <TouchableOpacity
-                                    key={attachment.id || index}
-                                    onPress={() => onImagePress?.(attachment.path)}
-                                    activeOpacity={0.8}
-                                    style={[styles.imageWrapper, containerStyle]}
-                                >
-                                    <CachedImage
-                                        source={{uri: attachment.path}}
-                                        style={[
-                                            styles.messageImage, 
-                                            { 
-                                                width: imageStyle.width, 
-                                                height: imageStyle.height,
-                                                borderTopLeftRadius: borderTopLeftRadius || 0,
-                                                borderTopRightRadius: borderTopRightRadius || 0,
-                                                borderBottomLeftRadius: borderBottomLeftRadius || 0,
-                                                borderBottomRightRadius: borderBottomRightRadius || 0,
-                                            }
-                                        ]}
-                                        resizeMode="cover"
-                                    />
-                                    {index === 3 && remainingCount > 0 && (
-                                        <View style={styles.imageOverlay}>
-                                            <Text style={styles.imageOverlayText}>+{remainingCount}</Text>
-                                        </View>
-                                    )}
-                                </TouchableOpacity>
-                            );
-                        })}
+                    <View style={styles.imageGridWrapper}>
+                        {renderImages()}
+                        {!hasCaption && time && (
+                            <View style={styles.imageTimeOverlay} pointerEvents="none">
+                                <Text style={[styles.timestamp, styles.imageOverlayTimestamp]}>{time}</Text>
+                                {isOwn && <StatusTicks status={status}/>}
+                            </View>
+                        )}
                     </View>
-                    {caption && (
-                        <View style={styles.imageCaptionContainer}>
-                            <Text style={styles.messageText}>{caption}</Text>
-                        </View>
+                    {hasCaption && (
+                        <>
+                            <View style={styles.imageCaptionContainer}>
+                                <Text style={styles.messageText}>{caption}</Text>
+                            </View>
+                            <MessageTimeFooter
+                                time={time}
+                                status={status}
+                                isOwn={isOwn}
+                                style={styles.imageMessageFooter}
+                            />
+                        </>
                     )}
                 </View>
             </BubbleContainer>
@@ -1118,19 +1147,33 @@ const ProductMessage = memo(({
         );
     }
 
+    const itemsPerBox = Math.max(
+      1,
+      Number(resolvedProduct.itemsPerBox) || 1,
+    );
+    const pricePerItem = Number(
+      resolvedProduct.pricePerItem ?? resolvedProduct.price,
+    ) || 0;
+    const explicitBoxPrice = Number(resolvedProduct.boxPrice);
+    const boxPrice = Number.isFinite(explicitBoxPrice) && explicitBoxPrice > 0
+      ? explicitBoxPrice
+      : pricePerItem * itemsPerBox;
+
     const transformedProduct = {
         id: resolvedProduct.productId || resolvedProduct.id || productId,
         name: resolvedProduct.name,
         description: resolvedProduct.description,
-        price: resolvedProduct.price,
+        price: pricePerItem,
         images: resolvedProduct.images || [],
         image: resolvedProduct.image || (resolvedProduct.images?.[0] ?? null),
-        stockQuantity: 1,
+        stockQuantity: resolvedProduct.stockQuantity ?? 1,
         isActive: true,
-        itemsPerBox: 1,
-        boxPrice: resolvedProduct.price,
-        availableBoxes: 1,
-        pricePerItem: resolvedProduct.price
+        itemsPerBox,
+        boxPrice,
+        availableBoxes: resolvedProduct.availableBoxes ?? 1,
+        pricePerItem,
+        // В чате продажа коробками — показываем цену за коробку как основную
+        preferBoxPrice: true,
     };
 
     return (
@@ -2714,11 +2757,12 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         flex: 0,
         flexGrow: 0,
         alignItems: 'flex-end',
+        maxWidth: getBubbleMaxWidth(),
     },
 
     // Пузырь
     bubbleWrapper: {
-        maxWidth: '85%',
+        maxWidth: getBubbleMaxWidth(),
         alignItems: 'flex-start',
     },
     ownBubbleWrapper: {
@@ -2730,7 +2774,6 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         paddingVertical: 5,
         borderRadius: 7.5,
         position: 'relative',
-        minWidth: 60,
         shadowColor: 'rgba(0, 0, 0, 0.13)',
         shadowOffset: {
             width: 0,
@@ -2745,6 +2788,9 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     },
     otherBubble: {
         backgroundColor: isDark ? colors.surfaceElevated : '#FFFFFF',
+    },
+    mediaBubble: {
+        paddingBottom: 3,
     },
     highlightedBubble: {
         backgroundColor: isDark ? '#3D3820' : '#FFF9C4', // Светло-желтый цвет для выделения
@@ -2775,10 +2821,10 @@ const createStyles = (colors, isDark) => StyleSheet.create({
 
     // Контент
     messageContent: {
-        minWidth: 20,
+        maxWidth: getBubbleContentMaxWidth(),
     },
     textContainer: {
-        flexShrink: 1,
+        maxWidth: getBubbleContentMaxWidth(),
     },
     textMessageContainer: {
         position: 'relative',
@@ -2801,6 +2847,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         fontSize: 16,
         lineHeight: 19,
         color: isDark ? colors.textPrimary : '#000000',
+        flexShrink: 0,
     },
     expandButtonInline: {
         backgroundColor: 'transparent',
@@ -2812,20 +2859,6 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         color: isDark ? colors.primary : '#8966A0',
         fontWeight: '500',
         lineHeight: 19,
-    },
-
-    // Время в строке (для коротких сообщений)
-    inlineContainer: {
-        flexDirection: 'row',
-        alignItems: 'flex-end',
-        justifyContent: 'space-between',
-    },
-    inlineTimeContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginLeft: 8,
-        alignSelf: 'flex-end',
-        marginBottom: -2,
     },
 
     // Футер с временем (для длинных сообщений)
@@ -2840,7 +2873,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         fontSize: 11,
         color: isDark ? colors.textSecondary : '#8696A0',
         marginRight: 3,
-        lineHeight: 11, // добавлено для выравнивания с галочками
+        lineHeight: 11,
     },
 
     // Галочки статуса - УМЕНЬШЕНЫ И ВЫРОВНЕНЫ С ВРЕМЕНЕМ
@@ -2930,17 +2963,30 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     imageContainer: {
         overflow: 'hidden',
         borderRadius: 13,
-        minWidth: 180,
-        maxWidth: 250,
+        width: IMAGE_GRID_WIDTH,
+    },
+    imageGridWrapper: {
+        position: 'relative',
+        width: IMAGE_GRID_WIDTH,
     },
     imageGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        width: 250,
+        width: IMAGE_GRID_WIDTH,
+        alignContent: 'flex-start',
     },
     imageWrapper: {
         position: 'relative',
         overflow: 'hidden',
+    },
+    singleImageWrapper: {
+        width: IMAGE_GRID_WIDTH,
+        aspectRatio: 1,
+        overflow: 'hidden',
+    },
+    singleMessageImage: {
+        width: IMAGE_GRID_WIDTH,
+        height: '100%',
     },
     messageImage: {
         backgroundColor: isDark ? colors.surface : '#F0F0F0',
@@ -2961,15 +3007,31 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         fontWeight: 'bold',
     },
     imageCaptionContainer: {
-        padding: 8,
-        paddingTop: 12,
+        paddingHorizontal: 4,
+        paddingTop: 6,
+        paddingBottom: 0,
         backgroundColor: 'transparent',
-        position: 'relative',
-        borderTopLeftRadius: 0,
-        borderTopRightRadius: 0,
-        borderBottomLeftRadius: 13,
-        borderBottomRightRadius: 13,
-        marginTop: 4,
+    },
+    imageMessageFooter: {
+        marginTop: 0,
+        minHeight: 0,
+        paddingTop: 0,
+        paddingBottom: 2,
+        paddingHorizontal: 4,
+    },
+    imageTimeOverlay: {
+        position: 'absolute',
+        right: 6,
+        bottom: 6,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.45)',
+        borderRadius: 10,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+    },
+    imageOverlayTimestamp: {
+        color: '#FFFFFF',
     },
 
     // Системные сообщения

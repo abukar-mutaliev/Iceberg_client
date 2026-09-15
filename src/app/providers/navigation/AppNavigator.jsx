@@ -5,13 +5,13 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import { Platform, Animated, View, Text, TouchableOpacity, Image } from 'react-native';
 import ThemedStatusBar from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
-import { NavigationContainer, DefaultTheme as NavDefaultTheme, DarkTheme as NavDarkTheme } from "@react-navigation/native";
+import { NavigationContainer, DefaultTheme as NavDefaultTheme, DarkTheme as NavDarkTheme, CommonActions } from "@react-navigation/native";
 import { useDispatch, useSelector } from "react-redux";
 
 // Hooks & Services
 import PushNotificationService from '@shared/services/PushNotificationService';
 import { useAuth } from "@entities/auth/hooks/useAuth";
-import { selectIsAuthenticated } from "@entities/auth/model/selectors";
+import { selectIsAuthenticated, selectNeedsProfile } from "@entities/auth/model/selectors";
 import { navigationRef } from '@shared/utils/NavigationRef';
 
 // Redux Actions
@@ -22,13 +22,15 @@ import { fetchProducts } from "@entities/product";
 import { SplashScreen } from "@/features/splash";
 import { WelcomeScreen } from "@/screens/welcome";
 import { AuthScreen } from "@/screens/auth/ui/AuthScreen";
+import { MobileIdAuthScreen } from "@/screens/auth/ui/MobileIdAuthScreen";
+import { OnboardingScreen } from "@/screens/auth/ui/OnboardingScreen";
 import { PrivacyPolicyScreen } from "@/screens/auth/ui/PrivacyPolicyScreen";
 import { MainScreen } from "@screens/main/ui/MainScreen";
 import { ProfileScreen } from "@/screens/profile";
 import { ProfileEdit } from "@features/profile/ui/ProfileEdit";
-import { ChangePasswordScreen, SettingsScreen, NotificationSettings } from "@features/profile";
+import { ChangePasswordScreen, SettingsScreen, NotificationSettings, AboutAppScreen } from "@features/profile";
 import { HelpCenterScreen } from "@features/help";
-import { AssistantChatScreen } from "@features/ai-assistant";
+import { AssistantChatScreen, AssistantProfileScreen } from "@features/ai-assistant";
 import { ProductListScreen } from "@screens/product/ProductListScreen/ProductListScreen";
 import { ProductDetailScreen } from "@screens/product/ProductDetailScreen";
 import { ProductManagementScreen } from "@screens/product/ProductManagementScreen";
@@ -100,6 +102,7 @@ import { DeepLinkHandler } from '@shared/ui/DeepLinkHandler';
 import { featureFlags } from "@shared/config/featureFlags";
 import { MainTabNavigator } from './MainTabNavigator';
 import { NavigationWrapper } from './NavigationWrapper';
+import { TabBarProvider } from '@widgets/navigation';
 
 // Transition Configs
 import {
@@ -130,6 +133,34 @@ import {
     Stack,
 } from './stacks/stackNavigators';
 
+
+// Возврат к незавершённому онбордингу.
+//
+// Аккаунт из телефонного потока создаётся без имени и района. Если человек
+// закрыл приложение посреди онбординга, при следующем запуске он войдёт по
+// сохранённым токенам — и без этой проверки попал бы в приложение с пустым
+// профилем и без возможности оформить заказ. Признак берём из /api/profile.
+const useOnboardingGuard = (isAuthenticated) => {
+    const needsProfile = useSelector(selectNeedsProfile);
+
+    useEffect(() => {
+        if (!isAuthenticated || !needsProfile || !navigationRef.isReady()) {
+            return;
+        }
+
+        const currentRoute = navigationRef.getCurrentRoute()?.name;
+        if (currentRoute === 'Onboarding' || currentRoute === 'PrivacyPolicy') {
+            return;
+        }
+
+        navigationRef.dispatch(
+            CommonActions.reset({
+                index: 0,
+                routes: [{ name: 'Onboarding' }],
+            })
+        );
+    }, [isAuthenticated, needsProfile]);
+};
 
 // Хук для очистки избранного
 // Оптимизация: запускается однократно за сессию с задержкой 30 сек,
@@ -359,6 +390,11 @@ const ProfileStackScreen = () => {
             options={createScreenOptions({ title: 'Центр помощи' })}
         />
         <ProfileStack.Screen
+            name="AboutApp"
+            component={AboutAppScreen}
+            options={createScreenOptions({ title: 'О приложении' })}
+        />
+        <ProfileStack.Screen
             name="StopsListScreen"
             component={StopsListScreen}
             options={createScreenOptions()}
@@ -504,6 +540,11 @@ const ChatStackScreen = () => {
         <ChatStack.Screen
             name="AssistantChat"
             component={AssistantChatScreen}
+            options={createScreenOptions({ headerShown: false })}
+        />
+        <ChatStack.Screen
+            name="AssistantProfile"
+            component={AssistantProfileScreen}
             options={createScreenOptions({ headerShown: false })}
         />
     </ChatStack.Navigator>
@@ -842,6 +883,7 @@ export const AppNavigator = () => {
     const isAuthenticated = useSelector(selectIsAuthenticated);
     const { colors, isDark } = useTheme();
     useFavoritesCleanup(isAuthenticated);
+    useOnboardingGuard(isAuthenticated);
     useDeepLinking();
 
     // Тёма-aware фабрики опций — шадоуем модульные createScreenOptions
@@ -888,6 +930,7 @@ export const AppNavigator = () => {
             linking={linkingConfig}
             onReady={() => PushNotificationService.setNavigationReady()}
         >
+            <TabBarProvider>
             <ThemedStatusBar />
             <NavigationWrapper>
                 {isAuthenticated && <DeepLinkHandler />}
@@ -935,6 +978,26 @@ export const AppNavigator = () => {
                         name="Auth"
                         component={AuthScreen}
                         options={createScreenOptions()}
+                    />
+                    <Stack.Screen
+                        name="Onboarding"
+                        component={OnboardingScreen}
+                        options={createScreenOptions({
+                            headerShown: false,
+                            // Профиль надо дозаполнить: уйти с экрана назад
+                            // или жестом нельзя, иначе аккаунт останется без
+                            // района и человек не сможет оформить заказ.
+                            gestureEnabled: false,
+                            headerLeft: null,
+                        })}
+                    />
+                    <Stack.Screen
+                        name="MobileIdAuth"
+                        component={MobileIdAuthScreen}
+                        options={createScreenOptions({
+                            headerShown: false,
+                            headerStatusBarHeight: 0,
+                        })}
                     />
                     <Stack.Screen
                         name="PrivacyPolicy"
@@ -1368,6 +1431,26 @@ export const AppNavigator = () => {
                                             cardStyle: { backgroundColor: '#FFFFFF' },
                                         }}
                                     />
+                                    <Stack.Screen
+                                        name="AssistantChat"
+                                        component={AssistantChatScreen}
+                                        options={{
+                                            ...slideFromRight,
+                                            headerShown: false,
+                                            gestureEnabled: true,
+                                            cardStyle: { backgroundColor: '#FFFFFF' },
+                                        }}
+                                    />
+                                    <Stack.Screen
+                                        name="AssistantProfile"
+                                        component={AssistantProfileScreen}
+                                        options={{
+                                            ...slideFromRight,
+                                            headerShown: false,
+                                            gestureEnabled: true,
+                                            cardStyle: { backgroundColor: '#FFFFFF' },
+                                        }}
+                                    />
                                 </>
                             )}
                         </>
@@ -1375,6 +1458,7 @@ export const AppNavigator = () => {
                     </Stack.Navigator>
                 )}
             </NavigationWrapper>
+            </TabBarProvider>
         </NavigationContainer>
     );
 };

@@ -31,7 +31,7 @@ export const NavigationWrapper = ({ children }) => {
 
     const handleNavigateToAuth = useCallback((mode) => {
         try {
-            navigation.navigate('Auth', { initialScreen: mode });
+            navigation.navigate('Auth', { activeTab: mode, initialScreen: mode });
         } catch (error) {
             console.error('Navigation error:', error);
         }

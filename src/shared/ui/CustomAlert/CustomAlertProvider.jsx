@@ -50,6 +50,11 @@ export const GlobalAlert = {
             globalAlertRef.showConfirm(title, message, onConfirm, onCancel);
         }
     },
+    hide: () => {
+        if (globalAlertRef?.hideAlert) {
+            globalAlertRef.hideAlert();
+        }
+    },
 };
 
 export const useGlobalAlert = () => {

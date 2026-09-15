@@ -1,38 +1,43 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 
-const TabBarContext = createContext({
-    isTabBarVisible: true,
-    hideTabBar: () => {},
-    showTabBar: () => {},
-});
+const TabBarContext = createContext(null);
 
 export const TabBarProvider = ({ children }) => {
-    const [isTabBarVisible, setIsTabBarVisible] = useState(true);
+    const [hideLockCount, setHideLockCount] = useState(0);
+    const [autoHidden, setAutoHidden] = useState(false);
 
     const hideTabBar = useCallback(() => {
-        setIsTabBarVisible(prev => {
-            if (prev === false) {
-                // Уже скрыт, не вызываем ререндер
-                return prev;
-            }
-            console.log('📊 TabBarContext: Hiding TabBar');
-            return false;
-        });
+        setHideLockCount((count) => count + 1);
     }, []);
 
     const showTabBar = useCallback(() => {
-        setIsTabBarVisible(prev => {
-            if (prev === true) {
-                // Уже показан, не вызываем ререндер
-                return prev;
-            }
-            console.log('📊 TabBarContext: Showing TabBar');
-            return true;
-        });
+        setHideLockCount((count) => Math.max(0, count - 1));
     }, []);
 
+    const setTabBarAutoHidden = useCallback((hidden) => {
+        setAutoHidden(Boolean(hidden));
+    }, []);
+
+    const resetTabBarLocks = useCallback(() => {
+        setHideLockCount(0);
+        setAutoHidden(false);
+    }, []);
+
+    const isTabBarVisible = hideLockCount === 0 && !autoHidden;
+
+    const value = useMemo(
+        () => ({
+            isTabBarVisible,
+            hideTabBar,
+            showTabBar,
+            setTabBarAutoHidden,
+            resetTabBarLocks,
+        }),
+        [isTabBarVisible, hideTabBar, showTabBar, setTabBarAutoHidden, resetTabBarLocks]
+    );
+
     return (
-        <TabBarContext.Provider value={{ isTabBarVisible, hideTabBar, showTabBar }}>
+        <TabBarContext.Provider value={value}>
             {children}
         </TabBarContext.Provider>
     );
@@ -45,4 +50,3 @@ export const useTabBar = () => {
     }
     return context;
 };
-

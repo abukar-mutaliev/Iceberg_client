@@ -535,12 +535,12 @@ export const CartScreen = ({ navigation }) => {
 
     const handleGuestLogin = () => {
         setShowGuestCheckoutModal(false);
-        navigation.navigate('Auth', { screen: 'LoginScreen' });
+        navigation.navigate('Auth');
     };
 
     const handleGuestRegister = () => {
         setShowGuestCheckoutModal(false);
-        navigation.navigate('Auth', { screen: 'RegisterScreen' });
+        navigation.navigate('Auth');
     };
 
     const handleGuestCheckout = async () => {
@@ -570,12 +570,12 @@ export const CartScreen = ({ navigation }) => {
 
     const handleNotificationLogin = () => {
         setShowGuestNotification(false);
-        navigation.navigate('Auth', { screen: 'LoginScreen' });
+        navigation.navigate('Auth');
     };
 
     const handleNotificationRegister = () => {
         setShowGuestNotification(false);
-        navigation.navigate('Auth', { screen: 'RegisterScreen' });
+        navigation.navigate('Auth');
     };
 
     const handleDismissNotification = () => {
@@ -654,7 +654,6 @@ export const CartScreen = ({ navigation }) => {
                 {isGuest && showGuestNotification && items.length > 0 && (
                     <GuestCartNotification
                         onLoginPress={handleNotificationLogin}
-                        onRegisterPress={handleNotificationRegister}
                         onDismiss={handleDismissNotification}
                         visible={showGuestNotification}
                     />

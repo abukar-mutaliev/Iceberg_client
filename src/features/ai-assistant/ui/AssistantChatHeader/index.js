@@ -1,0 +1,1 @@
+export { AssistantChatHeader } from './AssistantChatHeader';

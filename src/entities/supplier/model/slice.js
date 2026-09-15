@@ -165,14 +165,6 @@ export const fetchSupplierWithProducts = createAsyncThunk(
             // Если всё в кэше, используем его
             if (hasValidSupplierCache && hasValidProductsCache) {
                 const cachedProducts = state.suppliers.supplierProducts[normalizedSupplierId];
-                if (process.env.NODE_ENV === 'development') {
-                    console.log('Использование кэша для fetchSupplierWithProducts:', {
-                        normalizedSupplierId,
-                        cachedProductsType: typeof cachedProducts,
-                        isCachedProductsArray: Array.isArray(cachedProducts),
-                        cachedProductsLength: Array.isArray(cachedProducts) ? cachedProducts.length : 'not array'
-                    });
-                }
                 return {
                     supplier: state.suppliers.supplierDetails[normalizedSupplierId],
                     products: Array.isArray(cachedProducts) ? cachedProducts : [],
@@ -184,31 +176,10 @@ export const fetchSupplierWithProducts = createAsyncThunk(
             // Иначе запрашиваем с сервера (используем оригинальный supplierId для запроса)
             const response = await suppliersApi.getSupplierWithProducts(supplierId);
 
-            if (process.env.NODE_ENV === 'development') {
-                console.log('fetchSupplierWithProducts - Ответ API:', {
-                    supplierId,
-                    responseData: !!response?.data,
-                    responseDataType: typeof response?.data,
-                    hasSupplier: !!response?.data?.supplier,
-                    hasProducts: !!response?.data?.products,
-                    productsType: typeof response?.data?.products,
-                    isProductsArray: Array.isArray(response?.data?.products),
-                    productsLength: Array.isArray(response?.data?.products) ? response.data.products.length : 'not array'
-                });
-            }
-
             const { supplier, products } = response.data || {};
 
             // Убеждаемся что products - это массив
             const productsArray = Array.isArray(products) ? products : [];
-            
-            if (process.env.NODE_ENV === 'development') {
-                console.log('fetchSupplierWithProducts - Возвращаем:', {
-                    normalizedSupplierId,
-                    productsArrayLength: productsArray.length,
-                    isArray: Array.isArray(productsArray)
-                });
-            }
 
             return {
                 supplier,
@@ -531,17 +502,6 @@ const suppliersSlice = createSlice({
                 // Нормализуем supplierId к числу для консистентности
                 const normalizedSupplierId = Number(supplierId);
 
-                if (process.env.NODE_ENV === 'development') {
-                    console.log('fetchSupplierWithProducts.fulfilled:', {
-                        normalizedSupplierId,
-                        supplierId,
-                        productsType: typeof products,
-                        isProductsArray: Array.isArray(products),
-                        productsLength: Array.isArray(products) ? products.length : 'not array',
-                        fromCache
-                    });
-                }
-
                 // ВАЖНО: Обновляем store ВСЕГДА (даже если из кэша)
                 // Это гарантирует что селекторы всегда получат актуальные данные
                 if (supplier && products !== undefined) {
@@ -561,15 +521,6 @@ const suppliersSlice = createSlice({
                         const { headers: productHeaders, ...serializableProduct } = product || {};
                         return serializableProduct;
                     }) : [];
-                    
-                    if (process.env.NODE_ENV === 'development') {
-                        console.log('Сохранение продуктов в store:', {
-                            normalizedSupplierId,
-                            serializableProductsLength: serializableProducts.length,
-                            isArray: Array.isArray(serializableProducts),
-                            storedType: typeof state.supplierProducts[normalizedSupplierId]
-                        });
-                    }
                     
                     // Сохраняем продукты с нормализованным ID
                     state.supplierProducts[normalizedSupplierId] = serializableProducts;

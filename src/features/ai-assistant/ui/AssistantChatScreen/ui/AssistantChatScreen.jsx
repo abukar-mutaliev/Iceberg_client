@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import {
     View,
     Text,
@@ -13,18 +13,18 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { useFocusEffect, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useAssistantChatNavigation } from '../../../hooks/useAssistantChatNavigation';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { ChatBackground } from '@entities/chat/ui/ChatBackground';
-import { HeaderWithBackButton } from '@shared/ui/HeaderWithBackButton';
+import { AssistantChatHeader } from '../../AssistantChatHeader';
+import { AssistantAvatar } from '../../AssistantAvatar';
 import { useOpenManagerChat } from '@features/help/hooks/useOpenManagerChat';
 import { useOpenDeveloperChat } from '@features/help/hooks/useOpenDeveloperChat';
 import { useChatKeyboard } from '@screens/chat/hooks/useChatKeyboard';
 import { useTabBar } from '@widgets/navigation/context';
 import { getImageUrl } from '@shared/api/api';
 import { useAiAssistant } from '../../../hooks/useAiAssistant';
-import { ASSISTANT_CHAT_TITLE } from '../../../constants';
 
 const resolveProductImage = (product) => {
     if (!product) return null;
@@ -32,49 +32,87 @@ const resolveProductImage = (product) => {
     return img ? getImageUrl(img) : null;
 };
 
-const formatProductPrice = (product) => {
-    const value = product?.price ?? product?.boxPrice;
-    if (value === null || value === undefined || value === '') return null;
-    return `${Number(value).toLocaleString('ru-RU')} ₽`;
+/** Цена за коробку — в ИИ-чате продажа только коробками. */
+const resolveBoxPrice = (product) => {
+    if (!product) return null;
+    const explicitBox = Number(product.boxPrice);
+    if (Number.isFinite(explicitBox) && explicitBox > 0) return explicitBox;
+
+    const unit = Number(product.pricePerItem ?? product.price);
+    const itemsPerBox = Math.max(1, Number(product.itemsPerBox) || 1);
+    if (Number.isFinite(unit) && unit > 0) {
+        // Если itemsPerBox неизвестен (=1), price может уже быть за коробку в некоторых экранах —
+        // но для каталога price = за штуку; без boxPrice показываем unit * itemsPerBox.
+        return unit * itemsPerBox;
+    }
+    return null;
 };
 
-const TAB_BAR_HEIGHT = 80;
+const formatProductPrice = (product) => {
+    const value = resolveBoxPrice(product);
+    if (value === null || value === undefined) return null;
+    const itemsPerBox = Math.max(1, Number(product?.itemsPerBox) || 1);
+    const priceStr = `${Number(value).toLocaleString('ru-RU')} ₽`;
+    return itemsPerBox > 1
+        ? `${priceStr} / коробка (${itemsPerBox} шт.)`
+        : `${priceStr} / коробка`;
+};
 
-/**
- * Экран диалога с ИИ-помощником поддержки.
- * Оформлен в стиле обычного чата (DirectChatScreen): фон-обои, «пузыри»
- * с хвостиками и поддержка тёмной темы.
- */
+const ASSISTANT_HEADER_HEIGHT = 64;
+
+
+const getKeyboardComposerLift = (keyboardHeight) => {
+    const height = Number(keyboardHeight) || 0;
+    if (height <= 0) return 0;
+    return Math.max(16, Math.round(height * 0.01));
+};
+
+
 export const AssistantChatScreen = () => {
     const route = useRoute();
+    const navigation = useNavigation();
     const roomId = route.params?.roomId ?? null;
     const fromScreen = route.params?.fromScreen ?? null;
+    const groupRoomId = route.params?.groupRoomId ?? null;
+    const stopId = route.params?.stopId ?? null;
+    const warehouseId = route.params?.warehouseId ?? null;
     const [input, setInput] = React.useState('');
     const [attachedProduct, setAttachedProduct] = React.useState(route.params?.product ?? null);
     const listRef = useRef(null);
     const insets = useSafeAreaInsets();
-    const { hideTabBar, showTabBar, isTabBarVisible } = useTabBar();
+    const { hideTabBar, showTabBar } = useTabBar();
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const { messages, sending, loadingHistory, escalationSuggested, developerContactSuggested, sendQuestion } = useAiAssistant(roomId);
-    const { handleGoBack } = useAssistantChatNavigation(fromScreen, attachedProduct);
+    const { handleGoBack } = useAssistantChatNavigation(fromScreen, attachedProduct, groupRoomId, stopId, warehouseId);
     const { openManagerChat, loading: openingManager } = useOpenManagerChat('Assistant');
     const { openDeveloperChat, loading: openingDeveloper } = useOpenDeveloperChat('Assistant');
     const {
         keyboardVisible,
-        composerContainerStyle,
+        keyboardHeight,
+        androidKeyboardGap,
         keyboardAvoidingBehavior,
-        keyboardAvoidingOffset,
+        keyboardVerticalOffset,
     } = useChatKeyboard(insets, {
-        headerOffset: 64,
+        headerOffset: ASSISTANT_HEADER_HEIGHT,
         androidVerticalOffset: 84,
         enableKeyboardGap: true,
     });
 
-    useEffect(() => {
-        hideTabBar();
-        return () => showTabBar();
-    }, [hideTabBar, showTabBar]);
+    const keyboardExtraLift = useMemo(
+        () => (keyboardVisible ? getKeyboardComposerLift(keyboardHeight) : 0),
+        [keyboardVisible, keyboardHeight]
+    );
+
+    const resolvedComposerStyle = useMemo(() => {
+        if (!keyboardVisible) {
+            return { position: 'relative' };
+        }
+        const extraBottom = (androidKeyboardGap || 0) + keyboardExtraLift;
+        return extraBottom > 0
+            ? { position: 'relative', marginBottom: extraBottom }
+            : { position: 'relative' };
+    }, [keyboardVisible, androidKeyboardGap, keyboardExtraLift]);
 
     useFocusEffect(
         useCallback(() => {
@@ -85,13 +123,38 @@ export const AssistantChatScreen = () => {
 
     const inputBarBottomPadding = useMemo(() => {
         if (keyboardVisible) return 8;
-        if (!isTabBarVisible) return Math.max(insets.bottom, 8);
-        return TAB_BAR_HEIGHT + insets.bottom;
-    }, [keyboardVisible, isTabBarVisible, insets.bottom]);
+        return Math.max(insets.bottom, 8);
+    }, [keyboardVisible, insets.bottom]);
 
     const scrollToEnd = useCallback(() => {
         requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
     }, []);
+
+    const handleOpenProfile = useCallback(() => {
+        navigation.navigate('AssistantProfile', {
+            roomId,
+            fromScreen: 'AssistantChat',
+            chatFromScreen: fromScreen,
+        });
+    }, [navigation, roomId, fromScreen]);
+
+    const handleOpenProduct = useCallback((productId) => {
+        if (!productId) return;
+
+        const rootNav = navigation?.getParent?.('AppStack') || navigation?.getParent?.() || navigation;
+        const params = {
+            productId,
+            fromScreen: 'AssistantChat',
+            roomId,
+        };
+
+        if (rootNav && typeof rootNav.push === 'function') {
+            rootNav.push('ProductDetail', params);
+            return;
+        }
+
+        rootNav.navigate('ProductDetail', params);
+    }, [navigation, roomId]);
 
     const handleSend = useCallback(() => {
         const text = input.trim();
@@ -109,10 +172,25 @@ export const AssistantChatScreen = () => {
         if (item.type === 'product') {
             const image = resolveProductImage(item.product);
             const price = formatProductPrice(item.product);
+            const productId = item.product?.id || item.product?.productId;
             return (
                 <View style={[styles.bubbleRow, isUser ? styles.rowUser : styles.rowBot]}>
+                    {!isUser ? (
+                        <TouchableOpacity
+                            style={styles.messageAvatar}
+                            onPress={handleOpenProfile}
+                            activeOpacity={0.7}
+                        >
+                            <AssistantAvatar size="small" />
+                        </TouchableOpacity>
+                    ) : null}
                     <View style={[styles.bubbleWrapper, isUser && styles.bubbleWrapperUser]}>
-                        <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleBot, styles.productBubble]}>
+                        <TouchableOpacity
+                            style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleBot, styles.productBubble]}
+                            onPress={() => handleOpenProduct(productId)}
+                            activeOpacity={0.8}
+                            disabled={!productId}
+                        >
                             {image ? (
                                 <Image source={{ uri: image }} style={styles.productImage} resizeMode="cover" />
                             ) : (
@@ -126,7 +204,7 @@ export const AssistantChatScreen = () => {
                                 </Text>
                                 {price ? <Text style={styles.productPrice}>{price}</Text> : null}
                             </View>
-                        </View>
+                        </TouchableOpacity>
                     </View>
                 </View>
             );
@@ -134,6 +212,15 @@ export const AssistantChatScreen = () => {
 
         return (
             <View style={[styles.bubbleRow, isUser ? styles.rowUser : styles.rowBot]}>
+                {!isUser ? (
+                    <TouchableOpacity
+                        style={styles.messageAvatar}
+                        onPress={handleOpenProfile}
+                        activeOpacity={0.7}
+                    >
+                        <AssistantAvatar size="small" />
+                    </TouchableOpacity>
+                ) : null}
                 <View style={[styles.bubbleWrapper, isUser && styles.bubbleWrapperUser]}>
                     <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleBot]}>
                         {item.pending ? (
@@ -141,6 +228,17 @@ export const AssistantChatScreen = () => {
                         ) : (
                             <Text style={styles.bubbleText}>{item.content}</Text>
                         )}
+                        {!isUser && item.relatedProductId ? (
+                            <TouchableOpacity
+                                style={styles.openProductButton}
+                                onPress={() => handleOpenProduct(item.relatedProductId)}
+                                activeOpacity={0.8}
+                            >
+                                <Icon name="shopping-bag" size={16} color={colors.primary} />
+                                <Text style={styles.openProductButtonText}>Открыть товар</Text>
+                                <Icon name="chevron-right" size={18} color={colors.primary} />
+                            </TouchableOpacity>
+                        ) : null}
                         {isUser ? (
                             <View style={styles.ownTailContainer}>
                                 <View style={styles.ownTailTriangle} />
@@ -154,11 +252,14 @@ export const AssistantChatScreen = () => {
                 </View>
             </View>
         );
-    }, [styles, colors.primary]);
+    }, [styles, colors.primary, colors.textTertiary, handleOpenProfile, handleOpenProduct]);
 
     return (
         <SafeAreaView style={styles.container} edges={['left', 'right']}>
-            <HeaderWithBackButton title={ASSISTANT_CHAT_TITLE} onBackPress={handleGoBack} />
+            <AssistantChatHeader
+                onBackPress={handleGoBack}
+                onProfilePress={handleOpenProfile}
+            />
             <ChatBackground>
                 <View style={styles.chatContent}>
                     {loadingHistory && (
@@ -180,10 +281,10 @@ export const AssistantChatScreen = () => {
 
                     <KeyboardAvoidingView
                         behavior={Platform.OS === 'ios' ? 'padding' : keyboardAvoidingBehavior}
-                        keyboardVerticalOffset={keyboardAvoidingOffset}
-                        enabled
+                        keyboardVerticalOffset={keyboardVerticalOffset}
+                        enabled={keyboardVisible}
                     >
-                        <View style={composerContainerStyle}>
+                        <View style={resolvedComposerStyle}>
                             {escalationSuggested && (
                                 <TouchableOpacity
                                     style={styles.escalateButton}
@@ -280,9 +381,13 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     listContent: { paddingHorizontal: 8, paddingTop: 8, paddingBottom: 12 },
     historyLoader: { paddingVertical: 12, alignItems: 'center' },
 
-    bubbleRow: { marginBottom: 8, flexDirection: 'row' },
+    bubbleRow: { marginBottom: 8, flexDirection: 'row', alignItems: 'flex-end' },
     rowUser: { justifyContent: 'flex-end' },
     rowBot: { justifyContent: 'flex-start' },
+    messageAvatar: {
+        marginRight: 6,
+        marginBottom: 2,
+    },
 
     bubbleWrapper: { maxWidth: '85%', alignItems: 'flex-start' },
     bubbleWrapperUser: { alignItems: 'flex-end' },
@@ -305,6 +410,21 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         fontSize: 16,
         lineHeight: 21,
         color: isDark ? colors.textPrimary : '#000000',
+    },
+    openProductButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 8,
+        paddingTop: 8,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: isDark ? colors.border : '#E0E0E0',
+    },
+    openProductButtonText: {
+        flex: 1,
+        marginLeft: 6,
+        fontSize: 14,
+        fontWeight: '600',
+        color: colors.primary,
     },
 
     ownTailContainer: {

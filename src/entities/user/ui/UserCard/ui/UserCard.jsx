@@ -8,6 +8,7 @@ import IconEdit from '@shared/ui/Icon/Profile/IconEdit';
 import IconDelete from '@shared/ui/Icon/Profile/IconDelete';
 import IconSettings from '@shared/ui/Icon/Profile/IconSettings';
 import { USER_ROLES_DISPLAY, USER_CARD_COLORS } from '@entities/user/model/constants';
+import { getClientDisplayName } from '@entities/user/lib/getClientDisplayName';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 // Пытаемся импортировать константы должностей с фолбэком
@@ -37,7 +38,7 @@ export const UserCard = ({ user, onEdit, onDelete, onRoleChange, onProcessingRol
             case 'ADMIN':
                 return user.profile.name || 'Администратор';
             case 'CLIENT':
-                return user.profile.name || 'Клиент';
+                return getClientDisplayName(user.profile.name, user.profileCompletedAt) || 'Клиент';
             case 'EMPLOYEE':
                 return user.profile.name || 'Сотрудник';
             case 'SUPPLIER':

@@ -14,6 +14,7 @@ import {
     Alert
 } from 'react-native';
 import {useDispatch, useSelector} from 'react-redux';
+import {useNavigation} from '@react-navigation/native';
 import {Ionicons} from '@expo/vector-icons';
 import {login, clearError, setTokens, setUser, loadUserProfile} from '@entities/auth';
 import {selectEmail, selectPassword, setEmail, setPassword} from '@entities/auth';
@@ -25,16 +26,17 @@ import {useTheme} from '@app/providers/themeProvider/ThemeProvider';
 
 export const LoginForm = ({ onForgotPassword }) => {
     const dispatch = useDispatch();
+    const navigation = useNavigation();
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const placeholderColor = isDark ? colors.textTertiary : '#888';
-    const passwordIconColor = isLoading
-        ? (isDark ? colors.textTertiary : '#999')
-        : (isDark ? colors.primary : '#3339b0');
     const email = useSelector(selectEmail) || '';
     const password = useSelector(selectPassword) || '';
     const isLoading = useSelector((state) => state.auth?.isLoading ?? false);
     const error = useSelector((state) => state.auth?.error);
+    const passwordIconColor = isLoading
+        ? (isDark ? colors.textTertiary : '#999')
+        : (isDark ? colors.primary : '#3339b0');
 
     const [emailError, setEmailError] = useState('');
     const [passwordError, setPasswordError] = useState('');
@@ -292,6 +294,33 @@ export const LoginForm = ({ onForgotPassword }) => {
             styles.formContainer,
             {marginTop: formMarginTop}
         ]}>
+            <Text style={styles.leadText}>
+                Подтвердите номер — если аккаунта ещё нет, он создастся сам
+            </Text>
+
+            <TouchableOpacity
+                style={[styles.button, isLoading && styles.buttonDisabled]}
+                onPress={() => navigation.navigate('MobileIdAuth')}
+                disabled={isLoading}
+                activeOpacity={0.7}
+            >
+                <View style={styles.primaryButtonInner}>
+                    <Ionicons
+                        name="phone-portrait-outline"
+                        size={normalize(22)}
+                        color="#fff"
+                        style={styles.mobileIdIcon}
+                    />
+                    <Text style={styles.buttonText}>Войти по номеру</Text>
+                </View>
+            </TouchableOpacity>
+
+            <View style={styles.dividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>или пароль</Text>
+                <View style={styles.dividerLine} />
+            </View>
+
             <View style={styles.inputsContainer}>
                 <View style={styles.emailInputContainer}>
                     <Text style={styles.inputLabel}>Email или номер телефона</Text>
@@ -365,16 +394,16 @@ export const LoginForm = ({ onForgotPassword }) => {
 
             <TouchableOpacity
                 style={[
-                    styles.button,
-                    isLoading && styles.buttonDisabled
+                    styles.passwordButton,
+                    isLoading && styles.passwordButtonDisabled
                 ]}
                 onPress={handleLogin}
                 disabled={isLoading}
             >
                 {isLoading ? (
-                    <ActivityIndicator color="#fff"/>
+                    <ActivityIndicator color={isDark ? colors.primary : '#000cff'}/>
                 ) : (
-                    <Text style={styles.buttonText}>Подтвердить</Text>
+                    <Text style={styles.passwordButtonText}>Войти с паролем</Text>
                 )}
             </TouchableOpacity>
         </Animated.View>
@@ -392,9 +421,24 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         paddingHorizontal: normalize(20),
         backgroundColor: 'transparent',
         borderRadius: 0,
-        paddingVertical: normalize(35),
+        paddingVertical: normalize(24),
         width: '100%',
         marginTop: 0,
+    },
+    leadText: {
+        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+        fontSize: normalizeFont(14),
+        fontWeight: '500',
+        color: isDark ? colors.textSecondary : '#555',
+        textAlign: 'center',
+        marginBottom: normalize(20),
+        lineHeight: normalize(20),
+        paddingHorizontal: normalize(12),
+    },
+    primaryButtonInner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     inputsContainer: {
         marginBottom: normalize(20),
@@ -481,24 +525,65 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         backgroundColor: isDark ? colors.primary : '#000cff',
         borderRadius: 30,
         width: Math.min(width * 0.8, normalize(320)),
-        height: normalize(70),
+        height: normalize(62),
         justifyContent: 'center',
         alignItems: 'center',
         alignSelf: 'center',
-        paddingVertical: normalize(5),
         paddingHorizontal: normalize(20),
-        paddingBottom: normalize(10),
     },
     buttonDisabled: {
         backgroundColor: isDark ? colors.border : '#d3d3d3',
     },
     buttonText: {
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
-        fontSize: normalizeFont(17),
-        fontWeight: '500',
-        textTransform: 'uppercase',
+        fontSize: normalizeFont(16),
+        fontWeight: '600',
         color: '#fff',
-        lineHeight: normalize(30),
+        lineHeight: normalize(22),
+    },
+    passwordButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'transparent',
+        borderWidth: 1.5,
+        borderColor: isDark ? colors.primary : '#000cff',
+        borderRadius: 30,
+        width: Math.min(width * 0.8, normalize(320)),
+        height: normalize(56),
+        alignSelf: 'center',
+        paddingHorizontal: normalize(20),
+    },
+    passwordButtonDisabled: {
+        borderColor: isDark ? colors.border : '#d3d3d3',
+    },
+    passwordButtonText: {
+        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+        fontSize: normalizeFont(15),
+        fontWeight: '600',
+        color: isDark ? colors.primary : '#000cff',
+    },
+    dividerRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        alignSelf: 'center',
+        width: Math.min(width * 0.8, normalize(320)),
+        marginTop: normalize(28),
+        marginBottom: normalize(8),
+    },
+    dividerLine: {
+        flex: 1,
+        height: 1,
+        backgroundColor: isDark ? colors.border : '#E0E0E0',
+    },
+    dividerText: {
+        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+        fontSize: normalizeFont(13),
+        color: isDark ? colors.textSecondary : '#999',
+        marginHorizontal: normalize(12),
+    },
+    mobileIdIcon: {
+        marginRight: normalize(8),
     },
     textDisabled: {
         opacity: 0.5

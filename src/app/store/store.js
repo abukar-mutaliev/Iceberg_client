@@ -158,6 +158,24 @@ const profileCheckMiddleware = store => next => action => {
     return result;
 };
 
+// Сбрасываем «призрачную» сессию: user в persist есть, токенов нет — иначе
+// компоненты думают что пользователь авторизован, а API уходит без Authorization.
+const authSyncMiddleware = store => next => action => {
+    const result = next(action);
+
+    if (action.type === 'persist/REHYDRATE') {
+        const state = store.getState();
+        const hasUser = Boolean(state.auth?.user?.id);
+        const hasToken = Boolean(state.auth?.tokens?.accessToken);
+        if (hasUser && !hasToken) {
+            store.dispatch({ type: 'auth/resetState' });
+            store.dispatch({ type: 'chat/stopRoomsPagination' });
+        }
+    }
+
+    return result;
+};
+
 export const store = configureStore({
     reducer: persistedReducer,
     middleware: (getDefaultMiddleware) =>
@@ -185,6 +203,7 @@ export const store = configureStore({
             .concat(localStorageMiddleware)
             .concat(notificationSettingsMiddleware)
             .concat(profileCheckMiddleware)
+            .concat(authSyncMiddleware)
             .concat(cartReloadMiddleware)
 });
 

@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -13,12 +13,12 @@ import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 export const ProfileHeader = () => {
     const navigation = useNavigation();
     const { currentUser } = useAuth();
-    const { handleLogout } = useLogout();
-    const { colors } = useTheme();
+    const { handleLogout, isLoggingOut } = useLogout();
+    const { colors, isDark } = useTheme();
     const profile = useSelector(state => state.profile.data);
 
     const componentKey = `profile-header-${currentUser?.id || 'no-user'}`;
-    const styles = useMemo(() => createStyles(colors), [colors]);
+    const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
     const getUserFullName = () => {
         if (!profile || !currentUser) return 'Пользователь';
@@ -71,6 +71,7 @@ export const ProfileHeader = () => {
     const fullName = getUserFullName();
     const userRoleOrPosition = getUserRoleOrPosition();
     const showRole = currentUser?.role && currentUser.role !== 'CLIENT';
+    const canLogout = Boolean(currentUser?.role);
 
     const handleBackToMain = () => {
         const parent = navigation.getParent?.();
@@ -86,16 +87,42 @@ export const ProfileHeader = () => {
             <View style={styles.topBar}>
                 <BackButton onPress={handleBackToMain} />
 
-                <Pressable
-                    style={styles.logoutButton}
-                    onPress={handleLogout}
-                    accessibilityRole="button"
-                    accessibilityLabel="Выйти из аккаунта"
-                    android_ripple={{ color: 'rgba(0, 0, 0, 0.1)', borderless: true }}
-                >
-                    <Icon name="logout" size={22} color={colors.textSecondary} />
-                    <Text style={styles.logoutText}>Выйти</Text>
-                </Pressable>
+                {canLogout ? (
+                    <Pressable
+                        style={({ pressed }) => [
+                            styles.logoutButton,
+                            pressed && !isLoggingOut && styles.logoutButtonPressed,
+                            isLoggingOut && styles.logoutButtonLoading,
+                        ]}
+                        onPress={handleLogout}
+                        disabled={isLoggingOut}
+                        accessibilityRole="button"
+                        accessibilityLabel={isLoggingOut ? 'Выход из аккаунта' : 'Выйти из аккаунта'}
+                        accessibilityState={{ busy: isLoggingOut, disabled: isLoggingOut }}
+                        android_ripple={{
+                            color: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)',
+                            borderless: false,
+                        }}
+                    >
+                        {isLoggingOut ? (
+                            <>
+                                <ActivityIndicator
+                                    size="small"
+                                    color={colors.textSecondary}
+                                    style={styles.logoutSpinner}
+                                />
+                                <Text style={[styles.logoutText, styles.logoutTextWithSpinner]}>Выход...</Text>
+                            </>
+                        ) : (
+                            <>
+                                <Icon name="logout" size={22} color={colors.textSecondary} />
+                                <Text style={styles.logoutText}>Выйти</Text>
+                            </>
+                        )}
+                    </Pressable>
+                ) : (
+                    <View style={styles.logoutPlaceholder} />
+                )}
             </View>
 
             <View style={styles.avatarContainer}>
@@ -118,7 +145,7 @@ export const ProfileHeader = () => {
 };
 
 
-const createStyles = (colors) => StyleSheet.create({
+const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         backgroundColor: colors.background,
         alignItems: 'center',
@@ -135,13 +162,36 @@ const createStyles = (colors) => StyleSheet.create({
     logoutButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        height: normalize(50),
-        paddingHorizontal: normalize(8),
+        justifyContent: 'center',
+        minWidth: normalize(96),
+        height: normalize(40),
+        paddingHorizontal: normalize(12),
+        borderRadius: normalize(10),
+        overflow: 'hidden',
+    },
+    logoutPlaceholder: {
+        minWidth: normalize(96),
+        height: normalize(40),
+    },
+    logoutButtonPressed: {
+        opacity: 0.72,
+        transform: [{ scale: 0.96 }],
+        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+    },
+    logoutButtonLoading: {
+        opacity: 0.85,
+        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',
+    },
+    logoutSpinner: {
+        marginRight: normalize(6),
     },
     logoutText: {
         fontSize: normalizeFont(14),
         color: colors.textSecondary,
         marginLeft: normalize(4),
+    },
+    logoutTextWithSpinner: {
+        marginLeft: 0,
     },
     avatarContainer: {
         alignItems: 'center',

@@ -3,7 +3,10 @@ export const stopApi = {
     getAllStops: async (params = {}) => {
         try {
             // Публичный эндпоинт: доступен гостям, поэтому НЕ используем createProtectedRequest
-            const response = await api.get('/api/stops/all', { params });
+            const response = await api.get('/api/stops/all', {
+                params,
+                isPublicRequest: true,
+            });
             if (!response || !response.data) {
                 throw new Error('Получен некорректный ответ от сервера');
             }
@@ -230,7 +233,9 @@ export const stopApi = {
             // Эндпоинт с optionalAuth: должен работать и для гостей
             // Добавляем timestamp для предотвращения кеширования
             const timestamp = Date.now();
-            const response = await api.get(`/api/stops/${stopId}/products?_t=${timestamp}`);
+            const response = await api.get(`/api/stops/${stopId}/products?_t=${timestamp}`, {
+                isPublicRequest: true,
+            });
             return response;
         } catch (error) {
             console.error(`Error in getStopProducts(${stopId}) API call:`, error);

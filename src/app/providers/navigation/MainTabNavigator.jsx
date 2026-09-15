@@ -2,7 +2,7 @@ import React from 'react';
 import { Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CustomTabBar, TabBarProvider, useTabBar } from '@widgets/navigation';
+import { CustomTabBar, useTabBar } from '@widgets/navigation';
 import { featureFlags } from '@shared/config/featureFlags';
 
 const Tab = createBottomTabNavigator();
@@ -75,7 +75,5 @@ const MainTabNavigatorContent = ({
 };
 
 export const MainTabNavigator = (props) => (
-    <TabBarProvider>
-        <MainTabNavigatorContent {...props} />
-    </TabBarProvider>
+    <MainTabNavigatorContent {...props} />
 );

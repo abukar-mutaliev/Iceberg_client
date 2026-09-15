@@ -30,24 +30,35 @@ import {
     selectCustomDistrict,
     setDistrictId,
     setCustomDistrict,
-    initiatePhoneRegister
+    initiatePhoneRegister,
+    mobileIdCompleteRegister
 } from '@entities/auth';
 import { CustomTextInput } from '@shared/ui/CustomTextInput/CustomTextInput';
 import { api } from '@shared/api/api';
 import { retryRequest } from '@shared/api/retryHelper';
 import { GlobalAlert } from '@shared/ui/CustomAlert';
+import { getUserFriendlyError, looksLikeNetworkError } from '@shared/lib/errorMessages';
 
 const OTHER_DISTRICT_NAME = 'Другой';
 
-export const PhoneRegisterForm = ({ onVerification }) => {
+// Черновик заполненной формы на время подтверждения номера. Экран подтверждения
+// открывается поверх регистрации, и форма может быть пересоздана — тогда пароль
+// и согласие пришлось бы вводить заново. В хранилище ничего не пишем: значения
+// живут только в памяти до завершения регистрации.
+let verificationDraft = null;
+
+export const PhoneRegisterForm = ({ onVerification, mobileId = null, smsFallback = false }) => {
     const dispatch = useDispatch();
     const navigation = useNavigation();
+    // Когда номер уже подтверждён через MobileID — SMS-код не нужен,
+    // регистрация завершается напрямую по mobileId.registrationToken.
+    const isMobileIdFlow = !!mobileId?.registrationToken;
+    // Номер подтверждается так же, как при входе — через оператора.
+    // Свой SMS-код остаётся запасным вариантом, если сервис недоступен.
+    const usesOperatorVerification = !isMobileIdFlow && !smsFallback;
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const placeholderColor = isDark ? colors.textTertiary : '#888';
-    const passwordIconColor = isLoading
-        ? (isDark ? colors.textTertiary : '#999')
-        : (isDark ? colors.primary : '#3339b0');
 
     const reduxName = useSelector(selectName) || '';
     const reduxPhone = useSelector(selectPhone) || '';
@@ -57,7 +68,14 @@ export const PhoneRegisterForm = ({ onVerification }) => {
     const reduxCustomDistrict = useSelector(selectCustomDistrict) || '';
     const isLoading = useSelector((state) => state.auth?.isLoading ?? false);
 
-    const [privacyAgreed, setPrivacyAgreed] = useState(false);
+    const passwordIconColor = isLoading
+        ? (isDark ? colors.textTertiary : '#999')
+        : (isDark ? colors.primary : '#3339b0');
+
+    // Возврат с подтверждённым номером: поля, которых нет в сторе, берём из черновика.
+    const restoredDraft = isMobileIdFlow ? verificationDraft : null;
+
+    const [privacyAgreed, setPrivacyAgreed] = useState(() => !!restoredDraft?.privacyAgreed);
 
     const [name, setLocalName] = useState(reduxName);
     const [phone, setLocalPhone] = useState(reduxPhone);
@@ -65,8 +83,8 @@ export const PhoneRegisterForm = ({ onVerification }) => {
     const [gender, setLocalGender] = useState(reduxGender);
     const [districtId, setLocalDistrictId] = useState(reduxDistrictId);
     const [customDistrict, setLocalCustomDistrict] = useState(reduxCustomDistrict);
-    const [password, setPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
+    const [password, setPassword] = useState(() => restoredDraft?.password || '');
+    const [confirmPassword, setConfirmPassword] = useState(() => restoredDraft?.confirmPassword || '');
     const [isPasswordVisible, setIsPasswordVisible] = useState(false);
     const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
     const [showGenderModal, setShowGenderModal] = useState(false);
@@ -90,13 +108,24 @@ export const PhoneRegisterForm = ({ onVerification }) => {
         { value: 'PREFER_NOT_TO_SAY', label: 'Предпочитаю не указывать' }
     ];
 
+    // Префилл подтверждённого через MobileID номера (поле блокируется)
+    useEffect(() => {
+        if (isMobileIdFlow && mobileId?.phone) {
+            setLocalPhone(mobileId.phone);
+            dispatch(setPhone(mobileId.phone));
+        }
+    }, [isMobileIdFlow, mobileId?.phone, dispatch]);
+
     // Загрузка районов с сервера
     const loadDistricts = useCallback(async () => {
         setDistrictsLoading(true);
         try {
             const response = await api.get('/api/districts');
             if (response.data?.status === 'success' && Array.isArray(response.data.data)) {
-                setDistricts(response.data.data);
+                // Район "Другой" из базы скрываем — внизу списка есть своя опция "Другой"
+                setDistricts(response.data.data.filter(
+                    (d) => d.name?.trim().toLowerCase() !== OTHER_DISTRICT_NAME.toLowerCase()
+                ));
             }
         } catch (error) {
             console.error('Ошибка загрузки районов:', error);
@@ -384,6 +413,45 @@ export const PhoneRegisterForm = ({ onVerification }) => {
         return false;
     };
 
+    // Номер уже подтверждён через MobileID — завершаем регистрацию без SMS-кода.
+    // Данные передаются явно: после подтверждения форма могла быть пересоздана,
+    // и актуальные значения лежат в черновике, а не в состоянии полей.
+    // При успехе slice сохранит токены, а AuthScreen перенаправит на Main.
+    const completeMobileIdRegistration = async (data) => {
+        try {
+            await retryRequest(
+                () => dispatch(mobileIdCompleteRegister({
+                    registrationToken: mobileId.registrationToken,
+                    name: data.name,
+                    address: data.address,
+                    gender: data.gender,
+                    districtId: data.isOtherDistrict ? null : data.districtId,
+                    customDistrict: data.isOtherDistrict ? OTHER_DISTRICT_NAME : null,
+                    password: data.password,
+                })).unwrap(),
+                {
+                    maxRetries: 4,
+                    baseDelayMs: 2000,
+                    maxDelayMs: 8000,
+                    waitForConnection: true,
+                    connectionTimeoutMs: 30000,
+                }
+            );
+        } catch (error) {
+            const handledAsFieldError = handleServerErrors(error);
+            if (!handledAsFieldError) {
+                GlobalAlert.show({
+                    type: 'error',
+                    title: 'Ошибка регистрации',
+                    message: getUserFriendlyError(
+                        error,
+                        'Не удалось завершить регистрацию. Попробуйте снова.'
+                    ),
+                });
+            }
+        }
+    };
+
     const handleRegister = async () => {
         console.log('Данные формы (телефон) перед отправкой:', { name, phone, address, gender, districtId, customDistrict });
         dispatch(setName(name));
@@ -414,6 +482,30 @@ export const PhoneRegisterForm = ({ onVerification }) => {
             password,
         };
 
+        const formData = {
+            name,
+            address,
+            gender,
+            districtId,
+            isOtherDistrict,
+            password,
+            confirmPassword,
+            privacyAgreed,
+        };
+
+        if (usesOperatorVerification) {
+            // Номер подтверждается на том же экране, что и при входе по номеру.
+            // Оттуда форма получит токен подтверждения и завершит регистрацию сама.
+            verificationDraft = formData;
+            navigation.navigate('MobileIdAuth', { mode: 'register', phone });
+            return;
+        }
+
+        if (isMobileIdFlow) {
+            await completeMobileIdRegistration(formData);
+            return;
+        }
+
         try {
             const result = await retryRequest(
                 () => dispatch(initiatePhoneRegister(payload)).unwrap(),
@@ -433,6 +525,12 @@ export const PhoneRegisterForm = ({ onVerification }) => {
             const tempToken = result?.registrationToken || null;
             if (tempToken) {
                 onVerification(tempToken);
+            } else {
+                GlobalAlert.show({
+                    type: 'error',
+                    title: 'Ошибка регистрации',
+                    message: 'Сервер не прислал данные для подтверждения номера. Попробуйте отправить заявку ещё раз.',
+                });
             }
         } catch (error) {
             console.error('Ошибка регистрации по телефону:', error);
@@ -440,22 +538,12 @@ export const PhoneRegisterForm = ({ onVerification }) => {
             const handledAsFieldError = handleServerErrors(error);
 
             if (!handledAsFieldError) {
-                const errorMessage = error?.message || '';
-                const lowerMessage = errorMessage.toLowerCase();
-
-                const isNetworkError =
-                    error?.code === 'ERR_NETWORK' ||
-                    error?.originalError?.code === 'ERR_NETWORK' ||
-                    lowerMessage === 'network error' ||
-                    lowerMessage.includes('network') ||
-                    lowerMessage.includes('интернет') ||
-                    lowerMessage.includes('соедин') ||
-                    lowerMessage.includes('timeout') ||
-                    lowerMessage.includes('timed out');
-
-                const userMessage = isNetworkError
+                const userMessage = looksLikeNetworkError(error)
                     ? 'Не удалось подключиться к серверу после 5 попыток. Проверьте подключение к интернету и попробуйте снова.'
-                    : (errorMessage || 'Произошла ошибка при регистрации. Проверьте введённые данные и попробуйте снова.');
+                    : getUserFriendlyError(
+                        error,
+                        'Произошла ошибка при регистрации. Проверьте введённые данные и попробуйте снова.'
+                    );
 
                 GlobalAlert.show({
                     type: 'error',
@@ -480,6 +568,17 @@ export const PhoneRegisterForm = ({ onVerification }) => {
         }
     };
 
+    // Возврат с экрана подтверждения номера: данные уже заполнены и проверены,
+    // отправляем регистрацию сразу, без повторного нажатия кнопки.
+    useEffect(() => {
+        if (!isMobileIdFlow || !verificationDraft) return;
+
+        const draft = verificationDraft;
+        verificationDraft = null;
+        completeMobileIdRegistration(draft);
+        // completeMobileIdRegistration намеренно не в зависимостях: пересоздаётся каждый рендер
+    }, [isMobileIdFlow]); // eslint-disable-line react-hooks/exhaustive-deps
+
     const RequiredLabel = ({ text, required = true }) => (
         <Text style={styles.inputLabel}>
             {text}
@@ -490,7 +589,11 @@ export const PhoneRegisterForm = ({ onVerification }) => {
     return (
         <View style={styles.formContainer}>
             <Text style={styles.infoText}>
-                📱 Мы отправим SMS с кодом подтверждения
+                {isMobileIdFlow
+                    ? '✅ Номер подтверждён. Заполните данные, чтобы завершить регистрацию'
+                    : usesOperatorVerification
+                        ? '📱 После заполнения подтвердим номер через оператора — как при входе по номеру'
+                        : '📱 Мы отправим SMS с кодом подтверждения'}
             </Text>
 
             <View style={styles.inputsContainer}>
@@ -509,6 +612,7 @@ export const PhoneRegisterForm = ({ onVerification }) => {
                         placeholder="+7 (___) ___-__-__"
                         placeholderTextColor={placeholderColor}
                         maxLength={18}
+                        editable={!isMobileIdFlow}
                     />
                     {phoneError ? (
                         <Text style={styles.errorText}>{phoneError}</Text>
@@ -779,6 +883,11 @@ export const PhoneRegisterForm = ({ onVerification }) => {
                                         ]}>
                                             {district.name}
                                         </Text>
+                                        {district.description ? (
+                                            <Text style={styles.optionDescription}>
+                                                {district.description}
+                                            </Text>
+                                        ) : null}
                                     </TouchableOpacity>
                                 ))}
                                 <TouchableOpacity
@@ -970,7 +1079,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         borderRadius: 20,
         padding: normalize(20),
         width: width * 0.9,
-        maxHeight: height * 0.7,
+        maxHeight: height * 0.85,
     },
     modalTitle: {
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
@@ -997,6 +1106,13 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         color: isDark ? colors.primary : '#000cff',
         fontWeight: '600',
     },
+    optionDescription: {
+        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+        fontSize: normalizeFont(12),
+        color: isDark ? colors.textSecondary : '#666',
+        marginTop: normalize(2),
+        lineHeight: normalize(16),
+    },
     closeButton: {
         marginTop: normalize(20),
         padding: normalize(15),
@@ -1011,7 +1127,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         color: '#fff',
     },
     districtsList: {
-        maxHeight: height * 0.4,
+        maxHeight: height * 0.62,
     },
     loadingContainer: {
         padding: normalize(30),

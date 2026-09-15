@@ -2,6 +2,7 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {Platform} from "react-native";
 import Constants from "expo-constants";
+import { withDeviceId } from '@shared/lib/deviceId';
 
 const STORAGE_KEYS = {
     TOKENS: 'tokens',
@@ -177,7 +178,7 @@ const refreshWithRetry = async (refreshTokenValue, maxRetries = 3) => {
         try {
             const response = await axios.post(
                 `${getBaseUrl()}/api/auth/refresh-token`,
-                { refreshToken: refreshTokenValue },
+                await withDeviceId({ refreshToken: refreshTokenValue }),
                 {
                     headers: {
                         'Content-Type': 'application/json',
@@ -339,7 +340,53 @@ const SILENT_ENDPOINTS = [
     // "/api/push-tokens" - временно убрали для отладки сохранения токенов
 ];
 
+const PUBLIC_API_PATHS = [
+    '/api/auth/login',
+    '/api/auth/register',
+    '/api/auth/refresh-token',
+    '/api/auth/initiate-register',
+    '/api/auth/complete-register',
+    '/api/auth/phone/start',
+    '/api/auth/phone/verify',
+    '/api/auth/initiate-phone-login',
+    '/api/auth/verify-phone-login',
+    '/api/auth/login-phone',
+    '/api/auth/2fa/verify-login',
+    '/api/auth/mobileid/',
+    '/api/auth/password/reset/',
+    '/api/products/public',
+    '/api/banners',
+    '/api/categories',
+    '/api/districts',
+    '/api/health',
+    '/api/stops/all',
+];
+
+const isPublicApiUrl = (url) => {
+    if (!url || typeof url !== 'string') return false;
+    if (PUBLIC_API_PATHS.some((path) => url.includes(path))) return true;
+    // GET /api/stops/:id/products — optionalAuth на сервере, доступен гостям
+    if (/\/api\/stops\/\d+\/products(?:\?|$)/.test(url)) return true;
+    // Публичные GET складов: список, карточка, район, товары, график работы
+    if (/\/api\/warehouses(?:\?|$)/.test(url)) return true;
+    if (/\/api\/warehouses\/\d+(?:\?|$)/.test(url)) return true;
+    if (/\/api\/warehouses\/\d+\/(?:products|working-hours)(?:\?|$)/.test(url)) return true;
+    if (/\/api\/warehouses\/district\/\d+(?:\?|$)/.test(url)) return true;
+    return false;
+};
+
+const createNoAuthError = (config) => {
+    const err = new Error('Требуется вход в аккаунт');
+    err.code = 'NO_AUTH';
+    err.config = config;
+    err.isAxiosError = true;
+    return err;
+};
+
 const shouldSilenceErrorLog = (error, url) => {
+    if (error?.config?.silentError) {
+        return true;
+    }
     const isNotFound =
         error?.response?.status === 404 ||
         error?.status === 404 ||
@@ -666,7 +713,7 @@ export const setAuthorizationHeader = async (forceRefresh = false) => {
                 try {
                     const response = await axios.post(
                         `${getBaseUrl()}/api/auth/refresh-token`,
-                        { refreshToken: tokens.refreshToken },
+                        await withDeviceId({ refreshToken: tokens.refreshToken }),
                         {
                             headers: {
                                 'Content-Type': 'application/json',
@@ -1000,6 +1047,9 @@ api.interceptors.request.use(async (config) => {
                 }
             } else {
                 logAuth('reqInterceptor:noTokens', { url: config.url });
+                if (!config.isPublicRequest && !isPublicApiUrl(config.url)) {
+                    return Promise.reject(createNoAuthError(config));
+                }
             }
         }
 
@@ -1056,7 +1106,7 @@ api.interceptors.response.use(
         };
         
         // Дополнительное логирование для сетевых ошибок
-        if (error.code === 'ERR_NETWORK' || error.message?.includes('Network')) {
+        if ((error.code === 'ERR_NETWORK' || error.message?.includes('Network')) && !originalRequest?.silentError) {
             const detailedError = {
                 ...errorDetails,
                 fullError: error.message,
@@ -1381,7 +1431,10 @@ export const createPublicRequest = async (method, url, data = null, config = {})
         const requestConfig = {
             method,
             url,
-            ...config
+            ...config,
+            // Гостю такие эндпоинты доступны без токенов — интерцептор не должен
+            // отклонять запрос из-за отсутствия авторизации.
+            isPublicRequest: true
         };
 
         if (data !== null && data !== undefined) {

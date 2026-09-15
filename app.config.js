@@ -6,7 +6,7 @@ export default {
     expo: {
         name: IS_DEV ? 'Iceberg (Dev)' : 'Iceberg',
         slug: 'iceberg',
-        version: '1.4.3',
+        version: '1.4.5',
         scheme: 'iceberg',
         icon: './assets/notification-icon.png',
         userInterfaceStyle: 'automatic',
@@ -41,8 +41,8 @@ export default {
                 {
                     android: {
                         minSdkVersion: 24,
-                        compileSdkVersion: 35,
-                        targetSdkVersion: 35,
+                        compileSdkVersion: 36,
+                        targetSdkVersion: 36,
                         usesCleartextTraffic: true,
                         networkSecurityConfig: './network_security_config.xml',
                         enableProguardInReleaseBuilds: true,
@@ -100,8 +100,8 @@ export default {
         android: {
             googleServicesFile: './google-services.json',
             package: 'com.abuingush.iceberg',
-            versionCode: 55,
-            versionName: '1.5.5',
+            versionCode: 57,
+            versionName: '1.5.7',
             icon: './assets/icon.png',
             userInterfaceStyle: 'automatic',
             adaptiveIcon: {

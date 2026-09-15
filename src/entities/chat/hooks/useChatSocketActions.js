@@ -146,7 +146,6 @@ export const useChatSocketActions = () => {
   const emitActiveRoom = useRef((roomId) => {
     const socket = globalSocketRef;
     if (!socket || !socket.connected) {
-      if (__DEV__) console.warn('⚠️ Cannot emit active room - socket not connected');
       return;
     }
 

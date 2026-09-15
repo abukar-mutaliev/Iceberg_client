@@ -5,6 +5,7 @@ import { useAuth } from '@entities/auth/hooks/useAuth';
 import { useCartAutoLoad, useCartAvailability, CartAuthHandler } from '@entities/cart';
 import { useOrderCountsBackground } from '@entities/order';
 import { AuthDialog } from "@entities/auth/ui/AuthDialog";
+import { RegistrationPromptHost } from '@features/registrationPrompt';
 import { usePushTokenAutoRegistration } from '@shared/hooks/usePushTokenAutoRegistration';
 import { useChatCacheInit, useChatBackgroundSync } from '@entities/chat';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
@@ -80,7 +81,7 @@ const useAuthNavigation = (onNavigateToAuth) => {
 
     return {
         handleLogin: useCallback(() => navigate('login'), [navigate]),
-        handleRegister: useCallback(() => navigate('register'), [navigate])
+        handleRegister: useCallback(() => navigate('login'), [navigate])
     };
 };
 
@@ -135,6 +136,8 @@ export const AppContainer = ({ children, onNavigateToAuth }) => {
                     onLogin={handleLogin}
                     onRegister={handleRegister}
                 />
+
+                <RegistrationPromptHost />
 
                 <CartAuthHandler />
             </SafeAreaView>

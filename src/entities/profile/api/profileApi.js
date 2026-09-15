@@ -1,4 +1,4 @@
-import { createApiModule } from '@shared/services/ApiClient';
+import { createApiModule, apiClient } from '@shared/services/ApiClient';
 
 const profileApi = createApiModule('/api/profile');
 
@@ -33,6 +33,9 @@ export const profileApiMethods = {
     // Привязка email
     initiateEmailBind: (data) => profileApi.post('/email/bind/initiate', data),
     confirmEmailBind: (data) => profileApi.post('/email/bind/confirm', data),
+
+    initiatePhoneChange: (data) => apiClient.post('/api/users/me/phone/change', data),
+    confirmPhoneChange: (data) => apiClient.post('/api/users/me/phone/change/confirm', data),
 };
 
 export { profileApiMethods as profileApi };

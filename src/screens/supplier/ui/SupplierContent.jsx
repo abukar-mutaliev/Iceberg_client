@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import { View, StyleSheet, Dimensions, RefreshControl, Text as RNText, Pressable } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
@@ -30,9 +30,6 @@ const SupplierContent = React.memo(({
                                         fromScreen = null,
                                         previousProductId = null
                                     }) => {
-    const renderCount = useRef(0);
-    const dataLogged = useRef(false);
-
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const scrollViewRef = useRef(null);
@@ -51,17 +48,6 @@ const SupplierContent = React.memo(({
         };
     }, [supplier, supplierId]);
 
-    useEffect(() => {
-        if (process.env.NODE_ENV === 'development') {
-            console.log('SupplierContent - supplier данные:', {
-                supplierId,
-                'supplier.id': supplier?.id,
-                'supplier.supplier?.id': supplier?.supplier?.id,
-                'enrichedSupplier.id': enrichedSupplier?.id
-            });
-        }
-    }, [supplierId, supplier, enrichedSupplier]);
-
     const products = useMemo(() =>
             Array.isArray(supplierProducts) ? supplierProducts : [],
         [supplierProducts]
@@ -78,61 +64,9 @@ const SupplierContent = React.memo(({
     const feedbacksCount = useMemo(() => reviews.length, [reviews]);
     const hasFeedbacks = useMemo(() => feedbacksCount > 0, [feedbacksCount]);
 
-    const supplierName = useMemo(() => {
-        if (!enrichedSupplier) return 'Неизвестный поставщик';
-        return enrichedSupplier.supplier?.companyName ||
-            enrichedSupplier.companyName ||
-            enrichedSupplier.user?.supplier?.companyName ||
-            'Неизвестный поставщик';
-    }, [enrichedSupplier]);
-
-    useEffect(() => {
-        renderCount.current += 1;
-
-        if (process.env.NODE_ENV === 'development') {
-            console.log('SupplierContent - Рендер:', {
-                supplierId,
-                supplierProductsType: typeof supplierProducts,
-                supplierProductsIsArray: Array.isArray(supplierProducts),
-                supplierProductsLength: supplierProducts?.length,
-                productsCount,
-                hasProducts,
-                feedbacksCount,
-                hasFeedbacks,
-                renderCount: renderCount.current
-            });
-            
-            if (!dataLogged.current && hasProducts) {
-                console.log('SupplierContent - Итоговые данные:', {
-                    supplierId,
-                    supplierName,
-                    productsCount,
-                    hasProducts,
-                    feedbacksCount,
-                    hasFeedbacks,
-                    fromScreen,
-                    previousProductId,
-                    renderCount: renderCount.current
-                });
-                dataLogged.current = true;
-            }
-        }
-    }, [supplierId, supplierName, productsCount, hasProducts, feedbacksCount, hasFeedbacks, fromScreen, previousProductId, supplierProducts]);
-
     const handleGoBack = useCallback(() => {
-        console.log('SupplierContent handleGoBack called with fromScreen:', fromScreen);
-        
-        // Если пришли из чата, возвращаемся к чату
-        if (fromScreen === 'ChatRoom') {
-            console.log('Returning to chat from supplier screen...');
-            // Простой возврат назад - теперь SupplierScreen в ChatStack с анимацией
-            navigation.goBack();
-        } else {
-            console.log('Regular goBack navigation...');
-            // Обычный возврат назад
-            navigation.goBack();
-        }
-    }, [navigation, fromScreen]);
+        navigation.goBack();
+    }, [navigation]);
 
 
     const handleProductPress = (product) => {
@@ -144,15 +78,6 @@ const SupplierContent = React.memo(({
             supplierId: supplierId,
             previousScreen: fromScreen
         });
-
-        if (process.env.NODE_ENV === 'development') {
-            console.log('SupplierContent - Переход к товару:', {
-                productId,
-                fromScreen: 'SupplierScreen',
-                supplierId,
-                previousScreen: fromScreen
-            });
-        }
     };
 
     // Обработчики навигации к возвратам товаров

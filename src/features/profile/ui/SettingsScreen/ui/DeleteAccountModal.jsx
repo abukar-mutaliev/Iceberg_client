@@ -11,7 +11,7 @@ import {
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 import { deleteProfile, selectIsProfileDeleting, selectProfileError } from '@entities/profile';
-import { logout, resetState, removeTokensFromStorage,  } from '@entities/auth';
+import { resetState, removeTokensFromStorage, selectUser } from '@entities/auth';
 import { FontFamily, Border } from '@app/styles/GlobalStyles';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
@@ -27,6 +27,10 @@ const DeleteAccountModal = ({ visible, onClose }) => {
 
     const isDeleting = useSelector(selectIsProfileDeleting);
     const reduxError = useSelector(selectProfileError);
+    const user = useSelector(selectUser);
+    const profileData = useSelector((state) => state.profile?.data);
+    const passwordSet = user?.passwordSet ?? profileData?.passwordSet;
+    const requiresPassword = passwordSet === true;
 
     const error = localError || reduxError;
     const styles = useMemo(() => createStyles(colors), [colors]);
@@ -43,12 +47,12 @@ const DeleteAccountModal = ({ visible, onClose }) => {
 
             // Деактивируем OneSignal токен при удалении аккаунта
             try {
-                console.log('🔄 Деактивация OneSignal токена при удалении аккаунта...');
-                const OneSignalService = require('@shared/services/OneSignalService').default;
-                await OneSignalService.clearUserContext();
-                console.log('✅ OneSignal токен деактивирован при удалении аккаунта');
-            } catch (oneSignalError) {
-                console.warn('⚠️ Ошибка деактивации OneSignal токена при удалении:', oneSignalError);
+                console.log('🔄 Деактивация push-токена при удалении аккаунта...');
+                const PushNotificationService = require('@shared/services/PushNotificationService').default;
+                await PushNotificationService.clearUserContext();
+                console.log('✅ Push-токен деактивирован при удалении аккаунта');
+            } catch (pushError) {
+                console.warn('⚠️ Ошибка деактивации push-токена при удалении:', pushError);
             }
 
             // Очищаем токены авторизации
@@ -71,21 +75,24 @@ const DeleteAccountModal = ({ visible, onClose }) => {
         }
     };
     const handleConfirm = async () => {
-        if (!password) {
-            setLocalError('Введите пароль для подтверждения');
-            return;
-        }
+        if (requiresPassword) {
+            if (!password) {
+                setLocalError('Введите пароль для подтверждения');
+                return;
+            }
 
-        // Валидация длины пароля на клиенте
-        if (password.length < 6) {
-            setLocalError('Пароль должен содержать минимум 6 символов');
-            return;
+            if (password.length < 6) {
+                setLocalError('Пароль должен содержать минимум 6 символов');
+                return;
+            }
         }
 
         setLocalError(null);
 
         try {
-            await dispatch(deleteProfile({ password })).unwrap();
+            await dispatch(
+                deleteProfile(requiresPassword ? { password } : {})
+            ).unwrap();
 
             showSuccess(
                 'Аккаунт удален',
@@ -162,26 +169,34 @@ const DeleteAccountModal = ({ visible, onClose }) => {
                         Внимание! Это действие невозможно отменить. Все ваши данные будут удалены безвозвратно.
                     </Text>
 
-                    <Text style={styles.passwordLabel}>
-                        Введите пароль для подтверждения:
-                    </Text>
+                    {requiresPassword ? (
+                        <>
+                            <Text style={styles.passwordLabel}>
+                                Введите пароль для подтверждения:
+                            </Text>
 
-                    <TextInput
-                        style={[
-                            styles.passwordInput,
-                            error && styles.passwordInputError
-                        ]}
-                        secureTextEntry
-                        value={password}
-                        onChangeText={(text) => {
-                            setPassword(text);
-                            if (localError) setLocalError(null);
-                        }}
-                        placeholder="Ваш пароль"
-                        placeholderTextColor={colors.textTertiary}
-                        autoCapitalize="none"
-                        editable={!isDeleting}
-                    />
+                            <TextInput
+                                style={[
+                                    styles.passwordInput,
+                                    error && styles.passwordInputError
+                                ]}
+                                secureTextEntry
+                                value={password}
+                                onChangeText={(text) => {
+                                    setPassword(text);
+                                    if (localError) setLocalError(null);
+                                }}
+                                placeholder="Ваш пароль"
+                                placeholderTextColor={colors.textTertiary}
+                                autoCapitalize="none"
+                                editable={!isDeleting}
+                            />
+                        </>
+                    ) : (
+                        <Text style={styles.confirmHint}>
+                            Вы входите по номеру телефона. Для удаления аккаунта достаточно подтвердить действие.
+                        </Text>
+                    )}
 
                     {error && <Text style={styles.errorText}>{error}</Text>}
 
@@ -259,6 +274,14 @@ const createStyles = (colors) => StyleSheet.create({
         fontSize: 14,
         marginBottom: 8,
         color: colors.textPrimary,
+    },
+    confirmHint: {
+        fontFamily: FontFamily.sFProText,
+        fontSize: 14,
+        marginBottom: 16,
+        color: colors.textSecondary,
+        textAlign: 'center',
+        lineHeight: 20,
     },
     passwordInput: {
         borderWidth: 1,

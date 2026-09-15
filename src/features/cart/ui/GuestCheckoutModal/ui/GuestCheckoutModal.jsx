@@ -37,7 +37,7 @@ export const GuestCheckoutModal = ({
         if (onLogin) {
             onLogin();
         } else {
-            navigation?.navigate('Auth', { screen: 'LoginScreen' });
+            navigation?.navigate('Auth');
         }
     };
 
@@ -46,7 +46,7 @@ export const GuestCheckoutModal = ({
         if (onRegister) {
             onRegister();
         } else {
-            navigation?.navigate('Auth', { screen: 'RegisterScreen' });
+            navigation?.navigate('Auth');
         }
     };
 
@@ -115,7 +115,7 @@ export const GuestCheckoutModal = ({
                                         Для быстрого оформления заказа
                                     </Text>
                                     <Text style={styles.descriptionText}>
-                                        Войдите в свой аккаунт или зарегистрируйтесь. Ваша корзина будет сохранена!
+                                        Войдите по номеру телефона. Корзина сохранится, а если аккаунта ещё нет — он создастся сам.
                                     </Text>
                                 </View>
 
@@ -126,16 +126,7 @@ export const GuestCheckoutModal = ({
                                         onPress={handleLogin}
                                     >
                                         <Text style={styles.primaryButtonText}>
-                                            Войти в аккаунт
-                                        </Text>
-                                    </TouchableOpacity>
-
-                                    <TouchableOpacity
-                                        style={styles.secondaryButton}
-                                        onPress={handleRegister}
-                                    >
-                                        <Text style={styles.secondaryButtonText}>
-                                            Зарегистрироваться
+                                            Войти по номеру
                                         </Text>
                                     </TouchableOpacity>
 

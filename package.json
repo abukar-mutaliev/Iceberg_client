@@ -22,7 +22,7 @@
     "postinstall": "patch-package",
     "eas-build-post-install": "bash eas-build-pre-install.sh || echo 'Post-install hook completed with warnings'",
     "ios": "npx expo start --lan --go",
-    "submit": "eas submit -p ios --profile production --latest",
+    "                                                                            ": "eas submit -p ios --profile production --latest",
     "eas-build-pre-install": "npm install --legacy-peer-deps"
   },
   "dependencies": {
@@ -44,6 +44,7 @@
     "babel-preset-expo": "~54.0.10",
     "cli-cursor": "^5.0.0",
     "expo": "~54.0.33",
+    "expo-application": "~7.0.8",
     "expo-av": "~16.0.8",
     "expo-blur": "~15.0.8",
     "expo-build-properties": "~1.0.10",

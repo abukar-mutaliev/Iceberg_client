@@ -64,6 +64,11 @@ const initialState = {
     isAuthenticated: false,
     requiresTwoFactor: false,
     tempToken: null,
+    // Единый телефонный поток: выданный сервером challenge и итог подтверждения
+    challengeToken: null,
+    challengeResendAfter: 0,
+    challengeExpiresAt: null,
+    needsProfile: false,
     // Восстановление пароля
     resetToken: null,
     confirmResetToken: null,
@@ -83,7 +88,81 @@ const handleError = (error) => {
     return error.response?.data?.message || 'Произошла ошибка';
 };
 
+// ========================================
+// ЕДИНЫЙ ПОТОК ВХОДА И РЕГИСТРАЦИИ ПО НОМЕРУ
+// ========================================
 
+// Шаг 1: запрос кода. Приложение сознательно не знает, зарегистрирован номер
+// или нет: сервер отвечает одинаково в обоих случаях, иначе по ответу можно
+// было бы перебором проверять наличие аккаунтов.
+export const startPhoneAuth = createAsyncThunk(
+    'auth/startPhoneAuth',
+    async ({ phone, prefer }, { rejectWithValue }) => {
+        try {
+            const response = await authApi.phoneAuthStart({
+                phone,
+                ...(prefer && { prefer }),
+            });
+
+            if (response?.data?.method === 'mobileid') {
+                return response.data;
+            }
+
+            if (response?.status !== 'success' || !response.data?.challengeToken) {
+                return rejectWithValue(response?.message || 'Не удалось отправить код подтверждения');
+            }
+
+            return response.data;
+        } catch (error) {
+            return rejectWithValue(
+                error.response?.data?.message || error.message || handleError(error)
+            );
+        }
+    }
+);
+
+// Шаг 2: подтверждение кода. Вход это или регистрация — выясняется здесь.
+export const verifyPhoneAuth = createAsyncThunk(
+    'auth/verifyPhoneAuth',
+    async ({ challengeToken, verificationCode }, { rejectWithValue }) => {
+        try {
+            const response = await authApi.phoneAuthVerify({ challengeToken, verificationCode });
+
+            if (response?.requiresTwoFactor) {
+                return {
+                    requiresTwoFactor: true,
+                    tempToken: response.tempToken,
+                };
+            }
+
+            const { accessToken, refreshToken, user, isNewUser, needsProfile } = response?.data || {};
+
+            if (!accessToken || !refreshToken) {
+                return rejectWithValue(response?.message || 'Токены авторизации не получены от сервера');
+            }
+
+            const tokens = { accessToken, refreshToken };
+
+            try {
+                await saveTokensToStorage(tokens);
+            } catch (storageError) {
+                // Ошибка сохранения токенов игнорируется: сессия уже в памяти
+            }
+
+            return {
+                requiresTwoFactor: false,
+                tokens,
+                user,
+                isNewUser: !!isNewUser,
+                needsProfile: !!needsProfile,
+            };
+        } catch (error) {
+            return rejectWithValue(
+                error.response?.data?.message || error.message || handleError(error)
+            );
+        }
+    }
+);
 
 export const initiateRegister = createAsyncThunk(
     'auth/initiateRegister',
@@ -275,6 +354,110 @@ export const completePhoneRegister = createAsyncThunk(
     }
 );
 
+// ========================================
+// МОБИЛЬНАЯ АВТОРИЗАЦИЯ (MobileID / SMS Aero)
+// ========================================
+
+// Server-to-server проверка результата верификации MobileID.
+// Возвращает один из исходов через поле `status`:
+//   'success'                → пользователь вошёл (токены сохранены)
+//   'pending'                → требуется 2FA (tempToken)
+//   'registration_required'  → номер подтверждён, нужна регистрация
+export const mobileIdVerify = createAsyncThunk(
+    'auth/mobileIdVerify',
+    async ({ sessionId, verifyToken }, { rejectWithValue }) => {
+        try {
+            const response = await authApi.mobileIdVerify({ sessionId, verifyToken });
+
+            if (!response || typeof response !== 'object') {
+                return rejectWithValue('Сервер вернул некорректный ответ');
+            }
+
+            if (response.status === 'success') {
+                const { accessToken, refreshToken, user, isNewUser, needsProfile } = response.data || {};
+                if (!accessToken || !refreshToken) {
+                    return rejectWithValue('Токены авторизации не получены от сервера');
+                }
+                const tokens = { accessToken, refreshToken };
+                try {
+                    await saveTokensToStorage(tokens);
+                } catch (storageError) {
+                    // Ошибка сохранения токенов игнорируется
+                }
+                return {
+                    status: 'success',
+                    user,
+                    tokens,
+                    isNewUser: !!isNewUser,
+                    needsProfile: !!needsProfile,
+                };
+            }
+
+            if (response.status === 'pending' && response.requiresTwoFactor) {
+                return {
+                    status: 'pending',
+                    requiresTwoFactor: true,
+                    tempToken: response.tempToken,
+                    message: response.message,
+                };
+            }
+
+            if (response.status === 'registration_required') {
+                return {
+                    status: 'registration_required',
+                    registrationToken: response.data?.registrationToken,
+                    phone: response.data?.phone,
+                    message: response.message,
+                };
+            }
+
+            return rejectWithValue(response.message || 'Верификация не подтверждена');
+        } catch (error) {
+            if (error.response?.data) {
+                return rejectWithValue(error.response.data.message || 'Верификация не подтверждена');
+            }
+            return rejectWithValue(error.message || 'Произошла ошибка при проверке номера');
+        }
+    }
+);
+
+// Завершение регистрации после верификации через MobileID (без SMS-кода)
+export const mobileIdCompleteRegister = createAsyncThunk(
+    'auth/mobileIdCompleteRegister',
+    async (data, { rejectWithValue }) => {
+        try {
+            const response = await authApi.mobileIdCompleteRegister(data);
+
+            if (!response || typeof response !== 'object') {
+                return rejectWithValue('Сервер вернул некорректный ответ');
+            }
+
+            if (response.status !== 'success') {
+                return rejectWithValue(response.message || 'Произошла ошибка при регистрации');
+            }
+
+            const { accessToken, refreshToken, user } = response.data || {};
+            if (!accessToken || !refreshToken) {
+                return rejectWithValue('Токены авторизации не получены от сервера');
+            }
+
+            const tokens = { accessToken, refreshToken };
+            try {
+                await saveTokensToStorage(tokens);
+            } catch (storageError) {
+                // Ошибка сохранения токенов игнорируется
+            }
+
+            return { user, tokens };
+        } catch (error) {
+            if (error.response?.data) {
+                return rejectWithValue(error.response.data.message || 'Произошла ошибка при завершении регистрации');
+            }
+            return rejectWithValue(error.message || 'Произошла неизвестная ошибка при регистрации');
+        }
+    }
+);
+
 export const verify2FALogin = createAsyncThunk(
     'auth/verify2FALogin',
     async ({ tempToken, twoFactorCode }, { rejectWithValue }) => {
@@ -380,13 +563,15 @@ export const login = createAsyncThunk(
 export const logout = createAsyncThunk(
     'auth/logout',
     async (_, { rejectWithValue, getState, dispatch }) => {
+        const refreshToken = getState()?.auth?.tokens?.refreshToken;
+
         try {
             // Деактивируем OneSignal токен перед выходом
             try {
-                const OneSignalService = require('@shared/services/OneSignalService').default;
-                await OneSignalService.clearUserContext();
-            } catch (oneSignalError) {
-                // Ошибка деактивации OneSignal игнорируется
+                const PushNotificationService = require('@shared/services/PushNotificationService').default;
+                await PushNotificationService.clearUserContext();
+            } catch (pushError) {
+                // Ошибка деактивации push-токена игнорируется
             }
 
             // Очищаем кэш чатов
@@ -396,28 +581,20 @@ export const logout = createAsyncThunk(
                 // Ошибка очистки кэша игнорируется
             }
 
-            dispatch({ type: 'RESET_APP_STATE' });
-
-            const { auth } = getState();
-            const refreshToken = auth?.tokens?.refreshToken;
-
-            if (!refreshToken) {
-                await removeTokensFromStorage();
-                return null;
-            }
-
-            try {
-                await authApi.logout(refreshToken);
-            } catch (error) {
-                // Ошибка серверного выхода игнорируется, продолжаем локальный выход
+            if (refreshToken) {
+                try {
+                    await authApi.logout(refreshToken);
+                } catch (error) {
+                    // Ошибка серверного выхода игнорируется, продолжаем локальный выход
+                }
             }
 
             await removeTokensFromStorage();
+            dispatch({ type: 'RESET_APP_STATE' });
 
             return null;
         } catch (error) {
             await removeTokensFromStorage();
-
             dispatch({ type: 'RESET_APP_STATE' });
             return rejectWithValue(handleError(error));
         }
@@ -725,10 +902,14 @@ const authSlice = createSlice({
                     role: profileData.role,
                     avatar: profileData.avatar,
                     gender: profileData.gender,
+                    phone: profileData.phone,
+                    phoneVerifiedAt: profileData.phoneVerifiedAt,
+                    passwordSet: profileData.passwordSet,
                     twoFactorEnabled: profileData.twoFactorEnabled,
                     twoFactorSecret: profileData.twoFactorSecret,
                     createdAt: profileData.createdAt,
                     updatedAt: profileData.updatedAt,
+                    profileCompletedAt: profileData.profileCompletedAt,
                     client: profileData.client ? {
                         id: profileData.client.id,
                         name: profileData.client.name,
@@ -743,6 +924,19 @@ const authSlice = createSlice({
                     supplier: profileData.supplier || null,
                     driver: profileData.driver || null
                 };
+
+                // Онбординг должен доживать до конца, даже если человек закрыл
+                // приложение посреди него: признак берём из профиля, а не из
+                // одного лишь ответа на подтверждение кода.
+                state.needsProfile = !profileData.profileCompletedAt;
+            }
+        },
+        // Профиль дозаполнен — онбординг больше показывать не нужно.
+        markProfileCompleted: (state) => {
+            state.needsProfile = false;
+
+            if (state.user) {
+                state.user.profileCompletedAt = new Date().toISOString();
             }
         },
         updateUserClient: (state, action) => {
@@ -811,6 +1005,40 @@ const authSlice = createSlice({
         };
 
         builder
+            // Единый телефонный поток
+            .addCase(startPhoneAuth.pending, setPending)
+            .addCase(startPhoneAuth.fulfilled, (state, action) => {
+                state.isLoading = false;
+                state.error = null;
+                state.challengeToken = action.payload.challengeToken;
+                state.challengeResendAfter = action.payload.resendAfter ?? 0;
+                state.challengeExpiresAt = action.payload.expiresAt ?? null;
+            })
+            .addCase(startPhoneAuth.rejected, setRejected)
+            .addCase(verifyPhoneAuth.pending, setPending)
+            .addCase(verifyPhoneAuth.fulfilled, (state, action) => {
+                state.isLoading = false;
+                state.error = null;
+
+                if (action.payload.requiresTwoFactor) {
+                    state.requiresTwoFactor = true;
+                    state.tempToken = action.payload.tempToken;
+                    return;
+                }
+
+                state.tokens = action.payload.tokens;
+                state.user = action.payload.user;
+                state.isAuthenticated = true;
+                state.needsProfile = action.payload.needsProfile;
+                state.challengeToken = null;
+                state.challengeResendAfter = 0;
+                state.challengeExpiresAt = null;
+
+                if (action.payload.tokens?.accessToken && api?.defaults) {
+                    api.defaults.headers.common['Authorization'] = `Bearer ${action.payload.tokens.accessToken}`;
+                }
+            })
+            .addCase(verifyPhoneAuth.rejected, setRejected)
             .addCase(login.pending, setPending)
             .addCase(login.fulfilled, (state, action) => {
                 console.log('✅ [REDUX] login fulfilled', {
@@ -942,6 +1170,59 @@ const authSlice = createSlice({
                 state.error = action.payload || 'Произошла ошибка при завершении регистрации';
                 state.isAuthenticated = false;
             })
+            // Мобильная авторизация (MobileID)
+            .addCase(mobileIdVerify.pending, setPending)
+            .addCase(mobileIdVerify.fulfilled, (state, action) => {
+                state.isLoading = false;
+                state.error = null;
+
+                if (action.payload.status === 'success') {
+                    state.user = action.payload.user;
+                    state.tokens = action.payload.tokens;
+                    state.isAuthenticated = true;
+                    state.requiresTwoFactor = false;
+                    state.tempToken = null;
+                    state.needsProfile = action.payload.needsProfile;
+
+                    if (action.payload.tokens?.accessToken) {
+                        try {
+                            if (api && api.defaults) {
+                                api.defaults.headers.common['Authorization'] = `Bearer ${action.payload.tokens.accessToken}`;
+                            }
+                        } catch (error) {
+                            // Ошибка установки заголовка игнорируется
+                        }
+                    }
+                } else if (action.payload.status === 'pending') {
+                    state.requiresTwoFactor = true;
+                    state.tempToken = action.payload.tempToken;
+                }
+                // 'registration_required' обрабатывается в компоненте (навигация на регистрацию)
+            })
+            .addCase(mobileIdVerify.rejected, setRejected)
+            .addCase(mobileIdCompleteRegister.pending, (state) => {
+                state.isLoading = true;
+                state.error = null;
+            })
+            .addCase(mobileIdCompleteRegister.fulfilled, (state, action) => {
+                state.isLoading = false;
+                state.error = null;
+
+                if (action.payload && action.payload.user && action.payload.tokens) {
+                    state.user = action.payload.user;
+                    state.tokens = action.payload.tokens;
+                    state.isAuthenticated = true;
+                    state.tempToken = null;
+                } else {
+                    state.error = 'Ошибка авторизации: недостаточно данных';
+                    state.isAuthenticated = false;
+                }
+            })
+            .addCase(mobileIdCompleteRegister.rejected, (state, action) => {
+                state.isLoading = false;
+                state.error = action.payload || 'Произошла ошибка при завершении регистрации';
+                state.isAuthenticated = false;
+            })
             .addCase(logout.fulfilled, (state) => {
                 console.log('✅ [REDUX] logout fulfilled - resetting auth state');
                 Object.assign(state, initialState);
@@ -1043,6 +1324,7 @@ export const {
     updateUserWithProfile,
     updateUserClient,
     clearPasswordReset,
+    markProfileCompleted,
 } = authSlice.actions;
 
 // Примечание: initiatePhoneRegister и completePhoneRegister 

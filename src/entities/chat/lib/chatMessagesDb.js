@@ -28,6 +28,34 @@ const isAsyncDb = (db) =>
 
 let _dbPromise = null;
 let _sqliteAvailable = false;
+let _writeChain = Promise.resolve();
+
+const isDbLockedError = (error) => {
+  const msg = String(error?.message || error || '');
+  return msg.includes('database is locked') || msg.includes('Error code : database is locked');
+};
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const runWithDbRetry = async (fn, maxAttempts = 4) => {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (!isDbLockedError(error) || attempt === maxAttempts - 1) {
+        throw error;
+      }
+      await sleep(50 * (attempt + 1));
+    }
+  }
+  return undefined;
+};
+
+const enqueueDbWrite = (operation) => {
+  const task = _writeChain.then(() => runWithDbRetry(operation));
+  _writeChain = task.catch(() => {});
+  return task;
+};
 
 async function openDb() {
   if (!SQLite) {
@@ -247,6 +275,13 @@ export const chatMessagesDb = {
         room_id TEXT PRIMARY KEY NOT NULL,
         cached_at_ms INTEGER NOT NULL
       );`);
+
+      try {
+        await exec(db, 'PRAGMA journal_mode=WAL;');
+        await exec(db, 'PRAGMA busy_timeout=5000;');
+      } catch {
+        // PRAGMA может быть недоступен на некоторых платформах
+      }
     } catch (error) {
       console.error('❌ Failed to initialize SQLite database:', error);
       // Не бросаем ошибку, чтобы приложение могло работать без SQLite
@@ -262,75 +297,79 @@ export const chatMessagesDb = {
 
   async setRoomCachedAt(roomId, cachedAtMs) {
     if (!roomId) return;
-    const db = await openDb();
-    const now = cachedAtMs || Date.now();
-    await exec(
-      db,
-      `INSERT INTO ${TABLES.roomState}(room_id, cached_at_ms)
-       VALUES(?, ?)
-       ON CONFLICT(room_id) DO UPDATE SET cached_at_ms=excluded.cached_at_ms;`,
-      [String(roomId), now]
-    );
+    return enqueueDbWrite(async () => {
+      const db = await openDb();
+      const now = cachedAtMs || Date.now();
+      await exec(
+        db,
+        `INSERT INTO ${TABLES.roomState}(room_id, cached_at_ms)
+         VALUES(?, ?)
+         ON CONFLICT(room_id) DO UPDATE SET cached_at_ms=excluded.cached_at_ms;`,
+        [String(roomId), now]
+      );
+    });
   },
 
   async saveRoomMessages(roomId, messages, maxMessages = 5000) {
     if (!roomId || !Array.isArray(messages)) return;
-    const db = await openDb();
-    const rid = String(roomId);
-    const now = Date.now();
+    return enqueueDbWrite(async () => {
+      const db = await openDb();
+      const rid = String(roomId);
+      const now = Date.now();
 
-    await withTransaction(db, async (tx) => {
-      // Upsert messages
-      for (const msg of messages) {
-        const messageId = msg?.id;
-        if (!messageId) continue;
-        if (isStopMessageExpired(msg, now)) continue;
-        const createdAt = msg?.createdAt || null;
-        const createdAtMs = safeMs(createdAt);
-        let json;
-        try {
-          json = JSON.stringify(msg);
-        } catch {
-          continue;
+      await withTransaction(db, async (tx) => {
+        // Upsert messages
+        for (const msg of messages) {
+          const messageId = msg?.id;
+          if (!messageId) continue;
+          if (isStopMessageExpired(msg, now)) continue;
+          const createdAt = msg?.createdAt || null;
+          const createdAtMs = safeMs(createdAt);
+          let json;
+          try {
+            json = JSON.stringify(msg);
+          } catch {
+            continue;
+          }
+
+          await execTx(
+            tx,
+            `INSERT INTO ${TABLES.messages}(message_id, room_id, created_at_ms, created_at, json, updated_at_ms)
+             VALUES(?, ?, ?, ?, ?, ?)
+             ON CONFLICT(message_id) DO UPDATE SET
+               room_id=excluded.room_id,
+               created_at_ms=excluded.created_at_ms,
+               created_at=excluded.created_at,
+               json=excluded.json,
+               updated_at_ms=excluded.updated_at_ms;`,
+            [String(messageId), rid, createdAtMs, createdAt, json, now]
+          );
         }
 
         await execTx(
           tx,
-          `INSERT INTO ${TABLES.messages}(message_id, room_id, created_at_ms, created_at, json, updated_at_ms)
-           VALUES(?, ?, ?, ?, ?, ?)
-           ON CONFLICT(message_id) DO UPDATE SET
-             room_id=excluded.room_id,
-             created_at_ms=excluded.created_at_ms,
-             created_at=excluded.created_at,
-             json=excluded.json,
-             updated_at_ms=excluded.updated_at_ms;`,
-          [String(messageId), rid, createdAtMs, createdAt, json, now]
+          `INSERT INTO ${TABLES.roomState}(room_id, cached_at_ms)
+           VALUES(?, ?)
+           ON CONFLICT(room_id) DO UPDATE SET cached_at_ms=excluded.cached_at_ms;`,
+          [rid, now]
         );
-      }
 
-      await execTx(
-        tx,
-        `INSERT INTO ${TABLES.roomState}(room_id, cached_at_ms)
-         VALUES(?, ?)
-         ON CONFLICT(room_id) DO UPDATE SET cached_at_ms=excluded.cached_at_ms;`,
-        [rid, now]
-      );
-
-      // Trim old messages beyond maxMessages
-      if (maxMessages && maxMessages > 0) {
-        await execTx(
-          tx,
-          `DELETE FROM ${TABLES.messages}
-           WHERE room_id = ?
-             AND message_id NOT IN (
-               SELECT message_id FROM ${TABLES.messages}
-               WHERE room_id = ?
-               ORDER BY created_at_ms DESC
-               LIMIT ?
-             );`,
-          [rid, rid, maxMessages]
-        );
-      }
+        // Trim old messages beyond maxMessages
+        if (maxMessages && maxMessages > 0) {
+          await execTx(
+            tx,
+            `DELETE FROM ${TABLES.messages}
+             WHERE room_id = ?
+               AND message_id NOT IN (
+                 SELECT message_id FROM ${TABLES.messages}
+                 WHERE room_id = ?
+                 ORDER BY created_at_ms DESC
+                 LIMIT ?
+               );`,
+            [rid, rid, maxMessages]
+          );
+        }
+      });
     });
   },
 
@@ -391,28 +430,36 @@ export const chatMessagesDb = {
 
   async deleteMessage(roomId, messageId) {
     if (!roomId || !messageId) return;
-    const db = await openDb();
-    await exec(db, `DELETE FROM ${TABLES.messages} WHERE room_id = ? AND message_id = ?;`, [String(roomId), String(messageId)]);
+    return enqueueDbWrite(async () => {
+      const db = await openDb();
+      await exec(db, `DELETE FROM ${TABLES.messages} WHERE room_id = ? AND message_id = ?;`, [String(roomId), String(messageId)]);
+    });
   },
 
   async clearRoom(roomId) {
     if (!roomId) return;
-    const db = await openDb();
-    const rid = String(roomId);
-    await exec(db, `DELETE FROM ${TABLES.messages} WHERE room_id = ?;`, [rid]);
-    await exec(db, `DELETE FROM ${TABLES.roomState} WHERE room_id = ?;`, [rid]);
+    return enqueueDbWrite(async () => {
+      const db = await openDb();
+      const rid = String(roomId);
+      await exec(db, `DELETE FROM ${TABLES.messages} WHERE room_id = ?;`, [rid]);
+      await exec(db, `DELETE FROM ${TABLES.roomState} WHERE room_id = ?;`, [rid]);
+    });
   },
 
   async cleanupOldMessages(maxAgeDays = 30) {
-    const db = await openDb();
-    const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
-    await exec(db, `DELETE FROM ${TABLES.messages} WHERE created_at_ms < ?;`, [cutoff]);
+    return enqueueDbWrite(async () => {
+      const db = await openDb();
+      const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+      await exec(db, `DELETE FROM ${TABLES.messages} WHERE created_at_ms < ?;`, [cutoff]);
+    });
   },
 
   async clearAll() {
-    const db = await openDb();
-    await exec(db, `DELETE FROM ${TABLES.messages};`);
-    await exec(db, `DELETE FROM ${TABLES.roomState};`);
+    return enqueueDbWrite(async () => {
+      const db = await openDb();
+      await exec(db, `DELETE FROM ${TABLES.messages};`);
+      await exec(db, `DELETE FROM ${TABLES.roomState};`);
+    });
   },
 };
 

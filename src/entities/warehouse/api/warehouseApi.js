@@ -5,23 +5,23 @@ const WarehouseService = {
   async getWarehouses(params = {}) {
     const queryString = new URLSearchParams(params).toString();
     const url = queryString ? `/api/warehouses?${queryString}` : '/api/warehouses';
-    return createProtectedRequest('get', url);
+    return createPublicRequest('get', url);
   },
 
   // Получение склада по ID
   async getWarehouseById(warehouseId) {
-    return createProtectedRequest('get', `/api/warehouses/${warehouseId}`);
+    return createPublicRequest('get', `/api/warehouses/${warehouseId}`);
   },
 
   // Получение складов по району
   async getWarehousesByDistrict(districtId) {
-    return createProtectedRequest('get', `/api/warehouses/district/${districtId}`);
+    return createPublicRequest('get', `/api/warehouses/district/${districtId}`);
   },
 
   // Получение основного склада доставки (isMain=true). Возвращает единственный
   // склад, через который идут все доставки после упрощения системы.
   async getMainDeliveryWarehouse() {
-    return createProtectedRequest('get', '/api/warehouses?isMain=true&limit=1');
+    return createPublicRequest('get', '/api/warehouses?isMain=true&limit=1');
   },
 
   // Получение товаров на складе (публичный доступ)

@@ -10,7 +10,8 @@ import {
   Platform,
   ActivityIndicator,
   Pressable,
-  Animated} from 'react-native';
+  Animated,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -24,6 +25,42 @@ import { ImageViewerModal } from '@shared/ui/ImageViewerModal/ui/ImageViewerModa
 import { useCustomAlert } from '@shared/ui/CustomAlert';
 import { PROCESSING_ROLE_LABELS } from '@entities/admin/lib/constants';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { ASSISTANT_CHAT_TITLE, AssistantAvatar, isAssistantRoom } from '@features/ai-assistant';
+import { selectRoomsList } from '@entities/chat/model/selectors';
+
+const CHAT_PARTICIPANT_ROLES = new Set(['OWNER', 'ADMIN', 'MEMBER']);
+
+/** Роль приложения (CLIENT/EMPLOYEE/…), не роль в комнате (OWNER/ADMIN/MEMBER). */
+const resolveAppUser = (participant, participantsByUserId = {}) => {
+  if (!participant) return null;
+
+  const userId = participant.userId ?? participant.user?.id ?? participant.id;
+  const cached = userId != null ? participantsByUserId[String(userId)] : null;
+  const nested = participant.user;
+
+  if (nested && cached) {
+    return {
+      ...cached,
+      ...nested,
+      role: nested.role || cached.role,
+      admin: nested.admin || cached.admin,
+      employee: nested.employee || cached.employee,
+      driver: nested.driver || cached.driver,
+      supplier: nested.supplier || cached.supplier,
+      client: nested.client || cached.client,
+    };
+  }
+
+  if (nested?.role) return nested;
+  if (cached) return cached;
+
+  // После fetchRoom user может отсутствовать — не путаем participant.role (ADMIN канала) с user.role
+  if (participant.role && CHAT_PARTICIPANT_ROLES.has(participant.role)) {
+    return null;
+  }
+
+  return nested || participant;
+};
 
 // Анимированный переключатель в стиле WhatsApp
 const AnimatedSwitch = ({ value, disabled }) => {
@@ -135,6 +172,26 @@ const ParticipantRow = React.memo(function ParticipantRow({
   );
 });
 
+const AssistantContactRow = React.memo(function AssistantContactRow({ styles, androidRipple, onPress }) {
+  return (
+    <Pressable
+      style={styles.participantItem}
+      onPress={onPress}
+      android_ripple={androidRipple}
+    >
+      <View style={styles.participantAvatar}>
+        <AssistantAvatar size="compact" />
+      </View>
+      <View style={styles.participantInfo}>
+        <Text style={styles.participantName}>Спросить помощника</Text>
+        <Text style={styles.participantRole}>
+          Остановки, товары, заказы, доставка
+        </Text>
+      </View>
+    </Pressable>
+  );
+});
+
 export const GroupInfoScreen = ({ route, navigation }) => {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
@@ -142,6 +199,8 @@ export const GroupInfoScreen = ({ route, navigation }) => {
   const { roomId, fromScreen } = route.params || {};
   const dispatch = useDispatch();
   const currentUser = useSelector(state => state?.auth?.user);
+  const participantsByUserId = useSelector(state => state?.chat?.participants?.byUserId || {});
+  const rooms = useSelector(selectRoomsList);
   const roomDataRaw = useSelector(state => state?.chat?.rooms?.byId?.[roomId]);
   const roomData = roomDataRaw?.room ? roomDataRaw.room : roomDataRaw;
   const { showError, showAlert, showConfirm } = useCustomAlert();
@@ -165,102 +224,25 @@ export const GroupInfoScreen = ({ route, navigation }) => {
     return normalizeUserId(id);
   };
 
+  const isClientView = currentUser?.role === 'CLIENT';
+  const isClientBroadcastView = roomData?.type === 'BROADCAST' && isClientView;
+
   const participants = React.useMemo(() => {
     if (!roomData?.participants) return [];
 
-    const districtIdsMatch = (a, b) => {
-      if (a == null || b == null) return false;
-      return String(a) === String(b);
-    };
-
-    // Для каналов BROADCAST и клиентов - показываем только менеджеров и водителей склада клиента
-    if (roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT') {
-      const clientDistrictId = currentUser?.client?.districtId;
-
-      return roomData.participants.filter(p => {
-        const user = p.user || p;
-        const userRole = user?.role;
-
-        // Скрываем суперадминов от клиентов
-        if (userRole === 'ADMIN') {
-          const isSuperAdmin = user?.admin?.isSuperAdmin;
-          if (isSuperAdmin) return false;
-          return true; // Обычные админы показываются
-        }
-
-        // Сотрудники - только менеджеры из района клиента (склад ИЛИ любой из районов обслуживания)
-        if (userRole === 'EMPLOYEE') {
-          const processingRole = user?.employee?.processingRole;
-          // Скрываем сборщиков, упаковщиков, контроллеров качества, курьеров
-          const hiddenRoles = ['PICKER', 'PACKER', 'QUALITY_CHECKER', 'COURIER'];
-          if (processingRole && hiddenRoles.includes(processingRole)) {
-            return false;
-          }
-
-          // Показываем только если есть должность (например "Менеджер по продажам")
-          const position = user?.employee?.position;
-          if (!position) {
-            return false; // Скрываем сотрудников без должности
-          }
-
-          if (!clientDistrictId) {
-            return true;
-          }
-
-          const employeeWarehouseDistrictId =
-            user?.employee?.warehouse?.districtId ??
-            user?.employee?.warehouse?.district?.id ??
-            null;
-          const employeeDistricts = user?.employee?.districts || [];
-
-          const servesClientDistrict =
-            districtIdsMatch(employeeWarehouseDistrictId, clientDistrictId) ||
-            employeeDistricts.some((d) => districtIdsMatch(d?.id, clientDistrictId));
-
-          if (servesClientDistrict) {
-            return true;
-          }
-
-          // Без привязки склада к району — не отсекаем (как при отсутствии warehouseDistrictId раньше)
-          if (employeeWarehouseDistrictId == null) {
-            return true;
-          }
-
-          return false;
-        }
-
-        // Поставщиков не показываем
-        if (userRole === 'SUPPLIER') {
-          return false;
-        }
-
-        // Водители - склад в районе клиента или район клиента в списке обслуживания
-        if (userRole === 'DRIVER') {
-          // Если у клиента нет района - не показываем водителей
-          if (!clientDistrictId) return false;
-
-          const driverWarehouseDistrictId =
-            user?.driver?.warehouse?.district?.id ??
-            user?.driver?.warehouse?.districtId ??
-            null;
-          if (districtIdsMatch(driverWarehouseDistrictId, clientDistrictId)) {
-            return true;
-          }
-
-          const driverDistricts = user?.driver?.districts || [];
-          return driverDistricts.some((d) => districtIdsMatch(d?.id, clientDistrictId));
-        }
-
-        return false;
-      });
+    // Клиент в канале: все участники скрыты — вопросы только через помощника
+    if (isClientBroadcastView) {
+      return [];
     }
 
-    // Для всех типов комнат - скрываем поставщиков из списка участников
+    // Обычные группы и прочие роли — только поставщики скрыты
     return roomData.participants.filter(p => {
-      const user = p.user || p;
-      return user?.role !== 'SUPPLIER';
+      const user = resolveAppUser(p, participantsByUserId);
+      const userRole = user?.role;
+      if (userRole === 'SUPPLIER') return false;
+      return true;
     });
-  }, [roomData?.participants, roomData?.type, currentUser?.role, currentUser?.client?.districtId]);
+  }, [roomData?.participants, isClientBroadcastView, participantsByUserId]);
 
   // Убираем оверрайды, если сервер уже вернул актуальную роль
   useEffect(() => {
@@ -308,7 +290,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
   };
 
   const getUserDisplayName = useCallback((participant) => {
-    const user = participant.user || participant;
+    const user = resolveAppUser(participant, participantsByUserId);
     if (!user) return 'Пользователь';
     
     // Для поставщиков - название компании
@@ -337,13 +319,13 @@ export const GroupInfoScreen = ({ route, navigation }) => {
     }
     
     return 'Пользователь';
-  }, []);
+  }, [participantsByUserId]);
 
   const getUserAvatar = useCallback((participant) => {
-    const user = participant.user || participant;
+    const user = resolveAppUser(participant, participantsByUserId);
     const avatarPath = user?.avatar || user?.image;
     return toAbsoluteUri(avatarPath);
-  }, [toAbsoluteUri]);
+  }, [toAbsoluteUri, participantsByUserId]);
 
   const getRoleLabel = useCallback((participant) => {
     switch (participant.role) {
@@ -370,7 +352,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
 
   // Функция для получения должности/роли и склада участника
   const getEmployeePosition = useCallback((participant) => {
-    const user = participant.user || participant;
+    const user = resolveAppUser(participant, participantsByUserId);
     if (!user) return null;
     
     // Для сотрудников - сначала "Сотрудник", потом должность и районы обслуживания
@@ -425,7 +407,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
     }
     
     return null;
-  }, []);
+  }, [participantsByUserId]);
 
   // Функция для обработки длинного описания
   const getDescriptionText = (description) => {
@@ -879,6 +861,18 @@ export const GroupInfoScreen = ({ route, navigation }) => {
     navigation.navigate('UserPublicProfile', navParams);
   }, [currentUser?.id, roomId, navigation]);
 
+  const handleOpenAssistantChat = useCallback(() => {
+    const assistantRoom = rooms.find(isAssistantRoom);
+    const rid = assistantRoom?.id ?? null;
+
+    // Пушим в тот же AppStack (ChatRoom → GroupInfo → AssistantChat), чтобы «Назад» вернул на GroupInfo
+    navigation.navigate('AssistantChat', {
+      roomId: rid,
+      fromScreen: 'GroupInfo',
+      groupRoomId: roomId,
+    });
+  }, [navigation, rooms, roomId]);
+
   const participantRipple = useMemo(
     () => ({ color: isDark ? 'rgba(255,255,255,0.08)' : '#f0f0f0' }),
     [isDark]
@@ -1015,13 +1009,13 @@ export const GroupInfoScreen = ({ route, navigation }) => {
                 </View>
               )}
               <Text style={styles.groupSubtitle}>
-                {roomData?.type === 'BROADCAST' ? '📢 Канал' : 'Группа'} · {participantsCount} {
-                  roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT'
-                    ? (participantsCount === 1 ? 'контакт' : participantsCount < 5 ? 'контакта' : 'контактов')
-                    : roomData?.type === 'BROADCAST'
-                      ? (participantsCount === 1 ? 'подписчик' : participantsCount < 5 ? 'подписчика' : 'подписчиков')
-                      : (participantsCount === 1 ? 'участник' : participantsCount < 5 ? 'участника' : 'участников')
-                }
+                {isClientBroadcastView
+                  ? '📢 Канал'
+                  : `${roomData?.type === 'BROADCAST' ? '📢 Канал' : 'Группа'} · ${participantsCount} ${
+                      roomData?.type === 'BROADCAST'
+                        ? (participantsCount === 1 ? 'подписчик' : participantsCount < 5 ? 'подписчика' : 'подписчиков')
+                        : (participantsCount === 1 ? 'участник' : participantsCount < 5 ? 'участника' : 'участников')
+                    }`}
               </Text>
             </View>
 
@@ -1029,18 +1023,26 @@ export const GroupInfoScreen = ({ route, navigation }) => {
               <View style={styles.sectionHeader}>
                 <View style={styles.sectionHeaderRow}>
                   <Text style={styles.sectionTitle}>
-                    {roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT'
-                      ? `Контакты (${participantsCount})`
+                    {isClientBroadcastView
+                      ? ASSISTANT_CHAT_TITLE
                       : `${participantsCount} ${roomData?.type === 'BROADCAST' ? 'подписчик' : 'участник'}${participantsCount === 1 ? '' : participantsCount < 5 ? 'а' : 'ов'}`
                     }
                   </Text>
                 </View>
-                {roomData?.type === 'BROADCAST' && currentUser?.role === 'CLIENT' && (
+                {isClientBroadcastView && (
                   <Text style={styles.contactsHelpText}>
-                    Нажмите на контакт, чтобы начать чат и задать вопрос
+                    Задайте вопрос помощнику — он ответит по остановкам, товарам, заказам и доставке
                   </Text>
                 )}
               </View>
+
+              {isClientBroadcastView && (
+                <AssistantContactRow
+                  styles={styles}
+                  androidRipple={participantRipple}
+                  onPress={handleOpenAssistantChat}
+                />
+              )}
 
               {/* Add Members Button - только для владельца и админов */}
               {canEditGroup && (

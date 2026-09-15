@@ -5,7 +5,8 @@ import { logout } from '@entities/auth';
 import {
     IconPersona,
     IconSettings,
-    IconHelp, IconCoupon,
+    IconHelp,
+    IconInfo,
 } from '@shared/ui/Icon/Profile';
 import IconAdmin from "@shared/ui/Icon/IconAdmin";
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -98,6 +99,12 @@ export const useProfileInfo = (isAuthenticated, tokens, currentUser, navigation)
             icon: <IconHelp />,
             onPress: () => navigation.navigate('HelpCenter'),
         },
+        {
+            id: 'about',
+            title: 'О приложении',
+            icon: <IconInfo />,
+            onPress: () => navigation.navigate('AboutApp'),
+        },
     ];
 
     // Проверка доступа к панели администратора
@@ -171,11 +178,10 @@ export const useProfileInfo = (isAuthenticated, tokens, currentUser, navigation)
     const handleLogout = useCallback(async () => {
         try {
             await dispatch(logout()).unwrap();
-            navigation.navigate('Auth');
         } catch (error) {
             Alert.alert('Ошибка', `Logout error: ${error?.message || 'Произошла неизвестная ошибка'}`);
         }
-    }, [dispatch, navigation]);
+    }, [dispatch]);
 
     const navigateToLogin = useCallback(() => {
         navigation.navigate('Auth', { activeTab: 'login' });

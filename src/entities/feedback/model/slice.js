@@ -139,7 +139,6 @@ export const fetchSupplierFeedbacks = createAsyncThunk(
                 return { supplierId: normalizedSupplierId, fromCache: true };
             }
 
-            console.log(`🔄 Загрузка всех отзывов для поставщика ${supplierId} напрямую с сервера`);
             const userData = {
                 ...state.auth?.user,
                 profile: state.profile?.data,
@@ -147,8 +146,6 @@ export const fetchSupplierFeedbacks = createAsyncThunk(
             const response = await feedbackApi.getSupplierFeedbacks(supplierId, userData);
 
             if (response && response.status === 'success' && Array.isArray(response.data)) {
-                console.log(`✅ Получено ${response.data.length} отзывов для поставщика ${supplierId}`);
-
                 // Группируем отзывы по productId для сохранения в store
                 const feedbacksByProduct = {};
                 response.data.forEach((feedback) => {
@@ -484,8 +481,6 @@ const feedbackSlice = createSlice({
                     state.supplierLoadedIds.push(supplierId);
                 }
                 state.supplierCacheTimestamps[supplierId] = Date.now();
-
-                console.log(`✅ Отзывы поставщика ${supplierId} сохранены в Redux store`);
             })
             .addCase(fetchSupplierFeedbacks.rejected, (state, action) => {
                 state.supplierLoading = false;

@@ -27,6 +27,7 @@ import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 import ChatApi from '@entities/chat/api/chatApi';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { isAssistantRoom, isAssistantUser } from '@features/ai-assistant';
 
 export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
     const dispatch = useDispatch();
@@ -206,7 +207,11 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
                 const response = await ChatApi.searchUsers(searchQuery, 50);
                 const users = response?.data?.users || response?.data?.data?.users || [];
 
-                const filteredUsers = users.filter(u => u.id !== currentUserId && u.role !== 'SUPPLIER');
+                const filteredUsers = users.filter(u =>
+                    u.id !== currentUserId &&
+                    u.role !== 'SUPPLIER' &&
+                    !isAssistantUser(u)
+                );
                 setSearchResults(filteredUsers);
             } catch (error) {
                 console.error('Error searching users:', error);
@@ -335,6 +340,10 @@ export const ShareStopModal = ({ visible, onClose, stopId, stop }) => {
 
         return rooms.filter(room => {
             if (!room || !room.id) {
+                return false;
+            }
+
+            if (isAssistantRoom(room)) {
                 return false;
             }
 

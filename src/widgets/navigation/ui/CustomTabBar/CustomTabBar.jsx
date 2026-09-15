@@ -62,7 +62,7 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
     const insets = useSafeAreaInsets();
     const tabBarHeight = 80 + insets.bottom;
     const { currentUser } = useAuth();
-    const { hideTabBar, showTabBar, isTabBarVisible } = useTabBar();
+    const { setTabBarAutoHidden, isTabBarVisible, resetTabBarLocks } = useTabBar();
     const { colors, isDark } = useTheme();
     const isKeyboardVisible = useKeyboardVisibility();
     const isAndroid = Platform.OS === 'android';
@@ -79,57 +79,37 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
         [state.index, state.routes]
     );
     
-    // Логируем изменения активного таба
     const prevIndexRef = useRef(state.index);
     useEffect(() => {
         if (prevIndexRef.current !== state.index) {
             const prevRoute = state.routes[prevIndexRef.current]?.name;
             const currentRoute = state.routes[state.index]?.name;
-            console.log('🔀 Tab changed:', {
-                from: prevRoute,
-                to: currentRoute,
-                timestamp: new Date().toISOString()
-            });
+
+            // Комната чата держит hideTabBar через useFocusEffect; при смене вкладки
+            // экран может остаться смонтированным (Android) и не отдать showTabBar.
+            if (prevRoute === 'ChatList' && currentRoute !== 'ChatList') {
+                resetTabBarLocks();
+            }
+
             // Сбрасываем блокировку после реальной смены вкладки
             isNavigating.current = false;
             lastPressTime.current = 0;
             prevIndexRef.current = state.index;
         }
-    }, [state.index, state.routes]);
+    }, [state.index, state.routes, resetTabBarLocks]);
     
-    // Управляем видимостью таббара при смене таба и состояния клавиатуры.
-    // Это защищает от ситуации, когда клавиатура спрятала таббар,
-    // а при смене таба событие keyboardWillHide не пришло (iOS).
+    // Авто-скрытие (клавиатура, AssistantChat в табовом ChatStack).
+    // Не вызываем showTabBar/hideTabBar — иначе перебиваем ручное скрытие с экранов AppStack (GroupInfo → AssistantChat).
     useEffect(() => {
         const currentTab = getCurrentTab();
         const nestedRoute = getActiveNestedRouteName();
         const shouldHideForAssistantChat =
             currentTab === 'ChatList' && nestedRoute === 'AssistantChat';
+        const shouldHideForKeyboard =
+            isKeyboardVisible && TABS_HIDE_ON_KEYBOARD.has(currentTab);
 
-        if (shouldHideForAssistantChat) {
-            hideTabBar();
-            return;
-        }
-
-        const shouldHideForKeyboard = TABS_HIDE_ON_KEYBOARD.has(currentTab);
-
-        if (isKeyboardVisible && shouldHideForKeyboard) {
-            if (__DEV__) {
-                console.log('⌨️ Keyboard visible: hiding TabBar', { currentTab });
-            }
-            hideTabBar();
-            return;
-        }
-
-        if (!shouldHideForKeyboard) {
-            showTabBar();
-            return;
-        }
-
-        if (!isKeyboardVisible) {
-            showTabBar();
-        }
-    }, [getCurrentTab, getActiveNestedRouteName, hideTabBar, isKeyboardVisible, showTabBar]);
+        setTabBarAutoHidden(shouldHideForAssistantChat || shouldHideForKeyboard);
+    }, [getCurrentTab, getActiveNestedRouteName, isKeyboardVisible, setTabBarAutoHidden]);
     
     // Получаем ID поставщика, если пользователь является поставщиком
     const supplierId = currentUser?.supplier?.id;
@@ -291,7 +271,6 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
             isNavigating.current = true;
             lastPressTime.current = now;
 
-            console.log('Tab pressed:', route.name);
             navigation.navigate(route.name);
 
             // Сбрасываем флаг через небольшую задержку
@@ -350,7 +329,6 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
 
     // Если TabBar должен быть скрыт, не рендерим ничего
     if (!isTabBarVisible) {
-        console.log('🚫 TabBar hidden - returning null');
         return null;
     }
 

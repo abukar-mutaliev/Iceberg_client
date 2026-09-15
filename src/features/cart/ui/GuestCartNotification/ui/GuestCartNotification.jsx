@@ -54,15 +54,17 @@ export const GuestCartNotification = ({
                         </Text>
                     </TouchableOpacity>
 
+                    {onRegisterPress ? (
                     <TouchableOpacity
                         style={styles.registerButton}
                         onPress={onRegisterPress}
                         activeOpacity={0.8}
                     >
                         <Text style={styles.registerButtonText}>
-                            Регистрация
+                            Войти
                         </Text>
                     </TouchableOpacity>
+                    ) : null}
 
                     {onDismiss && (
                         <TouchableOpacity

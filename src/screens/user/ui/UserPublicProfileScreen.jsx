@@ -3,6 +3,7 @@ import {  View, Text, Image, StyleSheet, ActivityIndicator, TouchableOpacity, Sc
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CommonActions } from '@react-navigation/native';
 import { userApi } from '@entities/user';
+import { getClientDisplayName } from '@entities/user/lib/getClientDisplayName';
 import { getImageUrl } from '@shared/api/api';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import ChatApi from '@entities/chat/api/chatApi';
@@ -231,7 +232,9 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
         if (userData.role === 'CLIENT') {
             const clientData = userData.client || userData.profile;
             if (clientData) {
-                return clientData.name || clientData.companyName || 'Клиент';
+                return getClientDisplayName(clientData.name, userData.profileCompletedAt)
+                    || clientData.companyName
+                    || 'Клиент';
             }
         }
         if (userData.role === 'SUPPLIER') {
@@ -276,9 +279,7 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
     const displayName = useMemo(() => getDisplayName(user), [user]);
 
     const handleGoBack = () => {
-        console.log('===== UserPublicProfileScreen handleGoBack =====');
-        console.log('fromScreen:', fromScreen);
-        console.log('roomId:', roomId);
+
 
         // Всегда используем goBack() для плавной анимации, если можем вернуться назад
         if (navigation?.canGoBack?.()) {
@@ -401,8 +402,6 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                 userId: user.id, // Добавляем userId для возврата на профиль
                 groupRoomId: fromScreen === 'GroupInfo' ? roomId : undefined
             };
-            console.log('===== UserPublicProfileScreen: Navigate to ChatRoom =====');
-            console.log('ChatRoom params:', JSON.stringify(chatParams, null, 2));
             const rootNavigation =
                 navigation?.getParent?.('AppStack') ||
                 navigation?.getParent?.()?.getParent?.() ||
@@ -414,7 +413,6 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
 
         // Если чата нет, создаем новый
         try {
-            console.log('ChatRoom: Создаем новый чат с пользователем:', user.id);
             
             // Создаем FormData для создания чата
             const formData = new FormData();
@@ -450,8 +448,6 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                     userId: user.id, // Добавляем userId для возврата на профиль
                     groupRoomId: fromScreen === 'GroupInfo' ? roomId : undefined
                 };
-                console.log('===== UserPublicProfileScreen: Navigate to NEW ChatRoom =====');
-                console.log('ChatRoom params:', JSON.stringify(chatParams, null, 2));
                 const rootNavigation =
                     navigation?.getParent?.('AppStack') ||
                     navigation?.getParent?.()?.getParent?.() ||

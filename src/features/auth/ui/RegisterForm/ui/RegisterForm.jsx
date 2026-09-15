@@ -104,7 +104,10 @@ export const RegisterForm = ({ onVerification }) => {
         try {
             const response = await api.get('/api/districts');
             if (response.data?.status === 'success' && Array.isArray(response.data.data)) {
-                setDistricts(response.data.data);
+                // Район "Другой" из базы скрываем — внизу списка есть своя опция "Другой"
+                setDistricts(response.data.data.filter(
+                    (d) => d.name?.trim().toLowerCase() !== OTHER_DISTRICT_NAME.toLowerCase()
+                ));
             }
         } catch (error) {
             console.error('Ошибка загрузки районов:', error);
@@ -900,6 +903,11 @@ export const RegisterForm = ({ onVerification }) => {
                                             ]}>
                                                 {district.name}
                                             </Text>
+                                            {district.description ? (
+                                                <Text style={styles.optionDescription}>
+                                                    {district.description}
+                                                </Text>
+                                            ) : null}
                                         </TouchableOpacity>
                                     ))}
                                     {/* Опция "Другой район" */}
@@ -1089,7 +1097,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         borderRadius: 20,
         padding: normalize(20),
         width: width * 0.9,
-        maxHeight: height * 0.7,
+        maxHeight: height * 0.85,
     },
     modalTitle: {
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
@@ -1123,6 +1131,13 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         color: isDark ? colors.primary : '#000cff',
         fontWeight: '600',
     },
+    optionDescription: {
+        fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
+        fontSize: normalizeFont(12),
+        color: isDark ? colors.textSecondary : '#666',
+        marginTop: normalize(2),
+        lineHeight: normalize(16),
+    },
     closeButton: {
         marginTop: normalize(20),
         padding: normalize(15),
@@ -1137,7 +1152,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         color: '#fff',
     },
     districtsList: {
-        maxHeight: height * 0.4,
+        maxHeight: height * 0.62,
     },
     districtsListContent: {
         paddingBottom: normalize(8),

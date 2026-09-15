@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useMemo } from 'react';
 import { View, StyleSheet} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SupplierContent } from '@screens/supplier/ui/SupplierContent';
@@ -23,8 +23,6 @@ const SupplierScreenContainer = React.memo(({ supplierId, navigation, route }) =
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const loaderColor = isDark ? colors.primary : Color.purpleSoft;
 
-    const renderCount = useRef(0);
-
     // Используем хук для управления данными поставщика
     const {
         supplier,
@@ -38,24 +36,6 @@ const SupplierScreenContainer = React.memo(({ supplierId, navigation, route }) =
         hasInvalidSupplierType,
         handleRefresh
     } = useSupplierData(validSupplierId);
-
-    // Отображаем параметры навигации в консоли для отладки
-    useEffect(() => {
-        if (process.env.NODE_ENV === 'development') {
-            renderCount.current += 1;
-            console.log('SupplierScreenContainer - Данные:', {
-                supplierId: validSupplierId,
-                fromScreen,
-                previousProductId,
-                renderCount: renderCount.current,
-                hasSupplier: !!supplier,
-                supplierProductsType: typeof supplierProducts,
-                supplierProductsIsArray: Array.isArray(supplierProducts),
-                supplierProductsLength: supplierProducts?.length || 0,
-                allFeedbacksLength: allFeedbacks?.length || 0
-            });
-        }
-    }, [validSupplierId, fromScreen, previousProductId, supplier, supplierProducts, allFeedbacks]);
 
     // Отображаем ошибку если ID не указан
     if (!validSupplierId) {

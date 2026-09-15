@@ -325,6 +325,7 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
     const availableBoxes = productData.availableBoxes || 0;
     const itemsPerBox = productData.itemsPerBox || 1;
     const pricePerItem = productData.pricePerItem || product.price || 0;
+    const preferBoxPrice = Boolean(productData.preferBoxPrice || product?.preferBoxPrice);
     
     const boxPrice = useMemo(() => {
         const explicitBoxPrice = Number(productData?.boxPrice);
@@ -341,6 +342,13 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
 
         return (Number(pricePerItem) || 0) * (Number(itemsPerBox) || 1);
     }, [priceInfo?.effectivePrice, productData?.boxPrice, pricePerItem, itemsPerBox]);
+
+    const primaryPrice = preferBoxPrice && itemsPerBox > 1 ? boxPrice : pricePerItem;
+    const primaryUnit = isFishCategory
+        ? '/ кг'
+        : (preferBoxPrice && itemsPerBox > 1
+            ? `/ коробка (${itemsPerBox} шт.)`
+            : '/ шт.');
 
     // Проверка, является ли товар рыбой
     const isFishCategory = useMemo(() => {

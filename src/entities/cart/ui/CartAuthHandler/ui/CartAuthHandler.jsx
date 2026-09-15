@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
-// Импортируем напрямую из хука, чтобы избежать циклической зависимости
+import { selectIsAuthenticated } from '@entities/auth/model/selectors';
 import { useCartAuth } from "../../../hooks/useCartAuth";
 
 /**
@@ -11,8 +11,8 @@ export const CartAuthHandler = () => {
     const { handleAuthStateChange } = useCartAuth();
     
     // Отслеживаем состояние авторизации
-    const isAuthenticated = useSelector(state => !!state.auth?.user?.id);
-    const userId = useSelector(state => state.auth?.user?.id);
+    const isAuthenticated = useSelector(selectIsAuthenticated);
+    const userId = useSelector(state => (isAuthenticated ? state.auth?.user?.id : undefined));
     
     // Храним предыдущее состояние авторизации
     const prevAuthState = useRef(isAuthenticated);

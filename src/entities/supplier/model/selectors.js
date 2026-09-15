@@ -27,7 +27,6 @@ export const selectSupplierDetails = (state) => state.suppliers.supplierDetails;
 
 /**
  * Селектор для получения продуктов поставщика из Redux
- * С улучшенным логированием для отладки
  */
 export const selectSupplierProducts = createSelector(
     [
@@ -40,25 +39,11 @@ export const selectSupplierProducts = createSelector(
 
         // Если нет ID, возвращаем пустой массив
         if (id === null) {
-            if (process.env.NODE_ENV === 'development') {
-                console.log('selectSupplierProducts: нет ID');
-            }
             return EMPTY_ARRAY;
         }
 
         // Получаем продукты по ID (проверяем существование ключа)
         const products = id in supplierProducts ? supplierProducts[id] : [];
-
-        // Для отладочных целей в режиме разработки
-        if (process.env.NODE_ENV === 'development') {
-            console.log('selectSupplierProducts:', {
-                supplierId: id,
-                hasKey: id in supplierProducts,
-                productsCount: Array.isArray(products) ? products.length : 0,
-                allKeys: Object.keys(supplierProducts),
-                isArray: Array.isArray(products)
-            });
-        }
 
         // Всегда возвращаем массив, даже если продукты не найдены
         return Array.isArray(products) ? products : EMPTY_ARRAY;
@@ -191,18 +176,6 @@ export const selectSupplierProductsBySupplierId = createSelector(
 
         // Получаем продукты по нормализованному ID
         const products = id in supplierProducts ? supplierProducts[id] : null;
-        
-        if (process.env.NODE_ENV === 'development') {
-            console.log('selectSupplierProductsBySupplierId - детали:', {
-                supplierId: id,
-                productsType: typeof products,
-                isArray: Array.isArray(products),
-                productsKeys: products && typeof products === 'object' && !Array.isArray(products) ? Object.keys(products).slice(0, 5) : [],
-                productsLength: Array.isArray(products) ? products.length : 'не массив',
-                firstProduct: Array.isArray(products) ? products[0]?.id : 'не массив',
-                hasKey: id in supplierProducts
-            });
-        }
         
         // Если это не массив, возвращаем пустой массив
         if (!Array.isArray(products)) {

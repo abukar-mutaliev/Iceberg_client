@@ -1,5 +1,6 @@
 import { createApiModule } from '@shared/services/ApiClient';
 import { createPublicRequest } from '@shared/api/api';
+import { withDeviceId } from '@shared/lib/deviceId';
 
 // Используем обычный модуль для методов, требующих авторизации
 const authApi = createApiModule('/api/auth');
@@ -10,6 +11,26 @@ const BASE_AUTH_URL = '/api/auth';
 
 export const authApiMethods = {
     // ========================================
+    // ЕДИНЫЙ ПОТОК ВХОДА И РЕГИСТРАЦИИ ПО НОМЕРУ
+    // ========================================
+
+    // Шаг 1: запрос кода. Ответ одинаков и для зарегистрированного номера,
+    // и для нового — приложение заранее не знает, вход это или регистрация.
+    // Ответ: { challengeToken, codeLength, expiresAt, resendAfter }
+    phoneAuthStart: (data) =>
+        createPublicRequest('post', `${BASE_AUTH_URL}/phone/start`, data),
+
+    // Шаг 2: подтверждение кода. Здесь и выясняется исход:
+    //   isNewUser: true  → аккаунт только что создан, needsProfile тоже true
+    //   needsProfile     → нужен онбординг (имя и район)
+    //   requiresTwoFactor → вместо сессии приходит tempToken
+    phoneAuthVerify: async ({ challengeToken, verificationCode }) =>
+        createPublicRequest('post', `${BASE_AUTH_URL}/phone/verify`, await withDeviceId({
+            challengeToken,
+            verificationCode,
+        })),
+
+    // ========================================
     // РЕГИСТРАЦИЯ ПО EMAIL
     // ========================================
     
@@ -18,11 +39,11 @@ export const authApiMethods = {
         createPublicRequest('post', `${BASE_AUTH_URL}/register/initiate`, data),
 
     // Завершение регистрации - публичный запрос
-    completeRegister: (data) => 
-        createPublicRequest('post', `${BASE_AUTH_URL}/register/complete`, {
+    completeRegister: async (data) =>
+        createPublicRequest('post', `${BASE_AUTH_URL}/register/complete`, await withDeviceId({
             registrationToken: data.registrationToken,
             verificationCode: data.verificationCode,
-        }),
+        })),
 
     // ========================================
     // РЕГИСТРАЦИЯ ПО ТЕЛЕФОНУ
@@ -33,36 +54,69 @@ export const authApiMethods = {
         createPublicRequest('post', `${BASE_AUTH_URL}/initiate-register-phone`, data),
 
     // Завершение регистрации по телефону - публичный запрос
-    completePhoneRegister: (data) => 
-        createPublicRequest('post', `${BASE_AUTH_URL}/complete-register-phone`, {
+    completePhoneRegister: async (data) =>
+        createPublicRequest('post', `${BASE_AUTH_URL}/complete-register-phone`, await withDeviceId({
             registrationToken: data.registrationToken,
             verificationCode: data.verificationCode,
-        }),
+        })),
 
     // ========================================
     // ВХОД В СИСТЕМУ
     // ========================================
     
     // Вход в систему (email + пароль) - публичный запрос
-    login: (data) => 
-        createPublicRequest('post', `${BASE_AUTH_URL}/login`, data),
+    login: async (data) =>
+        createPublicRequest('post', `${BASE_AUTH_URL}/login`, await withDeviceId(data)),
 
     // Инициация входа по телефону - публичный запрос
     initiatePhoneLogin: (data) => 
         createPublicRequest('post', `${BASE_AUTH_URL}/initiate-phone-login`, data),
 
     // Завершение входа по телефону - публичный запрос
-    verifyPhoneLogin: (data) => 
-        createPublicRequest('post', `${BASE_AUTH_URL}/verify-phone-login`, data),
+    verifyPhoneLogin: async (data) =>
+        createPublicRequest('post', `${BASE_AUTH_URL}/verify-phone-login`, await withDeviceId(data)),
 
     // Вход по телефону + пароль - публичный запрос
-    loginPhone: (data) => 
-        createPublicRequest('post', `${BASE_AUTH_URL}/login-phone`, data),
+    loginPhone: async (data) =>
+        createPublicRequest('post', `${BASE_AUTH_URL}/login-phone`, await withDeviceId(data)),
 
     // Верификация 2FA - публичный запрос
-    verify2FALogin: ({ tempToken, twoFactorCode }) =>
-        createPublicRequest('post', `${BASE_AUTH_URL}/2fa/verify-login`, 
-            { tempToken, twoFactorCode: twoFactorCode.toString() }),
+    verify2FALogin: async ({ tempToken, twoFactorCode }) =>
+        createPublicRequest('post', `${BASE_AUTH_URL}/2fa/verify-login`, await withDeviceId({
+            tempToken,
+            twoFactorCode: twoFactorCode.toString(),
+        })),
+
+    // ========================================
+    // МОБИЛЬНАЯ АВТОРИЗАЦИЯ (MobileID / SMS Aero)
+    // Каскад Seamless → SIM-PUSH → SMS выполняет виджет SMS Aero,
+    // сервер проверяет результат server-to-server.
+    // ========================================
+
+    // Server-to-server проверка результата верификации.
+    // Вызывать после события onVerified виджета MobileID.
+    // Ответ: status = 'success' (вход выполнен) | 'pending' (нужна 2FA)
+    //        | 'registration_required' (номер подтверждён, нужна регистрация)
+    mobileIdVerify: async ({ sessionId, verifyToken }) =>
+        createPublicRequest('post', `${BASE_AUTH_URL}/mobileid/verify`, await withDeviceId({
+            session_id: sessionId,
+            verify_token: verifyToken,
+            // Это приложение умеет онбординг, поэтому просим сервер создать
+            // аккаунт сразу, а не отдавать токен на заполнение анкеты.
+            supports_onboarding: true,
+        })),
+
+    // Завершение регистрации после верификации через MobileID (без SMS-кода)
+    mobileIdCompleteRegister: async (data) =>
+        createPublicRequest('post', `${BASE_AUTH_URL}/mobileid/complete-register`, await withDeviceId({
+            registrationToken: data.registrationToken,
+            name: data.name,
+            address: data.address,
+            gender: data.gender,
+            districtId: data.districtId,
+            customDistrict: data.customDistrict,
+            password: data.password,
+        })),
 
     // ========================================
     // ОБЩИЕ МЕТОДЫ
@@ -72,8 +126,12 @@ export const authApiMethods = {
     logout: (refreshToken) => authApi.post('/logout', { refreshToken }),
 
     // Обновление токена - публичный запрос
-    refreshToken: (refreshToken) => 
-        createPublicRequest('post', `${BASE_AUTH_URL}/refresh-token`, { refreshToken }),
+    refreshToken: async (refreshToken) =>
+        createPublicRequest(
+            'post',
+            `${BASE_AUTH_URL}/refresh-token`,
+            await withDeviceId({ refreshToken })
+        ),
 
     // Получение текущего пользователя - требует авторизации
     getMe: () => authApi.get('/me'),

@@ -232,7 +232,10 @@ class ChatCacheService {
       this.queueMediaCaching(messagesToSave);
 
     } catch (error) {
-      console.warn('Failed to save room messages:', error);
+      const msg = String(error?.message || error || '');
+      if (!msg.includes('database is locked')) {
+        console.warn('Failed to save room messages:', error);
+      }
     }
   }
 

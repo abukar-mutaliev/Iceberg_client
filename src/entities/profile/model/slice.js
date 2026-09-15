@@ -196,6 +196,30 @@ export const confirmEmailBind = createAsyncThunk(
     }
 );
 
+export const initiatePhoneChange = createAsyncThunk(
+    'profile/initiatePhoneChange',
+    async (data, { rejectWithValue }) => {
+        try {
+            const response = await profileApi.initiatePhoneChange(data);
+            return response;
+        } catch (error) {
+            return rejectWithValue(handleError(error));
+        }
+    }
+);
+
+export const confirmPhoneChange = createAsyncThunk(
+    'profile/confirmPhoneChange',
+    async (data, { rejectWithValue }) => {
+        try {
+            const response = await profileApi.confirmPhoneChange(data);
+            return response;
+        } catch (error) {
+            return rejectWithValue(handleError(error));
+        }
+    }
+);
+
 
 export const updateAvatar = createAsyncThunk(
     'profile/updateAvatar',

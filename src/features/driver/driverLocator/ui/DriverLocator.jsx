@@ -4,15 +4,17 @@ import { View, StyleSheet, TouchableOpacity } from "react-native";
 import Instance from "@screens/stop/ui/StopDetailsScreen/ui/Instance";
 import IceCreamTruckIcon from "@shared/ui/Icon/MainScreen/IceCreamTruckIcon";
 import { useTheme } from "@app/providers/themeProvider/ThemeProvider";
+import { useNextDistrictStopSlides } from "../hooks/useNextDistrictStopSlides";
 
-const DriverLocator = ({ onPress }) => {
+export const DriverLocator = ({ onPress }) => {
     const { isDark } = useTheme();
     const styles = useMemo(() => createStyles(isDark), [isDark]);
+    const slides = useNextDistrictStopSlides();
 
     return (
-        <TouchableOpacity style={styles.container} onPress={onPress}>
+        <TouchableOpacity style={styles.container} onPress={onPress} activeOpacity={0.85}>
             <View style={styles.contentContainer}>
-                <Instance />
+                <Instance slides={slides} />
                 <View style={styles.iconContainer}>
                     <IceCreamTruckIcon width={36} height={36} fill="#FFFFFF" />
                 </View>

@@ -216,7 +216,7 @@ export const ReplyPreview = ({
     >
       <View style={styles.leftBorder} />
       
-      <View style={styles.content}>
+      <View style={[styles.content, isInMessage && styles.contentInMessage]}>
         <Text style={styles.senderName} numberOfLines={1}>
           {getSenderName()}
         </Text>
@@ -224,6 +224,7 @@ export const ReplyPreview = ({
           <Text
             style={[
               styles.messagePreview,
+              isInMessage && styles.messagePreviewInMessage,
               replyTo.isDeletedForAll && styles.deletedText
             ]}
             numberOfLines={2}
@@ -260,9 +261,11 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     backgroundColor: 'transparent', // Прозрачный фон, т.к. контейнер в Composer задает фон
     paddingVertical: 8,
     paddingHorizontal: 12,
-    minWidth: 180,
     borderRadius: 0, // Без скругления, т.к. контейнер в Composer задает скругление
     marginBottom: 0, // Без отступа снизу
+  },
+  containerInComposer: {
+    minWidth: 180,
   },
   containerInMessage: {
     backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)',
@@ -270,6 +273,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 8,
     borderRadius: 8,
+    alignSelf: 'stretch',
   },
   deletedContainer: {
     opacity: 0.6,
@@ -282,6 +286,11 @@ const createStyles = (colors, isDark) => StyleSheet.create({
   },
   content: {
     flex: 1,
+    minWidth: 0,
+  },
+  contentInMessage: {
+    flex: 0,
+    flexShrink: 0,
   },
   senderName: {
     fontSize: 13,
@@ -298,6 +307,11 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     fontSize: 13,
     color: isDark ? colors.textSecondary : '#666',
     lineHeight: 18,
+    minWidth: 0,
+  },
+  messagePreviewInMessage: {
+    flex: 0,
+    flexShrink: 0,
   },
   deletedText: {
     fontStyle: 'italic',

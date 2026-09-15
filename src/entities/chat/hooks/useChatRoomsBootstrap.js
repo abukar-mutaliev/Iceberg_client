@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useDispatch, useSelector, useStore } from 'react-redux';
 import { loadRoomsCache, fetchRooms, fetchMessages } from '@entities/chat/model/slice';
+import { needsLastMessageHydration } from '@entities/chat/lib/mergeChatMessage';
 
 // Совпадает с лимитом в ChatListScreen, чтобы бейджи считались одинаково.
 const BOOTSTRAP_ROOMS_LIMIT = 100;
@@ -22,6 +23,7 @@ export function useChatRoomsBootstrap() {
   const dispatch = useDispatch();
   const store = useStore();
   const isAuthenticated = useSelector((s) => s.auth?.isAuthenticated);
+  const accessToken = useSelector((s) => s.auth?.tokens?.accessToken);
   const userId = useSelector((s) => s.auth?.user?.id);
   const role = useSelector((s) => s.auth?.user?.role);
   const roomIds = useSelector((s) => s.chat?.rooms?.ids);
@@ -31,7 +33,7 @@ export function useChatRoomsBootstrap() {
 
   // Базовая загрузка списка комнат и счётчиков.
   useEffect(() => {
-    if (!isAuthenticated || !userId) {
+    if (!isAuthenticated || !userId || !accessToken) {
       bootstrappedUserIdRef.current = null;
       prefetchedRoomIdsRef.current = new Set();
       return;
@@ -53,12 +55,12 @@ export function useChatRoomsBootstrap() {
       await dispatch(loadRoomsCache());
       await dispatch(fetchRooms({ page: 1, limit: BOOTSTRAP_ROOMS_LIMIT }));
     })();
-  }, [dispatch, isAuthenticated, userId, role]);
+  }, [dispatch, isAuthenticated, userId, role, accessToken]);
 
   // Подгружаем последние сообщения для GROUP/BROADCAST комнат с непрочитанными,
   // чтобы бейдж в таббаре сразу учитывал фильтрацию (истёкшие/чужие STOP).
   useEffect(() => {
-    if (!isAuthenticated || !userId || role === 'SUPPLIER') return;
+    if (!isAuthenticated || !userId || !accessToken || role === 'SUPPLIER') return;
     if (!Array.isArray(roomIds) || roomIds.length === 0) return;
     if (!unreadByRoomId) return;
 
@@ -74,20 +76,25 @@ export function useChatRoomsBootstrap() {
       if (!rid) continue;
       if (prefetched.has(rid)) continue;
 
-      const unread = Number(unreadByRoomId[rid]) || 0;
-      if (unread <= 0) continue;
-
       const room = roomsById[rid];
       if (!room) continue;
       const type = String(room.type || '').toUpperCase();
       if (type !== 'GROUP' && type !== 'BROADCAST') continue;
 
-      const bucketLen = messagesByRoom?.[rid]?.ids?.length ?? 0;
-      if (bucketLen > 0) continue;
+      const unread = Number(unreadByRoomId[rid]) || 0;
+      if (unread <= 0 && type !== 'BROADCAST') continue;
+
+      const bucket = messagesByRoom?.[rid];
+      const bucketLen = bucket?.ids?.length ?? 0;
+      if (bucketLen > 0) {
+        const newestId = bucket.ids[0];
+        const newestMsg = newestId != null ? bucket.byId?.[newestId] : null;
+        if (newestMsg && !needsLastMessageHydration(newestMsg)) continue;
+      }
 
       prefetched.add(rid);
       queued += 1;
       dispatch(fetchMessages({ roomId: rid, limit: BOOTSTRAP_MESSAGES_LIMIT }));
     }
-  }, [dispatch, isAuthenticated, userId, role, roomIds, unreadByRoomId, store]);
+  }, [dispatch, isAuthenticated, userId, role, roomIds, unreadByRoomId, store, accessToken]);
 }

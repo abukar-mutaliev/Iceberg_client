@@ -262,7 +262,10 @@ export const cartReloadMiddleware = (store) => (next) => (action) => {
                            errorMessage.includes('403') ||
                            errorMessage.includes('401') ||
                            errorMessage.includes('токена истек') ||
-                           errorMessage.includes('Срок действия токена');
+                           errorMessage.includes('Срок действия токена') ||
+                           errorMessage.includes('Токен недействителен') ||
+                           errorMessage.includes('недействителен') ||
+                           errorMessage.includes('NO_AUTH');
 
         // Не логируем ошибки авторизации для корзины (корзина скрыта в первой версии приложения)
         if (isAuthError) {

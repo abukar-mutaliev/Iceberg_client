@@ -17,6 +17,7 @@ import ChatApi from '@entities/chat/api/chatApi';
 import { getImageUrl } from '@shared/api/api';
 import { selectRoomsList } from '@entities/chat/model/selectors';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { AssistantAvatar, ASSISTANT_CHAT_TITLE, isAssistantRoom, isAssistantUser } from '@features/ai-assistant';
 
 export const ForwardMessageModal = ({ visible, onClose, onForward, message }) => {
     const [searchQuery, setSearchQuery] = useState('');
@@ -215,6 +216,8 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
 
                 // Поиск по названию комнаты
                 if (room.name?.toLowerCase().includes(query)) return true;
+                if (room.title?.toLowerCase().includes(query)) return true;
+                if (isAssistantRoom(room) && ASSISTANT_CHAT_TITLE.toLowerCase().includes(query)) return true;
 
                 // Поиск по участникам (для личных чатов)
                 if (room.participants) {
@@ -365,6 +368,10 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
     const getRoomName = (room) => {
         if (!room) return 'Неизвестный чат';
 
+        if (isAssistantRoom(room)) {
+            return room?.title || ASSISTANT_CHAT_TITLE;
+        }
+
         // Для личных чатов - имя собеседника (игнорируем title/name если это DIRECT)
         if (room.type === 'DIRECT' && room.participants) {
             const currentId = currentUserId != null ? String(currentUserId) : null;
@@ -441,7 +448,11 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
                 style={[styles.roomItem, isSelected && styles.roomItemSelected]}
                 onPress={() => toggleItemSelection(itemData)}
             >
-                {renderAvatar(avatarUri, getRoomIcon(room))}
+                {isAssistantRoom(room) ? (
+                    <AssistantAvatar size={40} />
+                ) : (
+                    renderAvatar(avatarUri, getRoomIcon(room))
+                )}
                 <View style={styles.roomInfo}>
                     <Text style={[styles.roomName, isSelected && styles.roomNameSelected]}>
                         {getRoomName(room)}
@@ -457,8 +468,10 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
     const renderUserItem = ({ item }) => {
         const itemData = { type: 'user', id: item.id };
         const isSelected = isItemSelected(itemData);
+        const isAssistant = isAssistantUser(item);
 
-        const userName = item.displayName ||
+        const userName = isAssistant ? ASSISTANT_CHAT_TITLE : (
+            item.displayName ||
             item.name ||
             item.client?.name ||
             item.admin?.name ||
@@ -466,7 +479,8 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
             item.driver?.name ||
             item.supplier?.contactPerson ||
             item.email?.split('@')[0] ||
-            'Пользователь';
+            'Пользователь'
+        );
 
         const userRole = item.role === 'ADMIN' ? 'Администратор' :
             item.role === 'DRIVER' ? 'Водитель' :
@@ -487,7 +501,11 @@ export const ForwardMessageModal = ({ visible, onClose, onForward, message }) =>
                 style={[styles.roomItem, isSelected && styles.roomItemSelected]}
                 onPress={() => toggleItemSelection(itemData)}
             >
-                {renderAvatar(avatarUri, 'account')}
+                {isAssistant ? (
+                    <AssistantAvatar size={40} />
+                ) : (
+                    renderAvatar(avatarUri, 'account')
+                )}
                 <View style={styles.roomInfo}>
                     <Text style={[styles.roomName, isSelected && styles.roomNameSelected]}>
                         {userName}

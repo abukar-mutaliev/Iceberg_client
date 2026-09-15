@@ -8,9 +8,10 @@
  */
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
+import { useDispatch, useSelector, useStore } from 'react-redux';
 import { AppState } from 'react-native';
 import { chatCacheService } from '../lib/chatCacheService';
+import { needsLastMessageHydration } from '../lib/mergeChatMessage';
 import {
   fetchRooms,
   fetchMessages,
@@ -139,6 +140,7 @@ export const useCachedRooms = () => {
  */
 export const useCachedMessages = (roomId) => {
   const dispatch = useDispatch();
+  const store = useStore();
   const deletedRoomIds = useSelector((s) => s.chat?.deletedRoomIds || []);
   const isRoomDeleted = roomId ? deletedRoomIds.includes(roomId) : false;
   const [messages, setMessages] = useState([]);
@@ -175,6 +177,10 @@ export const useCachedMessages = (roomId) => {
             if (msg.isDeletedForAll === true) {
               return false;
             }
+            // Не гидратируем урезанные снимки (STOP без данных, IMAGE без attachments)
+            if (needsLastMessageHydration(msg)) {
+              return false;
+            }
             return true;
           });
           
@@ -194,10 +200,6 @@ export const useCachedMessages = (roomId) => {
               cachedAt: cached.cachedAt,
               isStale: cached.isStale,
             });
-            
-            if (__DEV__) {
-              console.log(`✅ Loaded ${validMessages.length} messages from cache for room ${roomId} (filtered ${cached.messages.length - validMessages.length} deleted)`);
-            }
           } else {
             // Если все сообщения были удалены, очищаем состояние
             setMessages([]);
@@ -256,8 +258,23 @@ export const useCachedMessages = (roomId) => {
     let cancelled = false;
     let timer = null;
 
+    const bucketNeedsImmediateSync = () => {
+      const bucket = store.getState().chat?.messages?.[roomId];
+      if (!bucket?.ids?.length) return true;
+      const newestId = bucket.ids[0];
+      const newestMsg = newestId != null ? bucket.byId?.[newestId] : null;
+      return !newestMsg || needsLastMessageHydration(newestMsg);
+    };
+
     (async () => {
       try {
+        if (bucketNeedsImmediateSync()) {
+          if (!cancelled) {
+            syncWithServer({ silent: true, limit: 100, cursorId: null, direction: 'backward' });
+          }
+          return;
+        }
+
         // ✅ Важно: синхронизируем не только "устаревший кэш", иначе в проде можно застрять
         // на локальных данных и не видеть последние сообщения.
         //
@@ -281,7 +298,7 @@ export const useCachedMessages = (roomId) => {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [isLoadingFromCache, roomId, syncWithServer, isRoomDeleted]);
+  }, [isLoadingFromCache, roomId, syncWithServer, isRoomDeleted, store]);
 
   // Добавление нового сообщения в кэш
   const addMessageToCache = useCallback(async (message) => {

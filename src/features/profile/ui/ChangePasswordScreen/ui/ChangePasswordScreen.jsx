@@ -18,15 +18,19 @@ import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { ThemedStatusBar } from '@shared/ui/ThemedStatusBar/ThemedStatusBar';
 import ArrowBackIcon from '@shared/ui/Icon/Common/ArrowBackIcon';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
-import { changePassword } from '@entities/profile';
+import { changePassword, fetchProfile } from '@entities/profile';
 import { selectProfileLoading, selectProfileError } from '@entities/profile/model/selectors';
-import { removeTokensFromStorage} from '@entities/auth';
+import { loadUserProfile, removeTokensFromStorage, selectUser, setUser } from '@entities/auth';
 
 export const ChangePasswordScreen = () => {
     const navigation = useNavigation();
     const dispatch = useDispatch();
     const isLoading = useSelector(selectProfileLoading);
     const error = useSelector(selectProfileError);
+    const user = useSelector(selectUser);
+    const profileData = useSelector((state) => state.profile?.data);
+    const passwordSet = user?.passwordSet ?? profileData?.passwordSet;
+    const isInitialSet = passwordSet === false;
     const { showError, showSuccess } = useCustomAlert();
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
@@ -38,6 +42,11 @@ export const ChangePasswordScreen = () => {
     const [showNewPassword, setShowNewPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [validationErrors, setValidationErrors] = useState({});
+
+    useEffect(() => {
+        dispatch(loadUserProfile());
+        dispatch(fetchProfile());
+    }, [dispatch]);
 
     useEffect(() => {
         if (currentPassword) {
@@ -63,23 +72,27 @@ export const ChangePasswordScreen = () => {
 
     const validateForm = () => {
         const errors = {};
-        
-        if (!currentPassword) {
+
+        if (!isInitialSet && !currentPassword) {
             errors.currentPassword = 'Введите текущий пароль';
         }
-        
+
         if (!newPassword) {
             errors.newPassword = 'Введите новый пароль';
         } else if (newPassword.length < 6) {
             errors.newPassword = 'Пароль должен быть не менее 6 символов';
+        } else if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(newPassword)) {
+            errors.newPassword = 'Пароль должен содержать строчную и заглавную буквы, а также цифру';
         }
-        
+
         if (!confirmPassword) {
-            errors.confirmPassword = 'Подтвердите новый пароль';
+            errors.confirmPassword = isInitialSet
+                ? 'Подтвердите пароль'
+                : 'Подтвердите новый пароль';
         } else if (newPassword !== confirmPassword) {
             errors.confirmPassword = 'Пароли не совпадают';
         }
-        
+
         setValidationErrors(errors);
         return Object.keys(errors).length === 0;
     };
@@ -89,11 +102,29 @@ export const ChangePasswordScreen = () => {
 
         try {
             const result = await dispatch(changePassword({
-                currentPassword,
+                ...(isInitialSet ? {} : { currentPassword }),
                 newPassword
             })).unwrap();
 
             if (result) {
+                const initialSet = result?.data?.isInitialSet === true;
+
+                if (initialSet) {
+                    dispatch(setUser({ ...user, passwordSet: true }));
+                    showSuccess(
+                        'Успешно',
+                        'Пароль установлен. Теперь вы можете входить по номеру телефона и паролю.',
+                        [
+                            {
+                                text: 'ОК',
+                                style: 'primary',
+                                onPress: () => navigation.goBack()
+                            }
+                        ]
+                    );
+                    return;
+                }
+
                 showSuccess(
                     'Успешно',
                     'Пароль успешно изменен. Пожалуйста, войдите в систему снова.',
@@ -134,7 +165,9 @@ export const ChangePasswordScreen = () => {
                     <ArrowBackIcon width={24} height={24} color={colors.primary} />
                 </TouchableOpacity>
                 <View style={styles.titleContainer}>
-                    <Text style={styles.title}>Изменение пароля</Text>
+                    <Text style={styles.title}>
+                        {isInitialSet ? 'Установка пароля' : 'Изменение пароля'}
+                    </Text>
                 </View>
             </View>
 
@@ -149,6 +182,13 @@ export const ChangePasswordScreen = () => {
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}
                 >
+                {isInitialSet && (
+                    <Text style={styles.hintText}>
+                        Задайте пароль, чтобы входить по номеру телефона и паролю без SMS-кода.
+                    </Text>
+                )}
+
+                {!isInitialSet && (
                 <View style={styles.inputContainer}>
                     <Text style={styles.label}>Текущий пароль</Text>
                     <View style={[styles.inputWrapper, validationErrors.currentPassword && styles.errorInput]}>
@@ -172,16 +212,17 @@ export const ChangePasswordScreen = () => {
                         <Text style={styles.errorText}>{validationErrors.currentPassword}</Text>
                     )}
                 </View>
+                )}
 
                 <View style={styles.inputContainer}>
-                    <Text style={styles.label}>Новый пароль</Text>
+                    <Text style={styles.label}>{isInitialSet ? 'Пароль' : 'Новый пароль'}</Text>
                     <View style={[styles.inputWrapper, validationErrors.newPassword && styles.errorInput]}>
                         <TextInput
                             style={[styles.input, styles.passwordInput]}
                             value={newPassword}
                             onChangeText={setNewPassword}
                             secureTextEntry={!showNewPassword}
-                            placeholder="Введите новый пароль"
+                            placeholder={isInitialSet ? 'Введите пароль' : 'Введите новый пароль'}
                             placeholderTextColor={colors.textTertiary}
                             keyboardAppearance={colors.keyboardAppearance}
                         />
@@ -205,7 +246,7 @@ export const ChangePasswordScreen = () => {
                             value={confirmPassword}
                             onChangeText={setConfirmPassword}
                             secureTextEntry={!showConfirmPassword}
-                            placeholder="Подтвердите новый пароль"
+                            placeholder={isInitialSet ? 'Подтвердите пароль' : 'Подтвердите новый пароль'}
                             placeholderTextColor={colors.textTertiary}
                             keyboardAppearance={colors.keyboardAppearance}
                         />
@@ -275,6 +316,13 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     },
     contentContainer: {
         padding: 16,
+    },
+    hintText: {
+        fontSize: 14,
+        fontFamily: FontFamily.sFProText,
+        color: colors.textSecondary,
+        marginBottom: 24,
+        lineHeight: 20,
     },
     inputContainer: {
         marginBottom: 24,

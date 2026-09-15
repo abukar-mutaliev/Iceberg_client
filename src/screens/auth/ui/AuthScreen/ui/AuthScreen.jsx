@@ -3,7 +3,6 @@ import {
     View,
     Image,
     Text,
-    TouchableOpacity,
     Platform,
     BackHandler,
     KeyboardAvoidingView,
@@ -14,22 +13,19 @@ import {
     Keyboard,
     Animated,
     TouchableWithoutFeedback,
-    ScrollView} from 'react-native';
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CommonActions, useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import { LoginForm } from '@features/auth/ui/LoginForm';
-import { RegisterForm } from '@features/auth/ui/RegisterForm';
-import { PhoneRegisterForm } from '@features/auth/ui/PhoneRegisterForm';
-import { VerificationForm } from '@features/auth/ui/VerificationForm';
+import { PhoneAuthForm } from '@features/auth/ui/PhoneAuthForm';
 import { ForgotPasswordForm } from '@features/auth/ui/ForgotPasswordForm';
 import { ResetPasswordCodeForm } from '@features/auth/ui/ResetPasswordCodeForm';
 import { NewPasswordForm } from '@features/auth/ui/NewPasswordForm';
 import { Color } from "@app/styles/GlobalStyles";
 import { useAuth } from "@entities/auth/hooks/useAuth";
-import { selectRequiresTwoFactor, selectTempToken } from "@entities/auth";
+import { selectRequiresTwoFactor, selectTempToken, selectNeedsProfile } from "@entities/auth";
 import { BackButton } from "@shared/ui/Button/BackButton";
-import { ProfileIcon } from '@shared/ui/Icon/TabBarIcons';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 const { width, height } = Dimensions.get('window');
@@ -61,13 +57,11 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
     const { isAuthenticated } = useAuth();
     const requiresTwoFactor = useSelector(selectRequiresTwoFactor);
     const tempToken = useSelector(selectTempToken);
+    const needsProfile = useSelector(selectNeedsProfile);
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
-    const [activeTab, setActiveTab] = useState('login');
-    const [formState, setFormState] = useState('register');
-    const [registrationType, setRegistrationType] = useState('email'); // 'email' или 'phone'
-    const [currentTempToken, setCurrentTempToken] = useState(null);
+    const [formState, setFormState] = useState('login');
     const [keyboardVisible, setKeyboardVisible] = useState(false);
     const scrollViewRef = useRef(null);
     const [isCheckingAuth, setIsCheckingAuth] = useState(true);
@@ -80,11 +74,9 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
     const formMarginTop = useRef(new Animated.Value(0)).current;
     const [extraScrollHeight, setExtraScrollHeight] = useState(0);
     
-    // Динамически вычисляем высоту header
     const getHeaderHeight = () => {
-        const baseHeight = normalize(210);
-        const registrationTypeHeight = (activeTab === 'register' && formState === 'register') ? normalize(70) : 0;
-        return baseHeight + registrationTypeHeight;
+        const bodyHeight = normalize(204);
+        return bodyHeight + (Platform.OS === 'android' ? statusBarHeight : 0);
     };
 
     useEffect(() => {
@@ -100,6 +92,19 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
     useEffect(() => {
         if (!isCheckingAuth && isAuthenticated) {
             const redirectTo = route?.params?.redirectTo;
+
+            // Аккаунт из единого телефонного потока создаётся без имени и
+            // района. Пускать его сразу в приложение нельзя: без района не
+            // получится оформить доставку.
+            if (needsProfile) {
+                navigation.dispatch(
+                    CommonActions.reset({
+                        index: 0,
+                        routes: [{ name: 'Onboarding' }],
+                    })
+                );
+                return;
+            }
 
             if (redirectTo?.name) {
                 // Если нас попросили вернуть пользователя на конкретный экран после авторизации
@@ -125,7 +130,15 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
         if (!isCheckingAuth && requiresTwoFactor) {
             navigation.navigate('TwoFactorAuth', { tempToken });
         }
-    }, [isAuthenticated, requiresTwoFactor, tempToken, navigation, isCheckingAuth, route?.params?.redirectTo]);
+    }, [
+        isAuthenticated,
+        requiresTwoFactor,
+        tempToken,
+        needsProfile,
+        navigation,
+        isCheckingAuth,
+        route?.params?.redirectTo,
+    ]);
 
     useEffect(() => {
         const keyboardWillShowListener = Keyboard.addListener(
@@ -180,35 +193,24 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
     }, [headerTranslateY, formMarginTop]);
 
     useEffect(() => {
-        if (route?.params?.activeTab) {
-            setActiveTab(route.params.activeTab);
-
-            if (route.params.activeTab === 'login') {
-                setFormState('register');
-            }
+        if (route?.params?.activeTab === 'login' || route?.params?.initialScreen === 'login') {
+            setFormState('login');
         }
-    }, [route?.params?.activeTab]);
+    }, [route?.params?.activeTab, route?.params?.initialScreen]);
 
-    useEffect(() => {
-        if (isAuthenticated) {
-            navigation.dispatch(
-                CommonActions.reset({
-                    index: 0,
-                    routes: [{ name: 'Main' }],
-                })
-            );
-        }
-
-        if (requiresTwoFactor) {
-            navigation.navigate('TwoFactorAuth', { tempToken });
-        }
-    }, [isAuthenticated, requiresTwoFactor, tempToken, navigation]);
+    // Запасной путь: виджет MobileID не сработал — код в SMS от приложения.
+    const phoneVerifyFallback = !!route?.params?.phoneVerifyFallback;
 
     useFocusEffect(
         useCallback(() => {
             const onBackPress = () => {
-                if (formState === 'verification') {
-                    handleBackToRegister();
+                if (formState === 'forgotPassword' || formState === 'resetCode' || formState === 'newPassword') {
+                    handleBackFromReset();
+                    return true;
+                }
+
+                if (phoneVerifyFallback) {
+                    navigation.setParams({ phoneVerifyFallback: undefined });
                     return true;
                 }
 
@@ -230,37 +232,9 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
                     backHandler.remove();
                 }
             };
-        }, [formState, isAuthenticated, navigation])
+        }, [formState, isAuthenticated, navigation, phoneVerifyFallback])
     );
 
-    const handleVerification = (tempToken, regType = null) => {
-        setCurrentTempToken(tempToken);
-
-        if (typeof regType === 'string') {
-            setRegistrationType(regType);
-        } else {
-            setRegistrationType('email');
-        }
-
-        setFormState('verification');
-    };
-
-    const handleBackToRegister = () => {
-        setFormState('register');
-        setCurrentTempToken(null);
-    };
-
-    const handleLoginTab = () => {
-        setActiveTab('login');
-        setFormState('register');
-    };
-
-    const handleRegisterTab = () => {
-        setActiveTab('register');
-        setFormState('register');
-    };
-
-    // Обработка клика "Забыли пароль?"
     const handleForgotPassword = () => {
         setFormState('forgotPassword');
     };
@@ -280,20 +254,18 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
 
     // Когда пароль успешно изменен
     const handlePasswordResetSuccess = () => {
-        setFormState('register');
-        setActiveTab('login');
+        setFormState('login');
         setResetToken(null);
         setConfirmResetToken(null);
     };
 
-    // Возврат с формы восстановления
     const handleBackFromReset = () => {
         if (formState === 'resetCode') {
             setFormState('forgotPassword');
         } else if (formState === 'newPassword') {
             setFormState('resetCode');
         } else if (formState === 'forgotPassword') {
-            setFormState('register');
+            setFormState('login');
         }
     };
 
@@ -302,10 +274,10 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
     };
 
     const handleBackPress = () => {
-        if (formState === 'verification') {
-            handleBackToRegister();
-        } else if (formState === 'resetCode' || formState === 'newPassword' || formState === 'forgotPassword') {
+        if (formState === 'resetCode' || formState === 'newPassword' || formState === 'forgotPassword') {
             handleBackFromReset();
+        } else if (phoneVerifyFallback) {
+            navigation.setParams({ phoneVerifyFallback: undefined });
         } else if (!isAuthenticated && navigation) {
             navigation.navigate('Main');
         } else if (navigation) {
@@ -354,115 +326,12 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
                                 />
                             </View>
 
-                            <View style={styles.tabContainer}>
-                                <TouchableOpacity
-                                    style={styles.tab}
-                                    onPress={handleLoginTab}
-                                    activeOpacity={0.7}
-                                >
-                                    <Text
-                                        style={[
-                                            styles.tabText,
-                                            activeTab === 'login' && styles.activeTabText,
-                                        ]}
-                                    >
-                                        Войти
-                                    </Text>
-                                    {activeTab === 'login' && <View style={styles.activeTabIndicator} />}
-                                </TouchableOpacity>
-
-                                <TouchableOpacity
-                                    style={styles.tab}
-                                    onPress={handleRegisterTab}
-                                    activeOpacity={0.7}
-                                >
-                                    <Text
-                                        style={[
-                                            styles.tabText,
-                                            activeTab === 'register' && styles.activeTabText,
-                                        ]}
-                                    >
-                                        Регистрация
-                                    </Text>
-                                    {activeTab === 'register' && <View style={styles.activeTabIndicator} />}
-                                </TouchableOpacity>
+                            <View style={styles.titleContainer}>
+                                <Text style={styles.screenTitle}>
+                                    {phoneVerifyFallback ? 'Вход по SMS' : 'Вход'}
+                                </Text>
+                                <View style={styles.titleUnderline} />
                             </View>
-
-                            {/* Переключатель типа регистрации */}
-                            {activeTab === 'register' && formState === 'register' && (() => {
-                                const isEmailActive = registrationType === 'email';
-                                const isPhoneActive = registrationType === 'phone';
-                                const activeBg = isDark ? colors.primary : '#000cff';
-                                const inactiveBg = isDark ? colors.surfaceElevated : '#FFFFFF';
-                                const inactiveBorder = isDark ? colors.border : '#E0E0E0';
-                                const inactiveText = isDark ? colors.textSecondary : '#666666';
-                                return (
-                                    <View style={styles.registrationTypeContainer}>
-                                        <TouchableOpacity
-                                            key={`reg-type-email-${isEmailActive ? 'on' : 'off'}`}
-                                            style={{
-                                                flex: 1,
-                                                paddingVertical: normalize(12),
-                                                paddingHorizontal: normalize(15),
-                                                borderRadius: normalize(12),
-                                                borderWidth: 1.5,
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                opacity: 1,
-                                                backgroundColor: isEmailActive ? activeBg : inactiveBg,
-                                                borderColor: isEmailActive ? activeBg : inactiveBorder,
-                                            }}
-                                            onPress={() => setRegistrationType('email')}
-                                            activeOpacity={0.7}
-                                        >
-                                            <Text
-                                                key={`reg-type-email-text-${isEmailActive ? 'on' : 'off'}`}
-                                                style={{
-                                                    fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
-                                                    fontSize: normalizeFont(14),
-                                                    fontWeight: isEmailActive ? '700' : '600',
-                                                    color: isEmailActive ? '#FFFFFF' : inactiveText,
-                                                    opacity: 1,
-                                                    includeFontPadding: false,
-                                                }}
-                                            >
-                                                📧 Email
-                                            </Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity
-                                            key={`reg-type-phone-${isPhoneActive ? 'on' : 'off'}`}
-                                            style={{
-                                                flex: 1,
-                                                paddingVertical: normalize(12),
-                                                paddingHorizontal: normalize(15),
-                                                borderRadius: normalize(12),
-                                                borderWidth: 1.5,
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                opacity: 1,
-                                                backgroundColor: isPhoneActive ? activeBg : inactiveBg,
-                                                borderColor: isPhoneActive ? activeBg : inactiveBorder,
-                                            }}
-                                            onPress={() => setRegistrationType('phone')}
-                                            activeOpacity={0.7}
-                                        >
-                                            <Text
-                                                key={`reg-type-phone-text-${isPhoneActive ? 'on' : 'off'}`}
-                                                style={{
-                                                    fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
-                                                    fontSize: normalizeFont(14),
-                                                    fontWeight: isPhoneActive ? '700' : '600',
-                                                    color: isPhoneActive ? '#FFFFFF' : inactiveText,
-                                                    opacity: 1,
-                                                    includeFontPadding: false,
-                                                }}
-                                            >
-                                                📱 Телефон
-                                            </Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                );
-                            })()}
                         </View>
                     </Animated.View>
 
@@ -479,7 +348,7 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
                             styles.scrollViewContent,
                             { 
                                 paddingBottom: extraScrollHeight + normalize(100),
-                                paddingTop: keyboardVisible ? normalize(60) : normalize(20)
+                                paddingTop: keyboardVisible ? normalize(72) : normalize(2)
                             }
                         ]}
                         keyboardShouldPersistTaps="handled"
@@ -488,12 +357,7 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
                     >
                         <TouchableWithoutFeedback onPress={dismissKeyboard}>
                             <View>
-                                {activeTab === 'login' && formState === 'register' ? (
-                                    <LoginForm 
-                                        navigation={navigation} 
-                                        onForgotPassword={handleForgotPassword}
-                                    />
-                                ) : formState === 'forgotPassword' ? (
+                                {formState === 'forgotPassword' ? (
                                     <ForgotPasswordForm 
                                         onCodeSent={handleResetCodeSent}
                                         resetToken={resetToken}
@@ -511,21 +375,12 @@ export const AuthScreen = ({ navigation: routeNavigation, route }) => {
                                         onSuccess={handlePasswordResetSuccess}
                                         onBack={handleBackFromReset}
                                     />
-                                ) : formState === 'verification' ? (
-                                    <VerificationForm
-                                        tempToken={currentTempToken}
-                                        registrationType={registrationType}
-                                        onBack={handleBackToRegister}
-                                    />
-                                ) : registrationType === 'phone' ? (
-                                    <PhoneRegisterForm
-                                        navigation={navigation}
-                                        onVerification={(token) => handleVerification(token, 'phone')}
-                                    />
+                                ) : phoneVerifyFallback ? (
+                                    <PhoneAuthForm />
                                 ) : (
-                                    <RegisterForm
+                                    <LoginForm
                                         navigation={navigation}
-                                        onVerification={(token) => handleVerification(token, 'email')}
+                                        onForgotPassword={handleForgotPassword}
                                     />
                                 )}
                             <View style={styles.bottomPadding} />
@@ -581,7 +436,7 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         backgroundColor: isDark ? colors.surface : '#FFFFFF',
         width: '100%',
         paddingTop: Platform.OS === 'android' ? statusBarHeight : normalize(10),
-        paddingBottom: 0,
+        paddingBottom: normalize(2),
         borderBottomWidth: isDark ? 1 : 0,
         borderBottomColor: isDark ? colors.border : 'transparent',
     },
@@ -598,45 +453,33 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     },
     logoContainer: {
         alignItems: 'center',
-        marginTop: normalize(10),
-        marginBottom: normalize(15),
+        marginTop: normalize(4),
+        marginBottom: normalize(12),
     },
     logo: {
         width: normalize(89),
         height: normalize(77),
         resizeMode: 'contain',
     },
-    tabContainer: {
-        flexDirection: 'row',
-        justifyContent: 'center',
-        paddingTop: normalize(15),
-        paddingBottom: 0,
-        paddingHorizontal: normalize(20),
-        width: '100%',
-        gap: normalize(30),
-    },
-    tab: {
+    titleContainer: {
         alignItems: 'center',
-        minWidth: normalize(170),
-        paddingVertical: 0,
+        paddingTop: normalize(2),
+        paddingBottom: normalize(1),
+        paddingHorizontal: normalize(20),
     },
-    tabText: {
+    screenTitle: {
         fontFamily: Platform.OS === 'ios' ? 'SFProText' : 'sans-serif',
         fontSize: normalizeFont(17),
         fontWeight: '700',
-        color: isDark ? colors.textSecondary : Color.dark,
+        color: isDark ? colors.textPrimary : Color.dark,
         textAlign: 'center',
         lineHeight: normalizeFont(22),
     },
-    activeTabText: {
-        color: isDark ? colors.textPrimary : Color.dark,
-    },
-    activeTabIndicator: {
+    titleUnderline: {
         height: normalize(2),
         backgroundColor: isDark ? colors.primary : '#000cff',
-        width: '100%',
-        marginTop: normalize(4),
-        marginBottom: 0,
+        width: normalize(72),
+        marginTop: normalize(6),
         borderRadius: normalize(1),
     },
     loadingText: {
@@ -645,14 +488,5 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         textAlign: 'center',
         marginTop: normalize(20),
         color: isDark ? colors.textPrimary : '#000',
-    },
-    registrationTypeContainer: {
-        flexDirection: 'row',
-        justifyContent: 'center',
-        alignItems: 'center',
-        paddingHorizontal: normalize(10),
-        paddingTop: normalize(12),
-        paddingBottom: normalize(5),
-        gap: normalize(10),
     },
 });

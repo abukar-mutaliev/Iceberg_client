@@ -18,6 +18,7 @@ import { fetchRooms } from '@entities/chat/model/slice';
 import { useToast } from '@shared/ui/Toast';
 import { deleteStop } from '@entities/stop';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { ASSISTANT_CHAT_TITLE, AssistantAvatar, isAssistantRoom } from '@features/ai-assistant';
 
 const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
 
@@ -387,6 +388,7 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
     const canEdit = isAdminOrEmployee || (user?.role === 'DRIVER' && isDriverOwnedStop) || isEmployeeOwnedStop;
     const canDelete = isAdminOrEmployee || (user?.role === 'DRIVER' && isDriverOwnedStop) || isEmployeeOwnedStop;
     const isAuthenticated = !!user;
+    const isClientView = user?.role === 'CLIENT';
 
     const isExpoGo = Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
 
@@ -617,6 +619,22 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
         } finally {
             setIsCreatingChat(false);
         }
+    };
+
+    const handleOpenAssistantChat = () => {
+        if (!isAuthenticated) {
+            goToAuth('login');
+            return;
+        }
+
+        const assistantRoom = (rooms || []).find(isAssistantRoom);
+        const assistantRoomId = assistantRoom?.id ?? null;
+
+        navigation.navigate('AssistantChat', {
+            roomId: assistantRoomId,
+            fromScreen: 'StopDetails',
+            stopId: stop.id,
+        });
     };
 
     const handleMarkerPress = () => {
@@ -896,7 +914,26 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                     </View>
                 )}
 
-                {hasContactInfo && (
+                {isClientView ? (
+                    <View style={styles.driverSection}>
+                        <Text style={styles.driverSectionTitle}>{ASSISTANT_CHAT_TITLE}</Text>
+                        <Text style={styles.assistantHint}>
+                            Спросите про расписание, маршрут или заказ. Если помощник не найдёт ответ,
+                            он предложит связаться с менеджером или водителем.
+                        </Text>
+                        <TouchableOpacity
+                            style={styles.assistantButton}
+                            onPress={handleOpenAssistantChat}
+                            activeOpacity={0.8}
+                        >
+                            <View style={styles.assistantAvatarWrap}>
+                                <AssistantAvatar size={40} />
+                            </View>
+                            <Text style={styles.assistantButtonText}>Спросить помощника</Text>
+                            <Icon name="chevron-right" size={22} color={colors.textTertiary} />
+                        </TouchableOpacity>
+                    </View>
+                ) : hasContactInfo ? (
                     <View style={styles.driverSection}>
                         <Text style={styles.driverSectionTitle}>Связь с водителем</Text>
                         <View style={styles.driverHeader}>
@@ -958,7 +995,7 @@ export const StopDetailsContent = ({ stop, navigation, lifecycleSection, onRefre
                             </View>
                         )}
                     </View>
-                )}
+                ) : null}
 
                 <View style={styles.mapContainer}>
                     <View style={styles.mapHeader}>
@@ -1565,6 +1602,33 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         color: '#fff',
         fontSize: FontSize.size_sm,
         fontWeight: '600',
+        fontFamily: FontFamily.sFProText,
+    },
+    assistantHint: {
+        fontSize: FontSize.size_sm,
+        color: colors.textSecondary,
+        fontFamily: FontFamily.sFProText,
+        lineHeight: 20,
+        marginBottom: 12,
+    },
+    assistantButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: 12,
+        borderRadius: 10,
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
+        borderWidth: 1,
+        borderColor: isDark ? colors.border : '#E8EAED',
+    },
+    assistantAvatarWrap: {
+        marginRight: 12,
+    },
+    assistantButtonText: {
+        flex: 1,
+        fontSize: FontSize.size_md,
+        fontWeight: '600',
+        color: colors.textPrimary,
         fontFamily: FontFamily.sFProText,
     },
 });

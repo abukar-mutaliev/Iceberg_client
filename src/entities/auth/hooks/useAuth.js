@@ -52,10 +52,7 @@ export const useAuth = () => {
         }
     }, [dispatch]);
 
-    const logoutUser = useCallback(() => {
-        dispatch(clearProfile());
-        return dispatch(logout());
-    }, [dispatch]);
+    const logoutUser = useCallback(() => dispatch(logout()), [dispatch]);
 
     const refreshTokens = useCallback(async () => {
         // Сначала проверяем Redux store

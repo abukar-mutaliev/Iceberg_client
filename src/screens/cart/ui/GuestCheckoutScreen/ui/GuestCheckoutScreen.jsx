@@ -121,13 +121,13 @@ export const GuestCheckoutScreen = ({ navigation, route }) => {
                     <View style={styles.guestNotice}>
                         <Text style={styles.guestNoticeTitle}>Заказ без регистрации</Text>
                         <Text style={styles.guestNoticeText}>
-                            Вы оформляете заказ как гость. Для быстрого повторного заказа рекомендуем зарегистрироваться.
+                            Вы оформляете заказ как гость. Чтобы сохранять историю заказов, войдите по номеру телефона.
                         </Text>
                         <TouchableOpacity
                             style={styles.registerButton}
-                            onPress={() => navigation.navigate('Auth', { screen: 'RegisterScreen' })}
+                            onPress={() => navigation.navigate('Auth')}
                         >
-                            <Text style={styles.registerButtonText}>Зарегистрироваться</Text>
+                            <Text style={styles.registerButtonText}>Войти по номеру</Text>
                         </TouchableOpacity>
                     </View>
 

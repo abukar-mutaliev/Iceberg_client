@@ -34,6 +34,7 @@ export const ProfileEdit = () => {
     const [keyboardVisible, setKeyboardVisible] = useState(false);
     const saveHandlerRef = useRef(null);
     const [emailBindCode, setEmailBindCode] = useState('');
+    const [phoneChangeCode, setPhoneChangeCode] = useState('');
 
     useFocusEffect(
         React.useCallback(() => {
@@ -77,6 +78,12 @@ export const ProfileEdit = () => {
         isEmailBindLoading,
         handleConfirmEmailBind,
         handleCancelEmailBind,
+        isPhoneChangeModalVisible,
+        phoneChangePhone,
+        phoneChangeError,
+        isPhoneChangeLoading,
+        handleConfirmPhoneChange,
+        handleCancelPhoneChange,
     } = useProfileEdit(profile, dispatch, navigation, currentUser);
 
     const displayName = useMemo(() => getProfileName(), [getProfileName]);
@@ -285,6 +292,61 @@ export const ProfileEdit = () => {
                             style={styles.modalCancel}
                             onPress={handleCancelEmailBind}
                             disabled={isEmailBindLoading}
+                        >
+                            <Text style={styles.modalCancelText}>Отмена</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            <Modal
+                visible={isPhoneChangeModalVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={handleCancelPhoneChange}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalTitle}>Подтверждение номера</Text>
+                        <Text style={styles.modalSubtitle}>
+                            Мы отправили код на {phoneChangePhone}
+                        </Text>
+
+                        <TextInput
+                            style={styles.codeInput}
+                            value={phoneChangeCode}
+                            onChangeText={(text) => {
+                                const numeric = text.replace(/[^0-9]/g, '').slice(0, 6);
+                                setPhoneChangeCode(numeric);
+                            }}
+                            keyboardType="number-pad"
+                            placeholder="000000"
+                            placeholderTextColor={colors.textTertiary}
+                            keyboardAppearance={colors.keyboardAppearance}
+                            maxLength={6}
+                        />
+
+                        {phoneChangeError ? (
+                            <Text style={styles.modalError}>{phoneChangeError}</Text>
+                        ) : null}
+
+                        <TouchableOpacity
+                            style={[styles.modalButton, isPhoneChangeLoading && styles.modalButtonDisabled]}
+                            onPress={() => handleConfirmPhoneChange(phoneChangeCode)}
+                            disabled={isPhoneChangeLoading || phoneChangeCode.length !== 6}
+                        >
+                            <Text style={styles.modalButtonText}>
+                                {isPhoneChangeLoading ? 'Проверка...' : 'Подтвердить'}
+                            </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={styles.modalCancel}
+                            onPress={() => {
+                                setPhoneChangeCode('');
+                                handleCancelPhoneChange();
+                            }}
+                            disabled={isPhoneChangeLoading}
                         >
                             <Text style={styles.modalCancelText}>Отмена</Text>
                         </TouchableOpacity>

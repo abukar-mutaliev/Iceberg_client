@@ -13,7 +13,8 @@ import DeleteIcon from '@shared/ui/Icon/Profile/IconDelete';
 import RightArrowIcon from '@shared/ui/Icon/Common/IconRight';
 import DeleteAccountModal from './DeleteAccountModal';
 import ThemeSettingsSection from './ThemeSettingsSection';
-import { clearError, selectIsProfileDeleting, selectProfileError } from "@entities/profile";
+import { clearError, selectIsProfileDeleting, selectProfileError, fetchProfile } from "@entities/profile";
+import { loadUserProfile, selectUser } from '@entities/auth';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const SettingsScreen = () => {
@@ -27,8 +28,17 @@ export const SettingsScreen = () => {
     const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
 
     const isDeleting = useSelector(selectIsProfileDeleting);
+    const user = useSelector(selectUser);
+    const profileData = useSelector((state) => state.profile?.data);
+    const passwordSet = user?.passwordSet ?? profileData?.passwordSet;
+    const hasPassword = passwordSet === true;
 
     const styles = useMemo(() => createStyles(colors), [colors]);
+
+    useEffect(() => {
+        dispatch(loadUserProfile());
+        dispatch(fetchProfile());
+    }, [dispatch]);
 
     useEffect(() => {
         return () => {
@@ -159,7 +169,7 @@ export const SettingsScreen = () => {
                         styles.menuItemText,
                         isPasswordPressed && styles.activeText
                     ]}>
-                        Мой пароль
+                        {hasPassword ? 'Мой пароль' : 'Установить пароль'}
                     </Text>
                     <RightArrowIcon
                         style={styles.rightIcon}

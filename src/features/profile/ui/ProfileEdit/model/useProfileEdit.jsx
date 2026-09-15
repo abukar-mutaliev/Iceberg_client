@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useCallback } from 'react';
 import { Keyboard, Alert } from 'react-native';
-import { updateProfile, fetchProfile, initiateEmailBind, confirmEmailBind } from '@entities/profile';
+import { updateProfile, fetchProfile, initiateEmailBind, confirmEmailBind, initiatePhoneChange, confirmPhoneChange } from '@entities/profile';
+import { loadUserProfile } from '@entities/auth';
 import { fetchAllDistricts } from '@entities/district';
 import { fetchAllWarehouses } from '@entities/warehouse';
 import { GlobalAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
@@ -15,6 +16,11 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
     const [isEmailBindModalVisible, setIsEmailBindModalVisible] = useState(false);
     const [emailBindError, setEmailBindError] = useState(null);
     const [isEmailBindLoading, setIsEmailBindLoading] = useState(false);
+    const [phoneChangeToken, setPhoneChangeToken] = useState(null);
+    const [phoneChangePhone, setPhoneChangePhone] = useState('');
+    const [isPhoneChangeModalVisible, setIsPhoneChangeModalVisible] = useState(false);
+    const [phoneChangeError, setPhoneChangeError] = useState(null);
+    const [isPhoneChangeLoading, setIsPhoneChangeLoading] = useState(false);
 
     const userType = useMemo(() => {
         if (currentUser && currentUser.role) {
@@ -143,6 +149,14 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
         return phone.replace(/[\s\-\(\)]/g, '') || null;
     }, []);
 
+    const phoneDigits = useCallback((phone) => {
+        const digits = String(phone || '').replace(/\D/g, '');
+        if (digits.length === 11 && (digits.startsWith('7') || digits.startsWith('8'))) {
+            return digits.slice(-10);
+        }
+        return digits.slice(-10);
+    }, []);
+
     const prepareDataForSubmission = useCallback((formData) => {
         let baseData = {};
 
@@ -263,7 +277,38 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
             }
 
             const dataToSend = prepareDataForSubmission(formData);
-            const result = await dispatch(updateProfile(dataToSend)).unwrap();
+            const currentIdentityPhone = currentUser?.phone || getProfileData()?.phone || '';
+            const nextPhoneDigits = phoneDigits(formData.phone);
+            const currentPhoneDigits = phoneDigits(currentIdentityPhone);
+            const phoneChanged = Boolean(nextPhoneDigits) && nextPhoneDigits !== currentPhoneDigits;
+
+            if (phoneChanged) {
+                delete dataToSend.phone;
+                ['client', 'employee', 'driver', 'admin'].forEach((roleName) => {
+                    if (dataToSend[roleName]?.phone) {
+                        delete dataToSend[roleName].phone;
+                    }
+                });
+            }
+
+            await dispatch(updateProfile(dataToSend)).unwrap();
+
+            if (phoneChanged) {
+                const response = await dispatch(initiatePhoneChange({
+                    phone: sanitizePhone(formData.phone),
+                    prefer: 'sms',
+                })).unwrap();
+                const changeToken = response?.data?.changeToken || response?.changeToken;
+
+                if (changeToken) {
+                    setPhoneChangeToken(changeToken);
+                    setPhoneChangePhone(formData.phone);
+                    setPhoneChangeError(null);
+                    setIsPhoneChangeModalVisible(true);
+                    await dispatch(fetchProfile()).unwrap();
+                    return;
+                }
+            }
 
             await dispatch(fetchProfile()).unwrap();
 
@@ -285,7 +330,7 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
         } finally {
             setIsSaving(false);
         }
-    }, [dispatch, prepareDataForSubmission, navigation, userType, isDistrictsNeeded, loadDistricts, profile]);
+    }, [dispatch, prepareDataForSubmission, navigation, userType, isDistrictsNeeded, loadDistricts, profile, currentUser, getProfileData, phoneDigits, sanitizePhone, isWarehousesNeeded, loadWarehouses]);
 
     const handleConfirmEmailBind = useCallback(async (verificationCode) => {
         if (!emailBindToken) return;
@@ -315,6 +360,38 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
         setEmailBindToken(null);
         setEmailBindEmail('');
         setEmailBindError(null);
+    }, []);
+
+    const handleConfirmPhoneChange = useCallback(async (verificationCode) => {
+        if (!phoneChangeToken) return;
+
+        try {
+            setIsPhoneChangeLoading(true);
+            setPhoneChangeError(null);
+
+            await dispatch(confirmPhoneChange({
+                changeToken: phoneChangeToken,
+                verificationCode
+            })).unwrap();
+
+            await dispatch(fetchProfile()).unwrap();
+            await dispatch(loadUserProfile());
+            setIsPhoneChangeModalVisible(false);
+            setPhoneChangeToken(null);
+            setPhoneChangePhone('');
+            navigation.goBack();
+        } catch (error) {
+            setPhoneChangeError(error?.message || 'Ошибка подтверждения номера');
+        } finally {
+            setIsPhoneChangeLoading(false);
+        }
+    }, [dispatch, phoneChangeToken, navigation]);
+
+    const handleCancelPhoneChange = useCallback(() => {
+        setIsPhoneChangeModalVisible(false);
+        setPhoneChangeToken(null);
+        setPhoneChangePhone('');
+        setPhoneChangeError(null);
     }, []);
 
     const getInitialFormValues = useCallback(() => {
@@ -462,6 +539,12 @@ export const useProfileEdit = (profile, dispatch, navigation, currentUser) => {
         isEmailBindLoading,
         handleConfirmEmailBind,
         handleCancelEmailBind,
+        isPhoneChangeModalVisible,
+        phoneChangePhone,
+        phoneChangeError,
+        isPhoneChangeLoading,
+        handleConfirmPhoneChange,
+        handleCancelPhoneChange,
     };
 };
 

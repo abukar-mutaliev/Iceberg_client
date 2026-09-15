@@ -3,8 +3,10 @@ import {View, FlatList, TouchableOpacity, Text, StyleSheet, RefreshControl, Imag
 import {useFocusEffect, CommonActions} from '@react-navigation/native';
 import { useTabBar } from '@widgets/navigation/context';
 import {useDispatch, useSelector, useStore} from 'react-redux';
-import {fetchRooms, setActiveRoom, loadRoomsCache, fetchRoom, fetchMessages, tickTime, toggleGlobalPin} from '@entities/chat/model/slice';
+import {fetchRooms, setActiveRoom, loadRoomsCache, fetchRoom, fetchMessages, tickTime, toggleGlobalPin, stopRoomsPagination} from '@entities/chat/model/slice';
+import { selectIsAuthenticated } from '@entities/auth/model/selectors';
 import { isGroupAdminRoleSystemMessage } from '@entities/chat/lib/isGroupAdminRoleSystemMessage';
+import { needsLastMessageHydration } from '@entities/chat/lib/mergeChatMessage';
 import { resolveStopDistrictId } from '@entities/chat/lib/resolveStopDistrictId';
 import {fetchProductById} from '@entities/product/model/slice';
 import {selectRoomsList, selectIsRoomDeleted} from '@entities/chat/model/selectors';
@@ -19,6 +21,7 @@ import {Ionicons} from '@expo/vector-icons';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
 import { ASSISTANT_CHAT_TITLE, AssistantAvatar, isAssistantRoom } from '@features/ai-assistant';
+import { getChatListMessagePreview } from '../utils/messageHelpers';
 
 const ROOMS_PAGE_LIMIT = 100;
 
@@ -141,10 +144,19 @@ const isGloballyPinnedChannel = (room) => {
     );
 };
 
+// Строка помощника для клиентов, у которых ещё нет комнаты ASSISTANT:
+// открывает экран помощника, комната создастся при первом вопросе.
+const ASSISTANT_PLACEHOLDER_ROOM = {
+    id: 'assistant-placeholder',
+    type: 'ASSISTANT',
+    title: ASSISTANT_CHAT_TITLE,
+    isAssistantPlaceholder: true,
+};
+
 export const ChatListScreen = ({navigation}) => {
     const dispatch = useDispatch();
     const store = useStore();
-    const { showTabBar } = useTabBar();
+    const { resetTabBarLocks } = useTabBar();
     const { showAlert } = useCustomAlert();
     const insets = useSafeAreaInsets();
     const tabBarHeight = 80 + insets.bottom;
@@ -158,6 +170,8 @@ export const ChatListScreen = ({navigation}) => {
     const [showDisconnectedWarning, setShowDisconnectedWarning] = useState(false);
     const rooms = useSelector(selectRoomsList) || [];
     const loading = useSelector((s) => s.chat?.rooms?.loading);
+    const isAuthenticated = useSelector(selectIsAuthenticated);
+    const canLoadChat = isAuthenticated;
     const currentUser = useSelector((s) => s.auth?.user);
     const currentUserId = currentUser?.id;
     const isCurrentUserSuperAdmin = currentUser?.role === 'ADMIN' && currentUser?.admin?.isSuperAdmin === true;
@@ -242,12 +256,37 @@ export const ChatListScreen = ({navigation}) => {
             })
             .map((entry) => entry.room);
 
+        // Помощник размещается сразу под закреплёнными каналами
+        // («Маршруты», «Ассортимент продукции»). Если комнаты ещё нет —
+        // для клиентов показываем строку-заглушку.
+        const assistantIndex = sortedRooms.findIndex(isAssistantRoom);
+        let assistantRoom = null;
+        if (assistantIndex !== -1) {
+            [assistantRoom] = sortedRooms.splice(assistantIndex, 1);
+        } else if (currentUser?.role === 'CLIENT') {
+            assistantRoom = ASSISTANT_PLACEHOLDER_ROOM;
+        }
+
+        if (assistantRoom) {
+            // Пропускаем верхнюю группу каналов (BROADCAST: «Маршруты», «Ассортимент продукции»)
+            let insertIndex = 0;
+            while (insertIndex < sortedRooms.length && isBroadcastRoom(sortedRooms[insertIndex])) {
+                insertIndex += 1;
+            }
+            sortedRooms.splice(insertIndex, 0, assistantRoom);
+        }
+
         // Обновляем предыдущее значение только если не идет навигация
         previousRoomsRef.current = sortedRooms;
         return sortedRooms;
-    }, [rooms]);
+    }, [rooms, currentUser?.role]);
 
     useEffect(() => {
+        if (!canLoadChat) {
+            dispatch(stopRoomsPagination());
+            return undefined;
+        }
+
         let cancelled = false;
 
         (async () => {
@@ -260,14 +299,14 @@ export const ChatListScreen = ({navigation}) => {
         return () => {
             cancelled = true;
         };
-    }, [dispatch]);
+    }, [dispatch, canLoadChat]);
 
     // Догружаем следующие страницы сразу — иначе BROADCAST-каналы (ассортимент и т.п.)
     // выпадают из списка, когда fetchRooms(page: 1) перезаписывает store.
     useEffect(() => {
-        if (loading || !hasMore) return;
+        if (!canLoadChat || loading || !hasMore) return;
         dispatch(fetchRooms({ page: (page || 1) + 1, limit: ROOMS_PAGE_LIMIT }));
-    }, [dispatch, loading, hasMore, page]);
+    }, [dispatch, loading, hasMore, page, canLoadChat]);
 
     useEffect(() => {
         if (prefetchedUserIdRef.current === currentUserId) return;
@@ -278,7 +317,7 @@ export const ChatListScreen = ({navigation}) => {
     // GROUP/BROADCAST + район: без сообщений в bucket selectRoomsList не может вычесть
     // непрочитанные STOP из чужих районов из raw unreadByRoomId — подгружаем последние сообщения.
     useEffect(() => {
-        if (!userDistrictIds.length) return;
+        if (!canLoadChat || !userDistrictIds.length) return;
         if (!Array.isArray(memoizedRooms) || memoizedRooms.length === 0) return;
 
         const st = store.getState();
@@ -296,17 +335,23 @@ export const ChatListScreen = ({navigation}) => {
             if (type !== 'GROUP' && type !== 'BROADCAST') continue;
             if (prefetchedGroupBroadcastMessagesRef.current.has(rid)) continue;
 
-            const bucketLen = messages?.[rid]?.ids?.length ?? 0;
-            if (bucketLen > 0) continue;
+            const bucket = messages?.[rid];
+            const bucketLen = bucket?.ids?.length ?? 0;
+            if (bucketLen > 0) {
+                const newestId = bucket.ids[0];
+                const newestMsg = newestId != null ? bucket.byId?.[newestId] : null;
+                if (newestMsg && !needsLastMessageHydration(newestMsg)) continue;
+            }
 
             const u = unreadMap[rid] ?? 0;
-            if (u <= 0) continue;
+            const isBroadcast = type === 'BROADCAST';
+            if (u <= 0 && !isBroadcast) continue;
 
             prefetchedGroupBroadcastMessagesRef.current.add(rid);
             queued += 1;
             dispatch(fetchMessages({ roomId: rid, limit: MESSAGES_LOAD_LIMIT }));
         }
-    }, [memoizedRooms, userDistrictIds, dispatch, store]);
+    }, [memoizedRooms, userDistrictIds, dispatch, store, canLoadChat]);
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -340,13 +385,14 @@ export const ChatListScreen = ({navigation}) => {
 
     // Обработчик для pull-to-refresh
     const handleRefresh = useCallback(() => {
+        if (!canLoadChat) return;
         setIsRefreshing(true);
         dispatch(fetchRooms({ page: 1, limit: ROOMS_PAGE_LIMIT, forceRefresh: true }))
             .finally(() => setIsRefreshing(false));
-    }, [dispatch]);
+    }, [dispatch, canLoadChat]);
 
     useEffect(() => {
-        if (!Array.isArray(memoizedRooms) || memoizedRooms.length === 0) return;
+        if (!canLoadChat || !Array.isArray(memoizedRooms) || memoizedRooms.length === 0) return;
 
         const maxToPrefetch = 5;
         const subset = memoizedRooms.slice(0, maxToPrefetch);
@@ -358,6 +404,11 @@ export const ChatListScreen = ({navigation}) => {
             
             // Проверяем, не удалена ли комната перед загрузкой
             if (deletedRoomIds.includes(room.id)) {
+                return;
+            }
+
+            // Локальная заглушка «Помощник» — не реальная комната на сервере
+            if (room?.isAssistantPlaceholder) {
                 return;
             }
             
@@ -384,10 +435,10 @@ export const ChatListScreen = ({navigation}) => {
         Promise.allSettled(prefetchPromises).catch(() => {
             // Игнорируем ошибки - они уже обработаны в fetchRoom.rejected
         });
-    }, [memoizedRooms, dispatch, deletedRoomIds]);
+    }, [memoizedRooms, dispatch, deletedRoomIds, canLoadChat]);
 
     useEffect(() => {
-        if (!Array.isArray(memoizedRooms) || memoizedRooms.length === 0) return;
+        if (!canLoadChat || !Array.isArray(memoizedRooms) || memoizedRooms.length === 0) return;
 
         const productRooms = memoizedRooms.filter(room =>
             room?.type === 'PRODUCT' &&
@@ -414,7 +465,7 @@ export const ChatListScreen = ({navigation}) => {
                 dispatch(fetchProductById(room.productId));
             });
         }
-    }, [memoizedRooms, productsById, deletedProductIds, dispatch]);
+    }, [memoizedRooms, productsById, deletedProductIds, dispatch, canLoadChat]);
 
     useEffect(() => {
         loadedProductsRef.current.clear();
@@ -423,10 +474,10 @@ export const ChatListScreen = ({navigation}) => {
     useFocusEffect(
         useCallback(() => {
             dispatch(setActiveRoom(null));
-            showTabBar();
+            resetTabBarLocks();
             // Сбрасываем флаг навигации при возврате на экран
             isNavigatingRef.current = false;
-        }, [dispatch, showTabBar])
+        }, [dispatch, resetTabBarLocks])
     );
 
     // Перехватываем попытки возврата на WelcomeScreen и перенаправляем на Main
@@ -694,16 +745,17 @@ export const ChatListScreen = ({navigation}) => {
     }, [currentUserId, participantsById, productsById, toAbsoluteUri]);
 
     const onRefresh = useCallback(() => {
+        if (!canLoadChat) return;
         setIsRefreshing(true);
         dispatch(fetchRooms({ page: 1, limit: ROOMS_PAGE_LIMIT }))
             .finally(() => setIsRefreshing(false));
-    }, [dispatch]);
+    }, [dispatch, canLoadChat]);
 
     const handleLoadMore = useCallback(() => {
-        if (loading || !hasMore) return;
+        if (!canLoadChat || loading || !hasMore) return;
 
         dispatch(fetchRooms({ page: page + 1, limit: ROOMS_PAGE_LIMIT }));
-    }, [dispatch, loading, hasMore, page]);
+    }, [dispatch, loading, hasMore, page, canLoadChat]);
 
     const openRoom = (room) => {
         const rid = room?.id ?? room?.roomId;
@@ -722,10 +774,12 @@ export const ChatListScreen = ({navigation}) => {
 
         // ASSISTANT-комната открывается на экране ИИ-помощника в стеке чатов
         if (isAssistantRoom(room)) {
+            // У заглушки нет реальной комнаты — экран помощника создаст её при первом вопросе
+            const assistantRoomId = room?.isAssistantPlaceholder ? null : rid;
             isNavigatingRef.current = true;
             requestAnimationFrame(() => {
                 InteractionManager.runAfterInteractions(() => {
-                    navigation.navigate('AssistantChat', { roomId: rid, fromScreen: 'ChatList' });
+                    navigation.navigate('AssistantChat', { roomId: assistantRoomId, fromScreen: 'ChatList' });
                     setTimeout(() => {
                         isNavigatingRef.current = false;
                     }, 300);
@@ -896,51 +950,22 @@ export const ChatListScreen = ({navigation}) => {
         let isVoiceMessage = false;
         let isWarehouseMessage = false;
         let isContactMessage = false;
+        let isImageMessage = false;
         let time = '';
 
         if (lastMessage) {
-            let messageContent = '';
+            const previewMeta = getChatListMessagePreview(lastMessage);
+            let messageContent = previewMeta.messageContent;
+            isStopMessage = previewMeta.isStopMessage;
+            isVoiceMessage = previewMeta.isVoiceMessage;
+            isWarehouseMessage = previewMeta.isWarehouseMessage;
+            isContactMessage = previewMeta.isContactMessage;
+            isImageMessage = previewMeta.isImageMessage;
 
-            if (lastMessage.type === 'IMAGE') {
-                messageContent = 'Фото';
-            } else if (lastMessage.type === 'PRODUCT') {
-                messageContent = 'Товар';
-            } else if (lastMessage.type === 'STOP') {
-                // Просрочку применяем только к каналам (BROADCAST). В обычных
-                // групповых чатах STOP — обычное сообщение и всегда показывается.
-                if (item.type === 'BROADCAST' && isStopMessageExpired(lastMessage, timeTick)) {
-                    messageContent = 'Сообщение';
-                } else {
-                    isStopMessage = true;
-                    messageContent = 'Остановка';
-                }
-            } else if (lastMessage.type === 'WAREHOUSE') {
-                isWarehouseMessage = true;
-                // Пытаемся получить название склада из данных
-                let warehouseName = 'Склад';
-                try {
-                    if (lastMessage.warehouse?.name) {
-                        warehouseName = lastMessage.warehouse.name;
-                    } else if (lastMessage.content) {
-                        const warehouseData = JSON.parse(lastMessage.content);
-                        if (warehouseData?.name) {
-                            warehouseName = warehouseData.name;
-                        }
-                    }
-                } catch (e) {
-                    // Если не удалось распарсить, используем дефолтное название
-                }
-                messageContent = warehouseName;
-            } else if (lastMessage.type === 'VOICE') {
-                isVoiceMessage = true;
-                messageContent = 'Голосовое сообщение';
-            } else if (lastMessage.type === 'CONTACT') {
-                isContactMessage = true;
-                // Для контактов показываем "Контакт" вместо JSON
-                messageContent = 'Контакт';
-            } else if (lastMessage.content && lastMessage.content.trim()) {
-                messageContent = lastMessage.content.trim();
-            } else {
+            if (String(lastMessage.type || '').toUpperCase() === 'STOP'
+                && item.type === 'BROADCAST'
+                && isStopMessageExpired(lastMessage, timeTick)) {
+                isStopMessage = false;
                 messageContent = 'Сообщение';
             }
 
@@ -966,6 +991,11 @@ export const ChatListScreen = ({navigation}) => {
                     });
                 }
             }
+        }
+
+        // У помощника без истории показываем подсказку вместо пустого превью
+        if (!preview && isAssistantRoom(item)) {
+            preview = 'Задайте вопрос — помощник на связи';
         }
 
         return (
@@ -1045,6 +1075,14 @@ export const ChatListScreen = ({navigation}) => {
                         ) : isContactMessage ? (
                             <View style={styles.contactMessageContainer}>
                                 <Ionicons name="person" size={16} color={mutedIconColor} style={styles.contactIcon} />
+                                <Text style={[
+                                    styles.preview,
+                                    lastMessage && isOwnMessage && styles.previewWithStatus
+                                ]} numberOfLines={1}>{preview}</Text>
+                            </View>
+                        ) : isImageMessage ? (
+                            <View style={styles.imageMessageContainer}>
+                                <Ionicons name="image" size={16} color={mutedIconColor} style={styles.imageIcon} />
                                 <Text style={[
                                     styles.preview,
                                     lastMessage && isOwnMessage && styles.previewWithStatus
@@ -1384,6 +1422,14 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         flex: 1,
     },
     contactIcon: {
+        marginRight: 6,
+    },
+    imageMessageContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+    },
+    imageIcon: {
         marginRight: 6,
     },
 });

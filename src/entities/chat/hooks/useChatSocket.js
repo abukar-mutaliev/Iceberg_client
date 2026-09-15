@@ -219,9 +219,7 @@ export const useChatSocket = () => {
           }
         });
 
-        socket.on('disconnect', (reason) => {
-          if (__DEV__) console.warn('Chat socket disconnected:', reason);
-
+        socket.on('disconnect', () => {
           // Обновляем статус соединения в Redux
           dispatch(setConnectionStatus({
             isConnected: false,

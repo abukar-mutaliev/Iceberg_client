@@ -167,7 +167,8 @@ export const useProductBox = (product) => {
 
             price: pricePerItem,
             stockQuantity: availableBoxes,
-            availableQuantity: availableBoxes
+            availableQuantity: availableBoxes,
+            preferBoxPrice: Boolean(actualProduct.preferBoxPrice),
         };
     }, [product]);
 };

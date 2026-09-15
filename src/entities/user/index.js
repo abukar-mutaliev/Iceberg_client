@@ -21,6 +21,7 @@ import { userSelectors } from './model/selectors';
 import { useUsers } from '@entities/user/hooks/useUsers';
 export { UserCard } from './ui/UserCard';
 export { EmployeeDistrictsModal } from './ui/EmployeeDistrictsModal';
+export { getClientDisplayName, isIncompleteClientName } from './lib/getClientDisplayName';
 
 export {
     // Редьюсер

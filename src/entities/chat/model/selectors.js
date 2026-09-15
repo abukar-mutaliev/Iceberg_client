@@ -1,5 +1,6 @@
 import { createSelector } from '@reduxjs/toolkit';
 import { resolveStopDistrictId } from '@entities/chat/lib/resolveStopDistrictId';
+import { mergeChatMessagePayload, needsLastMessageHydration } from '@entities/chat/lib/mergeChatMessage';
 
 const EMPTY_ARRAY = [];
 const EMPTY_OBJECT = {};
@@ -101,6 +102,25 @@ const isStopVisibleForUser = (msg, userDistrictIds, isBroadcast = true) => {
   return isStopInUserDistrict(msg, userDistrictIds);
 };
 
+const pickLastMessageForRoomList = (sortedMessages, roomType) => {
+  if (!sortedMessages.length) return null;
+
+  if (String(roomType || '').toUpperCase() !== 'ASSISTANT') {
+    return sortedMessages[sortedMessages.length - 1];
+  }
+
+  // В чате ИИ-помощника карточка репостнутого товара не должна
+  // перекрывать последний текстовый ответ помощника в превью списка.
+  for (let i = sortedMessages.length - 1; i >= 0; i -= 1) {
+    const type = String(sortedMessages[i]?.type || '').toUpperCase();
+    if (type !== 'PRODUCT') {
+      return sortedMessages[i];
+    }
+  }
+
+  return sortedMessages[sortedMessages.length - 1];
+};
+
 export const selectChat = (state) => state.chat;
 
 export const selectRoomsList = createSelector(
@@ -151,7 +171,7 @@ export const selectRoomsList = createSelector(
           const sortedMessages = allMessages.sort((a, b) =>
             new Date(a.createdAt) - new Date(b.createdAt)
           );
-          const lastMessageFromStore = sortedMessages[sortedMessages.length - 1];
+          const lastMessageFromStore = pickLastMessageForRoomList(sortedMessages, roomType);
 
           // Используем сообщение из store как основу
           lastMessage = lastMessageFromStore;
@@ -172,14 +192,7 @@ export const selectRoomsList = createSelector(
       // Всегда пытаемся объединить данные из room.lastMessage если они есть
       if (lastMessage && room.lastMessage && !serverLastMessageHidden) {
         if (room.lastMessage.id === lastMessage.id) {
-          // То же сообщение - объединяем данные
-          lastMessage = {
-            ...room.lastMessage, // База с правильными данными об отправителе
-            // Перезаписываем статус и временные метки из store (более актуальные)
-            status: lastMessage.status || room.lastMessage.status || 'SENT',
-            deliveredAt: lastMessage.deliveredAt || room.lastMessage.deliveredAt,
-            readAt: lastMessage.readAt || room.lastMessage.readAt
-          };
+          lastMessage = mergeChatMessagePayload(lastMessage, room.lastMessage);
         } else {
           // Разные сообщения - используем более новое, но добавляем информацию об отправителе
           const storeTime = new Date(lastMessage.createdAt);

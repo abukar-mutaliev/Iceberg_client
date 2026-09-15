@@ -19,6 +19,8 @@ import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 import { loadUserProfile } from '@entities/auth/model/slice';
 import { ShareWarehouseModal } from './ShareWarehouseModal';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { selectRoomsList } from '@entities/chat/model/selectors';
+import { ASSISTANT_CHAT_TITLE, AssistantAvatar, isAssistantRoom } from '@features/ai-assistant';
 
 // Тёмная схема для Google Maps (Android) — стандартный стиль DevTools
 const DARK_MAP_STYLE = [
@@ -93,6 +95,7 @@ const geocodeAddress = async (address, districtName = '') => {
 export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, productsLoading, productsLoadingMore, productsHasMore, onLoadMoreProducts, navigation, onRefresh }) => {
     const dispatch = useDispatch();
     const user = useSelector(selectUser);
+    const rooms = useSelector(selectRoomsList);
     const { showSuccess, showError } = useCustomAlert();
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
@@ -119,6 +122,7 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
     // Определяем, запущено ли приложение в Expo Go
     const isExpoGo = Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
     const isAuthenticated = !!user;
+    const isClientView = user?.role === 'CLIENT';
     const hasMaintenance = !!warehouse?.maintenanceMode;
     const accentColor = isDark ? colors.primary : Color.blue2;
     const shareIconColor = isDark ? colors.primary : Color.purpleSoft;
@@ -187,13 +191,32 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
     };
 
     // Обработчик открытия модального окна репоста
+    const goToAuth = (activeTab = 'login') => {
+        navigation.navigate('Auth', {
+            activeTab,
+            redirectTo: { name: 'WarehouseDetails', params: { warehouseId: warehouse.id } },
+        });
+    };
+
+    const handleOpenAssistantChat = () => {
+        if (!isAuthenticated) {
+            goToAuth('login');
+            return;
+        }
+
+        const assistantRoom = (rooms || []).find(isAssistantRoom);
+        const assistantRoomId = assistantRoom?.id ?? null;
+
+        navigation.navigate('AssistantChat', {
+            roomId: assistantRoomId,
+            fromScreen: 'WarehouseDetails',
+            warehouseId: warehouse.id,
+        });
+    };
+
     const handleSharePress = () => {
         if (!isAuthenticated) {
-            // Без алертов — сразу на авторизацию
-            navigation.navigate('Auth', {
-                activeTab: 'login',
-                redirectTo: { name: 'WarehouseDetails', params: { warehouseId: warehouse.id } }
-            });
+            goToAuth('login');
             return;
         }
         setShareModalVisible(true);
@@ -725,13 +748,34 @@ export const WarehouseDetailsContent = ({ warehouse, warehouseProducts, products
                     )}
                 </View>
 
-                {/* Сотрудники склада */}
-                <WarehouseEmployeesList
-                    warehouseId={warehouse.id}
-                    employees={employees}
-                    loading={false}
-                    error={null}
-                />
+                {/* Сотрудники склада / помощник для клиентов */}
+                {isClientView ? (
+                    <View style={styles.assistantSection}>
+                        <Text style={styles.assistantSectionTitle}>{ASSISTANT_CHAT_TITLE}</Text>
+                        <Text style={styles.assistantHint}>
+                            Спросите про склад, ассортимент или заказ. Если помощник не найдёт ответ,
+                            он предложит связаться с менеджером.
+                        </Text>
+                        <TouchableOpacity
+                            style={styles.assistantButton}
+                            onPress={handleOpenAssistantChat}
+                            activeOpacity={0.8}
+                        >
+                            <View style={styles.assistantAvatarWrap}>
+                                <AssistantAvatar size={40} />
+                            </View>
+                            <Text style={styles.assistantButtonText}>Спросить помощника</Text>
+                            <Icon name="chevron-right" size={22} color={colors.textTertiary} />
+                        </TouchableOpacity>
+                    </View>
+                ) : (
+                    <WarehouseEmployeesList
+                        warehouseId={warehouse.id}
+                        employees={employees}
+                        loading={false}
+                        error={null}
+                    />
+                )}
 
                 {/* Кнопка редактирования для суперадмина */}
                 {isSuperAdmin && (
@@ -1137,5 +1181,48 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         color: colors.textPrimary,
         fontWeight: '500',
         letterSpacing: 0.8,
+    },
+    assistantSection: {
+        backgroundColor: isDark ? colors.surfaceElevated : '#F8F9FA',
+        borderRadius: 12,
+        padding: 16,
+        marginTop: 16,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: isDark ? colors.border : '#E8EAED',
+    },
+    assistantSectionTitle: {
+        fontSize: FontSize.size_md,
+        fontWeight: '600',
+        color: colors.textPrimary,
+        fontFamily: FontFamily.sFProText,
+        marginBottom: 12,
+    },
+    assistantHint: {
+        fontSize: FontSize.size_sm,
+        color: colors.textSecondary,
+        fontFamily: FontFamily.sFProText,
+        lineHeight: 20,
+        marginBottom: 12,
+    },
+    assistantButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: 12,
+        borderRadius: 10,
+        backgroundColor: isDark ? colors.surface : '#FFFFFF',
+        borderWidth: 1,
+        borderColor: isDark ? colors.border : '#E8EAED',
+    },
+    assistantAvatarWrap: {
+        marginRight: 12,
+    },
+    assistantButtonText: {
+        flex: 1,
+        fontSize: FontSize.size_md,
+        fontWeight: '600',
+        color: colors.textPrimary,
+        fontFamily: FontFamily.sFProText,
     },
 });

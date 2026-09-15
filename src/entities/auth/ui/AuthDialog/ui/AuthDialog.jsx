@@ -69,7 +69,8 @@ export const AuthDialog = forwardRef(({ onLogin, onRegister, onClose }, ref) => 
 
     const handleRegisterPress = () => {
         handleClose();
-        if (onRegister) onRegister();
+        if (onLogin) onLogin();
+        else if (onRegister) onRegister();
     };
 
     return (
@@ -117,7 +118,7 @@ export const AuthDialog = forwardRef(({ onLogin, onRegister, onClose }, ref) => 
 
                     <View style={styles.content}>
                         <Text style={[styles.description, { color: colors.text }]}>
-                            Для доступа к этой функции необходимо войти в аккаунт или зарегистрироваться
+                            Войдите по номеру телефона. Если аккаунта ещё нет, он создастся автоматически.
                         </Text>
 
                         <TouchableOpacity
@@ -125,16 +126,7 @@ export const AuthDialog = forwardRef(({ onLogin, onRegister, onClose }, ref) => 
                             onPress={handleLoginPress}
                         >
                             <Text style={[styles.buttonText, { color: colors.white }]}>
-                                Войти
-                            </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={[styles.button, { backgroundColor: 'transparent', borderColor: colors.primary, borderWidth: 1 }]}
-                            onPress={handleRegisterPress}
-                        >
-                            <Text style={[styles.buttonText, { color: colors.primary }]}>
-                                Зарегистрироваться
+                                Войти по номеру
                             </Text>
                         </TouchableOpacity>
 

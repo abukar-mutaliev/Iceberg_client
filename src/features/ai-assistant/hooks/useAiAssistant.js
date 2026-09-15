@@ -22,7 +22,8 @@ const WELCOME_MESSAGE = {
     id: 'welcome',
     role: 'assistant',
     content:
-        'Ассаламу 1алейкум! Я помощник Iceberg. Спросите про остановки фургонов, товары, склады и т.д.',
+        'Ди дика хийла!\n'
+        + 'Я — помощник Iceberg. Спросите про остановки фургонов, товары, склады и т.д.',
 };
 
 const parseProductContent = (raw) => {
@@ -49,6 +50,16 @@ const mapServerMessage = (msg, currentUserId) => {
         id: String(msg.id),
         role,
         content: msg.content || '',
+    };
+};
+
+const mapResponseProductMessage = (msg, role = 'assistant') => {
+    if (!msg) return null;
+    return {
+        id: String(msg.id),
+        role,
+        type: 'product',
+        product: parseProductContent(msg.content) || msg.product || null,
     };
 };
 
@@ -126,7 +137,12 @@ export const useAiAssistant = (roomId = null) => {
                     ? payload
                     : (payload.items ?? payload.messages ?? []);
 
-                if (cancelled || !Array.isArray(raw) || raw.length === 0) return;
+                if (cancelled || !Array.isArray(raw)) return;
+
+                if (raw.length === 0) {
+                    setMessages([WELCOME_MESSAGE]);
+                    return;
+                }
 
                 const sorted = [...raw].sort(
                     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
@@ -204,17 +220,27 @@ export const useAiAssistant = (roomId = null) => {
             setDeveloperContactSuggested(Boolean(data?.developerContactSuggested));
 
             const serverProductId = data?.productMessage?.id;
-            setMessages((prev) =>
-                prev.map((m) => {
+            const botProductMessage = mapResponseProductMessage(data?.botProductMessage);
+            const relatedProductId = data?.relatedProductId || null;
+            const suppressProductLink = Boolean(botProductMessage || data?.productMessage);
+            setMessages((prev) => {
+                const updated = prev.map((m) => {
                     if (m.id === placeholderId) {
-                        return { id: data?.botMessage?.id || placeholderId, role: 'assistant', content: answer };
+                        return {
+                            id: data?.botMessage?.id || placeholderId,
+                            role: 'assistant',
+                            content: answer,
+                            relatedProductId: suppressProductLink ? null : relatedProductId,
+                        };
                     }
                     if (m.id === productMsgId && serverProductId) {
                         return { ...m, id: String(serverProductId) };
                     }
                     return m;
-                })
-            );
+                });
+
+                return botProductMessage ? [...updated, botProductMessage] : updated;
+            });
 
             if (newRoomId && currentUserId) {
                 dispatch(markAsRead({ roomId: newRoomId, currentUserId }));

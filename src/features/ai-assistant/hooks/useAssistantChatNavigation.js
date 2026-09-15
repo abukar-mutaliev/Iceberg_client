@@ -6,7 +6,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
  * Безопасный возврат с экрана ИИ-помощника: кнопка «Назад», swipe-back и hardware back.
  * Если в стеке нет предыдущего экрана — переход по fromScreen.
  */
-export const useAssistantChatNavigation = (fromScreen, product) => {
+export const useAssistantChatNavigation = (fromScreen, product, groupRoomId = null, stopId = null, warehouseId = null) => {
     const navigation = useNavigation();
     const isNavigatingRef = useRef(false);
 
@@ -49,6 +49,30 @@ export const useAssistantChatNavigation = (fromScreen, product) => {
                 case 'ChatRoom':
                     navigation.navigate('ChatMain');
                     break;
+                case 'GroupInfo':
+                    if (groupRoomId) {
+                        navigation.navigate('GroupInfo', { roomId: groupRoomId, fromScreen: 'ChatRoom' });
+                    } else if (navigation.canGoBack()) {
+                        navigation.goBack();
+                    }
+                    break;
+                case 'StopDetails':
+                    if (stopId) {
+                        navigation.navigate('StopDetails', { stopId });
+                    } else if (navigation.canGoBack()) {
+                        navigation.goBack();
+                    }
+                    break;
+                case 'WarehouseDetails':
+                    if (warehouseId) {
+                        navigation.navigate('WarehouseDetails', { warehouseId });
+                    } else if (navigation.canGoBack()) {
+                        navigation.goBack();
+                    }
+                    break;
+                case 'ChatList':
+                    navigation.navigate('ChatMain');
+                    break;
                 default:
                     navigation.navigate('ChatMain');
                     break;
@@ -58,7 +82,7 @@ export const useAssistantChatNavigation = (fromScreen, product) => {
                 isNavigatingRef.current = false;
             }, 200);
         }
-    }, [navigation, fromScreen, product?.id]);
+    }, [navigation, fromScreen, product?.id, groupRoomId, stopId, warehouseId]);
 
     useEffect(() => {
         const unsubscribe = navigation.addListener('beforeRemove', (e) => {

@@ -11,6 +11,7 @@ import {
   Image,
   Platform,
   useWindowDimensions,
+  InteractionManager,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -25,8 +26,8 @@ import { getImageUrl } from '@shared/api/api';
 import { debounce } from 'lodash';
 import { getProductChatShareBlockReason } from '@shared/lib/productChatShare';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
-import { AssistantAvatar } from '@features/ai-assistant';
-import { navigateToAssistantChat } from '@features/ai-assistant/lib/assistantNavigation';
+import { AssistantAvatar, isAssistantRoom } from '@features/ai-assistant';
+import { buildAssistantChatTabParams } from '@features/ai-assistant/lib/assistantNavigation';
 
 export const RepostProductContent = ({ product, currentUser, onClose }) => {
   const navigation = useNavigation();
@@ -285,24 +286,43 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
   // Переход к ИИ-помощнику с прикреплённым товаром (вопрос о товаре).
   // НЕ отправляем товар через обычный /messages (для ASSISTANT он запрещён),
   // вместо этого открываем экран помощника, где клиент пишет свой вопрос.
-  const handleSendToAssistant = () => {
+  const handleSendToAssistant = useCallback(() => {
     if (!product?.id) return;
     if (shareBlockReason) {
       Alert.alert('Недоступно', shareBlockReason);
       return;
     }
+
+    const assistantRoom = rooms.find(isAssistantRoom);
+    const rid = assistantRoom?.id ?? null;
+
+    const rootNavigation =
+      navigation?.getParent?.('AppStack') ||
+      navigation?.getParent?.() ||
+      navigation;
+
     onClose();
-    navigateToAssistantChat(navigation, {
-      product: {
-        id: product.id,
-        name: product.name,
-        price: product.price,
-        images: product.images,
-        image: product.image,
-      },
-      fromScreen: 'ProductDetail',
+
+    // Как в ChatListScreen / GroupInfoScreen: AssistantChat в табовом ChatStack
+    requestAnimationFrame(() => {
+      InteractionManager.runAfterInteractions(() => {
+        rootNavigation.navigate('Main', {
+          screen: 'ChatList',
+          params: buildAssistantChatTabParams({
+            roomId: rid,
+            fromScreen: 'ProductDetail',
+            product: {
+              id: product.id,
+              name: product.name,
+              price: product.price,
+              images: product.images,
+              image: product.image,
+            },
+          }),
+        });
+      });
     });
-  };
+  }, [product, shareBlockReason, rooms, navigation, onClose]);
 
   // Отправка товара в существующий чат
   const handleSendToExistingChat = async (room) => {
@@ -723,7 +743,9 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
           onPress={handleSendToAssistant}
           disabled={sending || !!shareBlockReason}
         >
-          <AssistantAvatar size="compact" />
+          <View style={[styles.avatarContainer, adaptiveStyles.avatarContainer, styles.avatarBoxAssistant]}>
+            <AssistantAvatar size={isSmallScreen ? 36 : 40} />
+          </View>
           <View style={styles.chatInfo}>
             <Text style={[styles.chatTitle, adaptiveStyles.chatTitle]} numberOfLines={1}>Помощник</Text>
             <Text style={[styles.chatPreview, adaptiveStyles.chatPreview]} numberOfLines={1}>
@@ -1234,10 +1256,11 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     width: 40,
     height: 40,
   },
-  assistantAvatar: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: isDark ? colors.primary : '#075E54',
+  avatarBoxAssistant: {
+    backgroundColor: 'transparent',
+    shadowOpacity: 0,
+    elevation: 0,
+    overflow: 'visible',
   },
   avatarPlaceholderBase: {
     justifyContent: 'center',

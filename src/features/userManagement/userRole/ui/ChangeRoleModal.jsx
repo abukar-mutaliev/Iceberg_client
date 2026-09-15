@@ -4,6 +4,7 @@ import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { FontFamily, FontSize, Border, Shadow } from '@app/styles/GlobalStyles';
 import CustomButton from '@shared/ui/Button/CustomButton';
 import { USER_ROLES_DISPLAY } from '@entities/user/model/constants';
+import { isIncompleteClientName } from '@entities/user/lib/getClientDisplayName';
 import { WarehousePicker } from '@shared/ui/Pickers/WarehousePicker';
 import { MultiDistrictPicker } from '@shared/ui/Pickers/MultiDistrictPicker';
 import { useAdmin } from '@entities/admin';
@@ -561,6 +562,10 @@ export const ChangeRoleModal = ({ visible, user, onClose, onSubmit }) => {
             existingName = user.driver.name;
         } else if (user.supplier?.contactPerson) {
             existingName = user.supplier.contactPerson;
+        }
+
+        if (isIncompleteClientName(existingName)) {
+            existingName = '';
         }
         
         // Сначала проверяем телефон пользователя (из таблицы User - телефон регистрации)

@@ -6,6 +6,7 @@ export * from './IconCard';
 export * from './IconCoupon';
 export * from './IconSettings';
 export * from './IconHelp';
+export * from './IconInfo';
 export * from './IconOrders';
 export * from './IconEdit';
 export * from './DropdownArrowIcon';

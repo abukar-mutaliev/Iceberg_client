@@ -568,9 +568,6 @@ class PushNotificationService {
         // в RN dev-режиме блокирует JS-поток через мост Metro.
         if (this.activeChatRoomId === next) return;
         this.activeChatRoomId = next;
-        if (__DEV__) {
-            console.log('[PushNotification] setActiveChatRoomId', { roomId: next });
-        }
     }
 
     getActiveChatRoomId() {
@@ -581,9 +578,6 @@ class PushNotificationService {
         const next = userId ? String(userId) : null;
         if (this.activeChatPeerUserId === next) return;
         this.activeChatPeerUserId = next;
-        if (__DEV__) {
-            console.log('[PushNotification] setActiveChatPeerUserId', { userId: next });
-        }
     }
 
     getActiveChatPeerUserId() {

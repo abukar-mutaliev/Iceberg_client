@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { selectIsAuthenticated } from '@entities/auth/model/selectors';
 import { useFocusEffect } from '@react-navigation/native';
 import { AppState, Animated, Keyboard } from 'react-native';
 import { 
@@ -38,21 +39,14 @@ export const useChatLifecycle = ({
   isLoadingMoreRef,
 }) => {
   const dispatch = useDispatch();
+  const isAuthenticated = useSelector(selectIsAuthenticated);
   const { hideTabBar, showTabBar } = useTabBar();
   const { emitActiveRoom } = useChatSocketActions();
   const appStateRef = useRef(AppState.currentState);
   const typingIndicatorHeight = useTypingIndicatorHeight(roomId);
-  
-  // Монтирование/размонтирование
-  useEffect(() => {
-    hideTabBar();
-    
-    return () => {
-      showTabBar();
-    };
-  }, [hideTabBar, showTabBar]);
-  
-  // TabBar visibility
+
+  // Скрываем TabBar только пока экран комнаты в фокусе (без дублирующего useEffect —
+  // иначе при смене вкладки без unmount счётчик hideLockCount не возвращается к 0).
   useFocusEffect(
     useCallback(() => {
       hideTabBar();
@@ -81,7 +75,7 @@ export const useChatLifecycle = ({
   
   // Полная инициализация комнаты
   useEffect(() => {
-    if (isRoomDeletedRef?.current || isRoomDeleted || !roomId) {
+    if (!isAuthenticated || isRoomDeletedRef?.current || isRoomDeleted || !roomId) {
       return;
     }
 
@@ -108,12 +102,12 @@ export const useChatLifecycle = ({
       dispatch(setActiveRoom(null));
       emitActiveRoom?.(null);
     };
-  }, [dispatch, roomId, emitActiveRoom, isRoomDeleted, isRoomDeletedRef]);
+  }, [dispatch, roomId, emitActiveRoom, isRoomDeleted, isRoomDeletedRef, isAuthenticated]);
 
   // Отметка прочтения при каждом фокусе и при уходе с экрана
   useFocusEffect(
     useCallback(() => {
-      if (isRoomDeletedRef?.current || isRoomDeleted || !roomId) {
+      if (!isAuthenticated || isRoomDeletedRef?.current || isRoomDeleted || !roomId) {
         return undefined;
       }
 
@@ -127,7 +121,7 @@ export const useChatLifecycle = ({
       return () => {
         dispatch(markAsRead({ roomId, currentUserId }));
       };
-    }, [dispatch, roomId, currentUserId, isRoomDeleted, userId, isRoomDeletedRef])
+    }, [dispatch, roomId, currentUserId, isRoomDeleted, userId, isRoomDeletedRef, isAuthenticated])
   );
   
   // Проверка удаления комнаты
@@ -169,6 +163,7 @@ export const useChatLifecycle = ({
       
       if (appStateRef.current.match(/inactive|background/) && 
           nextAppState === 'active' && 
+          isAuthenticated &&
           roomId && 
           !isRoomDeletedRef?.current) {
         dispatch(fetchMessages({ roomId, limit: 100 }));
@@ -179,7 +174,7 @@ export const useChatLifecycle = ({
     });
     
     return () => subscription?.remove();
-  }, [roomId, dispatch, isRoomDeletedRef]);
+  }, [roomId, dispatch, isRoomDeletedRef, isAuthenticated]);
   
   // Анимация padding для индикатора печати
   useEffect(() => {
@@ -207,7 +202,7 @@ export const useChatLifecycle = ({
   
   // Автоотправка товара
   useEffect(() => {
-    if (!autoSendProduct || !productInfo) return;
+    if (!isAuthenticated || !autoSendProduct || !productInfo) return;
 
     const hasProductMessage = messages.some(msg =>
       msg.type === 'PRODUCT' &&
@@ -246,7 +241,7 @@ export const useChatLifecycle = ({
     }, 2000);
 
     return () => clearTimeout(timeoutId);
-  }, [autoSendProduct, productInfo, roomId, dispatch, messages]);
+  }, [autoSendProduct, productInfo, roomId, dispatch, messages, isAuthenticated]);
   
   // Отметка непрочитанных: в GROUP статус сообщений может быть READ (прочитал другой
   // участник), но unreadCount на сервере > 0 — ориентируемся на store и вызываем markAsRead.
@@ -255,7 +250,7 @@ export const useChatLifecycle = ({
   );
 
   useEffect(() => {
-    if (!roomId || !currentUserId) return;
+    if (!isAuthenticated || !roomId || !currentUserId) return;
 
     const hasUnreadByStatus = Array.isArray(messages) && messages.some((msg) =>
       Number(msg.senderId) !== Number(currentUserId) &&
@@ -265,7 +260,7 @@ export const useChatLifecycle = ({
     if (!hasUnreadByStatus && unreadFromStore <= 0) return;
 
     dispatch(markAsRead({ roomId, currentUserId }));
-  }, [messages, unreadFromStore, currentUserId, roomId, dispatch]);
+  }, [messages, unreadFromStore, currentUserId, roomId, dispatch, isAuthenticated]);
   
   // Функция загрузки дополнительных сообщений
   const loadMoreMessages = useCallback(() => {

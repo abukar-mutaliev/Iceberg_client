@@ -15,11 +15,41 @@ export const buildAssistantChatTabParams = (params = {}) => ({
     state: buildAssistantChatNavigatorState(params),
 });
 
+const getRouteNames = (nav) => {
+    const routeNames = nav?.getState?.()?.routeNames;
+    return Array.isArray(routeNames) ? routeNames : [];
+};
+
 const findNavigatorWithRoute = (navigation, routeName) => {
     let nav = navigation;
     while (nav) {
-        const routeNames = nav.getState?.()?.routeNames;
-        if (Array.isArray(routeNames) && routeNames.includes(routeName)) {
+        if (getRouteNames(nav).includes(routeName)) {
+            return nav;
+        }
+        nav = nav.getParent?.();
+    }
+    return null;
+};
+
+/** Табовый ChatStack: ChatMain + AssistantChat + GroupInfo … */
+const findChatTabStackNavigator = (navigation) => {
+    let nav = navigation;
+    while (nav) {
+        const routeNames = getRouteNames(nav);
+        if (routeNames.includes('AssistantChat') && routeNames.includes('ChatMain')) {
+            return nav;
+        }
+        nav = nav.getParent?.();
+    }
+    return null;
+};
+
+/** Корневой AppStack: ChatRoom, GroupInfo, Main … */
+const findAppStackNavigator = (navigation) => {
+    let nav = navigation;
+    while (nav) {
+        const routeNames = getRouteNames(nav);
+        if (routeNames.includes('Main') && routeNames.includes('ChatRoom')) {
             return nav;
         }
         nav = nav.getParent?.();
@@ -33,32 +63,38 @@ const findNavigatorWithRoute = (navigation, routeName) => {
 export const navigateToAssistantChat = (navigation, params = {}) => {
     if (!navigation?.dispatch && !navigation?.navigate) return;
 
-    const chatStackState = buildAssistantChatNavigatorState(params);
-
-    const chatStackNav = findNavigatorWithRoute(navigation, 'AssistantChat');
-    if (chatStackNav) {
-        chatStackNav.navigate('AssistantChat', params);
+    const chatTabStackNav = findChatTabStackNavigator(navigation);
+    if (chatTabStackNav) {
+        chatTabStackNav.navigate('AssistantChat', params);
         return;
     }
 
-    const tabNav = findNavigatorWithRoute(navigation, 'ChatList');
-    if (tabNav) {
-        tabNav.dispatch(
+    const appStackNav = findAppStackNavigator(navigation);
+    if (appStackNav && getRouteNames(appStackNav).includes('AssistantChat')) {
+        appStackNav.navigate('AssistantChat', params);
+        return;
+    }
+
+    const mainTabNav = findNavigatorWithRoute(navigation, 'Main');
+    if (mainTabNav) {
+        mainTabNav.dispatch(
             CommonActions.navigate({
-                name: 'ChatList',
-                params: { state: chatStackState },
+                name: 'Main',
+                params: {
+                    screen: 'ChatList',
+                    params: buildAssistantChatTabParams(params),
+                },
             })
         );
         return;
     }
 
-    const appNav = findNavigatorWithRoute(navigation, 'Main') || navigation;
-    appNav.dispatch(
+    navigation.dispatch?.(
         CommonActions.navigate({
             name: 'Main',
             params: {
                 screen: 'ChatList',
-                params: { state: chatStackState },
+                params: buildAssistantChatTabParams(params),
             },
         })
     );

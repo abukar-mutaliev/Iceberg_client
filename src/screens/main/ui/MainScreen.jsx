@@ -18,6 +18,7 @@ import { fetchBanners, selectActiveMainBanners, selectBannerStatus } from '@enti
 import { fetchCategories } from '@entities/category/model/slice';
 import { selectCategoriesLoading, selectCategories } from '@entities/category/model/selectors';
 import { fetchCart, useCartAvailability } from '@entities/cart';
+import { fetchAllStops } from '@entities/stop';
 import productsApi from '@entities/product/api/productsApi';
 
 // UI Components
@@ -349,7 +350,8 @@ export const MainScreen = ({ navigation, route }) => {
                 })).unwrap(),
                 dispatch(fetchCategories({ 
                     refresh: shouldRefresh 
-                })).unwrap()
+                })).unwrap(),
+                dispatch(fetchAllStops(null)),
             ]);
 
             await loadSupplierModerationProducts();

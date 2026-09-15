@@ -107,6 +107,8 @@ export const linkingConfig = {
                             ProfileEdit: 'profile/edit',
                             ChangePassword: 'profile/password',
                             Settings: 'profile/settings',
+                            HelpCenter: 'profile/help',
+                            AboutApp: 'profile/about',
                             ProductList: 'profile/products',
                             SupplierScreen: 'profile/supplier',
                             ProductManagement: 'profile/products/manage',
