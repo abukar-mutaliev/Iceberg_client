@@ -6,29 +6,62 @@ import { useWarehouses } from '@entities/warehouse/hooks/useWarehouses';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const ProductWarehouseStockManager = ({
-    productStocks = [], // [{ warehouseId, quantity }]
+    productStocks = [], // [{ warehouseId, quantity, reserved?, isMain?, warehousePrice? }]
     onStocksChange,
     error,
-    totalQuantity, // Теперь необязательный
-    onTotalQuantityChange, // Теперь необязательный  
-    title = "Остатки по складам"
+    totalQuantity,
+    onTotalQuantityChange,
+    title = "Остатки по складам",
+    canSetWarehousePrice = false,
+    allowedWarehouseIds = null,
+    basePrice = null
 }) => {
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
-    const { warehouses, loading: loadingWarehouses } = useWarehouses({ autoLoad: true });
+    const { warehouses: allWarehouses, loading: loadingWarehouses } = useWarehouses({ autoLoad: true });
+    const warehouses = useMemo(() => {
+        if (!allowedWarehouseIds?.length) return allWarehouses;
+        return (allWarehouses || []).filter((w) => allowedWarehouseIds.includes(w.id));
+    }, [allWarehouses, allowedWarehouseIds]);
     const [stocks, setStocks] = useState({});
+    const [reservedMap, setReservedMap] = useState({});
+    const [priceMap, setPriceMap] = useState({});
     const [showAllWarehouses, setShowAllWarehouses] = useState(false);
 
-    // Инициализация состояния из пропсов
+    const emitStocks = useCallback((nextStocks, nextReserved, nextPrices) => {
+        if (!onStocksChange) return;
+        const stockArray = Object.entries(nextStocks).map(([warehouseId, quantity]) => {
+            const warehouse = warehouses.find((w) => w.id === parseInt(warehouseId, 10));
+            return {
+                warehouseId: parseInt(warehouseId, 10),
+                quantity: quantity === '' || quantity === undefined ? 0 : parseInt(quantity, 10) || 0,
+                reserved: nextReserved[warehouseId] || 0,
+                isMain: Boolean(warehouse?.isMain),
+                ...(canSetWarehousePrice && nextPrices[warehouseId] != null
+                    ? { warehousePrice: nextPrices[warehouseId] }
+                    : {})
+            };
+        });
+        onStocksChange(stockArray);
+    }, [onStocksChange, warehouses, canSetWarehousePrice]);
+
     useEffect(() => {
         if (Array.isArray(productStocks) && productStocks.length > 0) {
             const stocksMap = {};
+            const nextReserved = {};
+            const nextPrices = {};
             productStocks.forEach(stock => {
                 if (stock.warehouseId && typeof stock.quantity === 'number') {
                     stocksMap[stock.warehouseId] = stock.quantity;
+                    nextReserved[stock.warehouseId] = stock.reserved || 0;
+                    if (stock.warehousePrice != null) {
+                        nextPrices[stock.warehouseId] = stock.warehousePrice;
+                    }
                 }
             });
             setStocks(stocksMap);
+            setReservedMap(nextReserved);
+            setPriceMap(nextPrices);
         }
     }, [productStocks]);
 
@@ -53,56 +86,53 @@ export const ProductWarehouseStockManager = ({
 
     // Обработка изменения количества на складе
     const handleStockChange = useCallback((warehouseId, quantity) => {
+        const reserved = reservedMap[warehouseId] || 0;
+        const parsed = quantity === '' ? '' : parseInt(quantity, 10);
+        const safeValue = parsed === '' ? '' : (Number.isNaN(parsed) ? reserved : Math.max(parsed, reserved));
         const newStocks = {
             ...stocks,
-            [warehouseId]: quantity // Сохраняем значение как есть, включая пустую строку
+            [warehouseId]: safeValue
         };
-
         setStocks(newStocks);
+        emitStocks(newStocks, reservedMap, priceMap);
+    }, [stocks, reservedMap, priceMap, emitStocks]);
 
-        // Уведомляем родительский компонент со всеми складами, включая те что с нулевым количеством
-        if (onStocksChange) {
-            const stockArray = Object.entries(newStocks)
-                .map(([warehouseId, quantity]) => ({
-                    warehouseId: parseInt(warehouseId),
-                    quantity: quantity === '' || quantity === undefined ? 0 : parseInt(quantity) || 0
-                }));
-            onStocksChange(stockArray);
-        }
-    }, [stocks, onStocksChange]);
+    const handlePriceChange = useCallback((warehouseId, priceText) => {
+        const parsed = priceText === '' ? null : parseFloat(String(priceText).replace(',', '.'));
+        const nextPrices = {
+            ...priceMap,
+            [warehouseId]: Number.isNaN(parsed) ? null : parsed
+        };
+        setPriceMap(nextPrices);
+        emitStocks(stocks, reservedMap, nextPrices);
+    }, [priceMap, stocks, reservedMap, emitStocks]);
 
-    // Добавление склада
     const handleAddWarehouse = useCallback((warehouseId) => {
         if (!warehouseId || stocks[warehouseId] !== undefined) return;
-        
         const newStocks = {
             ...stocks,
-            [warehouseId]: '' // Добавляем с пустым значением для ввода
+            [warehouseId]: ''
         };
-        
         setStocks(newStocks);
-        
-        // Не уведомляем родительский компонент пока не введено количество
     }, [stocks]);
 
-    // Удаление склада
     const handleRemoveWarehouse = useCallback((warehouseId) => {
+        if ((reservedMap[warehouseId] || 0) > 0) {
+            Alert.alert('Нельзя убрать', 'На этом складе есть зарезервированные коробки');
+            return;
+        }
         const newStocks = { ...stocks };
         delete newStocks[warehouseId];
         setStocks(newStocks);
+        emitStocks(newStocks, reservedMap, priceMap);
+    }, [stocks, reservedMap, priceMap, emitStocks]);
 
-        if (onStocksChange) {
-            const stockArray = Object.entries(newStocks).map(([warehouseId, quantity]) => ({
-                warehouseId: parseInt(warehouseId),
-                quantity: quantity === '' || quantity === undefined ? 0 : parseInt(quantity) || 0
-            }));
-            onStocksChange(stockArray);
-        }
-    }, [stocks, onStocksChange]);
-
-    // Автоматическое распределение по всем складам
     const handleDistributeToAll = useCallback(() => {
         if (!warehouses || warehouses.length === 0) return;
+        if (Object.values(reservedMap).some((value) => value > 0)) {
+            Alert.alert('Нельзя распределить', 'Есть резервы. Укажите количество по складам вручную.');
+            return;
+        }
 
         const totalToDistribute = displayTotal;
         if (totalToDistribute <= 0) {
@@ -112,7 +142,7 @@ export const ProductWarehouseStockManager = ({
 
         Alert.alert(
             'Распределить по всем складам',
-            `Распределить ${totalToDistribute} коробок равномерно по всем активным складам?`,
+            `Распределить ${totalToDistribute} коробок равномерно по всем активным складам? Клиенты заказывают только с главного склада.`,
             [
                 { text: 'Отмена', style: 'cancel' },
                 {
@@ -131,19 +161,12 @@ export const ProductWarehouseStockManager = ({
                         });
 
                         setStocks(newStocks);
-
-                        if (onStocksChange) {
-                            const stockArray = Object.entries(newStocks).map(([warehouseId, quantity]) => ({
-                                warehouseId: parseInt(warehouseId),
-                                quantity: quantity === '' || quantity === undefined ? 0 : parseInt(quantity) || 0
-                            }));
-                            onStocksChange(stockArray);
-                        }
+                        emitStocks(newStocks, reservedMap, priceMap);
                     }
                 }
             ]
         );
-    }, [warehouses, displayTotal, onStocksChange]);
+    }, [warehouses, displayTotal, reservedMap, priceMap, emitStocks]);
 
     // Склады с остатками (включая новые склады с пустыми значениями)
     const warehousesWithStock = useMemo(() => {
@@ -174,7 +197,7 @@ export const ProductWarehouseStockManager = ({
             <View style={styles.header}>
                 <Text style={styles.title}>{title}</Text>
                 <View style={styles.totalContainer}>
-                    <Text style={styles.totalLabel}>Общий остаток:</Text>
+                    <Text style={styles.totalLabel}>Всего на складах:</Text>
                     <Text style={styles.totalValue}>{displayTotal} коробок</Text>
                 </View>
             </View>
@@ -189,8 +212,15 @@ export const ProductWarehouseStockManager = ({
                     {warehousesWithStock.map(warehouse => (
                         <View key={warehouse.id} style={styles.stockItem}>
                             <View style={styles.warehouseInfo}>
-                                <Text style={styles.warehouseName}>{warehouse.name}</Text>
+                                <Text style={styles.warehouseName}>
+                                    {warehouse.name}{warehouse.isMain ? ' · главный' : ' · филиал'}
+                                </Text>
                                 <Text style={styles.warehouseAddress}>{warehouse.address}</Text>
+                                {(reservedMap[warehouse.id] || 0) > 0 ? (
+                                    <Text style={styles.warehouseAddress}>
+                                        Резерв: {reservedMap[warehouse.id]} кор.
+                                    </Text>
+                                ) : null}
                             </View>
                             <View style={styles.quantityContainer}>
                                 <TextInput
@@ -202,12 +232,24 @@ export const ProductWarehouseStockManager = ({
                                     placeholderTextColor={isDark ? colors.textTertiary : '#999'}
                                 />
                                 <Text style={styles.quantityLabel}>коробок</Text>
-                                <TouchableOpacity
-                                    style={styles.removeButton}
-                                    onPress={() => handleRemoveWarehouse(warehouse.id)}
-                                >
-                                    <Text style={styles.removeButtonText}>✕</Text>
-                                </TouchableOpacity>
+                                {canSetWarehousePrice ? (
+                                    <TextInput
+                                        style={[styles.quantityInput, { marginLeft: 8, minWidth: 72 }]}
+                                        value={priceMap[warehouse.id] != null ? String(priceMap[warehouse.id]) : ''}
+                                        onChangeText={(text) => handlePriceChange(warehouse.id, text)}
+                                        keyboardType="numeric"
+                                        placeholder={basePrice ? String(basePrice) : 'Цена'}
+                                        placeholderTextColor={isDark ? colors.textTertiary : '#999'}
+                                    />
+                                ) : null}
+                                {(reservedMap[warehouse.id] || 0) === 0 ? (
+                                    <TouchableOpacity
+                                        style={styles.removeButton}
+                                        onPress={() => handleRemoveWarehouse(warehouse.id)}
+                                    >
+                                        <Text style={styles.removeButtonText}>✕</Text>
+                                    </TouchableOpacity>
+                                ) : null}
                             </View>
                         </View>
                     ))}

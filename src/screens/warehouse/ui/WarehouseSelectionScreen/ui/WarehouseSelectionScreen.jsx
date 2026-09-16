@@ -17,45 +17,55 @@ import { useWarehouses } from '@entities/warehouse/hooks/useWarehouses';
 import { normalize, normalizeFont } from '@shared/lib/normalize';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
-// Компонент для указания количества коробок и цены на склад
-const WarehouseQuantityInput = React.memo(({ warehouse, quantity, warehousePrice, stopPrice, onQuantityChange, onPriceChange, onStopPriceChange, onRemove, basePrice, isAdmin = false }) => {
+const buildWarehouseSelectionPayload = (selectedIds, quantities, prices, reservedMap = {}, warehouses = []) => {
+    return selectedIds.map((warehouseId) => {
+        const warehouse = warehouses.find((w) => w.id === warehouseId);
+        const reserved = reservedMap[warehouseId] || 0;
+        const quantity = Math.max(quantities[warehouseId] || 0, reserved);
+        const item = {
+            warehouseId,
+            quantity,
+            reserved,
+            isMain: Boolean(warehouse?.isMain)
+        };
+        if (prices[warehouseId] !== undefined && prices[warehouseId] !== null) {
+            item.warehousePrice = prices[warehouseId];
+        }
+        return item;
+    }).filter((item) => item.quantity > 0 || item.reserved > 0);
+};
+
+const WarehouseQuantityInput = React.memo(({ warehouse, quantity, warehousePrice, reserved = 0, onQuantityChange, onPriceChange, onRemove, basePrice, canSetWarehousePrice = false }) => {
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
-    // Используем ref для хранения текущих значений без ререндера
     const quantityRef = React.useRef(null);
     const priceRef = React.useRef(null);
-    const stopPriceRef = React.useRef(null);
-    
+    const minQuantity = Math.max(0, reserved || 0);
+
     const currentQuantityValue = React.useRef(quantity.toString());
     const currentPriceValue = React.useRef(warehousePrice ? warehousePrice.toString() : '');
-    const currentStopPriceValue = React.useRef(stopPrice ? stopPrice.toString() : '');
 
     const handleQuantityChange = (text) => {
         currentQuantityValue.current = text;
         if (text === '') {
-            onQuantityChange(warehouse.id, 0);
+            onQuantityChange(warehouse.id, minQuantity);
             return;
         }
         const numValue = parseInt(text, 10);
         if (!isNaN(numValue)) {
-            onQuantityChange(warehouse.id, numValue);
+            onQuantityChange(warehouse.id, Math.max(numValue, minQuantity));
         }
     };
 
     const handleQuantityBlur = (e) => {
         const text = e.nativeEvent.text || currentQuantityValue.current;
-        if (text === '' || text === '0') {
-            if (quantityRef.current) {
-                quantityRef.current.setNativeProps({ text: '1' });
-            }
-            currentQuantityValue.current = '1';
-            onQuantityChange(warehouse.id, 1);
-        } else {
-            const numValue = parseInt(text);
-            if (!isNaN(numValue) && numValue > 0) {
-                onQuantityChange(warehouse.id, numValue);
-            }
+        const numValue = parseInt(text, 10);
+        const nextValue = Number.isNaN(numValue) ? minQuantity : Math.max(numValue, minQuantity);
+        currentQuantityValue.current = String(nextValue);
+        if (quantityRef.current) {
+            quantityRef.current.setNativeProps({ text: String(nextValue) });
         }
+        onQuantityChange(warehouse.id, nextValue);
     };
 
     const handlePriceChange = (text) => {
@@ -82,49 +92,39 @@ const WarehouseQuantityInput = React.memo(({ warehouse, quantity, warehousePrice
         }
     };
 
-    const handleStopPriceChange = (text) => {
-        currentStopPriceValue.current = text;
-        if (text === '' || text === null) {
-            onStopPriceChange(warehouse.id, null);
+    const handleRemove = () => {
+        if (minQuantity > 0) {
             return;
         }
-        const numValue = parseFloat(text.replace(',', '.'));
-        if (!isNaN(numValue)) {
-            onStopPriceChange(warehouse.id, numValue);
-        }
-    };
-
-    const handleStopPriceBlur = (e) => {
-        const text = e.nativeEvent.text || currentStopPriceValue.current;
-        if (text === '' || text === null) {
-            onStopPriceChange(warehouse.id, null);
-        } else {
-            const numValue = parseFloat(text.replace(',', '.'));
-            if (!isNaN(numValue) && numValue > 0) {
-                onStopPriceChange(warehouse.id, numValue);
-            }
-        }
+        onRemove(warehouse.id);
     };
 
     return (
         <View style={styles.quantityItem}>
             <View style={styles.quantityHeaderRow}>
                 <View style={styles.quantityInfo}>
-                    <Text style={styles.quantityWarehouseName}>{warehouse.name}</Text>
+                    <Text style={styles.quantityWarehouseName}>
+                        {warehouse.name}{warehouse.isMain ? ' · главный' : ' · филиал'}
+                    </Text>
                     {warehouse.address && (
                         <Text style={styles.quantityWarehouseAddress}>{warehouse.address}</Text>
                     )}
+                    {minQuantity > 0 ? (
+                        <Text style={styles.quantityWarehouseAddress}>Резерв: {minQuantity} кор.</Text>
+                    ) : null}
                 </View>
-                <TouchableOpacity
-                    style={styles.removeButton}
-                    onPress={() => onRemove(warehouse.id)}
-                >
-                    <Text style={styles.removeButtonText}>✕</Text>
-                </TouchableOpacity>
+                {minQuantity === 0 ? (
+                    <TouchableOpacity
+                        style={styles.removeButton}
+                        onPress={handleRemove}
+                    >
+                        <Text style={styles.removeButtonText}>✕</Text>
+                    </TouchableOpacity>
+                ) : null}
             </View>
             <View style={styles.quantityControls}>
                 <View style={styles.inputGroup}>
-                    <Text style={styles.inputLabel}>Кол-во</Text>
+                    <Text style={styles.inputLabel}>Коробок</Text>
                     <TextInput
                         ref={quantityRef}
                         style={styles.quantityInput}
@@ -138,58 +138,41 @@ const WarehouseQuantityInput = React.memo(({ warehouse, quantity, warehousePrice
                         returnKeyType="done"
                     />
                 </View>
-                {isAdmin && (
-                    <>
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.inputLabel}>Склад (₽)</Text>
-                            <TextInput
-                                ref={priceRef}
-                                style={styles.priceInput}
-                                defaultValue={warehousePrice ? warehousePrice.toString() : ''}
-                                onChangeText={handlePriceChange}
-                                onBlur={handlePriceBlur}
-                                keyboardType="decimal-pad"
-                                placeholder={basePrice ? basePrice.toString() : "Авто"}
-                                placeholderTextColor={isDark ? colors.textTertiary : '#999'}
-                                maxLength={10}
-                                returnKeyType="done"
-                            />
-                        </View>
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.inputLabel}>Фургон (₽)</Text>
-                            <TextInput
-                                ref={stopPriceRef}
-                                style={styles.priceInput}
-                                defaultValue={stopPrice ? stopPrice.toString() : ''}
-                                onChangeText={handleStopPriceChange}
-                                onBlur={handleStopPriceBlur}
-                                keyboardType="decimal-pad"
-                                placeholder={basePrice ? basePrice.toString() : "Авто"}
-                                placeholderTextColor={isDark ? colors.textTertiary : '#999'}
-                                maxLength={10}
-                                returnKeyType="done"
-                            />
-                        </View>
-                    </>
+                {canSetWarehousePrice && (
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>Склад (₽)</Text>
+                        <TextInput
+                            ref={priceRef}
+                            style={styles.priceInput}
+                            defaultValue={warehousePrice ? warehousePrice.toString() : ''}
+                            onChangeText={handlePriceChange}
+                            onBlur={handlePriceBlur}
+                            keyboardType="decimal-pad"
+                            placeholder={basePrice ? basePrice.toString() : "Авто"}
+                            placeholderTextColor={isDark ? colors.textTertiary : '#999'}
+                            maxLength={10}
+                            returnKeyType="done"
+                        />
+                    </View>
                 )}
             </View>
         </View>
     );
 }, (prevProps, nextProps) => {
-    // Кастомная функция сравнения - перерендериваем только если изменились данные склада
     return (
         prevProps.warehouse.id === nextProps.warehouse.id &&
         prevProps.warehouse.name === nextProps.warehouse.name &&
-        prevProps.isAdmin === nextProps.isAdmin &&
-        prevProps.basePrice === nextProps.basePrice
-        // НЕ сравниваем quantity, warehousePrice, stopPrice - используем defaultValue
+        prevProps.warehouse.isMain === nextProps.warehouse.isMain &&
+        prevProps.canSetWarehousePrice === nextProps.canSetWarehousePrice &&
+        prevProps.basePrice === nextProps.basePrice &&
+        prevProps.reserved === nextProps.reserved
     );
 });
 
 export const WarehouseSelectionScreen = ({ navigation: navigationProp, route: routeProp } = {}) => {
     const navigation = navigationProp || useNavigation();
     const route = routeProp || useRoute();
-    const { warehouses, loading: loadingWarehouses } = useWarehouses({ autoLoad: true });
+    const { warehouses: allWarehouses, loading: loadingWarehouses } = useWarehouses({ autoLoad: true });
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
@@ -197,39 +180,42 @@ export const WarehouseSelectionScreen = ({ navigation: navigationProp, route: ro
         selectedWarehouseQuantities = [],
         basePrice = null,
         isAdmin = false,
+        canSetWarehousePrice = isAdmin,
+        allowedWarehouseIds = null,
         onSelectWarehouseQuantities
     } = route.params || {};
+
+    const warehouses = useMemo(() => {
+        if (!allowedWarehouseIds?.length) return allWarehouses;
+        return (allWarehouses || []).filter((w) => allowedWarehouseIds.includes(w.id));
+    }, [allWarehouses, allowedWarehouseIds]);
 
     const [searchText, setSearchText] = useState('');
     const [filteredWarehouses, setFilteredWarehouses] = useState(warehouses);
     const [tempSelectedWarehouses, setTempSelectedWarehouses] = useState([]);
     const [warehouseQuantities, setWarehouseQuantities] = useState({});
     const [warehousePrices, setWarehousePrices] = useState({});
-    const [stopPrices, setStopPrices] = useState({});
+    const [reservedMap, setReservedMap] = useState({});
     const [selectAll, setSelectAll] = useState(false);
     const [commonWarehousePrice, setCommonWarehousePrice] = useState('');
-    const [commonStopPrice, setCommonStopPrice] = useState('');
 
-    // Инициализация при открытии экрана
     useEffect(() => {
         const selectedIds = selectedWarehouseQuantities.map(item => item.warehouseId);
         setTempSelectedWarehouses(selectedIds);
 
         const quantitiesMap = {};
         const pricesMap = {};
-        const stopPricesMap = {};
+        const nextReserved = {};
         selectedWarehouseQuantities.forEach(item => {
             quantitiesMap[item.warehouseId] = item.quantity;
+            nextReserved[item.warehouseId] = item.reserved || 0;
             if (item.warehousePrice !== undefined && item.warehousePrice !== null) {
                 pricesMap[item.warehouseId] = item.warehousePrice;
-            }
-            if (item.stopPrice !== undefined && item.stopPrice !== null) {
-                stopPricesMap[item.warehouseId] = item.stopPrice;
             }
         });
         setWarehouseQuantities(quantitiesMap);
         setWarehousePrices(pricesMap);
-        setStopPrices(stopPricesMap);
+        setReservedMap(nextReserved);
     }, []);
 
     // Обновление списка складов при изменении поиска
@@ -255,19 +241,21 @@ export const WarehouseSelectionScreen = ({ navigation: navigationProp, route: ro
     const handleWarehouseToggle = React.useCallback((warehouseId) => {
         setTempSelectedWarehouses(prev => {
             if (prev.includes(warehouseId)) {
+                if ((reservedMap[warehouseId] || 0) > 0) {
+                    return prev;
+                }
                 return prev.filter(id => id !== warehouseId);
-            } else {
-                const newSelected = [...prev, warehouseId];
-                setWarehouseQuantities(prevQ => {
-                    if (!prevQ[warehouseId]) {
-                        return { ...prevQ, [warehouseId]: 1 };
-                    }
-                    return prevQ;
-                });
-                return newSelected;
             }
+            const newSelected = [...prev, warehouseId];
+            setWarehouseQuantities(prevQ => {
+                if (prevQ[warehouseId] === undefined) {
+                    return { ...prevQ, [warehouseId]: 0 };
+                }
+                return prevQ;
+            });
+            return newSelected;
         });
-    }, []);
+    }, [reservedMap]);
 
     const handleQuantityChange = React.useCallback((warehouseId, quantity) => {
         setWarehouseQuantities(prev => ({ ...prev, [warehouseId]: quantity }));
@@ -277,11 +265,8 @@ export const WarehouseSelectionScreen = ({ navigation: navigationProp, route: ro
         setWarehousePrices(prev => ({ ...prev, [warehouseId]: price }));
     }, []);
 
-    const handleStopPriceChange = React.useCallback((warehouseId, price) => {
-        setStopPrices(prev => ({ ...prev, [warehouseId]: price }));
-    }, []);
-
     const handleRemoveWarehouse = React.useCallback((warehouseId) => {
+        if ((reservedMap[warehouseId] || 0) > 0) return;
         setTempSelectedWarehouses(prev => prev.filter(id => id !== warehouseId));
         setWarehouseQuantities(prev => {
             const newQuantities = { ...prev };
@@ -293,52 +278,41 @@ export const WarehouseSelectionScreen = ({ navigation: navigationProp, route: ro
             delete newPrices[warehouseId];
             return newPrices;
         });
-        setStopPrices(prev => {
-            const newStopPrices = { ...prev };
-            delete newStopPrices[warehouseId];
-            return newStopPrices;
-        });
-    }, []);
+    }, [reservedMap]);
 
     const handleSelectAll = React.useCallback(() => {
         if (selectAll || tempSelectedWarehouses.length === warehouses.length) {
-            setTempSelectedWarehouses([]);
+            setTempSelectedWarehouses((prev) => prev.filter((id) => (reservedMap[id] || 0) > 0));
             setSelectAll(false);
         } else {
             const allIds = warehouses.map(w => w.id);
             setTempSelectedWarehouses(allIds);
-            const allQuantities = {};
-            warehouses.forEach(w => {
-                allQuantities[w.id] = 1;
+            setWarehouseQuantities((prev) => {
+                const allQuantities = { ...prev };
+                warehouses.forEach(w => {
+                    if (allQuantities[w.id] === undefined) {
+                        allQuantities[w.id] = 0;
+                    }
+                });
+                return allQuantities;
             });
-            setWarehouseQuantities(allQuantities);
             setSelectAll(true);
         }
-    }, [selectAll, tempSelectedWarehouses.length, warehouses]);
+    }, [selectAll, tempSelectedWarehouses.length, warehouses, reservedMap]);
 
     const handleApply = React.useCallback(() => {
-        const result = tempSelectedWarehouses
-            .filter(id => warehouseQuantities[id] > 0)
-            .map(warehouseId => {
-                const item = {
-                    warehouseId,
-                    quantity: warehouseQuantities[warehouseId] || 1
-                };
-                if (warehousePrices[warehouseId] !== undefined && warehousePrices[warehouseId] !== null) {
-                    item.warehousePrice = warehousePrices[warehouseId];
-                }
-                if (stopPrices[warehouseId] !== undefined && stopPrices[warehouseId] !== null) {
-                    item.stopPrice = stopPrices[warehouseId];
-                }
-                return item;
-            });
-
+        const result = buildWarehouseSelectionPayload(
+            tempSelectedWarehouses,
+            warehouseQuantities,
+            warehousePrices,
+            reservedMap,
+            warehouses
+        );
         if (onSelectWarehouseQuantities) {
             onSelectWarehouseQuantities(result);
         }
-
         navigation.goBack();
-    }, [tempSelectedWarehouses, warehouseQuantities, warehousePrices, stopPrices, onSelectWarehouseQuantities, navigation]);
+    }, [tempSelectedWarehouses, warehouseQuantities, warehousePrices, reservedMap, warehouses, onSelectWarehouseQuantities, navigation]);
 
     const handleCancel = React.useCallback(() => {
         navigation.goBack();
@@ -346,8 +320,7 @@ export const WarehouseSelectionScreen = ({ navigation: navigationProp, route: ro
 
     const handleApplyCommonPrices = React.useCallback(() => {
         const warehousePriceNum = commonWarehousePrice.trim() ? parseFloat(commonWarehousePrice.replace(',', '.')) : null;
-        const stopPriceNum = commonStopPrice.trim() ? parseFloat(commonStopPrice.replace(',', '.')) : null;
-        
+
         if (warehousePriceNum !== null && !isNaN(warehousePriceNum) && warehousePriceNum > 0) {
             const newPrices = {};
             tempSelectedWarehouses.forEach(id => {
@@ -363,23 +336,7 @@ export const WarehouseSelectionScreen = ({ navigation: navigationProp, route: ro
                 return updated;
             });
         }
-        
-        if (stopPriceNum !== null && !isNaN(stopPriceNum) && stopPriceNum > 0) {
-            const newStopPrices = {};
-            tempSelectedWarehouses.forEach(id => {
-                newStopPrices[id] = stopPriceNum;
-            });
-            setStopPrices(prev => ({ ...prev, ...newStopPrices }));
-        } else if (commonStopPrice.trim() === '') {
-            setStopPrices(prev => {
-                const updated = { ...prev };
-                tempSelectedWarehouses.forEach(id => {
-                    updated[id] = null;
-                });
-                return updated;
-            });
-        }
-    }, [commonWarehousePrice, commonStopPrice, tempSelectedWarehouses]);
+    }, [commonWarehousePrice, tempSelectedWarehouses]);
 
     const selectedWarehousesData = useMemo(() => 
         tempSelectedWarehouses
@@ -406,7 +363,7 @@ export const WarehouseSelectionScreen = ({ navigation: navigationProp, route: ro
                                 styles.warehouseName,
                                 isSelected && styles.selectedItemText
                             ]}>
-                                {item.name}
+                                {item.name}{item.isMain ? ' · главный' : ' · филиал'}
                             </Text>
                         </View>
                         <View style={styles.checkboxContainer}>
@@ -476,10 +433,9 @@ export const WarehouseSelectionScreen = ({ navigation: navigationProp, route: ro
 
                 {renderWarehousesList()}
 
-                {/* Секция для установки общих цен (только для админов) */}
-                {selectedWarehousesData.length > 0 && isAdmin && (
+                {selectedWarehousesData.length > 0 && canSetWarehousePrice && (
                     <View style={styles.commonPricesSection}>
-                        <Text style={styles.commonPricesTitle}>Общие цены для всех выбранных складов:</Text>
+                        <Text style={styles.commonPricesTitle}>Общая цена склада для выбранных:</Text>
                         <View style={styles.commonPricesRow}>
                             <View style={styles.commonPriceInputContainer}>
                                 <Text style={styles.commonPriceLabel}>Цена склада (₽)</Text>
@@ -487,17 +443,6 @@ export const WarehouseSelectionScreen = ({ navigation: navigationProp, route: ro
                                     style={styles.commonPriceInput}
                                     value={commonWarehousePrice}
                                     onChangeText={setCommonWarehousePrice}
-                                    placeholder={basePrice ? basePrice.toString() : "Авто"}
-                                    keyboardType="numeric"
-                                    placeholderTextColor={isDark ? colors.textTertiary : '#999'}
-                                />
-                            </View>
-                            <View style={styles.commonPriceInputContainer}>
-                                <Text style={styles.commonPriceLabel}>Цена фургона (₽)</Text>
-                                <TextInput
-                                    style={styles.commonPriceInput}
-                                    value={commonStopPrice}
-                                    onChangeText={setCommonStopPrice}
                                     placeholder={basePrice ? basePrice.toString() : "Авто"}
                                     keyboardType="numeric"
                                     placeholderTextColor={isDark ? colors.textTertiary : '#999'}
@@ -517,7 +462,7 @@ export const WarehouseSelectionScreen = ({ navigation: navigationProp, route: ro
                 {selectedWarehousesData.length > 0 && (
                     <View style={styles.quantitiesSection}>
                         <Text style={styles.quantitiesTitle}>
-                            {isAdmin ? 'Укажите количество коробок и цены (склад/фургон):' : 'Укажите количество коробок:'}
+                            {canSetWarehousePrice ? 'Укажите количество коробок и закупочную цену склада:' : 'Укажите количество коробок:'}
                         </Text>
                         <View style={styles.quantitiesList}>
                             {selectedWarehousesData.map(warehouse => {
@@ -526,15 +471,14 @@ export const WarehouseSelectionScreen = ({ navigation: navigationProp, route: ro
                                     <WarehouseQuantityInput
                                         key={warehouseId}
                                         warehouse={warehouse}
-                                        quantity={warehouseQuantities[warehouseId] || 1}
+                                        quantity={warehouseQuantities[warehouseId] || 0}
                                         warehousePrice={warehousePrices[warehouseId]}
-                                        stopPrice={stopPrices[warehouseId]}
+                                        reserved={reservedMap[warehouseId] || 0}
                                         basePrice={basePrice}
                                         onQuantityChange={handleQuantityChange}
                                         onPriceChange={handlePriceChange}
-                                        onStopPriceChange={handleStopPriceChange}
                                         onRemove={handleRemoveWarehouse}
-                                        isAdmin={isAdmin}
+                                        canSetWarehousePrice={canSetWarehousePrice}
                                     />
                                 );
                             })}
@@ -563,9 +507,15 @@ export const WarehouseSelectionInline = ({
     selectedWarehouseQuantities = [],
     basePrice = null,
     isAdmin = false,
+    canSetWarehousePrice = isAdmin,
+    allowedWarehouseIds = null,
     onSelectWarehouseQuantities
 }) => {
-    const { warehouses, loading: loadingWarehouses } = useWarehouses({ autoLoad: true });
+    const { warehouses: allWarehouses, loading: loadingWarehouses } = useWarehouses({ autoLoad: true });
+    const warehouses = useMemo(() => {
+        if (!allowedWarehouseIds?.length) return allWarehouses;
+        return (allWarehouses || []).filter((w) => allowedWarehouseIds.includes(w.id));
+    }, [allWarehouses, allowedWarehouseIds]);
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
@@ -574,30 +524,38 @@ export const WarehouseSelectionInline = ({
     const [tempSelectedWarehouses, setTempSelectedWarehouses] = useState([]);
     const [warehouseQuantities, setWarehouseQuantities] = useState({});
     const [warehousePrices, setWarehousePrices] = useState({});
-    const [stopPrices, setStopPrices] = useState({});
+    const [reservedMap, setReservedMap] = useState({});
     const [selectAll, setSelectAll] = useState(false);
     const [commonWarehousePrice, setCommonWarehousePrice] = useState('');
-    const [commonStopPrice, setCommonStopPrice] = useState('');
+    const lastEmittedRef = React.useRef('');
+
+    const emitSelection = React.useCallback((ids, quantities, prices, reserved) => {
+        const result = buildWarehouseSelectionPayload(ids, quantities, prices, reserved, warehouses);
+        lastEmittedRef.current = JSON.stringify(result);
+        onSelectWarehouseQuantities?.(result);
+    }, [onSelectWarehouseQuantities, warehouses]);
 
     useEffect(() => {
+        const incoming = JSON.stringify(selectedWarehouseQuantities || []);
+        if (incoming === lastEmittedRef.current) return;
+        lastEmittedRef.current = incoming;
+
         const selectedIds = selectedWarehouseQuantities.map(item => item.warehouseId);
         setTempSelectedWarehouses(selectedIds);
 
         const quantitiesMap = {};
         const pricesMap = {};
-        const stopPricesMap = {};
+        const nextReserved = {};
         selectedWarehouseQuantities.forEach(item => {
             quantitiesMap[item.warehouseId] = item.quantity;
+            nextReserved[item.warehouseId] = item.reserved || 0;
             if (item.warehousePrice !== undefined && item.warehousePrice !== null) {
                 pricesMap[item.warehouseId] = item.warehousePrice;
-            }
-            if (item.stopPrice !== undefined && item.stopPrice !== null) {
-                stopPricesMap[item.warehouseId] = item.stopPrice;
             }
         });
         setWarehouseQuantities(quantitiesMap);
         setWarehousePrices(pricesMap);
-        setStopPrices(stopPricesMap);
+        setReservedMap(nextReserved);
     }, [selectedWarehouseQuantities]);
 
     useEffect(() => {
@@ -629,125 +587,88 @@ export const WarehouseSelectionInline = ({
 
     const handleWarehouseToggle = React.useCallback((warehouseId) => {
         setTempSelectedWarehouses(prev => {
+            let next;
+            let nextQuantities = warehouseQuantities;
             if (prev.includes(warehouseId)) {
-                return prev.filter(id => id !== warehouseId);
-            }
-            const newSelected = [...prev, warehouseId];
-            setWarehouseQuantities(prevQ => {
-                if (!prevQ[warehouseId]) {
-                    return { ...prevQ, [warehouseId]: 1 };
+                if ((reservedMap[warehouseId] || 0) > 0) return prev;
+                next = prev.filter(id => id !== warehouseId);
+            } else {
+                next = [...prev, warehouseId];
+                if (warehouseQuantities[warehouseId] === undefined) {
+                    nextQuantities = { ...warehouseQuantities, [warehouseId]: 0 };
+                    setWarehouseQuantities(nextQuantities);
                 }
-                return prevQ;
-            });
-            return newSelected;
+            }
+            emitSelection(next, nextQuantities, warehousePrices, reservedMap);
+            return next;
         });
-    }, []);
+    }, [emitSelection, warehouseQuantities, warehousePrices, reservedMap]);
 
     const handleQuantityChange = React.useCallback((warehouseId, quantity) => {
-        setWarehouseQuantities(prev => ({ ...prev, [warehouseId]: quantity }));
-    }, []);
+        setWarehouseQuantities(prev => {
+            const next = { ...prev, [warehouseId]: quantity };
+            emitSelection(tempSelectedWarehouses, next, warehousePrices, reservedMap);
+            return next;
+        });
+    }, [emitSelection, tempSelectedWarehouses, warehousePrices, reservedMap]);
 
     const handlePriceChange = React.useCallback((warehouseId, price) => {
-        setWarehousePrices(prev => ({ ...prev, [warehouseId]: price }));
-    }, []);
-
-    const handleStopPriceChange = React.useCallback((warehouseId, price) => {
-        setStopPrices(prev => ({ ...prev, [warehouseId]: price }));
-    }, []);
+        setWarehousePrices(prev => {
+            const next = { ...prev, [warehouseId]: price };
+            emitSelection(tempSelectedWarehouses, warehouseQuantities, next, reservedMap);
+            return next;
+        });
+    }, [emitSelection, tempSelectedWarehouses, warehouseQuantities, reservedMap]);
 
     const handleRemoveWarehouse = React.useCallback((warehouseId) => {
-        setTempSelectedWarehouses(prev => prev.filter(id => id !== warehouseId));
-        setWarehouseQuantities(prev => {
-            const newQuantities = { ...prev };
-            delete newQuantities[warehouseId];
-            return newQuantities;
-        });
-        setWarehousePrices(prev => {
-            const newPrices = { ...prev };
-            delete newPrices[warehouseId];
-            return newPrices;
-        });
-        setStopPrices(prev => {
-            const newStopPrices = { ...prev };
-            delete newStopPrices[warehouseId];
-            return newStopPrices;
-        });
-    }, []);
+        if ((reservedMap[warehouseId] || 0) > 0) return;
+        const nextIds = tempSelectedWarehouses.filter(id => id !== warehouseId);
+        const nextQuantities = { ...warehouseQuantities };
+        delete nextQuantities[warehouseId];
+        const nextPrices = { ...warehousePrices };
+        delete nextPrices[warehouseId];
+        setTempSelectedWarehouses(nextIds);
+        setWarehouseQuantities(nextQuantities);
+        setWarehousePrices(nextPrices);
+        emitSelection(nextIds, nextQuantities, nextPrices, reservedMap);
+    }, [emitSelection, reservedMap, tempSelectedWarehouses, warehouseQuantities, warehousePrices]);
 
     const handleSelectAll = React.useCallback(() => {
         if (selectAll || tempSelectedWarehouses.length === warehouses.length) {
-            setTempSelectedWarehouses([]);
+            const nextIds = tempSelectedWarehouses.filter((id) => (reservedMap[id] || 0) > 0);
+            setTempSelectedWarehouses(nextIds);
             setSelectAll(false);
+            emitSelection(nextIds, warehouseQuantities, warehousePrices, reservedMap);
         } else {
             const allIds = warehouses.map(w => w.id);
-            setTempSelectedWarehouses(allIds);
-            const allQuantities = {};
+            const allQuantities = { ...warehouseQuantities };
             warehouses.forEach(w => {
-                allQuantities[w.id] = 1;
+                if (allQuantities[w.id] === undefined) {
+                    allQuantities[w.id] = 0;
+                }
             });
+            setTempSelectedWarehouses(allIds);
             setWarehouseQuantities(allQuantities);
             setSelectAll(true);
+            emitSelection(allIds, allQuantities, warehousePrices, reservedMap);
         }
-    }, [selectAll, tempSelectedWarehouses.length, warehouses]);
-
-    const handleApply = React.useCallback(() => {
-        const result = tempSelectedWarehouses
-            .filter(id => warehouseQuantities[id] > 0)
-            .map(warehouseId => {
-                const item = {
-                    warehouseId,
-                    quantity: warehouseQuantities[warehouseId] || 1
-                };
-                if (warehousePrices[warehouseId] !== undefined && warehousePrices[warehouseId] !== null) {
-                    item.warehousePrice = warehousePrices[warehouseId];
-                }
-                if (stopPrices[warehouseId] !== undefined && stopPrices[warehouseId] !== null) {
-                    item.stopPrice = stopPrices[warehouseId];
-                }
-                return item;
-            });
-
-        if (onSelectWarehouseQuantities) {
-            onSelectWarehouseQuantities(result);
-        }
-    }, [tempSelectedWarehouses, warehouseQuantities, warehousePrices, stopPrices, onSelectWarehouseQuantities]);
+    }, [selectAll, tempSelectedWarehouses, warehouses, reservedMap, warehouseQuantities, warehousePrices, emitSelection]);
 
     const handleApplyCommonPrices = React.useCallback(() => {
         const warehousePriceNum = commonWarehousePrice.trim() ? parseFloat(commonWarehousePrice.replace(',', '.')) : null;
-        const stopPriceNum = commonStopPrice.trim() ? parseFloat(commonStopPrice.replace(',', '.')) : null;
-
+        const nextPrices = { ...warehousePrices };
         if (warehousePriceNum !== null && !isNaN(warehousePriceNum) && warehousePriceNum > 0) {
-            const newPrices = {};
             tempSelectedWarehouses.forEach(id => {
-                newPrices[id] = warehousePriceNum;
+                nextPrices[id] = warehousePriceNum;
             });
-            setWarehousePrices(prev => ({ ...prev, ...newPrices }));
         } else if (commonWarehousePrice.trim() === '') {
-            setWarehousePrices(prev => {
-                const updated = { ...prev };
-                tempSelectedWarehouses.forEach(id => {
-                    updated[id] = null;
-                });
-                return updated;
-            });
-        }
-
-        if (stopPriceNum !== null && !isNaN(stopPriceNum) && stopPriceNum > 0) {
-            const newStopPrices = {};
             tempSelectedWarehouses.forEach(id => {
-                newStopPrices[id] = stopPriceNum;
-            });
-            setStopPrices(prev => ({ ...prev, ...newStopPrices }));
-        } else if (commonStopPrice.trim() === '') {
-            setStopPrices(prev => {
-                const updated = { ...prev };
-                tempSelectedWarehouses.forEach(id => {
-                    updated[id] = null;
-                });
-                return updated;
+                nextPrices[id] = null;
             });
         }
-    }, [commonWarehousePrice, commonStopPrice, tempSelectedWarehouses]);
+        setWarehousePrices(nextPrices);
+        emitSelection(tempSelectedWarehouses, warehouseQuantities, nextPrices, reservedMap);
+    }, [commonWarehousePrice, tempSelectedWarehouses, warehousePrices, warehouseQuantities, reservedMap, emitSelection]);
 
     const selectedWarehousesData = useMemo(() =>
         tempSelectedWarehouses
@@ -774,7 +695,7 @@ export const WarehouseSelectionInline = ({
                                 styles.warehouseName,
                                 isSelected && styles.selectedItemText
                             ]}>
-                                {item.name}
+                                {item.name}{item.isMain ? ' · главный' : ' · филиал'}
                             </Text>
                         </View>
                         <View style={styles.checkboxContainer}>
@@ -793,7 +714,7 @@ export const WarehouseSelectionInline = ({
                 </View>
             )}
         </>
-    ), [filteredWarehouses, tempSelectedWarehouses, handleWarehouseToggle, loadingWarehouses, searchText]);
+    ), [filteredWarehouses, tempSelectedWarehouses, handleWarehouseToggle, loadingWarehouses, searchText, styles]);
 
     return (
         <View style={styles.inlineContainer}>
@@ -807,24 +728,26 @@ export const WarehouseSelectionInline = ({
                 />
             </View>
 
-            <TouchableOpacity
-                style={styles.selectAllContainer}
-                onPress={handleSelectAll}
-            >
-                <Text style={styles.selectAllText}>
-                    {selectAll ? 'Снять выделение' : 'Выбрать все'}
-                </Text>
-                <Switch
-                    value={selectAll || (tempSelectedWarehouses.length === warehouses.length && warehouses.length > 0)}
-                    onValueChange={handleSelectAll}
-                />
-            </TouchableOpacity>
+            {warehouses.length > 1 ? (
+                <TouchableOpacity
+                    style={styles.selectAllContainer}
+                    onPress={handleSelectAll}
+                >
+                    <Text style={styles.selectAllText}>
+                        {selectAll ? 'Снять выделение' : 'Выбрать все'}
+                    </Text>
+                    <Switch
+                        value={selectAll || (tempSelectedWarehouses.length === warehouses.length && warehouses.length > 0)}
+                        onValueChange={handleSelectAll}
+                    />
+                </TouchableOpacity>
+            ) : null}
 
             {renderWarehousesList()}
 
-            {selectedWarehousesData.length > 0 && isAdmin && (
+            {selectedWarehousesData.length > 0 && canSetWarehousePrice && (
                 <View style={styles.commonPricesSection}>
-                    <Text style={styles.commonPricesTitle}>Общие цены для всех выбранных складов:</Text>
+                    <Text style={styles.commonPricesTitle}>Общая цена склада для выбранных:</Text>
                     <View style={styles.commonPricesRow}>
                         <View style={styles.commonPriceInputContainer}>
                             <Text style={styles.commonPriceLabel}>Цена склада (₽)</Text>
@@ -832,17 +755,6 @@ export const WarehouseSelectionInline = ({
                                 style={styles.commonPriceInput}
                                 value={commonWarehousePrice}
                                 onChangeText={setCommonWarehousePrice}
-                                placeholder={basePrice ? basePrice.toString() : "Авто"}
-                                keyboardType="numeric"
-                                placeholderTextColor={isDark ? colors.textTertiary : '#999'}
-                            />
-                        </View>
-                        <View style={styles.commonPriceInputContainer}>
-                            <Text style={styles.commonPriceLabel}>Цена фургона (₽)</Text>
-                            <TextInput
-                                style={styles.commonPriceInput}
-                                value={commonStopPrice}
-                                onChangeText={setCommonStopPrice}
                                 placeholder={basePrice ? basePrice.toString() : "Авто"}
                                 keyboardType="numeric"
                                 placeholderTextColor={isDark ? colors.textTertiary : '#999'}
@@ -861,7 +773,7 @@ export const WarehouseSelectionInline = ({
             {selectedWarehousesData.length > 0 && (
                 <View style={styles.quantitiesSection}>
                     <Text style={styles.quantitiesTitle}>
-                        {isAdmin ? 'Укажите количество коробок и цены (склад/фургон):' : 'Укажите количество коробок:'}
+                        {canSetWarehousePrice ? 'Укажите количество коробок и закупочную цену склада:' : 'Укажите количество коробок:'}
                     </Text>
                     <View style={styles.quantitiesList}>
                         {selectedWarehousesData.map(warehouse => {
@@ -870,34 +782,23 @@ export const WarehouseSelectionInline = ({
                                 <WarehouseQuantityInput
                                     key={warehouseId}
                                     warehouse={warehouse}
-                                    quantity={warehouseQuantities[warehouseId] || 1}
+                                    quantity={warehouseQuantities[warehouseId] || 0}
                                     warehousePrice={warehousePrices[warehouseId]}
-                                    stopPrice={stopPrices[warehouseId]}
+                                    reserved={reservedMap[warehouseId] || 0}
                                     basePrice={basePrice}
                                     onQuantityChange={handleQuantityChange}
                                     onPriceChange={handlePriceChange}
-                                    onStopPriceChange={handleStopPriceChange}
                                     onRemove={handleRemoveWarehouse}
-                                    isAdmin={isAdmin}
+                                    canSetWarehousePrice={canSetWarehousePrice}
                                 />
                             );
                         })}
                     </View>
                 </View>
             )}
-
-            <View style={styles.inlineFooter}>
-                <TouchableOpacity
-                    style={[styles.footerButton, styles.applyButton]}
-                    onPress={handleApply}
-                >
-                    <Text style={styles.applyButtonText}>Применить</Text>
-                </TouchableOpacity>
-            </View>
         </View>
     );
 };
-
 const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         flex: 1,

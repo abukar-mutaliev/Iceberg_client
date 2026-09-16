@@ -2,6 +2,7 @@
 // selectors.js
 
 import { createSelector } from "@reduxjs/toolkit";
+import { getActiveOrderStatuses } from "../lib/constants";
 
 // Константы для предотвращения создания новых ссылок
 const EMPTY_ARRAY = [];
@@ -485,6 +486,36 @@ export const selectStaffOrdersStats = createSelector(
                 return acc;
             }, {})
         };
+    }
+);
+
+const selectCurrentUser = (state) => state.auth?.user || null;
+
+export const selectActiveOrdersCountFromCounts = createSelector(
+    [selectOrderCountsState],
+    (orderCounts) => orderCounts?.activeCount || 0
+);
+
+export const selectActiveOrdersCount = createSelector(
+    [selectOrderCountsState, selectActiveStaffOrders, selectCurrentUser],
+    (orderCounts, orders, currentUser) => {
+        const countsAge = orderCounts?.lastFetchTime ? Date.now() - orderCounts.lastFetchTime : Infinity;
+        const hasRecentCounts = Boolean(orderCounts?.lastFetchTime) && countsAge < 5 * 60 * 1000;
+
+        if (hasRecentCounts && typeof orderCounts.activeCount === 'number') {
+            return orderCounts.activeCount;
+        }
+
+        if (!Array.isArray(orders)) {
+            return 0;
+        }
+
+        const processingRole = currentUser?.employee?.processingRole
+            || currentUser?.profile?.processingRole
+            || null;
+        const activeStatuses = getActiveOrderStatuses(processingRole);
+
+        return orders.filter(order => activeStatuses.includes(order.status)).length;
     }
 );
 

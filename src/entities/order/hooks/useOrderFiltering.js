@@ -64,7 +64,7 @@ export const useOrderFiltering = (staffOrders, filters, canViewAllOrders, actual
                     // Роли с жесткой фильтрацией по статусам
                     const roleStatusMapping = {
                         'PICKER': ['PENDING', 'CONFIRMED', 'PICKING'],
-                        'COURIER': ['PICKING', 'IN_DELIVERY']
+                        'COURIER': ['IN_DELIVERY']
                     };
                     
                     const allowedStatuses = roleStatusMapping[actualProcessingRole];

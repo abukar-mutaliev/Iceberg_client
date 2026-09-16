@@ -932,7 +932,6 @@ export const ProductDetailScreen = ({ route, navigation }) => {
                 canReplyAsSupplier={canReplyAsSupplierForCurrentProduct}
                 onReplySubmit={handleReplyToFeedback}
                 replyingFeedbackId={replyingFeedbackId}
-                hideQuantityControl
             />
         );
     }, [

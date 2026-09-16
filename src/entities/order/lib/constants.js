@@ -33,7 +33,7 @@ export const CONSTANTS = {
     // PICKING — основной рабочий статус после авто-назначения курьера/сборщика.
     ROLE_STATUS_MAPPING: {
         PICKER: ['PENDING', 'CONFIRMED', 'PICKING'],
-        COURIER: ['PICKING', 'IN_DELIVERY']
+        COURIER: ['IN_DELIVERY']
     },
 
     ROLE_HISTORY_MAPPING: {
@@ -44,7 +44,39 @@ export const CONSTANTS = {
     },
 
     COMPLETED_STATUSES: ['DELIVERED', 'CANCELLED', 'RETURNED'],
-    CANCELLABLE_STATUSES: ['PENDING', 'CONFIRMED', 'PICKING', 'IN_DELIVERY']
+    CANCELLABLE_STATUSES: ['PENDING', 'CONFIRMED', 'PICKING', 'IN_DELIVERY'],
+    ACTIVE_ORDER_STATUSES: ['PENDING', 'CONFIRMED', 'PICKING', 'IN_DELIVERY']
+};
+
+const STATUS_PROGRESS = {
+    PENDING_PAYMENT: 0,
+    PENDING: 1,
+    CONFIRMED: 2,
+    WAITING_STOCK: 2,
+    PICKING: 3,
+    PACKING: 3,
+    IN_DELIVERY: 4,
+    DELIVERED: 5,
+    CANCELLED: 5,
+    RETURNED: 5
+};
+
+export const getStatusProgress = (status) => STATUS_PROGRESS[status] ?? -1;
+
+export const preferNewerStatus = (left, right) => {
+    if (!left) return right;
+    if (!right) return left;
+    return getStatusProgress(left) >= getStatusProgress(right) ? left : right;
+};
+
+export const getActiveOrderStatuses = (processingRole) => {
+    if (processingRole === 'PICKER') {
+        return CONSTANTS.ROLE_STATUS_MAPPING.PICKER;
+    }
+    if (processingRole === 'COURIER') {
+        return CONSTANTS.ROLE_STATUS_MAPPING.COURIER;
+    }
+    return CONSTANTS.ACTIVE_ORDER_STATUSES;
 };
 
 // Статусы заказа, используемые в упрощённом флоу.

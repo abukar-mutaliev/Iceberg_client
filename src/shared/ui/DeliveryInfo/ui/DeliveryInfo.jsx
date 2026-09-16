@@ -82,16 +82,22 @@ export const DeliveryInfo = ({ order, userRole, assignedTo }) => {
             )}
 
             {/* Информация о назначенном сотруднике для персонала */}
-            {canViewProcessingHistory(userRole) && assignedTo && (
+            {canViewProcessingHistory(userRole) && (
                 <View style={styles.infoRow}>
                     <View style={styles.infoIconContainer}>
                         <Icon name="person" size={20} color={colors.primary} />
                     </View>
                     <View style={styles.infoContent}>
                         <Text style={styles.infoLabel}>Текущий ответственный</Text>
-                        <Text style={styles.infoValue}>{assignedTo.name}</Text>
-                        {assignedTo.position && (
-                            <Text style={styles.infoSubtext}>{assignedTo.position}</Text>
+                        {assignedTo?.id ? (
+                            <>
+                                <Text style={styles.infoValue}>{assignedTo.name}</Text>
+                                {assignedTo.position && (
+                                    <Text style={styles.infoSubtext}>{assignedTo.position}</Text>
+                                )}
+                            </>
+                        ) : (
+                            <Text style={styles.infoValue}>Не назначен</Text>
                         )}
                     </View>
                 </View>

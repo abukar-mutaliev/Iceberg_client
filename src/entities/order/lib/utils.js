@@ -153,6 +153,8 @@ export const getAvailableStatuses = (currentStatus) => {
     const transitions = {
         [ORDER_STATUSES.PENDING]: [
             { value: ORDER_STATUSES.CONFIRMED, label: ORDER_STATUS_LABELS[ORDER_STATUSES.CONFIRMED], color: '#28a745' },
+            { value: ORDER_STATUSES.PICKING, label: ORDER_STATUS_LABELS[ORDER_STATUSES.PICKING], color: '#ffc107' },
+            { value: ORDER_STATUSES.IN_DELIVERY, label: ORDER_STATUS_LABELS[ORDER_STATUSES.IN_DELIVERY], color: '#007bff' },
             { value: ORDER_STATUSES.WAITING_STOCK, label: ORDER_STATUS_LABELS[ORDER_STATUSES.WAITING_STOCK], color: '#fd7e14' },
             { value: ORDER_STATUSES.CANCELLED, label: ORDER_STATUS_LABELS[ORDER_STATUSES.CANCELLED], color: '#dc3545' }
         ],
@@ -192,10 +194,11 @@ export const getStageCompletionHint = (processingRole, orderStatus) => {
     }
 
     if (processingRole === 'COURIER') {
-        if (orderStatus === 'PICKING') {
-            return 'После завершения заказ перейдёт в «В доставке».';
-        }
         return 'После завершения заказ будет отмечен как «Доставлен».';
+    }
+
+    if (processingRole === 'MANAGER' || processingRole === 'SUPERVISOR') {
+        return 'После смены статуса заказ можно передать курьеру («В доставке»).';
     }
 
     return 'Заказ перейдёт к следующему этапу обработки.';
@@ -219,16 +222,35 @@ export const isOrderStatusMatchingRole = (processingRole, status) => {
 
 /**
  * Статус заказа после завершения этапа сотрудником (для оптимистичного UI).
+ * Совпадает с server nextStatusForStage: из сборки всегда IN_DELIVERY,
+ * DELIVERED только если курьер закрывает уже «В доставке».
  */
 export const getNextStatusAfterComplete = (processingRole, currentStatus) => {
-    if (processingRole === 'PICKER') {
-        return ORDER_STATUSES.IN_DELIVERY;
-    }
-    if (processingRole === 'COURIER') {
-        return currentStatus === ORDER_STATUSES.PICKING
+    const pickingStatuses = ['PENDING', 'CONFIRMED', 'PICKING', 'PACKING'];
+
+    if (processingRole === 'PICKER' || processingRole === 'PACKER') {
+        return pickingStatuses.includes(currentStatus)
             ? ORDER_STATUSES.IN_DELIVERY
-            : ORDER_STATUSES.DELIVERED;
+            : currentStatus;
     }
+
+    if (processingRole === 'COURIER') {
+        if (currentStatus === ORDER_STATUSES.IN_DELIVERY) {
+            return ORDER_STATUSES.DELIVERED;
+        }
+        return currentStatus;
+    }
+
+    if (processingRole === 'SUPERVISOR' || processingRole === 'ADMIN' || processingRole === 'MANAGER') {
+        if (pickingStatuses.includes(currentStatus)) {
+            return ORDER_STATUSES.IN_DELIVERY;
+        }
+        if (currentStatus === ORDER_STATUSES.IN_DELIVERY) {
+            return ORDER_STATUSES.DELIVERED;
+        }
+        return currentStatus;
+    }
+
     return currentStatus;
 };
 

@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { OrderApi } from '../api';
 import { getStatusLabel } from '../lib/utils';
+import { getActiveOrderStatuses } from '../lib/constants';
 
 const CACHE_EXPIRY_TIME = 2 * 60 * 1000; // 2 минуты
 
@@ -88,6 +89,7 @@ const initialState = {
     // Счетчики заказов (для бейджей)
     orderCounts: {
         waitingStockCount: 0,
+        activeCount: null,
         total: 0,
         loading: false,
         error: null,
@@ -196,25 +198,29 @@ export const fetchOrderCounts = createAsyncThunk(
                 }
             }
 
-            // Получаем только счетчики - сервер уже фильтрует по складу сотрудника
+            // Получаем только счетчики - сервер уже фильтрует по складу и роли сотрудника
             const response = await OrderApi.getOrders({
                 page: 1,
-                limit: 100, // Достаточно для подсчета
+                limit: 1,
                 _t: Date.now()
             });
 
             if (response.status === 'success') {
-                // Сервер может вернуть массив в response.data или response.data.data
                 const orders = Array.isArray(response.data) ? response.data : (response.data?.data || []);
+                const processingRole = currentUser?.employee?.processingRole
+                    || currentUser?.profile?.processingRole
+                    || null;
+                const activeStatuses = getActiveOrderStatuses(processingRole);
 
-                // ВАЖНО: Используем waitingStockCount от СЕРВЕРА, а не считаем на клиенте!
-                // Сервер возвращает правильное количество из всей базы, а не только из загруженных 100
                 const waitingStockCount = response.waitingStockCount ??
                     orders.filter(order => order.status === 'WAITING_STOCK').length;
+                const activeCount = response.activeCount ??
+                    orders.filter(order => activeStatuses.includes(order.status)).length;
 
                 return {
                     waitingStockCount,
-                    total: orders.length
+                    activeCount,
+                    total: response.pagination?.total ?? orders.length
                 };
             } else {
                 throw new Error(response.message || 'Ошибка при загрузке счетчиков');
@@ -269,7 +275,8 @@ export const fetchStaffOrders = createAsyncThunk(
                     data: {
                         data: response.data,
                         pagination: response.pagination,
-                        waitingStockCount: response.waitingStockCount
+                        waitingStockCount: response.waitingStockCount,
+                        activeCount: response.activeCount
                     },
                     fromCache: false,
                     filters: requestParams,
@@ -908,11 +915,18 @@ const orderSlice = createSlice({
                     targetStorage.hasMore = newPage < (data.pagination?.pages || data.pages || 1);
                     targetStorage.lastFetchTime = Date.now();
 
-                    // Обновляем счётчик WAITING_STOCK из ответа сервера
-                    const waitingStockCount = data.waitingStockCount || data.pagination?.waitingStockCount;
+                    // Обновляем счётчики из ответа сервера
+                    const waitingStockCount = data.waitingStockCount ?? data.pagination?.waitingStockCount;
                     if (waitingStockCount !== undefined) {
                         state.orderCounts.waitingStockCount = waitingStockCount;
                         state.orderCounts.lastFetchTime = Date.now();
+                    }
+                    if (!isHistory && !isWaitingStock) {
+                        const activeCount = data.activeCount ?? data.pagination?.activeCount;
+                        if (activeCount !== undefined) {
+                            state.orderCounts.activeCount = activeCount;
+                            state.orderCounts.lastFetchTime = Date.now();
+                        }
                     }
 
                     if (filters) {
@@ -939,6 +953,7 @@ const orderSlice = createSlice({
             .addCase(fetchOrderCounts.fulfilled, (state, action) => {
                 state.orderCounts.loading = false;
                 state.orderCounts.waitingStockCount = action.payload.waitingStockCount;
+                state.orderCounts.activeCount = action.payload.activeCount ?? 0;
                 state.orderCounts.total = action.payload.total;
                 state.orderCounts.lastFetchTime = Date.now();
                 state.orderCounts.error = null;
@@ -1119,8 +1134,33 @@ const orderSlice = createSlice({
                 state.error = null;
             })
             .addCase(completeOrderStage.fulfilled, (state, action) => {
-                const { orderId, comment, result } = action.payload;
+                const { orderId, result } = action.payload;
                 state.operations.updating = removeFromArray(state.operations.updating, orderId);
+
+                const finalStatus = result?.finalStatus;
+                if (finalStatus) {
+                    const keepAssignee = result.employeeRole === 'COURIER' && finalStatus === 'IN_DELIVERY';
+                    const updates = { status: finalStatus };
+                    if (!keepAssignee) {
+                        updates.assignedToId = null;
+                        updates.assignedTo = null;
+                    }
+
+                    const activeOrderIndex = state.staffOrders.activeOrders.data.findIndex(order => order.id === orderId);
+                    if (activeOrderIndex !== -1) {
+                        state.staffOrders.activeOrders.data[activeOrderIndex] = {
+                            ...state.staffOrders.activeOrders.data[activeOrderIndex],
+                            ...updates
+                        };
+                    }
+
+                    if (state.orderDetails.data && state.orderDetails.data.id === orderId) {
+                        state.orderDetails.data = {
+                            ...state.orderDetails.data,
+                            ...updates
+                        };
+                    }
+                }
 
                 state.notifications.unshift({
                     id: `complete_stage_${Date.now()}`,

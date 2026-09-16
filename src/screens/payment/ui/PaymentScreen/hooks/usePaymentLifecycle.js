@@ -103,13 +103,14 @@ export const usePaymentLifecycle = ({
 
             actions.setLoading(false);
         } catch (err) {
-            PaymentLogger.error('Error creating payment:', err);
-            actions.setError(err.message || 'Не удалось создать платеж');
+            const serverMessage = err?.response?.data?.message || err.message || 'Не удалось создать платеж';
+            PaymentLogger.error('Error creating payment:', serverMessage);
+            actions.setError(serverMessage);
             actions.setLoading(false);
 
             showError(
                 'Ошибка',
-                'Не удалось создать платеж. Попробуйте позже.',
+                serverMessage,
                 [{
                     text: 'К корзине',
                     style: 'primary',

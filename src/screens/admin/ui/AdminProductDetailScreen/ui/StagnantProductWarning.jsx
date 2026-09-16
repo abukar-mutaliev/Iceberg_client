@@ -47,7 +47,7 @@ export const StagnantProductWarning = ({ warehousesData }) => {
                 <Text style={styles.warehouseName}>{warehouse.name || 'Неизвестный склад'}</Text>
                 <View style={styles.warehouseStats}>
                   <Text style={styles.warehouseQuantity}>
-                    {warehouse.quantity || 0} шт
+                    {warehouse.quantity || 0} кор.
                   </Text>
                   <Text style={styles.warehouseDays}>
                     {warehouse.daysSinceLastSale || 0} дней

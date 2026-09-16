@@ -149,7 +149,7 @@ export const WarehouseProductsList = ({
 
     const renderItem = useCallback(({ item }) => (
         <View style={styles.productCardWrapper}>
-            <ProductTile product={item} hideAddToCart />
+            <ProductTile product={item} />
         </View>
     ), [styles.productCardWrapper]);
 

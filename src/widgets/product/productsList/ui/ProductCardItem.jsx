@@ -28,7 +28,6 @@ export const ProductCardItem = memo(({ product, onProductPress, fromScreen }) =>
         <ProductCard
             product={product}
             onPress={handlePress}
-            hideAddToCart
         />
     );
 }, (prevProps, nextProps) => {

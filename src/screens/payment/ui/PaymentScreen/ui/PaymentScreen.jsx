@@ -49,6 +49,9 @@ export const PaymentScreen = ({ navigation, route }) => {
 
     const webViewRef = useRef(null);
     const loadingTimeoutRef = useRef(null);
+    const paymentCreateLockRef = useRef(false);
+    const createPaymentRef = useRef(createPayment);
+    createPaymentRef.current = createPayment;
 
     /**
      * Обработка возврата из deep link (например, после оплаты через SBP)
@@ -163,23 +166,31 @@ export const PaymentScreen = ({ navigation, route }) => {
         };
     }, [cancelPayment]);
 
-    // Создание платежа при монтировании или смене шага
+    useEffect(() => {
+        paymentCreateLockRef.current = false;
+    }, [state.currentPaymentStep]);
+
+    // Создание платежа один раз на шаг. createPayment меняется вместе со state
+    // и раньше уходил в бесконечный цикл запросов.
     useEffect(() => {
         const shouldCreate = !state.paymentUrl && (
             !state.paymentCompleted ||
             (state.isSplitOrder && state.currentPaymentStep === 2)
         );
 
-        if (shouldCreate) {
-            PaymentLogger.log('Creating payment...', {
-                currentStep: state.currentPaymentStep,
-                isSplitOrder: state.isSplitOrder,
-                paymentCompleted: state.paymentCompleted,
-                hasPaymentUrl: !!state.paymentUrl
-            });
-            createPayment();
+        if (!shouldCreate || paymentCreateLockRef.current) {
+            return;
         }
-    }, [state.paymentUrl, state.paymentCompleted, state.currentPaymentStep, createPayment]);
+
+        paymentCreateLockRef.current = true;
+        PaymentLogger.log('Creating payment...', {
+            currentStep: state.currentPaymentStep,
+            isSplitOrder: state.isSplitOrder,
+            paymentCompleted: state.paymentCompleted,
+            hasPaymentUrl: !!state.paymentUrl
+        });
+        createPaymentRef.current();
+    }, [state.paymentUrl, state.paymentCompleted, state.currentPaymentStep, state.isSplitOrder]);
 
     // Рендеринг состояний загрузки и ошибки
     if (state.loading) {
@@ -199,8 +210,9 @@ export const PaymentScreen = ({ navigation, route }) => {
                 onCancel={cancelPayment}
                 onRetry={() => {
                     actions.setError(null);
-                            createPayment();
-                        }}
+                    paymentCreateLockRef.current = false;
+                    createPaymentRef.current();
+                }}
             />
         );
     }

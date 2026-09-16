@@ -17,27 +17,20 @@ export const PaymentApi = {
         const { 
             returnUrl = 'icebergapp://payment-result', 
             preauthorization = false,
-            paymentMethodType = 'sbp' // По умолчанию СБП
+            paymentMethodType = 'sbp'
         } = options;
-        
-        console.log('💳 Creating payment:', {
-            orderId,
-            returnUrl,
-            preauthorization,
-            paymentMethodType
-        });
 
         try {
-            const response = await api.post(`/api/payments/orders/${orderId}/create`, {
+            return await api.post(`/api/payments/orders/${orderId}/create`, {
                 returnUrl,
                 preauthorization,
                 paymentMethodType
             });
-
-            console.log('✅ Payment created:', response);
-            return response;
         } catch (error) {
-            console.error('❌ Payment creation error:', error);
+            console.error('❌ Payment creation error:', {
+                status: error?.response?.status,
+                message: error?.response?.data?.message || error.message
+            });
             throw error;
         }
     },
@@ -48,14 +41,10 @@ export const PaymentApi = {
      * @returns {Promise<Object>} Статус платежа
      */
     checkPaymentStatus: async (paymentId) => {
-        console.log('🔍 Checking payment status:', paymentId);
-
         try {
-            const response = await api.get(`/api/payments/status/${paymentId}`);
-            console.log('✅ Payment status:', response);
-            return response;
+            return await api.get(`/api/payments/status/${paymentId}`);
         } catch (error) {
-            console.error('❌ Error checking payment status:', error);
+            console.error('❌ Error checking payment status:', error?.response?.data?.message || error.message);
             throw error;
         }
     },
@@ -66,14 +55,10 @@ export const PaymentApi = {
      * @returns {Promise<Object>} Результат отмены
      */
     cancelPayment: async (paymentId) => {
-        console.log('❌ Canceling payment:', paymentId);
-
         try {
-            const response = await api.post(`/api/payments/${paymentId}/cancel`);
-            console.log('✅ Payment canceled:', response);
-            return response;
+            return await api.post(`/api/payments/${paymentId}/cancel`);
         } catch (error) {
-            console.error('❌ Error canceling payment:', error);
+            console.error('❌ Error canceling payment:', error?.response?.data?.message || error.message);
             throw error;
         }
     }

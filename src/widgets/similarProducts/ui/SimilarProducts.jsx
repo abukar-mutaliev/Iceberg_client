@@ -116,7 +116,6 @@ export const SimilarProducts = React.memo(({
                                 product={item}
                                 onPress={() => handleProductPress(item)}
                                 testID={`similar-product-${item.id}`}
-                                hideAddToCart
                             />
                         </View>
                     );

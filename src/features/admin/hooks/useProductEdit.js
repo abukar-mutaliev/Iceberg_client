@@ -25,14 +25,17 @@ export const useProductEdit = (productId, displayProduct) => {
     const loadProductStocks = useCallback(async (productId) => {
         try {
             // console.log('[useProductEdit] Загружаем остатки для продукта:', productId);
-            const response = await WarehouseService.getProductStock(productId);
+            const response = await WarehouseService.getProductStock(productId, { includeInactive: true });
 
             if (response?.data?.stocks) {
                 const warehouseStocks = response.data.stocks.map(stock => ({
                     warehouseId: stock.warehouseId,
-                    quantity: stock.quantity
+                    quantity: stock.quantity,
+                    reserved: stock.reserved || 0,
+                    available: stock.available,
+                    isMain: Boolean(stock.isMain),
+                    warehousePrice: stock.priceInfo?.warehousePrice ?? null
                 }));
-                // console.log('[useProductEdit] Загружены остатки продукта:', warehouseStocks);
                 return warehouseStocks;
             }
             return [];
@@ -121,12 +124,13 @@ export const useProductEdit = (productId, displayProduct) => {
                 loadProductStocks(displayProduct.id).then(warehouseStocks => {
                     if (isMountedRef.current) {
                         // Рассчитываем общее количество из остатков по складам
-                        const totalQuantity = warehouseStocks.reduce((sum, stock) => sum + (stock.quantity || 0), 0);
+                        const catalogQuantity = warehouseStocks.find((stock) => stock.isMain)?.quantity
+                            ?? warehouseStocks.reduce((sum, stock) => sum + (stock.quantity || 0), 0);
                         
                         setEditFormData(prev => ({
                             ...prev,
                             warehouseStocks: warehouseStocks,
-                            stockQuantity: totalQuantity.toString() // Автоматически обновляем общее количество
+                            stockQuantity: String(catalogQuantity)
                         }));
                         
                         console.log('[useProductEdit] Загружены остатки по складам:', {
@@ -188,17 +192,13 @@ export const useProductEdit = (productId, displayProduct) => {
         // Специальная обработка для остатков по складам - автоматически рассчитываем общее количество
         if (field === 'warehouseStocks') {
             const warehouseStocks = value || [];
-            const totalQuantity = warehouseStocks.reduce((sum, stock) => sum + (stock.quantity || 0), 0);
-            
-            console.log('[useProductEdit] Обновление остатков по складам:', {
-                warehouseStocks,
-                totalQuantity
-            });
+            const catalogQuantity = warehouseStocks.find((stock) => stock.isMain)?.quantity
+                ?? warehouseStocks.reduce((sum, stock) => sum + (stock.quantity || 0), 0);
             
             setEditFormData(prev => ({
                 ...prev,
                 [field]: value,
-                stockQuantity: totalQuantity.toString() // Автоматически обновляем общее количество
+                stockQuantity: String(catalogQuantity)
             }));
             
             // Сбрасываем ошибки
@@ -294,7 +294,16 @@ export const useProductEdit = (productId, displayProduct) => {
                 categories: editFormData.categories || [], // Изменено с category на categories
                 sku: editFormData.sku?.trim() || null,
                 isActive: editFormData.isActive,
-                warehouseStocks: editFormData.warehouseStocks || []
+                warehouseStocks: (editFormData.warehouseStocks || []).map((stock) => ({
+                    warehouseId: stock.warehouseId,
+                    quantity: stock.quantity,
+                    ...(stock.warehousePrice != null ? { warehousePrice: stock.warehousePrice } : {})
+                })),
+                warehouses: JSON.stringify((editFormData.warehouseStocks || []).map((stock) => ({
+                    warehouseId: stock.warehouseId,
+                    quantity: stock.quantity,
+                    ...(stock.warehousePrice != null ? { warehousePrice: stock.warehousePrice } : {})
+                })))
             };
 
             // console.log('[useProductEdit] Сохранение данных:', {

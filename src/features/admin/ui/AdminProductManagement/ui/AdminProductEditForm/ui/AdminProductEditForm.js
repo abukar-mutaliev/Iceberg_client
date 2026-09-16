@@ -209,11 +209,15 @@ export const AdminProductEditForm = ({
     // Функция для загрузки остатков продукта по складам
     const loadProductStocks = useCallback(async (productId) => {
         try {
-            const response = await WarehouseService.getProductStock(productId);
+            const response = await WarehouseService.getProductStock(productId, { includeInactive: true });
             if (response?.data?.stocks) {
                 return response.data.stocks.map(stock => ({
                     warehouseId: stock.warehouseId,
-                    quantity: stock.quantity
+                    quantity: stock.quantity,
+                    reserved: stock.reserved || 0,
+                    available: stock.available,
+                    isMain: Boolean(stock.isMain),
+                    warehousePrice: stock.priceInfo?.warehousePrice ?? null
                 }));
             }
             return [];
@@ -344,13 +348,18 @@ export const AdminProductEditForm = ({
                     productStocks={currentFormData.warehouseStocks || []}
                     onStocksChange={(stocks) => onFieldChange('warehouseStocks', stocks)}
                     error={errors.warehouseStocks}
+                    canSetWarehousePrice={Boolean(user?.admin?.isSuperAdmin || user?.isSuperAdmin)}
+                    allowedWarehouseIds={user?.role === 'EMPLOYEE' && user?.employee?.warehouseId
+                        ? [user.employee.warehouseId]
+                        : null}
+                    basePrice={currentFormData.boxPrice ? parseFloat(currentFormData.boxPrice) : null}
                 />
                 
                 {/* Поле только для отображения общего количества */}
                 <View style={styles.totalQuantityContainer}>
-                    <Text style={styles.totalQuantityLabel}>Общее количество на складах:</Text>
+                    <Text style={styles.totalQuantityLabel}>Доступно к заказу (главный склад):</Text>
                     <Text style={styles.totalQuantityValue}>
-                        {currentFormData.stockQuantity || '0'} шт.
+                        {currentFormData.stockQuantity || '0'} кор.
                     </Text>
                 </View>
             </FormSection>

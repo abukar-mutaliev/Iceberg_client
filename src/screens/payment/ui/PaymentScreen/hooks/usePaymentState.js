@@ -53,8 +53,7 @@ export const usePaymentState = (params = {}) => {
     }, [isSplitOrder, currentPaymentStep, orderId, orderNumber, totalAmount,
         waitingOrderId, waitingOrderNumber, waitingOrderAmount]);
 
-    // Действия для изменения состояния
-    const actions = {
+    const actions = useMemo(() => ({
         setPaymentUrl,
         setLoading,
         setError,
@@ -65,26 +64,44 @@ export const usePaymentState = (params = {}) => {
         setCurrentPaymentStep,
         setFirstPaymentCompleted,
         setSecondPaymentId
-    };
+    }), []);
+
+    const state = useMemo(() => ({
+        paymentUrl,
+        loading,
+        error,
+        paymentCompleted,
+        webViewLoading,
+        createdOrderId,
+        paymentId,
+        currentPaymentStep,
+        firstPaymentCompleted,
+        secondPaymentId,
+        currentPaymentId,
+        isSplitOrder,
+        waitingOrderAmount,
+        checkoutData,
+        usePreauthorization: routeUsePreauthorization
+    }), [
+        paymentUrl,
+        loading,
+        error,
+        paymentCompleted,
+        webViewLoading,
+        createdOrderId,
+        paymentId,
+        currentPaymentStep,
+        firstPaymentCompleted,
+        secondPaymentId,
+        currentPaymentId,
+        isSplitOrder,
+        waitingOrderAmount,
+        checkoutData,
+        routeUsePreauthorization
+    ]);
 
     return {
-        state: {
-            paymentUrl,
-            loading,
-            error,
-            paymentCompleted,
-            webViewLoading,
-            createdOrderId,
-            paymentId,
-            currentPaymentStep,
-            firstPaymentCompleted,
-            secondPaymentId,
-            currentPaymentId,
-            isSplitOrder,
-            waitingOrderAmount,
-            checkoutData,
-            usePreauthorization: routeUsePreauthorization
-        },
+        state,
         actions,
         currentOrderInfo
     };

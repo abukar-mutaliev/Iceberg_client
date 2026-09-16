@@ -201,7 +201,6 @@ export const SearchResultsScreen = () => {
                     product={item}
                     onPress={handleProductPress}
                     testID={`search-product-${item?.id || index}`}
-                    hideAddToCart
                 />
             </View>
         );

@@ -1,7 +1,10 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { GlobalAlert } from '@shared/ui/CustomAlert';
+
+const ANDROID_DOWNLOADS_DIR_KEY = 'invoice_saf_directory_uri';
 
 /**
  * Конвертирует blob в base64 строку
@@ -88,124 +91,109 @@ const checkBlobContent = async (pdfBlob) => {
     }
 };
 
+const savePdfToAndroidDownloads = async (base64Data, filename) => {
+    const saf = FileSystem.StorageAccessFramework;
+    if (Platform.OS !== 'android' || !saf?.requestDirectoryPermissionsAsync || !saf?.createFileAsync) {
+        return null;
+    }
+
+    const fileNameWithoutExt = filename.replace(/\.pdf$/i, '');
+
+    const writeToDirectory = async (directoryUri) => {
+        const fileUri = await saf.createFileAsync(directoryUri, fileNameWithoutExt, 'application/pdf');
+        await FileSystem.writeAsStringAsync(fileUri, base64Data, {
+            encoding: FileSystem.EncodingType.Base64,
+        });
+        return fileUri;
+    };
+
+    const storedDirectoryUri = await AsyncStorage.getItem(ANDROID_DOWNLOADS_DIR_KEY);
+    if (storedDirectoryUri) {
+        try {
+            return await writeToDirectory(storedDirectoryUri);
+        } catch (error) {
+            await AsyncStorage.removeItem(ANDROID_DOWNLOADS_DIR_KEY);
+        }
+    }
+
+    const initialUri = typeof saf.getUriForDirectoryInRoot === 'function'
+        ? saf.getUriForDirectoryInRoot('Download')
+        : null;
+    const permissions = await saf.requestDirectoryPermissionsAsync(initialUri);
+
+    if (!permissions?.granted || !permissions.directoryUri) {
+        return null;
+    }
+
+    await AsyncStorage.setItem(ANDROID_DOWNLOADS_DIR_KEY, permissions.directoryUri);
+    return writeToDirectory(permissions.directoryUri);
+};
+
 /**
- * Скачивает PDF файл и предлагает его открыть/поделиться
+ * Скачивает PDF и кладёт его туда, где пользователь его найдёт:
+ * Android — папка «Загрузки», иначе системное меню «Сохранить / Поделиться».
  */
 export const downloadPDFFile = async (pdfBlob, filename) => {
     try {
-        console.log('downloadPDFFile: начинаем обработку', { 
-            blobSize: pdfBlob.size, 
-            blobType: pdfBlob.type, 
-            filename 
-        });
-        
-        // Проверяем содержимое Blob безопасным способом
         await checkBlobContent(pdfBlob);
-        
-        const safeFilename = sanitizeFilename(filename);
-        
-        // Для React Native/Expo сразу используем base64 метод (наиболее совместимый)
-        console.log('downloadPDFFile: используем base64 метод сохранения');
-        const base64Data = await blobToBase64(pdfBlob);
-        
-        console.log('downloadPDFFile: base64 конвертация завершена, длина:', base64Data.length);
-        
-        const fileUri = `${FileSystem.documentDirectory}${safeFilename}`;
-        console.log('downloadPDFFile: сохраняем в:', fileUri);
 
-        // Записываем файл
+        const safeFilename = sanitizeFilename(filename);
+        const base64Data = await blobToBase64(pdfBlob);
+        const fileUri = `${FileSystem.cacheDirectory || FileSystem.documentDirectory}${safeFilename}`;
+
         await FileSystem.writeAsStringAsync(fileUri, base64Data, {
             encoding: FileSystem.EncodingType.Base64,
         });
 
-        console.log('PDF файл сохранен:', fileUri, 'методом: base64');
-        
-        // Проверяем целостность сохраненного файла
-        try {
-            const fileInfo = await FileSystem.getInfoAsync(fileUri);
-            console.log('downloadPDFFile: проверка файла:', {
-                exists: fileInfo.exists,
-                size: fileInfo.size,
-                uri: fileInfo.uri
-            });
-            
-            if (fileInfo.exists && fileInfo.size > 0) {
-                // Читаем первые несколько байт для проверки PDF сигнатуры
-                const firstBytes = await FileSystem.readAsStringAsync(fileUri, {
-                    encoding: FileSystem.EncodingType.Base64,
-                    length: 8, // Читаем первые 8 байт
-                    position: 0
-                });
-                
-                // Декодируем base64 и проверяем сигнатуру
-                const binaryStr = atob(firstBytes);
-                const signature = binaryStr.substring(0, 4);
-                console.log('downloadPDFFile: сигнатура сохраненного файла:', signature);
-                
-                if (!signature.startsWith('%PDF')) {
-                    console.error('downloadPDFFile: сохраненный файл поврежден! Неправильная сигнатура');
-                    throw new Error('Сохраненный PDF файл поврежден');
-                } else {
-                    console.log('downloadPDFFile: PDF файл прошел проверку целостности');
-                }
-            } else {
-                throw new Error('Файл не был сохранен или имеет нулевой размер');
-            }
-        } catch (verifyError) {
-            console.error('downloadPDFFile: ошибка при проверке файла:', verifyError);
-            throw new Error(`Ошибка проверки файла: ${verifyError.message}`);
+        const fileInfo = await FileSystem.getInfoAsync(fileUri);
+        if (!fileInfo.exists || !fileInfo.size) {
+            throw new Error('Файл не был сохранен или имеет нулевой размер');
         }
 
-        // Проверяем, доступен ли sharing на устройстве
-        const isSharingAvailable = await Sharing.isAvailableAsync();
-        
-        if (isSharingAvailable) {
-            // Показываем диалог с опциями
-            GlobalAlert.showInfo(
-                'Накладная готова',
-                'PDF накладная успешно сформирована. Что вы хотите сделать?',
-                [
-                    {
-                        text: 'Открыть',
-                        style: 'primary',
-                        onPress: () => openFile(fileUri, safeFilename)
-                    },
-                    {
-                        text: 'Поделиться',
-                        style: 'primary',
-                        onPress: () => shareFile(fileUri, safeFilename)
-                    },
-                    {
-                        text: 'Закрыть',
-                        style: 'cancel'
-                    }
-                ]
-            );
-        } else {
-            GlobalAlert.showSuccess(
-                'Накладная сохранена',
-                `Файл ${safeFilename} сохранен в папке приложения`
-            );
+        const firstBytes = await FileSystem.readAsStringAsync(fileUri, {
+            encoding: FileSystem.EncodingType.Base64,
+            length: 8,
+            position: 0
+        });
+        const signature = atob(firstBytes).substring(0, 4);
+        if (!signature.startsWith('%PDF')) {
+            throw new Error('Сохраненный PDF файл поврежден');
+        }
+
+        let savedToDownloads = false;
+        let publicPath = null;
+
+        try {
+            publicPath = await savePdfToAndroidDownloads(base64Data, safeFilename);
+            savedToDownloads = Boolean(publicPath);
+        } catch (androidSaveError) {
+            console.warn('Не удалось сохранить PDF в Загрузки:', androidSaveError?.message);
+        }
+
+        if (!savedToDownloads) {
+            const isSharingAvailable = await Sharing.isAvailableAsync();
+            if (!isSharingAvailable) {
+                throw new Error('Не удалось сохранить файл в доступную папку устройства');
+            }
+            await shareFile(fileUri, safeFilename);
         }
 
         return {
             success: true,
-            path: fileUri,
-            filename: safeFilename
+            path: publicPath || fileUri,
+            filename: safeFilename,
+            savedToDownloads
         };
 
     } catch (error) {
         console.error('Ошибка при сохранении PDF файла:', error);
-        
+
         GlobalAlert.showError(
             'Ошибка',
             `Не удалось сохранить файл: ${error.message}`
         );
 
-        return {
-            success: false,
-            error: error.message
-        };
+        throw error;
     }
 };
 

@@ -76,7 +76,9 @@ export {
     selectWaitingStockCount,
     selectWaitingStockCountFromCounts,
     selectWaitingStockCountCombined,
-    selectSupplierWaitingStockCount
+    selectSupplierWaitingStockCount,
+    selectActiveOrdersCount,
+    selectActiveOrdersCountFromCounts
 } from './model/selectors';
 
 // Хуки
@@ -145,7 +147,7 @@ export {
 } from './lib/utils';
 
 // Константы
-export { CONSTANTS } from './lib/constants';
+export { CONSTANTS, getActiveOrderStatuses, preferNewerStatus, getStatusProgress } from './lib/constants';
 
 // Константы для альтернативных предложений
 export {

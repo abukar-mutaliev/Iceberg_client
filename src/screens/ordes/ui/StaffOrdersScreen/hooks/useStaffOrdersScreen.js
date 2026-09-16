@@ -359,7 +359,11 @@ export const useStaffOrdersScreen = () => {
             setDownloadingInvoices(prev => new Set([...prev, orderId]));
             const result = await downloadInvoice(orderId);
             if (result.success) {
-                showSuccess(`Накладная "${result.filename}" успешно сохранена`);
+                showSuccess(
+                    result.savedToDownloads
+                        ? `Накладная "${result.filename}" сохранена в папку «Загрузки»`
+                        : `Накладная "${result.filename}" готова. Сохраните её через открывшееся меню в «Файлы» или «Загрузки».`
+                );
             } else {
                 showError('Ошибка', result.error || 'Не удалось скачать накладную');
             }
@@ -433,21 +437,35 @@ export const useStaffOrdersScreen = () => {
             }
 
             if (result.success) {
-                if (!canViewAllOrders && selectedOrder) {
+                if (canViewAllOrders && selectedOrder && selectedStatus) {
+                    dispatch(updateOrderInList({
+                        orderId: selectedOrder.id,
+                        updates: {
+                            status: selectedStatus,
+                            ...(selectedStatus === 'IN_DELIVERY'
+                                ? { assignedToId: null, assignedTo: null }
+                                : {})
+                        }
+                    }));
+                } else if (!canViewAllOrders && selectedOrder) {
                     dispatch(setLocalOrderAction({
                         orderId: selectedOrder.id,
                         action: 'completed',
                         value: true
                     }));
-                    
-                    const newStatus = getNextStatusAfterComplete(actualProcessingRole, selectedOrder.status);
+
+                    const newStatus = actualProcessingRole === 'COURIER' && selectedOrder.status === 'IN_DELIVERY'
+                        ? 'DELIVERED'
+                        : (result.data?.result?.finalStatus
+                            || getNextStatusAfterComplete(actualProcessingRole, selectedOrder.status));
+                    const keepAssignee = actualProcessingRole === 'COURIER'
+                        && newStatus === 'IN_DELIVERY';
                     
                     dispatch(updateOrderInList({
                         orderId: selectedOrder.id,
                         updates: {
                             status: newStatus,
-                            assignedToId: null,
-                            assignedTo: null
+                            ...(keepAssignee ? {} : { assignedToId: null, assignedTo: null })
                         }
                     }));
                     

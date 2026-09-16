@@ -13,6 +13,7 @@ import {
     ProfileIcon,
     ChatIcon,
 } from '@shared/ui/Icon/TabBarIcons';
+import { useCartAvailability } from '@entities/cart';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { selectWaitingStockCountCombined, selectSupplierWaitingStockCount } from '@entities/order';
 import { selectRoomsList } from '@entities/chat/model/selectors';
@@ -61,6 +62,7 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
     useChatRoomsBootstrap();
     const insets = useSafeAreaInsets();
     const tabBarHeight = 80 + insets.bottom;
+    const { isCartAvailable } = useCartAvailability();
     const { currentUser } = useAuth();
     const { hideTabBar, showTabBar, isTabBarVisible } = useTabBar();
     const { colors, isDark } = useTheme();
@@ -248,12 +250,12 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
         return state.routes.filter(route => {
             if (route.name === 'Catalog') return false;
             if (route.name === 'Favourites') return false; // Скрываем вкладку "Избранное"
-            if (route.name === 'Cart') return false;
+            if (route.name === 'Cart' && !isCartAvailable) return false;
             if (route.name === 'Orders' && !isOrdersAvailable) return false;
             if (route.name === 'ChatList' && (!currentUser || currentUser?.role === 'SUPPLIER')) return false;
             return true;
         });
-    }, [state.routes, isOrdersAvailable, currentUser]);
+    }, [state.routes, isCartAvailable, isOrdersAvailable, currentUser]);
 
     const handleTabPress = (route, visibleIndex, actualIndex) => {
         const now = Date.now();

@@ -31,15 +31,20 @@ export const ProcessingRoleAssignment = ({
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
-  const resolvedRoleOptions = Array.isArray(roleOptions) && roleOptions.length > 0
+  // Назначаемые должности: сборку, упаковку и смену ведёт менеджер.
+  const assignableRoles = new Set([
+    PROCESSING_ROLES.MANAGER,
+    PROCESSING_ROLES.COURIER
+  ]);
+
+  const resolvedRoleOptions = (Array.isArray(roleOptions) && roleOptions.length > 0
     ? roleOptions
-    : Object.values(PROCESSING_ROLES)
-        .filter(role => role !== 'QUALITY_CHECKER')
-        .map((role) => ({
-          value: role,
-          label: PROCESSING_ROLE_LABELS[role],
-          description: PROCESSING_ROLE_DESCRIPTIONS[role]
-        }));
+    : Object.values(PROCESSING_ROLES).map((role) => ({
+        value: role,
+        label: PROCESSING_ROLE_LABELS[role],
+        description: PROCESSING_ROLE_DESCRIPTIONS[role]
+      }))
+  ).filter((roleOption) => assignableRoles.has(roleOption?.value));
 
   const handleRoleSelect = (role) => {
     setSelectedRole(role);

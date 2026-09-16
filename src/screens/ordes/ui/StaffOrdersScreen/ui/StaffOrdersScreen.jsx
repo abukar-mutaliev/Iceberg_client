@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { OrderCard } from '@entities/order/ui/OrderCard';
 import { orderStateHelpers } from '@entities/order/lib/orderStateHelpers';
-import { CONSTANTS, isOrderStatusMatchingRole, canEmployeeTakeOrderByRole, getNextStatusAfterComplete } from '@entities/order';
+import { CONSTANTS, isOrderStatusMatchingRole, canEmployeeTakeOrderByRole } from '@entities/order';
 import { useStaffOrdersScreen } from '../hooks/useStaffOrdersScreen';
 import { StatusUpdateModal } from '../ui/StatusUpdateModal';
 import { OrdersHeader } from '../ui/OrdersHeader';
@@ -69,20 +69,28 @@ EmptyOrdersList.displayName = 'EmptyOrdersList';
 
 // ============== Логика прав доступа ==============
 
-const useOrderPermissions = (currentUser, actualProcessingRole, showHistory) => {
-  return useMemo(() => ({
-    canWorkWithOrders: currentUser?.role !== 'ADMIN' && 
-                       ['PICKER', 'COURIER'].includes(actualProcessingRole),
-    canUpdateOrderStatus: (status) => {
-      if (CONSTANTS.COMPLETED_STATUSES.includes(status)) return false;
-      if (currentUser?.role === 'ADMIN') return false;
-      if (showHistory && actualProcessingRole !== 'COURIER') return false;
-      
-      if (!isOrderStatusMatchingRole(actualProcessingRole, status)) return false;
-      
-      return ['PICKER', 'COURIER'].includes(actualProcessingRole);
-    },
-  }), [currentUser?.role, actualProcessingRole, showHistory]);
+const MANAGER_LIKE_ROLES = ['MANAGER', 'SUPERVISOR'];
+
+const useOrderPermissions = (currentUser, actualProcessingRole, showHistory, canViewAllOrders) => {
+  return useMemo(() => {
+    const isManagerLike = currentUser?.role === 'ADMIN' ||
+      MANAGER_LIKE_ROLES.includes(actualProcessingRole);
+
+    return {
+      canWorkWithOrders: currentUser?.role !== 'ADMIN' &&
+        ['PICKER', 'COURIER'].includes(actualProcessingRole),
+      canUpdateOrderStatus: (status) => {
+        if (CONSTANTS.COMPLETED_STATUSES.includes(status)) return false;
+        if (showHistory) return false;
+
+        if (isManagerLike || canViewAllOrders) return true;
+
+        if (!isOrderStatusMatchingRole(actualProcessingRole, status)) return false;
+
+        return ['PICKER', 'COURIER'].includes(actualProcessingRole);
+      },
+    };
+  }, [currentUser?.role, actualProcessingRole, showHistory, canViewAllOrders]);
 };
 
 // ============== Логика статуса заказа ==============
@@ -91,11 +99,10 @@ const useOrderStatus = (order, localAction, actualProcessingRole, currentUser) =
   return useMemo(() => {
     const isCompleted = localAction?.completed;
     const isCompletedStatus = CONSTANTS.COMPLETED_STATUSES.includes(order.status);
+    // Список уже обновляется реальным следующим статусом (IN_DELIVERY).
+    // Повторно применять getNextStatusAfterComplete нельзя: у курьера
+    // IN_DELIVERY → DELIVERED, и карточка показывает «Доставлен».
     const isRecentlyProcessed = isCompleted && !isCompletedStatus;
-    
-    const displayStatus = isRecentlyProcessed
-      ? getNextStatusAfterComplete(actualProcessingRole, order.status)
-      : order.status;
 
     const isAssignedToMe = Boolean(
       order.assignedTo?.id && 
@@ -104,12 +111,12 @@ const useOrderStatus = (order, localAction, actualProcessingRole, currentUser) =
     );
 
     return {
-      displayStatus,
+      displayStatus: order.status,
       isRecentlyProcessed,
       isAssignedToMe,
       isLocallyTaken: localAction?.taken,
     };
-  }, [order.status, localAction, actualProcessingRole, currentUser]);
+  }, [order.status, order.assignedTo?.id, localAction, currentUser]);
 };
 
 // ============== Компонент заказа ==============
@@ -145,11 +152,14 @@ const OrderItem = React.memo(({
   }
 
   const canUpdateStatus = permissions.canUpdateOrderStatus(item.status) &&
-    (orderStatus.isAssignedToMe || orderStatus.isLocallyTaken);
+    (canViewAllOrders || orderStatus.isAssignedToMe || orderStatus.isLocallyTaken);
 
   const canTakeOrder = permissions.canWorkWithOrders &&
                        canEmployeeTakeOrderByRole(actualProcessingRole, item.status) &&
                        orderStateHelpers.canTakeOrder(item, localAction, currentUser);
+
+  const canReleaseOrder = permissions.canWorkWithOrders &&
+    (orderStatus.isAssignedToMe || orderStatus.isLocallyTaken);
 
   return (
     <OrderCard
@@ -159,7 +169,7 @@ const OrderItem = React.memo(({
       showActions
       onStatusUpdate={canUpdateStatus ? onStatusUpdate : null}
       onTakeOrder={canTakeOrder ? onTakeOrder : null}
-      onReleaseOrder={permissions.canWorkWithOrders && canUpdateStatus ? onReleaseOrder : null}
+      onReleaseOrder={canReleaseOrder ? onReleaseOrder : null}
       onDownloadInvoice={onDownloadInvoice}
       canTake={canTakeOrder}
       isTakenByMe={permissions.canWorkWithOrders && orderStateHelpers.isTakenByCurrentUser(item, localAction, currentUser)}
@@ -232,7 +242,7 @@ const StaffOrdersScreenContent = () => {
     waitingStockCount,
   } = useStaffOrdersScreen();
 
-  const permissions = useOrderPermissions(currentUser, actualProcessingRole, showHistory);
+  const permissions = useOrderPermissions(currentUser, actualProcessingRole, showHistory, canViewAllOrders);
 
   const handleGoBack = useCallback(() => {
     navigation.goBack();

@@ -307,10 +307,16 @@ export const useOrders = () => {
             
             console.log('Размер Blob:', response.size, 'байт');
             
-            // Обрабатываем скачивание файла напрямую
-            await downloadPDFFile(response, filename);
-            
-            return { success: true, filename };
+            const result = await downloadPDFFile(response, filename);
+            if (!result?.success) {
+                throw new Error(result?.error || 'Не удалось сохранить накладную');
+            }
+
+            return {
+                success: true,
+                filename: result.filename || filename,
+                savedToDownloads: Boolean(result.savedToDownloads)
+            };
         } catch (error) {
             console.error('Ошибка при скачивании накладной:', error);
             return { success: false, error: error.message || 'Ошибка при скачивании накладной' };

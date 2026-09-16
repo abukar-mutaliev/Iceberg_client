@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { StyleSheet, ScrollView, View, ActivityIndicator, Text, StatusBar } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import { ProfileInfo } from "@features/profile";
 import { ProfileHeader } from "@widgets/ProfileHeader";
 import { fetchProfile, selectProfileLoading, selectProfile, selectProfileError, clearProfile } from '@entities/profile';
+import { fetchOrderCounts } from '@entities/order';
 import { normalize } from '@shared/lib/normalize';
 import { useAuth } from "@entities/auth/hooks/useAuth";
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
@@ -73,6 +74,22 @@ export const ProfileScreen = ({ onProductPress }) => {
             headerShown: false,
         });
     }, [navigation]);
+
+    useFocusEffect(
+        useCallback(() => {
+            const isStaff = currentUser?.role === 'ADMIN' || currentUser?.role === 'EMPLOYEE';
+            const hasEmployeeData = currentUser?.role !== 'EMPLOYEE' || currentUser?.employee?.id;
+
+            if (isAuthenticated && isStaff && hasEmployeeData) {
+                dispatch(fetchOrderCounts());
+            }
+        }, [
+            dispatch,
+            isAuthenticated,
+            currentUser?.role,
+            currentUser?.employee?.id,
+        ])
+    );
 
     // Показываем загрузку только при первой загрузке
     if (isInitialLoading && isProfileLoading) {

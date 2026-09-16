@@ -73,6 +73,9 @@ const ProductFormContent = React.memo(({
     canPublish,
     submitAction,
     user,
+    canManageWarehouseLayout,
+    canSetWarehousePrice,
+    allowedWarehouseIds,
     styles,
     colors,
     isDark
@@ -234,7 +237,7 @@ const ProductFormContent = React.memo(({
                 </>
             ), 97)}
 
-            {renderSection("📦 Складские запасы", (
+            {canManageWarehouseLayout ? renderSection("📦 Складские запасы", (
                 <>
                     <View style={styles.pickerCard}>
                         <WarehouseSelectionInline
@@ -242,6 +245,8 @@ const ProductFormContent = React.memo(({
                             onSelectWarehouseQuantities={handleWarehouseQuantitiesChange}
                             basePrice={formData.boxPrice ? parseFloat(formData.boxPrice) : null}
                             isAdmin={user?.role === 'ADMIN'}
+                            canSetWarehousePrice={canSetWarehousePrice}
+                            allowedWarehouseIds={allowedWarehouseIds}
                         />
                         {errors.warehouseQuantities ? (
                             <Text style={styles.sectionError}>{errors.warehouseQuantities}</Text>
@@ -251,23 +256,21 @@ const ProductFormContent = React.memo(({
                     {formData.warehouseQuantities?.length > 0 ? (
                         <View style={styles.stockSummaryCard}>
                             <View style={styles.stockSummaryRow}>
-                                <Text style={styles.stockSummaryLabel}>Общее количество коробок:</Text>
+                                <Text style={styles.stockSummaryLabel}>Доступно к заказу (главный склад):</Text>
                                 <Text style={styles.stockSummaryValue}>
-                                    {formData.warehouseQuantities.reduce((sum, item) => sum + item.quantity, 0)}
+                                    {formData.warehouseQuantities.find((item) => item.isMain)?.quantity || 0} кор.
+                                </Text>
+                            </View>
+                            <View style={styles.stockSummaryRow}>
+                                <Text style={styles.stockSummaryLabel}>Всего на складах:</Text>
+                                <Text style={styles.stockSummaryValue}>
+                                    {formData.warehouseQuantities.reduce((sum, item) => sum + (item.quantity || 0), 0)} кор.
                                 </Text>
                             </View>
                         </View>
-                    ) : (
-                        renderInputCard(
-                            "Количество коробок на складе",
-                            String(formData.stockQuantity || ''),
-                            (text) => handleChange('stockQuantity', text),
-                            "Количество коробок",
-                            { keyboardType: "numeric", error: errors.stockQuantity, required: true, editable: isFormEditable }
-                        )
-                    )}
+                    ) : null}
                 </>
-            ), 96)}
+            ), 96) : null}
 
             {canPublish ? (
                 <TouchableOpacity
@@ -336,6 +339,11 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
             user && (user.role === 'ADMIN' || user.role === 'EMPLOYEE'),
         [user?.role]
     );
+    const canManageWarehouseLayout = canChangeSupplier;
+    const canSetWarehousePrice = Boolean(user?.admin?.isSuperAdmin || user?.isSuperAdmin);
+    const allowedWarehouseIds = user?.role === 'EMPLOYEE' && user?.employee?.warehouseId
+        ? [user.employee.warehouseId]
+        : null;
     const canPublishProduct = useMemo(() =>
             user?.role === 'ADMIN' && !!product?.id,
         [user?.role, product?.id]
@@ -476,64 +484,18 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
         try {
             setLoadingWarehouses(true);
             console.log('[EditProductModal] Вызываем API findWarehousesWithProduct с productId:', productId);
-            const response = await WarehouseService.findWarehousesWithProduct(productId);
-            console.log('[EditProductModal] Полный ответ от API:', response);
-
-            if (response?.data) {
-                console.log('[EditProductModal] Данные в response.data:', response.data);
-
-                // Проверяем разные возможные структуры ответа
-                let warehouses = [];
-                console.log('[EditProductModal] Структура ответа сервера:', {
-                    hasData: !!response.data,
-                    dataKeys: response.data ? Object.keys(response.data) : [],
-                    warehousesInData: response.data?.warehouses ? 'present' : 'absent',
-                    warehousesLength: response.data?.warehouses?.length || 0,
-                    dataInData: response.data?.data ? 'present' : 'absent'
-                });
-
-                if (response.data.warehouses && Array.isArray(response.data.warehouses)) {
-                    warehouses = response.data.warehouses;
-                    console.log('[EditProductModal] Найдены склады в response.data.warehouses');
-                } else if (response.data.data && Array.isArray(response.data.data)) {
-                    warehouses = response.data.data;
-                    console.log('[EditProductModal] Найдены склады в response.data.data');
-                } else if (Array.isArray(response.data)) {
-                    warehouses = response.data;
-                    console.log('[EditProductModal] Найдены склады в response.data (массив)');
-                } else {
-                    console.log('[EditProductModal] Склады не найдены в стандартных местах');
-                }
-
-                console.log('[EditProductModal] Найденные склады в ответе:', warehouses);
-
-                if (warehouses.length > 0) {
-                    // Извлекаем склады с количествами и ценами из ответа
-                    const warehouseQuantities = warehouses.map(w => {
-                        const item = {
-                            warehouseId: w.warehouseId || w.id,
-                            quantity: w.quantity || w.stockQuantity || w.amount || 0
-                        };
-                        // Добавляем warehousePrice если он есть
-                        if (w.warehousePrice !== undefined && w.warehousePrice !== null) {
-                            item.warehousePrice = w.warehousePrice;
-                        }
-                        // Добавляем stopPrice если он есть (хотя обычно его нет при загрузке складов)
-                        if (w.stopPrice !== undefined && w.stopPrice !== null) {
-                            item.stopPrice = w.stopPrice;
-                        }
-                        return item;
-                    });
-                    console.log('[EditProductModal] Загружены склады продукта с количествами и ценами:', warehouseQuantities);
-                    return warehouseQuantities;
-                } else {
-                    console.log('[EditProductModal] Склады не найдены для товара:', productId);
-                    return [];
-                }
-            } else {
-                console.log('[EditProductModal] Ответ не содержит данных или data поля:', response);
-                return [];
+            const response = await WarehouseService.getProductStock(productId, { includeInactive: true });
+            const stocks = response?.data?.stocks;
+            if (Array.isArray(stocks) && stocks.length > 0) {
+                return stocks.map((stock) => ({
+                    warehouseId: stock.warehouseId,
+                    quantity: stock.quantity || 0,
+                    reserved: stock.reserved || 0,
+                    isMain: Boolean(stock.isMain),
+                    warehousePrice: stock.priceInfo?.warehousePrice ?? null
+                }));
             }
+            return [];
         } catch (error) {
             console.error('[EditProductModal] Ошибка загрузки складов продукта:', error);
             console.error('[EditProductModal] Детали ошибки:', error.response?.data || error.message);
@@ -799,11 +761,12 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
 
     useEffect(() => {
         if (formData.warehouseQuantities && formData.warehouseQuantities.length > 0) {
-            const totalBoxes = formData.warehouseQuantities.reduce((sum, item) => sum + item.quantity, 0);
-            if (totalBoxes > 0 && (!formData.stockQuantity || formData.stockQuantity !== totalBoxes.toString())) {
+            const catalogBoxes = formData.warehouseQuantities.find((item) => item.isMain)?.quantity ?? 0;
+            const nextValue = String(catalogBoxes);
+            if (formData.stockQuantity !== nextValue) {
                 setFormData(prev => ({
                     ...prev,
-                    stockQuantity: totalBoxes.toString()
+                    stockQuantity: nextValue
                 }));
             }
         }
@@ -905,9 +868,10 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
             }
         }
 
-        if (!formData.warehouseQuantities || formData.warehouseQuantities.length === 0) {
-            if (!formData.stockQuantity) {
-                newErrors.stockQuantity = 'Введите количество коробок на складе';
+        if (canManageWarehouseLayout) {
+            const items = formData.warehouseQuantities || [];
+            if (items.length === 0) {
+                newErrors.warehouseQuantities = "Выберите склады и укажите количество коробок";
                 isValid = false;
             }
         }
@@ -935,15 +899,9 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
             isValid = false;
         }
 
-        // Валидация выбора складов с количествами (предупреждение, не ошибка)
-        if (!formData.warehouseQuantities || formData.warehouseQuantities.length === 0) {
-            newErrors.warehouseQuantities = "Не выбраны склады. Изменения будут применены ко всем складам";
-            // isValid остается true - это предупреждение
-        }
-
         setErrors(newErrors);
         return isValid;
-    }, [formData, canChangeSupplier]);
+    }, [formData, canChangeSupplier, canManageWarehouseLayout]);
 
     // ИСПРАВЛЕННЫЙ обработчик отправки формы
     const handleSubmit = useCallback(async (options = {}) => {
@@ -980,14 +938,18 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
                 supplierId: canChangeSupplier ? formData.supplierId : undefined,
             };
 
-            if (hasWarehouseQuantities) {
-                productData.warehouses = JSON.stringify(formData.warehouseQuantities);
-            } else if (!product || !product.id) {
-                productData.warehouses = "all";
-            }
-
-            if (product && product.id && hasWarehouseQuantities) {
-                productData.warehouseStocks = formData.warehouseQuantities;
+            if (canManageWarehouseLayout && hasWarehouseQuantities) {
+                const payload = formData.warehouseQuantities.map((item) => ({
+                    warehouseId: item.warehouseId,
+                    quantity: item.quantity,
+                    ...(canSetWarehousePrice && item.warehousePrice != null
+                        ? { warehousePrice: item.warehousePrice }
+                        : {})
+                }));
+                productData.warehouses = JSON.stringify(payload);
+                if (product && product.id) {
+                    productData.warehouseStocks = payload;
+                }
             }
 
             console.log('[EditProductModal] Данные для отправки:', {
@@ -1181,6 +1143,9 @@ export const EditProductModal = React.memo(({ visible, onClose, product, onSave 
                         canPublish={canPublishProduct}
                         submitAction={submitAction}
                         user={user}
+                        canManageWarehouseLayout={canManageWarehouseLayout}
+                        canSetWarehousePrice={canSetWarehousePrice}
+                        allowedWarehouseIds={allowedWarehouseIds}
                         styles={styles}
                         colors={colors}
                         isDark={isDark}

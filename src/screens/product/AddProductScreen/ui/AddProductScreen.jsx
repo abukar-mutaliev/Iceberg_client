@@ -38,6 +38,11 @@ export const AddProductScreen = () => {
 
     const isSupplier = user?.role === 'SUPPLIER';
     const isAdminOrEmployee = user?.role === 'ADMIN' || user?.role === 'EMPLOYEE';
+    const canSetWarehousePrice = Boolean(user?.admin?.isSuperAdmin || user?.isSuperAdmin);
+    const employeeWarehouseId = user?.employee?.warehouseId || null;
+    const allowedWarehouseIds = user?.role === 'EMPLOYEE' && employeeWarehouseId
+        ? [employeeWarehouseId]
+        : null;
     const [textAreaHeight, setTextAreaHeight] = useState(30);
     const [nameInputHeight, setNameInputHeight] = useState(30);
 
@@ -176,18 +181,24 @@ export const AddProductScreen = () => {
         };
     }, []);
 
-    // Автоматически рассчитываем общее количество коробок на основе выбранных складов
+    // Витрина = коробки на главном складе (isMain), не сумма всех складов
     useEffect(() => {
-        if (formData.warehouseQuantities && formData.warehouseQuantities.length > 0) {
-            const totalBoxes = formData.warehouseQuantities.reduce((sum, item) => sum + item.quantity, 0);
-            if (totalBoxes > 0 && (!formData.stockQuantity || formData.stockQuantity !== totalBoxes.toString())) {
-                setFormData(prev => ({
-                    ...prev,
-                    stockQuantity: totalBoxes.toString()
-                }));
-            }
+        if (!isAdminOrEmployee) {
+            return;
         }
-    }, [formData.warehouseQuantities]);
+        const items = formData.warehouseQuantities || [];
+        const mainItem = items.find((item) => item.isMain);
+        const catalogBoxes = mainItem
+            ? mainItem.quantity
+            : 0;
+        const nextValue = String(catalogBoxes);
+        if (formData.stockQuantity !== nextValue) {
+            setFormData(prev => ({
+                ...prev,
+                stockQuantity: nextValue
+            }));
+        }
+    }, [formData.warehouseQuantities, formData.stockQuantity, isAdminOrEmployee]);
 
     // Обработка изменения полей формы
     const handleChange = (field, value) => {
@@ -471,34 +482,15 @@ export const AddProductScreen = () => {
             }
         }
 
-        if (!formData.stockQuantity || !formData.stockQuantity.trim()) {
-            newErrors.stockQuantity = "Введите количество коробок на складе";
-            isValid = false;
-        } else if (isNaN(parseInt(formData.stockQuantity)) || parseInt(formData.stockQuantity) < 0) {
-            newErrors.stockQuantity = "Количество коробок должно быть числом больше или равно 0";
-            isValid = false;
-        }
-
         if (!formData.images || formData.images.length === 0) {
             newErrors.images = "Добавьте хотя бы одну фотографию товара";
             isValid = false;
         }
 
-        if ((isSupplier || isAdminOrEmployee) && (!formData.warehouseQuantities || formData.warehouseQuantities.length === 0)) {
-            newErrors.warehouseQuantities = "Выберите склады и укажите количество коробок для каждого склада";
-            isValid = false;
-        }
-
-        if (formData.warehouseQuantities && formData.warehouseQuantities.length > 0) {
-            const totalBoxes = formData.warehouseQuantities.reduce((sum, item) => sum + item.quantity, 0);
-
-            if (totalBoxes === 0) {
+        if (isAdminOrEmployee) {
+            const items = formData.warehouseQuantities || [];
+            if (items.length === 0 || items.every((item) => (item.quantity || 0) <= 0)) {
                 newErrors.warehouseQuantities = "Укажите количество коробок хотя бы для одного склада";
-                isValid = false;
-            }
-
-            if (formData.stockQuantity && parseInt(formData.stockQuantity) !== totalBoxes) {
-                newErrors.stockQuantity = `Общее количество (${formData.stockQuantity}) не совпадает с суммой по складам (${totalBoxes})`;
                 isValid = false;
             }
         }
@@ -556,13 +548,22 @@ export const AddProductScreen = () => {
                 price: formData.price,
                 itemsPerBox: formData.itemsPerBox || 1,
                 boxPrice: formData.boxPrice || null,
-                stockQuantity: formData.stockQuantity,
+                stockQuantity: isAdminOrEmployee ? (formData.stockQuantity || 0) : 0,
                 weight: formData.weight || null,
                 discount: formData.discount || null,
                 description: formData.description || '',
                 supplierId: isSupplier ? undefined : formData.supplierId,
-                warehouses: formData.warehouseQuantities.length > 0 ? JSON.stringify(formData.warehouseQuantities) : "all",
             };
+
+            if (isAdminOrEmployee && formData.warehouseQuantities.length > 0) {
+                productData.warehouses = JSON.stringify(formData.warehouseQuantities.map((item) => ({
+                    warehouseId: item.warehouseId,
+                    quantity: item.quantity,
+                    ...(canSetWarehousePrice && item.warehousePrice != null
+                        ? { warehousePrice: item.warehousePrice }
+                        : {})
+                })));
+            }
 
             if (!formData.images || formData.images.length === 0) {
                 showCustomAlert({
@@ -862,14 +863,16 @@ export const AddProductScreen = () => {
                             </View>
                             <View style={styles.additionalPriceInfo}>
                                 <Text style={styles.additionalPriceNote}>
-                                    💡 Цены для складов и фургонов указываются при выборе складов
+                                    {canSetWarehousePrice
+                                        ? '💡 Закупочную цену склада можно указать при выборе складов'
+                                        : '💡 Клиенты заказывают с главного склада, не с филиала'}
                                 </Text>
                             </View>
                         </>
                     ), 97)}
 
-                    {/* Складские запасы */}
-                    {renderSection("📦 Складские запасы", (
+                    {/* Складские запасы — только сотрудники склада. Поставщик не размещает товар. */}
+                    {isAdminOrEmployee ? renderSection("📦 Складские запасы", (
                         <>
                             <View style={styles.pickerCard}>
                                 <WarehouseSelectionInline
@@ -877,6 +880,8 @@ export const AddProductScreen = () => {
                                     onSelectWarehouseQuantities={handleWarehouseQuantitiesChange}
                                     basePrice={formData.boxPrice ? parseFloat(formData.boxPrice) : null}
                                     isAdmin={user?.role === 'ADMIN'}
+                                    canSetWarehousePrice={canSetWarehousePrice}
+                                    allowedWarehouseIds={allowedWarehouseIds}
                                 />
                                 {errors.warehouseQuantities ? (
                                     <Text style={styles.sectionError}>{errors.warehouseQuantities}</Text>
@@ -886,15 +891,21 @@ export const AddProductScreen = () => {
                             {formData.warehouseQuantities.length > 0 && (
                                 <View style={styles.stockSummaryCard}>
                                     <View style={styles.stockSummaryRow}>
-                                        <Text style={styles.stockSummaryLabel}>Общее количество коробок:</Text>
+                                        <Text style={styles.stockSummaryLabel}>Доступно к заказу (главный склад):</Text>
                                         <Text style={styles.stockSummaryValue}>
-                                            {formData.warehouseQuantities.reduce((sum, item) => sum + item.quantity, 0)}
+                                            {formData.warehouseQuantities.find((item) => item.isMain)?.quantity || 0} кор.
+                                        </Text>
+                                    </View>
+                                    <View style={styles.stockSummaryRow}>
+                                        <Text style={styles.stockSummaryLabel}>Всего на складах:</Text>
+                                        <Text style={styles.stockSummaryValue}>
+                                            {formData.warehouseQuantities.reduce((sum, item) => sum + (item.quantity || 0), 0)} кор.
                                         </Text>
                                     </View>
                                 </View>
                             )}
                         </>
-                    ), 96)}
+                    ), 96) : null}
 
                     {renderUploadProgress()}
 

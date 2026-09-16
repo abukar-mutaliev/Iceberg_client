@@ -157,12 +157,6 @@ export const CheckoutScreen = ({ navigation, route }) => {
 
         setLoading(true);
         try {
-            console.log('✅ Создание заказа перед оплатой', {
-                deliveryType,
-                deliveryFee: deliveryCost,
-                addressId: selectedAddress?.id
-            });
-            
             const result = await CartService.checkout({
                 addressId: selectedAddress?.id,
                 comment: formData.comment,
@@ -225,17 +219,6 @@ export const CheckoutScreen = ({ navigation, route }) => {
             }
 
             // Обычное завершение заказа - переходим к оплате
-            console.log('💳 Заказ создан, переход к оплате', {
-                orderId: order?.id,
-                orderNumber: order?.orderNumber,
-                totalAmount: order?.totalAmount,
-                itemsCount: stats.totalItems || 0,
-                boxesCount: stats.totalBoxes || 0
-            });
-
-            // НЕ очищаем корзину - она очистится после успешной оплаты в PaymentScreen
-            
-            // Переходим к экрану оплаты
             navigation.navigate('PaymentScreen', {
                 orderId: order?.id,
                 orderNumber: order?.orderNumber,
