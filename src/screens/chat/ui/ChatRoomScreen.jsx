@@ -17,7 +17,10 @@ export const ChatRoomScreen = ({route, navigation}) => {
     const {roomId, roomType: routeRoomType, draftPeerUserId} = route.params;
     const currentUserId = useSelector((s) => s.auth?.user?.id);
     const redirectedRef = useRef(false);
-    const [assistantCheckDone, setAssistantCheckDone] = useState(!roomId);
+    const initialRoomType = String(routeRoomType || '').toUpperCase();
+    const [assistantCheckDone, setAssistantCheckDone] = useState(
+        !roomId || ['GROUP', 'BROADCAST', 'PRODUCT', 'DIRECT'].includes(initialRoomType)
+    );
 
     // Получаем данные комнаты из Redux
     const roomDataRaw = useSelector((s) => (roomId ? s.chat?.rooms?.byId?.[roomId] : null));
@@ -32,6 +35,9 @@ export const ChatRoomScreen = ({route, navigation}) => {
     }, [roomId, draftPeerUserId, roomData?.type, routeRoomType]);
 
     const isAssistantChat = useMemo(() => {
+        if (normalizedRoomType === 'GROUP' || normalizedRoomType === 'BROADCAST' || normalizedRoomType === 'PRODUCT' || normalizedRoomType === 'DIRECT') {
+            return false;
+        }
         if (normalizedRoomType === 'ASSISTANT') return true;
         return isAssistantRoom(roomData);
     }, [normalizedRoomType, roomData]);

@@ -27,7 +27,7 @@ import { MainScreen } from "@screens/main/ui/MainScreen";
 import { ProfileScreen } from "@/screens/profile";
 import { ProfileEdit } from "@features/profile/ui/ProfileEdit";
 import { ChangePasswordScreen, SettingsScreen, NotificationSettings } from "@features/profile";
-import { HelpCenterScreen } from "@features/help";
+import { HelpCenterScreen, SupportAvatar, isOfficialSupportRoom } from "@features/help";
 import { AssistantChatScreen } from "@features/ai-assistant";
 import { ProductListScreen } from "@screens/product/ProductListScreen/ProductListScreen";
 import { ProductDetailScreen } from "@screens/product/ProductDetailScreen";
@@ -1183,11 +1183,25 @@ export const AppNavigator = () => {
                                         })}
                                     />
                                     <Stack.Screen
+                                        name="OrderDetails"
+                                        component={OrderDetailsClientScreen}
+                                        options={createScreenOptions({ unmountOnBlur: false, freezeOnBlur: true })}
+                                    />
+                                    <Stack.Screen
+                                        name="StaffOrderDetails"
+                                        component={OrderDetailsEmployeeScreen}
+                                        options={createScreenOptions({ unmountOnBlur: false, freezeOnBlur: true })}
+                                    />
+                                    <Stack.Screen
                                         name="ChatRoom"
                                         component={ChatRoomScreen}
                                         options={({ route, navigation }) => {
                                             const params = route?.params || {};
                                             const roomTitle = params.roomTitle || 'Чат';
+                                            const isSupportRoom = isOfficialSupportRoom({
+                                                title: roomTitle,
+                                                roomTitle,
+                                            });
                                             // Тёма-aware фон карточки и хедера: без этого в dark-режиме
                                             // во время slide-анимации видна белая "вспышка" под чатом,
                                             // пока ChatBackground (ImageBackground) ещё декодирует PNG.
@@ -1199,6 +1213,26 @@ export const AppNavigator = () => {
                                                 ...slideFromRight,
                                                 headerShown: true,
                                                 title: roomTitle,
+                                                headerTitleAlign: isSupportRoom ? 'left' : 'center',
+                                                headerTitle: isSupportRoom
+                                                    ? () => (
+                                                        <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }}>
+                                                            <SupportAvatar size="header" />
+                                                            <Text
+                                                                numberOfLines={1}
+                                                                style={{
+                                                                    marginLeft: 8,
+                                                                    fontSize: 17,
+                                                                    fontWeight: '600',
+                                                                    color: tint,
+                                                                    flexShrink: 1,
+                                                                }}
+                                                            >
+                                                                {roomTitle}
+                                                            </Text>
+                                                        </View>
+                                                    )
+                                                    : undefined,
                                                 headerBackTitle: '',
                                                 headerTransparent: false,
                                                 headerStatusBarHeight: 0,

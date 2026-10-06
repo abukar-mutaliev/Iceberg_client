@@ -18,10 +18,10 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { OrderApi } from '@entities/order';
+import { OrderApi, fetchPendingPaymentCount } from '@entities/order';
 import { Loader } from "@shared/ui/Loader";
 import { ReliableImage, normalizeImageSource } from '@shared/ui/ReliableImage';
-import { getOrderProgress } from '@shared/lib/orderUtils';
+import { getOrderProgress, wasOrderPaid } from '@shared/lib/orderUtils';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { ORDER_DETAILS_CLIENT_DARK_BACKGROUND, OrderDetailsScreenThemeProvider } from '@shared/ui/OrderDetailsStyles';
@@ -38,6 +38,7 @@ import {
 const ORDER_STATUSES = {
     PENDING: 'PENDING',
     PENDING_PAYMENT: 'PENDING_PAYMENT',
+    AWAITING_CONFIRMATION: 'AWAITING_CONFIRMATION',
     CONFIRMED: 'CONFIRMED',
     PICKING: 'PICKING',
     WAITING_STOCK: 'WAITING_STOCK',
@@ -50,6 +51,7 @@ const ORDER_STATUSES = {
 const ORDER_STATUS_LABELS = {
     [ORDER_STATUSES.PENDING]: 'Ожидает',
     [ORDER_STATUSES.PENDING_PAYMENT]: 'Ожидает оплату',
+    [ORDER_STATUSES.AWAITING_CONFIRMATION]: 'Ожидает подтверждения',
     [ORDER_STATUSES.CONFIRMED]: 'Подтвержден',
     [ORDER_STATUSES.PICKING]: 'Сборка',
     [ORDER_STATUSES.WAITING_STOCK]: 'Ожидает товар',
@@ -63,6 +65,7 @@ const ORDER_STATUS_LABELS = {
 const STATUS_ICONS = {
     [ORDER_STATUSES.PENDING]: 'schedule',
     [ORDER_STATUSES.PENDING_PAYMENT]: 'payment',
+    [ORDER_STATUSES.AWAITING_CONFIRMATION]: 'scale',
     [ORDER_STATUSES.CONFIRMED]: 'check-circle',
     [ORDER_STATUSES.PICKING]: 'inventory-2',
     [ORDER_STATUSES.WAITING_STOCK]: 'inventory',
@@ -76,6 +79,7 @@ const STATUS_ICONS = {
 const STATUS_GRADIENTS = {
     [ORDER_STATUSES.PENDING]: ['#FFA726', '#FFB74D'],
     [ORDER_STATUSES.PENDING_PAYMENT]: ['#FF9800', '#FFB74D'],
+    [ORDER_STATUSES.AWAITING_CONFIRMATION]: ['#8E24AA', '#AB47BC'],
     [ORDER_STATUSES.CONFIRMED]: ['#42A5F5', '#64B5F6'],
     [ORDER_STATUSES.PICKING]: ['#FFC107', '#FFD54F'],
     [ORDER_STATUSES.WAITING_STOCK]: ['#fd7e14', '#ff8c00'],
@@ -87,6 +91,7 @@ const STATUS_GRADIENTS = {
 
 // Активные статусы (показываем по умолчанию)
 const ACTIVE_STATUSES = [
+    ORDER_STATUSES.AWAITING_CONFIRMATION,
     ORDER_STATUSES.PENDING_PAYMENT,
     ORDER_STATUSES.PENDING,
     ORDER_STATUSES.CONFIRMED,
@@ -229,7 +234,7 @@ const resolveProductImageSource = (product) => {
 
 const canCancelOrder = (status, userRole = 'CLIENT') => {
     if (userRole === 'CLIENT') {
-        return [ORDER_STATUSES.PENDING_PAYMENT, ORDER_STATUSES.PENDING, ORDER_STATUSES.WAITING_STOCK].includes(status);
+        return [ORDER_STATUSES.AWAITING_CONFIRMATION, ORDER_STATUSES.PENDING_PAYMENT, ORDER_STATUSES.PENDING, ORDER_STATUSES.WAITING_STOCK].includes(status);
     }
     return [
         ORDER_STATUSES.PENDING,
@@ -390,6 +395,7 @@ const MyOrdersScreenContent = () => {
             if (response.status === 'success') {
                 const ordersData = response.data || [];
                 setOrders(ordersData);
+                dispatch(fetchPendingPaymentCount());
                 
                 // Вычисляем статистику только для активных заказов
                 const activeOrdersData = ordersData.filter(order => !ARCHIVED_STATUSES.includes(order.status));
@@ -448,7 +454,7 @@ const MyOrdersScreenContent = () => {
                 setRefreshing(false);
             }
         }
-    }, [hasAccess, dataLoaded, loadMyChoices]); // Добавили loadMyChoices для обновления выборов
+    }, [hasAccess, dataLoaded, loadMyChoices, dispatch]);
 
     // Обновляем ссылку на актуальную версию loadOrders
     useEffect(() => {
@@ -617,16 +623,14 @@ const MyOrdersScreenContent = () => {
                     showSuccess('Заказ успешно отменен');
                     
                     // Проверяем статус платежа и показываем информацию о возврате
-                    if (updatedOrder?.payment?.status === 'REFUNDED') {
-                        // Деньги возвращены - показываем алерт
+                    if (wasOrderPaid(updatedOrder?.payment) && updatedOrder?.payment?.status === 'REFUNDED') {
                         setTimeout(() => {
                             showSuccess(
                                 'Деньги возвращены',
                                 `Средства в размере ${order.totalAmount}₽ возвращены на ваш счет. Они поступят в течение 3-5 рабочих дней.`
                             );
                         }, 1000);
-                    } else if (updatedOrder?.payment?.status === 'COMPLETED') {
-                        // Платеж был завершен, но возврат еще не произошел
+                    } else if (wasOrderPaid(updatedOrder?.payment) && updatedOrder?.payment?.status === 'COMPLETED') {
                         setTimeout(() => {
                             showInfo(
                                 'Возврат средств',
@@ -932,7 +936,9 @@ const MyOrdersScreenContent = () => {
                                 color={colors.textInverse} 
                             />
                             <Text style={styles.statusText}>
-                                {ORDER_STATUS_LABELS[item.status]}
+                                {item.status === ORDER_STATUSES.PENDING_PAYMENT && item.priceConfirmedAt
+                                    ? 'Подтверждён — к оплате'
+                                    : ORDER_STATUS_LABELS[item.status]}
                             </Text>
                         </View>
                     </View>
@@ -1062,6 +1068,25 @@ const MyOrdersScreenContent = () => {
                         </TouchableOpacity>
                     )}
                     
+                    {(item.canPay || (item.status === ORDER_STATUSES.PENDING_PAYMENT && item.priceConfirmedAt)) && (
+                        <TouchableOpacity
+                            style={styles.choiceAction}
+                            onPress={() => {
+                                navigation.navigate('PaymentScreen', {
+                                    orderId: item.id,
+                                    orderNumber: item.orderNumber,
+                                    totalAmount: item.totalAmount,
+                                    returnScreen: 'MyOrders',
+                                    skipOrderCancelOnExit: true
+                                });
+                            }}
+                            activeOpacity={0.7}
+                        >
+                            <Icon name="payment" size={16} color={colors.primary} />
+                            <Text style={styles.choiceActionText}>Оплатить</Text>
+                        </TouchableOpacity>
+                    )}
+
                     {/* Кнопка отмены заказа */}
                     {canCancelOrder(item.status, 'CLIENT') && (
                         <TouchableOpacity

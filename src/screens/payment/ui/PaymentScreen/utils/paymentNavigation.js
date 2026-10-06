@@ -1,18 +1,16 @@
 import { CommonActions } from '@react-navigation/native';
 
-/**
- * PaymentScreen живёт в корневом AppStack, а корзина — во вложенном табе:
- * Main → Cart (Tab) → CartMain (Stack).
- * Прямой navigate('Cart') из PaymentScreen не работает.
- */
-export const exitPaymentToCart = (navigation, params = {}) => {
-    const cartParams = {
-        forceRefresh: true,
-        timestamp: Date.now(),
-        ...params
-    };
+const getRootNavigation = (navigation) => {
+    let current = navigation;
+    while (current?.getParent?.()) {
+        current = current.getParent();
+    }
+    return current || navigation;
+};
 
-    navigation.dispatch(
+const resetRootToCartStack = (navigation, stackScreen, params = {}) => {
+    const root = getRootNavigation(navigation);
+    root.dispatch(
         CommonActions.reset({
             index: 0,
             routes: [
@@ -21,8 +19,8 @@ export const exitPaymentToCart = (navigation, params = {}) => {
                     params: {
                         screen: 'Cart',
                         params: {
-                            screen: 'CartMain',
-                            params: cartParams
+                            screen: stackScreen,
+                            params
                         }
                     }
                 }
@@ -31,17 +29,25 @@ export const exitPaymentToCart = (navigation, params = {}) => {
     );
 };
 
+/**
+ * PaymentScreen живёт в корневом AppStack, а корзина — во вложенном табе:
+ * Main → Cart (Tab) → CartMain (Stack).
+ * Прямой navigate('Cart') из PaymentScreen не работает.
+ * reset обязателен, иначе «Назад» из Мои заказы возвращает на экран Т-Банка.
+ */
+export const exitPaymentToCart = (navigation, params = {}) => {
+    resetRootToCartStack(navigation, 'CartMain', {
+        forceRefresh: true,
+        timestamp: Date.now(),
+        ...params
+    });
+};
+
 export const exitPaymentToMyOrders = (navigation, params = {}) => {
-    navigation.navigate('Main', {
-        screen: 'Cart',
-        params: {
-            screen: 'MyOrders',
-            params: {
-                refresh: true,
-                timestamp: Date.now(),
-                ...params
-            }
-        }
+    resetRootToCartStack(navigation, 'MyOrders', {
+        refresh: true,
+        timestamp: Date.now(),
+        ...params
     });
 };
 
@@ -74,13 +80,17 @@ export const exitMyOrdersScreen = (navigation, { fromScreen } = {}) => {
         return;
     }
 
-    if (navigation.canGoBack()) {
+    const state = navigation.getState?.();
+    const previousRoute = state?.routes?.[(state.index ?? 0) - 1];
+
+    // canGoBack() смотрит и на родительский AppStack. Если там остался
+    // PaymentScreen / Checkout, goBack вернёт на оплату Т-Банка.
+    if (previousRoute?.name === 'CartMain') {
         navigation.goBack();
         return;
     }
 
     resetCartStack();
-    exitPaymentToMain(navigation);
 };
 
 export const navigateToOrderDetails = (navigation, orderId, params = {}) => {

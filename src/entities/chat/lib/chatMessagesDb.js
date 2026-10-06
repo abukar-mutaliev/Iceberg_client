@@ -184,7 +184,7 @@ function parseStopData(message) {
 function isStopMessage(message) {
   if (!message) return false;
   const type = String(message.type || '').toUpperCase();
-  if (type === 'WAREHOUSE' || type === 'PRODUCT') return false;
+  if (type === 'WAREHOUSE' || type === 'PRODUCT' || type === 'ORDER') return false;
   if (type === 'STOP') return true;
   const stopData = parseStopData(message);
   if (!stopData) return false;

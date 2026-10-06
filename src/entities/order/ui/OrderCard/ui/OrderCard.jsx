@@ -117,8 +117,8 @@ export const OrderCard = ({
             <View style={styles.clientInfo}>
                 <Icon name="person" size={16} color={iconMuted} />
                 <Text style={styles.clientName}>{order.client.name}</Text>
-                {order.client.phone && (
-                    <Text style={styles.clientPhone}>{order.client.phone}</Text>
+                {order.client.phone && order.client.phoneMasked !== true && (
+                    <Text selectable={false} style={styles.clientPhone}>{order.client.phone}</Text>
                 )}
             </View>
         );
@@ -480,13 +480,28 @@ export const OrderCard = ({
                     <View style={[styles.statusIndicator, { backgroundColor: statusColor }]}>
                         <Icon name={statusIcon} size={16} color="#fff" />
                     </View>
-                    <Text style={styles.statusText}>
-                        {getStatusLabel(order.status)}
-                    </Text>
+                    <View style={styles.statusTextWrap}>
+                        <Text style={styles.statusText} numberOfLines={2}>
+                            {getStatusLabel(order.status)}
+                        </Text>
+                        {order.isWeightBased ? (
+                            <Text style={styles.weightText} numberOfLines={1}>
+                                ⚖ весовой
+                            </Text>
+                        ) : null}
+                    </View>
                 </View>
             </View>
 
             {renderClientInfo()}
+            {order.status === 'CANCELLED' && order.cancelReason ? (
+                <View style={styles.cancelReasonBox}>
+                    <Icon name="report" size={14} color={colors.error} />
+                    <Text style={styles.cancelReasonText} numberOfLines={2}>
+                        {order.cancelReason}
+                    </Text>
+                </View>
+            ) : null}
             {renderOrderItems()}
             {renderProcessingInfo()}
             {showEmployeeInfo && renderEmployeeInfo()}
@@ -517,16 +532,16 @@ export const OrderCard = ({
 const createStyles = (colors, isDark) => StyleSheet.create({
     container: {
         backgroundColor: colors.cardBackground,
-        borderRadius: 12,
+        borderRadius: 16,
         padding: 16,
         marginBottom: 8,
-        shadowColor: colors.shadowColor || '#000',
+        shadowColor: isDark ? (colors.shadowColor || '#000') : '#1A2140',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: isDark ? 0.25 : 0.08,
-        shadowRadius: 4,
-        elevation: 3,
-        borderWidth: isDark ? 1 : 0,
-        borderColor: colors.border,
+        shadowOpacity: isDark ? 0.25 : 0.06,
+        shadowRadius: isDark ? 4 : 6,
+        elevation: isDark ? 3 : 2,
+        borderWidth: 1,
+        borderColor: isDark ? colors.border : '#E4E6EE',
     },
     priorityContainer: {
         borderLeftWidth: 4,
@@ -537,11 +552,13 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         marginBottom: 12,
+        gap: 12,
     },
     orderInfo: {
-        flex: 1,
+        flexShrink: 0,
     },
     orderNumber: {
+        flexShrink: 0,
         fontSize: 16,
         fontWeight: '700',
         color: colors.textPrimary,
@@ -552,9 +569,17 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         color: colors.textSecondary,
     },
     statusContainer: {
+        flex: 1,
+        flexShrink: 1,
+        minWidth: 0,
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'flex-end',
         gap: 6,
+    },
+    statusTextWrap: {
+        flexShrink: 1,
+        minWidth: 0,
     },
     statusIndicator: {
         width: 24,
@@ -568,9 +593,18 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         justifyContent: 'center',
     },
     statusText: {
+        flexShrink: 1,
         fontSize: 12,
         fontWeight: '600',
         color: colors.textSecondary,
+        textAlign: 'right',
+    },
+    weightText: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: colors.textSecondary,
+        textAlign: 'right',
+        marginTop: 2,
     },
     clientInfo: {
         flexDirection: 'row',
@@ -580,6 +614,22 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         paddingBottom: 12,
         borderBottomWidth: 1,
         borderBottomColor: colors.border,
+    },
+    cancelReasonBox: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 8,
+        marginBottom: 12,
+        padding: 10,
+        borderRadius: 8,
+        backgroundColor: isDark ? 'rgba(220, 53, 69, 0.12)' : '#fdecea',
+    },
+    cancelReasonText: {
+        flex: 1,
+        fontSize: 12,
+        lineHeight: 16,
+        color: colors.textPrimary,
+        fontWeight: '500',
     },
     clientName: {
         fontSize: 14,
@@ -840,11 +890,16 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         justifyContent: 'center',
         paddingVertical: 10,
         paddingHorizontal: 15,
-        backgroundColor: isDark ? 'rgba(102, 126, 234, 0.15)' : '#e3f2fd',
+        backgroundColor: isDark ? 'rgba(102, 126, 234, 0.15)' : '#FFFFFF',
         borderRadius: 12,
         borderWidth: 1,
-        borderColor: isDark ? 'rgba(102, 126, 234, 0.35)' : '#bbdefb',
+        borderColor: isDark ? 'rgba(102, 126, 234, 0.35)' : colors.primary,
         gap: 6,
+        shadowColor: '#1A2140',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: isDark ? 0 : 0.04,
+        shadowRadius: 2,
+        elevation: isDark ? 0 : 1,
     },
     actionText: {
         fontSize: 12,

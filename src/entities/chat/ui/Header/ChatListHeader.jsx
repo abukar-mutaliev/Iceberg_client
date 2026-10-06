@@ -9,6 +9,7 @@ export const ChatListHeader = ({ navigation }) => {
   const [menuVisible, setMenuVisible] = useState(false);
   const currentUser = useSelector(state => state?.auth?.user);
   const userRole = currentUser?.role;
+  const isManager = userRole === 'EMPLOYEE' && currentUser?.employee?.processingRole === 'MANAGER';
   const { colors, isDark } = useTheme();
   
   const headerBg = isDark ? colors.surface : '#FFFFFF';
@@ -57,7 +58,8 @@ export const ChatListHeader = ({ navigation }) => {
           Чаты
         </Text>
         
-        {/* Кнопки справа */}
+        {/* Поиск и создание чата менеджеру не показываем: по имени клиента там виден телефон. */}
+        {!isManager && (
         <View style={{ 
           flexDirection: 'row', 
           alignItems: 'center',
@@ -81,10 +83,11 @@ export const ChatListHeader = ({ navigation }) => {
             <MenuDotsIcon size={22} color={iconColor} />
           </TouchableOpacity>
         </View>
+        )}
       </View>
 
       {/* Выпадающее меню. Не используем нативный Modal, чтобы не ломать цвет системной nav bar на Android. */}
-      {menuVisible && (
+      {!isManager && menuVisible && (
         <>
           {/* Прозрачный бэкдроп — ловит тапы снаружи меню (растягивается далеко за границы хедера). */}
           <TouchableWithoutFeedback onPress={() => setMenuVisible(false)}>

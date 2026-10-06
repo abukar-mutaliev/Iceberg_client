@@ -6,7 +6,7 @@
 import { useCallback } from 'react';
 import { PaymentApi } from '@entities/payment';
 import { CartService, clearCart } from '@entities/cart';
-import { OrderApi } from '@entities/order';
+import { OrderApi, fetchPendingPaymentCount } from '@entities/order';
 import { PaymentLogger } from '../utils/PaymentLogger';
 import { exitPaymentToCart, exitPaymentToMyOrders } from '../utils/paymentNavigation';
 
@@ -45,6 +45,9 @@ export const usePaymentLifecycle = ({
 
                 orderIdToUse = order.id;
                 actions.setCreatedOrderId(order.id);
+                if (order.status === 'PENDING_PAYMENT') {
+                    dispatch(fetchPendingPaymentCount());
+                }
                 PaymentLogger.success('Order created:', order.id);
             }
 
@@ -118,7 +121,7 @@ export const usePaymentLifecycle = ({
                 }]
             );
         }
-    }, [params, state, actions, navigation, showError]);
+    }, [params, state, actions, navigation, showError, dispatch]);
 
     /**
      * Проверка статуса платежа
@@ -176,6 +179,8 @@ export const usePaymentLifecycle = ({
             const paymentStatus = statusResponse?.data?.data?.status;
 
             PaymentLogger.log('Payment status from server:', paymentStatus);
+
+            dispatch(fetchPendingPaymentCount());
 
             // Успешный платеж
             if (['succeeded', 'waiting_for_capture', 'completed'].includes(paymentStatus)) {
@@ -298,14 +303,17 @@ export const usePaymentLifecycle = ({
             ? params.waitingOrderId
             : (state.createdOrderId || params.orderId);
 
+        const skipOrderCancelOnExit = params.skipOrderCancelOnExit === true;
+
         showConfirm(
-            'Отменить заказ?',
-            'Заказ не был оплачен. Он будет отменен, и вы вернетесь в корзину.',
+            skipOrderCancelOnExit ? 'Выйти из оплаты?' : 'Отменить заказ?',
+            skipOrderCancelOnExit
+                ? 'Заказ останется ожидающим оплату. Вы сможете оплатить его позже из деталей заказа.'
+                : 'Заказ не был оплачен. Он будет отменен, и вы вернетесь в корзину.',
             async () => {
                 PaymentLogger.log('User cancelled unpaid order', { orderId: orderIdToCancel });
 
-                // Отменяем неоплаченный заказ
-                if (orderIdToCancel) {
+                if (!skipOrderCancelOnExit && orderIdToCancel) {
                     try {
                         await OrderApi.cancelMyOrder(orderIdToCancel, 'Оплата не завершена');
                         PaymentLogger.success('Unpaid order cancelled successfully', { orderId: orderIdToCancel });
@@ -314,8 +322,12 @@ export const usePaymentLifecycle = ({
                             orderId: orderIdToCancel,
                             error: error.message
                         });
-                        // Не блокируем возврат в корзину даже если отмена не удалась
                     }
+                }
+
+                if (skipOrderCancelOnExit) {
+                    exitPaymentToMyOrders(navigation);
+                    return;
                 }
 
                 exitPaymentToCart(navigation);
@@ -326,7 +338,7 @@ export const usePaymentLifecycle = ({
             }
         );
     }, [state.paymentCompleted, state.isSplitOrder, state.currentPaymentStep, state.createdOrderId, 
-        params.orderId, params.waitingOrderId, navigation, showConfirm]);
+        params.orderId, params.waitingOrderId, params.skipOrderCancelOnExit, navigation, showConfirm]);
 
     return {
         createPayment,

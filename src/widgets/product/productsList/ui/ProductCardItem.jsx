@@ -49,6 +49,9 @@ export const ProductCardItem = memo(({ product, onProductPress, fromScreen }) =>
         prevProduct.description === nextProduct.description &&
         prevProduct.image?.uri === nextProduct.image?.uri &&
         prevProduct.originalData?.isActive === nextProduct.originalData?.isActive &&
-        prevProduct.originalData?.stockQuantity === nextProduct.originalData?.stockQuantity
+        prevProduct.originalData?.stockQuantity === nextProduct.originalData?.stockQuantity &&
+        prevProduct.originalData?.itemsPerBox === nextProduct.originalData?.itemsPerBox &&
+        prevProduct.originalData?.boxPrice === nextProduct.originalData?.boxPrice &&
+        prevProduct.originalData?.price === nextProduct.originalData?.price
     );
 });

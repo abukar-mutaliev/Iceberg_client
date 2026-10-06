@@ -18,6 +18,7 @@ import {selectIsProductDeleted, selectProductById, selectCurrentProduct} from '@
 import {fetchProductById} from '@entities/product/model/slice';
 import {PROCESSING_ROLE_LABELS} from '@entities/admin/lib/constants';
 import {useTheme} from '@app/providers/themeProvider/ThemeProvider';
+import {formatAmount} from '@shared/lib/orderUtils';
 
 // ============= ТЕМИЗАЦИЯ СТИЛЕЙ =============
 
@@ -1196,6 +1197,114 @@ const ProductMessage = memo(({
     );
 });
 
+const OrderMessage = ({
+    order,
+    orderId,
+    isOwn,
+    time,
+    status,
+    onOpenOrder,
+    avatarUri,
+    showAvatar,
+    isSelectionMode,
+    isSelected,
+    isPressed = false,
+    isContextMenuActive,
+    canDelete,
+    onToggleSelection,
+    onLongPress,
+    onPress,
+    onAvatarPress,
+    replyTo,
+    onReplyPress,
+    onReply,
+    currentUserId,
+    message,
+    onAddReaction,
+    showSenderName = false,
+    senderName = null,
+    senderId = null,
+    senderNameColor = '#667781',
+    onSenderNamePress = null,
+    isForwarded = false
+}) => {
+    const styles = useMessageStyles();
+    const finalOrderId = orderId || order?.orderId || order?.id;
+    const title = order?.orderNumber ? `Заказ ${order.orderNumber}` : 'Заказ';
+    const statusLabel = order?.statusLabel || order?.status || '';
+    const amountLabel = order?.totalAmount != null ? formatAmount(order.totalAmount) : '';
+    const itemsCount = Number(order?.itemsCount);
+    const itemsLabel = Number.isFinite(itemsCount) && itemsCount > 0
+        ? `${itemsCount} поз.`
+        : '';
+
+    return (
+        <>
+            <BubbleContainer
+                isOwn={isOwn}
+                time={time}
+                status={status}
+                avatarUri={avatarUri}
+                showAvatar={showAvatar}
+                text={''}
+                hasImage={false}
+                isSelectionMode={isSelectionMode}
+                isSelected={isSelected}
+                isPressed={isPressed}
+                isContextMenuActive={isContextMenuActive}
+                canDelete={canDelete}
+                onToggleSelection={onToggleSelection}
+                onLongPress={onLongPress}
+                onPress={onPress}
+                onAvatarPress={onAvatarPress}
+                replyTo={replyTo}
+                onReplyPress={onReplyPress}
+                onReply={onReply}
+                currentUserId={currentUserId}
+                showSenderName={showSenderName}
+                senderName={senderName}
+                senderId={senderId}
+                senderNameColor={senderNameColor}
+                onSenderNamePress={onSenderNamePress}
+                isForwarded={isForwarded}
+            >
+                <TouchableOpacity
+                    style={styles.orderCard}
+                    activeOpacity={0.8}
+                    onPress={() => {
+                        if (finalOrderId && onOpenOrder) {
+                            onOpenOrder(finalOrderId);
+                        }
+                    }}
+                >
+                    <View style={styles.orderCardHeader}>
+                        <Ionicons name="receipt-outline" size={18} color={styles.orderCardTitle.color} />
+                        <Text style={styles.orderCardTitle} numberOfLines={1}>{title}</Text>
+                    </View>
+                    {!!statusLabel && (
+                        <Text style={styles.orderCardStatus} numberOfLines={1}>{statusLabel}</Text>
+                    )}
+                    <Text style={styles.orderCardMeta} numberOfLines={1}>
+                        {[amountLabel, itemsLabel].filter(Boolean).join(' · ')}
+                    </Text>
+                    <Text style={styles.orderCardHint}>Открыть заказ</Text>
+                </TouchableOpacity>
+            </BubbleContainer>
+            {message?.reactions && message.reactions.length > 0 && (
+                <View style={[styles.reactionsWrapper, isOwn ? styles.reactionsWrapperOwn : styles.reactionsWrapperOther]}>
+                    <MessageReactions
+                        reactions={message.reactions}
+                        currentUserId={currentUserId}
+                        messageId={message.id}
+                        onReactionPress={onAddReaction}
+                        onReactionLongPress={onAddReaction}
+                    />
+                </View>
+            )}
+        </>
+    );
+};
+
 const WarehouseMessage = ({
     warehouse,
     warehouseId,
@@ -1611,6 +1720,7 @@ export const MessageBubble = memo(({
                                        onOpenProduct,
                                        onOpenStop,
                                        onOpenWarehouse,
+                                       onOpenOrder,
                                        onOpenContact,
                                        onImagePress,
                                        showAvatar = true,
@@ -1928,6 +2038,83 @@ export const MessageBubble = memo(({
                     />
                 )}
             </>
+        );
+    }
+
+    if (message.type === 'ORDER') {
+        let orderData = null;
+        try {
+            if (message?.content) {
+                orderData = JSON.parse(message.content);
+            }
+        } catch (error) {
+            orderData = null;
+        }
+
+        const finalOrderId = message?.orderId || orderData?.orderId;
+
+        if (!orderData && !finalOrderId) {
+            return (
+                <BubbleContainer
+                    isOwn={isOwn}
+                    time={time}
+                    status={status}
+                    avatarUri={avatarUri}
+                    showAvatar={showAvatar}
+                    text={'Заказ'}
+                    hasImage={false}
+                    isSelectionMode={isSelectionMode}
+                    isSelected={isSelected}
+                    isHighlighted={isHighlighted}
+                    isPressed={isPressed}
+                    isContextMenuActive={isContextMenuActive}
+                    canDelete={canDelete}
+                    onToggleSelection={onToggleSelection}
+                    onLongPress={onLongPress}
+                    onPress={onPress}
+                    onAvatarPress={onAvatarPress}
+                    replyTo={message.replyTo}
+                    onReplyPress={onReplyPress}
+                    onReply={() => onReply?.(message)}
+                    currentUserId={currentUserId}
+                >
+                    <Text style={styles.messageText}>Заказ</Text>
+                </BubbleContainer>
+            );
+        }
+
+        return (
+            <OrderMessage
+                order={orderData || { orderId: finalOrderId }}
+                orderId={finalOrderId}
+                isOwn={isOwn}
+                time={time}
+                status={status}
+                onOpenOrder={onOpenOrder}
+                avatarUri={avatarUri}
+                showAvatar={showAvatar}
+                isSelectionMode={isSelectionMode}
+                isSelected={isSelected}
+                isPressed={isPressed}
+                isContextMenuActive={isContextMenuActive}
+                canDelete={canDelete}
+                onToggleSelection={onToggleSelection}
+                onLongPress={onLongPress}
+                onPress={onPress}
+                onAvatarPress={onAvatarPress}
+                replyTo={message.replyTo}
+                onReplyPress={onReplyPress}
+                onReply={() => onReply?.(message)}
+                currentUserId={currentUserId}
+                message={message}
+                onAddReaction={onAddReaction}
+                showSenderName={showSenderName}
+                senderName={senderName}
+                senderId={senderId}
+                senderNameColor={senderNameColor}
+                onSenderNamePress={onSenderNamePress}
+                isForwarded={isForwarded}
+            />
         );
     }
 
@@ -3012,6 +3199,41 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         width: 250,
+    },
+    orderCard: {
+        width: 230,
+        borderRadius: 12,
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        backgroundColor: isDark ? colors.surfaceElevated : '#F4F7FB',
+    },
+    orderCardHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 4,
+    },
+    orderCardTitle: {
+        flex: 1,
+        marginLeft: 6,
+        fontSize: 15,
+        fontWeight: '700',
+        color: isDark ? colors.textPrimary : '#1A2140',
+    },
+    orderCardStatus: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: colors.primary,
+        marginBottom: 2,
+    },
+    orderCardMeta: {
+        fontSize: 13,
+        color: isDark ? colors.textSecondary : '#4B5563',
+    },
+    orderCardHint: {
+        marginTop: 8,
+        fontSize: 12,
+        fontWeight: '600',
+        color: colors.primary,
     },
     contactCardContainer: {
         flexDirection: 'row',

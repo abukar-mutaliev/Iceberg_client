@@ -1,17 +1,16 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, StatusBar } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { useOrderDetailsStyles, useOrderDetailsScreenBackground } from '@shared/ui/OrderDetailsStyles';
+import { useOrderDetailsStyles } from '@shared/ui/OrderDetailsStyles';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 export const OrderLoadingSkeleton = () => {
     const { colors } = useTheme();
     const styles = useOrderDetailsStyles();
-    const screenBackground = useOrderDetailsScreenBackground();
 
     return (
         <View style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor={screenBackground} />
+            <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
             <View style={styles.scrollContainer}>
                 <View style={styles.headerContainer}>
                     <View style={styles.headerGradient}>
@@ -44,11 +43,10 @@ export const OrderLoadingSkeleton = () => {
 export const OrderErrorState = ({ error, onRetry }) => {
     const { colors } = useTheme();
     const styles = useOrderDetailsStyles();
-    const screenBackground = useOrderDetailsScreenBackground();
 
     return (
         <View style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor={screenBackground} />
+            <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
             <View style={styles.errorContainer}>
                 <View style={styles.errorIconContainer}>
                     <Icon name="error-outline" size={64} color={colors.error} />
@@ -69,12 +67,12 @@ export const OrderErrorState = ({ error, onRetry }) => {
 };
 
 export const OrderLoadingState = () => {
+    const { colors } = useTheme();
     const styles = useOrderDetailsStyles();
-    const screenBackground = useOrderDetailsScreenBackground();
 
     return (
         <View style={styles.loadingContainer}>
-            <StatusBar barStyle="light-content" backgroundColor={screenBackground} />
+            <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
             <View style={styles.loadingContent}>
                 <ActivityIndicator size="large" color="#FFFFFF" />
                 <Text style={styles.loadingText}>Загрузка заказа...</Text>

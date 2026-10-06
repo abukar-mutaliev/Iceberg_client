@@ -80,6 +80,7 @@ const MessageItem = memo(({
   onOpenProduct,
   onOpenStop,
   onOpenWarehouse,
+  onOpenOrder,
   onOpenContact,
   onImagePress,
   onAvatarPress,
@@ -292,6 +293,7 @@ const MessageItem = memo(({
           onOpenProduct={onOpenProduct}
           onOpenStop={onOpenStop}
           onOpenWarehouse={onOpenWarehouse}
+          onOpenOrder={onOpenOrder}
           onOpenContact={onOpenContact}
           onImagePress={onImagePress}
           incomingAvatarUri={partnerAvatar}
@@ -377,6 +379,7 @@ export const MessageList = memo(({
   onOpenProduct,
   onOpenStop,
   onOpenWarehouse,
+  onOpenOrder,
   onOpenContact,
   onImagePress,
   onAvatarPress,
@@ -512,6 +515,7 @@ export const MessageList = memo(({
         onOpenProduct={onOpenProduct}
         onOpenStop={onOpenStop}
         onOpenWarehouse={onOpenWarehouse}
+        onOpenOrder={onOpenOrder}
         onOpenContact={onOpenContact}
         onImagePress={onImagePress}
         onAvatarPress={onAvatarPress}
@@ -550,7 +554,8 @@ export const MessageList = memo(({
     onOpenProduct,
     onOpenStop,
     onOpenWarehouse,
-  onOpenContact,
+    onOpenOrder,
+    onOpenContact,
     onImagePress,
     onAvatarPress,
     onContactDriver,

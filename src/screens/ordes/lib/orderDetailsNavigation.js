@@ -66,6 +66,23 @@ export const useOrderDetailsBack = ({ fallbackScreen = 'MyOrders', onBack } = {}
     return handleGoBack;
 };
 
+export const navigateToOrderFromChat = (navigation, orderId, role) => {
+    if (!orderId) return;
+
+    const rootNav = navigation?.getParent?.('AppStack') || navigation?.getParent?.() || navigation;
+    const screen = role === 'ADMIN' || role === 'EMPLOYEE'
+        ? 'StaffOrderDetails'
+        : 'OrderDetails';
+    const params = { orderId, fromScreen: 'ChatRoom' };
+
+    if (typeof rootNav?.push === 'function') {
+        rootNav.push(screen, params);
+        return;
+    }
+
+    rootNav.navigate(screen, params);
+};
+
 export const navigateToOrderDetailsInCart = (navigation, orderId, params = {}) => {
     if (!orderId) return;
 

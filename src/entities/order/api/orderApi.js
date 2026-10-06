@@ -109,6 +109,17 @@ export const OrderApi = {
         return createProtectedRequest('PATCH', url, data);
     },
 
+    // Менеджер/админ подтверждает итоговую цену весового заказа
+    confirmOrderPrice: (orderId, payload) => {
+        return createProtectedRequest('PATCH', `/api/orders/${orderId}/confirm-price`, payload);
+    },
+
+    verifyPickingScan: (orderId, token, packingPhotoUrl = null) => {
+        const data = { token };
+        if (packingPhotoUrl) data.packingPhotoUrl = packingPhotoUrl;
+        return createProtectedRequest('POST', `/api/orders/${orderId}/picking/scan`, data);
+    },
+
     // Завершить этап обработки заказа (с автоматическим переходом к следующему этапу)
     completeOrderStage: async (orderId, comment = null) => {
         const url = `/api/orders/${orderId}/complete-stage`;

@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useRef } from 'react';
-import { View, Text, StyleSheet, RefreshControl, Animated, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, RefreshControl, Animated, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { OrderCard } from '@entities/order/ui/OrderCard';
@@ -155,6 +155,7 @@ const OrderItem = React.memo(({
     (canViewAllOrders || orderStatus.isAssignedToMe || orderStatus.isLocallyTaken);
 
   const canTakeOrder = permissions.canWorkWithOrders &&
+                       !['AWAITING_CONFIRMATION', 'PENDING_PAYMENT'].includes(item.status) &&
                        canEmployeeTakeOrderByRole(actualProcessingRole, item.status) &&
                        orderStateHelpers.canTakeOrder(item, localAction, currentUser);
 
@@ -221,7 +222,11 @@ const StaffOrdersScreenContent = () => {
     isInitializing,
     currentUser,
     canViewAllOrders,
+    canConfirmOrderPrice,
     actualProcessingRole,
+    weightFlowTab,
+    weighingCount,
+    weightPaymentCount,
     localOrderActions,
     isWebSocketConnected,
     handleRefreshData,
@@ -235,6 +240,7 @@ const StaffOrdersScreenContent = () => {
     handleToggleHistory,
     handleToggleWaitingStock,
     handleToggleMain,
+    handleWeightFlowTab,
     handleCloseStatusModal,
     handleStatusSelect,
     handleStatusCommentChange,
@@ -263,13 +269,13 @@ const StaffOrdersScreenContent = () => {
 
   const stickyTabsElevation = scrollY.interpolate({
     inputRange: [0, stickyActivationPoint, stickyActivationPoint + 50],
-    outputRange: [0, 2, 8],
+    outputRange: [0, 2, 4],
     extrapolate: 'clamp',
   });
 
   const stickyTabsShadowOpacity = scrollY.interpolate({
     inputRange: [0, stickyActivationPoint, stickyActivationPoint + 50],
-    outputRange: [0, 0.1, 0.25],
+    outputRange: [0, 0.04, 0.08],
     extrapolate: 'clamp',
   });
 
@@ -358,6 +364,11 @@ const StaffOrdersScreenContent = () => {
             onToggleHistory={handleToggleHistory}
             onToggleWaitingStock={handleToggleWaitingStock}
             onToggleMain={handleToggleMain}
+            onWeightFlowTab={handleWeightFlowTab}
+            weightFlowTab={weightFlowTab}
+            canConfirmOrderPrice={canConfirmOrderPrice}
+            weighingCount={weighingCount}
+            weightPaymentCount={weightPaymentCount}
             onGoBack={handleGoBack}
             waitingStockCount={waitingStockCount}
             isWebSocketConnected={isWebSocketConnected}
@@ -379,6 +390,11 @@ const StaffOrdersScreenContent = () => {
             onToggleHistory={handleToggleHistory}
             onToggleWaitingStock={handleToggleWaitingStock}
             onToggleMain={handleToggleMain}
+            onWeightFlowTab={handleWeightFlowTab}
+            weightFlowTab={weightFlowTab}
+            canConfirmOrderPrice={canConfirmOrderPrice}
+            weighingCount={weighingCount}
+            weightPaymentCount={weightPaymentCount}
             onGoBack={handleGoBack}
             waitingStockCount={waitingStockCount}
             isWebSocketConnected={isWebSocketConnected}
@@ -459,7 +475,7 @@ const createStyles = (colors, isDark) => {
   return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: isDark ? colors.background : '#F3F4F8',
   },
   stickyTabsContainer: {
     position: 'absolute',
@@ -467,16 +483,12 @@ const createStyles = (colors, isDark) => {
     right: 0,
     zIndex: 1000,
     backgroundColor: headerBackground,
-    shadowColor: colors.shadowColor || '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
-    borderBottomWidth: isDark ? 1 : 0,
-    borderBottomColor: colors.border,
-    ...Platform.select({
-      android: {
-        elevation: 0,
-      },
-    }),
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    shadowColor: isDark ? (colors.shadowColor || '#000') : '#1A2140',
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 8,
+    elevation: 3,
   },
   listContentContainer: {
     paddingHorizontal: 10,

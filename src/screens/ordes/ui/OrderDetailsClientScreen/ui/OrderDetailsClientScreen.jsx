@@ -12,8 +12,8 @@ import { GlobalAlert } from '@shared/ui/CustomAlert';
 
 // Импорты общих компонентов и утилит
 import { useOrderDetails } from '@shared/hooks/useOrderDetails';
-import { canCancelOrder } from '@shared/lib/orderUtils';
-import { useOrderDetailsStyles, OrderDetailsScreenThemeProvider, useOrderDetailsScreenBackground, ORDER_DETAILS_CLIENT_DARK_BACKGROUND } from '@shared/ui/OrderDetailsStyles';
+import { canCancelOrder, wasOrderPaid } from '@shared/lib/orderUtils';
+import { useOrderDetailsStyles, OrderDetailsScreenThemeProvider, ORDER_DETAILS_CLIENT_DARK_BACKGROUND } from '@shared/ui/OrderDetailsStyles';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { navigateToOrderDetailsInCart } from '@screens/ordes/lib/orderDetailsNavigation';
 import { OrderHeader } from '@shared/ui/OrderHeader/ui/OrderHeader';
@@ -22,6 +22,11 @@ import { DeliveryInfo } from '@shared/ui/DeliveryInfo/ui/DeliveryInfo';
 import { OrderItems } from '@shared/ui/OrderItems/ui/OrderItems';
 import { OrderLoadingState, OrderErrorState } from '@shared/ui/OrderLoadingState/ui/OrderLoadingState';
 import { WaitingStockIndicator, SplitOrderInfo, useSplitOrders } from '@entities/order';
+import { PaymentInfoCard } from '@shared/ui/PaymentInfoCard/ui/PaymentInfoCard';
+import { formatAmount } from '@shared/lib/orderUtils';
+import { CancelOrderReasonModal } from '@features/order/cancelOrder/ui/CancelOrderReasonModal';
+import { CancelReasonInfo } from '@features/order/cancelOrder/ui/CancelReasonInfo';
+import { OrderHelpCard } from '@features/help/ui/OrderHelpCard';
 
 export const OrderDetailsClientScreen = () => {
     return (
@@ -36,11 +41,10 @@ const OrderDetailsClientScreenContent = () => {
     const navigation = useNavigation();
     const { colors } = useTheme();
     const styles = useOrderDetailsStyles();
-    const screenBackground = useOrderDetailsScreenBackground();
     const insets = useSafeAreaInsets();
     const scrollContentStyle = [
         styles.scrollContent,
-        { paddingBottom: 32 + insets.bottom + 34 },
+        { paddingBottom: 80 + insets.bottom + 24 },
     ];
     const { orderId, showSplitInfo, originalOrderNumber } = route.params || {};
     
@@ -58,6 +62,7 @@ const OrderDetailsClientScreenContent = () => {
 
     // Состояние компонента
     const [cancelling, setCancelling] = useState(false);
+    const [cancelModalVisible, setCancelModalVisible] = useState(false);
     const [toastConfig, setToastConfig] = useState(null);
 
     // Анимации
@@ -133,66 +138,54 @@ const OrderDetailsClientScreenContent = () => {
         }
     }, [order, loading, fadeAnim, slideAnim]);
 
-    // Обработка отмены заказа
-    const handleCancelOrder = useCallback(async () => {
+    const handleOpenCancelModal = useCallback(() => {
         if (!order || !canCancelOrder(order.status, user?.role || 'CLIENT')) {
             GlobalAlert.showError('Ошибка', 'Этот заказ нельзя отменить');
             return;
         }
+        setCancelModalVisible(true);
+    }, [order, user?.role]);
 
-        GlobalAlert.showConfirm(
-            'Отмена заказа',
-            `Вы уверены, что хотите отменить заказ ${order.orderNumber}?`,
-            async () => {
-                try {
-                    setCancelling(true);
-                    
-                    // Отменяем заказ
-                    await OrderApi.cancelMyOrder(orderId, 'Отменен клиентом');
+    const handleConfirmCancelOrder = useCallback(async (reason) => {
+        try {
+            setCancelling(true);
+            await OrderApi.cancelMyOrder(orderId, reason);
+            setCancelModalVisible(false);
 
-                    // Обновляем данные заказа для получения актуального статуса платежа
-                    await loadOrderDetails();
+            await loadOrderDetails();
 
-                    // Получаем обновленный заказ
-                    const updatedOrderResponse = await OrderApi.getOrderById(orderId);
-                    const updatedOrder = updatedOrderResponse?.data;
+            const updatedOrderResponse = await OrderApi.getOrderById(orderId);
+            const updatedOrder = updatedOrderResponse?.data;
 
-                    setToastConfig({
-                        message: 'Заказ успешно отменен',
-                        type: 'success',
-                        duration: 3000
-                    });
+            setToastConfig({
+                message: 'Заказ успешно отменен',
+                type: 'success',
+                duration: 3000
+            });
 
-                    // Проверяем статус платежа
-                    if (updatedOrder?.payment?.status === 'REFUNDED') {
-                        // Деньги возвращены - показываем алерт
-                        setTimeout(() => {
-                            GlobalAlert.showSuccess(
-                                'Деньги возвращены',
-                                `Средства в размере ${order.totalAmount}₽ возвращены на ваш счет. Они поступят в течение 3-5 рабочих дней.`
-                            );
-                        }, 500);
-                    } else if (updatedOrder?.payment?.status === 'COMPLETED') {
-                        // Платеж был завершен, но возврат еще не произошел
-                        setTimeout(() => {
-                            GlobalAlert.showInfo(
-                                'Возврат средств',
-                                `Возврат средств в размере ${order.totalAmount}₽ обрабатывается. Деньги поступят в течение 3-5 рабочих дней.`
-                            );
-                        }, 500);
-                    }
-
-                    // Очищаем локальное состояние
-                    dispatch(clearLocalOrderAction({ orderId }));
-
-                } catch (err) {
-                    GlobalAlert.showError('Ошибка', err.message || 'Не удалось отменить заказ');
-                } finally {
-                    setCancelling(false);
-                }
+            if (wasOrderPaid(updatedOrder?.payment) && updatedOrder?.payment?.status === 'REFUNDED') {
+                setTimeout(() => {
+                    GlobalAlert.showSuccess(
+                        'Деньги возвращены',
+                        `Средства в размере ${order.totalAmount}₽ возвращены на ваш счет. Они поступят в течение 3-5 рабочих дней.`
+                    );
+                }, 500);
+            } else if (wasOrderPaid(updatedOrder?.payment) && updatedOrder?.payment?.status === 'COMPLETED') {
+                setTimeout(() => {
+                    GlobalAlert.showInfo(
+                        'Возврат средств',
+                        `Возврат средств в размере ${order.totalAmount}₽ обрабатывается. Деньги поступят в течение 3-5 рабочих дней.`
+                    );
+                }, 500);
             }
-        );
-    }, [order, orderId, user?.role, loadOrderDetails, dispatch]);
+
+            dispatch(clearLocalOrderAction({ orderId }));
+        } catch (err) {
+            GlobalAlert.showError('Ошибка', err.message || 'Не удалось отменить заказ');
+        } finally {
+            setCancelling(false);
+        }
+    }, [order, orderId, loadOrderDetails, dispatch]);
 
     // Обработчик для нажатия на разделенные заказы
     const handleSplitOrderPress = useCallback((splitOrder) => {
@@ -211,6 +204,17 @@ const OrderDetailsClientScreenContent = () => {
             fromScreen: 'OrderDetails'
         });
     }, [navigation]);
+
+    const handlePayOrder = useCallback(() => {
+        if (!order) return;
+        navigation.navigate('PaymentScreen', {
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            totalAmount: order.totalAmount,
+            returnScreen: 'MyOrders',
+            skipOrderCancelOnExit: true
+        });
+    }, [navigation, order]);
 
     // Рендер кнопки отмены заказа
     const renderCancelButton = () => {
@@ -233,7 +237,7 @@ const OrderDetailsClientScreenContent = () => {
                 >
                     <TouchableOpacity
                         style={styles.buttonContent}
-                        onPress={handleCancelOrder}
+                        onPress={handleOpenCancelModal}
                         disabled={cancelling}
                         activeOpacity={0.8}
                     >
@@ -281,7 +285,7 @@ const OrderDetailsClientScreenContent = () => {
     // Основной рендер
     return (
         <View style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor={screenBackground} />
+            <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.background} />
             <OrderDetailsBackButton fallbackScreen="MyOrders" />
 
             <Animated.View
@@ -310,6 +314,9 @@ const OrderDetailsClientScreenContent = () => {
                     {order && (
                         <>
                             <OrderHeader order={order} />
+                            {order.status === 'CANCELLED' && (
+                                <CancelReasonInfo reason={order.cancelReason} />
+                            )}
                             <WaitingStockIndicator order={order} />
                             
                             {/* Информация о разделенных заказах */}
@@ -329,13 +336,49 @@ const OrderDetailsClientScreenContent = () => {
                                 order={order}
                                 onProductPress={handleProductPress}
                             />
+                            {(order.canPay || (order.status === 'PENDING_PAYMENT' && order.priceConfirmedAt)) && (
+                                <View style={styles.actionsContainer}>
+                                    <View style={[styles.cancelButton, { backgroundColor: colors.primary }]}>
+                                        <TouchableOpacity
+                                            style={styles.buttonContent}
+                                            onPress={handlePayOrder}
+                                            activeOpacity={0.8}
+                                        >
+                                            <Icon name="payment" size={20} color="#FFFFFF" />
+                                            <Text style={styles.cancelButtonText}>
+                                                Оплатить {formatAmount(order.totalAmount)}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            )}
+                            {(order.payment || order.status === 'PENDING_PAYMENT' || order.status === 'PICKING' || order.status === 'IN_DELIVERY' || order.status === 'DELIVERED') && (
+                                <PaymentInfoCard order={order} />
+                            )}
                             {renderCancelButton()}
+                            <OrderHelpCard
+                                orders={[{
+                                    id: order.id,
+                                    orderNumber: order.orderNumber,
+                                    totalAmount: order.totalAmount,
+                                    status: order.status,
+                                }]}
+                                fromScreen="OrderDetails"
+                            />
                         </>
                     )}
                 </ScrollView>
             </Animated.View>
 
             {/* Toast уведомление */}
+            <CancelOrderReasonModal
+                visible={cancelModalVisible}
+                orderNumber={order?.orderNumber}
+                submitting={cancelling}
+                onClose={() => !cancelling && setCancelModalVisible(false)}
+                onConfirm={handleConfirmCancelOrder}
+            />
+
             {toastConfig && (
                 <ToastSimple
                     message={toastConfig.message}

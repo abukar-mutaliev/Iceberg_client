@@ -121,7 +121,10 @@ export const useOrderFiltering = (staffOrders, filters, canViewAllOrders, actual
         if (filters?.districtId) {
             const districtId = parseInt(filters.districtId);
             if (!isNaN(districtId)) {
-                filtered = filtered.filter(order => order?.districtId === districtId);
+                filtered = filtered.filter((order) => {
+                    const orderDistrictId = order?.districtId ?? order?.client?.districtId;
+                    return Number(orderDistrictId) === districtId;
+                });
             }
         }
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
+import { AppState } from 'react-native';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchOrderCounts } from '../model/slice';
+import { fetchOrderCounts, fetchPendingPaymentCount } from '../model/slice';
 
 /**
  * Хук для фоновой загрузки счетчиков заказов
@@ -33,6 +34,7 @@ export const useOrderCountsBackground = () => {
         
         // Для ADMIN загружаем сразу, для EMPLOYEE загружаем если есть employee данные
         const shouldLoad = isAdmin || (isEmployee && hasEmployeeData);
+        const isClient = currentUser?.role === 'CLIENT';
         
         if (shouldLoad) {
             // НЕМЕДЛЕННАЯ загрузка счетчиков (без задержки)
@@ -44,10 +46,28 @@ export const useOrderCountsBackground = () => {
                     dispatch(fetchOrderCounts());
                 }
             }, 2 * 60 * 1000); // 2 минуты
+        } else if (isClient) {
+            dispatch(fetchPendingPaymentCount());
+
+            intervalRef.current = setInterval(() => {
+                if (isMountedRef.current) {
+                    dispatch(fetchPendingPaymentCount());
+                }
+            }, 60 * 1000);
         }
+
+        const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
+            if (nextAppState !== 'active' || !isMountedRef.current) return;
+            if (shouldLoad) {
+                dispatch(fetchOrderCounts());
+            } else if (isClient) {
+                dispatch(fetchPendingPaymentCount());
+            }
+        });
 
         return () => {
             isMountedRef.current = false;
+            appStateSubscription.remove();
             
             if (intervalRef.current) {
                 clearInterval(intervalRef.current);

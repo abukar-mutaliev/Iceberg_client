@@ -1,22 +1,56 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { BackHandler } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { CommonActions, useFocusEffect, useNavigation } from '@react-navigation/native';
+
+const findTabNavigator = (navigation) => {
+    let nav = navigation;
+    while (nav) {
+        const routeNames = nav.getState?.()?.routeNames;
+        if (Array.isArray(routeNames) && routeNames.includes('ChatList') && routeNames.includes('Cart')) {
+            return nav;
+        }
+        nav = nav.getParent?.();
+    }
+    return null;
+};
 
 /**
  * Безопасный возврат с экрана ИИ-помощника: кнопка «Назад», swipe-back и hardware back.
  * Если в стеке нет предыдущего экрана — переход по fromScreen.
  */
-export const useAssistantChatNavigation = (fromScreen, product) => {
+export const useAssistantChatNavigation = (fromScreen, product, returnOrderId = null) => {
     const navigation = useNavigation();
     const isNavigatingRef = useRef(false);
 
     const handleGoBack = useCallback(() => {
-        if (isNavigatingRef.current) {
-            isNavigatingRef.current = false;
-        }
+        if (isNavigatingRef.current) return;
         isNavigatingRef.current = true;
 
         try {
+            if (fromScreen === 'OrderDetails') {
+                const tabNav = findTabNavigator(navigation);
+                const orderParams = returnOrderId
+                    ? { screen: 'OrderDetails', params: { orderId: returnOrderId } }
+                    : undefined;
+
+                if (tabNav) {
+                    tabNav.navigate('Cart', orderParams);
+                } else {
+                    navigation.navigate('Main', {
+                        screen: 'Cart',
+                        params: orderParams,
+                    });
+                }
+
+                navigation.dispatch(
+                    CommonActions.reset({
+                        index: 0,
+                        routes: [{ name: 'ChatMain' }],
+                    })
+                );
+                return;
+            }
+
             if (navigation.canGoBack()) {
                 navigation.goBack();
                 return;
@@ -58,11 +92,13 @@ export const useAssistantChatNavigation = (fromScreen, product) => {
                 isNavigatingRef.current = false;
             }, 200);
         }
-    }, [navigation, fromScreen, product?.id]);
+    }, [navigation, fromScreen, product?.id, returnOrderId]);
 
     useEffect(() => {
         const unsubscribe = navigation.addListener('beforeRemove', (e) => {
-            if (navigation.canGoBack()) {
+            if (isNavigatingRef.current) return;
+
+            if (fromScreen !== 'OrderDetails' && navigation.canGoBack()) {
                 return;
             }
 
@@ -76,7 +112,7 @@ export const useAssistantChatNavigation = (fromScreen, product) => {
         });
 
         return unsubscribe;
-    }, [navigation, handleGoBack]);
+    }, [navigation, handleGoBack, fromScreen]);
 
     useFocusEffect(
         useCallback(() => {

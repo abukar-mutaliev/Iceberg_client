@@ -9,6 +9,7 @@ import { TypingIndicator } from '@entities/chat';
 import ChatApi from '@entities/chat/api/chatApi';
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 import { navigationRef } from '@shared/utils/NavigationRef';
+import { navigateToOrderFromChat } from '@screens/ordes/lib/orderDetailsNavigation';
 import { MessageList } from '../components/MessageList';
 import { ChatModals } from '../components/ChatModals';
 import { useChatActions } from '../hooks/useChatActions';
@@ -514,6 +515,11 @@ export const DirectChatScreen = ({ route, navigation }) => {
     });
   }, [isSelectionMode, navigation, roomId]);
   
+  const handleOpenOrder = useCallback((orderId) => {
+    if (isSelectionMode) return;
+    navigateToOrderFromChat(navigation, orderId, currentUser?.role);
+  }, [isSelectionMode, navigation, currentUser?.role]);
+
   const handleOpenWarehouse = useCallback((warehouseId) => {
     if (isSelectionMode) return;
     
@@ -721,6 +727,7 @@ export const DirectChatScreen = ({ route, navigation }) => {
             onOpenStop={handleOpenStop}
             onOpenContact={handleOpenContact}
             onOpenWarehouse={handleOpenWarehouse}
+            onOpenOrder={handleOpenOrder}
             onImagePress={(imageUri) => handleImagePress(imageUri, messages)}
             onAvatarPress={handleAvatarPress}
             onContactDriver={handleContactDriver}

@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { useFocusEffect, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useAssistantChatNavigation } from '../../../hooks/useAssistantChatNavigation';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { ChatBackground } from '@entities/chat/ui/ChatBackground';
@@ -23,6 +23,8 @@ import { useOpenDeveloperChat } from '@features/help/hooks/useOpenDeveloperChat'
 import { useChatKeyboard } from '@screens/chat/hooks/useChatKeyboard';
 import { useTabBar } from '@widgets/navigation/context';
 import { getImageUrl } from '@shared/api/api';
+import { useAuth } from '@entities/auth/hooks/useAuth';
+import { navigateToOrderFromChat } from '@screens/ordes/lib/orderDetailsNavigation';
 import { useAiAssistant } from '../../../hooks/useAiAssistant';
 import { ASSISTANT_CHAT_TITLE } from '../../../constants';
 
@@ -46,18 +48,23 @@ const TAB_BAR_HEIGHT = 80;
  * с хвостиками и поддержка тёмной темы.
  */
 export const AssistantChatScreen = () => {
+    const navigation = useNavigation();
     const route = useRoute();
+    const { currentUser } = useAuth();
     const roomId = route.params?.roomId ?? null;
     const fromScreen = route.params?.fromScreen ?? null;
     const [input, setInput] = React.useState('');
     const [attachedProduct, setAttachedProduct] = React.useState(route.params?.product ?? null);
+    const [attachedOrders, setAttachedOrders] = React.useState(
+        () => (Array.isArray(route.params?.orders) ? route.params.orders.filter((order) => order?.id) : [])
+    );
     const listRef = useRef(null);
     const insets = useSafeAreaInsets();
     const { hideTabBar, showTabBar, isTabBarVisible } = useTabBar();
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
     const { messages, sending, loadingHistory, escalationSuggested, developerContactSuggested, sendQuestion } = useAiAssistant(roomId);
-    const { handleGoBack } = useAssistantChatNavigation(fromScreen, attachedProduct);
+    const { handleGoBack } = useAssistantChatNavigation(fromScreen, attachedProduct, attachedOrders[0]?.id ?? null);
     const { openManagerChat, loading: openingManager } = useOpenManagerChat('Assistant');
     const { openDeveloperChat, loading: openingDeveloper } = useOpenDeveloperChat('Assistant');
     const {
@@ -96,15 +103,53 @@ export const AssistantChatScreen = () => {
     const handleSend = useCallback(() => {
         const text = input.trim();
         if (!text || sending) return;
-        const attachment = attachedProduct ? { productId: attachedProduct.id, product: attachedProduct } : null;
+        const attachment = {
+            ...(attachedProduct ? { productId: attachedProduct.id, product: attachedProduct } : {}),
+            ...(attachedOrders.length > 0 ? { orders: attachedOrders } : {}),
+        };
         setInput('');
         setAttachedProduct(null);
-        sendQuestion(text, attachment);
+        setAttachedOrders([]);
+        sendQuestion(text, Object.keys(attachment).length > 0 ? attachment : null);
         scrollToEnd();
-    }, [input, sending, attachedProduct, sendQuestion, scrollToEnd]);
+    }, [input, sending, attachedProduct, attachedOrders, sendQuestion, scrollToEnd]);
+
+    const handleOpenOrder = useCallback((orderId) => {
+        navigateToOrderFromChat(navigation, orderId, currentUser?.role);
+    }, [navigation, currentUser?.role]);
 
     const renderItem = useCallback(({ item }) => {
         const isUser = item.role === 'user';
+
+        if (item.type === 'order') {
+            const order = item.order || {};
+            const orderId = order.orderId || order.id;
+            const title = order.orderNumber ? `Заказ №${order.orderNumber}` : 'Заказ';
+            const price = formatProductPrice({ price: order.totalAmount });
+            const status = order.statusLabel || null;
+            return (
+                <View style={[styles.bubbleRow, isUser ? styles.rowUser : styles.rowBot]}>
+                    <View style={[styles.bubbleWrapper, isUser && styles.bubbleWrapperUser]}>
+                        <TouchableOpacity
+                            style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleBot, styles.productBubble]}
+                            activeOpacity={0.8}
+                            disabled={!orderId}
+                            onPress={() => handleOpenOrder(orderId)}
+                        >
+                            <View style={[styles.productImage, styles.productImagePlaceholder]}>
+                                <Icon name="receipt-long" size={22} color={colors.primary} />
+                            </View>
+                            <View style={styles.productInfo}>
+                                <Text style={styles.productName} numberOfLines={2}>{title}</Text>
+                                {status ? <Text style={styles.productPrice} numberOfLines={1}>{status}</Text> : null}
+                                {price ? <Text style={styles.productPrice}>{price}</Text> : null}
+                                <Text style={styles.orderOpenHint}>Открыть заказ</Text>
+                            </View>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            );
+        }
 
         if (item.type === 'product') {
             const image = resolveProductImage(item.product);
@@ -154,7 +199,7 @@ export const AssistantChatScreen = () => {
                 </View>
             </View>
         );
-    }, [styles, colors.primary]);
+    }, [styles, colors.primary, colors.textTertiary, handleOpenOrder]);
 
     return (
         <SafeAreaView style={styles.container} edges={['left', 'right']}>
@@ -187,7 +232,10 @@ export const AssistantChatScreen = () => {
                             {escalationSuggested && (
                                 <TouchableOpacity
                                     style={styles.escalateButton}
-                                    onPress={openManagerChat}
+                                    onPress={() => openManagerChat(
+                                        attachedOrders.map((order) => order.id),
+                                        { includeAssistantHistory: true }
+                                    )}
                                     disabled={openingManager}
                                     activeOpacity={0.8}
                                 >
@@ -210,6 +258,31 @@ export const AssistantChatScreen = () => {
                                         {openingDeveloper ? 'Открываем чат...' : 'Написать разработчику'}
                                     </Text>
                                 </TouchableOpacity>
+                            )}
+
+                            {attachedOrders.length > 0 && (
+                                <View style={styles.attachmentChip}>
+                                    <View style={[styles.attachmentImage, styles.productImagePlaceholder]}>
+                                        <Icon name="receipt-long" size={18} color={colors.primary} />
+                                    </View>
+                                    <View style={styles.attachmentInfo}>
+                                        <Text style={styles.attachmentLabel} numberOfLines={1}>
+                                            {attachedOrders.length > 1 ? 'Вопрос о заказах' : 'Вопрос о заказе'}
+                                        </Text>
+                                        <Text style={styles.attachmentName} numberOfLines={1}>
+                                            {attachedOrders
+                                                .map((order) => (order.orderNumber ? `№${order.orderNumber}` : `№${order.id}`))
+                                                .join(', ')}
+                                        </Text>
+                                    </View>
+                                    <TouchableOpacity
+                                        style={styles.attachmentRemove}
+                                        onPress={() => setAttachedOrders([])}
+                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    >
+                                        <Icon name="close" size={18} color={colors.textSecondary} />
+                                    </TouchableOpacity>
+                                </View>
                             )}
 
                             {attachedProduct && (
@@ -248,7 +321,11 @@ export const AssistantChatScreen = () => {
                                     style={styles.input}
                                     value={input}
                                     onChangeText={setInput}
-                                    placeholder={attachedProduct ? 'Спросите что-нибудь о товаре...' : 'Напишите вопрос...'}
+                                    placeholder={
+                                        attachedProduct
+                                            ? 'Спросите что-нибудь о товаре...'
+                                            : (attachedOrders.length > 0 ? 'Спросите о заказе...' : 'Напишите вопрос...')
+                                    }
                                     placeholderTextColor={colors.textTertiary}
                                     keyboardAppearance={isDark ? 'dark' : 'light'}
                                     multiline
@@ -387,6 +464,12 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     productPrice: {
         fontSize: 14,
         color: isDark ? colors.textSecondary : '#444444',
+    },
+    orderOpenHint: {
+        marginTop: 4,
+        fontSize: 13,
+        fontWeight: '600',
+        color: colors.primary,
     },
 
     attachmentChip: {

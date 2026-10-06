@@ -359,6 +359,11 @@ const createStyles = (colors, isDark, screenBackground) => {
         alignItems: 'center',
         justifyContent: 'center',
         minHeight: 44,
+        shadowColor: '#1A2140',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: isDark ? 0 : 0.05,
+        shadowRadius: 3,
+        elevation: isDark ? 0 : 1,
     },
     modalConfirmButtonText: {
         fontSize: 14,

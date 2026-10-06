@@ -90,6 +90,7 @@ const initialState = {
     orderCounts: {
         waitingStockCount: 0,
         activeCount: null,
+        pendingPaymentCount: 0,
         total: 0,
         loading: false,
         error: null,
@@ -227,6 +228,55 @@ export const fetchOrderCounts = createAsyncThunk(
             }
         } catch (error) {
             return rejectWithValue(error.message || 'Ошибка при загрузке счетчиков');
+        }
+    }
+);
+
+const resolvePendingPaymentCount = (response) => {
+    const payload = response?.data;
+    const orders = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.data)
+            ? payload.data
+            : [];
+
+    const total = response?.pagination?.total
+        ?? payload?.pagination?.total
+        ?? (typeof payload?.total === 'number' ? payload.total : undefined);
+
+    if (typeof total === 'number') {
+        return total;
+    }
+
+    return orders.filter((order) => !order?.status || order.status === 'PENDING_PAYMENT').length;
+};
+
+// Количество заказов клиента со статусом «Ожидает оплату» — для бейджа корзины
+export const fetchPendingPaymentCount = createAsyncThunk(
+    'orders/fetchPendingPaymentCount',
+    async (_, { rejectWithValue, getState }) => {
+        try {
+            const userRole = getState().auth?.user?.role;
+
+            if (userRole !== 'CLIENT') {
+                return { pendingPaymentCount: 0 };
+            }
+
+            const response = await OrderApi.getMyOrders({
+                page: 1,
+                limit: 1,
+                status: 'PENDING_PAYMENT',
+                sortBy: 'createdAt',
+                sortOrder: 'desc'
+            });
+
+            if (response?.status !== 'success') {
+                throw new Error(response?.message || 'Ошибка при загрузке заказов');
+            }
+
+            return { pendingPaymentCount: resolvePendingPaymentCount(response) };
+        } catch (error) {
+            return rejectWithValue(error.message || 'Ошибка при загрузке заказов');
         }
     }
 );
@@ -961,6 +1011,10 @@ const orderSlice = createSlice({
             .addCase(fetchOrderCounts.rejected, (state, action) => {
                 state.orderCounts.loading = false;
                 state.orderCounts.error = action.payload;
+            })
+
+            .addCase(fetchPendingPaymentCount.fulfilled, (state, action) => {
+                state.orderCounts.pendingPaymentCount = action.payload?.pendingPaymentCount ?? 0;
             })
 
             // ===== ПОЛУЧЕНИЕ ДЕТАЛЕЙ ЗАКАЗА =====

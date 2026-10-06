@@ -81,7 +81,8 @@ export const useStaffOrdersScreen = () => {
     
     const localOrderActions = useSelector(selectLocalOrderActions);
     const { downloadInvoice, updateStatus, completeOrderStage, takeOrder, releaseOrder, cancelOrderById } = useOrders();
-    const { canViewAllOrders, actualProcessingRole, relevantStatuses, historyStatuses } = useOrderPermissions(currentUser);
+    const { canViewAllOrders, canConfirmOrderPrice, actualProcessingRole, relevantStatuses, historyStatuses } = useOrderPermissions(currentUser);
+    const [weightFlowTab, setWeightFlowTab] = useState(null);
     
     // WebSocket для реального времени
     const { isConnected: isWebSocketConnected, subscribeToOrders, unsubscribeFromOrders, forceReconnect } = useRealtimeOrders();
@@ -246,7 +247,27 @@ export const useStaffOrdersScreen = () => {
     const stableLocalOrderActions = useMemo(() => localOrderActions || {}, [localOrderActions]);
     const stableDownloadingInvoices = useMemo(() => downloadingInvoices, [downloadingInvoices.size]);
     const stableStaffOrders = useMemo(() => staffOrdersSource || [], [staffOrdersSource]);
-    const stableFilteredOrders = useMemo(() => filteredOrders || [], [filteredOrders]);
+    const weightFilteredOrders = useMemo(() => {
+        const list = filteredOrders || [];
+        if (weightFlowTab === 'weighing') {
+            return list.filter((order) => order.status === 'AWAITING_CONFIRMATION');
+        }
+        if (weightFlowTab === 'payment') {
+            return list.filter((order) => order.status === 'PENDING_PAYMENT' && order.isWeightBased);
+        }
+        return list;
+    }, [filteredOrders, weightFlowTab]);
+
+    const stableFilteredOrders = useMemo(() => weightFilteredOrders || [], [weightFilteredOrders]);
+
+    const weighingCount = useMemo(
+        () => (activeOrders || []).filter((order) => order.status === 'AWAITING_CONFIRMATION').length,
+        [activeOrders]
+    );
+    const weightPaymentCount = useMemo(
+        () => (activeOrders || []).filter((order) => order.status === 'PENDING_PAYMENT' && order.isWeightBased).length,
+        [activeOrders]
+    );
 
     // Обновление данных
     const handleRefreshData = useCallback(async () => {
@@ -511,6 +532,7 @@ export const useStaffOrdersScreen = () => {
         if (newShowHistory) {
             // Переключаемся НА историю
             setShowWaitingStock(false);
+            setWeightFlowTab(null);
             
             if (!historyDataLoaded) {
                 try {
@@ -540,6 +562,7 @@ export const useStaffOrdersScreen = () => {
         
         setShowWaitingStock(newShowWaitingStock);
         setShowHistory(false);
+        setWeightFlowTab(null);
         
         // Загружаем WAITING_STOCK только если еще не загружены
         if (newShowWaitingStock && !waitingStockDataLoaded) {
@@ -563,6 +586,15 @@ export const useStaffOrdersScreen = () => {
         
         setShowHistory(false);
         setShowWaitingStock(false);
+        setWeightFlowTab(null);
+    }, []);
+
+    const handleWeightFlowTab = useCallback((tab) => {
+        emptyPagesCountRef.current = 0;
+        prevFilteredCountRef.current = 0;
+        setShowHistory(false);
+        setShowWaitingStock(false);
+        setWeightFlowTab((current) => (current === tab ? null : tab));
     }, []);
 
     const handleCloseStatusModal = useCallback(() => {
@@ -625,7 +657,12 @@ export const useStaffOrdersScreen = () => {
         dataLoaded,
         currentUser,
         canViewAllOrders,
+        canConfirmOrderPrice,
         actualProcessingRole,
+        weightFlowTab,
+        setWeightFlowTab,
+        weighingCount,
+        weightPaymentCount,
 
         // Actions
         localOrderActions: stableLocalOrderActions,
@@ -641,6 +678,7 @@ export const useStaffOrdersScreen = () => {
         handleToggleHistory,
         handleToggleWaitingStock,
         handleToggleMain,
+        handleWeightFlowTab,
         handleCloseStatusModal,
         handleStatusSelect,
         handleStatusCommentChange,

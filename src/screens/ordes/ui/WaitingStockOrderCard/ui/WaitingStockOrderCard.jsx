@@ -75,8 +75,8 @@ export const WaitingStockOrderCard = ({
             <View style={styles.clientInfo}>
                 <Icon name="person" size={16} color={iconMuted} />
                 <Text style={styles.clientName}>{order.client?.name || 'Клиент'}</Text>
-                {order.client?.phone && (
-                    <Text style={styles.clientPhone}>{order.client.phone}</Text>
+                {order.client?.phone && order.client.phoneMasked !== true && (
+                    <Text selectable={false} style={styles.clientPhone}>{order.client.phone}</Text>
                 )}
             </View>
         );
@@ -244,15 +244,15 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         padding: 16,
         marginHorizontal: 4,
         marginVertical: 4,
-        shadowColor: colors.shadowColor || '#000',
+        shadowColor: isDark ? (colors.shadowColor || '#000') : '#1A2140',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: isDark ? 0.25 : 0.1,
-        shadowRadius: 4,
-        elevation: 3,
+        shadowOpacity: isDark ? 0.25 : 0.06,
+        shadowRadius: isDark ? 4 : 6,
+        elevation: isDark ? 3 : 2,
         borderLeftWidth: 4,
         borderLeftColor: '#fd7e14',
-        borderWidth: isDark ? 1 : 0,
-        borderColor: colors.border,
+        borderWidth: 1,
+        borderColor: isDark ? colors.border : '#E4E6EE',
     },
     header: {
         flexDirection: 'row',

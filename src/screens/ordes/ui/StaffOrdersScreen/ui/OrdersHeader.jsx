@@ -19,6 +19,11 @@ export const OrdersHeader = ({
     onToggleHistory,
     onToggleWaitingStock,
     onToggleMain,
+    onWeightFlowTab,
+    weightFlowTab,
+    canConfirmOrderPrice,
+    weighingCount = 0,
+    weightPaymentCount = 0,
     onGoBack,
     waitingStockCount = 0,
     isWebSocketConnected = false,
@@ -36,11 +41,11 @@ export const OrdersHeader = ({
         (currentUser?.role === 'EMPLOYEE' || currentUser?.role === 'ADMIN') && (
             <View style={containerStyle}>
                 <TouchableOpacity
-                    style={[styles.toggleButton, !showHistory && !showWaitingStock && styles.toggleButtonActive]}
+                    style={[styles.toggleButton, !showHistory && !showWaitingStock && !weightFlowTab && styles.toggleButtonActive]}
                     onPress={onToggleMain}
                 >
                     <Text 
-                        style={[styles.toggleButtonText, !showHistory && !showWaitingStock && styles.toggleButtonTextActive]}
+                        style={[styles.toggleButtonText, !showHistory && !showWaitingStock && !weightFlowTab && styles.toggleButtonTextActive]}
                         numberOfLines={2}
                     >
                         {actualProcessingRole === 'PICKER' ? 'Новые' : 'Активные'}
@@ -103,72 +108,127 @@ export const OrdersHeader = ({
         )
     );
 
+    const renderWeightChips = () => canConfirmOrderPrice ? (
+        <View style={styles.weightTabs}>
+            <TouchableOpacity
+                style={[styles.weightChip, weightFlowTab === 'weighing' && styles.weightChipActive]}
+                onPress={() => onWeightFlowTab?.('weighing')}
+            >
+                <Text style={[styles.weightChipText, weightFlowTab === 'weighing' && styles.weightChipTextActive]}>
+                    Ожидают взвешивания{weighingCount ? ` (${weighingCount})` : ''}
+                </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+                style={[styles.weightChip, weightFlowTab === 'payment' && styles.weightChipActive]}
+                onPress={() => onWeightFlowTab?.('payment')}
+            >
+                <Text style={[styles.weightChipText, weightFlowTab === 'payment' && styles.weightChipTextActive]}>
+                    Ожидают оплаты{weightPaymentCount ? ` (${weightPaymentCount})` : ''}
+                </Text>
+            </TouchableOpacity>
+        </View>
+    ) : null;
+
     if (stickyMode) {
         return (
             <View style={styles.stickyHeaderContainer}>
                 {renderTabs(styles.stickyToggleContainer)}
+                {renderWeightChips()}
             </View>
         );
     }
 
     return (
-        <View style={styles.headerContainer} onLayout={onLayout}>
-            <View style={styles.header}>
-                <TouchableOpacity
-                    style={styles.backButton}
-                    onPress={onGoBack}
-                >
-                    <ArrowBackIcon color={headerForeground} />
-                </TouchableOpacity>
-                <View style={styles.titleContainer}>
-                    <Text style={styles.headerTitle}>Заказы для обработки</Text>
+        <View style={styles.headerShell}>
+            <View style={styles.headerContainer} onLayout={onLayout}>
+                <View style={styles.header}>
+                    <TouchableOpacity
+                        style={styles.backButton}
+                        onPress={onGoBack}
+                        activeOpacity={0.7}
+                    >
+                        <ArrowBackIcon color={headerForeground} />
+                    </TouchableOpacity>
+                    <Text style={styles.headerTitle} numberOfLines={1}>
+                        Заказы для обработки
+                    </Text>
+                    <View style={styles.headerSideSpacer} />
                 </View>
+
+                {renderTabs(styles.toggleContainer)}
+                {renderWeightChips()}
+
+                <OrdersFilters
+                    type="staff"
+                    filters={filters}
+                    onFiltersChange={onFiltersChange}
+                    showProcessingToggle={false}
+                    embeddedInDarkHeader={isDark}
+                    integratedInHeader
+                />
             </View>
-
-            {renderTabs(styles.toggleContainer)}
-
-            <OrdersFilters
-                type="staff"
-                filters={filters}
-                onFiltersChange={onFiltersChange}
-                showProcessingToggle={false}
-                embeddedInDarkHeader={isDark}
-            />
         </View>
     );
 };
 
+const LIGHT_SHADOW = '#1A2140';
+const LIGHT_EDGE = 'rgba(20, 24, 48, 0.12)';
+
 const createStyles = (colors, isDark) => {
     const headerBackground = isDark ? ORDER_DETAILS_CLIENT_DARK_BACKGROUND : colors.cardBackground;
-    const headerBorderColor = isDark ? 'rgba(255, 255, 255, 0.15)' : colors.border;
-    const tabTrackBackground = isDark ? 'rgba(255, 255, 255, 0.12)' : colors.surface;
+    const tabTrackBackground = isDark ? 'rgba(255, 255, 255, 0.12)' : '#EEF0F6';
     const tabActiveBackground = isDark ? ON_PRIMARY_COLOR : colors.primary;
     const tabInactiveText = isDark ? 'rgba(255, 255, 255, 0.75)' : colors.textSecondary;
     const tabActiveText = isDark ? ORDER_DETAILS_CLIENT_DARK_BACKGROUND : colors.textInverse;
+    const lightControlShadow = {
+        shadowColor: LIGHT_SHADOW,
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 3,
+        elevation: 1,
+        borderWidth: 1,
+        borderColor: LIGHT_EDGE,
+    };
 
     return StyleSheet.create({
     stickyHeaderContainer: {
         backgroundColor: headerBackground,
         paddingHorizontal: 16,
-        paddingVertical: 12,
+        paddingTop: 12,
+        paddingBottom: 16,
+        borderBottomLeftRadius: 24,
+        borderBottomRightRadius: 24,
+    },
+    headerShell: {
+        marginHorizontal: -10,
+        marginBottom: 20,
+        borderBottomLeftRadius: 28,
+        borderBottomRightRadius: 28,
+        backgroundColor: headerBackground,
+        borderWidth: 0,
+        shadowColor: isDark ? (colors.shadowColor || '#000') : LIGHT_SHADOW,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: isDark ? 0.22 : 0.06,
+        shadowRadius: 8,
+        elevation: isDark ? 4 : 2,
     },
     headerContainer: {
         backgroundColor: headerBackground,
-        paddingBottom: 16,
+        paddingBottom: 6,
+        borderBottomLeftRadius: 28,
+        borderBottomRightRadius: 28,
+        overflow: 'hidden',
     },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingVertical: 16,
-        borderBottomWidth: 1,
-        borderBottomColor: headerBorderColor,
+        paddingHorizontal: 16,
+        paddingTop: 12,
+        paddingBottom: 8,
     },
-    titleContainer: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
+    headerSideSpacer: {
+        width: 40,
+        height: 40,
     },
     connectionIndicator: {
         flexDirection: 'row',
@@ -192,14 +252,21 @@ const createStyles = (colors, isDark) => {
         fontWeight: '600',
     },
     backButton: {
-        padding: 8,
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.16)' : '#FFFFFF',
+        ...(isDark ? {} : lightControlShadow),
     },
     headerTitle: {
-        fontSize: 20,
+        flex: 1,
+        fontSize: 18,
         fontWeight: '700',
         color: isDark ? ON_PRIMARY_COLOR : colors.textPrimary,
         textAlign: 'center',
-        marginHorizontal: 16,
+        marginHorizontal: 8,
     },
     toggleContainer: {
         flexDirection: 'row',
@@ -209,22 +276,16 @@ const createStyles = (colors, isDark) => {
         backgroundColor: tabTrackBackground,
         borderRadius: 12,
         padding: 3,
-        shadowColor: colors.shadowColor || '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: isDark ? 0 : 0.05,
-        shadowRadius: 3,
-        elevation: isDark ? 0 : 2,
+        borderWidth: isDark ? 0 : 1,
+        borderColor: LIGHT_EDGE,
     },
     stickyToggleContainer: {
         flexDirection: 'row',
         backgroundColor: tabTrackBackground,
         borderRadius: 12,
         padding: 3,
-        shadowColor: colors.shadowColor || '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: isDark ? 0 : 0.05,
-        shadowRadius: 3,
-        elevation: isDark ? 0 : 2,
+        borderWidth: isDark ? 0 : 1,
+        borderColor: LIGHT_EDGE,
     },
     toggleButton: {
         flex: 1,
@@ -240,9 +301,9 @@ const createStyles = (colors, isDark) => {
         backgroundColor: tabActiveBackground,
         shadowColor: tabActiveBackground,
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: isDark ? 0.15 : 0.2,
-        shadowRadius: 4,
-        elevation: 3,
+        shadowOpacity: isDark ? 0.12 : 0.08,
+        shadowRadius: 3,
+        elevation: 1,
     },
     toggleButtonText: {
         fontSize: 12,
@@ -289,6 +350,43 @@ const createStyles = (colors, isDark) => {
     },
     badgeTextActive: {
         color: colors.textInverse,
+    },
+    weightTabs: {
+        flexDirection: 'row',
+        marginHorizontal: 16,
+        marginBottom: 8,
+        gap: 8,
+    },
+    weightChip: {
+        flex: 1,
+        paddingVertical: 8,
+        paddingHorizontal: 10,
+        borderRadius: 10,
+        backgroundColor: isDark ? tabTrackBackground : '#FFFFFF',
+        alignItems: 'center',
+        borderWidth: isDark ? 0 : 1,
+        borderColor: LIGHT_EDGE,
+        shadowColor: LIGHT_SHADOW,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: isDark ? 0 : 0.04,
+        shadowRadius: 3,
+        elevation: isDark ? 0 : 1,
+    },
+    weightChipActive: {
+        backgroundColor: tabActiveBackground,
+        borderColor: tabActiveBackground,
+        shadowOpacity: isDark ? 0.12 : 0.08,
+        elevation: 1,
+    },
+    weightChipText: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: tabInactiveText,
+        textAlign: 'center',
+    },
+    weightChipTextActive: {
+        color: tabActiveText,
+        fontWeight: '700',
     },
 });
 };

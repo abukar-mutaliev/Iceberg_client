@@ -776,6 +776,8 @@ export const RepostProductContent = ({ product, currentUser, onClose }) => {
         messageContent = 'Фото';
       } else if (lastMessage.type === 'PRODUCT') {
         messageContent = 'Товар';
+      } else if (lastMessage.type === 'ORDER') {
+        messageContent = 'Заказ';
       } else if (lastMessage.type === 'STOP') {
         messageContent = 'Остановка';
       } else if (lastMessage.type === 'VOICE') {

@@ -177,7 +177,7 @@ const CartService = {
             deliveryAddress: orderData.deliveryAddress || '',
             comment: orderData.comment || '',
             expectedDeliveryDate: orderData.expectedDeliveryDate || null,
-            paymentMethod: orderData.paymentMethod || 'CASH',
+            paymentMethod: 'ONLINE',
             usePreauthorization: orderData.usePreauthorization || false
         }),
 

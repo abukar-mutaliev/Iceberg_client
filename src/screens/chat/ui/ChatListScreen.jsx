@@ -17,8 +17,10 @@ import {IconDelivery} from '@shared/ui/Icon/Profile/IconDelivery';
 import IconWarehouse from '@shared/ui/Icon/Warehouse/IconWarehouse';
 import {Ionicons} from '@expo/vector-icons';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { hideClientPhoneFields } from '@shared/lib/hideClientPhone';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
 import { ASSISTANT_CHAT_TITLE, AssistantAvatar, isAssistantRoom } from '@features/ai-assistant';
+import { isOfficialSupportRoom, SupportAvatar } from '@features/help';
 
 const ROOMS_PAGE_LIMIT = 100;
 
@@ -566,7 +568,7 @@ export const ChatListScreen = ({navigation}) => {
             });
 
             if (partner) {
-                const partnerUser = partner.user || partner;
+                const partnerUser = hideClientPhoneFields(partner.user || partner, currentUser);
 
                 // Для поставщиков показываем название компании
                 if (partnerUser?.role === 'SUPPLIER') {
@@ -905,6 +907,16 @@ export const ChatListScreen = ({navigation}) => {
                 messageContent = 'Фото';
             } else if (lastMessage.type === 'PRODUCT') {
                 messageContent = 'Товар';
+            } else if (lastMessage.type === 'ORDER') {
+                messageContent = 'Заказ';
+                try {
+                    const orderData = JSON.parse(lastMessage.content || '{}');
+                    if (orderData?.orderNumber) {
+                        messageContent = `Заказ ${orderData.orderNumber}`;
+                    }
+                } catch (e) {
+                    messageContent = 'Заказ';
+                }
             } else if (lastMessage.type === 'STOP') {
                 // Просрочку применяем только к каналам (BROADCAST). В обычных
                 // групповых чатах STOP — обычное сообщение и всегда показывается.
@@ -975,9 +987,11 @@ export const ChatListScreen = ({navigation}) => {
                 onLongPress={() => handleRoomLongPress(item)}
                 delayLongPress={300}
             >
-                <View style={[styles.avatarBox, isAssistantRoom(item) && styles.avatarBoxAssistant]}>
+                <View style={[styles.avatarBox, (isAssistantRoom(item) || isOfficialSupportRoom(item)) && styles.avatarBoxAssistant]}>
                     {isAssistantRoom(item) ? (
                         <AssistantAvatar size="list" />
+                    ) : isOfficialSupportRoom(item) ? (
+                        <SupportAvatar size="list" />
                     ) : avatarUri ? (
                         <Image source={{uri: avatarUri}} style={styles.avatarImg} resizeMode="cover"/>
                     ) : (

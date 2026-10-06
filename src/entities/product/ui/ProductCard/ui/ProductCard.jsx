@@ -11,6 +11,12 @@ import {AddToCartButton} from "@shared/ui/Cart/ui/AddToCartButton";
 import {CustomSliderIndicator} from "@shared/ui/CustomSliderIndicator";
 import { ReliableImage, Placeholder as ImagePlaceholder } from '@shared/ui/ReliableImage';
 import * as navigation from "@shared/utils/NavigationRef";
+import {
+    isWeightBasedProduct,
+    getWeightBasedBoxPrice,
+    getWeightBasedKgPerBox,
+    formatWeightKg,
+} from '@shared/lib/isWeightBasedProduct';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const isSmallScreen = SCREEN_WIDTH < 360;
@@ -325,8 +331,17 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
     const availableBoxes = productData.availableBoxes || 0;
     const itemsPerBox = productData.itemsPerBox || 1;
     const pricePerItem = productData.pricePerItem || product.price || 0;
-    
+    const isFishCategory = useMemo(
+        () => isWeightBasedProduct(product) || isWeightBasedProduct(productData),
+        [product, productData]
+    );
+    const kgPerBox = getWeightBasedKgPerBox(productData.itemsPerBox != null ? productData : product);
+
     const boxPrice = useMemo(() => {
+        if (isFishCategory) {
+            return getWeightBasedBoxPrice(productData, pricePerItem);
+        }
+
         const explicitBoxPrice = Number(productData?.boxPrice);
         const hasExplicitBoxPrice = Number.isFinite(explicitBoxPrice) && explicitBoxPrice > 0;
         if (hasExplicitBoxPrice) {
@@ -340,51 +355,12 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
         }
 
         return (Number(pricePerItem) || 0) * (Number(itemsPerBox) || 1);
-    }, [priceInfo?.effectivePrice, productData?.boxPrice, pricePerItem, itemsPerBox]);
+    }, [isFishCategory, priceInfo?.effectivePrice, productData, pricePerItem, itemsPerBox]);
 
-    // Проверка, является ли товар рыбой
-    const isFishCategory = useMemo(() => {
-        if (!product && !productData) return false;
-        
-        // Собираем все возможные источники данных
-        const productToCheck = product || productData;
-        const originalData = product?.originalData || productToCheck?.originalData;
-        
-        // Функция проверки категории
-        const checkCategory = (categoryValue) => {
-            if (!categoryValue) return false;
-            const categoryLower = typeof categoryValue === 'string' 
-                ? categoryValue.toLowerCase().trim()
-                : (categoryValue.name ? categoryValue.name.toLowerCase().trim() : '');
-            return categoryLower === 'рыба' || categoryLower === 'fish';
-        };
-        
-        // Проверяем product.category (строка)
-        if (productToCheck?.category && typeof productToCheck.category === 'string') {
-            if (checkCategory(productToCheck.category)) return true;
-        }
-        
-        // Проверяем originalData.category (строка)
-        if (originalData?.category && typeof originalData.category === 'string') {
-            if (checkCategory(originalData.category)) return true;
-        }
-        
-        // Проверяем product.categories (массив)
-        if (Array.isArray(productToCheck?.categories) && productToCheck.categories.length > 0) {
-            for (const cat of productToCheck.categories) {
-                if (checkCategory(cat)) return true;
-            }
-        }
-        
-        // Проверяем originalData.categories (массив)
-        if (Array.isArray(originalData?.categories) && originalData.categories.length > 0) {
-            for (const cat of originalData.categories) {
-                if (checkCategory(cat)) return true;
-            }
-        }
-        
-        return false;
-    }, [product, productData]);
+    const boxUnitLabel = isFishCategory
+        ? `/ коробка (${formatWeightKg(kgPerBox)} кг)`
+        : `/ коробка (${itemsPerBox} шт.)`;
+    const showBoxPrice = isFishCategory || itemsPerBox > 1;
 
     // Форматирование цены: рубли обычным шрифтом, копейки маленьким
     const formatPriceWithKopecks = useCallback((priceValue) => {
@@ -512,9 +488,9 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                         </Text>
                     </View>
                     
-                    {itemsPerBox > 1 && (
+                    {showBoxPrice && (
                         <Text style={styles.compactBoxInfo}>
-                            {boxPrice.toFixed(0)} ₽ / коробка ({itemsPerBox} шт.)
+                            {boxPrice.toFixed(0)} ₽ {boxUnitLabel}
                         </Text>
                     )}
                     
@@ -632,13 +608,13 @@ const ProductCardComponent = ({ product, onPress, onGoToCart, width, compact = f
                         </Text>
                     </View>
 
-                    {itemsPerBox > 1 && (
+                    {showBoxPrice && (
                         <View style={styles.priceWrapper}>
                             <Text style={[styles.boxPrice, { fontSize: adaptiveStyles.fontSize.boxPrice }]}>
                                 {boxPrice.toFixed(0)} ₽
                             </Text>
                             <Text style={[styles.priceUnit, { fontSize: adaptiveStyles.fontSize.priceUnit }]}>
-                                / коробка ({itemsPerBox} шт.)
+                                {boxUnitLabel}
                             </Text>
                         </View>
                     )}

@@ -73,6 +73,8 @@ export const ProductsList = ({
                 // Сохраняем категорию для проверки в ProductCard
                 category: product.category || product.originalData?.category || null,
                 categories: product.categories || product.originalData?.categories || null,
+                itemsPerBox: product.itemsPerBox ?? product.originalData?.itemsPerBox,
+                boxPrice: product.boxPrice ?? product.originalData?.boxPrice,
                 originalData: product
             }));
     }, [products?.length, products]); // Добавляем products.length для лучшего контроля зависимостей

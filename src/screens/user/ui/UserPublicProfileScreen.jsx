@@ -62,9 +62,6 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                     console.log('UserPublicProfileScreen: Загружен пользователь:', {
                         id: data?.id,
                         role: data?.role,
-                        phone: data?.phone,
-                        employee: data?.employee,
-                        profile: data?.profile,
                         processingRole: data?.employee?.processingRole || data?.profile?.processingRole
                     });
                 }
@@ -259,7 +256,7 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
             }
         }
 
-        if (userData.email) {
+        if (userData.email && !(userData.role === 'CLIENT' && !isSuperAdmin && currentUser?.id !== userData.id)) {
             const emailName = userData.email.split('@')[0];
             return emailName.charAt(0).toUpperCase() + emailName.slice(1);
         }
@@ -273,7 +270,14 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
         return getImageUrl(raw);
     }, [user]);
 
-    const displayName = useMemo(() => getDisplayName(user), [user]);
+    const isSuperAdmin = currentUser?.role === 'ADMIN' && Boolean(
+        currentUser?.admin?.isSuperAdmin
+        || currentUser?.profile?.isSuperAdmin
+        || currentUser?.isSuperAdmin
+    );
+    const isClientProfile = user?.role === 'CLIENT';
+    const canViewClientContact = !isClientProfile || isSuperAdmin || currentUser?.id === user?.id;
+    const displayName = useMemo(() => getDisplayName(user), [user, isSuperAdmin, currentUser?.id]);
 
     const handleGoBack = () => {
         console.log('===== UserPublicProfileScreen handleGoBack =====');
@@ -616,7 +620,7 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                 </View>
 
                 {/* Phone Section - показываем только если есть права доступа */}
-                {getPhoneNumber(user) && canViewSensitiveInfo && (
+                {getPhoneNumber(user) && canViewSensitiveInfo && canViewClientContact && (
                     <View style={styles.infoSection}>
                         <View style={styles.infoRow}>
                             <Text style={styles.sectionLabel}>Телефон</Text>
@@ -644,7 +648,7 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                 )}
 
                 {/* Email Section */}
-                {user?.email && (
+                {user?.email && canViewClientContact && (
                     <View style={styles.infoSection}>
                         <View style={styles.infoRow}>
                             <Text style={styles.sectionLabel}>Email</Text>
@@ -785,7 +789,7 @@ export const UserPublicProfileScreen = ({ route, navigation }) => {
                 )}
 
                 {/* Кнопка для начала чата - показываем всем авторизованным пользователям */}
-                {currentUser && currentUser.id !== user?.id && (
+                {currentUser && currentUser.id !== user?.id && canViewClientContact && (
                     <View style={styles.actionsSection}>
                         <TouchableOpacity 
                             style={styles.actionItem} 

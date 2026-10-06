@@ -16,6 +16,11 @@ export const useOrderPermissions = (currentUser) => {
         return isAdmin || isGeneralStaff;
     }, [currentUser, actualProcessingRole]);
 
+    const canConfirmOrderPrice = useMemo(() => {
+        if (!currentUser) return false;
+        return currentUser.role === 'ADMIN' || actualProcessingRole === 'MANAGER';
+    }, [currentUser, actualProcessingRole]);
+
     // Стабилизируем массивы, чтобы они не пересоздавались при каждом рендере
     const relevantStatuses = useMemo(() =>
         actualProcessingRole ? (CONSTANTS.ROLE_STATUS_MAPPING[actualProcessingRole] || []) : [],
@@ -29,6 +34,7 @@ export const useOrderPermissions = (currentUser) => {
 
     return {
         canViewAllOrders,
+        canConfirmOrderPrice,
         actualProcessingRole,
         relevantStatuses,
         historyStatuses

@@ -528,6 +528,12 @@ export const selectWaitingStockCount = createSelector(
     }
 );
 
+// Заказы клиента со статусом «Ожидает оплату» — бейдж на вкладке корзины
+export const selectPendingPaymentCount = createSelector(
+    [selectOrderCountsState],
+    (orderCounts) => orderCounts?.pendingPaymentCount || 0
+);
+
 // Селектор для получения количества из orderCounts (для бейджей)
 export const selectWaitingStockCountFromCounts = createSelector(
     [selectOrderCountsState],

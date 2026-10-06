@@ -33,7 +33,9 @@ export const CONSTANTS = {
     // PICKING — основной рабочий статус после авто-назначения курьера/сборщика.
     ROLE_STATUS_MAPPING: {
         PICKER: ['PENDING', 'CONFIRMED', 'PICKING'],
-        COURIER: ['IN_DELIVERY']
+        COURIER: ['IN_DELIVERY'],
+        MANAGER: ['AWAITING_CONFIRMATION', 'PENDING_PAYMENT', 'PENDING', 'CONFIRMED', 'PICKING'],
+        SUPERVISOR: ['AWAITING_CONFIRMATION', 'PENDING_PAYMENT', 'PENDING', 'CONFIRMED', 'PICKING', 'IN_DELIVERY']
     },
 
     ROLE_HISTORY_MAPPING: {
@@ -44,21 +46,22 @@ export const CONSTANTS = {
     },
 
     COMPLETED_STATUSES: ['DELIVERED', 'CANCELLED', 'RETURNED'],
-    CANCELLABLE_STATUSES: ['PENDING', 'CONFIRMED', 'PICKING', 'IN_DELIVERY'],
-    ACTIVE_ORDER_STATUSES: ['PENDING', 'CONFIRMED', 'PICKING', 'IN_DELIVERY']
+    CANCELLABLE_STATUSES: ['AWAITING_CONFIRMATION', 'PENDING_PAYMENT', 'PENDING', 'CONFIRMED', 'PICKING', 'IN_DELIVERY'],
+    ACTIVE_ORDER_STATUSES: ['AWAITING_CONFIRMATION', 'PENDING_PAYMENT', 'PENDING', 'CONFIRMED', 'PICKING', 'IN_DELIVERY']
 };
 
 const STATUS_PROGRESS = {
-    PENDING_PAYMENT: 0,
-    PENDING: 1,
-    CONFIRMED: 2,
-    WAITING_STOCK: 2,
-    PICKING: 3,
-    PACKING: 3,
-    IN_DELIVERY: 4,
-    DELIVERED: 5,
-    CANCELLED: 5,
-    RETURNED: 5
+    AWAITING_CONFIRMATION: 0,
+    PENDING_PAYMENT: 1,
+    PENDING: 2,
+    CONFIRMED: 3,
+    WAITING_STOCK: 3,
+    PICKING: 4,
+    PACKING: 4,
+    IN_DELIVERY: 5,
+    DELIVERED: 6,
+    CANCELLED: 6,
+    RETURNED: 6
 };
 
 export const getStatusProgress = (status) => STATUS_PROGRESS[status] ?? -1;
@@ -75,6 +78,12 @@ export const getActiveOrderStatuses = (processingRole) => {
     }
     if (processingRole === 'COURIER') {
         return CONSTANTS.ROLE_STATUS_MAPPING.COURIER;
+    }
+    if (processingRole === 'MANAGER') {
+        return CONSTANTS.ROLE_STATUS_MAPPING.MANAGER;
+    }
+    if (processingRole === 'SUPERVISOR') {
+        return CONSTANTS.ROLE_STATUS_MAPPING.SUPERVISOR;
     }
     return CONSTANTS.ACTIVE_ORDER_STATUSES;
 };

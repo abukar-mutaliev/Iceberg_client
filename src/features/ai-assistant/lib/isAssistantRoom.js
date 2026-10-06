@@ -11,8 +11,11 @@ export const isAssistantRoom = (room) => {
 
     const roomType = String(room.type || room?.room?.type || '').toUpperCase();
     if (roomType === 'ASSISTANT') return true;
+    // Группа поддержки и обычные чаты не становятся помощником, даже если бот когда-то был участником.
+    if (roomType && roomType !== 'ASSISTANT') return false;
 
     const title = String(room.title || room?.room?.title || '').trim();
+    if (title === 'Поддержка Iceberg') return false;
     if (title === ASSISTANT_CHAT_TITLE) return true;
 
     const participants = Array.isArray(room.participants)

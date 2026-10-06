@@ -23,6 +23,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { useGlobalAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 import { PermissionInfoModal } from '@entities/chat/ui/Composer/components/PermissionInfoModal';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { hideClientPhoneFields } from '@shared/lib/hideClientPhone';
 
 export const CreateGroupScreen = ({ navigation, route }) => {
   // Получаем тип из параметров навигации (по умолчанию GROUP)
@@ -110,11 +111,12 @@ export const CreateGroupScreen = ({ navigation, route }) => {
   }, []);
 
   const getUserDisplayName = useCallback((user) => {
-    if (user.role === 'SUPPLIER') {
-      return user.companyName || user.supplier?.companyName || user.contactPerson || user.supplier?.contactPerson || user.name || user.firstName || 'Поставщик';
+    const visible = hideClientPhoneFields(user, currentUser);
+    if (visible.role === 'SUPPLIER') {
+      return visible.companyName || visible.supplier?.companyName || visible.contactPerson || visible.supplier?.contactPerson || visible.name || visible.firstName || 'Поставщик';
     }
-    return user.name || user.firstName || user.email?.split('@')[0] || 'Пользователь';
-  }, []);
+    return visible.name || visible.firstName || visible.email?.split('@')[0] || 'Пользователь';
+  }, [currentUser]);
 
   const getUserAvatar = useCallback((user) => {
     const avatarPath = user.avatar || user.image;

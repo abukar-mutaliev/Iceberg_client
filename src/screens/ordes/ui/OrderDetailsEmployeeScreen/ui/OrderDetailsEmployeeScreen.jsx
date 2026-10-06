@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { View, ScrollView, RefreshControl, Animated, StatusBar, TouchableOpacity, Text, Modal, TextInput } from 'react-native';
+import { View, ScrollView, RefreshControl, Animated, StatusBar, TouchableOpacity, Text, Modal, TextInput, Platform, Keyboard, Dimensions } from 'react-native';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -26,6 +26,10 @@ import { OrderLoadingState, OrderErrorState } from '@shared/ui/OrderLoadingState
 import { WaitingStockInfo } from '@shared/ui/WaitingStockInfo';
 import { OrderDetailsBackButton } from '@shared/ui/OrderDetailsBackButton/ui/OrderDetailsBackButton';
 import { OrderProcessingHistory } from '@shared/ui/OrderProcessingHistory';
+import { ConfirmOrderPricePanel } from '@features/order/confirmOrderPrice/ui/ConfirmOrderPricePanel';
+import { CancelReasonInfo } from '@features/order/cancelOrder/ui/CancelReasonInfo';
+import { PaymentInfoCard } from '@shared/ui/PaymentInfoCard/ui/PaymentInfoCard';
+import { useOrderPermissions } from '@entities/order';
 
 // Вспомогательные функции для проверки условий (упрощённый флоу)
 const canEmployeeTakeOrder = (employeeRole, status, isAdmin = false) => {
@@ -67,7 +71,8 @@ const OrderDetailsEmployeeScreenContent = () => {
 
     // Хуки
     const { currentUser: user } = useAuth();
-    const { downloadInvoice, completeOrderStage, takeOrder, releaseOrder, updateStatus } = useOrders();
+    const { canConfirmOrderPrice } = useOrderPermissions(user);
+    const { downloadInvoice, completeOrderStage, takeOrder, releaseOrder, updateStatus, verifyPickingScan } = useOrders();
     const dispatch = useDispatch();
     const { showError, showSuccess } = useCustomAlert();
 
@@ -78,13 +83,47 @@ const OrderDetailsEmployeeScreenContent = () => {
     const [processingModalVisible, setProcessingModalVisible] = useState(false);
     const [processingComment, setProcessingComment] = useState('');
     const [processingOrder, setProcessingOrder] = useState(false);
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
+    const processingModalScrollRef = useRef(null);
     const [toastConfig, setToastConfig] = useState(null);
     const [transferringToCourier, setTransferringToCourier] = useState(false);
+    const [scanningPicking, setScanningPicking] = useState(false);
 
     // Анимации
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(30)).current;
     const previousOrderIdRef = useRef(null);
+
+    useEffect(() => {
+        if (!processingModalVisible) {
+            setKeyboardHeight(0);
+            return undefined;
+        }
+
+        const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+        const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+        const showSub = Keyboard.addListener(showEvent, (event) => {
+            const height = event.endCoordinates?.height ?? 0;
+            const screenY = event.endCoordinates?.screenY;
+            const windowHeight = Dimensions.get('window').height;
+            const fromScreen = typeof screenY === 'number'
+                ? Math.max(0, windowHeight - screenY)
+                : 0;
+            setKeyboardHeight(height > 0 ? height : fromScreen);
+            setTimeout(() => {
+                processingModalScrollRef.current?.scrollToEnd({ animated: true });
+            }, Platform.OS === 'ios' ? 50 : 120);
+        });
+        const hideSub = Keyboard.addListener(hideEvent, () => {
+            setKeyboardHeight(0);
+        });
+
+        return () => {
+            showSub.remove();
+            hideSub.remove();
+        };
+    }, [processingModalVisible]);
 
     const {
         order,
@@ -422,13 +461,29 @@ const OrderDetailsEmployeeScreenContent = () => {
         const actualStatus = displayStatus;
         const isOrderCompleted = actualStatus && CONSTANTS.COMPLETED_STATUSES.includes(actualStatus);
         const canTransferToCourier = ['PENDING', 'CONFIRMED', 'PICKING', 'PACKING'].includes(actualStatus);
+        const needsPickingScan = Boolean(order?.pickingScanRequired)
+            && !order?.pickingVerifiedAt
+            && canTransferToCourier;
+
+        if (['AWAITING_CONFIRMATION', 'PENDING_PAYMENT'].includes(actualStatus)) {
+            return {
+                showTakeButton: false,
+                showCompleteButton: false,
+                showReleaseButton: false,
+                showTransferToCourier: false,
+                canTakeOrder: false,
+                canCompleteStage: false,
+                canReleaseOrder: false
+            };
+        }
 
         if (isManagerLike) {
             return {
                 showTakeButton: false,
                 showCompleteButton: false,
                 showReleaseButton: false,
-                showTransferToCourier: !isOrderCompleted && canTransferToCourier,
+                showPickingScanButton: !isOrderCompleted && needsPickingScan && canTransferToCourier,
+                showTransferToCourier: !isOrderCompleted && canTransferToCourier && !needsPickingScan,
                 canTakeOrder: false,
                 canCompleteStage: false,
                 canReleaseOrder: false
@@ -472,9 +527,11 @@ const OrderDetailsEmployeeScreenContent = () => {
 
         // Если сотрудник только что взял заказ в работу
         if (localOrderState.lastAction === 'taken' && !isAssignedToMe && localOrderState.temporarySteps.length > 0 && !isReleasedState) {
+            const canComplete = shouldShowWorkButtons(employeeRole, actualStatus, true, isAdmin);
             return {
                 showTakeButton: false,
-                showCompleteButton: shouldShowWorkButtons(employeeRole, actualStatus, true, isAdmin),
+                showCompleteButton: canComplete && !needsPickingScan,
+                showPickingScanButton: canComplete && needsPickingScan,
                 showReleaseButton: true,
                 canTakeOrder: false,
                 canCompleteStage: true,
@@ -510,9 +567,11 @@ const OrderDetailsEmployeeScreenContent = () => {
 
         // Если заказ назначен сотруднику - показываем кнопки работы с заказом
         if (isAssignedToMe) {
+            const canComplete = shouldShowWorkButtons(employeeRole, actualStatus, isAssignedToMe, isAdmin);
             return {
                 showTakeButton: false,
-                showCompleteButton: shouldShowWorkButtons(employeeRole, actualStatus, isAssignedToMe, isAdmin),
+                showCompleteButton: canComplete && !needsPickingScan,
+                showPickingScanButton: canComplete && needsPickingScan,
                 showReleaseButton: true,
                 canTakeOrder: false,
                 canCompleteStage: true,
@@ -545,7 +604,7 @@ const OrderDetailsEmployeeScreenContent = () => {
             canCompleteStage: false,
             canReleaseOrder: false
         };
-    }, [user?.role, user?.employee?.id, user?.employee?.processingRole, order?.assignedTo?.id, order?.status, order?.statusHistory, displayStatus, localOrderState.lastAction, localOrderState.temporarySteps, localOrderState.actionTimestamp, localOrderState.assignedToId, hasEmployeeWorkedOnCurrentStatus, hasLocalCompleted, hasLocalTaken, isReleasedState, isOrderAvailable]);
+    }, [user?.role, user?.employee?.id, user?.employee?.processingRole, order?.assignedTo?.id, order?.status, order?.statusHistory, order?.pickingScanRequired, order?.pickingVerifiedAt, displayStatus, localOrderState.lastAction, localOrderState.temporarySteps, localOrderState.actionTimestamp, localOrderState.assignedToId, hasEmployeeWorkedOnCurrentStatus, hasLocalCompleted, hasLocalTaken, isReleasedState, isOrderAvailable]);
 
     // Обработка взятия заказа в работу
     const handleTakeOrder = useCallback(async () => {
@@ -740,6 +799,36 @@ const OrderDetailsEmployeeScreenContent = () => {
         }
     }, [orderId, processingComment, completeOrderStage, user?.employee, order, loadOrderDetails, showError, dispatch, setOrder]);
 
+    const handleVerifyPickingScan = useCallback(async () => {
+        try {
+            if (!order?.pickingToken) {
+                throw new Error('Код сборки ещё не выдан. Обновите заказ.');
+            }
+            setScanningPicking(true);
+            await verifyPickingScan(orderId, order.pickingToken);
+            const verifiedAt = new Date().toISOString();
+            if (order) {
+                setOrder({
+                    ...order,
+                    pickingVerifiedAt: verifiedAt,
+                    pickingScanRequired: false
+                });
+            }
+            setToastConfig({
+                message: 'Сборка подтверждена',
+                type: 'success',
+                duration: 3000
+            });
+            setTimeout(() => {
+                loadOrderDetails(true);
+            }, 100);
+        } catch (err) {
+            showError('Ошибка', err.message || 'Не удалось подтвердить сборку');
+        } finally {
+            setScanningPicking(false);
+        }
+    }, [order, orderId, verifyPickingScan, setOrder, loadOrderDetails, showError]);
+
     const handleTransferToCourier = useCallback(async () => {
         try {
             setTransferringToCourier(true);
@@ -898,7 +987,7 @@ const OrderDetailsEmployeeScreenContent = () => {
     const renderEmployeeActions = () => {
         if (!order) return null;
 
-        const { showTakeButton, showCompleteButton, showReleaseButton, showTransferToCourier = false } = employeeButtonLogic;
+        const { showTakeButton, showCompleteButton, showReleaseButton, showTransferToCourier = false, showPickingScanButton = false } = employeeButtonLogic;
         const showDownloadButton = canDownloadInvoice(user?.role);
 
         console.log('🎯 renderEmployeeActions', {
@@ -920,7 +1009,7 @@ const OrderDetailsEmployeeScreenContent = () => {
             userEmployeeId: user?.employee?.id
         });
 
-        if (!showTakeButton && !showCompleteButton && !showDownloadButton && !showReleaseButton && !showTransferToCourier) {
+        if (!showTakeButton && !showCompleteButton && !showDownloadButton && !showReleaseButton && !showTransferToCourier && !showPickingScanButton) {
             console.log('❌ Нет кнопок для отображения:', {
                 showTakeButton,
                 showCompleteButton,
@@ -954,6 +1043,30 @@ const OrderDetailsEmployeeScreenContent = () => {
                                 <>
                                     <Icon name="handshake" size={20} color="#fff" />
                                     <Text style={styles.processButtonText}>Взять в работу</Text>
+                                </>
+                            )}
+                        </View>
+                    </TouchableOpacity>
+                )}
+
+                {showPickingScanButton && (
+                    <TouchableOpacity
+                        style={styles.processButton}
+                        onPress={handleVerifyPickingScan}
+                        disabled={scanningPicking}
+                        activeOpacity={0.8}
+                    >
+                        <View style={styles.buttonContent}>
+                            {scanningPicking ? (
+                                <View style={styles.buttonLoader}>
+                                    <View style={[styles.buttonLoaderDot, { backgroundColor: '#fff' }]} />
+                                    <View style={[styles.buttonLoaderDot, { backgroundColor: '#fff' }]} />
+                                    <View style={[styles.buttonLoaderDot, { backgroundColor: '#fff' }]} />
+                                </View>
+                            ) : (
+                                <>
+                                    <Icon name="qr-code-scanner" size={20} color="#fff" />
+                                    <Text style={styles.processButtonText}>Подтвердить сборку</Text>
                                 </>
                             )}
                         </View>
@@ -1063,15 +1176,35 @@ const OrderDetailsEmployeeScreenContent = () => {
     };
 
     // Рендер модального окна обработки заказа
-    const renderProcessingModal = () => (
+    const renderProcessingModal = () => {
+        const keyboardOpen = keyboardHeight > 0;
+        const availableModalHeight = keyboardOpen
+            ? Math.max(280, Dimensions.get('window').height - keyboardHeight - 24)
+            : undefined;
+
+        return (
         <Modal
             visible={processingModalVisible}
             animationType="slide"
             transparent={true}
+            statusBarTranslucent
             onRequestClose={() => setProcessingModalVisible(false)}
         >
-            <View style={styles.modalOverlay}>
-                <View style={styles.modalContent}>
+            <View
+                style={[
+                    styles.modalOverlay,
+                    keyboardOpen && {
+                        justifyContent: 'flex-end',
+                        paddingBottom: keyboardHeight + 12,
+                    },
+                ]}
+            >
+                <View
+                    style={[
+                        styles.modalContent,
+                        availableModalHeight != null && { maxHeight: availableModalHeight },
+                    ]}
+                >
                     <View style={styles.modalHeader}>
                         <Text style={styles.modalTitle}>Завершение этапа обработки</Text>
                         <Text style={styles.modalSubtitle}>
@@ -1079,7 +1212,18 @@ const OrderDetailsEmployeeScreenContent = () => {
                         </Text>
                     </View>
 
-                    <View style={styles.modalBody}>
+                    <ScrollView
+                        ref={processingModalScrollRef}
+                        style={[
+                            styles.modalBody,
+                            keyboardOpen && availableModalHeight != null && {
+                                maxHeight: Math.max(120, availableModalHeight - 200),
+                            },
+                        ]}
+                        contentContainerStyle={styles.modalBodyContent}
+                        keyboardShouldPersistTaps="handled"
+                        showsVerticalScrollIndicator={false}
+                    >
                         <View style={styles.currentStatusContainer}>
                             <Text style={styles.currentStatusLabel}>Текущий статус:</Text>
                             <Text style={styles.currentStatusText}>
@@ -1101,6 +1245,16 @@ const OrderDetailsEmployeeScreenContent = () => {
                                 placeholderTextColor={colors.textTertiary}
                                 value={processingComment}
                                 onChangeText={setProcessingComment}
+                                onFocus={() => {
+                                    setTimeout(() => {
+                                        processingModalScrollRef.current?.scrollToEnd({ animated: true });
+                                    }, 150);
+                                }}
+                                onContentSizeChange={() => {
+                                    if (keyboardHeight > 0) {
+                                        processingModalScrollRef.current?.scrollToEnd({ animated: true });
+                                    }
+                                }}
                                 multiline
                                 numberOfLines={3}
                                 keyboardAppearance={colors.keyboardAppearance}
@@ -1110,7 +1264,7 @@ const OrderDetailsEmployeeScreenContent = () => {
                                 {processingComment.length}/500
                             </Text>
                         </View>
-                    </View>
+                    </ScrollView>
 
                     <View style={styles.modalActions}>
                         <TouchableOpacity
@@ -1140,7 +1294,8 @@ const OrderDetailsEmployeeScreenContent = () => {
                 </View>
             </View>
         </Modal>
-    );
+        );
+    };
 
     // Рендер скелетона загрузки
     if (loading && !refreshing) {
@@ -1197,7 +1352,28 @@ const OrderDetailsEmployeeScreenContent = () => {
                     {displayOrder && (
                         <>
                             <OrderHeader order={displayOrder} />
+                            {isAdminHistoryViewer && displayOrder.status === 'CANCELLED' && (
+                                <CancelReasonInfo reason={displayOrder.cancelReason} />
+                            )}
                             <WaitingStockInfo order={displayOrder} />
+                            {canConfirmOrderPrice && (
+                                <ConfirmOrderPricePanel
+                                    order={displayOrder}
+                                    onConfirmed={(updatedOrder) => {
+                                        if (updatedOrder) {
+                                            setOrder(updatedOrder);
+                                            setLocalOrderState((prev) => ({
+                                                ...prev,
+                                                status: updatedOrder.status || 'PENDING_PAYMENT'
+                                            }));
+                                        }
+                                        loadOrderDetails(true);
+                                    }}
+                                />
+                            )}
+                            {(displayOrder.isWeightBased || displayOrder.payment) && (
+                                <PaymentInfoCard order={displayOrder} />
+                            )}
                             <DeliveryInfo
                                 order={displayOrder}
                                 userRole={user?.role}

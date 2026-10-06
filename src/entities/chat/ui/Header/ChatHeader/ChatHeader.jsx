@@ -6,6 +6,7 @@ import { useCustomAlert } from '@shared/ui/CustomAlert';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { useChatHeaderData } from './hooks/useChatHeaderData';
 import { useChatHeaderActions } from './hooks/useChatHeaderActions';
+import { isOfficialSupportRoom, SupportAvatar } from '@features/help';
 
 // ============ MEMOIZED COMPONENTS ============
 
@@ -20,14 +21,16 @@ const BackButton = memo(({ onPress, textColor, styles }) => (
   </TouchableOpacity>
 ));
 
-const Avatar = memo(({ uri, isGroup, onPress, styles }) => (
+const Avatar = memo(({ uri, isGroup, isSupport, onPress, styles }) => (
   <TouchableOpacity
     onPress={onPress}
     activeOpacity={0.7}
     style={styles.avatarContainer}
   >
-    <View style={styles.avatar}>
-      {uri ? (
+    <View style={[styles.avatar, isSupport && styles.supportAvatar]}>
+      {isSupport ? (
+        <SupportAvatar size={35} />
+      ) : uri ? (
         <Image
           source={{ uri }}
           style={styles.avatarImage}
@@ -75,6 +78,7 @@ const MenuOverlay = memo(({
   isBroadcast,
   isOwner,
   hideLeaveActions,
+  allowDeleteGroup = false,
   onDeleteChat,
   onDeleteGroup,
   onLeaveGroup,
@@ -93,7 +97,7 @@ const MenuOverlay = memo(({
         {isGroup ? (
           <>
             {/* Удалить группу/канал - только для владельца */}
-            {isOwner && (
+            {(isOwner || allowDeleteGroup) && (
               <TouchableOpacity
                 style={styles.modalItem}
                 onPress={onDeleteGroup}
@@ -213,6 +217,9 @@ export const ChatHeader = memo(({ route, navigation }) => {
   // ============ COMPUTED ============
   
   const avatarUri = chatPartnerInfo.avatar ? getImageUrl(chatPartnerInfo.avatar) : null;
+  const isSupportRoom = isOfficialSupportRoom(roomData)
+    || isOfficialSupportRoom({ title: route?.params?.roomTitle })
+    || isOfficialSupportRoom({ title: chatPartnerInfo.name });
   const textColor = isDark ? colors.textPrimary : '#000000';
   const isGroup = chatPartnerInfo.isGroup;
   const normalizedRoomType = String(
@@ -224,10 +231,11 @@ export const ChatHeader = memo(({ route, navigation }) => {
     currentUser?.profile?.isSuperAdmin ||
     currentUser?.isSuperAdmin
   );
-  const shouldHideLeaveActions = isBroadcast && !isSuperAdmin;
+  const shouldHideLeaveActions = (isBroadcast && !isSuperAdmin) || isSupportRoom;
   
-  // В каналах меню доступно только суперадмину.
-  const shouldShowMenu = !isBroadcast || isSuperAdmin;
+  // Канал и чат поддержки: меню только у суперадмина.
+  // В поддержке суперадмин может удалить комнату, но не покинуть её.
+  const shouldShowMenu = (!isBroadcast || isSuperAdmin) && (!isSupportRoom || isSuperAdmin);
   
   // ============ RENDER ============
   
@@ -242,7 +250,8 @@ export const ChatHeader = memo(({ route, navigation }) => {
         
         <Avatar 
           uri={avatarUri} 
-          isGroup={isGroup} 
+          isGroup={isGroup}
+          isSupport={isSupportRoom}
           onPress={actions.handleProfilePress}
           styles={styles}
         />
@@ -270,6 +279,7 @@ export const ChatHeader = memo(({ route, navigation }) => {
         isBroadcast={isBroadcast}
         isOwner={isOwner}
         hideLeaveActions={shouldHideLeaveActions}
+        allowDeleteGroup={isSupportRoom && isSuperAdmin}
         onDeleteChat={handleDeleteChat}
         onDeleteGroup={handleDeleteGroup}
         onLeaveGroup={handleLeaveGroup}
@@ -322,6 +332,9 @@ const createStyles = (colors, isDark) => StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden'
+  },
+  supportAvatar: {
+    backgroundColor: 'transparent',
   },
   avatarImage: {
     width: 35,

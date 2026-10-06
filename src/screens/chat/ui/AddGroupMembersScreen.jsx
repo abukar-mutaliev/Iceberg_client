@@ -15,6 +15,7 @@ import ChatApi from '@entities/chat/api/chatApi';
 import { getImageUrl } from '@shared/api/api';
 import { useCustomAlert } from '@shared/ui/CustomAlert';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { hideClientPhoneFields } from '@shared/lib/hideClientPhone';
 
 export const AddGroupMembersScreen = ({ route, navigation }) => {
   const { colors, isDark } = useTheme();
@@ -194,11 +195,12 @@ export const AddGroupMembersScreen = ({ route, navigation }) => {
   }, []);
 
   const getUserDisplayName = useCallback((user) => {
-    if (user.role === 'SUPPLIER') {
-      return user.companyName || user.supplier?.companyName || user.contactPerson || user.supplier?.contactPerson || user.name || user.firstName || 'Поставщик';
+    const visible = hideClientPhoneFields(user, currentUser);
+    if (visible.role === 'SUPPLIER') {
+      return visible.companyName || visible.supplier?.companyName || visible.contactPerson || visible.supplier?.contactPerson || visible.name || visible.firstName || 'Поставщик';
     }
-    return user.name || user.firstName || user.email?.split('@')[0] || 'Пользователь';
-  }, []);
+    return visible.name || visible.firstName || visible.email?.split('@')[0] || 'Пользователь';
+  }, [currentUser]);
 
   const getUserAvatar = useCallback((user) => {
     const avatarPath = user.avatar || user.image;

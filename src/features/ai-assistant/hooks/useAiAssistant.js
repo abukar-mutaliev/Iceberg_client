@@ -45,6 +45,14 @@ const mapServerMessage = (msg, currentUserId) => {
             product: parseProductContent(msg.content) || msg.product || null,
         };
     }
+    if (msg.type === 'ORDER') {
+        return {
+            id: String(msg.id),
+            role,
+            type: 'order',
+            order: parseProductContent(msg.content) || null,
+        };
+    }
     return {
         id: String(msg.id),
         role,
@@ -171,6 +179,8 @@ export const useAiAssistant = (roomId = null) => {
 
         const product = attachment?.product || null;
         const productId = attachment?.productId || product?.id || product?.productId || null;
+        const orders = (Array.isArray(attachment?.orders) ? attachment.orders : [])
+            .filter((order) => Number(order?.id) > 0);
 
         const temporaryId = genId();
         const userMsg = { id: temporaryId, role: 'user', content };
@@ -181,6 +191,12 @@ export const useAiAssistant = (roomId = null) => {
         setDeveloperContactSuggested(false);
         setMessages((prev) => [
             ...prev,
+            ...orders.map((order) => ({
+                id: `order_${temporaryId}_${order.id}`,
+                role: 'user',
+                type: 'order',
+                order,
+            })),
             ...(product ? [{ id: productMsgId, role: 'user', type: 'product', product }] : []),
             userMsg,
             { id: placeholderId, role: 'assistant', content: '', pending: true },
@@ -188,7 +204,12 @@ export const useAiAssistant = (roomId = null) => {
         setSending(true);
 
         try {
-            const response = await ChatApi.askAssistant(content, temporaryId, productId);
+            const response = await ChatApi.askAssistant(
+                content,
+                temporaryId,
+                productId,
+                orders.map((order) => Number(order.id)),
+            );
             const data = response?.data?.data || response?.data;
             const answer = data?.botMessage?.content || 'Не удалось получить ответ.';
             const newRoomId = data?.roomId || roomIdRef.current;

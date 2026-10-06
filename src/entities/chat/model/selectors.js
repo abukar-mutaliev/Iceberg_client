@@ -21,7 +21,7 @@ const isMessageStop = (message) => {
   if (!message) return false;
   const type = String(message?.type || '').toUpperCase();
   // Склад/товар: JSON с id не считается остановкой — иначе фильтр по району канала их ломает
-  if (type === 'WAREHOUSE' || type === 'PRODUCT') return false;
+  if (type === 'WAREHOUSE' || type === 'PRODUCT' || type === 'ORDER') return false;
   if (type === 'STOP') return true;
   if (message.stop) return true;
   const stopData = parseStopDataFromMessage(message);

@@ -19,6 +19,12 @@ import { useDispatch } from "react-redux";
 import { AddToCartButton } from '@shared/ui/Cart/ui/AddToCartButton';
 import { CustomSliderIndicator } from '@shared/ui/CustomSliderIndicator';
 import { ReliableImage, Placeholder as ImagePlaceholder, normalizeImageSource } from '@shared/ui/ReliableImage';
+import {
+    isWeightBasedProduct,
+    getWeightBasedBoxPrice,
+    getWeightBasedKgPerBox,
+    formatWeightKg,
+} from '@shared/lib/isWeightBasedProduct';
 
 const placeholderImage = { uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==' };
 
@@ -455,43 +461,17 @@ const ProductTileComponent = React.memo(({ product, onPress, testID, hideAddToCa
         }
     }, [productData?.price, formatPriceWithKopecks]);
 
-    // Проверка, является ли товар рыбой
-    const isFishCategory = useMemo(() => {
-        if (!product && !productData) return false;
-        
-        const productToCheck = product || productData;
-        const originalData = product?.originalData || productToCheck?.originalData;
-        
-        const checkCategory = (categoryValue) => {
-            if (!categoryValue) return false;
-            const categoryLower = typeof categoryValue === 'string'
-                ? categoryValue.toLowerCase().trim()
-                : (categoryValue.name ? categoryValue.name.toLowerCase().trim() : '');
-            return categoryLower === 'рыба' || categoryLower === 'fish';
-        };
-        
-        if (productToCheck?.category && typeof productToCheck.category === 'string') {
-            if (checkCategory(productToCheck.category)) return true;
-        }
-        
-        if (originalData?.category && typeof originalData.category === 'string') {
-            if (checkCategory(originalData.category)) return true;
-        }
-        
-        if (Array.isArray(productToCheck?.categories) && productToCheck.categories.length > 0) {
-            for (const cat of productToCheck.categories) {
-                if (checkCategory(cat)) return true;
-            }
-        }
-        
-        if (Array.isArray(originalData?.categories) && originalData.categories.length > 0) {
-            for (const cat of originalData.categories) {
-                if (checkCategory(cat)) return true;
-            }
-        }
-        
-        return false;
-    }, [product, productData]);
+    const pricingSource = product?.originalData || product;
+    const isFishCategory = useMemo(
+        () => isWeightBasedProduct(product) || isWeightBasedProduct(pricingSource),
+        [product, pricingSource]
+    );
+    const itemsPerBox = Number(pricingSource?.itemsPerBox) || 1;
+    const kgPerBox = getWeightBasedKgPerBox(pricingSource);
+    const boxPrice = isFishCategory
+        ? getWeightBasedBoxPrice(pricingSource, productData?.price)
+        : (Number(pricingSource?.boxPrice) || ((Number(productData?.price) || 0) * itemsPerBox));
+    const showBoxPrice = isFishCategory || itemsPerBox > 1;
 
     if (!productData) return null;
 
@@ -606,6 +586,11 @@ const ProductTileComponent = React.memo(({ product, onPress, testID, hideAddToCa
                         {isFishCategory ? '/ кг' : '/ 1 шт'}
                     </Text>
                 </View>
+                {showBoxPrice ? (
+                    <Text style={[styles.boxLine, themedStyles.category]} numberOfLines={1}>
+                        {Math.round(boxPrice)} ₽ / {isFishCategory ? `${formatWeightKg(kgPerBox)} кг` : `${itemsPerBox} шт.`}
+                    </Text>
+                ) : null}
             </TouchableOpacity>
             {!hideAddToCart && (
                 <View style={styles.addButtonContainer}>
@@ -775,6 +760,13 @@ const styles = StyleSheet.create({
         fontFamily: FontFamily.sFProText,
         fontSize: FontSize.size_xs,
         marginLeft: 4,
+    },
+    boxLine: {
+        color: 'rgba(255, 255, 255, 0.85)',
+        fontFamily: FontFamily.sFProText,
+        fontSize: 10,
+        fontWeight: '600',
+        marginTop: 2,
     },
     addButtonContainer: {
         position: 'absolute',

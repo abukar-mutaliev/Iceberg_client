@@ -4,42 +4,19 @@ import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { FontFamily, FontSize, Color } from '@app/styles/GlobalStyles';
 import { HighlightChange } from '@shared/ui/HighlightChange/HighlightChange';
 import {formatPrice} from "@entities/cart";
+import {
+    isWeightBasedProduct,
+    estimateWeightBasedUnitPrice,
+    getWeightBasedBoxPrice,
+    getWeightBasedKgPerBox,
+    formatWeightKg,
+} from '@shared/lib/isWeightBasedProduct';
 
 export const ProductPrice = ({ price, weight, product }) => {
     const { colors } = useTheme();
     const priceTextRef = useRef(null);
 
-    // Проверка, является ли товар рыбой
-    const isFishCategory = () => {
-        if (!product) return false;
-        
-        // Проверяем product.category (строка)
-        if (product.category && typeof product.category === 'string') {
-            const categoryLower = product.category.toLowerCase().trim();
-            if (categoryLower === 'рыба' || categoryLower === 'fish') {
-                return true;
-            }
-        }
-        
-        // Проверяем product.categories (массив)
-        if (Array.isArray(product.categories) && product.categories.length > 0) {
-            for (const cat of product.categories) {
-                let categoryName = '';
-                
-                if (typeof cat === 'string') {
-                    categoryName = cat.toLowerCase().trim();
-                } else if (cat && typeof cat === 'object' && cat.name) {
-                    categoryName = cat.name.toLowerCase().trim();
-                }
-                
-                if (categoryName === 'рыба' || categoryName === 'fish') {
-                    return true;
-                }
-            }
-        }
-        
-        return false;
-    };
+    const isFishCategory = () => isWeightBasedProduct(product);
 
     // Форматирование цены: рубли обычным шрифтом, копейки маленьким
     const formatPriceWithKopecks = (priceValue) => {
@@ -58,16 +35,21 @@ export const ProductPrice = ({ price, weight, product }) => {
     const { rubles, kopecks } = formatPriceWithKopecks(price);
     const isFish = isFishCategory();
     const unitText = isFish ? '/ кг' : '/ 1 шт';
-    const itemsPerBox = product?.itemsPerBox || 1;
+    const itemsPerBox = Number(product?.itemsPerBox) || 1;
     const numericUnitPrice = Number(product?.price ?? price) || 0;
     const explicitBoxPrice = Number(product?.boxPrice);
     const hasExplicitBoxPrice = Number.isFinite(explicitBoxPrice) && explicitBoxPrice > 0;
-    const normalizedBoxPrice = hasExplicitBoxPrice
-        ? explicitBoxPrice
-        : (numericUnitPrice * (Number(itemsPerBox) || 1));
-    const boxUnitText = itemsPerBox > 1 
-        ? `/ 1 коробка (${itemsPerBox} шт.)` 
-        : '/ 1 коробка';
+    const kgPerBox = getWeightBasedKgPerBox(product);
+    const normalizedBoxPrice = isFish
+        ? getWeightBasedBoxPrice(product, numericUnitPrice)
+        : (hasExplicitBoxPrice
+            ? explicitBoxPrice
+            : (numericUnitPrice * itemsPerBox));
+    const boxUnitText = isFish
+        ? `/ 1 коробка (${formatWeightKg(kgPerBox)} кг)`
+        : (itemsPerBox > 1
+            ? `/ 1 коробка (${itemsPerBox} шт.)`
+            : '/ 1 коробка');
 
     const primaryTextColor = colors?.textPrimary || Color.dark;
     const secondaryTextColor = colors?.textSecondary || Color.grey7D7D7D;
@@ -114,7 +96,12 @@ export const ProductPrice = ({ price, weight, product }) => {
                 </Text>
             </View>
 
-            {weight ? (
+            {isFish && weight ? (
+                <Text style={[styles.weightText, { color: secondaryTextColor }]}>
+                    ≈ {formatPrice(estimateWeightBasedUnitPrice({ ...product, price: numericUnitPrice }))} за шт
+                    {` (~${weight} г)`}
+                </Text>
+            ) : !isFish && weight ? (
                 <HighlightChange value={weight} style={styles.weightHighlight}>
                     <Text style={[styles.weightText, { color: secondaryTextColor }]}>
                         ~ {weight} грамм

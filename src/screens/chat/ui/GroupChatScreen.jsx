@@ -20,6 +20,8 @@ import { useChatModals } from '../hooks/useChatModals';
 import { useChatReactions } from '../hooks/useChatReactions';
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
 import { selectIsProductDeleted } from '@entities/product/model/selectors';
+import { navigateToOrderFromChat } from '@screens/ordes/lib/orderDetailsNavigation';
+import { isOfficialSupportRoom } from '@features/help';
 import { useChatSocketActions } from '@entities/chat/hooks/useChatSocketActions';
 import PushNotificationService from '@shared/services/PushNotificationService';
 
@@ -83,6 +85,8 @@ export const GroupChatScreen = ({ route, navigation }) => {
   } = chatData;
   
   const maxImages = useMemo(() => (isSuperAdmin || isAdmin) ? 30 : 10, [isSuperAdmin, isAdmin]);
+  const isSupportRoom = isOfficialSupportRoom(roomData)
+    || isOfficialSupportRoom({ title: route?.params?.roomTitle });
   
   // Управление клавиатурой
   const keyboard = useChatKeyboard(insets, {
@@ -473,6 +477,11 @@ export const GroupChatScreen = ({ route, navigation }) => {
     });
   }, [isSelectionMode, navigation, roomId]);
 
+  const handleOpenOrder = useCallback((orderId) => {
+    if (isSelectionMode) return;
+    navigateToOrderFromChat(navigation, orderId, currentUser?.role);
+  }, [isSelectionMode, navigation, currentUser?.role]);
+
   const handleOpenWarehouse = useCallback((warehouseId) => {
     if (isSelectionMode) return;
     // Открываем склад в корневом AppStack (там же где ChatRoom),
@@ -611,6 +620,7 @@ export const GroupChatScreen = ({ route, navigation }) => {
             onOpenStop={handleOpenStop}
             onOpenContact={handleOpenContact}
             onOpenWarehouse={handleOpenWarehouse}
+            onOpenOrder={handleOpenOrder}
             onImagePress={(imageUri) => handleImagePress(imageUri, messages)}
             onAvatarPress={handleAvatarPress}
             onContactDriver={() => {}} // Не используется в групповых чатах
@@ -695,9 +705,9 @@ export const GroupChatScreen = ({ route, navigation }) => {
         menuModalVisible={menuModalVisible}
         onMenuModalClose={closeMenuModal}
         onDeleteChat={handleDeleteGroup}
-        onLeaveGroup={!isAdmin ? handleLeaveGroup : undefined}
-        showLeaveGroup={!isAdmin}
-        showDeleteGroup={isAdmin || isSuperAdmin}
+        onLeaveGroup={!isSupportRoom && !isAdmin ? handleLeaveGroup : undefined}
+        showLeaveGroup={!isSupportRoom && !isAdmin}
+        showDeleteGroup={isSupportRoom ? isSuperAdmin : (isAdmin || isSuperAdmin)}
         roomType={roomData?.type}
         deleteMessageModalVisible={deleteMessageModalVisible}
         messagesToDelete={messagesToDelete}

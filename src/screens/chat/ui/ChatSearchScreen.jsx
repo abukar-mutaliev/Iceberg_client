@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -22,11 +22,15 @@ import { PermissionInfoModal } from '@entities/chat/ui/Composer/components/Permi
 import { selectRoomsList } from '@entities/chat/model/selectors';
 import { debounce } from 'lodash';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { hideClientPhoneFields } from '@shared/lib/hideClientPhone';
+import { isOfficialSupportRoom, SupportAvatar } from '@features/help';
 
 export const ChatSearchScreen = () => {
   const navigation = useNavigation();
   const dispatch = useDispatch();
   const currentUser = useSelector(state => state?.auth?.user);
+  const currentUserRef = useRef(currentUser);
+  currentUserRef.current = currentUser;
   const localRooms = useSelector(selectRoomsList) || [];
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
@@ -95,20 +99,29 @@ export const ChatSearchScreen = () => {
         });
 
         // Обогащаем результаты пользователей, исключая тех, у кого уже есть DIRECT комната и поставщиков
+        const viewer = currentUserRef.current;
+        const viewerIsClient = viewer?.role === 'CLIENT';
         const enrichedUsers = users
           .filter(user => {
             const userId = user.id;
             // Исключаем поставщиков из результатов поиска
             if (user.role === 'SUPPLIER') return false;
+            // Клиент не ищет менеджера: в карточке есть телефон.
+            if (viewerIsClient && user.role === 'EMPLOYEE' && user.processingRole === 'MANAGER') {
+              return false;
+            }
             // Исключаем пользователей, у которых уже есть DIRECT комната в результатах
             return !usersWithDirectRooms.has(userId);
           })
-          .map(user => ({
-            ...user,
-            type: 'user',
-            displayName: user.displayName || user.name,
-            subtitle: user.subtitle || user.role
-          }));
+          .map(user => {
+            const visible = hideClientPhoneFields(user, viewer);
+            return {
+              ...visible,
+              type: 'user',
+              displayName: visible.displayName || visible.name,
+              subtitle: visible.subtitle || visible.role
+            };
+          });
 
         // Объединяем результаты: сначала комнаты, потом пользователи
         const allResults = [...enrichedRooms, ...enrichedUsers];
@@ -258,7 +271,9 @@ export const ChatSearchScreen = () => {
           disabled={loading}
         >
           <View style={styles.avatarContainer}>
-            {item.avatar ? (
+            {isOfficialSupportRoom(item) ? (
+              <SupportAvatar size="list" />
+            ) : item.avatar ? (
               <Image 
                 source={{ uri: item.avatar }}
                 style={styles.avatar}

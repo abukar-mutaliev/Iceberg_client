@@ -46,6 +46,7 @@ import {
     fetchCart,
     clearCartCache,
 } from "@entities/cart";
+import { fetchPendingPaymentCount } from '@entities/order';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -253,6 +254,10 @@ export const CartScreen = ({ navigation }) => {
     useFocusEffect(
         useCallback(() => {
             console.log('🛒 CartScreen: Экран получил фокус');
+
+            if (userRole === 'CLIENT') {
+                dispatch(fetchPendingPaymentCount());
+            }
             
             // Если есть параметр forceRefresh, обрабатываем его СРАЗУ в useFocusEffect
             const timestamp = route.params?.timestamp;
@@ -296,7 +301,7 @@ export const CartScreen = ({ navigation }) => {
             } else {
                 console.log('🛒 CartScreen: Корзина недоступна для текущей роли');
             }
-        }, [isCartAvailable, items?.length, totalAmount, shouldRefreshCache, loadCartData, route.params?.forceRefresh, route.params?.timestamp, dispatch, navigation, clearCartCache])
+        }, [isCartAvailable, items?.length, totalAmount, shouldRefreshCache, loadCartData, route.params?.forceRefresh, route.params?.timestamp, dispatch, navigation, clearCartCache, userRole])
     );
 
     // Логирование изменений состояния корзины (только критичные изменения)

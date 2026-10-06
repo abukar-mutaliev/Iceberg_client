@@ -2,6 +2,7 @@ import React, {useState, useEffect, useRef, useMemo} from 'react';
 import {
     View,
     Text,
+    TextInput,
     TouchableOpacity,
     ActivityIndicator,
     Platform,
@@ -27,13 +28,13 @@ export const LoginForm = ({ onForgotPassword }) => {
     const dispatch = useDispatch();
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+    const email = useSelector(selectEmail) || '';
+    const password = useSelector(selectPassword) || '';
+    const isLoading = useSelector((state) => state.auth?.isLoading ?? false);
     const placeholderColor = isDark ? colors.textTertiary : '#888';
     const passwordIconColor = isLoading
         ? (isDark ? colors.textTertiary : '#999')
         : (isDark ? colors.primary : '#3339b0');
-    const email = useSelector(selectEmail) || '';
-    const password = useSelector(selectPassword) || '';
-    const isLoading = useSelector((state) => state.auth?.isLoading ?? false);
     const error = useSelector((state) => state.auth?.error);
 
     const [emailError, setEmailError] = useState('');
@@ -41,6 +42,7 @@ export const LoginForm = ({ onForgotPassword }) => {
     const [formError, setFormError] = useState('');
     const [localEmail, setLocalEmail] = useState(email);
     const [localPassword, setLocalPassword] = useState(password);
+    const passwordRef = useRef(password);
     const [isPasswordVisible, setIsPasswordVisible] = useState(false);
     const [keyboardVisible, setKeyboardVisible] = useState(false);
 
@@ -90,6 +92,7 @@ export const LoginForm = ({ onForgotPassword }) => {
 
     useEffect(() => {
         if (password) {
+            passwordRef.current = password;
             setLocalPassword(password);
         }
     }, []); // Убрали зависимость от password
@@ -117,9 +120,14 @@ export const LoginForm = ({ onForgotPassword }) => {
             ? errorMessage.toLowerCase()
             : '';
 
-        if (lowerCaseError.includes('неверный email') ||
-            lowerCaseError.includes('неверный номер') ||
-            lowerCaseError.includes('не найден')) {
+        // «Неверный email или пароль» сервер отдаёт и когда аккаунта нет,
+        // и когда пароль не подошёл. Это не признак отсутствия пользователя.
+        if (lowerCaseError.includes('неверный email или пароль') ||
+            lowerCaseError.includes('неверный номер телефона или пароль')) {
+            setFormError('Неверный email или пароль');
+            setEmailError('');
+            setPasswordError('');
+        } else if (lowerCaseError.includes('не найден')) {
             setEmailError('Пользователь не найден');
             setPasswordError('');
             setFormError('');
@@ -181,11 +189,14 @@ export const LoginForm = ({ onForgotPassword }) => {
             return;
         }
 
-        // Сохраняем введенные данные в Redux только перед отправкой
-        dispatch(setEmail(localEmail));
-        dispatch(setPassword(localPassword));
+        const identifier = localEmail.trim();
+        const passwordToSend = passwordRef.current;
 
-        dispatch(login({email: localEmail, password: localPassword}))
+        // Сохраняем введенные данные в Redux только перед отправкой
+        dispatch(setEmail(identifier));
+        dispatch(setPassword(passwordToSend));
+
+        dispatch(login({email: identifier, password: passwordToSend}))
             .unwrap()
             .then(result => {
                 if (result.requiresTwoFactor) {
@@ -206,13 +217,7 @@ export const LoginForm = ({ onForgotPassword }) => {
 
                 // Обработка ошибок
                 if (typeof err === 'string') {
-                    if (err.toLowerCase().includes('пароль')) {
-                        setPasswordError(err);
-                    } else if (err.toLowerCase().includes('email') || err.toLowerCase().includes('почта')) {
-                        setEmailError(err);
-                    } else {
-                        setFormError(err);
-                    }
+                    handleErrorDisplay(err);
                 } else {
                     setFormError('Произошла ошибка при входе');
                 }
@@ -270,6 +275,7 @@ export const LoginForm = ({ onForgotPassword }) => {
     };
 
     const handlePasswordChange = (text) => {
+        passwordRef.current = text;
         setLocalPassword(text);
         setPasswordError('');
         setFormError('');
@@ -318,12 +324,19 @@ export const LoginForm = ({ onForgotPassword }) => {
                 <View style={styles.passwordInputContainer}>
                     <Text style={styles.inputLabel}>Ваш пароль</Text>
                     <View style={styles.passwordFieldContainer}>
-                        <CustomTextInput
+                        <TextInput
+                            key={isPasswordVisible ? 'password-visible' : 'password-hidden'}
                             style={[styles.input, styles.passwordInput]}
-                            value={localPassword}
+                            defaultValue={passwordRef.current}
                             onChangeText={handlePasswordChange}
                             onBlur={handlePasswordBlur}
                             secureTextEntry={!isPasswordVisible}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            spellCheck={false}
+                            keyboardType="default"
+                            textContentType="password"
+                            autoComplete="password"
                             placeholder="********"
                             placeholderTextColor={placeholderColor}
                             editable={!isLoading}

@@ -15,11 +15,14 @@ export const OrdersSkeleton = ({ onGoBack }) => {
     return (
         <View style={styles.container}>
             <ThemedStatusBar />
-            <View style={styles.header}>
-                <View style={styles.backButton}>
-                    <ArrowBackIcon color={headerForeground} />
+            <View style={styles.headerShell}>
+                <View style={styles.header}>
+                    <View style={styles.backButton}>
+                        <ArrowBackIcon color={headerForeground} />
+                    </View>
+                    <View style={styles.headerTitle} />
+                    <View style={styles.headerSideSpacer} />
                 </View>
-                <View style={styles.headerTitle} />
             </View>
 
             <FlatList
@@ -42,47 +45,73 @@ export const OrdersSkeleton = ({ onGoBack }) => {
 
 const createStyles = (colors, isDark) => {
     const headerBackground = isDark ? ORDER_DETAILS_CLIENT_DARK_BACKGROUND : colors.cardBackground;
-    const headerBorderColor = isDark ? 'rgba(255, 255, 255, 0.15)' : colors.border;
 
     return StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.background,
+        backgroundColor: isDark ? colors.background : '#F3F4F8',
+    },
+    headerShell: {
+        backgroundColor: headerBackground,
+        borderBottomLeftRadius: 28,
+        borderBottomRightRadius: 28,
+        marginBottom: 20,
+        shadowColor: isDark ? (colors.shadowColor || '#000') : '#1A2140',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: isDark ? 0.22 : 0.06,
+        shadowRadius: 8,
+        elevation: isDark ? 4 : 2,
     },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingVertical: 16,
+        paddingHorizontal: 16,
+        paddingTop: 12,
+        paddingBottom: 16,
         backgroundColor: headerBackground,
-        borderBottomWidth: 1,
-        borderBottomColor: headerBorderColor,
+        borderBottomLeftRadius: 28,
+        borderBottomRightRadius: 28,
+        overflow: 'hidden',
     },
     backButton: {
-        padding: 8,
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.16)' : '#FFFFFF',
+        borderWidth: isDark ? 0 : 1,
+        borderColor: 'rgba(20, 24, 48, 0.12)',
+    },
+    headerSideSpacer: {
+        width: 40,
+        height: 40,
     },
     headerTitle: {
-        height: 24,
-        width: 200,
-        backgroundColor: colors.surfaceSecondary || colors.surface,
-        borderRadius: 6,
-        marginHorizontal: 16,
+        flex: 1,
+        height: 22,
+        marginHorizontal: 24,
+        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.16)' : (colors.surfaceSecondary || colors.surface),
+        borderRadius: 8,
     },
     listContentContainer: {
         paddingHorizontal: 10,
-        paddingTop: 24,
+        paddingTop: 0,
     },
     cardSeparator: {
-        height: 20,
+        height: 12,
     },
     skeletonCard: {
         backgroundColor: colors.cardBackground,
-        borderRadius: 12,
+        borderRadius: 16,
         padding: 16,
-        marginHorizontal: 10,
-        marginVertical: 6,
         borderWidth: 1,
-        borderColor: colors.border,
+        borderColor: isDark ? colors.border : '#E4E6EE',
+        shadowColor: isDark ? (colors.shadowColor || '#000') : '#1A2140',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: isDark ? 0.25 : 0.06,
+        shadowRadius: 6,
+        elevation: isDark ? 3 : 2,
     },
     skeletonHeader: {
         height: 16,

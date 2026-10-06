@@ -17,6 +17,7 @@ import {
 import { selectCategories, fetchCategories } from '@entities/category';
 import { useProductDetail } from '@entities/product';
 import { useCartProduct } from '@entities/cart';
+import { isWeightBasedProduct, getWeightBasedBoxPrice } from '@shared/lib/isWeightBasedProduct';
 
 /**
  * Хук для управления данными ProductDetailScreen
@@ -143,13 +144,11 @@ export const useProductDetailData = (productId, isMountedRef, createSafeTimeout,
     const enrichedProduct = useMemo(() => {
         if (!product || !product.id) return null;
         
-        // Добавляем коробочную информацию
         const itemsPerBox = product.itemsPerBox || 1;
         const pricePerItem = product.price || 0;
-        const boxPrice = product.boxPrice || (pricePerItem * itemsPerBox);
         const stockBoxes = product.stockQuantity || 0;
         const totalItems = stockBoxes * itemsPerBox;
-        
+
         // Обрабатываем категории
         let productCategories = [];
         if (product.categories && Array.isArray(product.categories)) {
@@ -175,7 +174,12 @@ export const useProductDetailData = (productId, isMountedRef, createSafeTimeout,
             
             return category;
         });
-        
+
+        const productForPricing = { ...product, categories: enrichedCategories, itemsPerBox };
+        const boxPrice = isWeightBasedProduct(productForPricing)
+            ? getWeightBasedBoxPrice(productForPricing, pricePerItem)
+            : (product.boxPrice || (pricePerItem * itemsPerBox));
+
         const enriched = {
             ...product,
             itemsPerBox,

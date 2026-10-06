@@ -1,0 +1,1 @@
+export { SupportAvatar } from './SupportAvatar';

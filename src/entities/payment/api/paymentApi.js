@@ -1,4 +1,4 @@
-import { api } from '@shared/api/api';
+import { api, createProtectedRequest } from '@shared/api/api';
 
 /**
  * API для работы с платежами через Т-Бизнес
@@ -47,6 +47,13 @@ export const PaymentApi = {
             console.error('❌ Error checking payment status:', error?.response?.data?.message || error.message);
             throw error;
         }
+    },
+
+    /**
+     * Чек оплаты по заказу (данные платежа из банка).
+     */
+    getOrderReceipt: async (orderId) => {
+        return createProtectedRequest('GET', `/api/payments/orders/${orderId}/receipt`);
     },
 
     /**

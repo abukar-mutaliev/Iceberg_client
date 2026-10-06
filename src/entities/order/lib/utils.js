@@ -4,6 +4,8 @@ import { CONSTANTS } from './constants';
 
 export const ORDER_STATUSES = {
     PENDING: 'PENDING',
+    PENDING_PAYMENT: 'PENDING_PAYMENT',
+    AWAITING_CONFIRMATION: 'AWAITING_CONFIRMATION',
     CONFIRMED: 'CONFIRMED',
     PICKING: 'PICKING',
     WAITING_STOCK: 'WAITING_STOCK',
@@ -16,6 +18,7 @@ export const ORDER_STATUSES = {
 export const ORDER_STATUS_LABELS = {
     PENDING: 'Ожидает обработки',
     PENDING_PAYMENT: 'Ожидает оплату',
+    AWAITING_CONFIRMATION: 'Ожидает подтверждения',
     CONFIRMED: 'Подтвержден',
     PICKING: 'Сборка',
     WAITING_STOCK: 'Ожидает поступления',
@@ -32,6 +35,8 @@ export const ORDER_STATUS_LABELS = {
 
 export const ORDER_STATUS_COLORS = {
     [ORDER_STATUSES.PENDING]: '#ffc107',
+    [ORDER_STATUSES.PENDING_PAYMENT]: '#FF9800',
+    [ORDER_STATUSES.AWAITING_CONFIRMATION]: '#8E24AA',
     [ORDER_STATUSES.CONFIRMED]: '#17a2b8',
     [ORDER_STATUSES.PICKING]: '#ffc107',
     [ORDER_STATUSES.WAITING_STOCK]: '#fd7e14',
@@ -43,6 +48,8 @@ export const ORDER_STATUS_COLORS = {
 
 export const ORDER_STATUS_ICONS = {
     [ORDER_STATUSES.PENDING]: 'schedule',
+    [ORDER_STATUSES.PENDING_PAYMENT]: 'payment',
+    [ORDER_STATUSES.AWAITING_CONFIRMATION]: 'scale',
     [ORDER_STATUSES.CONFIRMED]: 'check-circle',
     [ORDER_STATUSES.PICKING]: 'inventory-2',
     [ORDER_STATUSES.WAITING_STOCK]: 'inventory',
@@ -123,12 +130,29 @@ export const isPriorityOrder = (order) => {
  * @param {string} userRole - Роль пользователя
  * @returns {boolean}
  */
+export const getClientStatusLabel = (order) => {
+    if (order?.status === ORDER_STATUSES.PENDING_PAYMENT && order?.priceConfirmedAt) {
+        return 'Подтверждён — к оплате';
+    }
+    if (order?.status === ORDER_STATUSES.AWAITING_CONFIRMATION) {
+        return 'Ожидает подтверждения';
+    }
+    return getStatusLabel(order?.status);
+};
+
 export const canCancelOrder = (status, userRole = 'CLIENT') => {
     if (userRole === 'CLIENT') {
-        return [ORDER_STATUSES.PENDING, ORDER_STATUSES.WAITING_STOCK].includes(status);
+        return [
+            ORDER_STATUSES.AWAITING_CONFIRMATION,
+            ORDER_STATUSES.PENDING_PAYMENT,
+            ORDER_STATUSES.PENDING,
+            ORDER_STATUSES.WAITING_STOCK
+        ].includes(status);
     }
 
     return [
+        ORDER_STATUSES.AWAITING_CONFIRMATION,
+        ORDER_STATUSES.PENDING_PAYMENT,
         ORDER_STATUSES.PENDING,
         ORDER_STATUSES.CONFIRMED,
         ORDER_STATUSES.PICKING,
@@ -177,6 +201,13 @@ export const getAvailableStatuses = (currentStatus) => {
         ],
         [ORDER_STATUSES.DELIVERED]: [
             { value: ORDER_STATUSES.RETURNED, label: ORDER_STATUS_LABELS[ORDER_STATUSES.RETURNED], color: '#6c757d' }
+        ],
+        [ORDER_STATUSES.AWAITING_CONFIRMATION]: [
+            { value: ORDER_STATUSES.PENDING_PAYMENT, label: ORDER_STATUS_LABELS[ORDER_STATUSES.PENDING_PAYMENT], color: '#FF9800' },
+            { value: ORDER_STATUSES.CANCELLED, label: ORDER_STATUS_LABELS[ORDER_STATUSES.CANCELLED], color: '#dc3545' }
+        ],
+        [ORDER_STATUSES.PENDING_PAYMENT]: [
+            { value: ORDER_STATUSES.CANCELLED, label: ORDER_STATUS_LABELS[ORDER_STATUSES.CANCELLED], color: '#dc3545' }
         ],
         [ORDER_STATUSES.CANCELLED]: [],
         [ORDER_STATUSES.RETURNED]: []
@@ -267,7 +298,8 @@ export const getOrderStatusProgress = (status) => {
         [ORDER_STATUSES.DELIVERED]: 100,
         [ORDER_STATUSES.CANCELLED]: 0,
         [ORDER_STATUSES.RETURNED]: 0,
-        PENDING_PAYMENT: 10
+        [ORDER_STATUSES.AWAITING_CONFIRMATION]: 8,
+        [ORDER_STATUSES.PENDING_PAYMENT]: 10
     };
     return progressMap[status] ?? 0;
 };

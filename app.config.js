@@ -43,6 +43,12 @@ export default {
                         minSdkVersion: 24,
                         compileSdkVersion: 35,
                         targetSdkVersion: 35,
+                        // Старый artifactory-external.vkpartner.ru больше не отдаёт ru.rustore.sdk:pushclient.
+                        // rustore-exposed — актуальный репозиторий SDK, vkteam — tracer-manifest 1.0.1.
+                        extraMavenRepos: [
+                            'https://nexus-external.rustore.ru/repository/maven-rustore-exposed/',
+                            'https://nexus-external.vkteam.ru/repository/maven/',
+                        ],
                         usesCleartextTraffic: true,
                         networkSecurityConfig: './network_security_config.xml',
                         enableProguardInReleaseBuilds: true,

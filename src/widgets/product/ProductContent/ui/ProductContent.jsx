@@ -15,6 +15,7 @@ import { HighlightChange } from "@shared/ui/HighlightChange/HighlightChange";
 import { featureFlags } from '@shared/config/featureFlags';
 import { ProductWarehouseInfo } from '@entities/product/ui/ProductWarehouseInfo';
 import { useProductStock } from '@entities/warehouse/hooks/useProductStock';
+import { isWeightBasedProduct, getWeightBasedBoxPrice } from '@shared/lib/isWeightBasedProduct';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -79,11 +80,15 @@ export const ProductContent = React.memo(({
             : Number(safeProduct?.boxPrice);
         const hasExplicitBoxPrice = Number.isFinite(explicitBoxPrice) && explicitBoxPrice > 0;
         const unitPrice = Number.isFinite(effectiveUnitPrice) ? effectiveUnitPrice : 0;
+        const isFish = isWeightBasedProduct(safeProduct);
+        const boxPrice = isFish
+            ? getWeightBasedBoxPrice({ ...safeProduct, price: unitPrice }, unitPrice)
+            : (hasExplicitBoxPrice ? explicitBoxPrice : (unitPrice * itemsPerBox));
 
         return {
             ...safeProduct,
             price: unitPrice,
-            boxPrice: hasExplicitBoxPrice ? explicitBoxPrice : (unitPrice * itemsPerBox),
+            boxPrice,
             itemsPerBox
         };
     }, [safeProduct]);

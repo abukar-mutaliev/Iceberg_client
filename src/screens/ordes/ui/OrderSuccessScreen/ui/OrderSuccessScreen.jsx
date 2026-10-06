@@ -8,14 +8,13 @@ import {
     Dimensions,
     StatusBar,
     ScrollView,
-    ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { ORDER_DETAILS_CLIENT_DARK_BACKGROUND, OrderDetailsScreenThemeProvider } from '@shared/ui/OrderDetailsStyles';
 import { OrderDetailsBackButton } from '@shared/ui/OrderDetailsBackButton/ui/OrderDetailsBackButton';
-import { useOpenManagerChat } from '@features/help/hooks/useOpenManagerChat';
+import { OrderHelpCard } from '@features/help/ui/OrderHelpCard';
 import { exitPaymentToMyOrders, exitPaymentToMain, navigateToOrderDetails } from '@screens/payment/ui/PaymentScreen/utils/paymentNavigation';
 import { calculateItemsFromBoxes } from '@shared/utils/productBoxUtils';
 
@@ -110,12 +109,12 @@ export const OrderSuccessScreen = ({ navigation, route }) => {
     const { colors, isDark } = useTheme();
     const screenBackground = isDark ? ORDER_DETAILS_CLIENT_DARK_BACKGROUND : colors.primary;
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
-    const { openManagerChat, loading: openingManagerChat } = useOpenManagerChat('OrderSuccess');
 
     // Параметры заказа из предыдущего экрана
     const splitInfo = route?.params?.splitInfo;
     const isChoiceResult = route?.params?.isChoiceResult || false;
     const choiceMessage = route?.params?.choiceMessage;
+    const isAwaitingConfirmation = route?.params?.variant === 'awaitingConfirmation';
     
     // Логирование для отладки
     console.log('🎉 OrderSuccessScreen received params:', {
@@ -306,14 +305,22 @@ export const OrderSuccessScreen = ({ navigation, route }) => {
                         }}
                     >
                         <Text style={styles.successTitle}>
-                            {splitInfo ? 'Заказ разделен!' : isChoiceResult ? 'Выбор принят!' : 'Заказ оформлен!'}
+                            {splitInfo
+                                ? 'Заказ разделен!'
+                                : isChoiceResult
+                                    ? 'Выбор принят!'
+                                    : isAwaitingConfirmation
+                                        ? 'Заказ отправлен менеджеру'
+                                        : 'Заказ оформлен!'}
                         </Text>
                         <Text style={styles.successSubtitle}>
                             {splitInfo 
                                 ? 'Часть товаров передана сборщику для обработки, остальные ожидают поступления на склад'
                                 : isChoiceResult 
-                                    ? choiceMessage || 'Спасибо за ваш выбор' 
-                                    : 'Спасибо за покупку'
+                                    ? choiceMessage || 'Спасибо за ваш выбор'
+                                    : isAwaitingConfirmation
+                                        ? 'Менеджер взвесит товар, подтвердит итоговую цену и пришлёт уведомление для оплаты'
+                                        : 'Спасибо за покупку'
                             }
                         </Text>
                     </Animated.View>
@@ -611,34 +618,31 @@ export const OrderSuccessScreen = ({ navigation, route }) => {
                 </Animated.View>
 
                 {/* Дополнительная информация */}
-                <Animated.View
-                    style={[
-                        styles.supportCard,
-                        {
-                            opacity: fadeAnim,
-                        }
-                    ]}
-                >
-                    <Icon name="support-agent" size={normalize(40)} color={colors.primary} style={styles.supportIcon} />
-                    <Text style={styles.supportTitle}>Нужна помощь?</Text>
-                    <Text style={styles.supportText}>
-                        Наша служба поддержки всегда готова помочь вам
-                    </Text>
-                    <TouchableOpacity
-                        style={styles.supportButton}
-                        onPress={openManagerChat}
-                        disabled={openingManagerChat}
-                        activeOpacity={0.8}
-                    >
-                        {openingManagerChat ? (
-                            <ActivityIndicator size="small" color={isDark ? ON_PRIMARY_COLOR : colors.primary} />
-                        ) : (
-                            <Icon name="chat" size={normalize(16)} color={isDark ? ON_PRIMARY_COLOR : colors.primary} />
-                        )}
-                        <Text style={styles.supportButtonText}>
-                            {openingManagerChat ? 'Открываем чат...' : 'Связаться с поддержкой'}
-                        </Text>
-                    </TouchableOpacity>
+                <Animated.View style={{ opacity: fadeAnim }}>
+                    <OrderHelpCard
+                        orders={[
+                            immediateOrder && {
+                                id: immediateOrder.id,
+                                orderNumber: immediateOrder.orderNumber,
+                                totalAmount: immediateOrder.totalAmount,
+                                status: immediateOrder.status,
+                            },
+                            waitingOrder && {
+                                id: waitingOrder.id,
+                                orderNumber: waitingOrder.orderNumber,
+                                totalAmount: waitingOrder.totalAmount,
+                                status: waitingOrder.status,
+                            },
+                            !immediateOrder && orderId
+                                ? {
+                                    id: orderId,
+                                    orderNumber: route?.params?.orderNumber,
+                                    totalAmount: route?.params?.totalAmount,
+                                }
+                                : null,
+                        ].filter(Boolean)}
+                        fromScreen="OrderSuccess"
+                    />
                 </Animated.View>
             </ScrollView>
         </SafeAreaView>
@@ -906,52 +910,6 @@ const createStyles = (colors, isDark) => {
         fontSize: normalize(15),
         fontWeight: '600',
         color: colors.textSecondary,
-    },
-    // Карточка поддержки
-    supportCard: {
-        backgroundColor: colors.cardBackground,
-        marginHorizontal: normalize(20),
-        marginTop: normalize(24),
-        padding: normalize(20),
-        borderRadius: normalize(16),
-        alignItems: 'center',
-        shadowColor: colors.shadowColor || '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: isDark ? 0.15 : 0.06,
-        shadowRadius: 6,
-        elevation: 3,
-        borderWidth: isDark ? 1 : 0,
-        borderColor: colors.border,
-    },
-    supportIcon: {
-        marginBottom: normalize(12),
-    },
-    supportTitle: {
-        fontSize: normalize(18),
-        fontWeight: '700',
-        color: colors.textPrimary,
-        marginBottom: normalize(8),
-    },
-    supportText: {
-        fontSize: normalize(14),
-        color: colors.textSecondary,
-        textAlign: 'center',
-        marginBottom: normalize(16),
-        lineHeight: normalize(20),
-    },
-    supportButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: normalize(20),
-        paddingVertical: normalize(10),
-        borderRadius: normalize(20),
-        backgroundColor: isDark ? screenBackground : (colors.primarySoft || (colors.primary + '1A')),
-        gap: normalize(6),
-    },
-    supportButtonText: {
-        fontSize: normalize(14),
-        fontWeight: '600',
-        color: isDark ? ON_PRIMARY_COLOR : colors.primary,
     },
     });
 };

@@ -13,6 +13,12 @@ const ChatApi = {
 
   getOrCreateProductRoom: (productId) => chatApiModule.post(`/rooms/product/${productId}`),
 
+  openSupportRoom: () => chatApiModule.post('/support'),
+
+  handoffAssistantToSupport: () => chatApiModule.post('/support/handoff'),
+
+  reportOffAppPayment: (payload) => chatApiModule.post('/support/report', payload),
+
   updateRoom: (roomId, form) => chatApiModule.patch(`/rooms/${roomId}`, form, { headers: { 'Content-Type': 'multipart/form-data' } }),
 
   addMembers: (roomId, payload) => chatApiModule.post(`/rooms/${roomId}/members`, payload),
@@ -27,10 +33,16 @@ const ChatApi = {
 
   // ИИ-помощник: вопрос обрабатывается на сервере (БД → FAQ → GigaChat → оператор).
   // productId (опционально) — вопрос о конкретном товаре (карточка репостится в чат).
-  askAssistant: (content, temporaryId, productId = null) =>
+  // orderIds (опционально) — карточки заказов уходят вместе с вопросом.
+  askAssistant: (content, temporaryId, productId = null, orderIds = null) =>
     chatApiModule.post(
       '/ai/ask',
-      { content, temporaryId, ...(productId ? { productId } : {}) },
+      {
+        content,
+        temporaryId,
+        ...(productId ? { productId } : {}),
+        ...(Array.isArray(orderIds) && orderIds.length > 0 ? { orderIds } : {}),
+      },
       { headers: { 'Content-Type': 'application/json' } }
     ),
 

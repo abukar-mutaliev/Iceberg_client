@@ -43,9 +43,16 @@ export const formatDate = (dateString) => {
 // Проверка прав доступа
 export const canCancelOrder = (status, userRole = 'CLIENT') => {
     if (userRole === 'CLIENT') {
-        return ['PENDING', 'WAITING_STOCK'].includes(status);
+        return ['AWAITING_CONFIRMATION', 'PENDING_PAYMENT', 'PENDING', 'WAITING_STOCK'].includes(status);
     }
-    return ['PENDING', 'CONFIRMED', 'WAITING_STOCK', 'IN_DELIVERY'].includes(status);
+    return ['AWAITING_CONFIRMATION', 'PENDING_PAYMENT', 'PENDING', 'CONFIRMED', 'WAITING_STOCK', 'IN_DELIVERY'].includes(status);
+};
+
+export const wasOrderPaid = (payment) => {
+    if (!payment) return false;
+    if (payment.status === 'COMPLETED') return true;
+    if (payment.paidAt || payment.completedAt) return true;
+    return false;
 };
 
 export const canDownloadInvoice = (userRole) => {
@@ -54,6 +61,7 @@ export const canDownloadInvoice = (userRole) => {
 
 export const getOrderProgress = (status) => {
     const statusOrder = [
+        'AWAITING_CONFIRMATION',
         'PENDING_PAYMENT',
         'PENDING',
         'CONFIRMED',

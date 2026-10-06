@@ -20,6 +20,12 @@ import { useProductManagement } from '@entities/product/hooks/useProductManageme
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { CustomSliderIndicator } from '@shared/ui/CustomSliderIndicator';
 import { ReliableImage, Placeholder as ImagePlaceholder } from '@shared/ui/ReliableImage';
+import {
+    isWeightBasedProduct,
+    getWeightBasedBoxPrice,
+    getWeightBasedKgPerBox,
+    formatWeightKg,
+} from '@shared/lib/isWeightBasedProduct';
 
 export const ProductListScreen = () => {
     const dispatch = useDispatch();
@@ -96,12 +102,15 @@ export const ProductListScreen = () => {
         const imageArray = getProductImages(item);
         const activeIndex = activeImageIndices[productId] || 0;
 
-        // Расчет коробочной информации
         const itemsPerBox = item.itemsPerBox || 1;
-        const pricePerItem = item.price || 0;
-        const boxPrice = item.boxPrice || (pricePerItem * itemsPerBox);
-        const stockBoxes = item.stockQuantity || 0;
-        const totalItems = stockBoxes * itemsPerBox;
+        const pricePerItem = Number(item.price) || 0;
+        const fish = isWeightBasedProduct(item);
+        const boxPrice = fish
+            ? getWeightBasedBoxPrice(item, pricePerItem)
+            : (Number(item.boxPrice) || pricePerItem * itemsPerBox);
+        const boxLabel = fish
+            ? `${formatWeightKg(getWeightBasedKgPerBox(item))} кг`
+            : `${itemsPerBox} шт.`;
 
         const renderPlaceholder = () => (
             <ImagePlaceholder style={styles.placeholder} iconSize={28} text="Нет фото" />
@@ -175,8 +184,11 @@ export const ProductListScreen = () => {
                 </View>
 
                 {/* Название продукта */}
-                <Text style={styles.productName} numberOfLines={2}>
+                <Text style={styles.productName} numberOfLines={1}>
                     {item.name || 'Без названия'}
+                </Text>
+                <Text style={styles.productPrice} numberOfLines={1}>
+                    {Math.round(boxPrice)} ₽ / {boxLabel}
                 </Text>
             </View>
         );
@@ -274,7 +286,7 @@ const styles = StyleSheet.create({
     },
     card: {
         width: 120,
-        height: 150,
+        height: 168,
         backgroundColor: '#fff',
         borderRadius: 10,
         padding: 0,
@@ -347,8 +359,17 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: '#333',
         textAlign: 'center',
-        padding: 8,
-        flex: 1,
+        paddingHorizontal: 6,
+        paddingTop: 6,
+        width: '100%',
+    },
+    productPrice: {
+        fontSize: 10,
+        fontWeight: '600',
+        color: '#3339b0',
+        textAlign: 'center',
+        paddingHorizontal: 4,
+        paddingBottom: 6,
         width: '100%',
     },
     listContainer: {

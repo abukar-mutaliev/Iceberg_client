@@ -15,7 +15,7 @@ import {
 } from '@shared/ui/Icon/TabBarIcons';
 import { useCartAvailability } from '@entities/cart';
 import { useAuth } from '@entities/auth/hooks/useAuth';
-import { selectWaitingStockCountCombined, selectSupplierWaitingStockCount } from '@entities/order';
+import { selectWaitingStockCountCombined, selectSupplierWaitingStockCount, selectPendingPaymentCount } from '@entities/order';
 import { selectRoomsList } from '@entities/chat/model/selectors';
 // Важно: используем тот же экземпляр контекста, что и экраны (иначе hideTabBar() не влияет на CustomTabBar)
 // Импортируем напрямую из контекста, чтобы избежать циклической зависимости
@@ -138,6 +138,7 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
     
     // Получаем количество заказов, ожидающих поступления товара (комбинированный селектор)
     const waitingStockCount = useSelector(selectWaitingStockCountCombined);
+    const pendingPaymentCount = useSelector(selectPendingPaymentCount);
     
     // Получаем количество заказов, ожидающих товары от конкретного поставщика
     const supplierWaitingStockCount = useSelector(state => 
@@ -383,8 +384,18 @@ export const CustomTabBar = ({ state, descriptors, navigation }) => {
                     const showProfileBadge = route.name === 'ProfileTab' && shouldShowBadge;
                     // Бейдж на ChatList — непрочитанные сообщения
                     const showChatBadge = route.name === 'ChatList' && totalUnreadChats > 0;
-                    const showBadge = showProfileBadge || showChatBadge;
-                    const displayBadgeCount = showProfileBadge ? badgeCount : showChatBadge ? totalUnreadChats : 0;
+                    // Бейдж на Cart — заказы клиента «Ожидает оплату»
+                    const showCartBadge = route.name === 'Cart'
+                        && currentUser?.role === 'CLIENT'
+                        && pendingPaymentCount > 0;
+                    const showBadge = showProfileBadge || showChatBadge || showCartBadge;
+                    const displayBadgeCount = showProfileBadge
+                        ? badgeCount
+                        : showChatBadge
+                            ? totalUnreadChats
+                            : showCartBadge
+                                ? pendingPaymentCount
+                                : 0;
 
                     return (
                         <TabItem

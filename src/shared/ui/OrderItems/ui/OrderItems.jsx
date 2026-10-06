@@ -104,24 +104,51 @@ export const OrderItems = ({ order, onProductPress }) => {
                             )}
 
                             <View style={styles.itemDetails}>
-                                <View style={styles.quantityContainer}>
-                                    <Text style={styles.quantityLabel}>Количество:</Text>
-                                    <Text style={styles.itemQuantity}>
-                                        {formatBoxesCount(item.quantity)}
-                                    </Text>
-                                </View>
-                                <View style={styles.priceContainer}>
-                                    <Text style={styles.priceLabel}>Цена за коробку:</Text>
-                                    <Text style={styles.itemPrice}>
-                                        {formatAmount(item.price)}
-                                    </Text>
-                                </View>
+                                {item.isWeightBased ? (
+                                    <>
+                                        <View style={styles.quantityContainer}>
+                                            <Text style={styles.quantityLabel}>Вес:</Text>
+                                            <Text style={styles.itemQuantity}>
+                                                {item.actualWeightKg != null
+                                                    ? `${item.actualWeightKg} кг`
+                                                    : `≈ ${item.estimatedWeightKg || '—'} кг`}
+                                            </Text>
+                                        </View>
+                                        <View style={styles.priceContainer}>
+                                            <Text style={styles.priceLabel}>Цена за кг:</Text>
+                                            <Text style={styles.itemPrice}>
+                                                {formatAmount(item.pricePerKg)}
+                                            </Text>
+                                        </View>
+                                    </>
+                                ) : (
+                                    <>
+                                        <View style={styles.quantityContainer}>
+                                            <Text style={styles.quantityLabel}>Количество:</Text>
+                                            <Text style={styles.itemQuantity}>
+                                                {formatBoxesCount(item.quantity)}
+                                            </Text>
+                                        </View>
+                                        <View style={styles.priceContainer}>
+                                            <Text style={styles.priceLabel}>Цена за коробку:</Text>
+                                            <Text style={styles.itemPrice}>
+                                                {formatAmount(item.price)}
+                                            </Text>
+                                        </View>
+                                    </>
+                                )}
                             </View>
 
                             <View style={styles.totalContainer}>
-                                <Text style={styles.totalLabel}>Итого:</Text>
+                                <Text style={styles.totalLabel}>
+                                    {item.isWeightBased && item.actualWeightKg == null ? 'Итого ≈' : 'Итого:'}
+                                </Text>
                                 <Text style={styles.itemTotal}>
-                                    {formatAmount(item.quantity * item.price)}
+                                    {formatAmount(
+                                        item.isWeightBased && item.actualWeightKg == null && item.estimatedPrice != null
+                                            ? item.estimatedPrice
+                                            : item.quantity * item.price
+                                    )}
                                 </Text>
                             </View>
                         </View>

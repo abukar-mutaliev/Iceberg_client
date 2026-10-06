@@ -24,6 +24,8 @@ import { ImageViewerModal } from '@shared/ui/ImageViewerModal/ui/ImageViewerModa
 import { useCustomAlert } from '@shared/ui/CustomAlert';
 import { PROCESSING_ROLE_LABELS } from '@entities/admin/lib/constants';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
+import { hideClientPhoneFields } from '@shared/lib/hideClientPhone';
+import { isOfficialSupportRoom, SupportAvatar } from '@features/help';
 
 // Анимированный переключатель в стиле WhatsApp
 const AnimatedSwitch = ({ value, disabled }) => {
@@ -308,8 +310,9 @@ export const GroupInfoScreen = ({ route, navigation }) => {
   };
 
   const getUserDisplayName = useCallback((participant) => {
-    const user = participant.user || participant;
-    if (!user) return 'Пользователь';
+    const raw = participant.user || participant;
+    if (!raw) return 'Пользователь';
+    const user = hideClientPhoneFields(raw, currentUser);
     
     // Для поставщиков - название компании
     if (user.role === 'SUPPLIER') {
@@ -337,7 +340,7 @@ export const GroupInfoScreen = ({ route, navigation }) => {
     }
     
     return 'Пользователь';
-  }, []);
+  }, [currentUser]);
 
   const getUserAvatar = useCallback((participant) => {
     const user = participant.user || participant;
@@ -982,10 +985,12 @@ export const GroupInfoScreen = ({ route, navigation }) => {
 
               <TouchableOpacity
                 style={styles.groupAvatarContainer}
-                onPress={handleAvatarPress}
-                activeOpacity={0.7}
+                onPress={isOfficialSupportRoom(roomData) ? undefined : handleAvatarPress}
+                activeOpacity={isOfficialSupportRoom(roomData) ? 1 : 0.7}
               >
-                {groupAvatarUri ? (
+                {isOfficialSupportRoom(roomData) ? (
+                  <SupportAvatar size="group" />
+                ) : groupAvatarUri ? (
                   <Image source={{ uri: groupAvatarUri }} style={styles.groupAvatar} />
                 ) : (
                   <View style={styles.groupAvatarPlaceholder}>

@@ -8,12 +8,15 @@ import {
     Modal,
     ScrollView,
     Dimensions,
-    StatusBar
+    StatusBar,
+    ActivityIndicator
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { DatePickerWheel } from '@shared/ui/Pickers/DatePickerWheel';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { ORDER_DETAILS_CLIENT_DARK_BACKGROUND } from '@shared/ui/OrderDetailsStyles';
+import WarehouseService from '@entities/warehouse/api/warehouseApi';
+import { districtApi } from '@entities/district/api/districtApi';
 
 const { width, height } = Dimensions.get('window');
 
@@ -69,12 +72,13 @@ export const OrdersFilters = React.memo(({
                            onFiltersChange,
                            onFiltersExpandedChange,
                            embeddedInDarkHeader = false,
+                           integratedInHeader = false,
                            style
                        }) => {
     const { colors, isDark } = useTheme();
     const styles = useMemo(
-        () => createStyles(colors, isDark, embeddedInDarkHeader),
-        [colors, isDark, embeddedInDarkHeader]
+        () => createStyles(colors, isDark, embeddedInDarkHeader, integratedInHeader),
+        [colors, isDark, embeddedInDarkHeader, integratedInHeader]
     );
     const accentColor = colors.primary;
     const mutedIconColor = embeddedInDarkHeader ? 'rgba(255, 255, 255, 0.7)' : colors.textTertiary;
@@ -91,12 +95,73 @@ export const OrdersFilters = React.memo(({
     // Состояние для календарей
     const [showDateFromPicker, setShowDateFromPicker] = useState(false);
     const [showDateToPicker, setShowDateToPicker] = useState(false);
+    const [warehouses, setWarehouses] = useState([]);
+    const [districts, setDistricts] = useState([]);
+    const [optionsLoading, setOptionsLoading] = useState(false);
+    const [optionsError, setOptionsError] = useState('');
+    const [activePicker, setActivePicker] = useState(null);
+    const [pickerQuery, setPickerQuery] = useState('');
 
     // Синхронизация с внешними фильтрами
     useEffect(() => {
         setLocalFilters(filters);
         searchValueRef.current = filters.search || '';
     }, [filters]);
+
+    useEffect(() => {
+        if (type !== 'staff') return undefined;
+
+        let active = true;
+
+        const loadOptions = async () => {
+            setOptionsLoading(true);
+            setOptionsError('');
+
+            try {
+                const [warehouseResult, districtResult] = await Promise.all([
+                    WarehouseService.getWarehouses({ limit: 100, page: 1 }),
+                    districtApi.getAllDistricts(),
+                ]);
+
+                if (!active) return;
+
+                let warehouseList = warehouseResult?.data?.warehouses || [];
+                const pages = warehouseResult?.data?.pagination?.pages || 1;
+
+                if (pages > 1) {
+                    const rest = await Promise.all(
+                        Array.from({ length: pages - 1 }, (_, index) =>
+                            WarehouseService.getWarehouses({ limit: 100, page: index + 2 })
+                        )
+                    );
+                    if (!active) return;
+                    warehouseList = warehouseList.concat(
+                        ...rest.map((page) => page?.data?.warehouses || [])
+                    );
+                }
+
+                const districtPayload = districtResult?.data;
+                const districtList = Array.isArray(districtPayload)
+                    ? districtPayload
+                    : (districtPayload?.data || []);
+
+                const byName = (left, right) => (left.name || '').localeCompare(right.name || '', 'ru');
+
+                setWarehouses([...warehouseList].sort(byName));
+                setDistricts([...districtList].sort(byName));
+            } catch {
+                if (active) setOptionsError('Не удалось загрузить склады и районы');
+            } finally {
+                if (active) setOptionsLoading(false);
+            }
+        };
+
+        loadOptions();
+
+        return () => {
+            active = false;
+        };
+    }, [type]);
 
     // Количество активных фильтров
     const activeFiltersCount = useMemo(() => {
@@ -195,13 +260,35 @@ export const OrdersFilters = React.memo(({
         handleFilterChange('maxAmount', text);
     }, [handleFilterChange]);
 
-    const handleWarehouseIdChange = useCallback((text) => {
-        handleFilterChange('warehouseId', text);
-    }, [handleFilterChange]);
+    const openPicker = useCallback((picker) => {
+        setPickerQuery('');
+        setActivePicker(picker);
+    }, []);
 
-    const handleDistrictIdChange = useCallback((text) => {
-        handleFilterChange('districtId', text);
-    }, [handleFilterChange]);
+    const closePicker = useCallback(() => {
+        setPickerQuery('');
+        setActivePicker(null);
+    }, []);
+
+    const handleWarehouseSelect = useCallback((id) => {
+        handleFilterChange('warehouseId', id ? Number(id) : '');
+        closePicker();
+    }, [handleFilterChange, closePicker]);
+
+    const handleDistrictSelect = useCallback((id) => {
+        handleFilterChange('districtId', id ? Number(id) : '');
+        closePicker();
+    }, [handleFilterChange, closePicker]);
+
+    const selectedWarehouseName = useMemo(() => {
+        const match = warehouses.find((item) => String(item.id) === String(localFilters.warehouseId));
+        return match?.name || '';
+    }, [warehouses, localFilters.warehouseId]);
+
+    const selectedDistrictName = useMemo(() => {
+        const match = districts.find((item) => String(item.id) === String(localFilters.districtId));
+        return match?.name || '';
+    }, [districts, localFilters.districtId]);
 
     // Рендер поиска
     const renderSearchInput = useCallback(() => (
@@ -395,17 +482,23 @@ export const OrdersFilters = React.memo(({
                                     <Icon name="store" size={20} color={accentColor} />
                                     <Text style={styles.filterGroupTitle}>Склад</Text>
                                 </View>
-                                <View style={styles.textInputContainer}>
+                                <TouchableOpacity
+                                    style={styles.textInputContainer}
+                                    onPress={() => openPicker('warehouse')}
+                                    activeOpacity={0.7}
+                                >
                                     <Icon name="store" size={16} color={mutedIconColor} />
-                                    <TextInput
-                                        style={[styles.textInput, { color: inputTextColor }]}
-                                        placeholder="ID склада"
-                                        placeholderTextColor={placeholderColor}
-                                        value={localFilters.warehouseId || ''}
-                                        onChangeText={handleWarehouseIdChange}
-                                        keyboardType="numeric"
-                                    />
-                                </View>
+                                    <Text
+                                        style={[
+                                            styles.textInput,
+                                            { color: selectedWarehouseName ? inputTextColor : placeholderColor }
+                                        ]}
+                                        numberOfLines={1}
+                                    >
+                                        {selectedWarehouseName || 'Все склады'}
+                                    </Text>
+                                    <Icon name="expand-more" size={20} color={mutedIconColor} />
+                                </TouchableOpacity>
                             </View>
 
                             <View style={styles.filterGroup}>
@@ -413,24 +506,30 @@ export const OrdersFilters = React.memo(({
                                     <Icon name="location-city" size={20} color={accentColor} />
                                     <Text style={styles.filterGroupTitle}>Район</Text>
                                 </View>
-                                <View style={styles.textInputContainer}>
+                                <TouchableOpacity
+                                    style={styles.textInputContainer}
+                                    onPress={() => openPicker('district')}
+                                    activeOpacity={0.7}
+                                >
                                     <Icon name="location-city" size={16} color={mutedIconColor} />
-                                    <TextInput
-                                        style={[styles.textInput, { color: inputTextColor }]}
-                                        placeholder="ID района"
-                                        placeholderTextColor={placeholderColor}
-                                        value={localFilters.districtId || ''}
-                                        onChangeText={handleDistrictIdChange}
-                                        keyboardType="numeric"
-                                    />
-                                </View>
+                                    <Text
+                                        style={[
+                                            styles.textInput,
+                                            { color: selectedDistrictName ? inputTextColor : placeholderColor }
+                                        ]}
+                                        numberOfLines={1}
+                                    >
+                                        {selectedDistrictName || 'Все районы'}
+                                    </Text>
+                                    <Icon name="expand-more" size={20} color={mutedIconColor} />
+                                </TouchableOpacity>
                             </View>
                         </>
                     )}
                 </View>
             </ScrollView>
         );
-    }, [isExpanded, type, localFilters, showDateFromPicker, showDateToPicker, handleDateFromChange, handleDateToChange, handleMinAmountChange, handleMaxAmountChange, handleWarehouseIdChange, handleDistrictIdChange, styles, accentColor, mutedIconColor, inputTextColor, placeholderColor]);
+    }, [isExpanded, type, localFilters, showDateFromPicker, showDateToPicker, handleDateFromChange, handleDateToChange, handleMinAmountChange, handleMaxAmountChange, openPicker, selectedWarehouseName, selectedDistrictName, styles, accentColor, mutedIconColor, inputTextColor, placeholderColor]);
 
     // Рендер модального окна выбора статуса
     const renderStatusModal = useCallback(() => (
@@ -525,6 +624,148 @@ export const OrdersFilters = React.memo(({
         </Modal>
     ), [showStatusModal, handleCloseStatusModal, localFilters, handleStatusSelect, styles, accentColor, mutedIconColor]);
 
+    const renderOptionPicker = useCallback(() => {
+        const isWarehouse = activePicker === 'warehouse';
+        const source = isWarehouse ? warehouses : districts;
+        const selectedId = isWarehouse ? localFilters.warehouseId : localFilters.districtId;
+        const query = pickerQuery.trim().toLowerCase();
+        const options = query
+            ? source.filter((item) => (item.name || '').toLowerCase().includes(query))
+            : source;
+        const onSelect = isWarehouse ? handleWarehouseSelect : handleDistrictSelect;
+
+        return (
+            <Modal
+                visible={Boolean(activePicker)}
+                transparent
+                animationType="slide"
+                onRequestClose={closePicker}
+                statusBarTranslucent
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <View style={styles.modalTitleContainer}>
+                                <Icon
+                                    name={isWarehouse ? 'store' : 'location-city'}
+                                    size={24}
+                                    color={accentColor}
+                                />
+                                <Text style={styles.modalTitle}>
+                                    {isWarehouse ? 'Выберите склад' : 'Выберите район'}
+                                </Text>
+                            </View>
+                            <TouchableOpacity
+                                onPress={closePicker}
+                                style={styles.modalCloseButton}
+                                activeOpacity={0.7}
+                            >
+                                <Icon name="close" size={24} color={mutedIconColor} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <View style={styles.pickerSearch}>
+                            <Icon name="search" size={18} color={mutedIconColor} />
+                            <TextInput
+                                style={[styles.textInput, { color: colors.textPrimary }]}
+                                placeholder="Поиск по названию"
+                                placeholderTextColor={colors.textTertiary}
+                                value={pickerQuery}
+                                onChangeText={setPickerQuery}
+                            />
+                        </View>
+
+                        <ScrollView
+                            style={styles.statusList}
+                            showsVerticalScrollIndicator={false}
+                            keyboardShouldPersistTaps="always"
+                        >
+                            {optionsLoading ? (
+                                <ActivityIndicator color={accentColor} style={styles.pickerState} />
+                            ) : optionsError ? (
+                                <Text style={styles.pickerStateText}>{optionsError}</Text>
+                            ) : (
+                                <>
+                                    <TouchableOpacity
+                                        style={[
+                                            styles.statusOption,
+                                            !selectedId && styles.statusOptionSelected
+                                        ]}
+                                        onPress={() => onSelect(null)}
+                                        activeOpacity={0.8}
+                                    >
+                                        <View style={styles.statusOptionContent}>
+                                            <Text style={[
+                                                styles.statusOptionText,
+                                                !selectedId && styles.statusOptionTextSelected
+                                            ]}>
+                                                {isWarehouse ? 'Все склады' : 'Все районы'}
+                                            </Text>
+                                        </View>
+                                        {!selectedId && (
+                                            <Icon name="check" size={20} color={accentColor} />
+                                        )}
+                                    </TouchableOpacity>
+
+                                    {options.map((item) => {
+                                        const isSelected = String(item.id) === String(selectedId);
+                                        return (
+                                            <TouchableOpacity
+                                                key={item.id}
+                                                style={[
+                                                    styles.statusOption,
+                                                    isSelected && styles.statusOptionSelected
+                                                ]}
+                                                onPress={() => onSelect(item.id)}
+                                                activeOpacity={0.8}
+                                            >
+                                                <View style={styles.statusOptionContent}>
+                                                    <Text
+                                                        style={[
+                                                            styles.statusOptionText,
+                                                            isSelected && styles.statusOptionTextSelected
+                                                        ]}
+                                                        numberOfLines={2}
+                                                    >
+                                                        {item.name}
+                                                    </Text>
+                                                </View>
+                                                {isSelected && (
+                                                    <Icon name="check" size={20} color={accentColor} />
+                                                )}
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+
+                                    {options.length === 0 && (
+                                        <Text style={styles.pickerStateText}>Ничего не найдено</Text>
+                                    )}
+                                </>
+                            )}
+                        </ScrollView>
+                    </View>
+                </View>
+            </Modal>
+        );
+    }, [
+        activePicker,
+        warehouses,
+        districts,
+        localFilters.warehouseId,
+        localFilters.districtId,
+        pickerQuery,
+        optionsLoading,
+        optionsError,
+        handleWarehouseSelect,
+        handleDistrictSelect,
+        closePicker,
+        styles,
+        accentColor,
+        mutedIconColor,
+        colors.textPrimary,
+        colors.textTertiary,
+    ]);
+
     return (
         <View style={[styles.container, style]}>
             {/* Поиск */}
@@ -569,12 +810,14 @@ export const OrdersFilters = React.memo(({
 
             {/* Модальное окно статусов */}
             {renderStatusModal()}
+            {renderOptionPicker()}
         </View>
     );
 });
 
-const createStyles = (colors, isDark, embeddedInDarkHeader) => {
+const createStyles = (colors, isDark, embeddedInDarkHeader, integratedInHeader = false) => {
     const embedded = embeddedInDarkHeader && isDark;
+    const flushWithHeader = integratedInHeader || embedded;
     const fieldBackground = embedded ? 'rgba(255, 255, 255, 0.12)' : (colors.surfaceSecondary || colors.surface);
     const fieldBorder = embedded ? 'rgba(255, 255, 255, 0.2)' : colors.border;
     const panelBackground = embedded ? 'rgba(255, 255, 255, 0.08)' : (colors.surfaceSecondary || colors.surface);
@@ -584,15 +827,15 @@ const createStyles = (colors, isDark, embeddedInDarkHeader) => {
 
     return StyleSheet.create({
     container: {
-        backgroundColor: embedded ? 'transparent' : colors.cardBackground,
+        backgroundColor: flushWithHeader ? 'transparent' : colors.cardBackground,
         paddingHorizontal: 20,
         paddingVertical: 16,
         paddingBottom: 24,
-        shadowColor: embedded ? 'transparent' : colors.primary,
-        shadowOffset: { width: 0, height: embedded ? 0 : 4 },
-        shadowOpacity: embedded ? 0 : 0.1,
-        shadowRadius: embedded ? 0 : 12,
-        elevation: embedded ? 0 : 8,
+        shadowColor: flushWithHeader ? 'transparent' : colors.primary,
+        shadowOffset: { width: 0, height: flushWithHeader ? 0 : 4 },
+        shadowOpacity: flushWithHeader ? 0 : 0.1,
+        shadowRadius: flushWithHeader ? 0 : 12,
+        elevation: flushWithHeader ? 0 : 8,
     },
 
     // Поиск
@@ -635,11 +878,16 @@ const createStyles = (colors, isDark, embeddedInDarkHeader) => {
         alignItems: 'center',
         paddingHorizontal: 16,
         paddingVertical: 8,
-        backgroundColor: fieldBackground,
+        backgroundColor: embedded ? fieldBackground : '#FFFFFF',
         borderRadius: 20,
         borderWidth: 1,
         borderColor: fieldBorder,
         gap: 6,
+        shadowColor: '#1A2140',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: embedded ? 0 : 0.04,
+        shadowRadius: 3,
+        elevation: embedded ? 0 : 1,
     },
     quickFilterButtonActive: {
         borderColor: 'transparent',
@@ -661,12 +909,17 @@ const createStyles = (colors, isDark, embeddedInDarkHeader) => {
         alignItems: 'center',
         paddingHorizontal: 16,
         paddingVertical: 8,
-        backgroundColor: fieldBackground,
+        backgroundColor: embedded ? fieldBackground : '#FFFFFF',
         borderRadius: 20,
         borderWidth: 1,
         borderColor: fieldBorder,
         gap: 6,
         minWidth: 100,
+        shadowColor: '#1A2140',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: embedded ? 0 : 0.04,
+        shadowRadius: 3,
+        elevation: embedded ? 0 : 1,
     },
     statusFilterButtonActive: {
         borderColor: 'transparent',
@@ -698,6 +951,15 @@ const createStyles = (colors, isDark, embeddedInDarkHeader) => {
         gap: 4,
         paddingHorizontal: 12,
         paddingVertical: 8,
+        backgroundColor: embedded ? 'transparent' : '#FFFFFF',
+        borderRadius: 12,
+        borderWidth: embedded ? 0 : 1,
+        borderColor: embedded ? 'transparent' : colors.border,
+        shadowColor: '#1A2140',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: embedded ? 0 : 0.04,
+        shadowRadius: 3,
+        elevation: embedded ? 0 : 1,
     },
     expandButtonText: {
         fontSize: 14,
@@ -723,10 +985,10 @@ const createStyles = (colors, isDark, embeddedInDarkHeader) => {
 
     // Расширенные фильтры
     advancedFiltersContainer: {
-        backgroundColor: panelBackground,
+        backgroundColor: flushWithHeader ? 'transparent' : panelBackground,
         borderRadius: 16,
         marginTop: 12,
-        borderWidth: 1,
+        borderWidth: flushWithHeader ? 0 : 1,
         borderColor: fieldBorder,
         maxHeight: 300,
     },
@@ -827,6 +1089,28 @@ const createStyles = (colors, isDark, embeddedInDarkHeader) => {
         flex: 1,
         fontSize: 14,
         paddingVertical: 0,
+    },
+    pickerSearch: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginHorizontal: 24,
+        marginBottom: 12,
+        paddingHorizontal: 12,
+        height: 44,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.surface,
+        gap: 8,
+    },
+    pickerState: {
+        marginVertical: 24,
+    },
+    pickerStateText: {
+        fontSize: 14,
+        color: colors.textSecondary,
+        textAlign: 'center',
+        marginVertical: 24,
     },
 
     // Модальное окно

@@ -8,8 +8,7 @@ import {
     ScrollView,
     ActivityIndicator,
     KeyboardAvoidingView,
-    Platform,
-    Switch
+    Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CommonActions } from '@react-navigation/native';
@@ -20,6 +19,7 @@ import { useToast } from '@shared/ui/Toast';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 
 import { CartService, clearCart, clearCartCache } from '@entities/cart';
+import { fetchPendingPaymentCount } from '@entities/order';
 import { AddressPickerModal, DeliveryAddressApi } from '@entities/deliveryAddress';
 import { useDelivery, DeliveryTypeSelector, DeliveryInfo } from '@entities/delivery';
 import WarehouseService from '@entities/warehouse/api/warehouseApi';
@@ -58,9 +58,8 @@ export const CheckoutScreen = ({ navigation, route }) => {
     const [formData, setFormData] = useState({
         comment: '',
         expectedDeliveryDate: null,
-        paymentMethod: 'ONLINE' // Только онлайн оплата
+        paymentMethod: 'ONLINE'
     });
-    const [skipPaymentForTesting, setSkipPaymentForTesting] = useState(__DEV__);
     const [selectedWarehouse, setSelectedWarehouse] = useState(null);
 
 
@@ -161,22 +160,18 @@ export const CheckoutScreen = ({ navigation, route }) => {
                 addressId: selectedAddress?.id,
                 comment: formData.comment,
                 expectedDeliveryDate: formData.expectedDeliveryDate,
-                paymentMethod: formData.paymentMethod,
-                deliveryType: deliveryType, // Передаем тип доставки: DELIVERY или PICKUP
-                usePreauthorization: true, // Включаем предавторизацию по умолчанию
-                skipPayment: __DEV__ && skipPaymentForTesting
+                paymentMethod: 'ONLINE',
+                deliveryType: deliveryType,
+                usePreauthorization: true
             });
 
             const order = result?.data?.order ?? result?.order;
-            const skipPaymentApplied = order?.skipPaymentApplied === true;
-            const requiresPayment = order?.status === 'PENDING_PAYMENT' && !skipPaymentApplied;
-
-            if (__DEV__ && skipPaymentForTesting && order?.status === 'PENDING_PAYMENT' && !skipPaymentApplied) {
-                showError(
-                    'Тестовая оплата не сработала. Сервер всё ещё требует оплату. Проверьте SKIP_PAYMENT_FOR_TESTING=true в .env и перезапустите сервер (pm2 restart iceberg-web).',
-                    { duration: 6000, position: 'top' }
-                );
+            if (order?.status === 'PENDING_PAYMENT') {
+                dispatch(fetchPendingPaymentCount());
             }
+            const awaitingPriceConfirmation = order?.status === 'AWAITING_CONFIRMATION'
+                || order?.awaitingPriceConfirmation === true;
+            const requiresPayment = order?.status === 'PENDING_PAYMENT' && !awaitingPriceConfirmation;
 
             // Проверяем, требуется ли выбор клиента
             if (order?.requiresClientChoice) {
@@ -195,13 +190,26 @@ export const CheckoutScreen = ({ navigation, route }) => {
                 return;
             }
 
-            // Тестовый режим или не-онлайн оплата — сразу к успешному заказу
-            if (!requiresPayment) {
-                console.log('✅ Заказ создан без оплаты', {
+            if (awaitingPriceConfirmation) {
+                dispatch(clearCartCache());
+                dispatch(clearCart());
+
+                navigation.navigate('OrderSuccess', {
                     orderId: order?.id,
                     orderNumber: order?.orderNumber,
-                    status: order?.status,
-                    skipPaymentApplied
+                    totalAmount: order?.totalAmount,
+                    itemsCount: stats.totalItems || 0,
+                    boxesCount: stats.totalBoxes || 0,
+                    variant: 'awaitingConfirmation'
+                });
+                return;
+            }
+
+            if (!requiresPayment) {
+                console.log('✅ Заказ создан без немедленной оплаты', {
+                    orderId: order?.id,
+                    orderNumber: order?.orderNumber,
+                    status: order?.status
                 });
 
                 dispatch(clearCartCache());
@@ -305,8 +313,15 @@ export const CheckoutScreen = ({ navigation, route }) => {
                             )}
                             
                             {/* Сумма товаров */}
+                            {stats.hasWeightBasedItems ? (
+                                <Text style={[styles.orderLabel, { marginBottom: 8 }]}>
+                                    В заказе есть весовой товар. Итоговую цену сообщит менеджер после взвешивания, оплата — после подтверждения.
+                                </Text>
+                            ) : null}
                             <View style={styles.orderRow}>
-                                <Text style={styles.orderLabel}>Сумма товаров:</Text>
+                                <Text style={styles.orderLabel}>
+                                    {stats.hasWeightBasedItems ? 'Сумма товаров ≈' : 'Сумма товаров:'}
+                                </Text>
                                 <Text style={styles.orderValue}>
                                     {formatPrice(stats.totalAmount || 0)}
                                 </Text>
@@ -334,7 +349,9 @@ export const CheckoutScreen = ({ navigation, route }) => {
                                 </View>
                             )}
                             <View style={[styles.orderRow, styles.totalRow]}>
-                                <Text style={styles.totalLabel}>Итого:</Text>
+                                <Text style={styles.totalLabel}>
+                                    {stats.hasWeightBasedItems ? 'Итого ≈' : 'Итого:'}
+                                </Text>
                                 <Text style={styles.totalValue}>
                                     {(() => {
                                         const baseAmount = stats.finalPrice || stats.totalAmount || 0;
@@ -460,16 +477,6 @@ export const CheckoutScreen = ({ navigation, route }) => {
                     <View style={styles.section}>
                         <View style={styles.sectionHeader}>
                             <Text style={styles.sectionTitle}>Способ оплаты</Text>
-                            <TouchableOpacity
-                                style={styles.infoButton}
-                                onPress={() => navigation.navigate('PreauthorizationInfo', {
-                                    orderAmount: stats.finalPrice || stats.totalAmount || 0,
-                                    orderNumber: 'новый заказ'
-                                })}
-                            >
-                                <Icon name="info-outline" size={20} color={colors.primary} />
-                                <Text style={styles.infoButtonText}>Как это работает?</Text>
-                            </TouchableOpacity>
                         </View>
 
                         {/* Онлайн оплата */}
@@ -484,29 +491,14 @@ export const CheckoutScreen = ({ navigation, route }) => {
                                 </View>
                             </View>
 
-                            {/* Информация о предавторизации */}
                             <View style={styles.preauthorizationInfo}>
                                 <Icon name="security" size={16} color={colors.success} />
                                 <Text style={styles.preauthorizationText}>
-                                    Средства будут заблокированы на карте, но списаны только после подтверждения наличия товаров
+                                    {stats.hasWeightBasedItems
+                                        ? 'Сначала менеджер подтвердит итоговую сумму, затем вы оплатите заказ в приложении. Сотрудник не имеет права принимать перевод на личную карту.'
+                                        : 'Оплата только в приложении через Т-Банк. Сотрудник не имеет права просить перевод на личную карту.'}
                                 </Text>
                             </View>
-
-                            {__DEV__ && (
-                                <View style={styles.testModeCard}>
-                                    <View style={styles.testModeContent}>
-                                        <Text style={styles.testModeTitle}>Тест: пропустить оплату</Text>
-                                        <Text style={styles.testModeDescription}>
-                                            Заказ сразу перейдёт в обработку. В .env сервера: SKIP_PAYMENT_FOR_TESTING=true и pm2 restart
-                                        </Text>
-                                    </View>
-                                    <Switch
-                                        value={skipPaymentForTesting}
-                                        onValueChange={setSkipPaymentForTesting}
-                                        trackColor={{ false: colors.border, true: colors.primary }}
-                                    />
-                                </View>
-                            )}
                         </View>
                     </View>
                 </ScrollView>
@@ -650,36 +642,6 @@ const createStyles = (colors, isDark) => StyleSheet.create({
         lineHeight: normalize(16),
         marginLeft: normalize(8),
         flex: 1,
-    },
-
-    testModeCard: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: normalize(14),
-        backgroundColor: isDark ? '#2a2418' : '#fff8e6',
-        borderRadius: normalize(12),
-        borderWidth: 1,
-        borderColor: isDark ? '#5c4a1f' : '#ffd666',
-        gap: normalize(12),
-    },
-
-    testModeContent: {
-        flex: 1,
-    },
-
-    testModeTitle: {
-        fontSize: normalize(14),
-        fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        fontWeight: '600',
-        color: colors.textPrimary,
-        marginBottom: normalize(4),
-    },
-
-    testModeDescription: {
-        fontSize: normalize(12),
-        fontFamily: FontFamily.sFProText || 'SF Pro Text',
-        color: colors.textSecondary,
-        lineHeight: normalize(16),
     },
 
     orderInfo: {

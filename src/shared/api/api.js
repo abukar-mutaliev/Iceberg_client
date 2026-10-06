@@ -897,13 +897,23 @@ api.interceptors.request.use(async (config) => {
             baseURL: config.baseURL || api.defaults.baseURL
         });
 
-        // Пропускаем проверку токена для endpoints авторизации
+        // Пропускаем проверку токена для endpoints авторизации.
+        // Общий Authorization от прошлой сессии тоже снимаем: веб-админка
+        // логинится без него, а просроченный Bearer здесь даёт 401 ещё до пароля.
         const isAuthEndpoint = 
             config.url?.includes('/api/auth/login') ||
             config.url?.includes('/api/auth/register') ||
             config.url?.includes('/api/auth/refresh-token');
 
-        if (!isAuthEndpoint) {
+        if (isAuthEndpoint) {
+            config.withCredentials = false;
+            if (config.headers?.delete) {
+                config.headers.delete('Authorization');
+            } else if (config.headers) {
+                delete config.headers.Authorization;
+                delete config.headers.authorization;
+            }
+        } else {
             const tokens = await getStoredTokens();
             
             if (tokens?.accessToken && tokens?.refreshToken) {

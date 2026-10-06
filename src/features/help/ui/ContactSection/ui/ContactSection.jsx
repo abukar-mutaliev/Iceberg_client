@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
     View,
     Text,
@@ -14,9 +14,9 @@ import { FontFamily } from '@app/styles/GlobalStyles';
 import { useTheme } from '@app/providers/themeProvider/ThemeProvider';
 import { useAuth } from '@entities/auth/hooks/useAuth';
 import { useCustomAlert } from '@shared/ui/CustomAlert/CustomAlertProvider';
-import { employeeApiMethods } from '@entities/user/api/userApi';
 import ChatApi from '@entities/chat/api/chatApi';
 import { fetchRoom } from '@entities/chat/model/slice';
+import { navigateToOfficialSupport } from '@features/help/hooks/useOpenManagerChat';
 import CustomButton from '@shared/ui/Button/CustomButton';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
@@ -39,10 +39,6 @@ export const ContactSection = () => {
     const { colors, isDark } = useTheme();
     const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
-    // Менеджер
-    const [manager, setManager] = useState(null);
-    const [loadingManager, setLoadingManager] = useState(false);
-    const [errorManager, setErrorManager] = useState(null);
     const [chattingManager, setChattingManager] = useState(false);
     const isProcessingManagerRef = useRef(false);
 
@@ -170,107 +166,25 @@ export const ContactSection = () => {
         });
     }, [navigation, getRootNavigation, currentUser?.id]);
 
-    // --- Менеджер ----------------------------------------------------------
-
-    const findDistrictManager = useCallback(async () => {
-        if (!currentUser?.client?.districtId) {
-            setErrorManager('Район не назначен');
-            return;
-        }
-
-        setLoadingManager(true);
-        setErrorManager(null);
-
-        try {
-            const districtId = currentUser.client.districtId;
-            const response = await employeeApiMethods.getDistrictManager(districtId);
-            const managerData = response?.data?.manager;
-
-            if (!managerData) {
-                setErrorManager('Менеджер временно недоступен');
-                setManager(null);
-                return;
-            }
-
-            setManager(managerData);
-        } catch (err) {
-            if (__DEV__) console.warn('Ошибка при поиске менеджера:', err);
-            setErrorManager('Не удалось найти менеджера');
-        } finally {
-            setLoadingManager(false);
-        }
-    }, [currentUser]);
-
-    useEffect(() => {
-        if (currentUser?.client?.districtId) {
-            findDistrictManager();
-        } else {
-            setErrorManager('Район не назначен');
-        }
-    }, [currentUser, findDistrictManager]);
-
     const openChatWithManager = useCallback(async () => {
         if (isProcessingManagerRef.current || chattingManager) return;
-        if (!manager) {
-            showError('Ошибка', 'Менеджер не найден');
-            return;
-        }
 
         isProcessingManagerRef.current = true;
         setChattingManager(true);
 
-        const finalize = () => {
+        try {
+            const rootNavigation = getRootNavigation();
+            await navigateToOfficialSupport(rootNavigation, 'HelpCenter');
+        } catch (err) {
+            if (__DEV__) console.warn('Ошибка при открытии чата поддержки:', err);
+            showError('Ошибка', 'Не удалось открыть официальную поддержку. Попробуйте позже.');
+        } finally {
             setTimeout(() => {
                 setChattingManager(false);
                 isProcessingManagerRef.current = false;
             }, 300);
-        };
-
-        try {
-            const managerUserId = manager.user?.id ?? manager.id;
-            if (!managerUserId) throw new Error('ID менеджера не найден');
-
-            const managerName = manager.name || manager.user?.email || 'Менеджер';
-            const managerRole = manager.user?.role || manager.role || 'EMPLOYEE';
-            const managerAvatar = manager.avatar || manager.user?.avatar || null;
-
-            const existingChat = await findExistingDirectChat(managerUserId);
-
-            if (existingChat) {
-                await navigateToExistingChat({
-                    existingChat,
-                    peerUserId: managerUserId,
-                    peerName: managerName,
-                });
-            } else {
-                // Комнату НЕ создаём, пока пользователь не напишет первое сообщение.
-                await navigateToDraftChat({
-                    peerUserId: managerUserId,
-                    peerName: managerName,
-                    peerRole: managerRole,
-                    peerAvatar: managerAvatar,
-                    peerMeta: {
-                        lastSeenAt: manager.user?.lastSeenAt,
-                        isOnline: manager.user?.isOnline,
-                    },
-                });
-            }
-
-            finalize();
-        } catch (err) {
-            if (__DEV__) console.warn('Ошибка при открытии чата с менеджером:', err);
-            showError('Ошибка', 'Не удалось открыть чат с менеджером. Попробуйте позже.');
-            setChattingManager(false);
-            isProcessingManagerRef.current = false;
         }
-    }, [
-        manager,
-        chattingManager,
-        findExistingDirectChat,
-        navigateToExistingChat,
-        navigateToDraftChat,
-        showError,
-    ]);
+    }, [chattingManager, getRootNavigation, showError]);
 
     // --- Разработчик -------------------------------------------------------
 
@@ -409,30 +323,18 @@ export const ContactSection = () => {
             <View style={styles.buttonsContainer}>
                 {/* Менеджер */}
                 <View style={styles.buttonWrapper}>
-                    {loadingManager && (
-                        <View style={styles.loadingOverlay}>
-                            <ActivityIndicator size="small" color={colors.primary} />
-                        </View>
-                    )}
-                    {errorManager && !loadingManager && (
-                        <View style={styles.errorBadge}>
-                            <Icon name="error-outline" size={16} color={colors.error} />
-                        </View>
-                    )}
                     <CustomButton
-                        title={chattingManager ? 'Открытие...' : 'Менеджер района'}
+                        title={chattingManager ? 'Открытие...' : 'Поддержка'}
                         onPress={openChatWithManager}
                         outlined={false}
                         color={colors.primary}
                         activeColor={colors.menuItemActiveText}
-                        disabled={chattingManager || loadingManager || !manager}
+                        disabled={chattingManager}
                         style={styles.button}
                     />
-                    {manager && !loadingManager && !errorManager && (
-                        <Text style={styles.buttonSubtext}>
-                            {manager.name || 'Менеджер'}
-                        </Text>
-                    )}
+                    <Text style={styles.buttonSubtext}>
+                        Оплата только в приложении
+                    </Text>
                 </View>
 
                 {/* Разработчик */}

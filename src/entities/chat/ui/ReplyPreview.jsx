@@ -156,6 +156,14 @@ export const ReplyPreview = ({
           return '🏭 Склад';
         }
       }
+      case 'ORDER': {
+        try {
+          const orderData = JSON.parse(replyTo.content || '{}');
+          return `📦 ${orderData.orderNumber ? `Заказ ${orderData.orderNumber}` : 'Заказ'}`;
+        } catch {
+          return '📦 Заказ';
+        }
+      }
       case 'POLL':
         return '📊 Опрос';
       default:

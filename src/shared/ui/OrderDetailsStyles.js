@@ -587,7 +587,10 @@ export const createOrderDetailsStyles = (colors, isDark, darkScreenBackground = 
         textAlign: 'center',
     },
     modalBody: {
-        maxHeight: 400,
+        flexGrow: 0,
+        flexShrink: 1,
+    },
+    modalBodyContent: {
         padding: 20,
     },
     currentStatusContainer: {

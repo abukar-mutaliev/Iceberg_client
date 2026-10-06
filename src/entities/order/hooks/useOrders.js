@@ -432,6 +432,13 @@ export const useOrders = () => {
         takeOrder,
         releaseOrder,
         completeOrderStage: completeOrderStageAction,
+        verifyPickingScan: async (orderId, token, packingPhotoUrl = null) => {
+            const response = await OrderApi.verifyPickingScan(orderId, token, packingPhotoUrl);
+            if (response.status !== 'success') {
+                throw new Error(response.message || 'Не удалось подтвердить сборку');
+            }
+            return response;
+        },
         cancelOrderById,
         createOrder,
         pickupOrderFromNearby,

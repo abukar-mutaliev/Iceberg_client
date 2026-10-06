@@ -35,6 +35,7 @@ import { profileApi } from '@entities/profile/api/profileApi';
 import { fetchAllDistricts } from '@entities/district/model/slice';
 import { loadUserProfile } from '@entities/auth/model/slice';
 import { navigateToAssistantChat } from '@features/ai-assistant/lib/assistantNavigation';
+import { fetchOfficialSupportRoom } from '@features/help/hooks/useOpenManagerChat';
 
 import {
     StaticBackgroundGradient,
@@ -85,6 +86,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     /** Нижний блок (бренд, отзывы, похожие) — после анимации перехода, чтобы не конкурировать с первым кадром. */
     const [belowFoldReady, setBelowFoldReady] = useState(false);
     const rooms = useSelector(selectRoomsList) || [];
+    const openDistrictChatRef = useRef(null);
     const loadMoreCalledRef = useRef(false);
     const lastPaginationScrollAtRef = useRef(0);
     const districts = useSelector(state => state.district?.districts || []);
@@ -491,46 +493,102 @@ export const ProductDetailScreen = ({ route, navigation }) => {
     }, []);
 
    
+    const openOfficialSupportAboutProduct = useCallback(async (productId) => {
+        setIsLoadingManager(true);
+        try {
+            const room = await fetchOfficialSupportRoom();
+            let productIdForChatRoute = productId;
+
+            if (productId) {
+                try {
+                    const fetched = await dispatch(fetchProductById(productId));
+                    const loadedProduct = fetched?.payload?.data;
+                    const shareBlock = getProductChatShareBlockReason(loadedProduct || enrichedProduct);
+
+                    if (shareBlock) {
+                        showWarning(shareBlock, { duration: 4500, position: 'top' });
+                        productIdForChatRoute = undefined;
+                    } else {
+                        const sendResult = await dispatch(sendProduct({
+                            roomId: room.id,
+                            productId,
+                        }));
+                        if (sendResult.error) {
+                            console.warn('Не удалось отправить товар в поддержку:', sendResult.error);
+                        }
+                    }
+                } catch (sendError) {
+                    console.error('Ошибка при отправке товара в поддержку:', sendError);
+                }
+            }
+
+            const rootNavigation =
+                navigation?.getParent?.('AppStack') ||
+                navigation?.getParent?.()?.getParent?.() ||
+                null;
+
+            (rootNavigation || navigation).navigate('ChatRoom', {
+                roomId: room.id,
+                roomTitle: room.title || 'Поддержка Iceberg',
+                roomData: room,
+                roomType: room.type || 'GROUP',
+                currentUserId: currentUser?.id,
+                productId: productIdForChatRoute,
+                fromScreen: 'ProductDetail',
+            });
+        } catch (err) {
+            console.error('Ошибка при открытии поддержки:', err);
+            showCustomError(
+                'Ошибка',
+                'Не удалось открыть официальную поддержку. Попробуйте позже.',
+            );
+        } finally {
+            setIsLoadingManager(false);
+        }
+    }, [navigation, currentUser, showCustomError, dispatch, enrichedProduct, showWarning]);
+
     // ============================================================================
-    // Обработчик вопроса о продукте - открывает чат с менеджером района пользователя
+    // Вопрос о товаре: клиент — помощник или официальная поддержка, не личка менеджера.
     const handleAskQuestion = useCallback(async () => {
         if (!isAuthenticated) {
             showInfo('Требуется авторизация', 'Для отправки вопросов необходимо войти в систему');
             return;
         }
 
-        // Клиент задаёт вопрос ИИ-помощнику с прикреплённой карточкой товара
-        if (userRole === 'CLIENT' && enrichedProduct?.id) {
-            navigateToAssistantChat(navigation, {
-                product: {
-                    id: enrichedProduct.id,
-                    name: enrichedProduct.name,
-                    price: enrichedProduct.price,
-                    images: enrichedProduct.images,
-                    image: enrichedProduct.image,
-                },
-                fromScreen: 'ProductDetail',
-            });
+        if (userRole === 'CLIENT') {
+            if (enrichedProduct?.id) {
+                navigateToAssistantChat(navigation, {
+                    product: {
+                        id: enrichedProduct.id,
+                        name: enrichedProduct.name,
+                        price: enrichedProduct.price,
+                        images: enrichedProduct.images,
+                        image: enrichedProduct.image,
+                    },
+                    fromScreen: 'ProductDetail',
+                });
+                return;
+            }
+
+            await openOfficialSupportAboutProduct(enrichedProduct?.id);
             return;
         }
 
-        const clientDistrictId = currentUser?.client?.districtId;
-        const singleDriverDistrictId = userRole === 'DRIVER' && driverDistrictIds.length === 1
-            ? driverDistrictIds[0]
-            : null;
-        const districtId = clientDistrictId || singleDriverDistrictId;
-
-        if (districtId) {
-            await openChatWithManagerByDistrict(districtId, enrichedProduct?.id);
-            return;
-        }
-
-        if (userRole !== 'CLIENT' && userRole !== 'DRIVER') {
+        if (userRole !== 'DRIVER') {
             showInfo('Недоступно', 'Эта функция доступна только клиентам');
             return;
         }
 
-        if (userRole === 'DRIVER' && availableDistrictsForChat.length === 0) {
+        const singleDriverDistrictId = driverDistrictIds.length === 1
+            ? driverDistrictIds[0]
+            : null;
+
+        if (singleDriverDistrictId) {
+            await openDistrictChatRef.current?.(singleDriverDistrictId, enrichedProduct?.id);
+            return;
+        }
+
+        if (availableDistrictsForChat.length === 0) {
             showCustomError(
                 'Районы не назначены',
                 'Для связи с менеджером назначьте водителю хотя бы один район'
@@ -541,16 +599,14 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         // Предлагаем выбрать район
         showInfo(
             'Выберите район',
-            userRole === 'DRIVER'
-                ? 'Выберите один из назначенных вам районов для связи с менеджером'
-                : 'Для связи с менеджером необходимо выбрать ваш район обслуживания',
+            'Выберите один из назначенных вам районов для связи с менеджером',
             [
                 {
                     text: 'Выбрать район',
                     style: 'primary',
                     onPress: () => {
                         // Для клиентов подгружаем районы, для водителя используем назначенные.
-                        if (userRole !== 'DRIVER' && districts.length === 0) {
+                        if (districts.length === 0) {
                             dispatch(fetchAllDistricts());
                         }
                         setIsDistrictSelectionVisible(true);
@@ -570,7 +626,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         availableDistrictsForChat.length,
         showInfo,
         showCustomError,
-        openChatWithManagerByDistrict,
+        openOfficialSupportAboutProduct,
         districts.length,
         dispatch,
         navigation,
@@ -590,10 +646,15 @@ export const ProductDetailScreen = ({ route, navigation }) => {
 
     // Функция для открытия чата с менеджером по districtId
     const openChatWithManagerByDistrict = useCallback(async (districtId, productId) => {
+        if (userRole !== 'DRIVER') {
+            await openOfficialSupportAboutProduct(productId);
+            return;
+        }
+
         setIsLoadingManager(true);
 
         try {
-            // Получаем менеджера района
+            // Водитель пишет менеджеру своего района. Клиент сюда не попадает.
             const response = await employeeApiMethods.getDistrictManager(districtId);
             const managerData = response?.data?.manager;
 
@@ -760,7 +821,9 @@ export const ProductDetailScreen = ({ route, navigation }) => {
         } finally {
             setIsLoadingManager(false);
         }
-    }, [navigation, currentUser, showCustomError, dispatch, rooms, enrichedProduct, showWarning]);
+    }, [navigation, currentUser, showCustomError, dispatch, rooms, enrichedProduct, showWarning, userRole, openOfficialSupportAboutProduct]);
+
+    openDistrictChatRef.current = openChatWithManagerByDistrict;
 
     // Обработчик сохранения выбранного района
     const handleDistrictSave = useCallback(async () => {
@@ -1211,7 +1274,7 @@ export const ProductDetailScreen = ({ route, navigation }) => {
             >
                 <View style={styles.districtModalContent}>
                     <Text style={styles.districtModalText}>
-                        Для связи с менеджером необходимо выбрать ваш район обслуживания
+                        Выберите один из назначенных районов, чтобы написать менеджеру
                     </Text>
                     {availableDistrictsForChat.length === 0 ? (
                         <View style={styles.districtLoadingContainer}>
